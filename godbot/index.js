@@ -182,16 +182,6 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
-// ✅ 핑 서버
-const server = express();
-server.all("/", (req, res) => res.send("봇이 깨어있어요!"));
-server.listen(3000, () => {
-  console.log("✅ 핑 서버 활성화 완료 (포트 3000)");
-});
-setInterval(() => {
-  require("http").get("https://godbot.leeyoungmin3123.repl.co");
-}, 1000 * 60 * 5);
-
 // ✅ 자동 재접속
 setInterval(async () => {
   if (!client || !client.user || !client.ws || client.ws.status !== 0) {
@@ -203,7 +193,7 @@ setInterval(async () => {
       console.error("🔁 재접속 실패:", err);
     }
   }
-}, 1000 * 60 * 5);
+}, 1000 * 60 * 1800);
 
 // ✅ 봇 로그인
 client.login(process.env.DISCORD_TOKEN);
