@@ -194,3 +194,15 @@ setInterval(async () => {
 
 // ✅ 봇 로그인
 client.login(process.env.DISCORD_TOKEN);
+
+// ✅ Railway 용 Express 상태 체크 서버
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("봇이 실행 중입니다!");
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Express 서버가 ${PORT}번 포트에서 실행 중입니다.`);
+});
