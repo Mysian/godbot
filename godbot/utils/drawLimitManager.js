@@ -1,46 +1,61 @@
 const fs = require("fs");
 const path = require("path");
 
-const DATA_FILE = path.join(__dirname, "../data/draw-limit.json");
+const DATA_FILE = path.join(__dirname, "../data/draw-limits.json");
 
-function loadLimitData() {
+// 파일 읽기
+function loadDrawData() {
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify({}), "utf-8");
   }
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  const raw = fs.readFileSync(DATA_FILE, "utf-8");
+  return JSON.parse(raw);
 }
 
-function saveLimitData(data) {
+// 파일 저장
+function saveDrawData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
 }
 
-function canDraw(userId, isBooster) {
-  const data = loadLimitData();
+// 현재 뽑기 횟수 가져오기
+function getCurrentDrawCount(userId) {
+  const data = loadDrawData();
+  const entry = data[userId];
+
+  if (!entry) return 0;
+
   const now = Date.now();
-  const limit = isBooster ? 6 : 3;
-  const resetTime = 24 * 60 * 60 * 1000;
-
-  if (!data[userId]) {
-    data[userId] = { count: 0, last: now };
+  if (now - entry.lastReset > 24 * 60 * 60 * 1000) {
+    return 0;
   }
 
-  const elapsed = now - data[userId].last;
+  return entry.count;
+}
 
-  if (elapsed > resetTime) {
-    data[userId] = { count: 1, last: now };
-    saveLimitData(data);
-    return { allowed: true, remaining: limit - 1 };
-  }
+// 뽑기 가능 여부
+function canDraw(userId, maxDraws) {
+  return getCurrentDrawCount(userId) < maxDraws;
+}
 
-  if (data[userId].count < limit) {
+// 뽑기 횟수 증가
+function incrementDrawCount(userId) {
+  const data = loadDrawData();
+  const now = Date.now();
+
+  if (!data[userId] || now - data[userId].lastReset > 24 * 60 * 60 * 1000) {
+    data[userId] = {
+      count: 1,
+      lastReset: now,
+    };
+  } else {
     data[userId].count += 1;
-    saveLimitData(data);
-    return { allowed: true, remaining: limit - data[userId].count };
   }
 
-  return { allowed: false, remaining: 0 };
+  saveDrawData(data);
 }
 
 module.exports = {
+  getCurrentDrawCount,
   canDraw,
+  incrementDrawCount,
 };
