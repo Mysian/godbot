@@ -1,7 +1,7 @@
 // /commands/card-battle.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getBattle, setBattle, removeBattle } = require('../utils/battleDataManager');
-const { getUserCards } = require('../utils/cardDataManager');
+const { getUserCardData } = require('../utils/cardDataManager');
 const applySkillEffect = require('../utils/applySkillEffect');
 const skills = require('../utils/skills');
 
@@ -23,8 +23,8 @@ module.exports = {
       return interaction.reply({ content: '❌ 자신과는 배틀할 수 없습니다!', ephemeral: true });
     }
 
-    const userCards = getUserCards(user.id);
-    const opponentCards = getUserCards(opponent.id);
+    const userCards = getUserCardDatas(user.id);
+    const opponentCards = getUserCardDatas(opponent.id);
 
     if (!userCards.length || !opponentCards.length) {
       return interaction.reply({ content: '❌ 두 유저 모두 카드가 있어야 배틀할 수 있어요!', ephemeral: true });
