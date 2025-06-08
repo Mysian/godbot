@@ -1,13 +1,10 @@
-// utils/roleChecker.js
+// 부스터 역할 ID는 프로젝트에 맞게 수정 가능
+const BOOSTER_ROLE_ID = "1207437971037356142";
 
-/**
- * 주어진 멤버가 특정 역할 ID를 가지고 있는지 확인
- * @param {GuildMember} member 디스코드 멤버 객체
- * @param {string} roleId 확인할 역할 ID
- * @returns {boolean} 역할을 가지고 있는 경우 true
- */
-function hasRole(member, roleId) {
-  return member.roles.cache.has(roleId);
+function hasBoosterRole(member) {
+  return member.roles.cache.has(BOOSTER_ROLE_ID);
 }
 
-module.exports = { hasRole };
+module.exports = {
+  hasBoosterRole,
+};
