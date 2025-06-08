@@ -1,25 +1,24 @@
-require("dotenv").config();
-const { REST, Routes } = require("discord.js");
 const fs = require("fs");
-
-const CLIENT_ID = "1380841362752274504";
-const GUILD_ID = "785841387396005948";
+const path = require("path");
+const { REST, Routes } = require("discord.js");
+require("dotenv").config();
 
 const commands = [];
-const commandFiles = fs
-  .readdirSync("./commands")
-  .filter((file) => file.endsWith(".js"));
+const commandFiles = fs.readdirSync("./commands").filter(file => file.endsWith(".js"));
 
 for (const file of commandFiles) {
-  const commandModule = require(`./commands/${file}`);
+  const command = require(`./commands/${file}`);
 
-  // 배열 형태인지, 단일 명령어인지 구분
-  if (Array.isArray(commandModule.data)) {
-    for (const cmd of commandModule.data) {
-      commands.push(cmd.toJSON());
-    }
+  if (!command.data) {
+    console.warn(`⚠️ ${file} 에 data가 없습니다.`);
+    continue;
+  }
+
+  // SlashCommandBuilder 형식일 때만 등록
+  if (typeof command.data.toJSON === "function") {
+    commands.push(command.data.toJSON());
   } else {
-    commands.push(commandModule.data.toJSON());
+    console.warn(`⚠️ ${file} 의 data는 toJSON을 지원하지 않습니다.`);
   }
 }
 
@@ -27,14 +26,13 @@ const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log("🔄 슬래시 명령어 등록 중...");
-
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-      body: commands,
-    });
-
-    console.log("✅ 슬래시 명령어 등록 완료!");
+    console.log("📡 명령어 등록 중...");
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+    console.log("✅ 명령어 등록 완료!");
   } catch (error) {
-    console.error(error);
+    console.error("❌ 등록 실패:", error);
   }
 })();
