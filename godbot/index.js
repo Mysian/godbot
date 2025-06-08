@@ -15,8 +15,6 @@ const client = new Client({
 
 require("dotenv").config();
 const LOG_CHANNEL_ID = "1381062597230460989";
-const STATUS_CHANNEL_ID = "1211656980012212264";
-let statusMessageId = null;
 
 // ✅ 명령어 등록
 client.commands = new Collection();
@@ -29,7 +27,7 @@ for (const file of commandFiles) {
   client.commands.set(command.data.name, command);
 }
 
-// ✅ Ready 시 상태 ON 설정
+// ✅ Ready 시 로그만 전송
 client.once("ready", async () => {
   console.log(`✅ 봇 로그인 완료: ${client.user.tag}`);
   const logChannel = await client.channels
@@ -40,7 +38,6 @@ client.once("ready", async () => {
       `🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR")})`,
     );
   }
-  await statusOnUpdate(); // 상태 ON 메시지는 유지
 });
 
 // ✅ 슬래시 명령어 처리
@@ -159,7 +156,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ✅ 예외 핸들링 (statusOffUpdate 제거됨)
+// ✅ 예외 핸들링
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
   try {
@@ -185,7 +182,7 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
-// ✅ 핑 서버 + 주기적 Self Ping (필요 시 제거 가능)
+// ✅ 핑 서버 (필요 시 유지 가능)
 const server = express();
 server.all("/", (req, res) => res.send("봇이 깨어있어요!"));
 server.listen(3000, () => {
