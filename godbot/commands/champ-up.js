@@ -25,7 +25,9 @@ function getSuccessRate(level) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder().setName("챔피언강화").setDescription("보유한 챔피언을 강화합니다 (최대 999강)"),
+  data: new SlashCommandBuilder()
+    .setName("챔피언강화")
+    .setDescription("보유한 챔피언을 강화합니다 (최대 999강)"),
   async execute(interaction) {
     const userId = interaction.user.id;
     const data = loadData();
@@ -51,7 +53,14 @@ module.exports = {
       saveData(data);
       return interaction.reply(`💪 강화 성공! **${champ.name} ${champ.level}강**`);
     } else {
-      return interaction.reply(`💥 강화 실패... 현재 강화 레벨은 **${champ.level}강** 입니다.`);
+      const survive = Math.random() < 0.3; // 30% 확률로 살아남음
+      if (survive) {
+        return interaction.reply(`😮 강화는 실패했지만, **${champ.name}**(은)는 무사했습니다! 계속 강화할 수 있어요.`);
+      } else {
+        delete data[userId];
+        saveData(data);
+        return interaction.reply(`💥 강화 실패... ⚰️ **${champ.name}**(을)를 잃었습니다. 다시 /챔피언획득 으로 얻으세요.`);
+      }
     }
   },
 };
