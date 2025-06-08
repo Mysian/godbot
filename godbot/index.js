@@ -127,7 +127,7 @@ client.on("messageCreate", async (message) => {
     if (game.timeout) clearTimeout(game.timeout);
 
     const deathChance = Math.random();
-    if (deathChance < 0.23) {
+    if (deathChance < 0.39) {
       const deathMsgs = ["삼가 고인의 명복을 빕니다.", "펑! 그리고 정적..."];
       const msg = deathMsgs[Math.floor(Math.random() * deathMsgs.length)];
       rouletteGames.delete(channelId);
