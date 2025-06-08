@@ -19,12 +19,9 @@ module.exports = {
       .sort((a, b) => b[1].score - a[1].score)
       .slice(0, 20);
 
-    const result = await Promise.all(
-      top.map(async ([id, v], i) => {
-        const user = await interaction.client.users.fetch(id).catch(() => null);
-        return `${i + 1}. ${user?.username || "알 수 없음"}: ${v.score}점`;
-      })
-    );
+    const result = top.map(([id, v], i) => {
+      return `${i + 1}. <@${id}>: ${v.score}점`;
+    });
 
     await interaction.reply({ content: `🏆 **호감도 TOP 20**\n${result.join("\n")}` });
   }
