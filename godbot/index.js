@@ -26,7 +26,7 @@ for (const file of commandFiles) {
   if ("data" in command && "execute" in command) {
     client.commands.set(command.data.name, command);
   } else {
-    console.log(⚠️ ${file} 명령어에 data 또는 execute가 없습니다.`);
+    console.log(`⚠️ ${file} 명령어에 data 또는 execute가 없습니다.`);
   }
 }
 
