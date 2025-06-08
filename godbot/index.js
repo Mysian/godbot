@@ -27,7 +27,7 @@ for (const file of commandFiles) {
   client.commands.set(command.data.name, command);
 }
 
-// ✅ Ready 시 로그만 전송
+// ✅ 봇 준비 완료 시 로그 전송
 client.once("ready", async () => {
   console.log(`✅ 봇 로그인 완료: ${client.user.tag}`);
   const logChannel = await client.channels
@@ -182,34 +182,28 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
-// ✅ 핑 서버 (필요 시 유지 가능)
+// ✅ 핑 서버
 const server = express();
 server.all("/", (req, res) => res.send("봇이 깨어있어요!"));
 server.listen(3000, () => {
   console.log("✅ 핑 서버 활성화 완료 (포트 3000)");
 });
-setInterval(
-  () => {
-    require("http").get("https://godbot.leeyoungmin3123.repl.co");
-  },
-  1000 * 60 * 5,
-);
+setInterval(() => {
+  require("http").get("https://godbot.leeyoungmin3123.repl.co");
+}, 1000 * 60 * 5);
 
-// ✅ 자동 재접속 모니터링
-setInterval(
-  async () => {
-    if (!client || !client.user || !client.ws || client.ws.status !== 0) {
-      console.warn("🛑 클라이언트 연결이 끊겼습니다. 재로그인 시도 중...");
-      try {
-        await client.destroy();
-        await client.login(process.env.DISCORD_TOKEN);
-      } catch (err) {
-        console.error("🔁 재접속 실패:", err);
-      }
+// ✅ 자동 재접속
+setInterval(async () => {
+  if (!client || !client.user || !client.ws || client.ws.status !== 0) {
+    console.warn("🛑 클라이언트 연결이 끊겼습니다. 재로그인 시도 중...");
+    try {
+      await client.destroy();
+      await client.login(process.env.DISCORD_TOKEN);
+    } catch (err) {
+      console.error("🔁 재접속 실패:", err);
     }
-  },
-  1000 * 60 * 5,
-);
+  }
+}, 1000 * 60 * 5);
 
 // ✅ 봇 로그인
 client.login(process.env.DISCORD_TOKEN);
