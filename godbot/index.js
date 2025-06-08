@@ -29,41 +29,6 @@ for (const file of commandFiles) {
   client.commands.set(command.data.name, command);
 }
 
-// ✅ 상태 메시지 OFF로 바꾸기
-const statusOffUpdate = async () => {
-  try {
-    const statusChannel = await client.channels.fetch(STATUS_CHANNEL_ID);
-    if (statusChannel && statusMessageId) {
-      const statusMsg = await statusChannel.messages.fetch(statusMessageId);
-      if (statusMsg) await statusMsg.edit("🔴 **Bot Status: OFF**");
-    }
-  } catch (err) {
-    console.error("❗ 상태 메시지 갱신 실패:", err);
-  }
-};
-
-// ✅ 상태 메시지 ON으로 설정
-const statusOnUpdate = async () => {
-  try {
-    const statusChannel = await client.channels.fetch(STATUS_CHANNEL_ID);
-    if (statusChannel && statusChannel.isTextBased()) {
-      const messages = await statusChannel.messages.fetch({ limit: 10 });
-      const existing = messages.find(
-        (m) => m.author.id === client.user.id && m.content.includes("🟢"),
-      );
-      if (existing) {
-        await existing.edit("🟢 **Bot Status: ON**");
-        statusMessageId = existing.id;
-      } else {
-        const msg = await statusChannel.send("🟢 **Bot Status: ON**");
-        statusMessageId = msg.id;
-      }
-    }
-  } catch (err) {
-    console.error("❗ 상태 메시지 ON 설정 실패:", err);
-  }
-};
-
 // ✅ Ready 시 상태 ON 설정
 client.once("ready", async () => {
   console.log(`✅ 봇 로그인 완료: ${client.user.tag}`);
