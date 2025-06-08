@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../data/favorability-data.json");
@@ -19,10 +19,16 @@ module.exports = {
       .sort((a, b) => b[1].score - a[1].score)
       .slice(0, 20);
 
-    const result = top.map(([id, v], i) => {
+    const lines = top.map(([id, v], i) => {
       return `${i + 1}. <@${id}>: ${v.score}점`;
     });
 
-    await interaction.reply({ content: `🏆 **호감도 TOP 20**\n${result.join("\n")}` });
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 호감도 TOP 20")
+      .setDescription(lines.join("\n"))
+      .setColor(0xffc107)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
   }
 };
