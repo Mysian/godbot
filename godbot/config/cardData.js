@@ -1,25 +1,85 @@
-// config/cardData.js
-module.exports = {
-  grades: ["Z", "SSS", "SS", "S", "A", "B", "C", "D", "E", "F"],
-
-  gradeChances: {
-    F: 0.5,
-    E: 0.3,
-    D: 0.1,
-    C: 0.05,
-    B: 0.035,
-    A: 0.01,
-    S: 0.004,
-    SS: 0.001,
-    SSS: 0,
-    Z: 0,
+const cards = [
+  {
+    id: "tiger001",
+    name: "🐯 타이거 (Tiger)",
+    grade: "A",
+    attribute: "불",
+    stats: {
+      attack: 110,
+      defense: 90,
+      hp: 100,
+      magic: 50,
+      luck: 60,
+    },
+    skill: "heavy-attack",
   },
+  {
+    id: "rabbit001",
+    name: "🐰 래빗 (Rabbit)",
+    grade: "B",
+    attribute: "물",
+    stats: {
+      attack: 80,
+      defense: 70,
+      hp: 95,
+      magic: 100,
+      luck: 75,
+    },
+    skill: "self-heal",
+  },
+  {
+    id: "dragon001",
+    name: "🐉 드래곤 (Dragon)",
+    grade: "S",
+    attribute: "빛",
+    stats: {
+      attack: 120,
+      defense: 110,
+      hp: 140,
+      magic: 130,
+      luck: 90,
+    },
+    skill: "aoe-magic",
+  },
+  {
+    id: "snake001",
+    name: "🐍 스네이크 (Snake)",
+    grade: "C",
+    attribute: "어둠",
+    stats: {
+      attack: 70,
+      defense: 60,
+      hp: 85,
+      magic: 95,
+      luck: 80,
+    },
+    skill: "attack-silence",
+  },
+  {
+    id: "monkey001",
+    name: "🐵 몽키 (Monkey)",
+    grade: "D",
+    attribute: "나무",
+    stats: {
+      attack: 85,
+      defense: 65,
+      hp: 100,
+      magic: 60,
+      luck: 95,
+    },
+    skill: "lucky-attack",
+  }
+];
 
-  elements: [
-    { name: "불", emoji: "🔥", beats: "나무", weakTo: "물", type: "basic" },
-    { name: "물", emoji: "💧", beats: "불", weakTo: "나무", type: "basic" },
-    { name: "나무", emoji: "🌿", beats: "물", weakTo: "불", type: "basic" },
-    { name: "어둠", emoji: "🌑", beats: "빛", weakTo: "빛", type: "special" },
-    { name: "빛", emoji: "🌟", beats: "어둠", weakTo: "어둠", type: "special" },
-  ],
+function getAllCards() {
+  return cards;
+}
+
+function getCardById(cardId) {
+  return cards.find(card => card.id === cardId);
+}
+
+module.exports = {
+  getAllCards,
+  getCardById,
 };
