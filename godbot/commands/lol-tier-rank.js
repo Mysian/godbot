@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
@@ -50,7 +50,7 @@ module.exports = {
     const rankings = Object.entries(data)
       .map(([id, info]) => {
         const scores = Object.values(info).map(
-          (tier) => TIER_SCORES[tier] || 1,
+          (tier) => TIER_SCORES[tier] || 1
         );
         const avg =
           scores.length > 0
@@ -66,22 +66,25 @@ module.exports = {
 
     const lines = await Promise.all(
       rankings.map(async (entry, index) => {
-        const user = await interaction.guild.members
-          .fetch(entry.id)
-          .catch(() => null);
+        const user = await interaction.guild.members.fetch(entry.id).catch(() => null);
         if (!user) return null;
 
         const tierNames = Object.entries(entry.info)
           .map(([pos, tier]) => `${pos}: ${TIER_EMOJIS[tier] || ""}${tier}`)
           .join(", ");
-        return `**${index + 1}. ${user.displayName}** - ${tierNames}`;
-      }),
+
+        return `**${index + 1}. <@${entry.id}>** - ${tierNames}`;
+      })
     );
 
     const output = lines.filter(Boolean).join("\n");
-    await interaction.reply({
-      content: `🏆 **롤 티어 순위표**\n\n${output}`,
-      ephemeral: false,
-    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 롤 티어 순위표")
+      .setDescription(output)
+      .setColor(0x3498db)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
   },
 };
