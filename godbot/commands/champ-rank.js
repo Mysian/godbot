@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
@@ -6,26 +6,44 @@ const dataPath = path.join(__dirname, "../data/champion-users.json");
 
 function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
-  return JSON.parse(fs.readFileSync(dataPath));
+  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
 }
 
 module.exports = {
-  data: new SlashCommandBuilder().setName("챔피언강화순위").setDescription("강화 성공 횟수가 많은 순으로 20위 표시"),
+  data: new SlashCommandBuilder()
+    .setName("챔피언강화순위")
+    .setDescription("강화 성공 횟수가 많은 순으로 20위 표시"),
+
   async execute(interaction) {
     const data = loadData();
+
     const sorted = Object.entries(data)
-      .map(([id, info]) => ({ id, ...info }))
+      .map(([id, info]) => ({
+        id,
+        name: info.name || "알 수 없음",
+        level: info.level ?? 0,
+        success: info.success ?? 0
+      }))
       .sort((a, b) => b.success - a.success)
       .slice(0, 20);
 
     if (sorted.length === 0) {
-      return interaction.reply("아직 강화 기록이 없습니다!");
+      return interaction.reply({
+        content: "아직 강화 기록이 없습니다!",
+        ephemeral: true
+      });
     }
 
-    const ranking = sorted
-      .map((entry, index) => `**${index + 1}위** - <@${entry.id}>: ${entry.name} (${entry.level}강, ✅ ${entry.success}회 성공)`)
-      .join("\n");
+    const lines = sorted.map((entry, index) =>
+      `**${index + 1}위** - <@${entry.id}>: ${entry.name} (${entry.level}강, ✅ ${entry.success}회 성공)`
+    );
 
-    return interaction.reply(`🏆 **챔피언 강화 순위 Top 20**\n\n${ranking}`);
-  },
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 챔피언 강화 순위 Top 20")
+      .setDescription(lines.join("\n").slice(0, 4090)) // 안전 자르기
+      .setColor(0xf39c12)
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
+  }
 };
