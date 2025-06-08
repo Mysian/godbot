@@ -62,7 +62,7 @@ module.exports = {
 
     const lines = await Promise.all(
       rankings.map(async (entry, index) => {
-        const user = await interaction.guild.members\
+        const user = await interaction.guild.members
           .fetch(entry.id)
           .catch(() => null);
         if (!user) return null;
