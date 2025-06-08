@@ -40,7 +40,7 @@ client.once("ready", async () => {
       `🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR")})`,
     );
   }
-  await statusOnUpdate();
+  await statusOnUpdate(); // 상태 ON 메시지는 유지
 });
 
 // ✅ 슬래시 명령어 처리
@@ -64,7 +64,6 @@ client.on("interactionCreate", async (interaction) => {
         `❗ 명령어 오류 발생\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``,
       );
     }
-    await statusOffUpdate();
   }
 });
 
@@ -160,7 +159,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ✅ 예외 핸들링
+// ✅ 예외 핸들링 (statusOffUpdate 제거됨)
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
   try {
@@ -171,7 +170,6 @@ process.on("uncaughtException", async (err) => {
       );
     }
   } catch (logErr) {}
-  await statusOffUpdate();
   setTimeout(() => process.exit(1), 3000);
 });
 
@@ -185,10 +183,9 @@ process.on("unhandledRejection", async (reason) => {
       );
     }
   } catch (logErr) {}
-  await statusOffUpdate();
 });
 
-// ✅ 핑 서버 + 주기적 Self Ping
+// ✅ 핑 서버 + 주기적 Self Ping (필요 시 제거 가능)
 const server = express();
 server.all("/", (req, res) => res.send("봇이 깨어있어요!"));
 server.listen(3000, () => {
@@ -199,9 +196,9 @@ setInterval(
     require("http").get("https://godbot.leeyoungmin3123.repl.co");
   },
   1000 * 60 * 5,
-); // 5분 간격 ping
+);
 
-// ✅ 자동 재접속을 위한 상태 모니터링
+// ✅ 자동 재접속 모니터링
 setInterval(
   async () => {
     if (!client || !client.user || !client.ws || client.ws.status !== 0) {
@@ -215,7 +212,7 @@ setInterval(
     }
   },
   1000 * 60 * 5,
-); // 5분 간격 체크
+);
 
 // ✅ 봇 로그인
 client.login(process.env.DISCORD_TOKEN);
