@@ -5,7 +5,7 @@ const dataPath = path.join(__dirname, "../data/favorability-data.json");
 
 function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
-  return JSON.parse(fs.readFileSync(dataPath));
+  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
 }
 
 function saveData(data) {
@@ -19,15 +19,15 @@ module.exports = {
     .addUserOption(option =>
       option.setName("유저").setDescription("초기화할 대상 유저").setRequired(true)
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), // 관리자 전용 설정
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
     const targetUser = interaction.options.getUser("유저");
     const data = loadData();
 
-    if (!data[targetUser.id] || data[targetUser.id].score === undefined) {
+    if (!data[targetUser.id] || typeof data[targetUser.id].score !== "number") {
       return interaction.reply({
-        content: `⚠️ ${targetUser.username}님의 호감도 기록이 존재하지 않습니다.`,
+        content: `⚠️ <@${targetUser.id}>님의 호감도 기록이 존재하지 않습니다.`,
         ephemeral: true,
       });
     }
@@ -36,7 +36,7 @@ module.exports = {
     saveData(data);
 
     return interaction.reply({
-      content: `✅ ${targetUser.username}님의 호감도가 **0으로 초기화**되었습니다.`,
+      content: `✅ <@${targetUser.id}>님의 호감도가 **0으로 초기화**되었습니다.`,
       ephemeral: true,
     });
   }
