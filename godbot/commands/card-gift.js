@@ -13,8 +13,7 @@ module.exports = {
   async execute(interaction) {
     const senderId = interaction.user.id;
     const receiver = interaction.options.getUser("유저");
-    if (!receiver) return interaction.reply("❌ 유저를 지정해주세요.");
-    if (receiver.id === senderId) return interaction.reply("❌ 자기 자신에게는 선물할 수 없습니다.");
+    if (!receiver || receiver.id === senderId) return interaction.reply("❌ 유효하지 않은 대상입니다.");
 
     const senderPath = path.join(__dirname, "..", "data", `${senderId}.json`);
     const receiverPath = path.join(__dirname, "..", "data", `${receiver.id}.json`);
