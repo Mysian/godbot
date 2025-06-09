@@ -350,3 +350,6 @@ if (attacker.name in championSkills) {
 };
 
 startTurnCollector(); // 최초 호출
+    }
+  }
+};
