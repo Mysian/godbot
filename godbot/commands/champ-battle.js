@@ -181,25 +181,28 @@ collector.on("collect", async i => {
   let turnCollector;
 
   const startTurnCollector = () => {
-        if (turnCollector) turnCollector.stop();
+  if (turnCollector) {
+  try {
+    turnCollector.stop();
+  } catch (err) {
+    console.warn("🛠 이전 Collector 정리 중 에러:", err);
+  }
+}
         turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
 
         turnCollector.on("collect", async i => {
           try {
-            const currentBattle = load(battlePath)[battleId];
-            if (!currentBattle) {
-              if (!i.replied && !i.deferred) {
-                await i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
-              }
-              return;
-            }
-
-            if (i.user.id !== currentBattle.turn) {
-              if (!i.replied && !i.deferred) {
-                await i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
-              }
-              return;
-            }
+                const currentBattle = load(battlePath)[battleId];
+    if (!currentBattle) {
+      try {
+        if (!i.replied && !i.deferred) {
+          await i.reply({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
+        }
+      } catch (e) {
+        console.error("❗ 응답 실패:", e);
+      }
+      return;
+    }
 
             if (!i.deferred && !i.replied) await i.deferUpdate();
 
@@ -339,13 +342,19 @@ collector.on("collect", async i => {
           }
         });
 
-        turnCollector.on("end", () => {
-          delete battleData[battleId];
-          save(battlePath, battleData);
-        });
-      };
+        turnCollector.on("end", async () => {
+  const stillExists = load(battlePath)[battleId];
+  if (stillExists) {
+    delete battleData[battleId];
+    save(battlePath, battleData);
 
-      startTurnCollector();
-    });
+    try {
+      await battleMsg.edit({
+        content: "⛔ 전투가 시간 초과로 종료되었습니다.",
+        components: []
+      });
+    } catch (e) {
+      console.warn("🛠 전투 종료 메시지 수정 실패:", e);
+    }
   }
-};
+});
