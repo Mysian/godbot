@@ -124,3 +124,7 @@ function calculateDamage(
 }
 
 module.exports = { initBattleContext, processTurnStart, calculateDamage };
+      }
+    });
+  }
+};
