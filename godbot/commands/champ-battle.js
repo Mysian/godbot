@@ -202,114 +202,113 @@ module.exports = {
       const battleMsg = await btn.fetchReply();
 
       // 턴 콜렉터 (참가자만)
-      let turnCol;
-      const startTurn = () => {
-        if (turnCol) turnCol.stop();
-        processTurnStart(userData, bd[battleId]);
-        const cur = bd[battleId];
-        turnCol = battleMsg.createMessageComponentCollector({
-          filter: i => [cur.challenger, cur.opponent].includes(i.user.id),
-          idle: 30000,
-          time: 300000
-        });
+     let turnCol;
+const startTurn = () => {
+  if (turnCol) {
+    turnCol.removeAllListeners('collect');
+    turnCol.removeAllListeners('end');
+    turnCol.stop(); // 명시적 종료
+  }
 
-        turnCol.on('collect', async i => {
-          const uid = i.user.id;
-          const cur = bd[battleId];
+  processTurnStart(userData, bd[battleId]);
+  const cur = bd[battleId];
 
-          // 1) 턴 검증
-          if (uid !== cur.turn) {
-            return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
-          }
+  turnCol = battleMsg.createMessageComponentCollector({
+    filter: i => [cur.challenger, cur.opponent].includes(i.user.id),
+    idle: 30000,
+    time: 300000
+  });
 
-          // 2) 스킬 쿨다운 검증 (reply)
-          if (i.customId === 'skill') {
-            const skillObj = skills[userData[uid].name];
-            const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
-            if (cd > 0) {
-              return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
-            }
-          }
+  turnCol.on('collect', async i => {
+    const uid = i.user.id;
+    const cur = bd[battleId];
 
-          // 3) 이제 업데이트 ACK
-          await i.deferUpdate();
+    if (uid !== cur.turn) {
+      return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
+    }
 
-          // 4) 행동별 처리
-          let log = '';
-          if (i.customId === 'attack') {
-            const tgt     = cur.challenger === uid ? cur.opponent : cur.challenger;
-            const dmgInfo = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-            cur.hp[tgt]   = Math.max(0, cur.hp[tgt] - (dmgInfo.damage || 0));
-            log           = dmgInfo.log;
+    if (i.customId === 'skill') {
+      const skillObj = skills[userData[uid].name];
+      const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
+      if (cd > 0) {
+        return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
+      }
+    }
 
-          } else if (i.customId === 'defend') {
-            const block = userData[uid].stats.defense;
-            cur.context.effects[uid].push({ type: 'damageReductionFlat', value: block, turns: 1 });
-            log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
+    await i.deferUpdate();
 
-          } else {
-            // 스킬 실행
-            const tgt      = cur.challenger === uid ? cur.opponent : cur.challenger;
-            const skillObj = skills[userData[uid].name];
-            const raw      = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-            const baseDmg  = Math.floor(
-              raw.damage * (skillObj.adRatio||0) +
-              (userData[uid].stats.ap||0) * (skillObj.apRatio||0)
-            );
-            const finalDmg = typeof skillObj.effect === 'function'
-              ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
-              : baseDmg;
-            cur.hp[tgt] = Math.max(0, cur.hp[tgt] - finalDmg);
-            cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
-            log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
-          }
+    let log = '';
+    if (i.customId === 'attack') {
+      const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
+      const dmgInfo = calculateDamage(userData[uid], userData[tgt], true, cur.context);
+      cur.hp[tgt] = Math.max(0, cur.hp[tgt] - (dmgInfo.damage || 0));
+      log = dmgInfo.log;
+    } else if (i.customId === 'defend') {
+      const block = userData[uid].stats.defense;
+      cur.context.effects[uid].push({ type: 'damageReductionFlat', value: block, turns: 1 });
+      log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
+    } else {
+      const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
+      const skillObj = skills[userData[uid].name];
+      const raw = calculateDamage(userData[uid], userData[tgt], true, cur.context);
+      const baseDmg = Math.floor(
+        raw.damage * (skillObj.adRatio || 0) +
+        (userData[uid].stats.ap || 0) * (skillObj.apRatio || 0)
+      );
+      const finalDmg = typeof skillObj.effect === 'function'
+        ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
+        : baseDmg;
+      cur.hp[tgt] = Math.max(0, cur.hp[tgt] - finalDmg);
+      cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
+      log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
+    }
 
-          // 5) 공통 처리: 로그/턴전환/저장
-          if (log) cur.logs.push(log);
-          cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
-          save(battlePath, bd);
+    if (log) cur.logs.push(log);
+    cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+    save(battlePath, bd);
 
-          // 6) 승리 체크
-          const loser = cur.challenger === uid ? cur.opponent : cur.challenger;
-          if (cur.hp[loser] <= 0) {
-            turnCol.stop();
-            const records = load(recordPath);
-            records[uid]   = records[uid]   || { name:userData[uid].name, win:0, draw:0, lose:0 };
-            records[loser] = records[loser] || { name:userData[loser].name, win:0, draw:0, lose:0 };
-            records[uid].win++;
-            records[loser].lose++;
-            save(recordPath, records);
+    const loser = cur.challenger === uid ? cur.opponent : cur.challenger;
+    if (cur.hp[loser] <= 0) {
+      turnCol.stop();
+      const records = load(recordPath);
+      records[uid] = records[uid] || { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
+      records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
+      records[uid].win++;
+      records[loser].lose++;
+      save(recordPath, records);
 
-            const winIcon   = await getChampionIcon(userData[uid].name);
-            const winSplash = await getChampionIcon(userData[loser].name);
-            const winEmbed  = new EmbedBuilder()
-              .setTitle('🏆 승리!')
-              .setDescription(`${i.user.username}님 승리!`)
-              .setThumbnail(winSplash)
-              .setColor(0x00ff88)
-              .setImage(winIcon);
-            return i.update({ content: null, embeds: [winEmbed], components: [] });
-          }
+      const winIcon = await getChampionIcon(userData[uid].name);
+      const winSplash = await getChampionIcon(userData[loser].name);
+      const winEmbed = new EmbedBuilder()
+        .setTitle('🏆 승리!')
+        .setDescription(`${i.user.username}님 승리!`)
+        .setThumbnail(winSplash)
+        .setColor(0x00ff88)
+        .setImage(winIcon);
+      return i.update({ content: null, embeds: [winEmbed], components: [] });
+    }
 
-          // 7) 다음 턴
-          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
-          await i.update({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
-          startTurn();
-        });
+    const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
+    await i.update({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
+    
+    // 다음 턴 준비를 위해 collector를 재시작
+    startTurn();
+  });
 
-        turnCol.on('end', async (_col, reason) => {
-          if (['idle','time'].includes(reason)) {
-            delete bd[battleId];
-            save(battlePath, bd);
-            const stopEmbed = new EmbedBuilder()
-              .setTitle('🛑 전투 중단')
-              .setDescription('전투가 장기화되어 중단됩니다.')
-              .setColor(0xff4444)
-              .setTimestamp();
-            await battleMsg.edit({ content: null, embeds: [stopEmbed], components: [] });
-          }
-        });
-      };
+  turnCol.on('end', async (_col, reason) => {
+    if (['idle', 'time'].includes(reason)) {
+      delete bd[battleId];
+      save(battlePath, bd);
+      const stopEmbed = new EmbedBuilder()
+        .setTitle('🛑 전투 중단')
+        .setDescription('전투가 장기화되어 중단됩니다.')
+        .setColor(0xff4444)
+        .setTimestamp();
+      await battleMsg.edit({ content: null, embeds: [stopEmbed], components: [] });
+    }
+  });
+};
+
 
       startTurn();
     });
