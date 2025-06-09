@@ -198,15 +198,17 @@ const startTurnCollector = () => {
 turnCollector.on("collect", async i => {
   try {
     if (!i.deferred && !i.replied) {
-      await i.deferUpdate(); // ✅ 여기까지만 유지
+      await i.deferUpdate();
     }
 
     const currentBattle = load(battlePath)[battleId];
     if (!currentBattle) {
-      return await i.followUp({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
+      await i.followUp({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
+      return;
     }
-        return;
-      }
+
+    // 👇 아래부터 계속 이어서 작성...
+
 
       }
 
