@@ -20,13 +20,13 @@ const userDataPath = path.join(__dirname, '../data/champion-users.json');
 const recordPath   = path.join(__dirname, '../data/champion-records.json');
 const battlePath   = path.join(__dirname, '../data/battle-active.json');
 
-function load(p) {
-  if (!fs.existsSync(p)) fs.writeFileSync(p, '{}');
-  return JSON.parse(fs.readFileSync(p));
+function load(file) {
+  if (!fs.existsSync(file)) fs.writeFileSync(file, '{}');
+  return JSON.parse(fs.readFileSync(file));
 }
 
-function save(p, d) {
-  fs.writeFileSync(p, JSON.stringify(d, null, 2));
+function save(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
 // HP바 생성: max가 0이거나 유효하지 않으면 빈 바
@@ -40,7 +40,7 @@ function createHpBar(current, max) {
   return '🟥'.repeat(filled) + '⬜'.repeat(total - filled);
 }
 
-function getStatusIcons(effects) {
+function getStatusIcons(effects = {}) {
   let s = '';
   if (effects.stunned) s += '💫';
   if (effects.dot)     s += '☠️';
@@ -97,37 +97,43 @@ module.exports = {
   async execute(interaction) {
     const challenger = interaction.user;
     const opponent   = interaction.options.getUser('상대');
-    if (challenger.id === opponent.id)
+    if (challenger.id === opponent.id) {
       return interaction.reply({ content: '❌ 자신과 대전할 수 없습니다.', ephemeral: true });
+    }
 
     const userData = load(userDataPath);
     const bd       = load(battlePath);
-    if (!userData[challenger.id] || !userData[opponent.id])
+    if (!userData[challenger.id] || !userData[opponent.id]) {
       return interaction.reply({ content: '❌ 챔피언이 없습니다.', ephemeral: true });
+    }
     if (Object.values(bd).some(b =>
       [b.challenger, b.opponent].includes(challenger.id) ||
       [b.challenger, b.opponent].includes(opponent.id)
-    ))
+    )) {
       return interaction.reply({ content: '⚔️ 이미 전투 중입니다.', ephemeral: true });
+    }
 
     // 배틀 요청
     const req = await interaction.reply({
       content: `📝 <@${opponent.id}>님, ${challenger.username}님이 배틀을 요청합니다.`,
-      components: [ new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('accept').setLabel('✅ 수락').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('decline').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
-      ) ],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('accept').setLabel('✅ 수락').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('decline').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
+        )
+      ],
       fetchReply: true
     });
 
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
-      if (btn.user.id !== opponent.id)
-        return btn.reply({ content:'⛔ 요청받은 유저만 가능합니다.', ephemeral:true });
+      if (btn.user.id !== opponent.id) {
+        return btn.reply({ content: '⛔ 요청받은 유저만 가능합니다.', ephemeral: true });
+      }
       await btn.deferUpdate();
 
       if (btn.customId === 'decline') {
-        await btn.editReply({ content:'❌ 거절했습니다.', components:[] });
+        await btn.editReply({ content: '❌ 거절했습니다.', components: [] });
         return reqCol.stop();
       }
       reqCol.stop();
@@ -153,7 +159,7 @@ module.exports = {
         new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 방어').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('skill').setLabel('✨ 스킬').setStyle(ButtonStyle.Primary)
       );
-      await btn.editReply({ content:'⚔️ 전투 시작!', embeds:[embed], components:[buttons] });
+      await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
       const battleMsg = await btn.fetchReply();
 
       // 턴 콜렉터
@@ -162,12 +168,13 @@ module.exports = {
         if (turnCol) turnCol.stop();
         processTurnStart(userData, bd[battleId]);
         const cur = bd[battleId];
-        turnCol = battleMsg.createMessageComponentCollector({ idle:30000, time:300000 });
+        turnCol = battleMsg.createMessageComponentCollector({ idle: 30000, time: 300000 });
 
         turnCol.on('collect', async i => {
           const uid = i.user.id;
-          if (cur.turn !== uid)
-            return i.reply({ content:'⛔ 당신 턴이 아닙니다.', ephemeral:true });
+          if (cur.turn !== uid) {
+            return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
+          }
 
           let log = '';
           if (i.customId === 'attack') {
@@ -182,8 +189,9 @@ module.exports = {
           } else {  // skill
             const skillObj = skills[userData[uid].name];
             const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
-            if (cd > 0)
-              return i.reply({ content:`❗ 쿨다운: ${cd}턴 남음`, ephemeral:true });
+            if (cd > 0) {
+              return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
+            }
 
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const raw = calculateDamage(userData[uid], userData[tgt], true, cur.context);
@@ -205,8 +213,8 @@ module.exports = {
 
             // 전적 저장
             const records = load(recordPath);
-            records[uid]   = records[uid]   || { name: userData[uid].name, win:0, draw:0, lose:0 };
-            records[loser] = records[loser] || { name: userData[loser].name, win:0, draw:0, lose:0 };
+            records[uid]   = records[uid]   || { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
+            records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
             records[uid].win++;
             records[loser].lose++;
             save(recordPath, records);
@@ -220,20 +228,20 @@ module.exports = {
               .setThumbnail(winThumb)
               .setColor(0x00ff88)
               .setImage(winImage);
-            return i.update({ content:null, embeds:[winEmbed], components:[] });
+            return i.update({ content: null, embeds: [winEmbed], components: [] });
           }
 
           // 다음 턴
           embed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
-          await i.update({ content:'💥 턴 종료!', embeds:[embed], components:[buttons] });
+          await i.update({ content: '💥 턴 종료!', embeds: [embed], components: [buttons] });
           startTurn();
         });
 
         turnCol.on('end', async (_col, reason) => {
-          if (['idle','time'].includes(reason)) {
+          if (['idle', 'time'].includes(reason)) {
             delete bd[battleId];
             save(battlePath, bd);
-            await battleMsg.edit({ content:'⛔ 전투 시간 종료', components:[] });
+            await battleMsg.edit({ content: '⛔ 전투 시간 종료', components: [] });
           }
         });
       };
