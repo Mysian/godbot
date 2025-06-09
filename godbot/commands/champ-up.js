@@ -32,6 +32,7 @@ module.exports = {
 
   async execute(interaction) {
     const userId = interaction.user.id;
+    const userMention = `<@${userId}>`;
     const data = loadData();
 
     const champ = data[userId];
@@ -129,19 +130,20 @@ module.exports = {
 
           saveData(data);
           interaction.followUp({
-            content: `💪 강화 성공! **${champ.name} ${champ.level}강**`
+            content: `🎉 ${userMention} 님이 **${champ.name} 챔피언 ${champ.level}강**에 성공했습니다!`
           });
         } else {
           const survive = Math.random() < 0.3;
           if (survive) {
             interaction.followUp({
-              content: `😮 강화는 실패했지만, **${champ.name}**(은)는 무사했습니다! 계속 강화할 수 있어요.`
+              content: `😮 ${userMention} 님이 **${champ.name} 챔피언 ${champ.level}강**에 실패했지만, 불굴의 의지로 챔피언이 견뎌냅니다!`
             });
           } else {
+            const lostName = champ.name;
             delete data[userId];
             saveData(data);
             interaction.followUp({
-              content: `💥 강화 실패... ⚰️ **${champ.name}**(을)를 잃었습니다. 다시 /챔피언획득 으로 얻으세요.`
+              content: `💥 ${userMention} 님이 **${lostName} 챔피언 ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
             });
           }
         }
