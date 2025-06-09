@@ -2,7 +2,7 @@ const skills = require("./skills");
 
 function calculateDamage(attacker, defender, isAttack = true) {
   const attackPower = isAttack ? attacker.attack : 0;
-  const apPower = !isAttack ? attacker.ap : 0;
+  const apPower = attacker.ap || 0;
   const penetration = attacker.penetration || 0;
   const defense = defender.defense || 0;
 
