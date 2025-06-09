@@ -14,7 +14,7 @@ const {
   calculateDamage
 } = require('../utils/battleEngine');
 const skills = require('../utils/skills');
-const { getChampionIcon, getChampionSplash } = require('../utils/champion-utils');
+const { getChampionIcon } = require('../utils/champion-utils');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
 const recordPath   = path.join(__dirname, '../data/champion-records.json');
@@ -23,10 +23,15 @@ const battlePath   = path.join(__dirname, '../data/battle-active.json');
 function load(p){ if(!fs.existsSync(p)) fs.writeFileSync(p,'{}'); return JSON.parse(fs.readFileSync(p)); }
 function save(p,d){ fs.writeFileSync(p, JSON.stringify(d,null,2)); }
 
-function createHpBar(c,m){
+// HP바 생성: max가 0이거나 유효하지 않으면 빈 바
+function createHpBar(current, max){
   const total = 10;
-  const filled = Math.round((c/m)*total);
-  return '🟥'.repeat(filled) + '⬜'.repeat(total-filled);
+  if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) {
+    return '⬜'.repeat(total);
+  }
+  const ratio = current / max;
+  const filled = Math.min(total, Math.max(0, Math.round(ratio * total)));
+  return '🟥'.repeat(filled) + '⬜'.repeat(total - filled);
 }
 
 function getStatusIcons(effects){
@@ -36,6 +41,7 @@ function getStatusIcons(effects){
   return s;
 }
 
+// 배틀 Embed: 좌측 썸네일에 요청자, 우측 메인이미지에 상대 방어자
 function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = ''){
   const ch = userData[challenger.id], op = userData[opponent.id];
   const chp = battle.hp[challenger.id], ohp = battle.hp[opponent.id];
@@ -45,18 +51,23 @@ function createBattleEmbed(challenger, opponent, battle, userData, turnId, log =
     .addFields(
       {
         name: `👑 ${challenger.username}`,
-        value: `${ch.name} ${getStatusIcons(battle.context.effects[challenger.id])}\n💖 ${chp}/${ch.stats.hp}\n${createHpBar(chp, ch.stats.hp)}`,
+        value: `${ch.name} ${getStatusIcons(battle.context.effects[challenger.id])}
+💖 ${chp}/${ch.stats.hp}
+${createHpBar(chp, ch.stats.hp)}`,
         inline: true
       },
       {
         name: `🛡️ ${opponent.username}`,
-        value: `${op.name} ${getStatusIcons(battle.context.effects[opponent.id])}\n💖 ${ohp}/${op.stats.hp}\n${createHpBar(ohp, op.stats.hp)}`,
+        value: `${op.name} ${getStatusIcons(battle.context.effects[opponent.id])}
+💖 ${ohp}/${op.stats.hp}
+${createHpBar(ohp, op.stats.hp)}`,
         inline: true
       },
       { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
       { name: '📢 행동 결과', value: log || '없음', inline: false }
     )
     .setThumbnail(getChampionIcon(ch.name))
+    .setImage(getChampionIcon(op.name))  // 상대 아이콘
     .setColor(0x3498db);
 }
 
@@ -82,7 +93,7 @@ module.exports = {
     ))
       return interaction.reply({ content:'⚔️ 이미 전투 중입니다.', ephemeral:true });
 
-    // 요청
+    // 배틀 요청
     const req = await interaction.reply({
       content: `📝 <@${opponent.id}>님, ${challenger.username}님이 배틀을 요청합니다.`,
       components: [new ActionRowBuilder().addComponents(
@@ -97,8 +108,9 @@ module.exports = {
       if (btn.user.id !== opponent.id)
         return btn.reply({ content:'⛔ 요청받은 유저만 가능합니다.', ephemeral:true });
       await btn.deferUpdate();
+
       if (btn.customId === 'decline') {
-        await btn.editReply({ content:`❌ 거절했습니다.`, components:[] });
+        await btn.editReply({ content:'❌ 거절했습니다.', components:[] });
         return reqCol.stop();
       }
       reqCol.stop();
@@ -137,21 +149,24 @@ module.exports = {
 
         turnCol.on('collect', async i => {
           const uid = i.user.id;
-          if (cur.turn !== uid) return i.reply({ content:'⛔ 당신 턴이 아닙니다.', ephemeral:true });
+          if (cur.turn !== uid)
+            return i.reply({ content:'⛔ 당신 턴이 아닙니다.', ephemeral:true });
 
-          // 평타/방어/스킬 분기
           let log = '';
           if (i.customId === 'attack') {
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const dmgInfo = calculateDamage(userData[uid].stats, userData[tgt].stats, true, cur.context);
             cur.hp[tgt] -= dmgInfo.damage;
             log = dmgInfo.log;
+
           } else if (i.customId === 'defend') {
             log = `🛡️ ${userData[uid].name}이 방어 자세를 취했습니다.`;
-          } else {
+
+          } else {  // skill
             const skillObj = skills[userData[uid].name];
             const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
-            if (cd > 0) return i.reply({ content:`❗ 쿨다운: ${cd}턴 남음`, ephemeral:true });
+            if (cd > 0)
+              return i.reply({ content:`❗ 쿨다운: ${cd}턴 남음`, ephemeral:true });
 
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const raw = calculateDamage(userData[uid].stats, userData[tgt].stats, true, cur.context);
@@ -166,15 +181,13 @@ module.exports = {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          // 승리 체크
+          // 승리 체크 & 전적 저장
           const loser = cur.challenger === uid ? cur.opponent : cur.challenger;
           if (cur.hp[loser] <= 0) {
             turnCol.stop();
-
-            // ─ 전적 저장
             const records = load(recordPath);
-            if (!records[uid]) records[uid] = { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
-            if (!records[loser]) records[loser] = { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
+            records[uid]   = records[uid]   || { name: userData[uid].name,   win:0, draw:0, lose:0 };
+            records[loser] = records[loser] || { name: userData[loser].name, win:0, draw:0, lose:0 };
             records[uid].win++;
             records[loser].lose++;
             save(recordPath, records);
@@ -182,18 +195,20 @@ module.exports = {
             const winEmbed = new EmbedBuilder()
               .setTitle('🏆 승리!')
               .setDescription(`${i.user.username}님 승리!`)
-              .setColor(0x00ff88);
+              .setThumbnail(getChampionIcon(userData[uid].name))
+              .setColor(0x00ff88)
+              .setImage(getChampionIcon(userData[loser].name));
             return i.update({ content:null, embeds:[winEmbed], components:[] });
           }
 
-          // 다음 턴 임베드
+          // 다음 턴
           embed = createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
           await i.update({ content:'💥 턴 종료!', embeds:[embed], components:[buttons] });
           startTurn();
         });
 
         turnCol.on('end', async (_col, reason) => {
-          if (reason === 'idle' || reason === 'time') {
+          if (['idle','time'].includes(reason)) {
             delete bd[battleId];
             save(battlePath, bd);
             await battleMsg.edit({ content:'⛔ 전투 시간 종료', components:[] });
