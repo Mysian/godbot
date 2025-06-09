@@ -176,7 +176,8 @@ function getImageName(name) {
 "직스": "Ziggs",
 "요네": "Yone",
 "요릭": "Yorick",
-"유미": "Yuumi"
+"유미": "Yuumi",
+"펭구": "Pengu"
 
   };
   return imageNameMap[name] || name;
