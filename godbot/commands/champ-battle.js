@@ -355,6 +355,6 @@ collector.on("collect", async i => {
       });
     } catch (e) {
       console.warn("🛠 전투 종료 메시지 수정 실패:", e);
-    }
+    });
   }
 };
