@@ -41,11 +41,11 @@ function processTurnStart(userData, battle) {
         case 'damageReductionPercent':
           battle.context.percentReduction[id] += e.value;
           break;
-        case 'percentPenetration':
-          // 필요하다면 battleEngine 쪽에 구현
-          break;
+        // 기타 이펙트도 여기에…
       }
-      if (e.turns > 1) next.push({ ...e, turns: e.turns - 1 });
+      if (e.turns > 1) {
+        next.push({ ...e, turns: e.turns - 1 });
+      }
     });
     battle.context.effects[id] = next;
   });
@@ -59,26 +59,46 @@ function processTurnStart(userData, battle) {
   });
 }
 
-// 공격/스킬 데미지 계산 (AD, AP, 방어력·관통, 치명·회피, 이펙트 감쇄)
-function calculateDamage(attacker, defender, isAttack = true, context = { flatReduction: {}, percentReduction: {} }) {
-  const ad = isAttack ? attacker.attack : 0;
-  const ap = isAttack ? attacker.ap : 0;
-  const pen = attacker.penetration || 0;
-  let def = Math.max(0, defender.defense - pen);
+// 공격/스킬 데미지 계산
+function calculateDamage(
+  attacker,
+  defender,
+  isAttack = true,
+  context = { flatReduction: {}, percentReduction: {} }
+) {
+  // attacker, defender 객체에 stats가 있으면 그걸 쓰고 없으면 그대로 사용
+  const atkStats = attacker.stats ?? attacker;
+  const defStats = defender.stats ?? defender;
+  const atkName  = attacker.name ?? '공격자';
+  const defName  = defender.name ?? '방어자';
 
-  let base = Math.max(0, ad + ap * 0.5 - def);
-  const crit = Math.random() < 0.1;
+  const ad  = isAttack ? (atkStats.attack || 0) : 0;
+  const ap  = isAttack ? (atkStats.ap || 0) : 0;
+  const pen = atkStats.penetration || 0;
+
+  let defVal = Math.max(0, (defStats.defense || 0) - pen);
+  let base   = Math.max(0, ad + ap * 0.5 - defVal);
+
+  const crit  = Math.random() < 0.1;
   const evade = Math.random() < 0.05;
-  if (evade) return { damage: 0, critical: false, log: `${defender.name}이(가) 회피!` };
-  if (crit) base = Math.floor(base * 1.5);
+  if (evade) {
+    return { damage: 0, critical: false, log: `${defName}이(가) 회피!` };
+  }
+  if (crit) {
+    base = Math.floor(base * 1.5);
+  }
 
+  // 이펙트 감쇄
   base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
-  base = Math.floor(base * (1 - ((context.percentReduction[defender.id] || 0) / 100)));
+  base = Math.floor(
+    base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
+  );
 
+  const damage = Math.round(base);
   return {
-    damage: Math.round(base),
+    damage,
     critical: crit,
-    log: `${attacker.name}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`
+    log: `${atkName}의 공격: ${damage}${crit ? ' 💥크리티컬!' : ''}`
   };
 }
 
