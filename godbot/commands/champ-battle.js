@@ -177,6 +177,8 @@ collector.on("collect", async i => {
     components: [battleButtons]
   });
 
+await new Promise(resolve => setTimeout(resolve, 300));
+  
   const battleMsg = await i.fetchReply();
   let turnCollector;
 
