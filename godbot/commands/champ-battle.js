@@ -148,13 +148,14 @@ module.exports = {
       embeds: [requestEmbed],
       components: [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('accept').setLabel('✅ 도전을 수락하지').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('decline').setLabel('❌ 가소롭군 거절한다').setStyle(ButtonStyle.Danger)
+          new ButtonBuilder().setCustomId('accept').setLabel('✅ 도전 수락').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('decline').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
         )
       ],
       fetchReply: true
     });
 
+    // 요청 수락/거절 콜렉터
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -162,7 +163,7 @@ module.exports = {
       }
       await btn.deferUpdate();
 
-      // 거절 시 pending 삭제
+      // 거절
       if (btn.customId === 'decline') {
         delete bd[battleId];
         save(battlePath, bd);
@@ -170,7 +171,7 @@ module.exports = {
         return reqCol.stop();
       }
 
-      // 수락: 실제 배틀 데이터로 초기화
+      // 수락 → 실제 전투 데이터 세팅
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
       bd[battleId] = {
@@ -186,7 +187,7 @@ module.exports = {
       initBattleContext(bd[battleId]);
       save(battlePath, bd);
 
-      // 전투 시작 메시지로 교체
+      // 전투 시작 임베드 & 버튼 교체
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id);
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
@@ -196,7 +197,7 @@ module.exports = {
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
       const battleMsg = await btn.fetchReply();
 
-      // 턴 콜렉터: 참가자만 수집, 턴 체크는 아래 on('collect')에서
+      // 턴 콜렉터: filter 로는 “도전자/피청자만” 수집
       let turnCol;
       const startTurn = () => {
         if (turnCol) turnCol.stop();
@@ -211,7 +212,8 @@ module.exports = {
         turnCol.on('collect', async i => {
           const uid = i.user.id;
           const cur = bd[battleId];
-          // 턴 아닌 사람 차단
+
+          // **여기서** 진짜 내 턴인지 검사
           if (uid !== cur.turn) {
             return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
           }
@@ -227,7 +229,7 @@ module.exports = {
           } else if (i.customId === 'defend') {
             const block = userData[uid].stats.defense;
             cur.context.effects[uid].push({ type: 'damageReductionFlat', value: block, turns: 1 });
-            log = `🛡️ ${userData[uid].name}이 무빙을 치며 다음 턴 받는 피해 ${block}만큼 감소`;
+            log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
 
           } else {
             const tgt      = cur.challenger === uid ? cur.opponent : cur.challenger;
@@ -237,8 +239,10 @@ module.exports = {
               return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
             }
             const raw     = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-            const baseDmg = Math.floor(raw.damage * (skillObj.adRatio||0)
-                              + (userData[uid].stats.ap||0) * (skillObj.apRatio||0));
+            const baseDmg = Math.floor(
+              raw.damage * (skillObj.adRatio||0) +
+              userData[uid].stats.ap * (skillObj.apRatio||0)
+            );
             const finalDmg = typeof skillObj.effect === 'function'
               ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
               : baseDmg;
@@ -247,7 +251,7 @@ module.exports = {
             log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
           }
 
-          // 공통 처리
+          // 공통: 로그 / 턴 전환 / 저장
           if (log) cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
@@ -257,8 +261,8 @@ module.exports = {
           if (cur.hp[loser] <= 0) {
             turnCol.stop();
             const records = load(recordPath);
-            records[uid]   = records[uid]   || { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
-            records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
+            records[uid]   = records[uid]   || { name:userData[uid].name, win:0, draw:0, lose:0 };
+            records[loser] = records[loser] || { name:userData[loser].name, win:0, draw:0, lose:0 };
             records[uid].win++;
             records[loser].lose++;
             save(recordPath, records);
@@ -271,12 +275,12 @@ module.exports = {
               .setThumbnail(winSplash)
               .setColor(0x00ff88)
               .setImage(winIcon);
-            return i.update({ content: null, embeds: [winEmbed], components: [] });
+            return i.update({ content:null, embeds:[winEmbed], components:[] });
           }
 
           // 다음 턴
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
-          await i.update({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
+          await i.update({ content:'💥 턴 종료!', embeds:[nextEmbed], components:[buttons] });
           startTurn();
         });
 
@@ -289,7 +293,7 @@ module.exports = {
               .setDescription('전투가 장기화되어 중단됩니다.')
               .setColor(0xff4444)
               .setTimestamp();
-            await battleMsg.edit({ content: null, embeds: [stopEmbed], components: [] });
+            await battleMsg.edit({ content:null, embeds:[stopEmbed], components:[] });
           }
         });
       };
