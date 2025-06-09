@@ -21,10 +21,6 @@ function initBattleContext(battle) {
   });
 }
 
-if (context.effects?.[attacker.id]?.some(e => e.type === 'stunned')) {
-  return { damage: 0, critical: false, log: `${attacker.name}은(는) 기절 상태라 공격 불가!` };
-}
-
 // 매 턴 시작 시 이펙트 적용·턴 감소·쿨다운 감소
 function processTurnStart(userData, battle) {
   [battle.challenger, battle.opponent].forEach(id => {
@@ -74,6 +70,9 @@ function calculateDamage(
   isAttack = true,
   context = {}
 ) {
+  if (context.effects?.[attacker.id]?.some(e => e.type === 'stunned')) {
+  return { damage: 0, critical: false, log: `${attacker.name}은(는) 기절 상태라 공격 불가!` };
+}
   // 1) invulnerable 체크
   if (context.invulnerable?.[defender.id]) {
     delete context.invulnerable[defender.id];
@@ -124,7 +123,4 @@ function calculateDamage(
 }
 
 module.exports = { initBattleContext, processTurnStart, calculateDamage };
-      }
-    });
-  }
 };
