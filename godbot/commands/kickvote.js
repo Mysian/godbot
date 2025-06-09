@@ -1,28 +1,29 @@
-// 📁 commands/kick-vote.js
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 
-const LOG_CHANNEL_ID = "1381062597230460989";
+const ERROR_LOG_CHANNEL_ID = "1381062597230460989";
+const RESULT_LOG_CHANNEL_ID = "1380874052855529605";
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("강퇴투표")
     .setDescription("음성 채널에서 유저를 과반수 투표로 이동시킵니다.")
     .addUserOption((option) =>
-      option
-        .setName("대상")
-        .setDescription("강퇴 투표할 유저")
-        .setRequired(true)
+      option.setName("대상").setDescription("강퇴 투표할 유저").setRequired(true)
     ),
 
   async execute(interaction) {
     const target = interaction.options.getUser("대상");
 
     try {
-      // 🔄 최신 정보 강제 가져오기
       const member = await interaction.guild.members.fetch(interaction.user.id);
       const targetMember = await interaction.guild.members.fetch(target.id);
 
-      // ❌ 같은 음성 채널인지 확인
       if (
         !member.voice.channel ||
         !targetMember.voice.channel ||
@@ -43,59 +44,105 @@ module.exports = {
 
       const voiceChannel = member.voice.channel;
       const usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
-      const requiredVotes = Math.ceil(usersInChannel.size / 2) + 1;
+      const requiredVotes = Math.floor(usersInChannel.size / 2) + 1;
 
       const embed = new EmbedBuilder()
         .setTitle("⚠️ 강퇴 투표 시작")
         .setDescription(
-          `**<@${target.id}>** 님을 **<#1202971727915651092>** 채널로 강퇴할까요?\n🗳️ 과반수(${requiredVotes}명) 찬성 시 이동됩니다.`
+          `**<@${target.id}>** 님을 **<#1202971727915651092>** 채널로 강퇴할까요?\n🗳️ **과반수(${requiredVotes}명)** 찬성 시 이동됩니다.\n\n버튼을 눌러 투표하세요. (30초)`
         )
         .setColor(0xff4444)
-        .setFooter({ text: "30초 이내로 🟩을 눌러주세요. 30초 뒤 처리됩니다." });
+        .setFooter({ text: "투표는 한 번만 가능하며, 30초 뒤 자동 종료됩니다." });
 
-      const voteMsg = await interaction.reply({
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("vote_yes")
+          .setLabel("찬성 👍")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("vote_no")
+          .setLabel("반대 👎")
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      const message = await interaction.reply({
         embeds: [embed],
+        components: [row],
         fetchReply: true,
       });
-      await voteMsg.react("🟩");
 
-      // ⏱️ 30초 대기 후 처리
-      setTimeout(async () => {
-        try {
-          const updatedMsg = await voteMsg.fetch();
-          const reactions = updatedMsg.reactions.cache.get("🟩");
-          const voters = (await reactions.users.fetch()).filter((u) => !u.bot);
+      const voters = new Set();
+      let yesCount = 0;
+      let noCount = 0;
 
-          if (voters.size >= requiredVotes) {
-            const afkChannel = interaction.guild.channels.cache.get("1202971727915651092");
-            if (!afkChannel || !afkChannel.isVoiceBased()) {
-              return interaction.followUp({
-                content: "❌ 잠수 채널이 존재하지 않거나 음성 채널이 아닙니다.",
-                ephemeral: true,
-              });
-            }
+      const collector = message.createMessageComponentCollector({ time: 30000 });
 
-            await targetMember.voice.setChannel(afkChannel);
-            await interaction.followUp({
-              content: `✅ **<@${target.id}>** 님이 과반수 투표로 이동되었습니다.`,
+      collector.on("collect", async (i) => {
+        if (i.user.bot) return;
+        if (voters.has(i.user.id)) {
+          return i.reply({ content: "❗ 이미 투표하셨습니다.", ephemeral: true });
+        }
+
+        voters.add(i.user.id);
+
+        if (i.customId === "vote_yes") yesCount++;
+        if (i.customId === "vote_no") noCount++;
+
+        await i.reply({ content: `투표 완료: ${i.customId === "vote_yes" ? "찬성" : "반대"}`, ephemeral: true });
+      });
+
+      collector.on("end", async () => {
+        const disabledRow = new ActionRowBuilder().addComponents(
+          row.components.map((btn) => btn.setDisabled(true))
+        );
+        await message.edit({ components: [disabledRow] });
+
+        const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
+
+        if (yesCount >= requiredVotes) {
+          const afkChannel = interaction.guild.channels.cache.get("1202971727915651092");
+          if (!afkChannel || !afkChannel.isVoiceBased()) {
+            return interaction.followUp({
+              content: "❌ 잠수 채널이 존재하지 않거나 음성 채널이 아닙니다.",
+              ephemeral: true,
             });
-          } else {
-            await interaction.followUp("🛑 시간 초과로 투표가 종료되었습니다. (과반수 미달)");
           }
-        } catch (err) {
-          console.error(err);
-          await interaction.followUp({
-            content: "❌ 투표 후 처리 중 오류가 발생했어요.",
-            ephemeral: true,
-          });
 
-          const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-          if (logChannel && logChannel.isTextBased()) {
-            await logChannel.send(`❗ **[강퇴투표 - 후속 처리 오류]**\n\`\`\`\n${err.stack?.slice(0, 1900)}\n\`\`\``);
+          try {
+            await targetMember.voice.setChannel(afkChannel);
+            await interaction.followUp(
+              `✅ 과반수 찬성으로 **<@${target.id}>** 님을 이동시켰습니다. (${yesCount}명 찬성)`
+            );
+
+            if (resultLogChannel && resultLogChannel.isTextBased()) {
+              await resultLogChannel.send(
+                `✅ **강퇴 처리됨**\n대상: <@${target.id}>\n찬성: ${yesCount} / 반대: ${noCount}`
+              );
+            }
+          } catch (err) {
+            console.error(err);
+            await interaction.followUp({
+              content: "❌ 채널 이동 중 오류가 발생했어요.",
+              ephemeral: true,
+            });
+
+            const errorLog = await interaction.client.channels.fetch(ERROR_LOG_CHANNEL_ID).catch(() => null);
+            if (errorLog && errorLog.isTextBased()) {
+              await errorLog.send(`❗ **[강퇴투표 - 채널 이동 실패]**\n\`\`\`\n${err.stack?.slice(0, 1900)}\n\`\`\``);
+            }
+          }
+        } else {
+          await interaction.followUp(
+            `🛑 투표 종료: 과반수 미달 (${yesCount}명 찬성 / ${noCount}명 반대)`
+          );
+
+          if (resultLogChannel && resultLogChannel.isTextBased()) {
+            await resultLogChannel.send(
+              `🛑 **강퇴 실패**\n대상: <@${target.id}>\n찬성: ${yesCount} / 반대: ${noCount}`
+            );
           }
         }
-      }, 30000);
-
+      });
     } catch (error) {
       console.error(error);
       await interaction.reply({
@@ -103,9 +150,9 @@ module.exports = {
         ephemeral: true,
       });
 
-      const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (logChannel && logChannel.isTextBased()) {
-        await logChannel.send(`❗ **[강퇴투표 오류]**\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
+      const errorLog = await interaction.client.channels.fetch(ERROR_LOG_CHANNEL_ID).catch(() => null);
+      if (errorLog && errorLog.isTextBased()) {
+        await errorLog.send(`❗ **[강퇴투표 오류]**\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
       }
     }
   },
