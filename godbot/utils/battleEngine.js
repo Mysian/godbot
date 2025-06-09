@@ -1,9 +1,7 @@
 // utils/battleEngine.js
-// ─────────────────────────────────────────────────────────────
-
 const skills = require('./skills');
 
-// 배틀 시작 시 호출: 컨텍스트 초기화
+// 전투 시작할 때 컨텍스트 초기화
 function initBattleContext(battle) {
   battle.context = {
     effects: {},
@@ -19,9 +17,8 @@ function initBattleContext(battle) {
   });
 }
 
-// 매 턴 시작마다 이펙트 적용 & 지속턴 감소 & 쿨다운 감소
+// 매 턴 시작 시 이펙트 적용·턴 감소·쿨다운 감소
 function processTurnStart(userData, battle) {
-  // 이펙트 처리
   [battle.challenger, battle.opponent].forEach(id => {
     const list = battle.context.effects[id];
     const next = [];
@@ -29,7 +26,7 @@ function processTurnStart(userData, battle) {
       switch (e.type) {
         case 'dot':
           battle.hp[id] = Math.max(0, battle.hp[id] - e.damage);
-          battle.logs.push(`☠️ ${userData[id].name}은(는) 독으로 ${e.damage} 피해`);
+          battle.logs.push(`☠️ ${userData[id].name}은(는) 독 ${e.damage} 피해`);
           break;
         case 'kill':
           battle.hp[id] = 0;
@@ -44,13 +41,15 @@ function processTurnStart(userData, battle) {
         case 'damageReductionPercent':
           battle.context.percentReduction[id] += e.value;
           break;
+        case 'percentPenetration':
+          // 필요하다면 battleEngine 쪽에 구현
+          break;
       }
-      if (e.turns > 1) next.push({...e, turns: e.turns - 1});
+      if (e.turns > 1) next.push({ ...e, turns: e.turns - 1 });
     });
     battle.context.effects[id] = next;
   });
 
-  // 쿨다운 감소
   [battle.challenger, battle.opponent].forEach(id => {
     Object.keys(battle.context.cooldowns[id]).forEach(skillKey => {
       if (battle.context.cooldowns[id][skillKey] > 0) {
@@ -60,27 +59,26 @@ function processTurnStart(userData, battle) {
   });
 }
 
-// 순수 데미지 계산 (AD, AP, 방어력, 관통력, 크리/회피)
-function calculateDamage(attacker, defender, isAttack = true) {
+// 공격/스킬 데미지 계산 (AD, AP, 방어력·관통, 치명·회피, 이펙트 감쇄)
+function calculateDamage(attacker, defender, isAttack = true, context = { flatReduction: {}, percentReduction: {} }) {
   const ad = isAttack ? attacker.attack : 0;
   const ap = isAttack ? attacker.ap : 0;
-  let def = defender.defense - attacker.penetration;
-  def = Math.max(0, def);
+  const pen = attacker.penetration || 0;
+  let def = Math.max(0, defender.defense - pen);
 
   let base = Math.max(0, ad + ap * 0.5 - def);
-  const crit    = Math.random() < 0.1;
-  const evade   = Math.random() < 0.05;
-  if (evade)    return { damage: 0, critical: false, log: `${defender.name}이(가) 회피!` };
-  if (crit)     base = Math.floor(base * 1.5);
+  const crit = Math.random() < 0.1;
+  const evade = Math.random() < 0.05;
+  if (evade) return { damage: 0, critical: false, log: `${defender.name}이(가) 회피!` };
+  if (crit) base = Math.floor(base * 1.5);
 
-  // flat & percent 감쇄 적용
-  base = Math.max(0, base - battle.context.flatReduction[defender.id]);
-  base = Math.floor(base * (1 - (battle.context.percentReduction[defender.id]/100)));
+  base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
+  base = Math.floor(base * (1 - ((context.percentReduction[defender.id] || 0) / 100)));
 
   return {
     damage: Math.round(base),
     critical: crit,
-    log: `${attacker.name}의 공격: ${Math.round(base)}${crit? ' 💥크리티컬!':''}`
+    log: `${attacker.name}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`
   };
 }
 
