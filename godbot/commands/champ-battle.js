@@ -88,46 +88,44 @@ module.exports = {
   async execute(interaction) {
     const challenger = interaction.user;
     const opponent    = interaction.options.getUser('상대');
-    if (challenger.id === opponent.id) {
+    if (challenger.id === opponent.id)
       return interaction.reply({ content: '❌ 자신과는 배틀할 수 없습니다.', ephemeral: true });
-    }
 
     const userData   = load(userDataPath);
     const battleData = load(battlePath);
-    if (!userData[challenger.id] || !userData[opponent.id]) {
+    if (!userData[challenger.id] || !userData[opponent.id])
       return interaction.reply({ content: '❌ 두 유저 모두 챔피언을 보유해야 합니다.', ephemeral: true });
-    }
     if (Object.values(battleData).some(b =>
       [b.challenger, b.opponent].includes(challenger.id) ||
       [b.challenger, b.opponent].includes(opponent.id)
-    )) {
+    ))
       return interaction.reply({ content: '⚔️ 둘 중 한 명이 이미 전투 중입니다!', ephemeral: true });
-    }
 
-    // 배틀 요청 메시지
-    const confirmRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('accept_battle').setLabel('✅ 수락').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('decline_battle').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
-    );
+    // 배틀 요청
     const requestMsg = await interaction.reply({
       content: `📝 <@${opponent.id}>님, <@${challenger.id}>의 챔피언 배틀 요청이 도착했습니다. 수락하시겠습니까?`,
-      components: [confirmRow],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('accept_battle').setLabel('✅ 수락').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('decline_battle').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
+        )
+      ],
       fetchReply: true
     });
 
-    const reqCollector = requestMsg.createMessageComponentCollector({ time: 30000 });
-    reqCollector.on('collect', async btn => {
+    const reqCol = requestMsg.createMessageComponentCollector({ time: 30000 });
+    reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id)
         return btn.reply({ content: '⛔ 요청받은 유저만 사용할 수 있습니다.', ephemeral: true });
 
       await btn.deferUpdate();
       if (btn.customId === 'decline_battle') {
         await btn.editReply({ content: `❌ <@${opponent.id}>님이 배틀을 거절했습니다.`, components: [] });
-        return reqCollector.stop();
+        return reqCol.stop();
       }
 
-      // 배틀 세팅
-      reqCollector.stop();
+      // 전투 시작 세팅
+      reqCol.stop();
       const battleId = `${challenger.id}_${opponent.id}`;
       battleData[battleId] = {
         challenger: challenger.id,
@@ -142,120 +140,106 @@ module.exports = {
       };
       save(battlePath, battleData);
 
-      const embed = createBattleEmbed(challenger, opponent, battleData[battleId], userData, challenger.id);
+      const battleEmbed = createBattleEmbed(challenger, opponent, battleData[battleId], userData, challenger.id);
       const battleButtons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 무빙').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('skill').setLabel('✨ 스킬').setStyle(ButtonStyle.Primary)
       );
 
-      await btn.editReply({ content: `⚔️ 전투 시작!`, embeds: [embed], components: [battleButtons] });
+      await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [battleEmbed], components: [battleButtons] });
       await new Promise(r => setTimeout(r, 300));
       const battleMsg = await btn.fetchReply();
 
-      // === 콜렉터 & 전투 로직 ===
-      let turnCollector;
-      const startTurnCollector = () => {
-        if (turnCollector) turnCollector.stop();
-        turnCollector = battleMsg.createMessageComponentCollector({
-          idle: 30000,    // 유휴 30초 이내 클릭 없으면 종료
-          time: 300000    // 전체 최대 5분
+      // === 전투 콜렉터 ===
+      let turnCol;
+      const startTurn = () => {
+        if (turnCol) turnCol.stop();
+        turnCol = battleMsg.createMessageComponentCollector({
+          idle: 30000,
+          time: 300000
         });
 
-        turnCollector.on('collect', async i => {
-          try {
-            await i.deferUpdate();
-            const data = load(battlePath);
-            const cur  = data[battleId];
-            if (!cur) return i.followUp({ content: '⚠️ 전투 정보가 없습니다.', ephemeral: true });
+        turnCol.on('collect', async i => {
+          const data = load(battlePath);
+          const cur  = data[battleId];
+          if (!cur) return i.reply({ content: '⚠️ 전투 정보가 없습니다.', ephemeral: true });
 
-            const actorId  = i.user.id;
-            const targetId = actorId === cur.challenger ? cur.opponent : cur.challenger;
-            const atk = userData[actorId];
-            const def = userData[targetId];
+          const actorId  = i.user.id;
+          const targetId = actorId === cur.challenger ? cur.opponent : cur.challenger;
+          const atk = userData[actorId];
+          const def = userData[targetId];
 
-            // 기절·DOT 처리 생략…
+          // 기절·DOT 생략 …
 
-            let logMsg = '';
-            if (i.customId === 'skill') {
-              const skill = championSkills[atk.name];
-              if (skill) {
-                const base   = calculateDamage(atk.stats, def.stats, true).damage;
-                const dmg    = skill.apply(atk, def, true, base, {});
-                cur.hp[targetId] -= dmg;
-                logMsg = `✨ ${atk.name}의 스킬 [${skill.name}] 발동! ${dmg} 데미지`;
-              } else {
-                logMsg = `⚠️ ${atk.name}는 스킬이 없습니다!`;
-              }
+          let logMsg = '';
+          if (i.customId === 'skill') {
+            const skill = championSkills[atk.name];
+            if (skill) {
+              const base = calculateDamage(atk.stats, def.stats, true).damage;
+              const dmg  = skill.apply(atk, def, true, base, {});
+              cur.hp[targetId] -= dmg;
+              logMsg = `✨ ${atk.name}의 스킬 [${skill.name}] 발동! ${dmg} 데미지`;
             } else {
-              const isAtk = i.customId === 'attack';
-              const res   = calculateDamage(atk.stats, def.stats, isAtk);
-              cur.hp[targetId] -= res.damage;
-              logMsg = isAtk
-                ? `🗡️ ${atk.name}의 공격으로 ${res.damage}의 피해를 입혔습니다.`
-                : `🛡️ ${atk.name}가 방어 자세를 취했습니다.`;
+              logMsg = `⚠️ ${atk.name}는 스킬이 없습니다!`;
             }
-
-            cur.logs.push(logMsg);
-            cur.turn = targetId;
-            save(battlePath, data);
-
-            // 승리 체크
-            if (cur.hp[targetId] <= 0) {
-              turnCollector.stop();
-
-              // 전적 업데이트
-              const records = load(recordPath);
-              records[actorId]        = records[actorId]        || { name: atk.name, win: 0, draw: 0, lose: 0 };
-              records[targetId]       = records[targetId]       || { name: def.name, win: 0, draw: 0, lose: 0 };
-              records[actorId].win++;
-              records[targetId].lose++;
-              save(recordPath, records);
-
-              // 승리 임베드
-              const victoryEmbed = new EmbedBuilder()
-                .setTitle('🏆 승리!')
-                .setDescription(`**${i.user.username}**님이 전투에서 승리하였습니다!`)
-                .addFields(
-                  { name: '🧙 사용한 챔피언', value: atk.name, inline: true },
-                  { name: '📜 전투 기록', value: cur.logs.slice(-5).join('\n') || '없음', inline: false }
-                )
-                .setThumbnail(getChampionIcon(atk.name))
-                .setImage(getChampionSplash(atk.name))
-                .setColor(0x00ff88)
-                .setTimestamp();
-
-              return i.update({ content: null, embeds: [victoryEmbed], components: [] });
-            }
-
-            const updated = createBattleEmbed(challenger, opponent, cur, userData, targetId, logMsg);
-            await battleMsg.edit({ content: `💥 턴 종료!`, embeds: [updated], components: [battleButtons] });
-            startTurnCollector();
-          } catch (e) {
-            console.error(e);
-            if (!i.deferred && !i.replied) {
-              await i.reply({ content: '❌ 처리 중 오류 발생', ephemeral: true });
-            }
+          } else {
+            const isAtk = i.customId === 'attack';
+            const res   = calculateDamage(atk.stats, def.stats, isAtk);
+            cur.hp[targetId] -= res.damage;
+            logMsg = isAtk
+              ? `🗡️ ${atk.name}의 공격으로 ${res.damage}의 피해를 입혔습니다.`
+              : `🛡️ ${atk.name}가 방어 자세를 취했습니다.`;
           }
+
+          cur.logs.push(logMsg);
+          cur.turn = targetId;
+          save(battlePath, data);
+
+          // 승리 처리
+          if (cur.hp[targetId] <= 0) {
+            turnCol.stop();
+            const records = load(recordPath);
+            records[actorId]  = records[actorId]  || { name: atk.name, win: 0, draw: 0, lose: 0 };
+            records[targetId] = records[targetId] || { name: def.name, win: 0, draw: 0, lose: 0 };
+            records[actorId].win++;
+            records[targetId].lose++;
+            save(recordPath, records);
+
+            const victoryEmbed = new EmbedBuilder()
+              .setTitle('🏆 승리!')
+              .setDescription(`**${i.user.username}**님이 전투에서 승리하였습니다!`)
+              .addFields(
+                { name: '🧙 사용한 챔피언', value: atk.name, inline: true },
+                { name: '📜 전투 기록', value: cur.logs.slice(-5).join('\n') || '없음', inline: false }
+              )
+              .setThumbnail(getChampionIcon(atk.name))
+              .setImage(getChampionSplash(atk.name))
+              .setColor(0x00ff88)
+              .setTimestamp();
+
+            return i.update({ content: null, embeds: [victoryEmbed], components: [] });
+          }
+
+          // 일반 턴 종료
+          const updatedEmbed = createBattleEmbed(challenger, opponent, cur, userData, targetId, logMsg);
+          await i.update({ content: '💥 턴 종료!', embeds: [updatedEmbed], components: [battleButtons] });
+          startTurn();
         });
 
-        turnCollector.on('end', async (_col, reason) => {
+        turnCol.on('end', async (_col, reason) => {
           if (reason === 'idle' || reason === 'time') {
             const data = load(battlePath);
             if (data[battleId]) {
               delete data[battleId];
               save(battlePath, data);
-              await battleMsg.edit({
-                content: '⛔ 전투가 시간 초과로 종료되었습니다.',
-                components: []
-              });
+              await battleMsg.edit({ content: '⛔ 전투가 시간 초과로 종료되었습니다.', components: [] });
             }
           }
         });
       };
 
-      // 초기 콜렉터 시작
-      startTurnCollector();
+      startTurn();
     });
   }
 };
