@@ -313,6 +313,19 @@ const startTurn = () => {
   startTurn();
 });
 
+    turnCol.on('end', async (_col, reason) => {
+      if (['idle', 'time'].includes(reason)) {
+        delete bd[battleId];
+        save(battlePath, bd);
+        const stopEmbed = new EmbedBuilder()
+          .setTitle('🛑 전투 중단')
+          .setDescription('전투가 장기화되어 중단됩니다.')
+          .setColor(0xff4444)
+          .setTimestamp();
+        await battleMsg.edit({ content: null, embeds: [stopEmbed], components: [] });
+      }
+    });
+    
     // 요청 콜렉터 타임아웃 시 pending 삭제
     reqCol.on('end', async (_col, reason) => {
       if (['time','idle'].includes(reason) && bd[battleId]?.pending) {
