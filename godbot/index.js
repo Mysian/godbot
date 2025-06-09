@@ -1,4 +1,3 @@
-
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
@@ -17,12 +16,28 @@ const client = new Client({
 
 const LOG_CHANNEL_ID = "1381062597230460989";
 
-// ✅ 명령어 등록
+// ✅ 명령어 등록 (하위 폴더까지 포함)
 client.commands = new Collection();
+
+function getAllCommandFiles(dirPath) {
+  let results = [];
+  const files = fs.readdirSync(dirPath);
+  for (const file of files) {
+    const fullPath = path.join(dirPath, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      results = results.concat(getAllCommandFiles(fullPath));
+    } else if (file.endsWith(".js")) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
 const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"));
+const commandFiles = getAllCommandFiles(commandsPath);
+
 for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
+  const command = require(file);
   if ("data" in command && "execute" in command) {
     client.commands.set(command.data.name, command);
   } else {
@@ -30,7 +45,7 @@ for (const file of commandFiles) {
   }
 }
 
-// ✅ 이벤트 핸들링 (버튼 등 포함)
+// ✅ 이벤트 핸들링
 const eventsPath = path.join(__dirname, "events");
 if (fs.existsSync(eventsPath)) {
   const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith(".js"));
@@ -65,10 +80,7 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.reply({ content: "❌ 명령어 실행 중 오류가 발생했습니다.", ephemeral: true });
     const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
     if (logChannel && logChannel.isTextBased()) {
-      logChannel.send(`❗ 명령어 오류 발생
-\`\`\`
-${error.stack?.slice(0, 1900)}
-\`\`\``);
+      logChannel.send(`❗ 명령어 오류 발생\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
     }
   }
 });
@@ -94,10 +106,7 @@ client.on("messageCreate", async (message) => {
       const msg = msgs[Math.floor(Math.random() * msgs.length)];
       rouletteGames.delete(channelId);
       activeChannels.delete(channelId);
-      message.channel.send(`☠️ **${current.username}** 님이 폭사!
-💣 ${msg}
-
-게임 종료.`);
+      message.channel.send(`☠️ **${current.username}** 님이 폭사!\n💣 ${msg}\n\n게임 종료.`);
       logRouletteResult({
         timestamp: new Date().toISOString(),
         channel: message.channel.name,
@@ -128,10 +137,7 @@ client.on("messageCreate", async (message) => {
       const msg = deathMsgs[Math.floor(Math.random() * deathMsgs.length)];
       rouletteGames.delete(channelId);
       activeChannels.delete(channelId);
-      message.channel.send(`💥 **${user.username}** 님이 사망했습니다.
-${msg}
-
-게임 종료.`);
+      message.channel.send(`💥 **${user.username}** 님이 사망했습니다.\n${msg}\n\n게임 종료.`);
       logRouletteResult({
         timestamp: new Date().toISOString(),
         channel: message.channel.name,
@@ -144,8 +150,7 @@ ${msg}
       const surviveMsg = surviveMsgs[Math.floor(Math.random() * surviveMsgs.length)];
       game.isLoaded = false;
       game.currentTurn = (game.currentTurn + 1) % game.participants.length;
-      await message.channel.send(`😮 **${user.username}** 님은 살아남았습니다!
-🫣 ${surviveMsg}`);
+      await message.channel.send(`😮 **${user.username}** 님은 살아남았습니다!\n🫣 ${surviveMsg}`);
       sendNextTurn();
     }
   }
@@ -157,10 +162,7 @@ process.on("uncaughtException", async (err) => {
   try {
     const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
     if (logChannel && logChannel.isTextBased()) {
-      await logChannel.send(`❌ **[uncaughtException] 봇에 예기치 못한 오류!**
-\`\`\`
-${err.stack.slice(0, 1900)}
-\`\`\``);
+      await logChannel.send(`❌ **[uncaughtException] 봇에 예기치 못한 오류!**\n\`\`\`\n${err.stack.slice(0, 1900)}\n\`\`\``);
     }
   } catch (logErr) {}
   setTimeout(() => process.exit(1), 3000);
@@ -171,10 +173,7 @@ process.on("unhandledRejection", async (reason) => {
   try {
     const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
     if (logChannel && logChannel.isTextBased()) {
-      await logChannel.send(`⚠️ **[unhandledRejection] 처리되지 않은 예외 발생!**
-\`\`\`
-${String(reason).slice(0, 1900)}
-\`\`\``);
+      await logChannel.send(`⚠️ **[unhandledRejection] 처리되지 않은 예외 발생!**\n\`\`\`\n${String(reason).slice(0, 1900)}\n\`\`\``);
     }
   } catch (logErr) {}
 });
