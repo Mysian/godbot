@@ -29,7 +29,7 @@ function save(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-// HP바 생성: max가 0이거나 유효하지 않으면 빈 바
+// HP바 생성
 function createHpBar(current, max) {
   const total = 10;
   if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) {
@@ -47,14 +47,12 @@ function getStatusIcons(effects = {}) {
   return s;
 }
 
-// 배틀 Embed: 좌측 썸네일에 상대 아이콘, 우측 메인이미지에 도전자 아이콘
+// 전투 진행 중 임베드 생성
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '') {
   const ch = userData[challenger.id];
   const op = userData[opponent.id];
   const chp = battle.hp[challenger.id];
   const ohp = battle.hp[opponent.id];
-
-  // 비동기 fallback 처리된 아이콘 URL
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
@@ -103,8 +101,10 @@ module.exports = {
 
     const userData = load(userDataPath);
     const bd       = load(battlePath);
+
+    // 챔피언 소지 확인
     if (!userData[challenger.id] || !userData[opponent.id]) {
-      return interaction.reply({ content: '❌ 챔피언이 없습니다.', ephemeral: true });
+      return interaction.reply({ content: '❌ 두 유저 모두 챔피언을 보유해야 합니다.', ephemeral: true });
     }
     if (Object.values(bd).some(b =>
       [b.challenger, b.opponent].includes(challenger.id) ||
@@ -113,9 +113,35 @@ module.exports = {
       return interaction.reply({ content: '⚔️ 이미 전투 중입니다.', ephemeral: true });
     }
 
-    // 배틀 요청
+    // --- 예쁜 배틀 요청 임베드 ---
+    const chData = userData[challenger.id];
+    const opData = userData[opponent.id];
+    const chIcon = await getChampionIcon(chData.name);
+    const opIcon = await getChampionIcon(opData.name);
+
+    const requestEmbed = new EmbedBuilder()
+      .setTitle('🗡️ 챔피언 배틀 요청')
+      .setDescription(`<@${opponent.id}>님, ${challenger.username}님이 챔피언 배틀을 신청했어요!`)
+      .addFields(
+        {
+          name: '👑 도전자',
+          value: `${challenger.username}\n**${chData.name}** (강화 ${chData.level}단계)`,
+          inline: true
+        },
+        {
+          name: '🛡️ 피청자',
+          value: `${opponent.username}\n**${opData.name}** (강화 ${opData.level}단계)`,
+          inline: true
+        }
+      )
+      .setThumbnail(chIcon)
+      .setImage(opIcon)
+      .setColor(0xffd700)
+      .setFooter({ text: '30초 내에 수락 또는 거절 버튼을 눌러주세요.' })
+      .setTimestamp();
+
     const req = await interaction.reply({
-      content: `📝 <@${opponent.id}>님, ${challenger.username}님이 배틀을 요청합니다.`,
+      embeds: [requestEmbed],
       components: [
         new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('accept').setLabel('✅ 수락').setStyle(ButtonStyle.Success),
@@ -125,6 +151,7 @@ module.exports = {
       fetchReply: true
     });
 
+    // 버튼 콜렉터
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -138,7 +165,7 @@ module.exports = {
       }
       reqCol.stop();
 
-      // 전투 셋업
+      // 전투 세팅
       const battleId = `${challenger.id}_${opponent.id}`;
       bd[battleId] = {
         challenger: challenger.id,
@@ -153,7 +180,7 @@ module.exports = {
       initBattleContext(bd[battleId]);
       save(battlePath, bd);
 
-      // 전투 시작 Embed & 버튼
+      // 전투 시작
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id);
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
@@ -162,7 +189,7 @@ module.exports = {
       );
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
       const battleMsg = await btn.fetchReply();
-
+      
       // 턴 콜렉터
       let turnCol;
       const startTurn = () => {
