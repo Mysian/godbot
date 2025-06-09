@@ -155,7 +155,7 @@ module.exports = {
       fetchReply: true
     });
 
-    // 요청 수락/거절 콜렉터
+    // ▶ 수락/거절 콜렉터
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -163,7 +163,7 @@ module.exports = {
       }
       await btn.deferUpdate();
 
-      // 거절
+      // ❌ 거절
       if (btn.customId === 'decline') {
         delete bd[battleId];
         save(battlePath, bd);
@@ -171,7 +171,7 @@ module.exports = {
         return reqCol.stop();
       }
 
-      // 수락 → 실제 전투 데이터 세팅
+      // ✅ 수락 → 전투 데이터 초기화
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
       bd[battleId] = {
@@ -197,7 +197,7 @@ module.exports = {
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
       const battleMsg = await btn.fetchReply();
 
-      // 턴 콜렉터: filter 로는 “도전자/피청자만” 수집
+      // ▶ 턴 콜렉터 (참가자만 필터)
       let turnCol;
       const startTurn = () => {
         if (turnCol) turnCol.stop();
@@ -213,10 +213,12 @@ module.exports = {
           const uid = i.user.id;
           const cur = bd[battleId];
 
-          // **여기서** 진짜 내 턴인지 검사
+          // 🔍 내 턴 아닌 사람은 followUp
           if (uid !== cur.turn) {
             return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
           }
+
+          // 이제 진짜 내 턴 → deferUpdate
           await i.deferUpdate();
 
           let log = '';
@@ -232,16 +234,19 @@ module.exports = {
             log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
 
           } else {
+            // 스킬: 쿨다운 먼저 확인
             const tgt      = cur.challenger === uid ? cur.opponent : cur.challenger;
             const skillObj = skills[userData[uid].name];
             const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
             if (cd > 0) {
-              return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
+              // 이미 deferUpdate 했으니 followUp
+              return i.followUp({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
             }
+            // 이제 deferUpdate 한 상태 → 그대로 처리
             const raw     = calculateDamage(userData[uid], userData[tgt], true, cur.context);
             const baseDmg = Math.floor(
-              raw.damage * (skillObj.adRatio||0) +
-              userData[uid].stats.ap * (skillObj.apRatio||0)
+              raw.damage * (skillObj.adRatio||0)
+              + userData[uid].stats.ap * (skillObj.apRatio||0)
             );
             const finalDmg = typeof skillObj.effect === 'function'
               ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
@@ -251,7 +256,7 @@ module.exports = {
             log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
           }
 
-          // 공통: 로그 / 턴 전환 / 저장
+          // 공통: 로그·턴전환·저장
           if (log) cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
@@ -275,12 +280,12 @@ module.exports = {
               .setThumbnail(winSplash)
               .setColor(0x00ff88)
               .setImage(winIcon);
-            return i.update({ content:null, embeds:[winEmbed], components:[] });
+            return i.update({ content: null, embeds: [winEmbed], components: [] });
           }
 
-          // 다음 턴
+          // 다음 턴 임베드 & 버튼 갱신
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
-          await i.update({ content:'💥 턴 종료!', embeds:[nextEmbed], components:[buttons] });
+          await i.update({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
           startTurn();
         });
 
@@ -293,7 +298,7 @@ module.exports = {
               .setDescription('전투가 장기화되어 중단됩니다.')
               .setColor(0xff4444)
               .setTimestamp();
-            await battleMsg.edit({ content:null, embeds:[stopEmbed], components:[] });
+            await battleMsg.edit({ content: null, embeds: [stopEmbed], components: [] });
           }
         });
       };
