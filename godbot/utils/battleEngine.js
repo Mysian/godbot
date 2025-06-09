@@ -23,7 +23,12 @@ function initBattleContext(battle) {
 
 // 매 턴 시작 시 이펙트 적용·턴 감소·쿨다운 감소
 function processTurnStart(userData, battle) {
-  [battle.challenger, battle.opponent].forEach(id => {
+    [battle.challenger, battle.opponent].forEach(id => {
+    battle.context.flatReduction[id] = 0;      // 턴 시작시 초기화 추가!
+    battle.context.percentReduction[id] = 0;   // 마찬가지 초기화
+    battle.context.doubleDamage[id] = false;
+    battle.context.invulnerable[id] = false;
+      
     const next = [];
     for (const e of battle.context.effects[id]) {
       switch (e.type) {
@@ -38,6 +43,9 @@ function processTurnStart(userData, battle) {
         case 'stunned':
           battle.logs.push(`💫 ${userData[id].name}은(는) 기절 상태!`);
           break;
+        case 'damageReductionFlat':
+          battle.context.flatReduction[id] += e.value; // 여기서 방어 적용됨
+          break;  
         case 'damageReductionFlat':
           battle.context.flatReduction[id] += e.value;
           break;
