@@ -346,5 +346,5 @@ if (attacker.name in championSkills) {
 };
 
 startTurnCollector(); // 최초 호출
- } // ← 이거 빠졌을 가능성 매우 높음
+} 
 };
