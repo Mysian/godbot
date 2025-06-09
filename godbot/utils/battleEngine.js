@@ -23,12 +23,12 @@ function initBattleContext(battle) {
 
 // 매 턴 시작 시 이펙트 적용·턴 감소·쿨다운 감소
 function processTurnStart(userData, battle) {
-    [battle.challenger, battle.opponent].forEach(id => {
-    battle.context.flatReduction[id] = 0;      // 턴 시작시 초기화 추가!
-    battle.context.percentReduction[id] = 0;   // 마찬가지 초기화
+  [battle.challenger, battle.opponent].forEach(id => {
+    battle.context.flatReduction[id] = 0;     
+    battle.context.percentReduction[id] = 0;   
     battle.context.doubleDamage[id] = false;
     battle.context.invulnerable[id] = false;
-      
+
     const next = [];
     for (const e of battle.context.effects[id]) {
       switch (e.type) {
@@ -36,32 +36,19 @@ function processTurnStart(userData, battle) {
           battle.hp[id] = Math.max(0, battle.hp[id] - e.damage);
           battle.logs.push(`☠️ ${userData[id].name}은(는) 독 ${e.damage} 피해`);
           break;
-        case 'kill':
-          battle.hp[id] = 0;
-          battle.logs.push(`💀 ${userData[id].name}은(는) 처형 당했습니다!`);
-          break;
         case 'stunned':
           battle.logs.push(`💫 ${userData[id].name}은(는) 기절 상태!`);
           break;
-        case 'damageReductionFlat':
-          battle.context.flatReduction[id] += e.value; // 여기서 방어 적용됨
-          break;  
-        case 'damageReductionFlat':
+        case 'damageReduction':
           battle.context.flatReduction[id] += e.value;
-          break;
-        case 'damageReductionPercent':
-          battle.context.percentReduction[id] += e.value;
+          battle.logs.push(`🛡️ ${userData[id].name}의 피해가 ${e.value}만큼 감소!`);
           break;
         case 'doubleDamage':
           battle.context.doubleDamage[id] = true;
-          break;
-        case 'invulnerable':
-          battle.context.invulnerable[id] = true;
+          battle.logs.push(`🔥 ${userData[id].name}의 다음 공격 피해가 2배!`);
           break;
       }
-      if (e.turns > 1) {
-        next.push({ ...e, turns: e.turns - 1 });
-      }
+      if (e.turns > 1) next.push({ ...e, turns: e.turns - 1 });
     }
     battle.context.effects[id] = next;
   });
