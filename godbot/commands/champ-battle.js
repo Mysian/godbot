@@ -353,7 +353,12 @@ const startTurnCollector = () => {
         });
       } catch (e) {
         console.warn("🛠 전투 종료 메시지 수정 실패:", e);
-      }
-    }
-  });
+            }
+          }
+        }); // ⬅️ ✅ turnCollector.on("end", ...) 닫음
+
+      }; // ⬅️ ✅ startTurnCollector 함수 닫음
+
+    }); // ⬅️ ✅ 수락 버튼 Collector 닫음
+  }
 };
