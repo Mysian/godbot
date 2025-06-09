@@ -24,7 +24,15 @@ function formatDuration(ms) {
 }
 
 function getChampionImage(name) {
-  return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${encodeURIComponent(name)}_0.jpg`;
+  const imageNameMap = {
+    "아리": "Ahri",
+    "아트록스": "Aatrox",
+    "가렌": "Garen",
+    "럭스": "Lux",
+    // 필요 시 추가
+  };
+  const engName = imageNameMap[name] || name;
+  return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${encodeURIComponent(engName)}_0.jpg`;
 }
 
 function getChampionInfo(name) {
@@ -33,7 +41,7 @@ function getChampionInfo(name) {
     "아리": "매혹적인 구미호 마법사로, 영혼을 수집하는 능력을 지녔습니다.",
     "가렌": "데마시아의 정의로운 전사, 회전 베기가 주특기입니다.",
     "럭스": "빛의 마법사로, 강력한 레이저 궁극기를 사용합니다.",
-    // ✨ 필요시 추가 가능
+    // ✨ 필요시 확장 가능
   };
   return loreMap[name] ?? "설명이 등록되지 않았습니다.";
 }
@@ -57,9 +65,10 @@ module.exports = {
     }
 
     const record = recordData[userId] ?? { win: 0, draw: 0, lose: 0 };
-    const baseStats = championList.find(c => c.name === champ.name)?.stats ?? champ.stats;
+    const baseStats = championList.find(c => c.name === champ.name)?.stats;
+    const stats = champ.stats || baseStats;
 
-    const timeElapsed = formatDuration(Date.now() - champ.timestamp);
+    const timeElapsed = champ.timestamp ? formatDuration(Date.now() - champ.timestamp) : "알 수 없음";
     const image = getChampionImage(champ.name);
     const lore = getChampionInfo(champ.name);
 
@@ -68,9 +77,13 @@ module.exports = {
       .setDescription(`**Lv.${champ.level ?? 0} | 강화 ${champ.success ?? 0}회**\n📆 ${timeElapsed}에 만남`)
       .addFields(
         { name: "📜 전적", value: `승: ${record.win} / 무: ${record.draw} / 패: ${record.lose}`, inline: true },
-        { name: "📈 능력치", value: 
-          `🗡️ 공격력: ${champ.stats.attack}\n✨ 주문력: ${champ.stats.ap}\n❤️ 체력: ${champ.stats.hp}\n🛡️ 방어력: ${champ.stats.defense}\n💥 관통력: ${champ.stats.penetration}`,
-          inline: true },
+        {
+          name: "📈 능력치",
+          value: stats
+            ? `🗡️ 공격력: ${stats.attack}\n✨ 주문력: ${stats.ap}\n❤️ 체력: ${stats.hp}\n🛡️ 방어력: ${stats.defense}\n💥 관통력: ${stats.penetration}`
+            : "능력치 정보 없음",
+          inline: true
+        },
         { name: "🌟 배경 이야기", value: lore }
       )
       .setThumbnail(image)
