@@ -1868,5 +1868,5 @@ module.exports = [
     defense: 50,
     penetration: 20
   }
-}
+  }
 ];
