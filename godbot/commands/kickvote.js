@@ -123,7 +123,7 @@ module.exports = {
 
             if (resultLogChannel?.isTextBased()) {
               await resultLogChannel.send(
-                `✅ **강퇴 처리됨**\n대상: <@${target.id}>\n찬성: ${yesCount} / 반대: ${noCount}`
+                `✅ **잠수 유저 잠수방으로 이동 완료!**\n대상: <@${target.id}>\n찬성: ${yesCount} / 반대: ${noCount}`
               );
             }
           } catch (err) {
@@ -145,7 +145,7 @@ module.exports = {
 
           if (resultLogChannel?.isTextBased()) {
             await resultLogChannel.send(
-              `🛑 **강퇴 실패**\n대상: <@${target.id}>\n찬성: ${yesCount} / 반대: ${noCount}`
+              `🛑 **잠수 유저 잠수방으로 이동 실패!**\n대상: <@${target.id}>\n찬성: ${yesCount} / 반대: ${noCount}`
             );
           }
         }
