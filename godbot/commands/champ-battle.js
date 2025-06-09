@@ -153,7 +153,7 @@ module.exports = {
       await new Promise(r => setTimeout(r, 300));
       const battleMsg = await btn.fetchReply();
 
-      // === 콜렉터 & 토너먼트 로직 ===
+      // === 콜렉터 & 전투 로직 ===
       let turnCollector;
       const startTurnCollector = () => {
         if (turnCollector) turnCollector.stop();
@@ -192,8 +192,8 @@ module.exports = {
               const res   = calculateDamage(atk.stats, def.stats, isAtk);
               cur.hp[targetId] -= res.damage;
               logMsg = isAtk
-                ? `🗡️ ${atk.name} 공격! ${res.log}`
-                : `🛡️ ${atk.name} 방어 자세`;
+                ? `🗡️ ${atk.name}의 공격으로 ${res.damage}의 피해를 입혔습니다.`
+                : `🛡️ ${atk.name}가 방어 자세를 취했습니다.`;
             }
 
             cur.logs.push(logMsg);
@@ -203,8 +203,29 @@ module.exports = {
             // 승리 체크
             if (cur.hp[targetId] <= 0) {
               turnCollector.stop();
-              // ...승리 처리 (레코드 저장/최종 메시지)
-              return;
+
+              // 전적 업데이트
+              const records = load(recordPath);
+              records[actorId]        = records[actorId]        || { name: atk.name, win: 0, draw: 0, lose: 0 };
+              records[targetId]       = records[targetId]       || { name: def.name, win: 0, draw: 0, lose: 0 };
+              records[actorId].win++;
+              records[targetId].lose++;
+              save(recordPath, records);
+
+              // 승리 임베드
+              const victoryEmbed = new EmbedBuilder()
+                .setTitle('🏆 승리!')
+                .setDescription(`**${i.user.username}**님이 전투에서 승리하였습니다!`)
+                .addFields(
+                  { name: '🧙 사용한 챔피언', value: atk.name, inline: true },
+                  { name: '📜 전투 기록', value: cur.logs.slice(-5).join('\n') || '없음', inline: false }
+                )
+                .setThumbnail(getChampionIcon(atk.name))
+                .setImage(getChampionSplash(atk.name))
+                .setColor(0x00ff88)
+                .setTimestamp();
+
+              return i.update({ content: null, embeds: [victoryEmbed], components: [] });
             }
 
             const updated = createBattleEmbed(challenger, opponent, cur, userData, targetId, logMsg);
