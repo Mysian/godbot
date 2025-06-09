@@ -6,7 +6,11 @@ const path = require("path");
 const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
 const championList = require("../utils/champion-data");
-const { getChampionIcon, getChampionSplash } = require("../utils/champion-utils");
+const {
+  getChampionIcon,
+  getChampionSplash,
+  getChampionInfo
+} = require("../utils/champion-utils");
 
 function load(filePath) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, "{}");
@@ -46,10 +50,14 @@ module.exports = {
     const record = recordData[userId] ?? { win: 0, draw: 0, lose: 0 };
     const baseStats = championList.find(c => c.name === champ.name)?.stats;
     const stats = champ.stats || baseStats;
+    const timeElapsed = champ.timestamp
+      ? formatDuration(Date.now() - champ.timestamp)
+      : "알 수 없음";
 
-    const timeElapsed = champ.timestamp ? formatDuration(Date.now() - champ.timestamp) : "알 수 없음";
-    const icon = getChampionIcon(champ.name);
-    const splash = getChampionSplash(champ.name);
+    // 비동기 함수이므로 await로 호출
+    const icon = await getChampionIcon(champ.name);
+    const splash = await getChampionSplash(champ.name);
+    const lore = getChampionInfo(champ.name);
 
     const embed = new EmbedBuilder()
       .setTitle(`🏅 ${champ.name} 정보`)
@@ -62,7 +70,8 @@ module.exports = {
             ? `🗡️ 공격력: ${stats.attack}\n✨ 주문력: ${stats.ap}\n❤️ 체력: ${stats.hp}\n🛡️ 방어력: ${stats.defense}\n💥 관통력: ${stats.penetration}`
             : "능력치 정보 없음",
           inline: true
-        }
+        },
+        { name: "🌟 설명", value: lore, inline: false }
       )
       .setThumbnail(icon)
       .setImage(splash)
