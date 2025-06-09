@@ -19,7 +19,7 @@ function loadJSON(path) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("챔피언")
+    .setName("챔피언조회")
     .setDescription("해당 유저가 보유한 챔피언을 확인합니다.")
     .addUserOption(option =>
       option.setName("유저").setDescription("확인할 유저를 선택하세요").setRequired(true)
