@@ -311,7 +311,9 @@ const startTurn = () => {
   await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
 
   startTurn();
-});
+ });
+}  
+};  
 
     turnCol.on('end', async (_col, reason) => {
       if (['idle', 'time'].includes(reason)) {
