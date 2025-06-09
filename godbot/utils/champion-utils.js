@@ -1,8 +1,9 @@
 
-const fetch = require('node-fetch');
+// utils/champion-utils.js
+const https = require('https');
 
-function getImageName(name) {
-  const imageNameMap = {
+// 한글 챔피언명 → Data Dragon 영문 파일명 매핑
+const imageNameMap = {
  "아리": "Ahri",
 "아트록스": "Aatrox",
 "아칼리": "Akali",
@@ -172,35 +173,51 @@ function getImageName(name) {
 "펭구": "Pengu"
 
  };
-  return imageNameMap[name] || name.replace(/\s|\.|'/g, '');
+
+// 공백·특수문자 제거 후 영문 키 반환
+function getImageName(name) {
+  return imageNameMap[name] || name.replace(/[\s\.']/g, '');
 }
 
-// HEAD 요청으로 이미지 유무 체크 후, 없으면 placeholder 리턴
-async function fetchOrFallback(url) {
-  try {
-    const res = await fetch(url, { method: 'HEAD' });
-    if (res.ok) return url;
-  } catch (e) {
-    console.warn('fetch error for', url, e);
-  }
-  // 검은색 placeholder (200×200)
-  return 'https://via.placeholder.com/200/000000/000000.png';
+// HEAD 요청으로 URL 유효 여부 검사. 실패 시 placeholder 리턴
+function fetchOrFallback(url) {
+  const placeholder = 'https://via.placeholder.com/200/000000/000000.png';
+  return new Promise(resolve => {
+    const req = https.request(url, { method: 'HEAD' }, res => {
+      resolve(res.statusCode === 200 ? url : placeholder);
+    });
+    req.on('error', () => resolve(placeholder));
+    req.end();
+  });
 }
 
+/**
+ * 챔피언 아이콘 URL 반환 (없으면 placeholder)
+ * @param {string} name 한글 챔피언명
+ * @returns {Promise<string>}
+ */
 async function getChampionIcon(name) {
-  const engName = getImageName(name);
-  const url = `https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/${engName}.png`;
-  return await fetchOrFallback(url);
+  const key = getImageName(name);
+  const url = `https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/${key}.png`;
+  return fetchOrFallback(url);
 }
 
+/**
+ * 챔피언 스플래시 URL 반환 (없으면 placeholder)
+ * @param {string} name 한글 챔피언명
+ * @returns {Promise<string>}
+ */
 async function getChampionSplash(name) {
-  const engName = getImageName(name);
-  const url = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${engName}_0.jpg`;
-  return await fetchOrFallback(url);
+  const key = getImageName(name);
+  const url = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`;
+  return fetchOrFallback(url);
 }
 
-module.exports = { getChampionIcon, getChampionSplash };
-
+/**
+ * 챔피언 소개 텍스트 반환
+ * @param {string} name 한글 챔피언명
+ * @returns {string}
+ */
 function getChampionInfo(name) {
   const loreMap = {
     "갈리오": "거대한 석상 수호자로, 마법 피해에 강하고 광역 도발로 전장을 지킵니다.",
@@ -363,8 +380,7 @@ function getChampionInfo(name) {
 "펭구": "롤토체스에서 까리한 디스코드로 구경온 펭구입니다. 뒤집개로 후두려 팹니다."
 
   };
-
-  return loreMap[name] ?? "설명이 등록되지 않았습니다.";
+  return loreMap[name] || "설명이 등록되지 않았습니다.";
 }
 
 module.exports = {
