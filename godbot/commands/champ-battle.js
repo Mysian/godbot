@@ -24,10 +24,10 @@ function save(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
-
 function getRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
+
 function createHpBar(current, max) {
   const totalBars = 10;
   const filled = Math.max(0, Math.round((current / max) * totalBars));
@@ -60,7 +60,7 @@ ${createHpBar(chp, ch.stats.hp)}`,
       },
       {
         name: `🛡️ ${opponent.username}`,
-        value: `💬 ${op.name} ${getStatusIcons(battle.statusEffects?.[challenger.id])} | 💖 ${ohp} / ${op.stats.hp}
+        value: `💬 ${op.name} ${getStatusIcons(battle.statusEffects?.[opponent.id])} | 💖 ${ohp} / ${op.stats.hp}
 ${createHpBar(ohp, op.stats.hp)}`,
         inline: true
       },
@@ -148,13 +148,13 @@ module.exports = {
           [challenger.id]: chChamp.stats.hp,
           [opponent.id]: opChamp.stats.hp
         },
-  turn: challenger.id,
-  logs: [],
-  statusEffects: {
-    [challenger.id]: {},
-    [opponent.id]: {}
-  }
-};
+        turn: challenger.id,
+        logs: [],
+        statusEffects: {
+          [challenger.id]: {},
+          [opponent.id]: {}
+        }
+      };
 
       battleData[battleId] = battle;
       save(battlePath, battleData);
@@ -173,183 +173,161 @@ module.exports = {
       });
 
       const battleMsg = await i.fetchReply();
-      const battleCollector = battleMsg.createMessageComponentCollector({ time: 120000 });
+      let turnCollector;
 
-let turnCollector;
-const startTurnCollector = () => {
-  if (turnCollector) turnCollector.stop(); // 이전 거 정지
+      const startTurnCollector = () => {
+        if (turnCollector) turnCollector.stop();
+        turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
 
-  turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
+        turnCollector.on("collect", async i => {
+          try {
+            const currentBattle = load(battlePath)[battleId];
+            if (!currentBattle) return i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
 
-  turnCollector.on("collect", async i => {
-// 상태이상 체크
-const actorStatus = currentBattle.statusEffects[actorId] || {};
-const targetStatus = currentBattle.statusEffects[targetId] || {};
+            if (i.user.id !== currentBattle.turn) {
+              return i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
+            }
 
-// 기절
-if (actorStatus.stunned) {
-  delete currentBattle.statusEffects[actorId].stunned;
-  currentBattle.logs.push(`💫 ${attacker.name}는 기절 상태로 행동할 수 없습니다!`);
-  currentBattle.turn = targetId;
-  save(battlePath, battleData);
-  const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, `💤 ${attacker.name}는 기절했다!`);
-  await i.message.edit({
-    content: `💤 기절! 이제 <@${targetId}> 의 차례입니다.`,
-    embeds: [updatedEmbed],
-    components: [battleButtons]
-  });
-  return;
-}
+            await i.deferUpdate();
 
-// 독 피해 (DOT)
-if (actorStatus.dot) {
-  const { turns, damage } = actorStatus.dot;
-  currentBattle.hp[actorId] -= damage;
-  currentBattle.logs.push(`☠️ ${attacker.name}는 중독되어 ${damage}의 피해를 입었습니다!`);
-  actorStatus.dot.turns -= 1;
-  if (actorStatus.dot.turns <= 0) delete actorStatus.dot;
-}
-    try {
-      const currentBattle = load(battlePath)[battleId];
-      if (!currentBattle) return i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
+            const actorId = i.user.id;
+            const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
+            const attacker = userData[actorId];
+            const defender = userData[targetId];
 
-      if (i.user.id !== currentBattle.turn) {
-        return i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
-      }
+            const actorStatus = currentBattle.statusEffects[actorId] || {};
+            const targetStatus = currentBattle.statusEffects[targetId] || {};
 
-      await i.deferUpdate();
+            if (actorStatus.stunned) {
+              delete currentBattle.statusEffects[actorId].stunned;
+              currentBattle.logs.push(`💫 ${attacker.name}는 기절 상태로 행동할 수 없습니다!`);
+              currentBattle.turn = targetId;
+              save(battlePath, battleData);
+              const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, `💤 ${attacker.name}는 기절했다!`);
+              await i.message.edit({
+                content: `💤 기절! 이제 <@${targetId}> 의 차례입니다.`,
+                embeds: [updatedEmbed],
+                components: [battleButtons]
+              });
+              return;
+            }
 
-      const actorId = i.user.id;
-      const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
-      const attacker = userData[actorId];
-      const defender = userData[targetId];
+            if (actorStatus.dot) {
+              const { turns, damage } = actorStatus.dot;
+              currentBattle.hp[actorId] -= damage;
+              currentBattle.logs.push(`☠️ ${attacker.name}는 중독되어 ${damage}의 피해를 입었습니다!`);
+              actorStatus.dot.turns -= 1;
+              if (actorStatus.dot.turns <= 0) delete actorStatus.dot;
+            }
 
-      let result;
-      let logMsg;
+            let result;
+            let logMsg;
 
-      // 스킬 사용
-      if (i.customId === "skill") {
-        const skill = require("../utils/champion-skills")[attacker.name];
-        if (skill) {
-          const baseDamage = calculateDamage(attacker.stats, defender.stats, true).damage;
-          const finalDamage = skill.apply(attacker, defender, true, baseDamage);
-          currentBattle.hp[targetId] -= finalDamage;
+            if (i.customId === "skill") {
+              const skill = championSkills[attacker.name];
+              if (skill) {
+                const baseDamage = calculateDamage(attacker.stats, defender.stats, true).damage;
+                const finalDamage = skill.apply(attacker, defender, true, baseDamage, {});
+                currentBattle.hp[targetId] -= finalDamage;
 
-// 상태이상 체크 및 반영
-if (attacker.name in championSkills) {
-  const skillEffect = championSkills[attacker.name];
+                if (defender.stunned) currentBattle.statusEffects[targetId].stunned = true;
+                if (defender.dot) currentBattle.statusEffects[targetId].dot = defender.dot;
 
-  if (defender.stunned) {
-    currentBattle.statusEffects[targetId].stunned = true;
-  }
-  if (defender.dot) {
-    currentBattle.statusEffects[targetId].dot = defender.dot;
-  }
-}
+                logMsg = `✨ **${attacker.name}의 스킬 발동! [${skill.name}]**\n🌀 ${skill.description}\n💥 피해량: ${finalDamage}`;
+              } else {
+                logMsg = `⚠️ ${attacker.name}는 스킬이 없습니다!`;
+              }
+            } else {
+              const isAttack = i.customId === "attack";
+              result = calculateDamage(attacker.stats, defender.stats, isAttack);
+              currentBattle.hp[targetId] -= result.damage;
 
-          logMsg = `✨ **${attacker.name}의 스킬 발동! [${skill.name}]**\n🌀 ${skill.description}\n💥 피해량: ${finalDamage}`;
-        } else {
-          logMsg = `⚠️ ${attacker.name}는 스킬이 없습니다!`;
-        }
+              const phrases = {
+                attack: [
+                  `🗡️ ${attacker.name}의 강력한 공격!`,
+                  `💢 ${attacker.name}의 평타가 적중했다!`,
+                  `🔪 ${attacker.name}의 무자비한 일격!`
+                ],
+                critical: [
+                  `💥 ${attacker.name}의 크리티컬 히트!`,
+                  `🔥 ${attacker.name}의 결정타!`
+                ],
+                defend: [
+                  `🛡️ ${attacker.name}는 방어 자세를 취했다.`,
+                  `⚔️ ${attacker.name}가 적의 공격을 예측했다!`
+                ]
+              };
 
-      } else {
-        // 평타 or 방어
-        const isAttack = i.customId === "attack";
-        result = calculateDamage(attacker.stats, defender.stats, isAttack);
-        currentBattle.hp[targetId] -= result.damage;
+              if (i.customId === "defend") {
+                logMsg = getRandom(phrases.defend);
+              } else {
+                logMsg = result.critical
+                  ? getRandom(phrases.critical) + `\n${result.log}`
+                  : getRandom(phrases.attack) + `\n${result.log}`;
+              }
+            }
 
-        // 멘트 템플릿
-        const phrases = {
-          attack: [
-            `🗡️ ${attacker.name}의 강력한 공격!`,
-            `💢 ${attacker.name}의 평타가 적중했다!`,
-            `🔪 ${attacker.name}의 무자비한 일격!`
-          ],
-          critical: [
-            `💥 ${attacker.name}의 크리티컬 히트!`,
-            `🔥 ${attacker.name}의 결정타!`
-          ],
-          defend: [
-            `🛡️ ${attacker.name}는 방어 자세를 취했다.`,
-            `⚔️ ${attacker.name}가 적의 공격을 예측했다!`
-          ]
-        };
+            currentBattle.logs.push(logMsg);
 
-        if (i.customId === "defend") {
-          logMsg = getRandom(phrases.defend);
-        } else {
-          logMsg = result.critical
-            ? getRandom(phrases.critical) + `\n${result.log}`
-            : getRandom(phrases.attack) + `\n${result.log}`;
-        }
-      }
+            if (currentBattle.hp[targetId] <= 0) {
+              const records = load(recordPath);
+              records[actorId] = records[actorId] || { name: attacker.name, win: 0, draw: 0, lose: 0 };
+              records[targetId] = records[targetId] || { name: defender.name, win: 0, draw: 0, lose: 0 };
+              records[actorId].win++;
+              records[targetId].lose++;
+              save(recordPath, records);
+              delete battleData[battleId];
+              save(battlePath, battleData);
 
-      currentBattle.logs.push(logMsg);
+              return await i.message.edit({
+                content: null,
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle("🏆 승리!")
+                    .setDescription(`**${i.user.username}** 님이 전투에서 승리하였습니다!`)
+                    .addFields(
+                      { name: "🧙 사용한 챔피언", value: attacker.name, inline: true },
+                      { name: "📜 전투 기록", value: currentBattle.logs.slice(-5).join("\n") || "없음", inline: false }
+                    )
+                    .setThumbnail(getChampionIcon(attacker.name))
+                    .setImage(getChampionSplash(attacker.name))
+                    .setColor(0x00ff88)
+                    .setFooter({ text: "까리한 디스코드 챔피언 배틀" })
+                    .setTimestamp()
+                ],
+                components: []
+              });
+            }
 
-      // 전투 종료
-      if (currentBattle.hp[targetId] <= 0) {
-        const records = load(recordPath);
-        records[actorId] = records[actorId] || { name: attacker.name, win: 0, draw: 0, lose: 0 };
-        records[targetId] = records[targetId] || { name: defender.name, win: 0, draw: 0, lose: 0 };
+            currentBattle.turn = targetId;
+            battleData[battleId] = currentBattle;
+            save(battlePath, battleData);
 
-        records[actorId].win++;
-        records[targetId].lose++;
+            const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, logMsg);
 
-        save(recordPath, records);
-        delete battleData[battleId];
-        save(battlePath, battleData);
+            await i.message.edit({
+              content: `💥 턴 종료! 이제 <@${targetId}> 의 차례입니다.`,
+              embeds: [updatedEmbed],
+              components: [battleButtons]
+            });
 
-        return await i.message.edit({
-          content: null,
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("🏆 승리!")
-              .setDescription(`**${i.user.username}** 님이 전투에서 승리하였습니다!`)
-              .addFields(
-                { name: "🧙 사용한 챔피언", value: attacker.name, inline: true },
-                { name: "📜 전투 기록", value: currentBattle.logs.slice(-5).join("\n") || "없음", inline: false }
-              )
-              .setThumbnail(getChampionIcon(attacker.name))
-              .setImage(getChampionSplash(attacker.name))
-              .setColor(0x00ff88)
-              .setFooter({ text: "까리한 디스코드 챔피언 배틀" })
-              .setTimestamp()
-          ],
-          components: []
+            startTurnCollector();
+
+          } catch (err) {
+            console.error("🔥 버튼 처리 오류:", err);
+            if (!i.replied && !i.deferred) {
+              await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
+            }
+          }
         });
-      }
 
-      // 턴 전환
-      currentBattle.turn = targetId;
-      battleData[battleId] = currentBattle;
-      save(battlePath, battleData);
+        turnCollector.on("end", async () => {
+          delete battleData[battleId];
+          save(battlePath, battleData);
+        });
+      };
 
-      const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, logMsg);
-
-      await i.message.edit({
-        content: `💥 턴 종료! 이제 <@${targetId}> 의 차례입니다.`,
-        embeds: [updatedEmbed],
-        components: [battleButtons]
-      });
-
-      // 타이머 리셋
       startTurnCollector();
-
-    } catch (err) {
-      console.error("🔥 버튼 처리 오류:", err);
-      if (!i.replied && !i.deferred) {
-        await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
-      }
-    }
-  });
-
-  turnCollector.on("end", async () => {
-    delete battleData[battleId];
-    save(battlePath, battleData);
-  });
-};
-
-startTurnCollector(); // 최초 호출
-    }
+    });
   }
 };
