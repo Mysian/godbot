@@ -180,36 +180,35 @@ collector.on("collect", async i => {
   const battleMsg = await i.fetchReply();
   let turnCollector;
 
-  const startTurnCollector = () => {
+const startTurnCollector = () => {
   if (turnCollector) {
-  try {
-    turnCollector.stop();
-  } catch (err) {
-    console.warn("🛠 이전 Collector 정리 중 에러:", err);
+    try {
+      turnCollector.stop();
+    } catch (err) {
+      console.warn("🛠 이전 Collector 정리 중 에러:", err);
+    }
   }
-}
-        turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
 
-        turnCollector.on("collect", async i => {
-          try {
-                const currentBattle = load(battlePath)[battleId];
-    if (!currentBattle) {
-      try {
+  turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
+
+  turnCollector.on("collect", async i => {
+    try {
+      const currentBattle = load(battlePath)[battleId];
+      if (!currentBattle) {
         if (!i.replied && !i.deferred) {
           await i.reply({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
         }
-      } catch (e) {
-        console.error("❗ 응답 실패:", e);
+        return;
       }
-      return;
-    }
 
-            if (!i.deferred && !i.replied) await i.deferUpdate();
+      if (!i.deferred && !i.replied) {
+        await i.deferUpdate();
+      }
 
-            const actorId = i.user.id;
-            const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
-            const attacker = userData[actorId];
-            const defender = userData[targetId];
+      const actorId = i.user.id;
+      const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
+      const attacker = userData[actorId];
+      const defender = userData[targetId];
 
             const actorStatus = currentBattle.statusEffects[actorId] || {};
             const targetStatus = currentBattle.statusEffects[targetId] || {};
@@ -317,50 +316,44 @@ collector.on("collect", async i => {
             }
 
             currentBattle.turn = targetId;
-            battleData[battleId] = currentBattle;
-            save(battlePath, battleData);
+      battleData[battleId] = currentBattle;
+      save(battlePath, battleData);
 
-            const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, logMsg);
+      const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, logMsg);
 
-            await battleMsg.edit({
-              content: `💥 턴 종료! 이제 <@${targetId}> 의 차례입니다.`,
-              embeds: [updatedEmbed],
-              components: [battleButtons]
-            });
+      await battleMsg.edit({
+        content: `💥 턴 종료! 이제 <@${targetId}> 의 차례입니다.`,
+        embeds: [updatedEmbed],
+        components: [battleButtons]
+      });
 
-            startTurnCollector();
+      startTurnCollector();
 
-          } catch (err) {
-            console.error("🔥 버튼 처리 오류:", err);
-            try {
-              if (!i.replied && !i.deferred) {
-                await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
-              }
-            } catch (e) {
-              console.error("❗ 오류 응답 중 또 오류:", e);
-            }
-          }
+    } catch (err) {
+      console.error("🔥 버튼 처리 오류:", err);
+      try {
+        if (!i.replied && !i.deferred) {
+          await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
+        }
+      } catch (e) {
+        console.error("❗ 오류 응답 중 또 오류:", e);
+      }
+    }
+  });
+
+  turnCollector.on("end", async () => {
+    const stillExists = load(battlePath)[battleId];
+    if (stillExists) {
+      delete battleData[battleId];
+      save(battlePath, battleData);
+      try {
+        await battleMsg.edit({
+          content: "⛔ 전투가 시간 초과로 종료되었습니다.",
+          components: []
         });
-
-        turnCollector.on("end", async () => {
-          const stillExists = load(battlePath)[battleId];
-          if (stillExists) {
-            delete battleData[battleId];
-            save(battlePath, battleData);
-
-            try {
-              await battleMsg.edit({
-                content: "⛔ 전투가 시간 초과로 종료되었습니다.",
-                components: []
-              });
-            } catch (e) {
-              console.warn("🛠 전투 종료 메시지 수정 실패:", e);
-            }
-          }
-        }); // ⬅️ ✅ turnCollector.on("end", ...) 닫음
-
-      }; // ⬅️ ✅ startTurnCollector 함수 닫음
-
-    }); // ⬅️ ✅ 수락 버튼 Collector 닫음
-  }
+      } catch (e) {
+        console.warn("🛠 전투 종료 메시지 수정 실패:", e);
+      }
+    }
+  });
 };
