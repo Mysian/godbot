@@ -170,8 +170,19 @@ module.exports = {
           const loser = cur.challenger === uid ? cur.opponent : cur.challenger;
           if (cur.hp[loser] <= 0) {
             turnCol.stop();
-            // 전적 저장 생략…
-            const winEmbed = new EmbedBuilder().setTitle('🏆 승리!').setDescription(`${i.user.username}님 승리!`).setColor(0x00ff88);
+
+            // ─ 전적 저장
+            const records = load(recordPath);
+            if (!records[uid]) records[uid] = { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
+            if (!records[loser]) records[loser] = { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
+            records[uid].win++;
+            records[loser].lose++;
+            save(recordPath, records);
+
+            const winEmbed = new EmbedBuilder()
+              .setTitle('🏆 승리!')
+              .setDescription(`${i.user.username}님 승리!`)
+              .setColor(0x00ff88);
             return i.update({ content:null, embeds:[winEmbed], components:[] });
           }
 
