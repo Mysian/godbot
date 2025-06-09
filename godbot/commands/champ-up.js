@@ -1,10 +1,4 @@
-const {
-  SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder
-} = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
@@ -58,12 +52,13 @@ module.exports = {
       });
     }
 
-    const rate = getSuccessRate(champ.level);
-    const percent = Math.floor(rate * 1000) / 10;
+    const startUpgrade = async () => {
+      const rate = getSuccessRate(champ.level);
+      const percent = Math.floor(rate * 1000) / 10;
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🔧 챔피언 강화 준비`)
-      .setDescription(`**${champ.name} ${champ.level}강** → **${champ.level + 1}강**
+      const embed = new EmbedBuilder()
+        .setTitle(`🔧 챔피언 강화 준비`)
+        .setDescription(`**${champ.name} ${champ.level}강** → **${champ.level + 1}강**
 📈 강화 확률: **${percent}%**
 
 📊 성공 시 능력치 상승:
@@ -72,89 +67,127 @@ module.exports = {
 - 체력 +10
 - 방어력 +1
 - 관통력 +1 (2레벨마다)`)
-      .setColor(0x00bcd4);
+        .setColor(0x00bcd4);
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("champion-upgrade-confirm")
-        .setLabel("🔥 강화 시도")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId("champion-upgrade-cancel")
-        .setLabel("🛑 강화 중단")
-        .setStyle(ButtonStyle.Secondary)
-    );
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("champion-upgrade-confirm")
+          .setLabel("🔥 강화 시도")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("champion-upgrade-cancel")
+          .setLabel("🛑 강화 중단")
+          .setStyle(ButtonStyle.Secondary)
+      );
 
-    await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      ephemeral: true
-    });
+      await interaction.editReply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true
+      });
 
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter: i =>
-        i.user.id === userId &&
-        ["champion-upgrade-confirm", "champion-upgrade-cancel"].includes(i.customId),
-      time: 15000,
-      max: 1
-    });
+      const collector = interaction.channel.createMessageComponentCollector({
+        filter: i =>
+          i.user.id === userId &&
+          ["champion-upgrade-confirm", "champion-upgrade-cancel"].includes(i.customId),
+        time: 15000,
+        max: 1
+      });
 
-    collector.on("collect", async i => {
-      if (i.customId === "champion-upgrade-cancel") {
+      collector.on("collect", async i => {
+        if (i.customId === "champion-upgrade-cancel") {
+          await i.update({
+            content: "⚪ 강화가 취소되었습니다.",
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
+          return;
+        }
+
         await i.update({
-          content: "⚪ 강화가 취소되었습니다.",
+          content: `⏳ 강화 시도 중...`,
           embeds: [],
           components: [],
           ephemeral: true
         });
-        return;
-      }
 
-      await i.update({
-        content: `⏳ 강화 시도 중...`,
-        embeds: [],
-        components: [],
-        ephemeral: true
-      });
+        setTimeout(async () => {
+          const success = Math.random() < rate;
 
-      setTimeout(() => {
-        const success = Math.random() < rate;
+          if (success) {
+            champ.level += 1;
+            champ.success += 1;
 
-        if (success) {
-          champ.level += 1;
-          champ.success += 1;
+            const base = championList.find(c => c.name === champ.name)?.stats;
+            if (base) {
+              champ.stats = champ.stats || { ...base };
+              champ.stats.attack += 1;
+              champ.stats.ap += 1;
+              champ.stats.hp += 10;
+              champ.stats.defense += 1;
+              if (champ.level % 2 === 0) champ.stats.penetration += 1;
+            }
 
-          const base = championList.find(c => c.name === champ.name)?.stats;
-          if (base) {
-            champ.stats = champ.stats || { ...base };
-            champ.stats.attack += 1;
-            champ.stats.ap += 1;
-            champ.stats.hp += 10;
-            champ.stats.defense += 1;
-            if (champ.level % 2 === 0) champ.stats.penetration += 1;
-          }
-
-          saveData(data);
-          interaction.followUp({
-            content: `🎉 ${champ.name} 챔피언 ${champ.level}강에 성공했습니다!`,
-            ephemeral: true
-          });
-        } else {
-          const survive = Math.random() < 0.3;
-          if (survive) {
-            interaction.followUp({
-              content: `😮 ${userMention} 님이 **${champ.name} ${champ.level}강**에 실패했지만, 불굴의 의지로 챔피언이 견뎌냅니다!`
-            });
-          } else {
-            const lostName = champ.name;
-            delete data[userId];
             saveData(data);
-            interaction.followUp({
-              content: `💥 ${userMention} 님이 **${lostName} ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
+
+            const nextRow = new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId("continue-upgrade")
+                .setLabel("계속 강화 가보자고~~!")
+                .setStyle(ButtonStyle.Primary),
+              new ButtonBuilder()
+                .setCustomId("stop-upgrade")
+                .setLabel("일단 중단한다.")
+                .setStyle(ButtonStyle.Secondary)
+            );
+
+            await interaction.editReply({
+              content: `🎉 ${champ.name} 챔피언 ${champ.level}강에 성공했습니다!`,
+              embeds: [],
+              components: [nextRow],
+              ephemeral: true
             });
+
+            const nextCollector = interaction.channel.createMessageComponentCollector({
+              filter: i => i.user.id === userId && ["continue-upgrade", "stop-upgrade"].includes(i.customId),
+              time: 15000,
+              max: 1
+            });
+
+            nextCollector.on("collect", async i => {
+              if (i.customId === "stop-upgrade") {
+                await i.update({
+                  content: "🛑 강화 세션이 종료되었습니다.",
+                  components: [],
+                  ephemeral: true
+                });
+              } else {
+                await i.deferUpdate();
+                startUpgrade();
+              }
+            });
+
+          } else {
+            const survive = Math.random() < 0.3;
+            if (survive) {
+              interaction.followUp({
+                content: `😮 ${userMention} 님이 **${champ.name} ${champ.level}강**에 실패했지만, 불굴의 의지로 챔피언이 견뎌냅니다!`
+              });
+            } else {
+              const lostName = champ.name;
+              delete data[userId];
+              saveData(data);
+              interaction.followUp({
+                content: `💥 ${userMention} 님이 **${lostName} ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
+              });
+            }
           }
-        }
-      }, 2000);
-    });
+        }, 2000);
+      });
+    };
+
+    await interaction.reply({ content: "⏳ 강화 준비 중...", ephemeral: true });
+    startUpgrade();
   }
 };
