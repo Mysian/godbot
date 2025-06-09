@@ -172,7 +172,7 @@ module.exports = {
         components: [battleButtons]
       });
 
-      const battleMsg = await i.fetchReply();
+            const battleMsg = await i.fetchReply();
       let turnCollector;
 
       const startTurnCollector = () => {
@@ -182,13 +182,21 @@ module.exports = {
         turnCollector.on("collect", async i => {
           try {
             const currentBattle = load(battlePath)[battleId];
-            if (!currentBattle) return i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
-
-            if (i.user.id !== currentBattle.turn) {
-              return i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
+            if (!currentBattle) {
+              if (!i.replied && !i.deferred) {
+                await i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
+              }
+              return;
             }
 
-            await i.deferUpdate();
+            if (i.user.id !== currentBattle.turn) {
+              if (!i.replied && !i.deferred) {
+                await i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
+              }
+              return;
+            }
+
+            if (!i.deferred && !i.replied) await i.deferUpdate();
 
             const actorId = i.user.id;
             const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
@@ -203,13 +211,14 @@ module.exports = {
               currentBattle.logs.push(`💫 ${attacker.name}는 기절 상태로 행동할 수 없습니다!`);
               currentBattle.turn = targetId;
               save(battlePath, battleData);
+
               const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, `💤 ${attacker.name}는 기절했다!`);
               await battleMsg.edit({
                 content: `💤 기절! 이제 <@${targetId}> 의 차례입니다.`,
                 embeds: [updatedEmbed],
                 components: [battleButtons]
               });
-              return;
+              return startTurnCollector();
             }
 
             if (actorStatus.dot) {
@@ -315,13 +324,17 @@ module.exports = {
 
           } catch (err) {
             console.error("🔥 버튼 처리 오류:", err);
-            if (!i.replied && !i.deferred) {
-              await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
+            try {
+              if (!i.replied && !i.deferred) {
+                await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
+              }
+            } catch (e) {
+              console.error("❗ 오류 응답 중 또 오류:", e);
             }
           }
         });
 
-        turnCollector.on("end", async () => {
+        turnCollector.on("end", () => {
           delete battleData[battleId];
           save(battlePath, battleData);
         });
