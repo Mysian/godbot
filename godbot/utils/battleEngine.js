@@ -4,7 +4,7 @@ const skills = require('./skills');
 // 전투 시작할 때 컨텍스트 초기화
 function initBattleContext(battle) {
   battle.context = {
-    effects: {},            // [{type, …, turns}, …]
+    effects: {},            // [{type, turns, …}, …]
     cooldowns: {},          // { skillName: remainingTurns, … }
     flatReduction: {},      // { userId: flatAmount, … }
     percentReduction: {},   // { userId: percentValue, … }
@@ -52,7 +52,7 @@ function processTurnStart(userData, battle) {
           // 다음 턴 전체 무적 처리
           battle.context.invulnerable[id] = true;
           break;
-        // …필요한 다른 타입도 여기에 추가
+        // 기타 이펙트도 여기에…
       }
       if (e.turns > 1) {
         next.push({ ...e, turns: e.turns - 1 });
@@ -61,7 +61,7 @@ function processTurnStart(userData, battle) {
     battle.context.effects[id] = next;
   });
 
-  // 스킬 쿨다운 감소
+  // 쿨다운 감소
   [battle.challenger, battle.opponent].forEach(id => {
     Object.keys(battle.context.cooldowns[id]).forEach(skillKey => {
       if (battle.context.cooldowns[id][skillKey] > 0) {
@@ -78,14 +78,13 @@ function calculateDamage(
   isAttack = true,
   context = {}
 ) {
-  // invulnerable 무적 여부 우선 확인
+  // 1) 무적 여부 우선 확인
   if (context.invulnerable?.[defender.id]) {
-    // 한 번만 무적 적용
     delete context.invulnerable[defender.id];
     return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0` };
   }
 
-  // attacker, defender 객체에 stats가 있으면 그걸 쓰고 없으면 그대로 사용
+  // 2) stat 추출
   const atkStats = attacker.stats ?? attacker;
   const defStats = defender.stats ?? defender;
   const atkName  = attacker.name ?? '공격자';
@@ -95,44 +94,40 @@ function calculateDamage(
   const ap  = isAttack ? (atkStats.ap || 0) : 0;
   const pen = atkStats.penetration || 0;
 
+  // 3) 방어력 계산
   let defVal = Math.max(0, (defStats.defense || 0) - pen);
   let base   = Math.max(0, ad + ap * 0.5 - defVal);
 
-  const crit  = Math.random() < 0.1;
+  // 4) 회피/치명
   const evade = Math.random() < 0.05;
   if (evade) {
     return { damage: 0, critical: false, log: `${defName}이(가) 회피!` };
   }
-  if (crit) {
-    base = Math.floor(base * 1.5);
-  }
+  const crit = Math.random() < 0.1;
+  if (crit) base = Math.floor(base * 1.5);
 
-  // doubleDamage 이펙트 적용
+  // 5) 랜덤 분산 (±15%)
+  const variance = Math.floor(base * 0.15);
+  const minD = Math.max(0, base - variance);
+  const maxD = base + variance;
+  base = minD + Math.floor(Math.random() * (maxD - minD + 1));
+
+  // 6) doubleDamage 이펙트
   if (isAttack && context.doubleDamage?.[attacker.id]) {
     base *= 2;
     delete context.doubleDamage[attacker.id];
-    // 로그에 더블데미지 표시
   }
 
-  // flat 및 percent 감쇄
+  // 7) flat/percent 감쇄
   base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
   base = Math.floor(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
+  // 8) 최종 반환
   const damage = Math.round(base);
   let log = `${atkName}의 공격: ${damage}${crit ? ' 💥크리티컬!' : ''}`;
-  if (isAttack && context.doubleDamage?.[attacker.id] === undefined) {
-    // 이미 삭제됐으므로 로그에 추가
-    // (만약 중복 기재를 막고 싶으면 위에서 삭제 직후에만 로그 붙이도록)
-    // log += ' 💥더블데미지!';
-  }
-
-  return {
-    damage,
-    critical: crit,
-    log
-  };
+  return { damage, critical: crit, log };
 }
 
 module.exports = { initBattleContext, processTurnStart, calculateDamage };
