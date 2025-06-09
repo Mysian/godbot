@@ -1869,4 +1869,4 @@ module.exports = [
     penetration: 20
   }
 }
-]; // 이게 핵심! 배열 닫고, exports 종료
+];
