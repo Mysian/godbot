@@ -193,16 +193,16 @@ const startTurnCollector = () => {
 
   turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
 
-  turnCollector.on("collect", async i => {
-    try {
-        if (!i.deferred && !i.replied) {
-        await i.deferUpdate();
-              
-      const currentBattle = load(battlePath)[battleId];
-      if (!currentBattle) {
-        if (!i.replied && !i.deferred) {
-          await i.reply({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
-        }
+turnCollector.on("collect", async i => {
+  try {
+    if (!i.deferred && !i.replied) {
+      await i.deferUpdate(); // ✅ 여기까지만 유지
+    }
+
+    const currentBattle = load(battlePath)[battleId];
+    if (!currentBattle) {
+      return await i.followUp({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
+    }
         return;
       }
 
