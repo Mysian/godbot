@@ -47,7 +47,7 @@ function getStatusIcons(effects = {}) {
   return s;
 }
 
-// 배틀 Embed: 좌측 썸네일에 요청자, 우측 메인이미지에 상대 아이콘
+// 배틀 Embed: 좌측 썸네일에 상대 아이콘, 우측 메인이미지에 도전자 아이콘
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '') {
   const ch = userData[challenger.id];
   const op = userData[opponent.id];
@@ -55,8 +55,8 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
   const ohp = battle.hp[opponent.id];
 
   // 비동기 fallback 처리된 아이콘 URL
-  const thumbUrl = await getChampionIcon(ch.name);
-  const imageUrl = await getChampionIcon(op.name);
+  const iconCh = await getChampionIcon(ch.name);
+  const iconOp = await getChampionIcon(op.name);
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
@@ -79,8 +79,8 @@ ${createHpBar(ohp, op.stats.hp)}`,
       { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
       { name: '📢 행동 결과', value: log || '없음', inline: false }
     )
-    .setThumbnail(thumbUrl)
-    .setImage(imageUrl)
+    .setThumbnail(iconOp)
+    .setImage(iconCh)
     .setColor(0x3498db);
 }
 
@@ -153,6 +153,7 @@ module.exports = {
       initBattleContext(bd[battleId]);
       save(battlePath, bd);
 
+      // 전투 시작 Embed & 버튼
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id);
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
@@ -180,7 +181,8 @@ module.exports = {
           if (i.customId === 'attack') {
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const dmgInfo = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-            cur.hp[tgt] -= dmgInfo.damage;
+            const damage = Number(dmgInfo.damage) || 0;
+            cur.hp[tgt] = Math.max(0, (cur.hp[tgt] || 0) - damage);
             log = dmgInfo.log;
 
           } else if (i.customId === 'defend') {
@@ -196,10 +198,11 @@ module.exports = {
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const raw = calculateDamage(userData[uid], userData[tgt], true, cur.context);
             const dmg = Math.floor(raw.damage * skillObj.adRatio + userData[uid].stats.ap * skillObj.apRatio);
-            cur.hp[tgt] -= dmg;
-            skillObj.effect(userData[uid], userData[tgt], dmg, cur.context);
+            const safeDmg = Number(dmg) || 0;
+            cur.hp[tgt] = Math.max(0, (cur.hp[tgt] || 0) - safeDmg);
+            skillObj.effect(userData[uid], userData[tgt], safeDmg, cur.context);
             cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
-            log = `✨ ${skillObj.name} 발동! ${dmg} 데미지`;
+            log = `✨ ${skillObj.name} 발동! ${safeDmg} 데미지`;
           }
 
           if (log) cur.logs.push(log);
@@ -220,14 +223,14 @@ module.exports = {
             save(recordPath, records);
 
             // 승리 임베드 (아이콘도 비동기 처리)
-            const winThumb = await getChampionIcon(userData[uid].name);
-            const winImage = await getChampionIcon(userData[loser].name);
+            const winIcon = await getChampionIcon(userData[uid].name);
+            const winSplash = await getChampionIcon(userData[loser].name);
             const winEmbed = new EmbedBuilder()
               .setTitle('🏆 승리!')
               .setDescription(`${i.user.username}님 승리!`)
-              .setThumbnail(winThumb)
+              .setThumbnail(winSplash)
               .setColor(0x00ff88)
-              .setImage(winImage);
+              .setImage(winIcon);
             return i.update({ content: null, embeds: [winEmbed], components: [] });
           }
 
