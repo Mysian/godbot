@@ -26,13 +26,16 @@ module.exports = {
       return `${i + 1}. <@${id}>: ${v.score}점`;
     }).filter(Boolean);
 
-    const descriptionText = lines.join("\n").slice(0, 4090);
+    const descriptionText = lines.length > 0
+  ? lines.join("\n").slice(0, 4090)
+  : "표시할 유저가 없습니다.";
 
-    const embed = new EmbedBuilder()
-      .setTitle("🏆 호감도 TOP 20")
-      .setDescription(descriptionText)
-      .setColor(0xffc107)
-      .setTimestamp();
+const embed = new EmbedBuilder()
+  .setTitle("🏆 호감도 TOP 20")
+  .setDescription(descriptionText)
+  .setColor(0xffc107)
+  .setTimestamp();
+
 
     await interaction.reply({ embeds: [embed] });
   }
