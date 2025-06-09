@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
+const championList = require("../utils/champion-data");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 
@@ -33,14 +34,14 @@ module.exports = {
     const userId = interaction.user.id;
     const data = loadData();
 
-    if (!data[userId] || !data[userId].name) {
+    const champ = data[userId];
+    if (!champ || !champ.name) {
       return interaction.reply({
         content: `❌ 먼저 /챔피언획득 으로 챔피언을 얻어야 합니다.`,
         ephemeral: true
       });
     }
 
-    const champ = data[userId];
     champ.level = champ.level ?? 0;
     champ.success = champ.success ?? 0;
 
@@ -57,26 +58,20 @@ module.exports = {
     if (success) {
       champ.level += 1;
       champ.success += 1;
+
+      const base = championList.find(c => c.name === champ.name)?.stats;
+
+      if (base) {
+        champ.stats = champ.stats || { ...base }; // 기본값 복사
+
+        champ.stats.attack += 1;
+        champ.stats.ap += 1;
+        champ.stats.hp += 10;
+        champ.stats.defense += 1;
+        champ.stats.penetration += (champ.level % 2 === 0) ? 1 : 0; // 2레벨마다 +1
+      }
+
       saveData(data);
       return interaction.reply({
         content: `💪 강화 성공! **${champ.name} ${champ.level}강**`,
-        ephemeral: true
-      });
-    } else {
-      const survive = Math.random() < 0.3;
-      if (survive) {
-        return interaction.reply({
-          content: `😮 강화는 실패했지만, **${champ.name}**(은)는 무사했습니다! 계속 강화할 수 있어요.`,
-          ephemeral: true
-        });
-      } else {
-        delete data[userId];
-        saveData(data);
-        return interaction.reply({
-          content: `💥 강화 실패... ⚰️ **${champ.name}**(을)를 잃었습니다. 다시 /챔피언획득 으로 얻으세요.`,
-          ephemeral: true
-        });
-      }
-    }
-  }
-};
+        ephemer
