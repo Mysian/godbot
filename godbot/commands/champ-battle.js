@@ -171,7 +171,10 @@ module.exports = {
         return reqCol.stop();
       }
 
-      // ✅ 수락 → 전투 데이터 초기화
+      // ✅ 수락 → **reqCol** 도 멈춰야 나중에 평타 버튼을 가로채지 않습니다.
+      reqCol.stop();
+
+      // 전투 데이터 초기화
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
       bd[battleId] = {
@@ -213,12 +216,10 @@ module.exports = {
           const uid = i.user.id;
           const cur = bd[battleId];
 
-          // 🔍 내 턴 아닌 사람은 followUp
+          // 내 턴이 아니면 에러
           if (uid !== cur.turn) {
             return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
           }
-
-          // 이제 진짜 내 턴 → deferUpdate
           await i.deferUpdate();
 
           let log = '';
@@ -234,19 +235,16 @@ module.exports = {
             log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
 
           } else {
-            // 스킬: 쿨다운 먼저 확인
             const tgt      = cur.challenger === uid ? cur.opponent : cur.challenger;
             const skillObj = skills[userData[uid].name];
             const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
             if (cd > 0) {
-              // 이미 deferUpdate 했으니 followUp
               return i.followUp({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
             }
-            // 이제 deferUpdate 한 상태 → 그대로 처리
             const raw     = calculateDamage(userData[uid], userData[tgt], true, cur.context);
             const baseDmg = Math.floor(
-              raw.damage * (skillObj.adRatio||0)
-              + userData[uid].stats.ap * (skillObj.apRatio||0)
+              raw.damage * (skillObj.adRatio||0) +
+              userData[uid].stats.ap * (skillObj.apRatio||0)
             );
             const finalDmg = typeof skillObj.effect === 'function'
               ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
@@ -256,7 +254,7 @@ module.exports = {
             log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
           }
 
-          // 공통: 로그·턴전환·저장
+          // 공통 처리
           if (log) cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
@@ -283,7 +281,7 @@ module.exports = {
             return i.update({ content: null, embeds: [winEmbed], components: [] });
           }
 
-          // 다음 턴 임베드 & 버튼 갱신
+          // 다음 턴
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
           await i.update({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
           startTurn();
