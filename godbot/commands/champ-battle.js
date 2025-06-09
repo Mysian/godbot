@@ -195,6 +195,9 @@ const startTurnCollector = () => {
 
   turnCollector.on("collect", async i => {
     try {
+        if (!i.deferred && !i.replied) {
+        await i.deferUpdate();
+              
       const currentBattle = load(battlePath)[battleId];
       if (!currentBattle) {
         if (!i.replied && !i.deferred) {
@@ -203,8 +206,6 @@ const startTurnCollector = () => {
         return;
       }
 
-      if (!i.deferred && !i.replied) {
-        await i.deferUpdate();
       }
 
       const actorId = i.user.id;
