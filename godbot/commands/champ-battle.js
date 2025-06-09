@@ -343,17 +343,24 @@ collector.on("collect", async i => {
         });
 
         turnCollector.on("end", async () => {
-  const stillExists = load(battlePath)[battleId];
-  if (stillExists) {
-    delete battleData[battleId];
-    save(battlePath, battleData);
+          const stillExists = load(battlePath)[battleId];
+          if (stillExists) {
+            delete battleData[battleId];
+            save(battlePath, battleData);
 
-    try {
-      await battleMsg.edit({
-        content: "⛔ 전투가 시간 초과로 종료되었습니다.",
-        components: []
-      });
-} catch (e) {
-  console.warn("🛠 전투 종료 메시지 수정 실패:", e);
-}
+            try {
+              await battleMsg.edit({
+                content: "⛔ 전투가 시간 초과로 종료되었습니다.",
+                components: []
+              });
+            } catch (e) {
+              console.warn("🛠 전투 종료 메시지 수정 실패:", e);
+            }
+          }
+        }); // ⬅️ ✅ turnCollector.on("end", ...) 닫음
+
+      }; // ⬅️ ✅ startTurnCollector 함수 닫음
+
+    }); // ⬅️ ✅ 수락 버튼 Collector 닫음
+  }
 };
