@@ -283,8 +283,6 @@ const startTurn = () => {
       } else {
         const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
         const skillObj = skills[userData[uid].name];
-        // 스킬일 때만 별도의 damage 계산
-const skillObj = skills[userData[uid].name];
 const atkStats = userData[uid].stats;
 const defStats = userData[tgt].stats;
 
