@@ -181,5 +181,6 @@ function getChampionSplash(name) {
 
 module.exports = {
   getChampionIcon,
-  getChampionSplash
+  getChampionSplash,
+  getChampionInfo
 };
