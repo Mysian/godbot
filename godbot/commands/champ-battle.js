@@ -24,6 +24,10 @@ function save(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
+
+function getRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 function createHpBar(current, max) {
   const totalBars = 10;
   const filled = Math.max(0, Math.round((current / max) * totalBars));
