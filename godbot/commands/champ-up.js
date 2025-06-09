@@ -74,4 +74,24 @@ module.exports = {
       saveData(data);
       return interaction.reply({
         content: `💪 강화 성공! **${champ.name} ${champ.level}강**`,
-        ephemer
+        ephemeral: true
+      });
+    } else {
+      const survive = Math.random() < 0.3;
+      if (survive) {
+        return interaction.reply({
+          content: `😮 강화는 실패했지만, **${champ.name}**(은)는 무사했습니다! 계속 강화할 수 있어요.`,
+          ephemeral: true
+        });
+      } else {
+        delete data[userId];
+        saveData(data);
+        return interaction.reply({
+          content: `💥 강화 실패... ⚰️ **${champ.name}**(을)를 잃었습니다. 다시 /챔피언획득 으로 얻으세요.`,
+          ephemeral: true
+        });
+      }
+    }
+  }
+};
+
