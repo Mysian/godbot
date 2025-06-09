@@ -8,6 +8,7 @@ const fileMap = {
   "롤티어": path.join(__dirname, "../data/lol-tier.json"),
   "옵치티어": path.join(__dirname, "../data/ow-tier.json"),
   "계정정보": path.join(__dirname, "../account/accounts.json"),
+  "서버 이용현황 관리 로그": path.join(__dirname, "../activity.json"), // ✅ 추가
 };
 
 module.exports = {
@@ -24,7 +25,8 @@ module.exports = {
           { name: "호감도", value: "호감도" },
           { name: "롤티어", value: "롤티어" },
           { name: "옵치티어", value: "옵치티어" },
-          { name: "계정정보", value: "계정정보" }
+          { name: "계정정보", value: "계정정보" },
+          { name: "서버 이용현황 관리 로그", value: "서버 이용현황 관리 로그" } // ✅ 추가
         )
     ),
 
