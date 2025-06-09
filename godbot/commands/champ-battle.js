@@ -330,6 +330,8 @@ if (attacker.name in championSkills) {
 
       // 타이머 리셋
       startTurnCollector();
+     }
+  };
 
     } catch (err) {
       console.error("🔥 버튼 처리 오류:", err);
