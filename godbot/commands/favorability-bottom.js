@@ -25,7 +25,9 @@ module.exports = {
       return `${i + 1}. <@${id}>: ${v.score}점`;
     }).filter(Boolean);
 
-    const descriptionText = lines.join("\n").slice(0, 4090); // 4096자 제한 대비
+    const descriptionText = lines.length > 0
+      ? lines.join("\n").slice(0, 4090)
+      : "❌ 표시할 유저가 없습니다.";
 
     const embed = new EmbedBuilder()
       .setTitle("😶‍🌫️ 비호감도 TOP 20")
