@@ -1,4 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+// commands/champ-battle.js
+const {
+  SlashCommandBuilder,
+  EmbedBuilder
+} = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const champions = require("../utils/champion-data");
@@ -35,7 +39,9 @@ module.exports = {
       });
     }
 
-    const randomChampion = champions[Math.floor(Math.random() * champions.length)];
+    const randomChampion = champions[
+      Math.floor(Math.random() * champions.length)
+    ];
 
     data[userId] = {
       name: randomChampion.name,
@@ -44,12 +50,13 @@ module.exports = {
       stats: { ...randomChampion.stats },
       timestamp: Date.now()
     };
-
     saveData(data);
 
-    const icon = getChampionIcon(randomChampion.name);
-    const splash = getChampionSplash(randomChampion.name);
-    const lore = getChampionInfo(randomChampion.name);
+    // --- 변경된 부분: 비동기 함수 호출에 await 추가 ---
+    const icon   = await getChampionIcon(randomChampion.name);
+    const splash = await getChampionSplash(randomChampion.name);
+    const lore   = getChampionInfo(randomChampion.name);
+    // --------------------------------------------------
 
     const embed = new EmbedBuilder()
       .setTitle(`🎉 ${randomChampion.name} 챔피언 획득!`)
