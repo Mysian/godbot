@@ -206,10 +206,8 @@ turnCollector.on("collect", async i => {
       await i.followUp({ content: "⚠️ 전투 정보가 없습니다. (이미 종료된 전투)", ephemeral: true });
       return;
     }
-
-    // 👇 아래부터 계속 이어서 작성...
-
-
+  }
+  
       }
 
       const actorId = i.user.id;
