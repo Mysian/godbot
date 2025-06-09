@@ -14,13 +14,13 @@ const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
 const battlePath = path.join(__dirname, "../data/battle-active.json");
 
-function load(path) {
-  if (!fs.existsSync(path)) fs.writeFileSync(path, "{}");
-  return JSON.parse(fs.readFileSync(path));
+function load(filePath) {
+  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, "{}");
+  return JSON.parse(fs.readFileSync(filePath));
 }
 
-function save(path, data) {
-  fs.writeFileSync(path, JSON.stringify(data, null, 2));
+function save(filePath, data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
 function createHpBar(current, max) {
@@ -29,9 +29,9 @@ function createHpBar(current, max) {
   return "🟥".repeat(filled) + "⬜".repeat(totalBars - filled);
 }
 
-function createBattleEmbed(challenger, opponent, battle, userData, turnId) {
-  const challengerStats = userData[challenger.id].stats;
-  const opponentStats = userData[opponent.id].stats;
+function createBattleEmbed(challenger, opponent, battle, userData, turnId, logMessage = "") {
+  const chStats = userData[challenger.id].stats;
+  const opStats = userData[opponent.id].stats;
   const chp = battle.hp[challenger.id];
   const ohp = battle.hp[opponent.id];
 
@@ -41,17 +41,22 @@ function createBattleEmbed(challenger, opponent, battle, userData, turnId) {
     .addFields(
       {
         name: `👑 ${challenger.username}`,
-        value: `💬 ${userData[challenger.id].name} | 💖 ${chp} / ${challengerStats.hp}\n${createHpBar(chp, challengerStats.hp)}`,
+        value: `💬 ${userData[challenger.id].name} | 💖 ${chp} / ${chStats.hp}\n${createHpBar(chp, chStats.hp)}`,
         inline: true
       },
       {
         name: `🛡️ ${opponent.username}`,
-        value: `💬 ${userData[opponent.id].name} | 💖 ${ohp} / ${opponentStats.hp}\n${createHpBar(ohp, opponentStats.hp)}`,
+        value: `💬 ${userData[opponent.id].name} | 💖 ${ohp} / ${opStats.hp}\n${createHpBar(ohp, opStats.hp)}`,
         inline: true
       },
       {
         name: `🎯 현재 턴`,
         value: `<@${turnId}>`,
+        inline: false
+      },
+      {
+        name: `📢 행동 결과`,
+        value: logMessage || "없음",
         inline: false
       }
     )
@@ -87,17 +92,16 @@ module.exports = {
       return interaction.reply({ content: "⚔️ 이미 전투 중입니다!", ephemeral: true });
     }
 
-    const challengerChamp = userData[challenger.id];
-    const opponentChamp = userData[opponent.id];
-
+    const chChamp = userData[challenger.id];
+    const opChamp = userData[opponent.id];
     const battleId = `${challenger.id}_${opponent.id}`;
 
     const battle = {
       challenger: challenger.id,
       opponent: opponent.id,
       hp: {
-        [challenger.id]: challengerChamp.stats.hp,
-        [opponent.id]: opponentChamp.stats.hp
+        [challenger.id]: chChamp.stats.hp,
+        [opponent.id]: opChamp.stats.hp
       },
       turn: challenger.id,
       logs: []
@@ -123,57 +127,66 @@ module.exports = {
     const collector = message.createMessageComponentCollector({ time: 120_000 });
 
     collector.on("collect", async i => {
-      const currentBattle = load(battlePath)[battleId]; // 항상 최신 상태 유지
-      if (!currentBattle) return i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
+      try {
+        const currentBattle = load(battlePath)[battleId];
+        if (!currentBattle) return i.reply({ content: "⚠️ 전투 정보가 없습니다.", ephemeral: true });
 
-      if (i.user.id !== currentBattle.turn) {
-        return i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
-      }
+        if (i.user.id !== currentBattle.turn) {
+          return i.reply({ content: "⛔ 지금은 당신의 턴이 아닙니다.", ephemeral: true });
+        }
 
-      const isAttack = i.customId === "attack";
-      const actorId = i.user.id;
-      const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
+        await i.deferUpdate();
 
-      const attacker = userData[actorId];
-      const defender = userData[targetId];
+        const isAttack = i.customId === "attack";
+        const actorId = i.user.id;
+        const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
 
-      const result = calculateDamage(attacker.stats, defender.stats, isAttack);
+        const attacker = userData[actorId];
+        const defender = userData[targetId];
 
-      currentBattle.hp[targetId] -= result.damage;
-      currentBattle.logs.push(`**${i.user.username}**: ${result.log}`);
+        const result = calculateDamage(attacker.stats, defender.stats, isAttack);
 
-      // 승패 판정
-      if (currentBattle.hp[targetId] <= 0) {
-        const records = load(recordPath);
-        records[actorId] = records[actorId] || { name: attacker.name, win: 0, draw: 0, lose: 0 };
-        records[targetId] = records[targetId] || { name: defender.name, win: 0, draw: 0, lose: 0 };
+        currentBattle.hp[targetId] -= result.damage;
+        currentBattle.logs.push(`**${i.user.username}**: ${result.log}`);
 
-        records[actorId].win++;
-        records[targetId].lose++;
+        let logMsg = result.log;
 
-        save(recordPath, records);
-        delete battleData[battleId];
+        if (currentBattle.hp[targetId] <= 0) {
+          const records = load(recordPath);
+          records[actorId] = records[actorId] || { name: attacker.name, win: 0, draw: 0, lose: 0 };
+          records[targetId] = records[targetId] || { name: defender.name, win: 0, draw: 0, lose: 0 };
+
+          records[actorId].win++;
+          records[targetId].lose++;
+
+          save(recordPath, records);
+          delete battleData[battleId];
+          save(battlePath, battleData);
+
+          return await i.message.edit({
+            content: `🏆 **${i.user.username}** 승리!\n\n📜 전투 기록:\n${currentBattle.logs.join("\n")}`,
+            embeds: [],
+            components: []
+          });
+        }
+
+        currentBattle.turn = targetId;
+        battleData[battleId] = currentBattle;
         save(battlePath, battleData);
 
-        return i.update({
-          content: `🏆 **${i.user.username}** 승리!\n\n📜 전투 기록:\n${currentBattle.logs.join("\n")}`,
-          embeds: [],
-          components: []
+        const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, logMsg);
+
+        await i.message.edit({
+          content: `💥 **${i.user.username}**의 행동 완료! 턴이 <@${targetId}> 에게 넘어갑니다.`,
+          embeds: [updatedEmbed],
+          components: [buttons]
         });
+      } catch (err) {
+        console.error("🔥 버튼 처리 오류:", err);
+        if (!i.replied && !i.deferred) {
+          await i.reply({ content: "❌ 처리 중 오류가 발생했습니다.", ephemeral: true });
+        }
       }
-
-      // 턴 교체
-      currentBattle.turn = targetId;
-      battleData[battleId] = currentBattle;
-      save(battlePath, battleData);
-
-      const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId);
-
-      await i.update({
-        content: `💥 **${i.user.username}**의 행동 완료! 턴이 <@${targetId}> 에게 넘어갑니다.`,
-        embeds: [updatedEmbed],
-        components: [buttons]
-      });
     });
 
     collector.on("end", async () => {
