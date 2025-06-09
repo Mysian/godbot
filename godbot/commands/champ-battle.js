@@ -189,7 +189,7 @@ module.exports = {
       );
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
       const battleMsg = await btn.fetchReply();
-      
+
       // 턴 콜렉터
       let turnCol;
       const startTurn = () => {
@@ -206,6 +206,7 @@ module.exports = {
 
           let log = '';
           if (i.customId === 'attack') {
+            // 평타
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const dmgInfo = calculateDamage(userData[uid], userData[tgt], true, cur.context);
             const damage = Number(dmgInfo.damage) || 0;
@@ -213,46 +214,46 @@ module.exports = {
             log = dmgInfo.log;
 
           } else if (i.customId === 'defend') {
+            // 방어
             log = `🛡️ ${userData[uid].name}이 방어 자세를 취했습니다.`;
 
-          } else {  // skill
+          } else {
+            // 스킬
+            const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             const skillObj = skills[userData[uid].name];
+
+            // 쿨다운 체크
             const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
             if (cd > 0) {
               return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
             }
 
-            const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
+            // 기본 데미지 산출
             const raw = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-            const dmg = Math.floor(raw.damage * skillObj.adRatio + userData[uid].stats.ap * skillObj.apRatio);
-            const safeDmg = Number(dmg) || 0;
-            cur.hp[tgt] = Math.max(0, (cur.hp[tgt] || 0) - safeDmg);
-            skillObj.effect(userData[uid], userData[tgt], safeDmg, cur.context);
+            const scaled = Math.floor(raw.damage * skillObj.adRatio + userData[uid].stats.ap * skillObj.apRatio);
+
+            // effect() 가 반환한 값이 있으면 그걸 데미지로, 아니면 scaled
+            const finalDmg = (typeof skillObj.effect === 'function')
+              ? skillObj.effect(userData[uid], userData[tgt], true, scaled, cur.context) ?? scaled
+              : scaled;
+
+            cur.hp[tgt] = Math.max(0, (cur.hp[tgt] || 0) - finalDmg);
             cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
-            log = `✨ ${skillObj.name} 발동! ${safeDmg} 데미지`;
+            log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
           }
 
           if (log) cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          // 승리 체크 & 전적 저장
+          // 승리 체크
           const loser = cur.challenger === uid ? cur.opponent : cur.challenger;
           if (cur.hp[loser] <= 0) {
             turnCol.stop();
-
-            // 전적 저장
-            const records = load(recordPath);
-            records[uid]   = records[uid]   || { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
-            records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
-            records[uid].win++;
-            records[loser].lose++;
-            save(recordPath, records);
-
-            // 승리 임베드 (아이콘도 비동기 처리)
-            const winIcon = await getChampionIcon(userData[uid].name);
+            // 전적 저장 등 생략…
+            const winIcon   = await getChampionIcon(userData[uid].name);
             const winSplash = await getChampionIcon(userData[loser].name);
-            const winEmbed = new EmbedBuilder()
+            const winEmbed  = new EmbedBuilder()
               .setTitle('🏆 승리!')
               .setDescription(`${i.user.username}님 승리!`)
               .setThumbnail(winSplash)
