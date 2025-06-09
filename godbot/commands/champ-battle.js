@@ -15,6 +15,8 @@ const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
 const battlePath = path.join(__dirname, "../data/battle-active.json");
 
+const { client } = require("../index");
+
 function load(filePath) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, "{}");
   return JSON.parse(fs.readFileSync(filePath));
