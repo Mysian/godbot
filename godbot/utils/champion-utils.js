@@ -124,6 +124,7 @@ function getImageName(name) {
 "리븐": "Riven",
 "럼블": "Rumble",
 "라이즈": "Ryze",
+"멜": "Mel",
 "사미라": "Samira",
 "세주아니": "Sejuani",
 "세나": "Senna",
