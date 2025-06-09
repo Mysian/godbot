@@ -77,8 +77,8 @@ ${createHpBar(ohp, op.stats.hp)}`,
       { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
       { name: '📢 행동 결과', value: log || '없음', inline: false }
     )
-    .setThumbnail(iconOp)  // 상대 아이콘
-    .setImage(iconCh)      // 도전자 아이콘
+    .setThumbnail(iconOp)
+    .setImage(iconCh)
     .setColor(0x3498db);
 }
 
@@ -103,11 +103,11 @@ module.exports = {
     const bd       = load(battlePath);
     const battleId = `${challenger.id}_${opponent.id}`;
 
-    // 이미 같은 페어로 pending 또는 active battle 이 있으면 차단
+    // 동일 페어 pending/active 체크
     if (bd[battleId]) {
       return interaction.reply({ content: '⚔️ 이미 이 상대와 배틀이 대기 중이거나 진행 중입니다.', ephemeral: true });
     }
-    // 자신 또는 상대가 다른 배틀에 이미 참여중이면 차단
+    // 어느 한쪽이라도 다른 배틀 참여 중이면 차단
     if (Object.values(bd).some(b =>
       b.challenger === challenger.id ||
       b.opponent    === challenger.id ||
@@ -122,11 +122,12 @@ module.exports = {
       return interaction.reply({ content: '❌ 두 유저 모두 챔피언을 보유해야 합니다.', ephemeral: true });
     }
 
-    // 배틀 요청 임베드
+    // --- 배틀 요청 임베드 ---
     const chData = userData[challenger.id];
     const opData = userData[opponent.id];
     const chIcon = await getChampionIcon(chData.name);
     const opIcon = await getChampionIcon(opData.name);
+
     const requestEmbed = new EmbedBuilder()
       .setTitle('🗡️ 챔피언 배틀 요청')
       .setDescription(`<@${opponent.id}>님, ${challenger.username}님이 챔피언 배틀을 신청했어요!`)
@@ -140,7 +141,7 @@ module.exports = {
       .setFooter({ text: '30초 내에 의사를 표현하세요.' })
       .setTimestamp();
 
-    // pending 상태 저장
+    // pending 상태 기록
     bd[battleId] = { challenger: challenger.id, opponent: opponent.id, pending: true };
     save(battlePath, bd);
 
@@ -155,7 +156,7 @@ module.exports = {
       fetchReply: true
     });
 
-    // ▶ 수락/거절 콜렉터
+    // 수락/거절 콜렉터
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -163,7 +164,7 @@ module.exports = {
       }
       await btn.deferUpdate();
 
-      // ❌ 거절
+      // 거절 처리
       if (btn.customId === 'decline') {
         delete bd[battleId];
         save(battlePath, bd);
@@ -171,10 +172,10 @@ module.exports = {
         return reqCol.stop();
       }
 
-      // ✅ 수락 → **reqCol** 도 멈춰야 나중에 평타 버튼을 가로채지 않습니다.
+      // 수락 처리 → 콜렉터 중지
       reqCol.stop();
 
-      // 전투 데이터 초기화
+      // 전투 데이터로 덮기
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
       bd[battleId] = {
@@ -190,7 +191,7 @@ module.exports = {
       initBattleContext(bd[battleId]);
       save(battlePath, bd);
 
-      // 전투 시작 임베드 & 버튼 교체
+      // 전투 시작 임베드 + 버튼
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id);
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
@@ -200,7 +201,7 @@ module.exports = {
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
       const battleMsg = await btn.fetchReply();
 
-      // ▶ 턴 콜렉터 (참가자만 필터)
+      // 턴 콜렉터 (참가자만)
       let turnCol;
       const startTurn = () => {
         if (turnCol) turnCol.stop();
@@ -216,12 +217,24 @@ module.exports = {
           const uid = i.user.id;
           const cur = bd[battleId];
 
-          // 내 턴이 아니면 에러
+          // 1) 턴 검증
           if (uid !== cur.turn) {
             return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
           }
+
+          // 2) 스킬 쿨다운 검증 (reply)
+          if (i.customId === 'skill') {
+            const skillObj = skills[userData[uid].name];
+            const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
+            if (cd > 0) {
+              return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
+            }
+          }
+
+          // 3) 이제 업데이트 ACK
           await i.deferUpdate();
 
+          // 4) 행동별 처리
           let log = '';
           if (i.customId === 'attack') {
             const tgt     = cur.challenger === uid ? cur.opponent : cur.challenger;
@@ -235,16 +248,13 @@ module.exports = {
             log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
 
           } else {
+            // 스킬 실행
             const tgt      = cur.challenger === uid ? cur.opponent : cur.challenger;
             const skillObj = skills[userData[uid].name];
-            const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
-            if (cd > 0) {
-              return i.followUp({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
-            }
-            const raw     = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-            const baseDmg = Math.floor(
+            const raw      = calculateDamage(userData[uid], userData[tgt], true, cur.context);
+            const baseDmg  = Math.floor(
               raw.damage * (skillObj.adRatio||0) +
-              userData[uid].stats.ap * (skillObj.apRatio||0)
+              (userData[uid].stats.ap||0) * (skillObj.apRatio||0)
             );
             const finalDmg = typeof skillObj.effect === 'function'
               ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
@@ -254,12 +264,12 @@ module.exports = {
             log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
           }
 
-          // 공통 처리
+          // 5) 공통 처리: 로그/턴전환/저장
           if (log) cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          // 승리 체크
+          // 6) 승리 체크
           const loser = cur.challenger === uid ? cur.opponent : cur.challenger;
           if (cur.hp[loser] <= 0) {
             turnCol.stop();
@@ -281,7 +291,7 @@ module.exports = {
             return i.update({ content: null, embeds: [winEmbed], components: [] });
           }
 
-          // 다음 턴
+          // 7) 다음 턴
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log);
           await i.update({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [buttons] });
           startTurn();
@@ -302,6 +312,17 @@ module.exports = {
       };
 
       startTurn();
+    });
+
+    // 요청 콜렉터 타임아웃 시 pending 삭제
+    reqCol.on('end', async (_col, reason) => {
+      if (['time','idle'].includes(reason) && bd[battleId]?.pending) {
+        delete bd[battleId];
+        save(battlePath, bd);
+        try {
+          await req.edit({ content: '❌ 배틀 요청 시간 초과로 취소되었습니다.', embeds: [], components: [] });
+        } catch {}
+      }
     });
   }
 };
