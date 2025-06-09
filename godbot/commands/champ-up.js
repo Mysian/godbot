@@ -1,17 +1,20 @@
+// commands/champion/champ-upgrade.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
+const recordPath = path.join(__dirname, "../data/champion-records.json");
+// 여기에 배틀 중인 상태를 확인할 파일 경로 추가
+const battleActivePath = path.join(__dirname, "../data/battle-active.json");
 
-function loadData() {
-  if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
-  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
+function loadJSON(p) {
+  if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
+  return JSON.parse(fs.readFileSync(p, "utf8"));
 }
-
-function saveData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+function saveJSON(p, d) {
+  fs.writeFileSync(p, JSON.stringify(d, null, 2));
 }
 
 function getSuccessRate(level) {
@@ -33,7 +36,20 @@ module.exports = {
   async execute(interaction) {
     const userId = interaction.user.id;
     const userMention = `<@${userId}>`;
-    const data = loadData();
+    const data = loadJSON(dataPath);
+
+    // --- 여기에 추가: 전투 중인지 체크 ---
+    const battleActive = loadJSON(battleActivePath);
+    const inBattle = Object.values(battleActive).some(b =>
+      b.challenger === userId || b.opponent === userId
+    );
+    if (inBattle) {
+      return interaction.reply({
+        content: "⚔️ 전투 중에는 강화할 수 없습니다!",
+        ephemeral: true
+      });
+    }
+    // -----------------------------------------
 
     const champ = data[userId];
     if (!champ || !champ.name) {
@@ -48,7 +64,8 @@ module.exports = {
 
     if (champ.level >= 999) {
       return interaction.reply({
-        content: `⚠️ 이미 최대 강화 상태입니다! (**${champ.level}강**)`
+        content: `⚠️ 이미 최대 강화 상태입니다! (**${champ.level}강**)`,
+        ephemeral: true
       });
     }
 
@@ -129,7 +146,7 @@ module.exports = {
               if (champ.level % 2 === 0) champ.stats.penetration += 1;
             }
 
-            saveData(data);
+            saveJSON(dataPath, data);
 
             const nextRow = new ActionRowBuilder().addComponents(
               new ButtonBuilder()
@@ -177,7 +194,7 @@ module.exports = {
             } else {
               const lostName = champ.name;
               delete data[userId];
-              saveData(data);
+              saveJSON(dataPath, data);
               interaction.followUp({
                 content: `💥 ${userMention} 님이 **${lostName} ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
               });
