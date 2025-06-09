@@ -204,7 +204,7 @@ module.exports = {
               currentBattle.turn = targetId;
               save(battlePath, battleData);
               const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, `💤 ${attacker.name}는 기절했다!`);
-              await i.message.edit({
+              await battleMsg.edit({
                 content: `💤 기절! 이제 <@${targetId}> 의 차례입니다.`,
                 embeds: [updatedEmbed],
                 components: [battleButtons]
@@ -279,7 +279,7 @@ module.exports = {
               delete battleData[battleId];
               save(battlePath, battleData);
 
-              return await i.message.edit({
+              return await battleMsg.edit({
                 content: null,
                 embeds: [
                   new EmbedBuilder()
@@ -305,7 +305,7 @@ module.exports = {
 
             const updatedEmbed = createBattleEmbed(challenger, opponent, currentBattle, userData, targetId, logMsg);
 
-            await i.message.edit({
+            await battleMsg.edit({
               content: `💥 턴 종료! 이제 <@${targetId}> 의 차례입니다.`,
               embeds: [updatedEmbed],
               components: [battleButtons]
