@@ -121,61 +121,66 @@ module.exports = {
 
     const collector = requestMessage.createMessageComponentCollector({ time: 30000 });
 
-    collector.on("collect", async i => {
-      if (i.user.id !== opponent.id) {
-        return i.reply({ content: "⛔ 이 버튼은 요청받은 유저만 사용할 수 있습니다.", ephemeral: true });
-      }
+collector.on("collect", async i => {
+  // 👉 수락/거절 버튼이 아닌 경우는 무시 (전투용 버튼은 별도로 처리됨)
+  if (i.customId !== "accept_battle" && i.customId !== "decline_battle") return;
 
-      await i.deferUpdate();
+  // 👉 요청받은 유저(opponent)만 누를 수 있도록 제한
+  if (i.user.id !== opponent.id) {
+    return i.reply({ content: "⛔ 이 버튼은 요청받은 유저만 사용할 수 있습니다.", ephemeral: true });
+  }
 
-      if (i.customId === "decline_battle") {
-        await i.editReply({
-          content: `❌ <@${opponent.id}>님이 배틀 요청을 거절했습니다.`,
-          components: []
-        });
-        collector.stop();
-        return;
-      }
+  await i.deferUpdate();
 
-      const battleId = `${challenger.id}_${opponent.id}`;
-      const chChamp = userData[challenger.id];
-      const opChamp = userData[opponent.id];
+  if (i.customId === "decline_battle") {
+    await i.editReply({
+      content: `❌ <@${opponent.id}>님이 배틀 요청을 거절했습니다.`,
+      components: []
+    });
+    collector.stop();
+    return;
+  }
 
-      const battle = {
-        challenger: challenger.id,
-        opponent: opponent.id,
-        hp: {
-          [challenger.id]: chChamp.stats.hp,
-          [opponent.id]: opChamp.stats.hp
-        },
-        turn: challenger.id,
-        logs: [],
-        statusEffects: {
-          [challenger.id]: {},
-          [opponent.id]: {}
-        }
-      };
+  // 👉 배틀 수락한 경우
+  const battleId = `${challenger.id}_${opponent.id}`;
+  const chChamp = userData[challenger.id];
+  const opChamp = userData[opponent.id];
 
-      battleData[battleId] = battle;
-      save(battlePath, battleData);
+  const battle = {
+    challenger: challenger.id,
+    opponent: opponent.id,
+    hp: {
+      [challenger.id]: chChamp.stats.hp,
+      [opponent.id]: opChamp.stats.hp
+    },
+    turn: challenger.id,
+    logs: [],
+    statusEffects: {
+      [challenger.id]: {},
+      [opponent.id]: {}
+    }
+  };
 
-      const embed = createBattleEmbed(challenger, opponent, battle, userData, challenger.id);
-      const battleButtons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("attack").setLabel("🗡️ 평타").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("defend").setLabel("🛡️ 무빙").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("skill").setLabel("✨ 스킬").setStyle(ButtonStyle.Primary)
-      );
+  battleData[battleId] = battle;
+  save(battlePath, battleData);
 
-      await i.editReply({
-        content: `⚔️ 전투 시작! <@${challenger.id}> vs <@${opponent.id}>`,
-        embeds: [embed],
-        components: [battleButtons]
-      });
+  const embed = createBattleEmbed(challenger, opponent, battle, userData, challenger.id);
+  const battleButtons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("attack").setLabel("🗡️ 평타").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("defend").setLabel("🛡️ 무빙").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("skill").setLabel("✨ 스킬").setStyle(ButtonStyle.Primary)
+  );
 
-            const battleMsg = await i.fetchReply();
-      let turnCollector;
+  await i.editReply({
+    content: `⚔️ 전투 시작! <@${challenger.id}> vs <@${opponent.id}>`,
+    embeds: [embed],
+    components: [battleButtons]
+  });
 
-      const startTurnCollector = () => {
+  const battleMsg = await i.fetchReply();
+  let turnCollector;
+
+  const startTurnCollector = () => {
         if (turnCollector) turnCollector.stop();
         turnCollector = battleMsg.createMessageComponentCollector({ time: 30000 });
 
