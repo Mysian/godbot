@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { calculateDamage } = require("../utils/battleEngine");
 const { getChampionIcon, getChampionSplash } = require("../utils/champion-utils");
-const championSkills = require("../utils/champion-skills");
+const championSkills = require("../utils/skills");
 
 const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
