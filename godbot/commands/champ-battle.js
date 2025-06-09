@@ -208,7 +208,7 @@ turnCollector.on("collect", async i => {
     }
   }
   
-      }
+      
 
       const actorId = i.user.id;
       const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
