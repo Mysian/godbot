@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
@@ -47,51 +47,105 @@ module.exports = {
 
     if (champ.level >= 999) {
       return interaction.reply({
-        content: `⚠️ 이미 최대 강화 상태입니다! (**${champ.level}강**)`,
-        ephemeral: true
+        content: `⚠️ 이미 최대 강화 상태입니다! (**${champ.level}강**)`
       });
     }
 
     const rate = getSuccessRate(champ.level);
-    const success = Math.random() < rate;
+    const percent = Math.floor(rate * 1000) / 10;
 
-    if (success) {
-      champ.level += 1;
-      champ.success += 1;
+    const embed = new EmbedBuilder()
+      .setTitle(`🔧 챔피언 강화 준비`)
+      .setDescription(`**${champ.name} ${champ.level}강** → **${champ.level + 1}강**
+📈 강화 확률: **${percent}%**
 
-      const base = championList.find(c => c.name === champ.name)?.stats;
+📊 성공 시 능력치 상승:
+- 공격력 +1
+- 주문력 +1
+- 체력 +10
+- 방어력 +1
+- 관통력 +1 (2레벨마다)`)
+      .setColor(0x00bcd4);
 
-      if (base) {
-        champ.stats = champ.stats || { ...base }; // 기본값 복사
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("champion-upgrade-confirm")
+        .setLabel("🔥 강화 시도")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("champion-upgrade-cancel")
+        .setLabel("🛑 강화 중단")
+        .setStyle(ButtonStyle.Secondary)
+    );
 
-        champ.stats.attack += 1;
-        champ.stats.ap += 1;
-        champ.stats.hp += 10;
-        champ.stats.defense += 1;
-        champ.stats.penetration += (champ.level % 2 === 0) ? 1 : 0; // 2레벨마다 +1
+    await interaction.reply({
+      embeds: [embed],
+      components: [row],
+      ephemeral: true
+    });
+
+    const collector = interaction.channel.createMessageComponentCollector({
+      filter: i => i.user.id === userId && ["champion-upgrade-confirm", "champion-upgrade-cancel"].includes(i.customId),
+      time: 15000,
+      max: 1
+    });
+
+    collector.on("collect", async i => {
+      if (i.customId === "champion-upgrade-cancel") {
+        await i.update({
+          content: "⚪ 강화가 취소되었습니다.",
+          embeds: [],
+          components: [],
+          ephemeral: true
+        });
+        return;
       }
 
-      saveData(data);
-      return interaction.reply({
-        content: `💪 강화 성공! **${champ.name} ${champ.level}강**`,
+      await i.update({
+        content: `⏳ 강화 시도 중...`,
+        embeds: [],
+        components: [],
         ephemeral: true
       });
-    } else {
-      const survive = Math.random() < 0.3;
-      if (survive) {
-        return interaction.reply({
-          content: `😮 강화는 실패했지만, **${champ.name}**(은)는 무사했습니다! 계속 강화할 수 있어요.`,
-          ephemeral: true
-        });
-      } else {
-        delete data[userId];
-        saveData(data);
-        return interaction.reply({
-          content: `💥 강화 실패... ⚰️ **${champ.name}**(을)를 잃었습니다. 다시 /챔피언획득 으로 얻으세요.`,
-          ephemeral: true
-        });
-      }
-    }
+
+      setTimeout(() => {
+        const success = Math.random() < rate;
+
+        if (success) {
+          champ.level += 1;
+          champ.success += 1;
+
+          const base = championList.find(c => c.name === champ.name)?.stats;
+
+          if (base) {
+            champ.stats = champ.stats || { ...base };
+
+            champ.stats.attack += 1;
+            champ.stats.ap += 1;
+            champ.stats.hp += 10;
+            champ.stats.defense += 1;
+            if (champ.level % 2 === 0) champ.stats.penetration += 1;
+          }
+
+          saveData(data);
+          interaction.followUp({
+            content: `💪 강화 성공! **${champ.name} ${champ.level}강**`
+          });
+        } else {
+          const survive = Math.random() < 0.3;
+          if (survive) {
+            interaction.followUp({
+              content: `😮 강화는 실패했지만, **${champ.name}**(은)는 무사했습니다! 계속 강화할 수 있어요.`
+            });
+          } else {
+            delete data[userId];
+            saveData(data);
+            interaction.followUp({
+              content: `💥 강화 실패... ⚰️ **${champ.name}**(을)를 잃었습니다. 다시 /챔피언획득 으로 얻으세요.`
+            });
+          }
+        }
+      }, 2000);
+    });
   }
 };
-
