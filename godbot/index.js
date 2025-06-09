@@ -17,6 +17,8 @@ const client = new Client({
 
 const LOG_CHANNEL_ID = "1381062597230460989";
 
+module.exports.client = client;
+
 // ✅ 명령어 등록 (하위 폴더까지 포함)
 client.commands = new Collection();
 
