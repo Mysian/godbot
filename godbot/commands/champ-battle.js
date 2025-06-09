@@ -124,12 +124,12 @@ module.exports = {
       .setDescription(`<@${opponent.id}>님, ${challenger.username}님이 챔피언 배틀을 신청했어요!`)
       .addFields(
         {
-          name: '👑 도전자',
+          name: '👑 도전하는 자',
           value: `${challenger.username}\n**${chData.name}** (강화 ${chData.level}단계)`,
           inline: true
         },
         {
-          name: '🛡️ 피청자',
+          name: '🛡️ 지키는 자',
           value: `${opponent.username}\n**${opData.name}** (강화 ${opData.level}단계)`,
           inline: true
         }
@@ -137,15 +137,15 @@ module.exports = {
       .setThumbnail(chIcon)
       .setImage(opIcon)
       .setColor(0xffd700)
-      .setFooter({ text: '30초 내에 수락 또는 거절 버튼을 눌러주세요.' })
+      .setFooter({ text: '30초 내에 의사를 표현하세요.' })
       .setTimestamp();
 
     const req = await interaction.reply({
       embeds: [requestEmbed],
       components: [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('accept').setLabel('✅ 수락').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('decline').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
+          new ButtonBuilder().setCustomId('accept').setLabel('✅ 도전을 받아들이지').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('decline').setLabel('❌ 아직은 때가 아니다').setStyle(ButtonStyle.Danger)
         )
       ],
       fetchReply: true
@@ -184,7 +184,7 @@ module.exports = {
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id);
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 방어').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 무빙').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('skill').setLabel('✨ 스킬').setStyle(ButtonStyle.Primary)
       );
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [buttons] });
@@ -214,8 +214,13 @@ module.exports = {
             log           = dmgInfo.log;
 
           } else if (i.customId === 'defend') {
-            // — 방어 처리
-            log = `🛡️ ${userData[uid].name}이 방어 자세를 취했습니다.`;
+            // — 방어 처리: 다음 턴 받는 피해 50% 감소
+            cur.context.effects[uid].push({
+              type: 'damageReductionPercent',
+              value: 50,
+              turns: 1
+            });
+            log = `🛡️ ${userData[uid].name}이 무빙을 치며\n다음 턴 받는 피해 50% 감소`;
 
           } else {
             // — 스킬 처리 (effect() 리턴값을 최종 데미지로)
@@ -229,7 +234,7 @@ module.exports = {
             }
 
             // 1) 기본 데미지 계산
-            const raw    = calculateDamage(userData[uid], userData[tgt], true, cur.context);
+            const raw     = calculateDamage(userData[uid], userData[tgt], true, cur.context);
             const baseDmg = Math.floor(raw.damage * (skillObj.adRatio||0) + (userData[uid].stats.ap||0) * (skillObj.apRatio||0));
 
             // 2) effect() 호출 — 숫자를 리턴하도록 규약
