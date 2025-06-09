@@ -36,7 +36,8 @@ module.exports = {
       name: randomChampion.name,
       level: 0,
       success: 0,
-      stats: { ...randomChampion.stats } // 기본 능력치 복사
+      stats: { ...randomChampion.stats },
+      timestamp: Date.now() // ✅ 획득 시각 추가
     };
 
     saveData(data);
