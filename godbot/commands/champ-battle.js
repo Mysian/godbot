@@ -330,9 +330,7 @@ if (attacker.name in championSkills) {
 
       // 타이머 리셋
       startTurnCollector();
-     }
-  };
-
+      
     } catch (err) {
       console.error("🔥 버튼 처리 오류:", err);
       if (!i.replied && !i.deferred) {
@@ -348,3 +346,5 @@ if (attacker.name in championSkills) {
 };
 
 startTurnCollector(); // 최초 호출
+ } // ← 이거 빠졌을 가능성 매우 높음
+};
