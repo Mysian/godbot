@@ -353,8 +353,7 @@ collector.on("collect", async i => {
         content: "⛔ 전투가 시간 초과로 종료되었습니다.",
         components: []
       });
-    } catch (e) {
-      console.warn("🛠 전투 종료 메시지 수정 실패:", e);
-    });
-  }
+} catch (e) {
+  console.warn("🛠 전투 종료 메시지 수정 실패:", e);
+}
 };
