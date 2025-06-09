@@ -7,8 +7,11 @@ const {
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const champions = require("../utils/champion-data");
 const { calculateDamage } = require("../utils/battleEngine");
+const {
+  getChampionIcon,
+  getChampionSplash
+} = require("../utils/champion-utils");
 
 const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
@@ -30,8 +33,8 @@ function createHpBar(current, max) {
 }
 
 function createBattleEmbed(challenger, opponent, battle, userData, turnId, logMessage = "") {
-  const chStats = userData[challenger.id].stats;
-  const opStats = userData[opponent.id].stats;
+  const ch = userData[challenger.id];
+  const op = userData[opponent.id];
   const chp = battle.hp[challenger.id];
   const ohp = battle.hp[opponent.id];
 
@@ -41,12 +44,12 @@ function createBattleEmbed(challenger, opponent, battle, userData, turnId, logMe
     .addFields(
       {
         name: `👑 ${challenger.username}`,
-        value: `💬 ${userData[challenger.id].name} | 💖 ${chp} / ${chStats.hp}\n${createHpBar(chp, chStats.hp)}`,
+        value: `💬 ${ch.name} | 💖 ${chp} / ${ch.stats.hp}\n${createHpBar(chp, ch.stats.hp)}`,
         inline: true
       },
       {
         name: `🛡️ ${opponent.username}`,
-        value: `💬 ${userData[opponent.id].name} | 💖 ${ohp} / ${opStats.hp}\n${createHpBar(ohp, opStats.hp)}`,
+        value: `💬 ${op.name} | 💖 ${ohp} / ${op.stats.hp}\n${createHpBar(ohp, op.stats.hp)}`,
         inline: true
       },
       {
@@ -60,6 +63,7 @@ function createBattleEmbed(challenger, opponent, battle, userData, turnId, logMe
         inline: false
       }
     )
+    .setThumbnail(getChampionIcon(ch.name))
     .setColor(0x3498db);
 }
 
@@ -86,8 +90,10 @@ module.exports = {
       return interaction.reply({ content: "❌ 두 유저 모두 챔피언을 보유해야 합니다.", ephemeral: true });
     }
 
-    if (Object.values(battleData).some(b => [b.challenger, b.opponent].includes(challenger.id))) {
-      return interaction.reply({ content: "⚔️ 이미 전투 중입니다!", ephemeral: true });
+    if (Object.values(battleData).some(b =>
+      [b.challenger, b.opponent].includes(challenger.id) ||
+      [b.challenger, b.opponent].includes(opponent.id))) {
+      return interaction.reply({ content: "⚔️ 둘 중 한 명이 이미 전투 중입니다!", ephemeral: true });
     }
 
     const confirmRow = new ActionRowBuilder().addComponents(
@@ -101,9 +107,7 @@ module.exports = {
       fetchReply: true
     });
 
-    const collector = requestMessage.createMessageComponentCollector({
-      time: 30000
-    });
+    const collector = requestMessage.createMessageComponentCollector({ time: 30000 });
 
     collector.on("collect", async i => {
       if (i.user.id !== opponent.id) {
@@ -140,10 +144,10 @@ module.exports = {
       save(battlePath, battleData);
 
       const embed = createBattleEmbed(challenger, opponent, battle, userData, challenger.id);
-
       const battleButtons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("attack").setLabel("🗡️ 공격").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("defend").setLabel("🛡️ 방어").setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId("defend").setLabel("🛡️ 방어").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("skill").setLabel("✨ 스킬").setStyle(ButtonStyle.Primary)
       );
 
       await i.editReply({
@@ -166,7 +170,7 @@ module.exports = {
 
           await i.deferUpdate();
 
-          const isAttack = i.customId === "attack";
+          const isAttack = i.customId !== "defend";
           const actorId = i.user.id;
           const targetId = actorId === currentBattle.challenger ? currentBattle.opponent : currentBattle.challenger;
 
@@ -174,7 +178,6 @@ module.exports = {
           const defender = userData[targetId];
 
           const result = calculateDamage(attacker.stats, defender.stats, isAttack);
-
           currentBattle.hp[targetId] -= result.damage;
           currentBattle.logs.push(`**${i.user.username}**: ${result.log}`);
 
@@ -193,8 +196,21 @@ module.exports = {
             save(battlePath, battleData);
 
             return await i.message.edit({
-              content: `🏆 **${i.user.username}** 승리!\n\n📜 전투 기록:\n${currentBattle.logs.join("\n")}`,
-              embeds: [],
+              content: null,
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle("🏆 승리!")
+                  .setDescription(`**${i.user.username}** 님이 전투에서 승리하였습니다!`)
+                  .addFields(
+                    { name: "🧙 사용한 챔피언", value: attacker.name, inline: true },
+                    { name: "📜 전투 기록", value: currentBattle.logs.slice(-5).join("\n") || "없음", inline: false }
+                  )
+                  .setThumbnail(getChampionIcon(attacker.name))
+                  .setImage(getChampionSplash(attacker.name))
+                  .setColor(0x00ff88)
+                  .setFooter({ text: "까리한 디스코드 챔피언 배틀" })
+                  .setTimestamp()
+              ],
               components: []
             });
           }
