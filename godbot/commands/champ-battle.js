@@ -246,17 +246,38 @@ const startTurn = () => {
       } else {
         const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
         const skillObj = skills[userData[uid].name];
-        const raw = calculateDamage(userData[uid], userData[tgt], true, cur.context);
-        const baseDmg = Math.floor(
-          raw.damage * (skillObj.adRatio || 0) +
-          (userData[uid].stats.ap || 0) * (skillObj.apRatio || 0)
-        );
-        const finalDmg = typeof skillObj.effect === 'function'
-          ? (skillObj.effect(userData[uid], userData[tgt], true, baseDmg, cur.context) ?? baseDmg)
-          : baseDmg;
-        cur.hp[tgt] = Math.max(0, cur.hp[tgt] - finalDmg);
-        cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
-        log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
+        // 스킬일 때만 별도의 damage 계산
+const skillObj = skills[userData[uid].name];
+const atkStats = userData[uid].stats;
+const defStats = userData[tgt].stats;
+
+let skillDamage = Math.floor(
+  (atkStats.attack || 0) * (skillObj.adRatio || 0) +
+  (atkStats.ap || 0) * (skillObj.apRatio || 0)
+);
+
+// 방어력 및 기타 계산 포함 (calculateDamage 함수 활용)
+const dmgInfo = calculateDamage(
+  { stats: { attack: skillDamage, penetration: atkStats.penetration }, name: userData[uid].name },
+  userData[tgt],
+  true,
+  cur.context
+);
+
+let finalDmg = dmgInfo.damage;
+
+// 스킬 특수 효과 함수가 있으면 적용
+if (typeof skillObj.effect === 'function') {
+  finalDmg = skillObj.effect(userData[uid], userData[tgt], true, finalDmg, cur.context) ?? finalDmg;
+}
+
+// HP 적용
+cur.hp[tgt] = Math.max(0, cur.hp[tgt] - finalDmg);
+
+// 쿨다운 적용
+cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
+
+log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지`;
       }
 
       if (log) cur.logs.push(log);
