@@ -1,15 +1,5 @@
 
-const path = require("path");
-
-function getChampionIcon(name) {
-  const engName = getImageName(name);
-  return `https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/${engName}.png`;
-}
-
-function getChampionSplash(name) {
-  const engName = getImageName(name);
-  return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${engName}_0.jpg`;
-}
+const fetch = require('node-fetch');
 
 function getImageName(name) {
   const imageNameMap = {
@@ -27,7 +17,7 @@ function getImageName(name) {
 "아우렐리온 솔": "AurelionSol",
 "아지르": "Azir",
 "바드": "Bard",
-"벨베스": "BelVeth",
+"벨베스": "Belveth",
 "블리츠크랭크": "Blitzcrank",
 "브랜드": "Brand",
 "브라움": "Braum",
@@ -105,7 +95,7 @@ function getImageName(name) {
 "니달리": "Nidalee",
 "닐라": "Nilah",
 "녹턴": "Nocturne",
-"누누와 윌럼프": "NunuWillump",
+"누누와 윌럼프": "Nunu",
 "올라프": "Olaf",
 "오리아나": "Orianna",
 "오른": "Ornn",
@@ -181,9 +171,35 @@ function getImageName(name) {
 "유미": "Yuumi",
 "펭구": "Pengu"
 
-  };
-  return imageNameMap[name] || name;
+ };
+  return imageNameMap[name] || name.replace(/\s|\.|'/g, '');
 }
+
+// HEAD 요청으로 이미지 유무 체크 후, 없으면 placeholder 리턴
+async function fetchOrFallback(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    if (res.ok) return url;
+  } catch (e) {
+    console.warn('fetch error for', url, e);
+  }
+  // 검은색 placeholder (200×200)
+  return 'https://via.placeholder.com/200/000000/000000.png';
+}
+
+async function getChampionIcon(name) {
+  const engName = getImageName(name);
+  const url = `https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/${engName}.png`;
+  return await fetchOrFallback(url);
+}
+
+async function getChampionSplash(name) {
+  const engName = getImageName(name);
+  const url = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${engName}_0.jpg`;
+  return await fetchOrFallback(url);
+}
+
+module.exports = { getChampionIcon, getChampionSplash };
 
 function getChampionInfo(name) {
   const loreMap = {
