@@ -1,4 +1,10 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder
+} = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
@@ -86,7 +92,9 @@ module.exports = {
     });
 
     const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => i.user.id === userId && ["champion-upgrade-confirm", "champion-upgrade-cancel"].includes(i.customId),
+      filter: i =>
+        i.user.id === userId &&
+        ["champion-upgrade-confirm", "champion-upgrade-cancel"].includes(i.customId),
       time: 15000,
       max: 1
     });
@@ -117,10 +125,8 @@ module.exports = {
           champ.success += 1;
 
           const base = championList.find(c => c.name === champ.name)?.stats;
-
           if (base) {
             champ.stats = champ.stats || { ...base };
-
             champ.stats.attack += 1;
             champ.stats.ap += 1;
             champ.stats.hp += 10;
@@ -130,20 +136,21 @@ module.exports = {
 
           saveData(data);
           interaction.followUp({
-            content: `🎉 ${userMention} 님이 **${champ.name} 챔피언 ${champ.level}강**에 성공했습니다!`
+            content: `🎉 ${champ.name} 챔피언 ${champ.level}강에 성공했습니다!`,
+            ephemeral: true
           });
         } else {
           const survive = Math.random() < 0.3;
           if (survive) {
             interaction.followUp({
-              content: `😮 ${userMention} 님이 **${champ.name} 챔피언 ${champ.level}강**에 실패했지만, 불굴의 의지로 챔피언이 견뎌냅니다!`
+              content: `😮 ${userMention} 님이 **${champ.name} ${champ.level}강**에 실패했지만, 불굴의 의지로 챔피언이 견뎌냅니다!`
             });
           } else {
             const lostName = champ.name;
             delete data[userId];
             saveData(data);
             interaction.followUp({
-              content: `💥 ${userMention} 님이 **${lostName} 챔피언 ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
+              content: `💥 ${userMention} 님이 **${lostName} ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
             });
           }
         }
