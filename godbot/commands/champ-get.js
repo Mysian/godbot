@@ -15,7 +15,10 @@ function saveData(data) {
 }
 
 module.exports = {
-  data: new SlashCommandBuilder().setName("챔피언획득").setDescription("무작위 챔피언 1개를 획득합니다 (1회 제한)"),
+  data: new SlashCommandBuilder()
+    .setName("챔피언획득")
+    .setDescription("무작위 챔피언 1개를 획득합니다 (1회 제한)"),
+
   async execute(interaction) {
     const userId = interaction.user.id;
     const data = loadData();
@@ -28,9 +31,16 @@ module.exports = {
     }
 
     const randomChampion = champions[Math.floor(Math.random() * champions.length)];
-    data[userId] = { name: randomChampion, level: 0, success: 0 };
+
+    data[userId] = {
+      name: randomChampion.name,
+      level: 0,
+      success: 0,
+      stats: { ...randomChampion.stats } // 기본 능력치 복사
+    };
+
     saveData(data);
 
-    return interaction.reply(`🎉 <@${userId}> 님이 **${randomChampion}** 챔피언을 획득했습니다!`);
-  },
+    return interaction.reply(`🎉 <@${userId}> 님이 **${randomChampion.name}** 챔피언을 획득했습니다!`);
+  }
 };
