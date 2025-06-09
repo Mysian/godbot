@@ -31,3 +31,5 @@ function calculateDamage(attacker, defender, isAttack = true) {
     log: `${attacker.name}의 공격으로 ${Math.round(damage)} 피해를 입혔습니다.` + (isCrit ? " (💥 크리티컬!)" : "")
   };
 }
+
+module.exports = { calculateDamage }; // ✅ 이 줄이 빠졌던 거야!
