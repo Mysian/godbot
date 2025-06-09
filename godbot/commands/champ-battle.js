@@ -145,8 +145,8 @@ module.exports = {
 
       const embed = createBattleEmbed(challenger, opponent, battle, userData, challenger.id);
       const battleButtons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("attack").setLabel("🗡️ 공격").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("defend").setLabel("🛡️ 방어").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("attack").setLabel("🗡️ 평타").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("defend").setLabel("🛡️ 무빙").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("skill").setLabel("✨ 스킬").setStyle(ButtonStyle.Primary)
       );
 
