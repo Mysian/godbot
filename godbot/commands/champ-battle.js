@@ -224,16 +224,53 @@ const startTurn = () => {
       }
 
       if (i.customId === 'skill') {
-        const skillObj = skills[userData[uid].name];
-        const cd = cur.context.cooldowns[uid][skillObj.name] || 0;
-        if (cd > 0) {
-          return i.reply({ content: `❗ 쿨다운: ${cd}턴 남음`, ephemeral: true });
-        }
-      }
+  const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
+  const skillObj = skills[userData[uid].name];
 
-      await i.deferUpdate();
+  const atkStats = userData[uid].stats;
+  const defStats = userData[tgt].stats;
 
-      let log = '';
+  let skillDamage = Math.floor(
+    (atkStats.attack || 0) * (skillObj.adRatio || 1) +
+    (atkStats.ap || 0) * (skillObj.apRatio || 0)
+  );
+
+  const dmgInfo = calculateDamage(
+    { stats: { attack: skillDamage, penetration: atkStats.penetration }, name: userData[uid].name },
+    userData[tgt],
+    true,
+    cur.context
+  );
+
+  let finalDmg = dmgInfo.damage;
+
+  if (typeof skillObj.effect === 'function') {
+    finalDmg = skillObj.effect(
+      { ...userData[uid], id: uid, hp: cur.hp[uid] },
+      { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
+      true,
+      finalDmg,
+      cur.context
+    ) ?? finalDmg;
+
+    // 효과 적용 후 HP 동기화
+    cur.hp[uid] = Math.min(userData[uid].stats.hp, userData[uid].hp || cur.hp[uid]);
+    cur.hp[tgt] = Math.min(userData[tgt].stats.hp, userData[tgt].hp || cur.hp[tgt]);
+
+    // 스턴 적용 체크
+    if (userData[tgt].stunned) {
+      cur.context.effects[tgt].push({ type: 'stunned', turns: 1 });
+      userData[tgt].stunned = false;
+      cur.logs.push(`💫 ${userData[tgt].name}이(가) 기절!`);
+    }
+  }
+
+  cur.hp[tgt] = Math.max(0, cur.hp[tgt] - finalDmg);
+  cur.context.cooldowns[uid][skillObj.name] = skillObj.cooldown;
+
+  log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지!`;
+}
+
       if (i.customId === 'attack') {
         const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
         const dmgInfo = calculateDamage(userData[uid], userData[tgt], true, cur.context);
