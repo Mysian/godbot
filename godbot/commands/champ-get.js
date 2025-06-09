@@ -53,10 +53,16 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setTitle(`🎉 ${randomChampion.name} 챔피언 획득!`)
-      .setDescription(`🧙 ${randomChampion.type} 타입\n🌟 ${lore}`)
+      .setDescription(`🧙 ${randomChampion.type} 타입\n\n🌟 ${lore}`)
       .addFields({
         name: "📊 기본 능력치",
-        value: `🗡️ 공격력: ${randomChampion.stats.attack}\n✨ 주문력: ${randomChampion.stats.ap}\n❤️ 체력: ${randomChampion.stats.hp}\n🛡️ 방어력: ${randomChampion.stats.defense}\n💥 관통력: ${randomChampion.stats.penetration}`
+        value: [
+          `🗡️ 공격력: ${randomChampion.stats.attack}`,
+          `✨ 주문력: ${randomChampion.stats.ap}`,
+          `❤️ 체력: ${randomChampion.stats.hp}`,
+          `🛡️ 방어력: ${randomChampion.stats.defense}`,
+          `💥 관통력: ${randomChampion.stats.penetration}`
+        ].join("\n")
       })
       .setThumbnail(icon)
       .setImage(splash)
