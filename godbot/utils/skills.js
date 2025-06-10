@@ -1729,19 +1729,24 @@ module.exports = {
   }
 },
 "진": {
-  name: "정확한 한 발",
-  description: "4의 배수 레벨일 때 공격 시 치명타 확률이 100%입니다.",
+  name: "정확한 한발",
+  description: "공격 시 44% 확률로 치명타, 4.4% 확률로 고정 피해 44 추가.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (attacker.level % 4 === 0) {
-      return {
-        baseDamage: baseDamage * 2,
-        log: "🎯 치명타! (레벨 4의 배수)"
-      };
+    let damage = baseDamage;
+    let log = "";
+    if (Math.random() < 0.44) {
+      damage = Math.floor(damage * 1.5);
+      log += "💥 치명타! ";
     }
-    return baseDamage;
+    if (Math.random() < 0.044) {
+      damage += 44;
+      log += "+44 고정 피해!";
+    }
+    return { baseDamage: damage, log: log.trim() };
   }
 },
+
 "질리언": {
   name: "시간 왜곡",
   description: "방어 시 1턴간 모든 상태이상을 무효화합니다.",
