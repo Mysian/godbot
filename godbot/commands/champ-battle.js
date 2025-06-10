@@ -137,11 +137,12 @@ ${createSkillField(opponent.id, op.name, battle.context)}
     .setColor(0x3498db);
 }
 
+// 여기부터 결과 임베드 수정!!
 async function createResultEmbed(winner, loser, userData, records, interaction) {
   const winChampName = userData[winner].name;
   const loseChampName = userData[loser].name;
-  const winChampDesc = skills[winChampName]?.description || '';
-  const loseChampDesc = skills[loseChampName]?.description || '';
+  const winStat = createStatField(userData[winner]);
+  const loseStat = createStatField(userData[loser]);
   const winIcon = await getChampionIcon(winChampName);
   const loseIcon = await getChampionIcon(loseChampName);
 
@@ -155,25 +156,24 @@ async function createResultEmbed(winner, loser, userData, records, interaction) 
     .addFields(
       {
         name: '👑 승리자 챔피언',
-        value: `**${winChampName}**\n${winChampDesc}`,
+        value: `**${winChampName}**\n${winStat}`,
         inline: true
       },
       {
         name: '🪦 패배자 챔피언',
-        value: `**${loseChampName}**\n${loseChampDesc}`,
+        value: `**${loseChampName}**\n${loseStat}`,
         inline: true
       }
     )
     .addFields(
       {
         name: '🪦 패배자!',
-        value: `${loseChampName} (${interaction.guild.members.cache.get(loser).user.username})\n`
-          + `${loseChampDesc?.split('.')[0] || '챔피언의 특징 정보 없음.'}`,
+        value: `${loseChampName} (${interaction.guild.members.cache.get(loser).user.username})`,
         inline: false
       }
     )
-    .setImage(winIcon)
-    .setThumbnail(loseIcon)
+    .setThumbnail(winIcon)  // 승리자(썸네일)
+    .setImage(loseIcon)     // 패배자(대표이미지)
     .setColor(0x00ff88)
     .setTimestamp();
 }
@@ -197,7 +197,6 @@ module.exports = {
     const bd       = load(battlePath);
     const battleId = `${challenger.id}_${opponent.id}`;
 
-    // 중복 체크
     if (bd[battleId]) {
       return interaction.reply({ content: '⚔️ 이미 이 상대와 배틀이 대기 중이거나 진행 중입니다.', ephemeral: true });
     }
@@ -265,7 +264,6 @@ module.exports = {
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
 
-      // 쿨타임 및 본인 턴 카운트 구조 세팅
       bd[battleId] = {
         challenger: challenger.id,
         opponent:   opponent.id,
@@ -465,8 +463,7 @@ module.exports = {
       };
 
       reqCol.on('end', async (_col, reason) => {
-        // 여기서 pending 체크 없이 battleId 있으면 무조건 삭제
-        if (['time', 'idle'].includes(reason) && bd[battleId]) {
+        if (['time', 'idle'].includes(reason) && bd[battleId]?.pending) {
           delete bd[battleId];
           save(battlePath, bd);
           try {
