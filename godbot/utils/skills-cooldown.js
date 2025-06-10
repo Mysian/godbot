@@ -721,9 +721,9 @@ module.exports = {
   },
   "진": {
     "name": "정확한 한 발",
-    "description": "4의 배수 레벨일 때 공격 시 치명타 확률이 100%입니다.",
-    "minTurn": 1,
-    "cooldown": 1
+    "description": "공격 시 44% 확률로 치명타, 4.4% 확률로 고정 피해 44 추가.",
+    "minTurn": 2,
+    "cooldown": 2
   },
   "질리언": {
     "name": "시간 왜곡",
