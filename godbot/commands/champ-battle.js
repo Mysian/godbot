@@ -154,7 +154,6 @@ module.exports = {
       }
       await btn.deferUpdate();
 
-      // 거절
       if (btn.customId === 'decline') {
         delete bd[battleId];
         save(battlePath, bd);
@@ -180,7 +179,6 @@ module.exports = {
       initBattleContext(bd[battleId]);
       save(battlePath, bd);
 
-      // 전투 시작 임베드 + 버튼
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
       const getActionRow = (canUseSkillBtn) =>
         new ActionRowBuilder().addComponents(
@@ -194,7 +192,7 @@ module.exports = {
       let turnCol;
       const startTurn = async () => {
         const cur = bd[battleId];
-        cur.usedSkill = {}; // 턴이 넘어가면 사용 기록 리셋
+        cur.usedSkill = {}; // 턴 넘길 때 스킬 사용여부 리셋!
         processTurnStart(userData, cur, cur.turn);
         save(battlePath, bd);
 
@@ -218,10 +216,11 @@ module.exports = {
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             let log = '';
 
-            // 평타 or 방어시(턴 종료)
+            // 평타 or 방어(턴 종료)
             if (i.customId === 'attack' || i.customId === 'defend') {
               actionDone[uid] = actionDone[uid] || { skill: false, done: false };
               actionDone[uid].done = true;
+
               if (i.customId === 'attack') {
                 const dmgInfo = calculateDamage(
                   { ...userData[uid], id: uid, hp: cur.hp[uid] },
@@ -241,6 +240,11 @@ module.exports = {
               }
 
               cur.logs.push(log);
+
+              // [핵심] 내 턴이 끝났으니 평타/방어 후에만 스킬 사용 여부 리셋!
+              actionDone[uid] = { skill: false, done: false };
+              cur.usedSkill[uid] = false;
+
               cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
               save(battlePath, bd);
 
@@ -265,7 +269,6 @@ module.exports = {
                 return i.editReply({ embeds: [winEmbed], components: [] });
               }
 
-              // 턴 종료 → 다음 유저로
               const nextEmbed = await createBattleEmbed(
                 challenger, opponent, cur, userData, cur.turn, log, true
               );
@@ -275,10 +278,12 @@ module.exports = {
               return;
             }
 
-            // 스킬(성공시 같은 턴엔 스킬 버튼 disable)
+            // 스킬(성공시 같은 턴엔 스킬 버튼 disable, 쿨돌면 또 사용 가능)
             if (i.customId === 'skill') {
               actionDone[uid] = actionDone[uid] || { skill: false, done: false };
-              if (actionDone[uid].skill) {
+              cur.usedSkill[uid] = cur.usedSkill[uid] || false;
+
+              if (actionDone[uid].skill || cur.usedSkill[uid]) {
                 log = '이 턴엔 이미 스킬을 사용했습니다!';
               } else {
                 const champName = userData[uid].name;
@@ -298,6 +303,7 @@ module.exports = {
                   cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
                   log = dmgInfo.log;
                   actionDone[uid].skill = true;
+                  cur.usedSkill[uid] = true; // 이 턴엔 disable!
                 }
               }
               cur.logs.push(log);
