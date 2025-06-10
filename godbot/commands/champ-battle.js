@@ -49,7 +49,6 @@ function getStatusIcons(effects = []) {
   return s;
 }
 
-// 능력치 + 임시버프 실시간 표기
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
@@ -71,7 +70,6 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 스킬 설명, 쿨타임, 현재 사용 가능 여부 안내
 function createSkillField(userId, champName, context) {
   const skillObj = skills[champName];
   const cdObj = skillCd[champName];
@@ -265,9 +263,11 @@ module.exports = {
         },
         turn: challenger.id,
         logs: [],
-        usedSkill: {}
+        usedSkill: {},
+        context: {}
       };
       initBattleContext(bd[battleId]);
+      // 🟢 쿨다운/최소턴: 첫 턴에 쿨1 스킬 바로 못쓰도록 skillTurn을 1로(엔진도 반드시 일치)
       save(battlePath, bd);
 
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
@@ -287,14 +287,12 @@ module.exports = {
         processTurnStart(userData, cur, cur.turn);
         save(battlePath, bd);
 
-        // 기존 콜렉터 종료(중복 생성 방지)
         if (turnCol && !turnCol.ended) turnCol.stop();
 
-        // 유저 액션 없는 상태로 60초가 지나면 '시간초과' 처리
         turnCol = battleMsg.createMessageComponentCollector({
           filter: i => [cur.challenger, cur.opponent].includes(i.user.id),
-          idle: 60000, // **60초로 변경**
-          time: 600000 // (최대 10분)
+          idle: 60000,
+          time: 600000
         });
 
         let actionDone = {};
@@ -368,7 +366,7 @@ module.exports = {
             return;
           }
 
-          // 스킬(성공시 같은 턴엔 스킬 버튼 disable, 쿨돌면 또 사용 가능)
+          // 스킬(성공/실패 관계 없이 '턴 넘기지 않음' & 카운트 증가 X)
           if (i.customId === 'skill') {
             actionDone[uid] = actionDone[uid] || { skill: false, done: false };
             cur.usedSkill[uid] = cur.usedSkill[uid] || false;
@@ -377,6 +375,7 @@ module.exports = {
               log = '이 턴엔 이미 스킬을 사용했습니다!';
             } else {
               const champName = userData[uid].name;
+              // 🔴 첫 턴 쿨1 스킬 사용 제한: canUseSkill이 minTurn 체크하도록 할 것!
               const skillCheck = canUseSkill(uid, champName, cur.context);
               if (!skillCheck.ok) {
                 log = `❌ 스킬 사용 불가: ${skillCheck.reason}`;
@@ -402,11 +401,11 @@ module.exports = {
               challenger, opponent, cur, userData, cur.turn, log, false
             );
             await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(false)] });
+            // **턴은 그대로! 평타/무빙 때만 넘어감**
             return;
           }
         });
 
-        // 🕒 턴 시간초과(60초)시 자동 전투 종료
         turnCol.on('end', async (_col, reason) => {
           if (['idle', 'time'].includes(reason)) {
             delete bd[battleId];
