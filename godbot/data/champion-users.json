@@ -1,1 +1,54 @@
-{}
+{
+  "638742607861645372": {
+    "name": "퀸",
+    "level": 0,
+    "success": 0,
+    "stats": {
+      "attack": 74,
+      "ap": 0,
+      "hp": 620,
+      "defense": 30,
+      "penetration": 26
+    },
+    "timestamp": 1749536298323
+  },
+  "285645561582059520": {
+    "name": "나르",
+    "level": 4,
+    "success": 4,
+    "stats": {
+      "attack": 66,
+      "ap": 4,
+      "hp": 620,
+      "defense": 37,
+      "penetration": 25
+    },
+    "timestamp": 1749536302128
+  },
+  "1161257460221354064": {
+    "name": "닐라",
+    "level": 4,
+    "success": 4,
+    "stats": {
+      "attack": 78,
+      "ap": 4,
+      "hp": 660,
+      "defense": 36,
+      "penetration": 28
+    },
+    "timestamp": 1749536919461
+  },
+  "1061868519383388250": {
+    "name": "제리",
+    "level": 10,
+    "success": 10,
+    "stats": {
+      "attack": 84,
+      "ap": 10,
+      "hp": 700,
+      "defense": 38,
+      "penetration": 30
+    },
+    "timestamp": 1749545262261
+  }
+}
