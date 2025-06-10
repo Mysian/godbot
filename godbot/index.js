@@ -94,20 +94,104 @@ client.once(Events.ClientReady, async () => {
   }
 });
 
-// ✅ 슬래시 명령어 처리
+// ✅ 슬래시 명령어 + 버튼 + 모달 처리
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    await interaction.reply({ content: "❌ 명령어 실행 중 오류가 발생했습니다.", ephemeral: true });
-    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-    if (logChannel && logChannel.isTextBased()) {
-      logChannel.send(`❗ 명령어 오류 발생\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
+  // --- 슬래시 명령어 ---
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+    try {
+      await command.execute(interaction);
+    } catch (error) {
+      console.error(error);
+      await interaction.reply({ content: "❌ 명령어 실행 중 오류가 발생했습니다.", ephemeral: true });
+      const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+      if (logChannel && logChannel.isTextBased()) {
+        logChannel.send(`❗ 명령어 오류 발생\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
+      }
     }
+    return;
+  }
+
+  // --- 버튼 처리 ---
+  if (interaction.isButton()) {
+    const userId = interaction.user.id;
+    const profilePath = path.join(__dirname, "data/profile-data.json");
+    function loadProfiles() {
+      if (!fs.existsSync(profilePath)) fs.writeFileSync(profilePath, "{}");
+      return JSON.parse(fs.readFileSync(profilePath, "utf8"));
+    }
+    function saveProfiles(data) {
+      fs.writeFileSync(profilePath, JSON.stringify(data, null, 2));
+    }
+    const profiles = loadProfiles();
+
+    if (!profiles[userId]) {
+      return interaction.reply({ content: '⚠️ 먼저 `/프로필등록` 명령어로 프로필을 등록해 주세요.', ephemeral: true });
+    }
+
+    // --- 상태 메시지 수정 버튼 ---
+    if (interaction.customId === 'edit_status') {
+      const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+      const modal = new ModalBuilder()
+        .setCustomId('edit_status_modal')
+        .setTitle('상태 메시지 수정');
+      const input = new TextInputBuilder()
+        .setCustomId('status_input')
+        .setLabel('새 상태 메시지를 입력하세요')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('예: 요즘 롤만 해요!')
+        .setMaxLength(50)
+        .setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return await interaction.showModal(modal);
+    }
+
+    // --- 선호 게임 수정 버튼(준비중) ---
+    if (interaction.customId === 'edit_games') {
+      return interaction.reply({ content: '🔧 해당 기능은 곧 업데이트될 예정입니다.', ephemeral: true });
+    }
+
+    // --- 오버워치 티어/포지션 수정 버튼(준비중) ---
+    if (interaction.customId === 'edit_owtier') {
+      return interaction.reply({ content: '🔧 오버워치 티어/포지션 수정 기능 준비 중입니다.', ephemeral: true });
+    }
+
+    // --- 롤 티어/포지션 수정 버튼(준비중) ---
+    if (interaction.customId === 'edit_loltier') {
+      return interaction.reply({ content: '🔧 롤 티어/포지션 수정 기능 준비 중입니다.', ephemeral: true });
+    }
+
+    // --- 닉네임들 수정 버튼(준비중) ---
+    if (interaction.customId === 'edit_nicks') {
+      return interaction.reply({ content: '🔧 스팀/롤/배틀넷 닉네임 수정 기능도 곧 지원됩니다.', ephemeral: true });
+    }
+    return;
+  }
+
+  // --- 모달 처리 (상태 메시지 수정) ---
+  if (interaction.isModalSubmit()) {
+    const userId = interaction.user.id;
+    const profilePath = path.join(__dirname, "data/profile-data.json");
+    function loadProfiles() {
+      if (!fs.existsSync(profilePath)) fs.writeFileSync(profilePath, "{}");
+      return JSON.parse(fs.readFileSync(profilePath, "utf8"));
+    }
+    function saveProfiles(data) {
+      fs.writeFileSync(profilePath, JSON.stringify(data, null, 2));
+    }
+    if (interaction.customId === 'edit_status_modal') {
+      const profiles = loadProfiles();
+      if (!profiles[userId]) {
+        return interaction.reply({ content: '⚠️ 먼저 `/프로필등록` 명령어로 프로필을 등록해 주세요.', ephemeral: true });
+      }
+      const statusMsg = interaction.fields.getTextInputValue('status_input');
+      profiles[userId].status = statusMsg;
+      saveProfiles(profiles);
+      return interaction.reply({ content: `✅ 상태 메시지가 성공적으로 수정되었습니다!`, ephemeral: true });
+    }
+    // 다른 모달 추가시 여기에 분기 추가
+    return;
   }
 });
 

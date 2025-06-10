@@ -2,10 +2,14 @@ const { SlashCommandBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-const profilePath = path.join(__dirname, "../../data/profile-data.json");
-const cooldownPath = path.join(__dirname, "../../data/like-cooldown.json");
+// 경로를 /commands/ 기준으로 재설정
+const profilePath = path.join(__dirname, "../data/profile-data.json");
+const cooldownPath = path.join(__dirname, "../data/like-cooldown.json");
 
+// data 폴더 및 파일 자동 생성
 function load(pathStr) {
+  const dataDir = path.dirname(pathStr);
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(pathStr)) fs.writeFileSync(pathStr, "{}");
   return JSON.parse(fs.readFileSync(pathStr, "utf8"));
 }

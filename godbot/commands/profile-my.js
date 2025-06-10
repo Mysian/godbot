@@ -2,10 +2,14 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-const profilePath = path.join(__dirname, "../../data/profile-data.json");
-const recordPath = path.join(__dirname, "../../data/champion-records.json");
+// /commands/ 기준으로 data 폴더 경로 재설정
+const profilePath = path.join(__dirname, "../data/profile-data.json");
+const recordPath = path.join(__dirname, "../data/champion-records.json");
 
+// data 폴더 자동 생성 및 파일 존재 보장
 function loadData(pathStr) {
+  const dataDir = path.dirname(pathStr);
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(pathStr)) fs.writeFileSync(pathStr, "{}");
   return JSON.parse(fs.readFileSync(pathStr));
 }

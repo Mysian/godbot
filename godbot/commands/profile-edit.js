@@ -1,10 +1,23 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const {
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-const profilePath = path.join(__dirname, '../../data/profile-data.json');
+// 경로를 /commands/ 기준으로 맞춤!
+const profilePath = path.join(__dirname, '../data/profile-data.json');
 
+// data 폴더 자동 생성까지 반영
 function loadProfiles() {
+  const dataDir = path.dirname(profilePath);
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(profilePath)) fs.writeFileSync(profilePath, '{}');
   return JSON.parse(fs.readFileSync(profilePath));
 }
@@ -22,7 +35,10 @@ module.exports = {
     const profiles = loadProfiles();
 
     if (!profiles[userId]) {
-      return interaction.reply({ content: '⚠️ 먼저 `/프로필등록` 명령어로 프로필을 등록해 주세요.', ephemeral: true });
+      return interaction.reply({
+        content: '⚠️ 먼저 `/프로필등록` 명령어로 프로필을 등록해 주세요.',
+        ephemeral: true
+      });
     }
 
     const embed = new EmbedBuilder()
