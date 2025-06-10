@@ -1,14 +1,13 @@
 // utils/battleEngine.js
 const skills = require('./skills');
-const skillCd = require('./skills-cooldown'); // 쿨다운 및 minTurn 정보
+const skillCd = require('./skills-cooldown');
 
-// 전투 시작 시 컨텍스트 초기화
 function initBattleContext(battle) {
   battle.context = {
     effects: {},
     cooldowns: {},
-    skillTurn: {},    // 각 유저별 현재 자신의 턴 누적
-    skillUsed: {},    // 각 유저별 마지막 스킬 사용 턴
+    skillTurn: {},
+    skillUsed: {},
     flatReduction: {},
     percentReduction: {},
     doubleDamage: {},
@@ -18,9 +17,9 @@ function initBattleContext(battle) {
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
-    battle.context.cooldowns[id] = 0;       // 스킬 쿨다운 잔여턴
-    battle.context.skillTurn[id] = 0;       // 전투 내 누적 턴
-    battle.context.skillUsed[id] = null;    // 마지막 사용 턴(없으면 null)
+    battle.context.cooldowns[id] = 0;
+    battle.context.skillTurn[id] = 0;
+    battle.context.skillUsed[id] = null;
     battle.context.flatReduction[id] = 0;
     battle.context.percentReduction[id] = 0;
     battle.context.doubleDamage[id] = false;
@@ -29,23 +28,22 @@ function initBattleContext(battle) {
   });
 }
 
-// 매 턴 시작: 효과·쿨타임 감소 및 턴 카운트 증가
+// processTurnStart에서 context.effects를 실제 스탯에 반영
 function processTurnStart(userData, battle, actingUserId) {
   [battle.challenger, battle.opponent].forEach(id => {
-    // 매 턴마다 본인 턴만 +1
+    // 내 턴 + 쿨감
     if (id === actingUserId) {
       battle.context.skillTurn[id]++;
-      // 쿨다운도 내 턴에만 감소
       if (battle.context.cooldowns[id] > 0) battle.context.cooldowns[id]--;
     }
-    // 매턴 효과/감쇠값 리셋
     battle.context.flatReduction[id] = 0;
     battle.context.percentReduction[id] = 0;
     battle.context.doubleDamage[id] = false;
     battle.context.invulnerable[id] = false;
     battle.context.dodgeNextAttack[id] = false;
 
-    // 효과 적용
+    // 디버프/버프 반영
+    let atkModifier = 0, defModifier = 0;
     const next = [];
     for (const e of battle.context.effects[id]) {
       switch (e.type) {
@@ -76,10 +74,26 @@ function processTurnStart(userData, battle, actingUserId) {
           battle.context.dodgeNextAttack[id] = true;
           battle.logs.push(`💨 ${userData[id].name}은(는) 다음 공격을 회피!`);
           break;
+        case 'atkDown':
+          atkModifier = -e.value; // ex) 공격력 0이면 -현재 공격력
+          battle.logs.push(`🔻 ${userData[id].name}의 공격력이 0이 됩니다!`);
+          break;
+        case 'defDown':
+          defModifier = -e.value; // ex) 방어력 절반 감소면 -원래/2
+          battle.logs.push(`🔻 ${userData[id].name}의 방어력이 절반으로 감소!`);
+          break;
       }
       if (e.turns > 1) next.push({ ...e, turns: e.turns - 1 });
     }
     battle.context.effects[id] = next;
+
+    // 실제로 userData 스탯에 반영
+    if (atkModifier !== 0 && userData[id].stats) {
+      userData[id].stats.attack = Math.max(0, userData[id].stats.attack + atkModifier);
+    }
+    if (defModifier !== 0 && userData[id].stats) {
+      userData[id].stats.defense = Math.max(0, userData[id].stats.defense + defModifier);
+    }
   });
 }
 
@@ -90,7 +104,6 @@ function canUseSkill(userId, championName, context) {
   const minTurn = cdInfo.minTurn || 1;
   const cooldown = cdInfo.cooldown || 1;
   const nowTurn = context.skillTurn[userId] || 0;
-
   if (nowTurn < minTurn) {
     return { ok: false, reason: `최소 ${minTurn}턴 이후 사용 가능! (현재: ${nowTurn}턴)` };
   }
@@ -138,46 +151,43 @@ function calculateDamage(
   const defStats = defender.stats ?? defender;
   const atkName = attacker.name ?? '공격자';
   const defName = defender.name ?? '방어자';
-  const ad = isAttack ? (atkStats.attack || 0) : 0;
-  const ap = isAttack ? (atkStats.ap || 0) : 0;
+  let ad = isAttack ? (atkStats.attack || 0) : 0;
+  let ap = isAttack ? (atkStats.ap || 0) : 0;
   const pen = atkStats.penetration || 0;
 
-  // 2) 기본 방어력 보정
+  // 효과 적용(공격력/방어력 변동은 위 processTurnStart에서 이미 처리)
   let defVal = Math.max(0, (defStats.defense || 0) - pen);
   let base = Math.max(0, ad + ap * 0.5 - defVal);
 
-  // 3) 회피/치명
   const evade = Math.random() < 0.05;
   if (evade) return { damage: 0, critical: false, log: `${defName}이(가) 회피!` };
   const crit = Math.random() < 0.1;
   if (crit) base = Math.floor(base * 1.5);
 
-  // 4) 분산 랜덤 (±15%)
   const variance = Math.floor(base * 0.15);
   const minD = Math.max(0, base - variance);
   const maxD = base + variance;
   base = minD + Math.floor(Math.random() * (maxD - minD + 1));
 
-  // 5) doubleDamage 체크
   if (isAttack && context.doubleDamage?.[attacker.id]) {
     base *= 2;
     context.doubleDamage[attacker.id] = false;
   }
 
-  // 6) flat/percent 감쇄
   base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
   base = Math.floor(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
-  // 7) 스킬 effect 적용(버튼으로 스킬 사용 시만!)
+  // 스킬 effect 적용(버튼으로 스킬 사용 시만!)
   let skillLog = '';
   let skillName = '';
   let skillDesc = '';
   let effectMsg = '';
   let usedSkill = false;
-  let beforeHpAttacker = attacker.hp;
-  let beforeHpDefender = defender.hp;
+  let addEffectArr = [];
+  let extraAttack = false;
+  let extraTurn = false;
 
   if (
     championName &&
@@ -189,7 +199,6 @@ function calculateDamage(
     if (!check.ok) {
       return { damage: 0, critical: false, log: `❌ 스킬 사용 불가: ${check.reason}` };
     }
-
     skillName = skills[championName].name;
     skillDesc = skills[championName].description;
     usedSkill = true;
@@ -201,12 +210,27 @@ function calculateDamage(
     if (typeof skillResult === 'object' && skillResult !== null) {
       base = skillResult.baseDamage ?? base;
       if (skillResult.log) effectMsg = skillResult.log;
+      if (Array.isArray(skillResult.addEffect)) addEffectArr = skillResult.addEffect;
+      if (skillResult.extraAttack) extraAttack = true;
+      if (skillResult.extraTurn) extraTurn = true;
     } else {
       base = skillResult;
     }
     const cdInfo = skillCd[championName] || {};
     context.cooldowns[attacker.id] = cdInfo.cooldown || 1;
     context.skillUsed[attacker.id] = context.skillTurn[attacker.id];
+  }
+
+  // addEffect로 받은 효과들 context.effects에 추가
+  if (addEffectArr.length && context.effects) {
+    for (const eff of addEffectArr) {
+      // eff.target: 'attacker' or 'defender'
+      if (eff.target === 'attacker') {
+        context.effects[attacker.id].push(eff.effect);
+      } else {
+        context.effects[defender.id].push(eff.effect);
+      }
+    }
   }
 
   // effect 내 hp 변화가 실제로 반영되도록!
@@ -236,7 +260,9 @@ function calculateDamage(
     log += `➡️ **${effectMsg}**\n`;
   }
   log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
-  return { damage: Math.round(base), critical: crit, log };
+
+  // extraAttack/extraTurn 정보도 반환(챔배틀에서 활용)
+  return { damage: Math.round(base), critical: crit, log, extraAttack, extraTurn };
 }
 
 module.exports = {
