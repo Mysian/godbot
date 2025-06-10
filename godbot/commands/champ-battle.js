@@ -15,6 +15,7 @@ const {
   canUseSkill
 } = require('../utils/battleEngine');
 const skills = require('../utils/skills');
+const skillCd = require('../utils/skills-cooldown');
 const { getChampionIcon } = require('../utils/champion-utils');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
@@ -49,6 +50,54 @@ function getStatusIcons(effects = []) {
   return s;
 }
 
+// 능력치 + 임시버프 실시간 표기
+function createStatField(user, effects = []) {
+  // 기본값
+  const stat = user.stats || {};
+  let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
+  let atkBuf = 0, defBuf = 0, apBuf = 0, mrBuf = 0;
+
+  // 임시 버프/디버프 파싱
+  for (const e of effects) {
+    if (e.type === 'atkBuff') atkBuf += e.value;
+    if (e.type === 'atkDown') atkBuf -= e.value;
+    if (e.type === 'defBuff') defBuf += e.value;
+    if (e.type === 'defDown') defBuf -= e.value;
+    if (e.type === 'magicResistBuff') mrBuf += e.value;
+    if (e.type === 'magicResistDebuff') mrBuf -= e.value;
+    // 필요하면 apBuf 등 추가
+  }
+  // 표기: ex) 공격력 50 (+5) / 방어력 30 (-3)
+  const f = (base, buf) => buf ? `${base} ${buf > 0 ? `+${buf}` : `${buf}`}` : `${base}`;
+  return (
+    `🗡️ 공격력: ${f(atk, atkBuf)}\n` +
+    `🔮 주문력: ${f(ap, apBuf)}\n` +
+    `🛡️ 방어력: ${f(def, defBuf)}\n` +
+    `✨ 마법저항: ${f(mr, mrBuf)}\n`
+  );
+}
+
+// 스킬 설명, 쿨타임, 현재 사용 가능 여부 안내
+function createSkillField(userId, champName, context) {
+  const skillObj = skills[champName];
+  const cdObj = skillCd[champName];
+  if (!skillObj || !cdObj) return '스킬 정보 없음';
+  const { name, description } = skillObj;
+  const { minTurn, cooldown } = cdObj;
+  // 현재 쿨타임/스킬턴
+  const turn = context.skillTurn?.[userId] || 0;
+  const remain = context.cooldowns?.[userId] || 0;
+  let canUse = true, reason = '';
+  const check = canUseSkill(userId, champName, context);
+  if (!check.ok) { canUse = false; reason = check.reason; }
+  // 표기
+  let txt = `✨ **${name}**\n${description}\n`;
+  txt += `⏳ 최소 ${minTurn || 1}턴 후 사용, 쿨타임: ${cooldown || 1}턴\n`;
+  txt += `현재 경과 턴: ${turn}, 쿨다운: ${remain}\n`;
+  txt += canUse ? '🟢 **사용 가능!**' : `🔴 사용 불가: ${reason}`;
+  return txt;
+}
+
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
   const ch = userData[challenger.id];
   const op = userData[opponent.id];
@@ -57,6 +106,7 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
+  // 스탯, 임시버프, 스킬 설명/쿨타임 필드 추가
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
     .setDescription(`**${challenger.username}** vs **${opponent.username}**`)
@@ -65,14 +115,20 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
         name: `👑 ${challenger.username}`,
         value: `${ch.name} ${getStatusIcons(battle.context.effects[challenger.id])}
 💖 ${chp}/${ch.stats.hp}
-${createHpBar(chp, ch.stats.hp)}`,
+${createHpBar(chp, ch.stats.hp)}
+${createStatField(ch, battle.context.effects[challenger.id])}
+${createSkillField(challenger.id, ch.name, battle.context)}
+`,
         inline: true
       },
       {
         name: `🛡️ ${opponent.username}`,
         value: `${op.name} ${getStatusIcons(battle.context.effects[opponent.id])}
 💖 ${ohp}/${op.stats.hp}
-${createHpBar(ohp, op.stats.hp)}`,
+${createHpBar(ohp, op.stats.hp)}
+${createStatField(op, battle.context.effects[opponent.id])}
+${createSkillField(opponent.id, op.name, battle.context)}
+`,
         inline: true
       },
       { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
@@ -177,7 +233,7 @@ module.exports = {
         },
         turn: challenger.id,
         logs: [],
-        usedSkill: {} // 턴 내 스킬 사용 여부
+        usedSkill: {}
       };
       initBattleContext(bd[battleId]);
       save(battlePath, bd);
