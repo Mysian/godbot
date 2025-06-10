@@ -137,7 +137,7 @@ ${createSkillField(opponent.id, op.name, battle.context)}
     .setColor(0x3498db);
 }
 
-// 결과 임베드는 그대로 (위 요구엔 영향 없음)
+// 결과 임베드
 async function createResultEmbed(winner, loser, userData, records, interaction) {
   const winChampName = userData[winner].name;
   const loseChampName = userData[loser].name;
@@ -172,8 +172,8 @@ async function createResultEmbed(winner, loser, userData, records, interaction) 
         inline: false
       }
     )
-    .setThumbnail(winIcon)
-    .setImage(loseIcon)
+    .setThumbnail(winIcon)  // 승리자(썸네일)
+    .setImage(loseIcon)     // 패배자(대표이미지)
     .setColor(0x00ff88)
     .setTimestamp();
 }
@@ -238,14 +238,14 @@ module.exports = {
       embeds: [requestEmbed],
       components: [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('accept').setLabel('✅ 도전을 승낙하지').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('decline').setLabel('❌ 아직은 때가 아니다').setStyle(ButtonStyle.Danger)
+          new ButtonBuilder().setCustomId('accept').setLabel('✅ 도전 수락').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('decline').setLabel('❌ 거절').setStyle(ButtonStyle.Danger)
         )
       ],
       fetchReply: true
     });
 
-    // 배틀 요청에 30초간 응답 없으면 자동 취소 (승/패 기록 없음)
+    // --- 여기서 30초 타이머 (배틀 요청만) ---
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -260,7 +260,6 @@ module.exports = {
         return reqCol.stop();
       }
 
-      // 아래는 수락 시 실제 배틀 세팅. (변경 없음)
       reqCol.stop();
 
       const startHpCh = userData[challenger.id].stats.hp;
@@ -369,7 +368,7 @@ module.exports = {
             } else {
               const block = userData[uid].stats.defense;
               cur.context.effects[uid].push({ type: 'damageReduction', value: block, turns: 1 });
-              log = `🛡️ ${userData[uid].name}이 와리가리 무빙합니다… 다음 턴 피해 ${block}↓`;
+              log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
             }
 
             cur.logs.push(log);
@@ -464,22 +463,6 @@ module.exports = {
         });
       };
 
-      reqCol.on('end', async (_col, reason) => {
-        // [여기] 30초 동안 응답 없으면 승/패 기록 없이 배틀 취소만
-        if (['time', 'idle'].includes(reason) && bd[battleId]) {
-          delete bd[battleId];
-          save(battlePath, bd);
-          try {
-            const cancelEmbed = new EmbedBuilder()
-              .setTitle('⏳ 배틀 요청 취소')
-              .setDescription('30초 동안 아무도 응답하지 않아 배틀이 자동 취소되었습니다.')
-              .setColor(0xff4444)
-              .setTimestamp();
-            await req.edit({ content: null, embeds: [cancelEmbed], components: [] });
-          } catch {}
-        }
-      });
-
       function canUseSkillBtn(cur) {
         if (!cur || typeof cur.turn === "undefined") return false;
         const uid = cur.turn;
@@ -488,6 +471,23 @@ module.exports = {
       }
 
       startTurn();
+    });
+
+    // 👉 여기서 타임아웃 발생 시 배틀 기록 삭제 + 종료 안내 embed 출력
+    reqCol.on('end', async (_col, reason) => {
+      if (['time', 'idle'].includes(reason) && bd[battleId]?.pending) {
+        delete bd[battleId];
+        save(battlePath, bd);
+        // 종료 안내 embed
+        const timeoutEmbed = new EmbedBuilder()
+          .setTitle('⏰ 배틀 요청 시간 초과')
+          .setDescription('30초 동안 아무런 응답이 없어 배틀이 종료되었습니다.')
+          .setColor(0xff4444)
+          .setTimestamp();
+        try {
+          await req.edit({ content: null, embeds: [timeoutEmbed], components: [] });
+        } catch {}
+      }
     });
   }
 };
