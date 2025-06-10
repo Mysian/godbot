@@ -73,11 +73,9 @@ function canUseSkill(userId, champName, context) {
   const turn = context.skillTurn?.[userId] ?? 0;
   const remain = context.cooldowns?.[userId] ?? 0;
 
-  // 최소 턴이 지나야 사용 가능 (내 턴이 최소 minTurn 이상)
   if (turn < minTurn) {
     return { ok: false, reason: `${minTurn}턴 이후부터 사용 가능 (내 턴 ${turn}회 경과)` };
   }
-  // 쿨타임이 0이어야 사용 가능 (쿨타임이 남아있으면 불가)
   if (remain > 0) {
     return { ok: false, reason: `쿨타임: ${remain}턴 남음` };
   }
@@ -279,7 +277,8 @@ module.exports = {
         usedSkill: {},
         context: {
           skillTurn: { [challenger.id]: 0, [opponent.id]: 0 },
-          cooldowns: { [challenger.id]: 0, [opponent.id]: 0 }
+          cooldowns: { [challenger.id]: 0, [opponent.id]: 0 },
+          effects:   { [challenger.id]: [], [opponent.id]: [] }
         }
       };
       initBattleContext(bd[battleId]);
@@ -298,13 +297,17 @@ module.exports = {
 
       let turnCol;
       const startTurn = async () => {
+        // battle 객체가 존재하는지 확인
+        if (!bd[battleId]) return;
+
         const cur = bd[battleId];
         cur.usedSkill = cur.usedSkill || {};
         const currentTurnUser = cur.turn;
         cur.context.skillTurn = cur.context.skillTurn || { [cur.challenger]: 0, [cur.opponent]: 0 };
         cur.context.cooldowns = cur.context.cooldowns || { [cur.challenger]: 0, [cur.opponent]: 0 };
+        cur.context.effects   = cur.context.effects || { [cur.challenger]: [], [cur.opponent]: [] };
 
-        // 1. 내 턴 시작시 본인 skillTurn+1, 쿨다운(남아있으면) 1 감소
+        // 내 턴 시작시 본인 skillTurn+1, 쿨다운(남아있으면) 1 감소
         cur.context.skillTurn[currentTurnUser] = (cur.context.skillTurn[currentTurnUser] || 0) + 1;
         if (cur.context.cooldowns[currentTurnUser] > 0) {
           cur.context.cooldowns[currentTurnUser]--;
@@ -324,8 +327,17 @@ module.exports = {
         let actionDone = {};
 
         turnCol.on('collect', async i => {
-          const uid = i.user.id;
+          // battle 객체가 유효한지(삭제 안됐는지) 매번 확인
+          if (!bd[battleId]) {
+            await i.reply({ content: '❌ 이미 종료된 배틀입니다.', ephemeral: true });
+            return;
+          }
           const cur = bd[battleId];
+          if (!cur.turn) {
+            await i.reply({ content: '❌ 잘못된 배틀 상태입니다.', ephemeral: true });
+            return;
+          }
+          const uid = i.user.id;
           if (uid !== cur.turn) {
             return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
           }
@@ -442,7 +454,7 @@ module.exports = {
 
         turnCol.on('end', async (_col, reason) => {
           if (['idle', 'time'].includes(reason)) {
-            delete bd[battleId];
+            if (bd[battleId]) delete bd[battleId];
             save(battlePath, bd);
             const stopEmbed = new EmbedBuilder()
               .setTitle('🛑 전투 중단')
@@ -464,7 +476,6 @@ module.exports = {
         }
       });
 
-      // 스킬 사용 가능 여부 체크 함수 (매턴 UI 활성화용)
       function canUseSkill(cur) {
         const uid = cur.turn;
         const champName = userData[uid]?.name;
