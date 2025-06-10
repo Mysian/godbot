@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
-const { Client, Collection, GatewayIntentBits, Events } = require("discord.js");
+const { Client, Collection, GatewayIntentBits, Events, ActivityType } = require("discord.js");
 require("dotenv").config();
 
 const client = new Client({
@@ -62,9 +62,31 @@ if (fs.existsSync(eventsPath)) {
   }
 }
 
-// ✅ 봇 준비 완료 시 로그 전송
+// ✅ 봇 준비 완료 시 로그 전송 + 활동 상태 번갈아 표시
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
+
+  // 활동 상태 메시지 배열
+  const activityMessages = [
+    "/챔피언획득으로 롤 챔피언을 키워보세요!",
+    "/도움말 을 통해 까리한 기능들을 확인해보세요!"
+  ];
+  let activityIndex = 0;
+
+  // 주기적으로 활동 상태 변경
+  setInterval(() => {
+    client.user.setPresence({
+      status: "online",
+      activities: [
+        {
+          name: activityMessages[activityIndex],
+          type: ActivityType.Playing,
+        },
+      ],
+    });
+    activityIndex = (activityIndex + 1) % activityMessages.length;
+  }, 20000); // 20초마다 변경
+
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (logChannel && logChannel.isTextBased()) {
     logChannel.send(`🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR")})`);
