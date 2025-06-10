@@ -42,6 +42,9 @@ function getStatusIcons(effects = []) {
   for (const e of effects) {
     if (e.type === 'stunned') s += '💫';
     if (e.type === 'dot')     s += '☠️';
+    if (e.type === 'dodgeNextAttack') s += '💨';
+    if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') s += '🛡️';
+    // 필요하면 더 추가
   }
   return s;
 }
@@ -192,7 +195,7 @@ module.exports = {
       let turnCol;
       const startTurn = async () => {
         const cur = bd[battleId];
-        cur.usedSkill = {}; // 턴 넘길 때 스킬 사용여부 리셋!
+        cur.usedSkill = {};
         processTurnStart(userData, cur, cur.turn);
         save(battlePath, bd);
 
@@ -203,7 +206,7 @@ module.exports = {
             time: 300000
           });
 
-          let actionDone = {}; // uid별 평타/방어/스킬 기록
+          let actionDone = {};
 
           turnCol.on('collect', async i => {
             const uid = i.user.id;
@@ -240,15 +243,12 @@ module.exports = {
               }
 
               cur.logs.push(log);
-
-              // [핵심] 내 턴이 끝났으니 평타/방어 후에만 스킬 사용 여부 리셋!
               actionDone[uid] = { skill: false, done: false };
               cur.usedSkill[uid] = false;
 
               cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
               save(battlePath, bd);
 
-              // 종료 체크
               const loser = cur.hp[cur.challenger] <= 0 ? cur.challenger : (cur.hp[cur.opponent] <= 0 ? cur.opponent : null);
               if (loser) {
                 turnCol.stop();
@@ -303,12 +303,11 @@ module.exports = {
                   cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
                   log = dmgInfo.log;
                   actionDone[uid].skill = true;
-                  cur.usedSkill[uid] = true; // 이 턴엔 disable!
+                  cur.usedSkill[uid] = true;
                 }
               }
               cur.logs.push(log);
 
-              // 공격/방어를 아직 안 했다면 내 턴 유지(스킬 버튼만 disable)
               const nextEmbed = await createBattleEmbed(
                 challenger, opponent, cur, userData, cur.turn, log, false
               );
