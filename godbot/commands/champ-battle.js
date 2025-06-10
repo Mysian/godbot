@@ -45,19 +45,15 @@ function getStatusIcons(effects = []) {
     if (e.type === 'dot')     s += '☠️';
     if (e.type === 'dodgeNextAttack') s += '💨';
     if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') s += '🛡️';
-    // 필요하면 더 추가
   }
   return s;
 }
 
 // 능력치 + 임시버프 실시간 표기
 function createStatField(user, effects = []) {
-  // 기본값
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
   let atkBuf = 0, defBuf = 0, apBuf = 0, mrBuf = 0;
-
-  // 임시 버프/디버프 파싱
   for (const e of effects) {
     if (e.type === 'atkBuff') atkBuf += e.value;
     if (e.type === 'atkDown') atkBuf -= e.value;
@@ -65,9 +61,7 @@ function createStatField(user, effects = []) {
     if (e.type === 'defDown') defBuf -= e.value;
     if (e.type === 'magicResistBuff') mrBuf += e.value;
     if (e.type === 'magicResistDebuff') mrBuf -= e.value;
-    // 필요하면 apBuf 등 추가
   }
-  // 표기: ex) 공격력 50 (+5) / 방어력 30 (-3)
   const f = (base, buf) => buf ? `${base} ${buf > 0 ? `+${buf}` : `${buf}`}` : `${base}`;
   return (
     `🗡️ 공격력: ${f(atk, atkBuf)}\n` +
@@ -84,13 +78,11 @@ function createSkillField(userId, champName, context) {
   if (!skillObj || !cdObj) return '스킬 정보 없음';
   const { name, description } = skillObj;
   const { minTurn, cooldown } = cdObj;
-  // 현재 쿨타임/스킬턴
   const turn = context.skillTurn?.[userId] || 0;
   const remain = context.cooldowns?.[userId] || 0;
   let canUse = true, reason = '';
   const check = canUseSkill(userId, champName, context);
   if (!check.ok) { canUse = false; reason = check.reason; }
-  // 표기
   let txt = `✨ **${name}**\n${description}\n`;
   txt += `⏳ 최소 ${minTurn || 1}턴 후 사용, 쿨타임: ${cooldown || 1}턴\n`;
   txt += `현재 경과 턴: ${turn}, 쿨다운: ${remain}\n`;
@@ -106,7 +98,6 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
-  // 스탯, 임시버프, 스킬 설명/쿨타임 필드 추가
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
     .setDescription(`**${challenger.username}** vs **${opponent.username}**`)
@@ -137,6 +128,48 @@ ${createSkillField(opponent.id, op.name, battle.context)}
     .setThumbnail(iconOp)
     .setImage(iconCh)
     .setColor(0x3498db);
+}
+
+async function createResultEmbed(winner, loser, userData, records, interaction) {
+  const winChampName = userData[winner].name;
+  const loseChampName = userData[loser].name;
+  const winChampDesc = skills[winChampName]?.description || '';
+  const loseChampDesc = skills[loseChampName]?.description || '';
+  const winIcon = await getChampionIcon(winChampName);
+  const loseIcon = await getChampionIcon(loseChampName);
+
+  return new EmbedBuilder()
+    .setTitle('🏆 배틀 결과')
+    .setDescription(
+      `### 👑 **승리자!**\n` +
+      `**${winChampName}** (${interaction.guild.members.cache.get(winner).user.username})\n` +
+      `전적: ${records[winner].win}승 ${records[winner].lose}패 ${records[winner].draw || 0}무\n`
+    )
+    .addFields(
+      {
+        name: '👑 승리자 챔피언',
+        value: `**${winChampName}**\n${winChampDesc}`,
+        inline: true
+      },
+      {
+        name: '🪦 패배자 챔피언',
+        value: `**${loseChampName}**\n${loseChampDesc}`,
+        inline: true
+      }
+    )
+    .addFields(
+      {
+        name: '🪦 패배자!',
+        value: `${loseChampName} (${interaction.guild.members.cache.get(loser).user.username})\n`
+          + `${loseChampDesc?.split('.')[0] || '챔피언의 특징 정보 없음.'}`,
+        inline: false
+      }
+    )
+    // 이미지는 임베드 규격상 썸네일+이미지가 가장 '나란히' 느낌 (좌: 썸네일, 우: 이미지)
+    .setImage(winIcon)
+    .setThumbnail(loseIcon)
+    .setColor(0x00ff88)
+    .setTimestamp();
 }
 
 module.exports = {
@@ -316,13 +349,13 @@ module.exports = {
                 records[loser].lose++;
                 save(recordPath, records);
 
-                const winEmbed = new EmbedBuilder()
-                  .setTitle('🏆 승리!')
-                  .setDescription(`${userData[winner].name} (${interaction.guild.members.cache.get(winner).user.username}) 승리!`)
-                  .setThumbnail(await getChampionIcon(userData[loser].name))
-                  .setColor(0x00ff88)
-                  .setImage(await getChampionIcon(userData[winner].name));
-                return i.editReply({ embeds: [winEmbed], components: [] });
+                // 🔥 여기서 리뉴얼된 승리 임베드 적용!
+                const winEmbed = await createResultEmbed(winner, loser, userData, records, interaction);
+
+                await i.editReply({ content: '🏆 승리!', embeds: [winEmbed], components: [] });
+                delete bd[battleId];
+                save(battlePath, bd);
+                return;
               }
 
               const nextEmbed = await createBattleEmbed(
