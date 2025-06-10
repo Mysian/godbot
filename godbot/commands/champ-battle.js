@@ -317,13 +317,36 @@ module.exports = {
                 save(recordPath, records);
 
                 const winEmbed = new EmbedBuilder()
-                  .setTitle('🏆 승리!')
-                  .setDescription(`${userData[winner].name} (${interaction.guild.members.cache.get(winner).user.username}) 승리!`)
-                  .setThumbnail(await getChampionIcon(userData[loser].name))
-                  .setColor(0x00ff88)
-                  .setImage(await getChampionIcon(userData[winner].name));
-                return i.editReply({ embeds: [winEmbed], components: [] });
-              }
+  .setTitle('🏆 배틀 결과')
+  .setDescription(
+    `### 👑 **승리자!**\n` +
+    `**${userData[winner].name}** (${interaction.guild.members.cache.get(winner).user.username})\n` +
+    `전적: ${records[winner].win}승 ${records[winner].lose}패 ${records[winner].draw || 0}무\n`
+  )
+  .addFields(
+    {
+      name: '👑 승리자 챔피언',
+      value: `**${userData[winner].name}**\n${skills[userData[winner].name]?.description || ''}`,
+      inline: true
+    },
+    {
+      name: '🪦 패배자 챔피언',
+      value: `**${userData[loser].name}**\n${skills[userData[loser].name]?.description || ''}`,
+      inline: true
+    }
+  )
+  .addFields(
+    {
+      name: '🪦 패배자!',
+      value: `${userData[loser].name} (${interaction.guild.members.cache.get(loser).user.username})\n`
+        + `${skills[userData[loser].name]?.description?.split('.')[0] || '챔피언의 특징 정보 없음.'}`,
+      inline: false
+    }
+  )
+  .setImage(await getChampionIcon(userData[winner].name))
+  .setThumbnail(await getChampionIcon(userData[loser].name))
+  .setColor(0x00ff88)
+  .setTimestamp();
 
               const nextEmbed = await createBattleEmbed(
                 challenger, opponent, cur, userData, cur.turn, log, true
