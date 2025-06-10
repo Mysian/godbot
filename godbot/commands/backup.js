@@ -7,7 +7,7 @@ const fileMap = {
   "호감도": path.join(__dirname, "../data/favorability-data.json"),
   "롤티어": path.join(__dirname, "../data/lol-tier.json"),
   "옵치티어": path.join(__dirname, "../data/ow-tier.json"),
-  "계정정보": path.join(__dirname, "../account/accounts.json"),
+  "계정정보": path.join(__dirname, "../accounts.json"),
   "서버 이용현황 관리 로그": path.join(__dirname, "../activity.json"),
   "챔피언 배틀 전적": path.join(__dirname, "../data/champion-records.json") // ✅ 추가
 };
