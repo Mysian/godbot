@@ -2,6 +2,7 @@
 const skills = require('./skills');
 const skillCd = require('./skills-cooldown');
 
+// 전투 시작 시 컨텍스트 초기화
 function initBattleContext(battle) {
   battle.context = {
     effects: {},
@@ -13,7 +14,15 @@ function initBattleContext(battle) {
     doubleDamage: {},
     invulnerable: {},
     dodgeNextAttack: {},
+    missNext: {},
+    skillBlocked: {},
+    blockSkill: {},
+    magicResistDebuff: {},
     userData: battle.userData || {},
+    reviveFlags: {},  // 1회성 부활
+    blind: {},
+    fear: {},
+    confused: {},
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -25,29 +34,33 @@ function initBattleContext(battle) {
     battle.context.doubleDamage[id] = false;
     battle.context.invulnerable[id] = false;
     battle.context.dodgeNextAttack[id] = false;
+    battle.context.missNext[id] = 0;
+    battle.context.skillBlocked[id] = 0;
+    battle.context.blockSkill[id] = 0;
+    battle.context.magicResistDebuff[id] = 0;
+    battle.context.blind[id] = 0;
+    battle.context.fear[id] = 0;
+    battle.context.confused[id] = 0;
+    battle.context.reviveFlags[id] = false;
   });
 }
 
-// processTurnStart에서 context.effects를 실제 스탯 및 임시상태에 반영
+// 매 턴 시작: 이펙트 처리 및 턴 감소, 스탯/상태 반영
 function processTurnStart(userData, battle, actingUserId) {
   [battle.challenger, battle.opponent].forEach(id => {
-    // 내 턴 + 쿨감
+    // 내 턴 증가, 쿨타임 감소
     if (id === actingUserId) {
       battle.context.skillTurn[id]++;
       if (battle.context.cooldowns[id] > 0) battle.context.cooldowns[id]--;
     }
+    // 상태 초기화
     battle.context.flatReduction[id] = 0;
     battle.context.percentReduction[id] = 0;
     battle.context.doubleDamage[id] = false;
     battle.context.invulnerable[id] = false;
     battle.context.dodgeNextAttack[id] = false;
-    // 임시상태 초기화
-    battle.context.missNext = battle.context.missNext || {};
-    battle.context.skillBlocked = battle.context.skillBlocked || {};
-    battle.context.blockSkill = battle.context.blockSkill || {};
-    battle.context.magicResistDebuff = battle.context.magicResistDebuff || {};
-
     let atkModifier = 0, defModifier = 0;
+
     const next = [];
     for (const e of battle.context.effects[id]) {
       switch (e.type) {
@@ -60,54 +73,52 @@ function processTurnStart(userData, battle, actingUserId) {
           break;
         case 'damageReduction':
           battle.context.flatReduction[id] += e.value;
-          battle.logs.push(`🛡️ ${userData[id].name}의 피해가 ${e.value}만큼 감소!`);
           break;
         case 'damageReductionPercent':
           battle.context.percentReduction[id] += e.value;
-          battle.logs.push(`🛡️ ${userData[id].name}의 피해가 ${e.value}% 감소!`);
           break;
         case 'doubleDamage':
           battle.context.doubleDamage[id] = true;
-          battle.logs.push(`🔥 ${userData[id].name}의 다음 공격 피해가 2배!`);
           break;
         case 'invulnerable':
           battle.context.invulnerable[id] = true;
-          battle.logs.push(`🛡️ ${userData[id].name}은(는) 무적 상태!`);
           break;
         case 'dodgeNextAttack':
           battle.context.dodgeNextAttack[id] = true;
-          battle.logs.push(`💨 ${userData[id].name}은(는) 다음 공격을 회피!`);
           break;
         case 'atkDown':
           atkModifier = -e.value;
-          battle.logs.push(`🔻 ${userData[id].name}의 공격력이 0이 됩니다!`);
           break;
         case 'defDown':
           defModifier = -e.value;
-          battle.logs.push(`🔻 ${userData[id].name}의 방어력이 절반으로 감소!`);
           break;
         case 'missNext':
-          battle.context.missNext[id] = (battle.context.missNext[id] || 0) + (e.turns || 1);
-          battle.logs.push(`💫 ${userData[id].name}의 다음 공격이 무효화됩니다!`);
+          battle.context.missNext[id] += (e.turns || 1);
           break;
         case 'skillBlocked':
-          battle.context.skillBlocked[id] = (battle.context.skillBlocked[id] || 0) + (e.turns || 1);
-          battle.logs.push(`⛔️ ${userData[id].name}의 스킬이 봉인됩니다!`);
+          battle.context.skillBlocked[id] += (e.turns || 1);
           break;
         case 'blockSkill':
-          battle.context.blockSkill[id] = (battle.context.blockSkill[id] || 0) + (e.turns || 1);
-          battle.logs.push(`🛡️ ${userData[id].name}의 다음 스킬 피해가 무효화됩니다!`);
+          battle.context.blockSkill[id] += (e.turns || 1);
           break;
         case 'magicResistDebuff':
-          battle.context.magicResistDebuff[id] = (battle.context.magicResistDebuff[id] || 0) + (e.value || 0);
-          battle.logs.push(`💫 ${userData[id].name}의 마법 방어력이 ${e.value}만큼 감소!`);
+          battle.context.magicResistDebuff[id] += (e.value || 0);
+          break;
+        case 'blinded':
+          battle.context.blind[id] += (e.turns || 1);
+          break;
+        case 'feared':
+          battle.context.fear[id] += (e.turns || 1);
+          break;
+        case 'confused':
+          battle.context.confused[id] += (e.turns || 1);
           break;
       }
       if (e.turns > 1) next.push({ ...e, turns: e.turns - 1 });
     }
     battle.context.effects[id] = next;
 
-    // 실제로 userData 스탯에 반영
+    // 스탯 변화 반영
     if (atkModifier !== 0 && userData[id].stats) {
       userData[id].stats.attack = Math.max(0, userData[id].stats.attack + atkModifier);
     }
@@ -116,8 +127,8 @@ function processTurnStart(userData, battle, actingUserId) {
     }
   });
 
-  // 임시상태(턴감소) 관리
-  ['missNext', 'skillBlocked', 'blockSkill'].forEach(type => {
+  // 상태(턴감소)
+  ['missNext', 'skillBlocked', 'blockSkill', 'blind', 'fear', 'confused'].forEach(type => {
     const ctx = battle.context[type];
     if (ctx) {
       Object.keys(ctx).forEach(uid => {
@@ -146,7 +157,6 @@ function canUseSkill(userId, championName, context) {
   return { ok: true };
 }
 
-// 공격/스킬 데미지 계산 및 스킬 효과 적용
 function calculateDamage(
   attacker,
   defender,
@@ -155,56 +165,47 @@ function calculateDamage(
   championName = null,
   asSkill = false
 ) {
-  // 1. 기절 체크
-  if (context.effects?.[attacker.id]?.some(e => e.type === 'stunned') || attacker.stunned) {
-    return {
-      damage: 0,
-      critical: false,
-      log: `${attacker.name}은(는) 기절 상태라 공격 불가!`
-    };
-  }
-  // 2. 무효화(다음 공격 무효)
-  if (context.missNext && context.missNext[attacker.id] > 0) {
-    context.missNext[attacker.id]--;
-    return {
-      damage: 0,
-      critical: false,
-      log: `${attacker.name}의 공격은 무효화됩니다!`
-    };
-  }
-  // 3. 회피
-  if (context.dodgeNextAttack?.[defender.id]) {
-    context.dodgeNextAttack[defender.id] = false;
-    return {
-      damage: 0,
-      critical: false,
-      log: `${defender.name}이(가) 완벽히 회피!`
-    };
-  }
-  // 4. 무적
-  if (context.invulnerable?.[defender.id]) {
-    context.invulnerable[defender.id] = false;
-    return {
-      damage: 0,
-      critical: false,
-      log: `${defender.name}이(가) 무적! 피해 0`
-    };
-  }
-  // 5. 스킬 피해 무효
+  // 행동불능 (기절, 공포, 혼란)
   if (
-    asSkill &&
-    context.blockSkill &&
-    context.blockSkill[defender.id] > 0
+    context.effects?.[attacker.id]?.some(e => e.type === 'stunned') ||
+    attacker.stunned ||
+    context.fear?.[attacker.id] > 0 ||
+    (context.confused?.[attacker.id] > 0 && Math.random() < 0.5) // 혼란: 50% 확률 행동실패
   ) {
-    context.blockSkill[defender.id]--;
-    return {
-      damage: 0,
-      critical: false,
-      log: `${defender.name}은(는) 스킬 피해를 무효화했습니다!`
-    };
+    let msg = `${attacker.name}은(는) `;
+    if (context.fear?.[attacker.id] > 0) msg += '공포로 ';
+    if (context.confused?.[attacker.id] > 0) msg += '혼란으로 ';
+    msg += '행동 불가!';
+    return { damage: 0, critical: false, log: msg };
   }
 
-  // 6. 스탯 추출 및 상태 반영
+  // 다음 공격 무효
+  if (context.missNext && context.missNext[attacker.id] > 0) {
+    context.missNext[attacker.id]--;
+    return { damage: 0, critical: false, log: `${attacker.name}의 공격은 무효화됩니다!` };
+  }
+  // 실명 상태
+  if (context.blind && context.blind[attacker.id] > 0) {
+    context.blind[attacker.id]--;
+    return { damage: 0, critical: false, log: `${attacker.name}은(는) 실명 상태로 공격에 실패했습니다!` };
+  }
+  // 회피
+  if (context.dodgeNextAttack?.[defender.id]) {
+    context.dodgeNextAttack[defender.id] = false;
+    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 회피!` };
+  }
+  // 무적
+  if (context.invulnerable?.[defender.id]) {
+    context.invulnerable[defender.id] = false;
+    return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0` };
+  }
+  // 스킬 피해 무효
+  if (asSkill && context.blockSkill && context.blockSkill[defender.id] > 0) {
+    context.blockSkill[defender.id]--;
+    return { damage: 0, critical: false, log: `${defender.name}은(는) 스킬 피해를 무효화했습니다!` };
+  }
+
+  // 스탯 추출
   const atkStats = attacker.stats ?? attacker;
   const defStats = defender.stats ?? defender;
   const atkName = attacker.name ?? '공격자';
@@ -213,10 +214,10 @@ function calculateDamage(
   let ap = isAttack ? (atkStats.ap || 0) : 0;
   let pen = atkStats.penetration || 0;
 
-  // 마법방어력 감소
+  // 마법방어력 감소 적용
   if (context.magicResistDebuff && context.magicResistDebuff[defender.id]) {
     if (defStats.magicResist !== undefined) {
-      defStats.magicResist += context.magicResistDebuff[defender.id]; // debuff 값은 음수
+      defStats.magicResist += context.magicResistDebuff[defender.id];
     }
   }
 
@@ -240,7 +241,6 @@ function calculateDamage(
     base *= 2;
     context.doubleDamage[attacker.id] = false;
   }
-
   base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
   base = Math.floor(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
@@ -287,7 +287,7 @@ function calculateDamage(
     context.skillUsed[attacker.id] = context.skillTurn[attacker.id];
   }
 
-  // addEffect로 받은 효과 context.effects에 추가
+  // addEffect 처리
   if (addEffectArr.length && context.effects) {
     for (const eff of addEffectArr) {
       if (eff.target === 'attacker') {
@@ -298,7 +298,7 @@ function calculateDamage(
     }
   }
 
-  // effect 내 hp 변화가 실제로 반영되도록!
+  // HP/스탯 변화 즉시 반영
   if (context && context.hp) {
     if (attacker.hp !== undefined && context.hp[attacker.id] !== undefined) {
       context.hp[attacker.id] = attacker.hp;
@@ -316,6 +316,9 @@ function calculateDamage(
     }
   }
 
+  // 1회성 부활 및 최초 무효화(자크, 애니비아, 클레드, 킨드레드 등) 관리(여기서 처리하지 않으면 챔배틀js에서 관리)
+  // ex: context.reviveFlags[attacker.id] = true 등 활용
+
   let log = '';
   if (usedSkill) {
     log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
@@ -326,7 +329,7 @@ function calculateDamage(
   }
   log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
 
-  // extraAttack/extraTurn 정보도 반환
+  // extraAttack/extraTurn 정보 반환
   return { damage: Math.round(base), critical: crit, log, extraAttack, extraTurn };
 }
 
