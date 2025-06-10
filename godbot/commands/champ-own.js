@@ -6,6 +6,8 @@ const path = require("path");
 const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
 const championList = require("../utils/champion-data");
+const skills = require("../utils/skills");
+const skillCd = require("../utils/skills-cooldown");
 const {
   getChampionIcon,
   getChampionSplash,
@@ -59,6 +61,17 @@ module.exports = {
     const splash = await getChampionSplash(champ.name);
     const lore = getChampionInfo(champ.name);
 
+    // 스킬 정보 및 쿨타임
+    const skillObj = skills[champ.name];
+    const cdObj = skillCd[champ.name];
+    let skillText = '정보 없음';
+    if (skillObj && cdObj) {
+      skillText =
+        `**${skillObj.name}**\n` +
+        `${skillObj.description}\n` +
+        `⏳ 최소턴: ${cdObj.minTurn ?? 1}턴, 쿨타임: ${cdObj.cooldown ?? 1}턴`;
+    }
+
     const embed = new EmbedBuilder()
       .setTitle(`🏅 ${champ.name} 정보`)
       .setDescription(`**Lv.${champ.level ?? 0} | 강화 ${champ.success ?? 0}회**\n📆 ${timeElapsed}에 만남`)
@@ -71,7 +84,8 @@ module.exports = {
             : "능력치 정보 없음",
           inline: true
         },
-        { name: "🌟 설명", value: lore, inline: false }
+        { name: "🌟 설명", value: lore, inline: false },
+        { name: "🪄 스킬", value: skillText, inline: false }
       )
       .setThumbnail(icon)
       .setImage(splash)
