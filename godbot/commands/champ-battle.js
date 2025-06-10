@@ -83,7 +83,7 @@ function createSkillField(userId, champName, context) {
   if (!check.ok) { canUse = false; reason = check.reason; }
   let txt = `✨ **${name}**\n${description}\n`;
   txt += `⏳ 최소 ${minTurn || 1}턴 후 사용, 쿨타임: ${cooldown || 1}턴\n`;
-  txt += `현재 경과 턴: ${turn}, 쿨다운: ${remain}\n`;
+  txt += `내 턴 횟수: ${turn}, 남은 쿨다운: ${remain}\n`;
   txt += canUse ? '🟢 **사용 가능!**' : `🔴 사용 불가: ${reason}`;
   return txt;
 }
@@ -254,6 +254,7 @@ module.exports = {
 
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
+      // 쿨타임 및 본인 턴 카운트용 구조 세팅
       bd[battleId] = {
         challenger: challenger.id,
         opponent:   opponent.id,
@@ -264,10 +265,12 @@ module.exports = {
         turn: challenger.id,
         logs: [],
         usedSkill: {},
-        context: {}
+        context: {
+          skillTurn: { [challenger.id]: 0, [opponent.id]: 0 },
+          cooldowns: { [challenger.id]: 0, [opponent.id]: 0 }
+        }
       };
       initBattleContext(bd[battleId]);
-      // 🟢 쿨다운/최소턴: 첫 턴에 쿨1 스킬 바로 못쓰도록 skillTurn을 1로(엔진도 반드시 일치)
       save(battlePath, bd);
 
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
@@ -284,6 +287,18 @@ module.exports = {
       const startTurn = async () => {
         const cur = bd[battleId];
         cur.usedSkill = {};
+        // "본인 턴이 시작될 때"만 쿨다운, skillTurn 증가!
+        // 상대 턴에서는 아무런 카운트 증가 없음!
+        const currentTurnUser = cur.turn;
+        cur.context.skillTurn = cur.context.skillTurn || { [cur.challenger]: 0, [cur.opponent]: 0 };
+        cur.context.cooldowns = cur.context.cooldowns || { [cur.challenger]: 0, [cur.opponent]: 0 };
+
+        // 본인 턴 도달시 증가
+        cur.context.skillTurn[currentTurnUser] = (cur.context.skillTurn[currentTurnUser] || 0) + 1;
+        if (cur.context.cooldowns[currentTurnUser] > 0) {
+          cur.context.cooldowns[currentTurnUser]--;
+        }
+
         processTurnStart(userData, cur, cur.turn);
         save(battlePath, bd);
 
@@ -335,6 +350,7 @@ module.exports = {
             actionDone[uid] = { skill: false, done: false };
             cur.usedSkill[uid] = false;
 
+            // 턴 변경
             cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             save(battlePath, bd);
 
@@ -362,6 +378,7 @@ module.exports = {
             );
             await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [getActionRow(true)] });
 
+            // 다음 턴: "본인 턴만 카운트 증가" 유지
             startTurn();
             return;
           }
@@ -375,7 +392,6 @@ module.exports = {
               log = '이 턴엔 이미 스킬을 사용했습니다!';
             } else {
               const champName = userData[uid].name;
-              // 🔴 첫 턴 쿨1 스킬 사용 제한: canUseSkill이 minTurn 체크하도록 할 것!
               const skillCheck = canUseSkill(uid, champName, cur.context);
               if (!skillCheck.ok) {
                 log = `❌ 스킬 사용 불가: ${skillCheck.reason}`;
@@ -393,6 +409,12 @@ module.exports = {
                 log = dmgInfo.log;
                 actionDone[uid].skill = true;
                 cur.usedSkill[uid] = true;
+                // 스킬 쿨타임 세팅
+                const cdObj = skillCd[champName];
+                if (cdObj) {
+                  cur.context.cooldowns[uid] = cdObj.cooldown || 1;
+                  cur.context.skillTurn[uid] = 0; // 스킬 쿨 초기화: 다음 턴부터 카운트
+                }
               }
             }
             cur.logs.push(log);
