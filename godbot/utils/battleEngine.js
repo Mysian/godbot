@@ -10,8 +10,8 @@ function initBattleContext(battle) {
     percentReduction: {},
     doubleDamage: {},
     invulnerable: {},
-    dodgeNextAttack: {}, // 추가
-    userData: battle.userData || {}, // 세라핀 등 전체 회복계열 대비
+    dodgeNextAttack: {},
+    userData: battle.userData || {},
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -90,15 +90,27 @@ function calculateDamage(
 ) {
   // 0) 기절, 회피, 무효화, 무적 등 체크
   if (context.effects?.[attacker.id]?.some(e => e.type === 'stunned') || attacker.stunned) {
-    return { damage: 0, critical: false, log: `${attacker.name}은(는) 기절 상태라 공격 불가!` };
+    return { 
+      damage: 0, 
+      critical: false, 
+      log: `${attacker.name}은(는) 기절 상태라 공격 불가!` 
+    };
   }
   if (context.dodgeNextAttack?.[defender.id]) {
     context.dodgeNextAttack[defender.id] = false;
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 회피!` };
+    return { 
+      damage: 0, 
+      critical: false, 
+      log: `${defender.name}이(가) 완벽히 회피!` 
+    };
   }
   if (context.invulnerable?.[defender.id]) {
     context.invulnerable[defender.id] = false;
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0` };
+    return { 
+      damage: 0, 
+      critical: false, 
+      log: `${defender.name}이(가) 무적! 피해 0` 
+    };
   }
 
   // 1) 스탯 추출
@@ -138,24 +150,48 @@ function calculateDamage(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
-  // 7) 챔피언 스킬 effect 적용
+  // 7) 챔피언 스킬 effect 적용 및 로그
   let skillLog = '';
+  let skillName = '';
+  let skillDesc = '';
+  let effectMsg = '';
+
   if (championName && skills[championName] && typeof skills[championName].effect === 'function') {
-    // 스킬 effect에 attacker/defender/isAttack/base/context 넘김
-    const skillResult = skills[championName].effect(attacker, defender, isAttack, base, context);
-    // effect 함수가 로그를 반환하는 경우도 대응 가능
+    skillName = skills[championName].name;
+    skillDesc = skills[championName].description;
+    // effect 함수가 effectMsg 포함된 객체 반환하도록 유도
+    let skillResult = skills[championName].effect(
+      attacker, defender, isAttack, base, context
+    );
+
+    // effect 함수가 객체로 반환 시 상세 정보 추출(향후 확장 대응)
     if (typeof skillResult === 'object' && skillResult !== null) {
       base = skillResult.baseDamage ?? base;
-      skillLog = skillResult.log ? `\n${skillResult.log}` : '';
+      if (skillResult.log) effectMsg = skillResult.log;
     } else {
+      // 숫자형 damage만 반환 시
       base = skillResult;
     }
+
+    // 특수 효과 상세 메시지 자동 감지(예: 처형, 추가 피해, 상태이상 등)
+    if (championName === "다리우스" && defender.hp === 0) {
+      effectMsg = "상대가 즉시 처형됐습니다!";
+    }
+    // 필요시 다른 스킬도 effectMsg 추가
   }
 
-  // 8) 결과 리턴
-  const damage = Math.round(base);
-  const log = `${atkName}의 공격: ${damage}${crit ? ' 💥크리티컬!' : ''}${skillLog}`;
-  return { damage, critical: crit, log };
+  // 8) 결과 리턴: 스킬 명칭, 설명, 효과, 피해, 치명타 여부 포함
+  let log = '';
+  if (skillName) {
+    log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
+    log += `> _${skillDesc}_\n`;
+  }
+  if (effectMsg) {
+    log += `➡️ **${effectMsg}**\n`;
+  }
+  log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
+
+  return { damage: Math.round(base), critical: crit, log };
 }
 
 module.exports = { initBattleContext, processTurnStart, calculateDamage };
