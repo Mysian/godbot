@@ -8,6 +8,9 @@ const {
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
+const skills = require("../utils/skills");
+const skillCd = require("../utils/skills-cooldown");
+const { getChampionIcon } = require("../utils/champion-utils");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
@@ -62,7 +65,20 @@ module.exports = {
       penetration: base.penetration + Math.floor(level / 2)
     };
 
-    // 📄 페이지 1: 챔피언 정보
+    // 챔피언 아이콘 (비동기)
+    const icon = await getChampionIcon(champData.name);
+
+    // 스킬/쿨타임 정보
+    const skillObj = skills[champData.name];
+    const cdObj = skillCd[champData.name];
+    let skillText = '정보 없음';
+    if (skillObj && cdObj) {
+      skillText =
+        `**${skillObj.name}**\n${skillObj.description}\n` +
+        `⏳ 최소턴: ${cdObj.minTurn ?? 1}턴, 쿨타임: ${cdObj.cooldown ?? 1}턴`;
+    }
+
+    // 📄 페이지 1: 챔피언 정보 + 스킬/쿨타임
     const infoEmbed = new EmbedBuilder()
       .setTitle(`🧙‍♂️ ${target.username}님의 챔피언`)
       .setDescription(
@@ -75,8 +91,10 @@ module.exports = {
         `> 🔮 주문력: **${total.ap}**\n` +
         `> ❤️ 체력: **${total.hp}**\n` +
         `> 🛡️ 방어력: **${total.defense}**\n` +
-        `> 🦾 관통력: **${total.penetration}**`
+        `> 🦾 관통력: **${total.penetration}**\n\n` +
+        `🪄 **스킬 정보**\n${skillText}`
       )
+      .setThumbnail(icon)
       .setColor(0x3498db)
       .setTimestamp();
 
