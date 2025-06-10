@@ -90,13 +90,10 @@ function canUseSkill(userId, championName, context) {
   const minTurn = cdInfo.minTurn || 1;
   const cooldown = cdInfo.cooldown || 1;
   const nowTurn = context.skillTurn[userId] || 0;
-  const usedTurn = context.skillUsed[userId];
 
-  // 최소 턴 체크
   if (nowTurn < minTurn) {
     return { ok: false, reason: `최소 ${minTurn}턴 이후 사용 가능! (현재: ${nowTurn}턴)` };
   }
-  // 쿨다운 체크 (쿨다운이 남아 있으면 사용 불가)
   if (context.cooldowns[userId] > 0) {
     return { ok: false, reason: `쿨다운 ${context.cooldowns[userId]}턴 남음!` };
   }
@@ -110,9 +107,8 @@ function calculateDamage(
   isAttack = true,
   context = {},
   championName = null,
-  asSkill = false // 버튼에서 "스킬"로 명시적으로 눌렀을 때 true
+  asSkill = false
 ) {
-  // 0) 기절, 회피, 무효화, 무적 등 체크
   if (context.effects?.[attacker.id]?.some(e => e.type === 'stunned') || attacker.stunned) {
     return {
       damage: 0,
@@ -180,6 +176,8 @@ function calculateDamage(
   let skillDesc = '';
   let effectMsg = '';
   let usedSkill = false;
+  let beforeHpAttacker = attacker.hp;
+  let beforeHpDefender = defender.hp;
 
   if (
     championName &&
@@ -187,7 +185,6 @@ function calculateDamage(
     typeof skills[championName].effect === 'function' &&
     asSkill
   ) {
-    // 쿨/최소턴 체크
     const check = canUseSkill(attacker.id, championName, context);
     if (!check.ok) {
       return { damage: 0, critical: false, log: `❌ 스킬 사용 불가: ${check.reason}` };
@@ -197,7 +194,7 @@ function calculateDamage(
     skillDesc = skills[championName].description;
     usedSkill = true;
 
-    // 스킬 effect 호출
+    // effect 함수 호출
     let skillResult = skills[championName].effect(
       attacker, defender, isAttack, base, context
     );
@@ -207,13 +204,29 @@ function calculateDamage(
     } else {
       base = skillResult;
     }
-    // 쿨다운 및 사용 턴 기록
     const cdInfo = skillCd[championName] || {};
     context.cooldowns[attacker.id] = cdInfo.cooldown || 1;
     context.skillUsed[attacker.id] = context.skillTurn[attacker.id];
   }
 
-  // 8) 결과 로그
+  // effect 내 hp 변화가 실제로 반영되도록!
+  if (context && context.hp) {
+    if (attacker.hp !== undefined && context.hp[attacker.id] !== undefined) {
+      context.hp[attacker.id] = attacker.hp;
+    }
+    if (defender.hp !== undefined && context.hp[defender.id] !== undefined) {
+      context.hp[defender.id] = defender.hp;
+    }
+  }
+  if (context && context.userData) {
+    if (attacker.hp !== undefined && context.userData[attacker.id]) {
+      context.userData[attacker.id].hp = attacker.hp;
+    }
+    if (defender.hp !== undefined && context.userData[defender.id]) {
+      context.userData[defender.id].hp = defender.hp;
+    }
+  }
+
   let log = '';
   if (usedSkill) {
     log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
@@ -230,5 +243,5 @@ module.exports = {
   initBattleContext,
   processTurnStart,
   calculateDamage,
-  canUseSkill // 외부에서도 버튼 활성 체크에 활용 가능
+  canUseSkill
 };
