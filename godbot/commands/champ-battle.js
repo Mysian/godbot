@@ -301,6 +301,9 @@ module.exports = {
         if (!bd[battleId]) return;
 
         const cur = bd[battleId];
+        // 추가 방어: cur 자체가 없거나 turn 값이 없으면 collector 무시!
+        if (!cur || typeof cur.turn === "undefined") return;
+
         cur.usedSkill = cur.usedSkill || {};
         const currentTurnUser = cur.turn;
         cur.context.skillTurn = cur.context.skillTurn || { [cur.challenger]: 0, [cur.opponent]: 0 };
@@ -319,7 +322,13 @@ module.exports = {
         if (turnCol && !turnCol.ended) turnCol.stop();
 
         turnCol = battleMsg.createMessageComponentCollector({
-          filter: i => [cur.challenger, cur.opponent].includes(i.user.id),
+          filter: i => {
+            // collector 시작 시에도 bd[battleId]와 cur.turn 다시 확인!
+            if (!bd[battleId]) return false;
+            const cc = bd[battleId];
+            if (!cc || typeof cc.turn === "undefined") return false;
+            return [cc.challenger, cc.opponent].includes(i.user.id);
+          },
           idle: 60000,
           time: 600000
         });
@@ -333,8 +342,9 @@ module.exports = {
             return;
           }
           const cur = bd[battleId];
-          if (!cur.turn) {
-            await i.reply({ content: '❌ 잘못된 배틀 상태입니다.', ephemeral: true });
+          // 추가 방어: cur 및 turn이 반드시 정의되어야 함
+          if (!cur || typeof cur.turn === "undefined") {
+            await i.reply({ content: '❌ 잘못된 배틀 상태입니다. (turn 없음)', ephemeral: true });
             return;
           }
           const uid = i.user.id;
@@ -398,9 +408,9 @@ module.exports = {
 
             // 다음 턴: "본인 턴만 카운트 증가" 유지
             const nextEmbed = await createBattleEmbed(
-              challenger, opponent, cur, userData, cur.turn, log, canUseSkill(cur)
+              challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
             );
-            await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [getActionRow(canUseSkill(cur))] });
+            await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [getActionRow(canUseSkillBtn(cur))] });
 
             startTurn();
             return;
@@ -444,9 +454,9 @@ module.exports = {
             cur.logs.push(log);
 
             const nextEmbed = await createBattleEmbed(
-              challenger, opponent, cur, userData, cur.turn, log, canUseSkill(cur)
+              challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
             );
-            await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(canUseSkill(cur))] });
+            await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(canUseSkillBtn(cur))] });
             // **턴은 그대로! 평타/무빙 때만 넘어감**
             return;
           }
@@ -476,7 +486,8 @@ module.exports = {
         }
       });
 
-      function canUseSkill(cur) {
+      function canUseSkillBtn(cur) {
+        if (!cur || typeof cur.turn === "undefined") return false;
         const uid = cur.turn;
         const champName = userData[uid]?.name;
         return canUseSkill(uid, champName, cur.context).ok;
