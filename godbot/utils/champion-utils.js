@@ -9,6 +9,7 @@ const imageNameMap = {
 "아칼리": "Akali",
 "아무무": "Amumu",
 "아크샨": "Akshan",
+"제리": "Zeri",
 "비에고": "Viego",
 "알리스타": "Alistar",
 "애니": "Annie",
@@ -200,7 +201,7 @@ function fetchOrFallback(url) {
  */
 async function getChampionIcon(name) {
   const key = getImageName(name);
-  const url = `https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/${key}.png`;
+  const url = `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${key}.png`;
   return fetchOrFallback(url);
 }
 
@@ -231,6 +232,7 @@ function getChampionInfo(name) {
 "나미": "바다의 사도로, 아군을 회복하고 적을 제어하는 유틸 서포터입니다.",
 "나서스": "시간이 지날수록 강해지는 샌드워커로, Q스택을 쌓아 적을 압도합니다.",
 "나피리": "다르킨 단검의 주인으로, 기동성과 처형에 능한 암살자입니다.",
+"제리": "전기 쮜지직..쮜지직.. 따가운 스태틱 감전사를 일으킵니다.",
 "녹턴": "공포의 그림자로, 궁극기로 적 후방에 돌입하는 암살형 정글러입니다.",
 "암베사": "녹서스의 강인한 노장, 두 개의 거대한 원형 낫으로 진형을 파괴하며 전장을 누비는 탑/정글 챔피언입니다.",
 "누누와 윌럼프": "눈덩이와 우정으로 싸우는 듀오로, 빠른 갱킹과 강력한 궁극기를 보유합니다.",
