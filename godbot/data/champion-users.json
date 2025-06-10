@@ -25,30 +25,30 @@
     },
     "timestamp": 1749536302128
   },
-  "1161257460221354064": {
-    "name": "닐라",
-    "level": 4,
-    "success": 4,
-    "stats": {
-      "attack": 78,
-      "ap": 4,
-      "hp": 660,
-      "defense": 36,
-      "penetration": 28
-    },
-    "timestamp": 1749536919461
-  },
   "1061868519383388250": {
     "name": "제리",
-    "level": 10,
-    "success": 10,
+    "level": 20,
+    "success": 20,
     "stats": {
-      "attack": 84,
-      "ap": 10,
-      "hp": 700,
-      "defense": 38,
-      "penetration": 30
+      "attack": 94,
+      "ap": 20,
+      "hp": 800,
+      "defense": 48,
+      "penetration": 35
     },
     "timestamp": 1749545262261
+  },
+  "751267368696807424": {
+    "name": "신지드",
+    "level": 9,
+    "success": 9,
+    "stats": {
+      "attack": 49,
+      "ap": 49,
+      "hp": 760,
+      "defense": 53,
+      "penetration": 19
+    },
+    "timestamp": 1749552620046
   }
 }

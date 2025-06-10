@@ -1,16 +1,30 @@
+// 📁 commands/backup.js
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-// 실제 계정정보는 이 파일 위치 기준으로 accounts.json에 있음!
+// ✅ 실제 JSON 파일 경로들 설정
 const fileMap = {
-  "챔피언정보": path.join(__dirname, "../data/champion-users.json"),
-  "호감도": path.join(__dirname, "../data/favorability-data.json"),
-  "롤티어": path.join(__dirname, "../data/lol-tier.json"),
-  "옵치티어": path.join(__dirname, "../data/ow-tier.json"),
-  "계정정보": path.join(__dirname, "accounts.json"), // ⬅️ 여기만 수정!
-  "서버 이용현황 관리 로그": path.join(__dirname, "../activity.json"),
-  "챔피언 배틀 전적": path.join(__dirname, "../data/champion-records.json")
+  "챔피언정보": {
+    path: path.join(__dirname, "../data/champion-users.json"),
+    location: "📁 data 폴더"
+  },
+  "챔피언 배틀 전적": {
+    path: path.join(__dirname, "../data/champion-records.json"),
+    location: "📁 data 폴더"
+  },
+  "서버 이용현황 관리 로그": {
+    path: path.join(__dirname, "../activity.json"),
+    location: "📁 common 또는 루트 경로"
+  },
+  "일정": {
+    path: path.join(__dirname, "../schedule.json"),
+    location: "📁 루트 경로"
+  },
+  "프로필정보": {
+    path: path.join(__dirname, "../data/profile-data.json"),
+    location: "📁 data 폴더"
+  }
 };
 
 module.exports = {
@@ -24,29 +38,27 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: "챔피언정보", value: "챔피언정보" },
-          { name: "호감도", value: "호감도" },
-          { name: "롤티어", value: "롤티어" },
-          { name: "옵치티어", value: "옵치티어" },
-          { name: "계정정보", value: "계정정보" },
           { name: "서버 이용현황 관리 로그", value: "서버 이용현황 관리 로그" },
-          { name: "챔피언 배틀 전적", value: "챔피언 배틀 전적" }
+          { name: "챔피언 배틀 전적", value: "챔피언 배틀 전적" },
+          { name: "일정", value: "일정" },
+          { name: "프로필정보", value: "프로필정보" }
         )
     ),
 
   async execute(interaction) {
     const choice = interaction.options.getString("선택옵션");
-    const filePath = fileMap[choice];
+    const entry = fileMap[choice];
 
-    if (!fs.existsSync(filePath)) {
+    if (!entry || !fs.existsSync(entry.path)) {
       return interaction.reply({
         content: `❌ ${choice} 데이터 파일이 존재하지 않습니다.`,
         ephemeral: true
       });
     }
 
-    const file = new AttachmentBuilder(filePath);
+    const file = new AttachmentBuilder(entry.path);
     await interaction.reply({
-      content: `📦 선택한 데이터 **${choice}**의 백업본입니다.`,
+      content: `📦 선택한 데이터 **${choice}**의 백업본입니다.\n\n🗂 저장 위치: \`${entry.location}\``,
       files: [file],
       ephemeral: true
     });
