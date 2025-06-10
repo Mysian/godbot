@@ -1,4 +1,3 @@
-// commands/champ-battle.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -11,8 +10,7 @@ const path = require('path');
 const {
   initBattleContext,
   processTurnStart,
-  calculateDamage,
-  canUseSkill
+  calculateDamage
 } = require('../utils/battleEngine');
 const skills = require('../utils/skills');
 const skillCd = require('../utils/skills-cooldown');
@@ -48,7 +46,6 @@ function getStatusIcons(effects = []) {
   }
   return s;
 }
-
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
@@ -69,7 +66,22 @@ function createStatField(user, effects = []) {
     `✨ 마법저항: ${f(mr, mrBuf)}\n`
   );
 }
+function canUseSkill(userId, champName, context) {
+  // (내 턴이 skillTurn[uid]번 올 동안 쿨타임이 cooldowns[uid]에서 0이 되어야 재사용 가능)
+  const cdObj = skillCd[champName];
+  const minTurn = cdObj?.minTurn || 1;
+  const cooldown = cdObj?.cooldown || 1;
+  const turn = context.skillTurn?.[userId] || 0;
+  const remain = context.cooldowns?.[userId] ?? cooldown; // undefined면 쿨타임 초기값으로
 
+  if (turn < minTurn) {
+    return { ok: false, reason: `${minTurn}턴 이후부터 사용 가능 (내 턴 ${turn}회 경과)` };
+  }
+  if (remain > 0) {
+    return { ok: false, reason: `쿨타임: ${remain}턴 남음` };
+  }
+  return { ok: true };
+}
 function createSkillField(userId, champName, context) {
   const skillObj = skills[champName];
   const cdObj = skillCd[champName];
@@ -77,14 +89,12 @@ function createSkillField(userId, champName, context) {
   const { name, description } = skillObj;
   const { minTurn, cooldown } = cdObj;
   const turn = context.skillTurn?.[userId] || 0;
-  const remain = context.cooldowns?.[userId] || 0;
-  let canUse = true, reason = '';
+  const remain = context.cooldowns?.[userId] ?? cooldown;
   const check = canUseSkill(userId, champName, context);
-  if (!check.ok) { canUse = false; reason = check.reason; }
   let txt = `✨ **${name}**\n${description}\n`;
   txt += `⏳ 최소 ${minTurn || 1}턴 후 사용, 쿨타임: ${cooldown || 1}턴\n`;
   txt += `내 턴 횟수: ${turn}, 남은 쿨다운: ${remain}\n`;
-  txt += canUse ? '🟢 **사용 가능!**' : `🔴 사용 불가: ${reason}`;
+  txt += check.ok ? '🟢 **사용 가능!**' : `🔴 사용 불가: ${check.reason}`;
   return txt;
 }
 
@@ -287,13 +297,11 @@ module.exports = {
       const startTurn = async () => {
         const cur = bd[battleId];
         cur.usedSkill = {};
-        // "본인 턴이 시작될 때"만 쿨다운, skillTurn 증가!
-        // 상대 턴에서는 아무런 카운트 증가 없음!
         const currentTurnUser = cur.turn;
         cur.context.skillTurn = cur.context.skillTurn || { [cur.challenger]: 0, [cur.opponent]: 0 };
         cur.context.cooldowns = cur.context.cooldowns || { [cur.challenger]: 0, [cur.opponent]: 0 };
 
-        // 본인 턴 도달시 증가
+        // 본인 턴 도달시 카운트 증가 및 쿨다운 감소
         cur.context.skillTurn[currentTurnUser] = (cur.context.skillTurn[currentTurnUser] || 0) + 1;
         if (cur.context.cooldowns[currentTurnUser] > 0) {
           cur.context.cooldowns[currentTurnUser]--;
@@ -409,11 +417,11 @@ module.exports = {
                 log = dmgInfo.log;
                 actionDone[uid].skill = true;
                 cur.usedSkill[uid] = true;
-                // 스킬 쿨타임 세팅
+                // 쿨타임(턴) - 쿨이 N이라면 스킬 사용 후 "N턴 뒤에 사용 가능"이므로 N으로 설정
                 const cdObj = skillCd[champName];
                 if (cdObj) {
                   cur.context.cooldowns[uid] = cdObj.cooldown || 1;
-                  cur.context.skillTurn[uid] = 0; // 스킬 쿨 초기화: 다음 턴부터 카운트
+                  cur.context.skillTurn[uid] = 0; // 다음 내 턴부터 다시 카운트
                 }
               }
             }
