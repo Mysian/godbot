@@ -197,6 +197,7 @@ module.exports = {
     const bd       = load(battlePath);
     const battleId = `${challenger.id}_${opponent.id}`;
 
+    // 중복 체크
     if (bd[battleId]) {
       return interaction.reply({ content: '⚔️ 이미 이 상대와 배틀이 대기 중이거나 진행 중입니다.', ephemeral: true });
     }
@@ -297,11 +298,8 @@ module.exports = {
 
       let turnCol;
       const startTurn = async () => {
-        // battle 객체가 존재하는지 확인
         if (!bd[battleId]) return;
-
         const cur = bd[battleId];
-        // 추가 방어: cur 자체가 없거나 turn 값이 없으면 collector 무시!
         if (!cur || typeof cur.turn === "undefined") return;
 
         cur.usedSkill = cur.usedSkill || {};
@@ -310,7 +308,6 @@ module.exports = {
         cur.context.cooldowns = cur.context.cooldowns || { [cur.challenger]: 0, [cur.opponent]: 0 };
         cur.context.effects   = cur.context.effects || { [cur.challenger]: [], [cur.opponent]: [] };
 
-        // 내 턴 시작시 본인 skillTurn+1, 쿨다운(남아있으면) 1 감소
         cur.context.skillTurn[currentTurnUser] = (cur.context.skillTurn[currentTurnUser] || 0) + 1;
         if (cur.context.cooldowns[currentTurnUser] > 0) {
           cur.context.cooldowns[currentTurnUser]--;
@@ -323,7 +320,6 @@ module.exports = {
 
         turnCol = battleMsg.createMessageComponentCollector({
           filter: i => {
-            // collector 시작 시에도 bd[battleId]와 cur.turn 다시 확인!
             if (!bd[battleId]) return false;
             const cc = bd[battleId];
             if (!cc || typeof cc.turn === "undefined") return false;
@@ -336,13 +332,11 @@ module.exports = {
         let actionDone = {};
 
         turnCol.on('collect', async i => {
-          // battle 객체가 유효한지(삭제 안됐는지) 매번 확인
           if (!bd[battleId]) {
             await i.reply({ content: '❌ 이미 종료된 배틀입니다.', ephemeral: true });
             return;
           }
           const cur = bd[battleId];
-          // 추가 방어: cur 및 turn이 반드시 정의되어야 함
           if (!cur || typeof cur.turn === "undefined") {
             await i.reply({ content: '❌ 잘못된 배틀 상태입니다. (turn 없음)', ephemeral: true });
             return;
@@ -356,7 +350,6 @@ module.exports = {
           const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
           let log = '';
 
-          // 평타 or 방어(턴 종료)
           if (i.customId === 'attack' || i.customId === 'defend') {
             actionDone[uid] = actionDone[uid] || { skill: false, done: false };
             actionDone[uid].done = true;
@@ -383,7 +376,6 @@ module.exports = {
             actionDone[uid] = { skill: false, done: false };
             cur.usedSkill[uid] = false;
 
-            // 턴 변경
             cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             save(battlePath, bd);
 
@@ -406,7 +398,6 @@ module.exports = {
               return;
             }
 
-            // 다음 턴: "본인 턴만 카운트 증가" 유지
             const nextEmbed = await createBattleEmbed(
               challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
             );
@@ -416,7 +407,6 @@ module.exports = {
             return;
           }
 
-          // 스킬(성공/실패 관계 없이 '턴 넘기지 않음' & 카운트 증가 X)
           if (i.customId === 'skill') {
             actionDone[uid] = actionDone[uid] || { skill: false, done: false };
             cur.usedSkill[uid] = cur.usedSkill[uid] || false;
@@ -443,11 +433,10 @@ module.exports = {
                 actionDone[uid].skill = true;
                 cur.usedSkill[uid] = true;
 
-                // 쿨타임 세팅: 쿨이 N이면 "다음 내 턴부터 N턴 뒤에" 사용 가능 (0이면 사용 가능)
                 const cdObj = skillCd[champName];
                 if (cdObj) {
                   cur.context.cooldowns[uid] = cdObj.cooldown || 1;
-                  cur.context.skillTurn[uid] = 0; // 다음 내 턴부터 카운트
+                  cur.context.skillTurn[uid] = 0;
                 }
               }
             }
@@ -457,7 +446,6 @@ module.exports = {
               challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
             );
             await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(canUseSkillBtn(cur))] });
-            // **턴은 그대로! 평타/무빙 때만 넘어감**
             return;
           }
         });
@@ -477,7 +465,8 @@ module.exports = {
       };
 
       reqCol.on('end', async (_col, reason) => {
-        if (['time', 'idle'].includes(reason) && bd[battleId]?.pending) {
+        // 여기서 pending 체크 없이 battleId 있으면 무조건 삭제
+        if (['time', 'idle'].includes(reason) && bd[battleId]) {
           delete bd[battleId];
           save(battlePath, bd);
           try {
