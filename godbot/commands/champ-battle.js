@@ -11,7 +11,8 @@ const path = require('path');
 const {
   initBattleContext,
   processTurnStart,
-  calculateDamage
+  calculateDamage,
+  canUseSkill
 } = require('../utils/battleEngine');
 const skills = require('../utils/skills');
 const { getChampionIcon } = require('../utils/champion-utils');
@@ -195,9 +196,11 @@ module.exports = {
 
       // 턴 콜렉터
       let turnCol;
-      const startTurn = () => {
-        processTurnStart(userData, bd[battleId]);
+      const startTurn = async () => {
         const cur = bd[battleId];
+        // 내 턴 시작 시 actingUserId로 processTurnStart 호출!
+        processTurnStart(userData, cur, cur.turn);
+        save(battlePath, bd);
 
         if (!turnCol) {
           turnCol = battleMsg.createMessageComponentCollector({
@@ -217,60 +220,47 @@ module.exports = {
             const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
             let log = '';
 
-            // 공격
+            // 평타
             if (i.customId === 'attack') {
-              // 스킬 effect 없이 평타만
               const dmgInfo = calculateDamage(
                 { ...userData[uid], id: uid, hp: cur.hp[uid] },
                 { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
                 true,
                 cur.context,
+                userData[uid].name,
+                false // 평타는 asSkill=false
               );
               cur.hp[tgt] = Math.max(0, cur.hp[tgt] - dmgInfo.damage);
+              // 힐/버프류 적용 시 cur.hp[uid] 갱신
+              cur.hp[uid] = Math.min(cur.hp[uid], userData[uid].stats.hp);
               log = dmgInfo.log;
 
-            // 무빙(방어)
+            // 방어
             } else if (i.customId === 'defend') {
               const block = userData[uid].stats.defense;
               cur.context.effects[uid].push({ type: 'damageReduction', value: block, turns: 1 });
               log = `🛡️ ${userData[uid].name}이 무빙… 다음 턴 피해 ${block}↓`;
 
-            // 스킬(특수효과)
+            // 스킬
             } else if (i.customId === 'skill') {
+              // 쿨타임/최소턴 체크 후 사용
               const champName = userData[uid].name;
-              const skillObj = skills[champName];
-              // 기본 데미지 계산 후 스킬 effect에 전달
-              let dmgInfo = calculateDamage(
-                { ...userData[uid], id: uid, hp: cur.hp[uid] },
-                { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
-                true,
-                cur.context
-              );
-              let finalDmg = dmgInfo.damage;
-
-              // effect가 있으면 호출 (context와 함께)
-              if (typeof skillObj?.effect === 'function') {
-                finalDmg = skillObj.effect(
+              const skillCheck = canUseSkill(uid, champName, cur.context);
+              if (!skillCheck.ok) {
+                log = `❌ 스킬 사용 불가: ${skillCheck.reason}`;
+              } else {
+                const dmgInfo = calculateDamage(
                   { ...userData[uid], id: uid, hp: cur.hp[uid] },
                   { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
                   true,
-                  finalDmg,
-                  cur.context
-                ) ?? finalDmg;
-
-                // 상태 변화 sync
-                cur.hp[uid] = Math.min(userData[uid].stats.hp, cur.hp[uid]);
-                cur.hp[tgt] = Math.min(userData[tgt].stats.hp, cur.hp[tgt]);
-
-                // 상태이상 체크: ex) stun
-                if (userData[tgt].stunned) {
-                  cur.context.effects[tgt].push({ type: 'stunned', turns: 1 });
-                  userData[tgt].stunned = false;
-                  cur.logs.push(`💫 ${userData[tgt].name}이(가) 기절!`);
-                }
+                  cur.context,
+                  champName,
+                  true // asSkill=true
+                );
+                cur.hp[tgt] = Math.max(0, cur.hp[tgt] - dmgInfo.damage);
+                cur.hp[uid] = Math.min(cur.hp[uid], userData[uid].stats.hp);
+                log = dmgInfo.log;
               }
-              cur.hp[tgt] = Math.max(0, cur.hp[tgt] - finalDmg);
-              log = `✨ ${skillObj.name} 발동! ${finalDmg} 데미지!`;
             }
 
             cur.logs.push(log);
