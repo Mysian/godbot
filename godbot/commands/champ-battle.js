@@ -245,6 +245,7 @@ module.exports = {
       fetchReply: true
     });
 
+    // --------- 요청 수락 대기(30초) -----------
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -336,13 +337,11 @@ module.exports = {
         let actionDone = {};
 
         turnCol.on('collect', async i => {
-          // battle 객체가 유효한지(삭제 안됐는지) 매번 확인
           if (!bd[battleId]) {
             await i.reply({ content: '❌ 이미 종료된 배틀입니다.', ephemeral: true });
             return;
           }
           const cur = bd[battleId];
-          // 추가 방어: cur 및 turn이 반드시 정의되어야 함
           if (!cur || typeof cur.turn === "undefined") {
             await i.reply({ content: '❌ 잘못된 배틀 상태입니다. (turn 없음)', ephemeral: true });
             return;
@@ -406,7 +405,6 @@ module.exports = {
               return;
             }
 
-            // 다음 턴: "본인 턴만 카운트 증가" 유지
             const nextEmbed = await createBattleEmbed(
               challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
             );
@@ -457,7 +455,6 @@ module.exports = {
               challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
             );
             await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(canUseSkillBtn(cur))] });
-            // **턴은 그대로! 평타/무빙 때만 넘어감**
             return;
           }
         });
@@ -476,8 +473,10 @@ module.exports = {
         });
       };
 
+      //--- 요청 수락 대기 30초 타임아웃 구현 -----
       reqCol.on('end', async (_col, reason) => {
-        if (['time', 'idle'].includes(reason) && bd[battleId]?.pending) {
+        if ((reason === 'time' || reason === 'idle') && bd[battleId]?.pending) {
+          // 요청 수락이 없는 경우, 임베드 종료 + 버튼 제거
           delete bd[battleId];
           save(battlePath, bd);
           try {
