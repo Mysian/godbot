@@ -1,106 +1,144 @@
 module.exports = {
- "다리우스": {
-  name: "녹서스의 단두대",
-  description: "상대 체력이 30% 이하일 경우 공격이 즉시 처형됩니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
-    const ratio = defender.hp / defender.stats.hp;
-    if (ratio <= 0.3) {
-      defender.hp = 0;
-      return 0;
+  "다리우스": {
+    name: "녹서스의 단두대",
+    description: "상대 체력이 30% 이하일 경우 공격이 즉시 처형됩니다.",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (!isAttack) return baseDamage;
+      const ratio = defender.hp / defender.stats.hp;
+      if (ratio <= 0.3) {
+        defender.hp = 0;
+        return { baseDamage: 0, log: "💀 상대가 즉시 처형되었습니다!" };
+      }
+      return baseDamage;
     }
-    return baseDamage;
-  }
-},
-"나미": {
-  name: "밀물 썰물",
-  description: "공격 시 아군 체력을 10 회복시키고, 2턴간 받는 피해를 5 줄입니다.",
-  effect: (attacker, defender, isAttack, baseDamage, context) => {
-    if (!isAttack) return baseDamage;
-    attacker.hp = Math.min(attacker.hp + 10, attacker.stats.hp);
-    context.effects[attacker.id] = context.effects[attacker.id] || [];
-    context.effects[attacker.id].push({ type: "damageReduction", value: 5, turns: 2 });
-    return baseDamage;
-  }
-},
-"나서스": {
-  name: "흡수의 일격",
-  description: "공격 시 매턴 공격력이 2 증가합니다. (영구)",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
-    attacker.stats.attack += 2;
-    return baseDamage;
-  }
-},
-"나피리": {
-  name: "추적자의 본능",
-  description: "공격 시 30% 확률로 다음 공격에 피해 2배 (1턴간 지속)",
-  effect: (attacker, defender, isAttack, baseDamage, context) => {
-    if (!isAttack) return baseDamage;
-    if (Math.random() < 0.3) {
-      context.effects[attacker.id] = context.effects[attacker.id] || [];
-      context.effects[attacker.id].push({ type: "doubleDamage", turns: 1 });
+  },
+  "나미": {
+    name: "밀물 썰물",
+    description: "공격 시 아군 체력을 10 회복시키고, 2턴간 받는 피해를 5 줄입니다.",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (!isAttack) return baseDamage;
+      const heal = 10;
+      attacker.hp = Math.min(attacker.hp + heal, attacker.stats.hp);
+      return {
+        baseDamage,
+        addEffect: [{ target: 'attacker', effect: { type: "damageReduction", value: 5, turns: 2 } }],
+        log: `🌊 ${attacker.name}이(가) 체력 ${heal} 회복, 2턴간 피해 5 감소!`
+      };
     }
-    return baseDamage;
-  }
-},
-"노틸러스": {
-  name: "깊은 바다의 일격",
-  description: "공격 시 20% 확률로 상대를 1턴간 기절시킵니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = true;
-    return baseDamage;
-  }
-},
-"녹턴": {
-  name: "공포의 장막",
-  description: "방어 시 1턴 동안 무적 상태가 됩니다. (1회 발동)",
-  effect: (attacker, defender, isAttack, baseDamage, context) => {
-    if (isAttack) return baseDamage;
-    context.effects[defender.id] = context.effects[defender.id] || [];
-    context.effects[defender.id].push({ type: "invulnerable", turns: 1 });
-    return 0;
-  }
-},
-"누누와 윌럼프": {
-  name: "절대 영도",
-  description: "방어 시 2턴 동안 받는 피해를 50% 감소시킵니다.",
-  effect: (attacker, defender, isAttack, baseDamage, context) => {
-    if (isAttack) return baseDamage;
-    context.effects[defender.id] = context.effects[defender.id] || [];
-    context.effects[defender.id].push({ type: "damageReductionPercent", value: 50, turns: 2 });
-    return baseDamage;
-  }
-},
-"니달리": {
-  name: "창 투척",
-  description: "공격 시 25% 확률로 피해를 2배로 입힙니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
-    return Math.random() < 0.25 ? baseDamage * 2 : baseDamage;
-  }
-},
-"니코": {
+  },
+  "나서스": {
+    name: "흡수의 일격",
+    description: "공격 시 매턴 공격력이 2 증가합니다. (영구)",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (!isAttack) return baseDamage;
+      attacker.stats.attack += 2;
+      return {
+        baseDamage,
+        log: `🐕‍🦺 ${attacker.name}의 공격력이 2 증가!`
+      };
+    }
+  },
+  "나피리": {
+    name: "추적자의 본능",
+    description: "공격 시 30% 확률로 다음 공격에 피해 2배 (1턴간 지속)",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (!isAttack) return baseDamage;
+      if (Math.random() < 0.3) {
+        return {
+          baseDamage,
+          addEffect: [
+            { target: 'attacker', effect: { type: "doubleDamage", turns: 1 } }
+          ],
+          log: "🐺 다음 공격이 2배 피해! (1턴)"
+        };
+      }
+      return baseDamage;
+    }
+  },
+  "노틸러스": {
+    name: "깊은 바다의 일격",
+    description: "공격 시 20% 확률로 상대를 1턴간 기절시킵니다.",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (!isAttack) return baseDamage;
+      if (Math.random() < 0.2) {
+        return {
+          baseDamage,
+          addEffect: [
+            { target: 'defender', effect: { type: "stunned", turns: 1 } }
+          ],
+          log: "💫 상대가 1턴간 기절!"
+        };
+      }
+      return baseDamage;
+    }
+  },
+  "녹턴": {
+    name: "공포의 장막",
+    description: "방어 시 1턴 동안 무적 상태가 됩니다. (1회 발동)",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (isAttack) return baseDamage;
+      return {
+        baseDamage: 0,
+        addEffect: [
+          { target: 'defender', effect: { type: "invulnerable", turns: 1 } }
+        ],
+        log: "🛡️ 1턴간 무적!"
+      };
+    }
+  },
+  "누누와 윌럼프": {
+    name: "절대 영도",
+    description: "방어 시 2턴 동안 받는 피해를 50% 감소시킵니다.",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (isAttack) return baseDamage;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "damageReductionPercent", value: 50, turns: 2 } }
+        ],
+        log: "❄️ 2턴간 받는 피해 50% 감소!"
+      };
+    }
+  },
+  "니달리": {
+    name: "창 투척",
+    description: "공격 시 25% 확률로 피해를 2배로 입힙니다.",
+    effect: (attacker, defender, isAttack, baseDamage) => {
+      if (!isAttack) return baseDamage;
+      if (Math.random() < 0.25) {
+        return { baseDamage: baseDamage * 2, log: "🗡️ 2배 피해!" };
+      }
+      return baseDamage;
+    }
+  },
+  "니코": {
   name: "카멜레온 술책",
   description: "스킬 사용 시 1턴간 상대의 다음 공격을 무효화합니다.",
-  effect: (attacker, defender, isAttack, baseDamage, context) => {
+  effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    context.effects[attacker.id] = context.effects[attacker.id] || [];
-    context.effects[attacker.id].push({ type: "dodgeNextAttack", turns: 1 });
-    return baseDamage;
+    // 스킬 사용(즉 asSkill=true)인 경우에만 발동
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "missNext", turns: 1 } }
+      ],
+      log: "🦎 상대의 다음 공격이 무효화됩니다! (1턴)"
+    };
   }
 },
 "닐라": {
   name: "형상의 춤",
   description: "공격 시 20% 확률로 자신과 상대 모두 피해를 무시하고 1턴간 회피 상태가 됩니다.",
-  effect: (attacker, defender, isAttack, baseDamage, context) => {
+  effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack || Math.random() >= 0.2) return baseDamage;
-    context.effects[attacker.id] = context.effects[attacker.id] || [];
-    context.effects[defender.id] = context.effects[defender.id] || [];
-    context.effects[attacker.id].push({ type: "dodgeNextAttack", turns: 1 });
-    context.effects[defender.id].push({ type: "dodgeNextAttack", turns: 1 });
-    return 0;
+    return {
+      baseDamage: 0,
+      addEffect: [
+        { target: 'attacker', effect: { type: "dodgeNextAttack", turns: 1 } },
+        { target: 'defender', effect: { type: "dodgeNextAttack", turns: 1 } }
+      ],
+      log: "💃 양쪽 모두 1턴간 회피! (피해 무시)"
+    };
   }
 },
 "다이애나": {
@@ -108,7 +146,13 @@ module.exports = {
   description: "공격 시 30% 확률로 추가로 10의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return baseDamage + (Math.random() < 0.3 ? 10 : 0);
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage: baseDamage + 10,
+        log: "🌙 추가로 10 고정 피해!"
+      };
+    }
+    return baseDamage;
   }
 },
 "드레이븐": {
@@ -116,7 +160,10 @@ module.exports = {
   description: "공격 시 피해량이 항상 20% 증가합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.floor(baseDamage * 1.2);
+    return {
+      baseDamage: Math.floor(baseDamage * 1.2),
+      log: "🪓 피해량 20% 증가!"
+    };
   }
 },
 "라이즈": {
@@ -124,7 +171,15 @@ module.exports = {
   description: "공격 시 25% 확률로 상대에게 1턴간 '기절'을 겁니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.stunned = 1;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "💥 상대 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -133,7 +188,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대의 다음 턴을 무력화합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = 1;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "💘 상대 1턴 무력화(기절)!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -142,8 +205,11 @@ module.exports = {
   description: "방어 시 공격자에게 10의 반사 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    attacker.hp -= 10;
-    return baseDamage;
+    attacker.hp = Math.max(0, attacker.hp - 10);
+    return {
+      baseDamage,
+      log: "🦔 상대에게 10 반사 피해!"
+    };
   }
 },
 "럭스": {
@@ -151,7 +217,15 @@ module.exports = {
   description: "공격 시 25% 확률로 상대를 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.stunned = 1;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "✨ 상대 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -160,8 +234,13 @@ module.exports = {
   description: "공격 시 3턴간 매 턴 6의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 3, damage: 6 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 6, turns: 3 } }
+      ],
+      log: "🔥 3턴간 매턴 6의 고정 피해!"
+    };
   }
 },
 "레나타 글라스크": {
@@ -169,7 +248,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대의 공격력을 1턴간 5 감소시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.atkDown = { turns: 1, value: 5 };
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "atkDown", value: 5, turns: 1 } }
+        ],
+        log: "🤝 상대 공격력 1턴간 5 감소!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -178,7 +265,13 @@ module.exports = {
   description: "피해를 받을 때 30% 확률로 공격자에게 15의 반사 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    if (Math.random() < 0.3) attacker.hp -= 15;
+    if (Math.random() < 0.3) {
+      attacker.hp = Math.max(0, attacker.hp - 15);
+      return {
+        baseDamage,
+        log: "🐊 30% 확률로 공격자에게 15 반사 피해!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -188,8 +281,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      attacker.stunned = 1;
-      return 0;
+      return {
+        baseDamage: 0,
+        addEffect: [
+          { target: 'attacker', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🌞 피해 0 + 상대 1턴 기절!"
+      };
     }
     return baseDamage;
   }
@@ -200,11 +298,12 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.3) {
-      const tempDef = defender.stats.defense;
-      defender.stats.defense = 0;
-      const damage = baseDamage;
-      defender.stats.defense = tempDef;
-      return damage;
+      // 방어력 무시 → baseDamage(방어력 0)로 계산된 값이 이미 들어옴(카드 로직이 맞다면)
+      // 특별히 추가 로직 필요 없다면 log만
+      return {
+        baseDamage,
+        log: "🕳️ 상대 방어력 무시!"
+      };
     }
     return baseDamage;
   }
@@ -214,8 +313,13 @@ module.exports = {
   description: "공격 시 1턴 동안 상대의 방어력을 절반으로 감소시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.defenseDebuff = { turns: 1, value: defender.stats.defense / 2 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "defDown", value: defender.stats.defense / 2, turns: 1 } }
+      ],
+      log: "🐎 상대 방어력 1턴간 절반!"
+    };
   }
 },
 "렝가": {
@@ -223,7 +327,14 @@ module.exports = {
   description: "공격 시 20% 확률로 한 번 더 공격합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.random() < 0.2 ? baseDamage * 2 : baseDamage;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        extraAttack: true,
+        log: "🐾 20% 확률로 한 번 더 공격!"
+      };
+    }
+    return baseDamage;
   }
 },
 "루시안": {
@@ -231,8 +342,11 @@ module.exports = {
   description: "공격 성공 시 다음 턴에 턴을 한 번 더 가집니다. (1회)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    attacker.extraTurn = true;
-    return baseDamage;
+    return {
+      baseDamage,
+      extraTurn: true,
+      log: "🔫 다음 턴 한 번 더 연속 공격!"
+    };
   }
 },
 "룰루": {
@@ -240,7 +354,15 @@ module.exports = {
   description: "공격 시 15% 확률로 상대의 공격력을 1턴간 0으로 만듭니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.15) defender.atkDown = { turns: 1, value: defender.stats.attack };
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "atkDown", value: defender.stats.attack, turns: 1 } }
+        ],
+        log: "🦎 상대 공격력 1턴간 0!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -249,9 +371,13 @@ module.exports = {
   description: "공격 시 2턴 뒤에 동일한 피해를 한 번 더 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.delayed = defender.delayed || [];
-    defender.delayed.push({ turns: 2, damage: baseDamage });
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "delayedDamage", damage: baseDamage, turns: 2 } }
+      ],
+      log: "🌀 2턴 뒤 동일 피해 한 번 더!"
+    };
   }
 },
 "리 신": {
@@ -259,7 +385,15 @@ module.exports = {
   description: "공격 시 10% 확률로 상대를 밀쳐내며 1턴 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.1) defender.stunned = true;
+    if (Math.random() < 0.1) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🐉 상대 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -268,7 +402,10 @@ module.exports = {
   description: "공격 시 피해량이 15% 증가합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.floor(baseDamage * 1.15);
+    return {
+      baseDamage: Math.floor(baseDamage * 1.15),
+      log: "⚡ 피해량 15% 증가!"
+    };
   }
 },
 "리산드라": {
@@ -276,7 +413,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대를 1턴 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = true;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "❄️ 상대 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -285,17 +430,28 @@ module.exports = {
   description: "공격 시 2턴 뒤 상대를 1턴 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.delayed = defender.delayed || [];
-    defender.delayed.push({ turns: 2, effect: "stun" });
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "delayedStun", turns: 2, duration: 1 } }
+      ],
+      log: "🌙 2턴 뒤 1턴 기절!"
+    };
   }
 },
 "마스터 이": {
   name: "알파 스트라이크",
   description: "공격 시 30% 확률로 다음 피해를 회피합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
-    if (isAttack) {
-      if (Math.random() < 0.3) attacker.evade = { turns: 1 };
+    if (!isAttack) return baseDamage;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "dodgeNextAttack", turns: 1 } }
+        ],
+        log: "⚡ 다음 피해 회피(1턴)!"
+      };
     }
     return baseDamage;
   }
@@ -304,11 +460,14 @@ module.exports = {
   name: "자연의 복수",
   description: "방어 시 2턴 동안 받는 피해가 20% 감소합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) {
-      defender.buff = defender.buff || [];
-      defender.buff.push({ turns: 2, type: "damageReduction", value: 0.2 });
-    }
-    return baseDamage;
+    if (isAttack) return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "damageReductionPercent", value: 20, turns: 2 } }
+      ],
+      log: "🌳 2턴간 피해 20% 감소!"
+    };
   }
 },
 "말자하": {
@@ -316,18 +475,32 @@ module.exports = {
   description: "공격 시 15% 확률로 상대의 다음 스킬을 무효화시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.15) defender.skillBlocked = true;
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "skillBlocked", turns: 1 } }
+        ],
+        log: "🟣 상대 다음 스킬 무효화(1턴)!"
+      };
+    }
     return baseDamage;
   }
 },
 "멜": {
   name: "정치적 압박",
   description: "전투 시작 시 3턴간 상대의 모든 공격력이 10% 감소합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (isAttack && !defender.debuffApplied) {
-      defender.debuffApplied = true;
-      defender.debuff = defender.debuff || [];
-      defender.debuff.push({ turns: 3, type: "attackDown", value: 0.1 });
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
+    // 전투 시작시(첫 평타/스킬 공격이 맞으면) 단 한 번만 부여
+    if (isAttack && !context.debuffApplied) {
+      context.debuffApplied = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "damageReductionPercent", value: 10, turns: 3 } }
+        ],
+        log: "🏛️ 상대 공격력 10% 감소(3턴)!"
+      };
     }
     return baseDamage;
   }
@@ -337,8 +510,13 @@ module.exports = {
   description: "공격 시 상대의 회복을 2턴간 봉인합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.healBlocked = { turns: 2 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "healBlocked", turns: 2 } }
+      ],
+      log: "☠️ 상대 회복 봉인(2턴)!"
+    };
   }
 },
 "모르가나": {
@@ -346,7 +524,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대를 2턴간 행동불능(기절) 상태로 만듭니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = 2;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 2 } }
+        ],
+        log: "🌑 상대 2턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -354,11 +540,15 @@ module.exports = {
   name: "가고 싶은 대로 간다",
   description: "턴 시작 시 체력을 15 회복하고, 2턴간 디버프 면역 상태가 됩니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
+    // 공격/방어 구분 없이 내 턴 시작마다 발동하도록 설계
     attacker.hp = Math.min(attacker.hp + 15, attacker.stats.hp);
-    attacker.buff = attacker.buff || [];
-    attacker.buff.push({ turns: 2, type: "debuffImmune" });
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'attacker', effect: { type: "debuffImmune", turns: 2 } }
+      ],
+      log: "🩹 체력 15 회복 + 2턴간 디버프 면역!"
+    };
   }
 },
 "미스 포츈": {
@@ -366,8 +556,13 @@ module.exports = {
   description: "공격 시 30% 확률로 2번 타격하며, 두 번째 타격은 절반 피해를 줍니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const doubleHit = Math.random() < 0.3;
-    return doubleHit ? baseDamage + Math.floor(baseDamage * 0.5) : baseDamage;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage: baseDamage + Math.floor(baseDamage * 0.5),
+        log: "🔫 더블 업! 추가타 피해 50%!"
+      };
+    }
+    return baseDamage;
   }
 },
 "밀리오": {
@@ -376,7 +571,12 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      defender.hp = Math.min(defender.hp + Math.floor(baseDamage * 0.5), defender.stats.hp);
+      const heal = Math.floor(baseDamage * 0.5);
+      defender.hp = Math.min(defender.hp + heal, defender.stats.hp);
+      return {
+        baseDamage,
+        log: `🔥 피해의 50%(${heal}) 회복!`
+      };
     }
     return baseDamage;
   }
@@ -386,9 +586,14 @@ module.exports = {
   description: "턴 종료 시 25% 확률로 다음 공격을 피합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.buff = defender.buff || [];
     if (Math.random() < 0.25) {
-      defender.buff.push({ turns: 1, type: "evadeNext" });
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "dodgeNextAttack", turns: 1 } }
+        ],
+        log: "✨ 다음 공격 회피(1턴)!"
+      };
     }
     return baseDamage;
   }
@@ -398,8 +603,13 @@ module.exports = {
   description: "3턴간 상대에게 매턴 8의 고정 피해를 입히는 중독 효과를 겁니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 3, damage: 8 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 8, turns: 3 } }
+      ],
+      log: "☠️ 3턴간 중독(매턴 8 피해)!"
+    };
   }
 },
 "바이": {
@@ -407,7 +617,15 @@ module.exports = {
   description: "공격 시 20% 확률로 적을 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = true;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "👊 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -417,7 +635,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     attacker.stats.ap += 2;
-    return baseDamage;
+    return {
+      baseDamage,
+      log: "🟪 주문력 +2 영구 증가!"
+    };
   }
 },
 "베인": {
@@ -428,7 +649,10 @@ module.exports = {
     attacker._vayneCount = (attacker._vayneCount || 0) + 1;
     if (attacker._vayneCount >= 3) {
       attacker._vayneCount = 0;
-      return baseDamage + 15;
+      return {
+        baseDamage: baseDamage + 15,
+        log: "🦌 3타마다 15 추가 피해!"
+      };
     }
     return baseDamage;
   }
@@ -436,9 +660,14 @@ module.exports = {
 "벡스": {
   name: "우울한 폭발",
   description: "공격 시 상대가 방어 중이면 피해량이 50% 증가합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    if (defender.isDefending) return Math.floor(baseDamage * 1.5);
+    if (context?.isDefending) {
+      return {
+        baseDamage: Math.floor(baseDamage * 1.5),
+        log: "☁️ 방어 중 상대에 50% 추가 피해!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -447,8 +676,13 @@ module.exports = {
   description: "공격 시 15% 확률로 즉시 한 번 더 공격합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const extra = Math.random() < 0.15 ? baseDamage : 0;
-    return baseDamage + extra;
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🐟 15% 확률로 한 번 더 공격!"
+      };
+    }
+    return baseDamage;
   }
 },
 "벨코즈": {
@@ -457,7 +691,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     attacker._velkozStacks = (attacker._velkozStacks || 0) + 1;
-    return baseDamage + 5 * attacker._velkozStacks;
+    return {
+      baseDamage: baseDamage + 5 * attacker._velkozStacks,
+      log: `🔮 누적스택! 추가 피해 ${5 * attacker._velkozStacks}`
+    };
   }
 },
 "볼리베어": {
@@ -465,7 +702,13 @@ module.exports = {
   description: "공격 시 25% 확률로 번개가 튀어 추가 피해를 줍니다 (고정 10).",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return baseDamage + (Math.random() < 0.25 ? 10 : 0);
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage: baseDamage + 10,
+        log: "⚡️ 25% 확률로 번개 피해 +10!"
+      };
+    }
+    return baseDamage;
   }
 },
 "브라움": {
@@ -473,7 +716,10 @@ module.exports = {
   description: "방어 시 피해를 30% 감소시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    return Math.floor(baseDamage * 0.7);
+    return {
+      baseDamage: Math.floor(baseDamage * 0.7),
+      log: "🛡️ 피해 30% 감소!"
+    };
   }
 },
 "브라이어": {
@@ -483,7 +729,10 @@ module.exports = {
     if (!isAttack) return baseDamage;
     const heal = Math.floor(baseDamage * 0.2);
     attacker.hp = Math.min(attacker.hp + heal, attacker.stats.hp);
-    return baseDamage;
+    return {
+      baseDamage,
+      log: `🩸 ${heal} 흡혈!`
+    };
   }
 },
 "브랜드": {
@@ -491,8 +740,13 @@ module.exports = {
   description: "공격 시 3턴간 매턴 6의 고정 피해를 줍니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 3, damage: 6 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 6, turns: 3 } }
+      ],
+      log: "🔥 3턴간 매턴 6의 고정 피해!"
+    };
   }
 },
 "블라디미르": {
@@ -502,7 +756,10 @@ module.exports = {
     if (!isAttack) return baseDamage;
     const heal = Math.floor(baseDamage * 0.15);
     attacker.hp = Math.min(attacker.hp + heal, attacker.stats.hp);
-    return baseDamage;
+    return {
+      baseDamage,
+      log: `💉 피해의 15%(${heal}) 흡혈!`
+    };
   }
 },
 "블리츠크랭크": {
@@ -588,6 +845,10 @@ module.exports = {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
       attacker.hp = Math.min(attacker.hp + 15, attacker.stats.hp);
+      return {
+        baseDamage,
+        log: "🌒 자신 체력 15 회복!"
+      };
     }
     return baseDamage;
   }
@@ -603,7 +864,10 @@ module.exports = {
         context.userData[id].stats.hp
       );
     }
-    return baseDamage;
+    return {
+      baseDamage,
+      log: "🎶 모든 아군 체력 10 회복!"
+    };
   }
 },
 "세주아니": {
@@ -611,7 +875,15 @@ module.exports = {
   description: "공격 시 30% 확률로 상대를 2턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.3) defender.stunned = 2;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 2 } }
+        ],
+        log: "❄️ 2턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -621,7 +893,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     attacker.hp = Math.min(attacker.hp + 10, attacker.stats.hp);
-    return baseDamage;
+    return {
+      baseDamage,
+      log: "🥊 자신 체력 10 회복!"
+    };
   }
 },
 "소나": {
@@ -629,7 +904,10 @@ module.exports = {
   description: "턴 시작 시 체력을 5 회복합니다. (지속 효과)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     attacker.hp = Math.min(attacker.hp + 5, attacker.stats.hp);
-    return baseDamage;
+    return {
+      baseDamage,
+      log: "🎵 턴 시작마다 5 힐!"
+    };
   }
 },
 "소라카": {
@@ -637,7 +915,13 @@ module.exports = {
   description: "피격 시 20% 확률로 받은 피해의 절반을 무시합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    return Math.random() < 0.2 ? Math.floor(baseDamage * 0.5) : baseDamage;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage: Math.floor(baseDamage * 0.5),
+        log: "✨ 20% 확률로 피해 절반 무시!"
+      };
+    }
+    return baseDamage;
   }
 },
 "쉔": {
@@ -645,7 +929,15 @@ module.exports = {
   description: "방어 시 30% 확률로 다음 턴 동안 피해를 모두 무시합니다. (1턴)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    if (Math.random() < 0.3) defender.invincible = 1;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "invulnerable", turns: 1 } }
+        ],
+        log: "🛡️ 다음 턴 무적(1턴)!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -654,8 +946,13 @@ module.exports = {
   description: "공격 시 2턴 동안 매턴 10의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 2, damage: 10 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 10, turns: 2 } }
+      ],
+      log: "🐉 2턴간 매턴 10의 고정 피해!"
+    };
   }
 },
 "스몰더": {
@@ -664,8 +961,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      defender.debuffs = defender.debuffs || {};
-      defender.debuffs.defense = { value: -5, turns: 3 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "defDown", value: 5, turns: 3 } }
+        ],
+        log: "🔥 상대 방어력 3턴간 5 감소!"
+      };
     }
     return baseDamage;
   }
@@ -675,7 +977,15 @@ module.exports = {
   description: "공격 시 25% 확률로 상대의 다음 공격을 무효화합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.missNext = true;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "missNext", turns: 1 } }
+        ],
+        log: "👁️ 상대의 다음 공격 무효!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -684,8 +994,13 @@ module.exports = {
   description: "공격 시 1턴 동안 상대의 스킬 사용을 봉인합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.skillBlocked = 1;
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "skillBlocked", turns: 1 } }
+      ],
+      log: "🔗 상대 스킬 사용 봉인(1턴)!"
+    };
   }
 },
 "시비르": {
@@ -693,8 +1008,13 @@ module.exports = {
   description: "방어 시 1턴 동안 스킬 피해를 무효화합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    defender.blockSkill = 1;
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "blockSkill", turns: 1 } }
+      ],
+      log: "🛡️ 1턴간 스킬 피해 무효!"
+    };
   }
 },
 "신 짜오": {
@@ -702,7 +1022,13 @@ module.exports = {
   description: "공격 시 30% 확률로 다음 턴에 다시 공격할 수 있습니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.3) attacker.extraTurn = true;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage,
+        extraTurn: true,
+        log: "🏇 30% 확률로 연속 공격!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -711,9 +1037,13 @@ module.exports = {
   description: "공격 시 20의 추가 피해를 입히고 상대의 마법 방어를 3 감소시킵니다. (2턴)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.debuffs = defender.debuffs || {};
-    defender.debuffs.magicResist = { value: -3, turns: 2 };
-    return baseDamage + 20;
+    return {
+      baseDamage: baseDamage + 20,
+      addEffect: [
+        { target: 'defender', effect: { type: "magicResistDebuff", value: -3, turns: 2 } }
+      ],
+      log: "⚫ 20 추가 피해 + 마법방어 2턴간 3 감소!"
+    };
   }
 },
 "신지드": {
@@ -721,8 +1051,13 @@ module.exports = {
   description: "공격 시 3턴 동안 매턴 6의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 3, damage: 6 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 6, turns: 3 } }
+      ],
+      log: "☣️ 3턴간 매턴 6 중독!"
+    };
   }
 },
 "쓰레쉬": {
@@ -730,7 +1065,15 @@ module.exports = {
   description: "공격 시 15% 확률로 상대를 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.15) defender.stunned = 1;
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "⚖️ 15% 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -739,7 +1082,15 @@ module.exports = {
   description: "공격 시 25% 확률로 상대를 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.stunned = 1;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "💗 25% 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -748,8 +1099,13 @@ module.exports = {
   description: "공격 시 2턴 동안 매턴 4의 고정 피해를 줍니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 2, damage: 4 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 4, turns: 2 } }
+      ],
+      log: "😢 2턴간 매턴 4 고정 피해!"
+    };
   }
 },
 "아우렐리온 솔": {
@@ -757,7 +1113,10 @@ module.exports = {
   description: "공격 시 고정 피해 30을 추가로 줍니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return baseDamage + 30;
+    return {
+      baseDamage: baseDamage + 30,
+      log: "✨ 추가 피해 30!"
+    };
   }
 },
 "아이번": {
@@ -765,8 +1124,13 @@ module.exports = {
   description: "첫 피해를 무효화하는 보호막을 2턴간 얻습니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    defender.shield = { amount: 9999, turns: 2 }; // 모든 피해 무효화
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "invulnerable", turns: 2 } }
+      ],
+      log: "🌱 2턴간 피해 완전 무효(쉴드)!"
+    };
   }
 },
 "아지르": {
@@ -774,8 +1138,13 @@ module.exports = {
   description: "공격 시 2턴 동안 매턴 10의 고정 피해를 입히는 병사를 소환합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 2, damage: 10 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 10, turns: 2 } }
+      ],
+      log: "🏜️ 2턴간 매턴 10 피해!"
+    };
   }
 },
 "아칼리": {
@@ -783,7 +1152,15 @@ module.exports = {
   description: "공격 시 20% 확률로 다음 턴에 받는 피해를 무효화합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) attacker.shield = { amount: 9999, turns: 1 };
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "invulnerable", turns: 1 } }
+        ],
+        log: "🌒 다음 턴 피해 무효(1턴)!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -792,8 +1169,13 @@ module.exports = {
   description: "공격 시 15% 확률로 즉시 한 번 더 공격합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const extra = Math.random() < 0.15 ? baseDamage : 0;
-    return baseDamage + extra;
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🔫 15% 확률로 한 번 더 공격!"
+      };
+    }
+    return baseDamage;
   }
 },
 "아트록스": {
@@ -803,7 +1185,10 @@ module.exports = {
     if (!isAttack) return baseDamage;
     const heal = Math.floor(baseDamage * 0.2);
     attacker.hp = Math.min(attacker.hp + heal, attacker.stats.hp);
-    return baseDamage;
+    return {
+      baseDamage,
+      log: `🩸 피해의 20%(${heal}) 흡혈!`
+    };
   }
 },
 "아펠리오스": {
@@ -812,9 +1197,16 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     let damage = baseDamage;
-    if (Math.random() < 0.3) damage *= 1.5;
-    if (Math.random() < 0.3) damage += 20;
-    return damage;
+    let log = "";
+    if (Math.random() < 0.3) {
+      damage = Math.floor(damage * 1.5);
+      log += "💥 치명타! ";
+    }
+    if (Math.random() < 0.3) {
+      damage += 20;
+      log += "+20 고정 피해!";
+    }
+    return { baseDamage: damage, log: log.trim() };
   }
 },
 "알리스타": {
@@ -822,7 +1214,13 @@ module.exports = {
   description: "방어 시 25% 확률로 받는 피해를 절반으로 감소시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    return Math.random() < 0.25 ? Math.floor(baseDamage * 0.5) : baseDamage;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage: Math.floor(baseDamage * 0.5),
+        log: "🐮 25% 확률로 피해 절반!"
+      };
+    }
+    return baseDamage;
   }
 },
 "암베사": {
@@ -831,8 +1229,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      defender.debuffs = defender.debuffs || [];
-      defender.debuffs.push({ stat: "defense", amount: -5, turns: 2 });
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "defDown", value: 5, turns: 2 } }
+        ],
+        log: "🗡️ 상대 방어력 2턴간 5 감소!"
+      };
     }
     return baseDamage;
   }
@@ -843,7 +1246,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.15) {
-      defender.dot = { turns: 3, damage: 10 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "dot", damage: 10, turns: 3 } }
+        ],
+        log: "🔥 15% 확률로 3턴간 화염 피해(10)!"
+      };
     }
     return baseDamage;
   }
@@ -851,8 +1260,8 @@ module.exports = {
 "애니비아": {
   name: "부활의 알",
   description: "죽음에 이를 경우, 1번에 한해 체력 30으로 부활합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    // 효과는 전투 종료 시점에서 확인하므로 여기선 처리 X
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
+    // 실제 부활 로직은 전투 종료/피격 타이밍에 따로 구현, 여긴 log만!
     return baseDamage;
   }
 },
@@ -861,7 +1270,15 @@ module.exports = {
   description: "공격 시 30% 확률로 상대를 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.3) defender.stunned = true;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "❄️ 30% 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -871,17 +1288,27 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     const critChance = (attacker.crit || 0) + 0.3;
-    const isCrit = Math.random() < critChance;
-    return isCrit ? baseDamage * 1.5 : baseDamage;
+    if (Math.random() < critChance) {
+      return {
+        baseDamage: Math.floor(baseDamage * 1.5),
+        log: "🍃 치명타! 1.5배 피해!"
+      };
+    }
+    return baseDamage;
   }
 },
 "에코": {
   name: "시간 왜곡",
   description: "1턴에 한해 받은 피해의 50%를 다음 턴 시작 시 회복합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    attacker.healNext = Math.floor(baseDamage * 0.5); // 다음 턴 시작 시 회복
-    return baseDamage;
+    // battleEngine에서 next turn 시작시 context로 healNext 적용 필요
+    context.healNext = context.healNext || {};
+    context.healNext[attacker.id] = Math.floor(baseDamage * 0.5);
+    return {
+      baseDamage,
+      log: "⏳ 다음 턴 시작 시 받은 피해의 50% 회복!"
+    };
   }
 },
 "엘리스": {
@@ -890,8 +1317,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      defender.debuffs = defender.debuffs || [];
-      defender.debuffs.push({ stat: "defense", amount: -4, turns: 2 });
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "defDown", value: 4, turns: 2 } }
+        ],
+        log: "🕷️ 2턴간 방어력 4 감소!"
+      };
     }
     return baseDamage;
   }
@@ -901,8 +1333,13 @@ module.exports = {
   description: "공격 시 25% 확률로 1회 추가 타격(기본 피해의 50%)을 가합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const extra = Math.random() < 0.25 ? Math.floor(baseDamage * 0.5) : 0;
-    return baseDamage + extra;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage: baseDamage + Math.floor(baseDamage * 0.5),
+        log: "🐵 25% 확률로 추가 타격(50%)!"
+      };
+    }
+    return baseDamage;
   }
 },
 "오로라": {
@@ -912,6 +1349,10 @@ module.exports = {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.15) {
       attacker.hp = Math.min(attacker.hp + 20, attacker.stats.hp);
+      return {
+        baseDamage,
+        log: "🌈 15% 확률로 자신 체력 20 회복!"
+      };
     }
     return baseDamage;
   }
@@ -921,7 +1362,15 @@ module.exports = {
   description: "공격 시 10% 확률로 1턴 동안 피해를 무시하는 보호막을 생성합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.1) attacker.barrier = { value: baseDamage, turns: 1 };
+    if (Math.random() < 0.1) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "invulnerable", turns: 1 } }
+        ],
+        log: "⚒️ 1턴간 무적 보호막!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -930,7 +1379,15 @@ module.exports = {
   description: "공격 시 25% 확률로 1턴간 상대를 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.stunned = true;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🔮 25% 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -940,7 +1397,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     const isLowHp = attacker.hp <= Math.floor(attacker.stats.hp * 0.3);
-    return isLowHp ? Math.floor(baseDamage * 1.5) : baseDamage;
+    if (isLowHp) {
+      return {
+        baseDamage: Math.floor(baseDamage * 1.5),
+        log: "🪓 체력 30% 이하! 피해 1.5배!"
+      };
+    }
+    return baseDamage;
   }
 },
 "요네": {
@@ -949,7 +1412,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      defender.dot = { turns: 2, damage: 10 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "dot", damage: 10, turns: 2 } }
+        ],
+        log: "⚔️ 2턴간 매턴 10 고정 피해!"
+      };
     }
     return baseDamage;
   }
@@ -959,7 +1428,13 @@ module.exports = {
   description: "공격 시 10% 확률로 추가 유닛이 소환되어 피해량이 2배가 됩니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.random() < 0.1 ? baseDamage * 2 : baseDamage;
+    if (Math.random() < 0.1) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "💀 10% 확률로 피해 2배!"
+      };
+    }
+    return baseDamage;
   }
 },
 "우디르": {
@@ -967,8 +1442,18 @@ module.exports = {
   description: "공격 또는 방어 시 번갈아가며 다음 스킬 효과가 적용됩니다. (피해 +10 또는 받는 피해 -10)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     attacker.form = (attacker.form || "tiger") === "tiger" ? "turtle" : "tiger";
-    if (attacker.form === "tiger" && isAttack) return baseDamage + 10;
-    if (attacker.form === "turtle" && !isAttack) return Math.max(0, baseDamage - 10);
+    if (attacker.form === "tiger" && isAttack) {
+      return {
+        baseDamage: baseDamage + 10,
+        log: "🐯 공격 턴! 피해 +10!"
+      };
+    }
+    if (attacker.form === "turtle" && !isAttack) {
+      return {
+        baseDamage: Math.max(0, baseDamage - 10),
+        log: "🐢 방어 턴! 피해 -10!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -978,8 +1463,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.15) {
-      defender.stunned = true;
-      return Math.floor(baseDamage * 1.5);
+      return {
+        baseDamage: Math.floor(baseDamage * 1.5),
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🪓 15% 확률 1턴 기절 + 1.5배 피해!"
+      };
     }
     return baseDamage;
   }
@@ -990,7 +1480,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     const isLowHp = defender.hp <= Math.floor(defender.stats.hp * 0.3);
-    return isLowHp ? Math.floor(baseDamage * 1.8) : baseDamage;
+    if (isLowHp) {
+      return {
+        baseDamage: Math.floor(baseDamage * 1.8),
+        log: "🐺 상대 체력 30% 이하! 피해 1.8배!"
+      };
+    }
+    return baseDamage;
   }
 },
 "유미": {
@@ -998,7 +1494,13 @@ module.exports = {
   description: "방어 시 20% 확률로 받은 피해의 절반만 입습니다. (즉시)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    return Math.random() < 0.2 ? Math.floor(baseDamage * 0.5) : baseDamage;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage: Math.floor(baseDamage * 0.5),
+        log: "🐱 20% 확률로 피해 절반!"
+      };
+    }
+    return baseDamage;
   }
 },
 "이렐리아": {
@@ -1007,7 +1509,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.25) {
-      attacker.bonusAttack = { turns: 1, amount: 10 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "atkBuff", value: 10, turns: 1 } }
+        ],
+        log: "🗡️ 25% 확률로 1턴간 공격력 +10!"
+      };
     }
     return baseDamage;
   }
@@ -1018,7 +1526,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      return Math.floor(baseDamage * 1.3);
+      return {
+        baseDamage: Math.floor(baseDamage * 1.3),
+        log: "👠 20% 확률로 방어력 무시, 피해 1.3배!"
+      };
     }
     return baseDamage;
   }
@@ -1028,7 +1539,13 @@ module.exports = {
   description: "공격 시 30% 확률로 치명타로 2배 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.random() < 0.3 ? baseDamage * 2 : baseDamage;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🏹 30% 확률로 2배 피해(치명타)!"
+      };
+    }
+    return baseDamage;
   }
 },
 "일라오이": {
@@ -1036,7 +1553,10 @@ module.exports = {
   description: "공격 시 추가로 10의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return baseDamage + 10;
+    return {
+      baseDamage: baseDamage + 10,
+      log: "🐙 추가 고정 피해 10!"
+    };
   }
 },
 "자르반 4세": {
@@ -1044,8 +1564,13 @@ module.exports = {
   description: "공격 시 1턴 동안 자신의 방어력을 5 증가시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    attacker.bonusDefense = { turns: 1, amount: 5 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'attacker', effect: { type: "defBuff", value: 5, turns: 1 } }
+      ],
+      log: "🛡️ 1턴간 방어력 +5!"
+    };
   }
 },
 "자야": {
@@ -1053,7 +1578,13 @@ module.exports = {
   description: "공격 시 20% 확률로 같은 피해를 두 번 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.random() < 0.2 ? baseDamage * 2 : baseDamage;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🪶 20% 확률로 피해 2번!"
+      };
+    }
+    return baseDamage;
   }
 },
 "자이라": {
@@ -1062,7 +1593,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.25) {
-      defender.dot = { turns: 2, damage: 3 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "dot", damage: 3, turns: 2 } }
+        ],
+        log: "🌿 2턴간 매턴 3 덩굴 피해!"
+      };
     }
     return baseDamage;
   }
@@ -1070,13 +1607,8 @@ module.exports = {
 "자크": {
   name: "세포 분열",
   description: "피해를 받아 체력이 0이 되면, 한 번에 한해 체력을 1로 남기고 부활합니다. (1회)",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
-    if (defender.hp - baseDamage <= 0 && !defender.reviveUsed) {
-      defender.hp = 1;
-      defender.reviveUsed = true;
-      return 0;
-    }
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
+    // 실제로는 battleEngine의 턴/피격 처리 시점에서 부활 체크
     return baseDamage;
   }
 },
@@ -1085,8 +1617,13 @@ module.exports = {
   description: "방어 시 다음 공격 피해를 50% 감소시킵니다. (1턴 지속)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    defender.damageReduction = { turns: 1, percent: 0.5 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "damageReductionPercent", value: 50, turns: 1 } }
+      ],
+      log: "🌪️ 다음 피해 50% 감소(1턴)!"
+    };
   }
 },
 "잭스": {
@@ -1095,7 +1632,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     attacker.stats.attack += 2;
-    return baseDamage;
+    return {
+      baseDamage,
+      log: "🪓 공격력 +2 영구 증가!"
+    };
   }
 },
 "제드": {
@@ -1104,7 +1644,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.25) {
-      defender.dot = { turns: 2, damage: 7 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "dot", damage: 7, turns: 2 } }
+        ],
+        log: "⚔️ 2턴간 매턴 7 고정 피해!"
+      };
     }
     return baseDamage;
   }
@@ -1114,7 +1660,13 @@ module.exports = {
   description: "공격 시 주문력이 50 이상이면 피해량이 25% 증가합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return attacker.stats.ap >= 50 ? Math.floor(baseDamage * 1.25) : baseDamage;
+    if (attacker.stats.ap >= 50) {
+      return {
+        baseDamage: Math.floor(baseDamage * 1.25),
+        log: "💥 주문력 50 이상! 피해 25% 증가!"
+      };
+    }
+    return baseDamage;
   }
 },
 "제리": {
@@ -1122,7 +1674,13 @@ module.exports = {
   description: "공격 시 20% 확률로 즉시 추가 공격을 1회 더 가합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.random() < 0.2 ? baseDamage * 2 : baseDamage;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "⚡ 20% 확률로 추가 공격 1회!"
+      };
+    }
+    return baseDamage;
   }
 },
 "제이스": {
@@ -1130,8 +1688,13 @@ module.exports = {
   description: "공격 시 50% 확률로 공격력 대신 주문력 기반으로 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const useAp = Math.random() < 0.5;
-    return useAp ? attacker.stats.ap : baseDamage;
+    if (Math.random() < 0.5) {
+      return {
+        baseDamage: attacker.stats.ap,
+        log: "🔄 50% 확률로 주문력 기반 피해!"
+      };
+    }
+    return baseDamage;
   }
 },
 "조이": {
@@ -1139,7 +1702,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대를 1턴 동안 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = true;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🌟 20% 확률로 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1148,8 +1719,13 @@ module.exports = {
   description: "공격 시 2턴에 걸쳐 총 20의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 2, damage: 10 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 10, turns: 2 } }
+      ],
+      log: "💣 2턴간 매턴 10 고정 피해!"
+    };
   }
 },
 "진": {
@@ -1157,8 +1733,13 @@ module.exports = {
   description: "4의 배수 레벨일 때 공격 시 치명타 확률이 100%입니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const isCrit = attacker.level % 4 === 0;
-    return isCrit ? baseDamage * 2 : baseDamage;
+    if (attacker.level % 4 === 0) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🎯 치명타! (레벨 4의 배수)"
+      };
+    }
+    return baseDamage;
   }
 },
 "질리언": {
@@ -1166,8 +1747,13 @@ module.exports = {
   description: "방어 시 1턴간 모든 상태이상을 무효화합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    defender.ignoreDebuff = 1;
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "ignoreDebuff", turns: 1 } }
+      ],
+      log: "⏳ 1턴간 상태이상 무효!"
+    };
   }
 },
 "징크스": {
@@ -1175,7 +1761,15 @@ module.exports = {
   description: "공격 시 25% 확률로 다음 턴 피해가 1.5배 증가합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) attacker.buff = { turns: 1, multiplier: 1.5 };
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "damageBuff", value: 1.5, turns: 1 } }
+        ],
+        log: "🔫 다음 턴 피해 1.5배!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1184,7 +1778,13 @@ module.exports = {
   description: "공격 시 상대 체력이 20 이하일 경우 즉시 처치합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return defender.hp <= 20 ? defender.hp : baseDamage;
+    if (defender.hp <= 20) {
+      return {
+        baseDamage: defender.hp,
+        log: "🦑 상대가 20 이하라 즉시 처치!"
+      };
+    }
+    return baseDamage;
   }
 },
 "카르마": {
@@ -1192,17 +1792,26 @@ module.exports = {
   description: "피해를 받을 때마다 15% 확률로 10 체력을 회복합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    if (Math.random() < 0.15) defender.hp += 10;
+    if (Math.random() < 0.15) {
+      defender.hp = Math.min(defender.hp + 10, defender.stats.hp);
+      return {
+        baseDamage,
+        log: "🧘 15% 확률로 10 회복!"
+      };
+    }
     return baseDamage;
   }
 },
 "카밀": {
   name: "정밀 프로토콜",
   description: "공격 시 방어력을 무시하고 공격합니다. (관통력 100%)",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    defender.defense = 0;
-    return baseDamage;
+    // battleEngine에서 관통 처리되면 여기선 log만!
+    return {
+      baseDamage,
+      log: "🦵 방어력 완전 무시!"
+    };
   }
 },
 "카사딘": {
@@ -1210,20 +1819,20 @@ module.exports = {
   description: "받는 마법 피해를 2턴간 50% 감소시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    defender.magicResistBuff = { turns: 2, multiplier: 0.5 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "magicResistBuff", value: 0.5, turns: 2 } }
+      ],
+      log: "🛡️ 2턴간 마법 피해 50% 감소!"
+    };
   }
 },
 "카서스": {
   name: "진혼곡",
   description: "사망 시 1턴간 살아있으며, 그 턴 동안 강력한 공격을 합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
-    if (!isAttack) return baseDamage;
-    if (attacker.hp <= 0 && !attacker.reviveUsed) {
-      attacker.reviveUsed = true;
-      attacker.hp = 1;
-      attacker.status = "revenge";
-    }
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
+    // 실제 부활/처리 battleEngine 타이밍에서 관리
     return baseDamage;
   }
 },
@@ -1232,7 +1841,15 @@ module.exports = {
   description: "공격 시 20% 확률로 적을 2턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = 2;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 2 } }
+        ],
+        log: "🐍 2턴간 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1241,17 +1858,29 @@ module.exports = {
   description: "공격 시 관통력이 10 증가하고, 2턴간 유지됩니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    attacker.penetrationBuff = { turns: 2, value: 10 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'attacker', effect: { type: "penetrationBuff", value: 10, turns: 2 } }
+      ],
+      log: "👾 관통력 +10 (2턴)!"
+    };
   }
 },
 "카직스": {
   name: "고립된 사냥감",
   description: "상대가 디버프 상태일 때 피해가 1.5배로 증가합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    const hasDebuff = defender.stunned || defender.dot || defender.penalty;
-    return hasDebuff ? baseDamage * 1.5 : baseDamage;
+    // 디버프(기절, dot 등)가 effect에 적용되어 있으면 1.5배
+    const debuffed = context?.effects?.[defender.id]?.length > 0;
+    if (debuffed) {
+      return {
+        baseDamage: Math.floor(baseDamage * 1.5),
+        log: "🦗 상대 디버프! 피해 1.5배!"
+      };
+    }
+    return baseDamage;
   }
 },
 "카타리나": {
@@ -1259,7 +1888,10 @@ module.exports = {
   description: "공격 시 2회 연속 공격 (총 피해량의 120%)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.floor(baseDamage * 1.2);
+    return {
+      baseDamage: Math.floor(baseDamage * 1.2),
+      log: "🔪 피해 120% (2연타)"
+    };
   }
 },
 "칼리스타": {
@@ -1267,8 +1899,13 @@ module.exports = {
   description: "공격 시 50% 확률로 즉시 다시 공격 (피해 50%)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const extraHit = Math.random() < 0.5;
-    return extraHit ? baseDamage + Math.floor(baseDamage * 0.5) : baseDamage;
+    if (Math.random() < 0.5) {
+      return {
+        baseDamage: baseDamage + Math.floor(baseDamage * 0.5),
+        log: "🏹 50% 확률로 추가 공격(50%)!"
+      };
+    }
+    return baseDamage;
   }
 },
 "케넨": {
@@ -1276,7 +1913,15 @@ module.exports = {
   description: "공격 시 15% 확률로 적에게 감전 효과 부여 (1턴 기절)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.15) defender.stunned = 1;
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "⚡ 1턴 감전(기절)!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1288,7 +1933,10 @@ module.exports = {
     attacker.precisionTurn = (attacker.precisionTurn || 0) + 1;
     if (attacker.precisionTurn >= 2) {
       attacker.precisionTurn = 0;
-      return baseDamage * 2;
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🎯 정조준! 피해 2배!"
+      };
     }
     return baseDamage;
   }
@@ -1298,7 +1946,15 @@ module.exports = {
   description: "공격 시 25% 확률로 상대의 다음 턴을 건너뜁니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.skipNextTurn = true;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "skipNextTurn", turns: 1 } }
+        ],
+        log: "🌑 25% 확률로 상대 턴 스킵!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1307,18 +1963,26 @@ module.exports = {
   description: "방어 시 1턴 동안 무적 상태가 됩니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    defender.immune = 1; // 1턴 무적
-    return 0;
+    return {
+      baseDamage: 0,
+      addEffect: [
+        { target: 'defender', effect: { type: "invulnerable", turns: 1 } }
+      ],
+      log: "👼 1턴간 무적!"
+    };
   }
 },
 "코그모": {
   name: "부식성 침",
   description: "공격 시 방어력을 5 무시합니다. (즉시 적용)",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    const ignore = Math.min(defender.defense, 5);
-    defender.defense -= ignore;
-    return baseDamage + ignore;
+    const ignore = Math.min(defender.stats.defense || 0, 5);
+    if (ignore > 0) defender.stats.defense -= ignore;
+    return {
+      baseDamage: baseDamage + ignore,
+      log: `🦷 방어력 5 무시!`
+    };
   }
 },
 "코르키": {
@@ -1326,7 +1990,13 @@ module.exports = {
   description: "공격 시 20% 확률로 적에게 10의 고정 피해 추가",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return baseDamage + (Math.random() < 0.2 ? 10 : 0);
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage: baseDamage + 10,
+        log: "💥 추가 10 피해!"
+      };
+    }
+    return baseDamage;
   }
 },
 "퀸": {
@@ -1334,7 +2004,15 @@ module.exports = {
   description: "공격 시 15% 확률로 다음 턴에 선공권을 가집니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.15) attacker.nextTurnFirst = true;
+    if (Math.random() < 0.15) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "firstMoveNextTurn", turns: 1 } }
+        ],
+        log: "🦅 다음 턴 선공권!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1344,17 +2022,26 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     const hpRatio = defender.hp / defender.stats.hp;
-    return hpRatio <= 0.3 ? Math.floor(baseDamage * 0.5) : baseDamage;
+    if (hpRatio <= 0.3) {
+      return {
+        baseDamage: Math.floor(baseDamage * 0.5),
+        log: "🦏 30% 이하 피해 50% 감소!"
+      };
+    }
+    return baseDamage;
   }
 },
 "클레드": {
   name: "스칼과 함께!",
   description: "첫 피해를 무효화하고 대신 스칼이 대신 받습니다. (1회)",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (isAttack) return baseDamage;
-    if (!defender.skalUsed) {
-      defender.skalUsed = true;
-      return 0;
+    if (!context.kladShieldUsed) {
+      context.kladShieldUsed = true;
+      return {
+        baseDamage: 0,
+        log: "🐎 첫 피해 완전 무효!"
+      };
     }
     return baseDamage;
   }
@@ -1362,12 +2049,17 @@ module.exports = {
 "키아나": {
   name: "원소의 분노",
   description: "공격 시 30% 확률로 방어력과 관통력을 무시합니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.3) {
-      const def = defender.defense;
-      defender.defense = 0;
-      attacker.penetration = attacker.penetration + def;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "defDown", value: defender.stats.defense || 0, turns: 1 } },
+          { target: 'attacker', effect: { type: "penetrationBuff", value: defender.stats.defense || 0, turns: 1 } }
+        ],
+        log: "🌪️ 30% 확률로 방어력/관통력 무시!"
+      };
     }
     return baseDamage;
   }
@@ -1375,13 +2067,16 @@ module.exports = {
 "킨드레드": {
   name: "운명의 양면",
   description: "피해를 받아 체력이 10% 이하가 될 경우, 1회 체력 1로 생존",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (isAttack) return baseDamage;
     const predictedHp = defender.hp - baseDamage;
-    if (predictedHp <= 0 && !defender.cheatedDeath) {
-      defender.cheatedDeath = true;
+    if (predictedHp <= 0 && !context.kindredCheatDeathUsed) {
+      context.kindredCheatDeathUsed = true;
       defender.hp = 1;
-      return 0;
+      return {
+        baseDamage: 0,
+        log: "🐺 1회 체력 1로 생존!"
+      };
     }
     return baseDamage;
   }
@@ -1391,8 +2086,11 @@ module.exports = {
   description: "방어 시 1턴 동안 받는 피해의 50%를 반사합니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
-    attacker.hp -= Math.floor(baseDamage * 0.5);
-    return baseDamage;
+    attacker.hp = Math.max(0, attacker.hp - Math.floor(baseDamage * 0.5));
+    return {
+      baseDamage,
+      log: "💎 피해 50% 반사!"
+    };
   }
 },
 "탈론": {
@@ -1400,8 +2098,13 @@ module.exports = {
   description: "공격 시 3턴 동안 매턴 7의 고정 피해를 부여",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 3, damage: 7 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 7, turns: 3 } }
+      ],
+      log: "🗡️ 3턴간 매턴 7 피해!"
+    };
   }
 },
 "탈리야": {
@@ -1409,7 +2112,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대를 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.stunned = true;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🌋 20% 확률로 1턴 기절!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1419,8 +2130,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     if (Math.random() < 0.15) {
-      attacker.stunned = true;
-      return 0;
+      return {
+        baseDamage: 0,
+        addEffect: [
+          { target: 'attacker', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🐸 15% 확률로 피해 무효 + 상대 1턴 기절!"
+      };
     }
     return baseDamage;
   }
@@ -1431,7 +2147,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     attacker.stats.attack += 2;
-    return baseDamage;
+    return {
+      baseDamage,
+      log: "🦷 공격력 +2 영구 증가!"
+    };
   }
 },
 "트리스타나": {
@@ -1439,18 +2158,26 @@ module.exports = {
   description: "공격 시 30% 확률로 추가 피해 15를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const extra = Math.random() < 0.3 ? 15 : 0;
-    return baseDamage + extra;
+    if (Math.random() < 0.3) {
+      return {
+        baseDamage: baseDamage + 15,
+        log: "💥 30% 확률로 추가 피해 15!"
+      };
+    }
+    return baseDamage;
   }
 },
 "트린다미어": {
   name: "불사의 분노",
   description: "1턴에 한 번, 치명타 확률이 100%가 됩니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    if (!attacker.usedCritThisTurn) {
-      attacker.usedCritThisTurn = true;
-      return baseDamage * 2;
+    if (!context.trynCritUsed) {
+      context.trynCritUsed = true;
+      return {
+        baseDamage: baseDamage * 2,
+        log: "🗡️ 치명타! (1턴 1회)"
+      };
     }
     return baseDamage;
   }
@@ -1462,15 +2189,23 @@ module.exports = {
     if (!isAttack) return baseDamage;
     const type = Math.floor(Math.random() * 3);
     if (type === 0) {
-      // 빨간 카드: 고정 피해 +10
-      return baseDamage + 10;
+      return {
+        baseDamage: baseDamage + 10,
+        log: "♥️ 레드 카드! +10 고정 피해!"
+      };
     } else if (type === 1) {
-      // 파란 카드: 마나 회복 (무시됨), 대신 피해량 +5
-      return baseDamage + 5;
+      return {
+        baseDamage: baseDamage + 5,
+        log: "💙 블루 카드! +5 고정 피해!"
+      };
     } else {
-      // 노란 카드: 상대 기절
-      defender.stunned = true;
-      return baseDamage;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "💛 옐로 카드! 1턴 기절!"
+      };
     }
   }
 },
@@ -1479,8 +2214,13 @@ module.exports = {
   description: "공격 시 2턴 동안 매턴 7의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 2, damage: 7 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 7, turns: 2 } }
+      ],
+      log: "☠️ 2턴간 매턴 7 중독!"
+    };
   }
 },
 "티모": {
@@ -1488,8 +2228,13 @@ module.exports = {
   description: "공격 시 3턴 동안 매턴 5의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.dot = { turns: 3, damage: 5 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 5, turns: 3 } }
+      ],
+      log: "🍄 3턴간 매턴 5 중독!"
+    };
   }
 },
 "파이크": {
@@ -1499,7 +2244,10 @@ module.exports = {
     if (!isAttack) return baseDamage;
     const hpRate = defender.hp / defender.stats.hp;
     if (hpRate <= 0.3 && Math.random() < 0.25) {
-      defender.hp = 0;
+      return {
+        baseDamage: defender.hp,
+        log: "☠️ 25% 확률로 즉사!"
+      };
     }
     return baseDamage;
   }
@@ -1510,7 +2258,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      attacker.nullifiedNextAttack = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "missNext", turns: 1 } }
+        ],
+        log: "🛡️ 20% 확률로 상대 공격 무효!"
+      };
     }
     return baseDamage;
   }
@@ -1520,7 +2274,15 @@ module.exports = {
   description: "공격 시 25% 확률로 상대를 1턴간 공포 상태로 만들어 행동 불능에 빠트립니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.25) defender.fear = 1;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "feared", turns: 1 } }
+        ],
+        log: "👻 1턴 공포!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1529,8 +2291,10 @@ module.exports = {
   description: "공격 시 2회 연속 공격을 하며, 두 번째 타격은 피해가 절반입니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.hp -= Math.floor(baseDamage * 0.5);
-    return baseDamage;
+    return {
+      baseDamage: Math.floor(baseDamage * 1.5),
+      log: "⚔️ 연격! 1.5배 피해!"
+    };
   }
 },
 "피즈": {
@@ -1539,7 +2303,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     if (Math.random() < 0.3) {
-      defender.evade = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "dodgeNextAttack", turns: 1 } }
+        ],
+        log: "🐟 30% 확률로 다음 공격 완전 회피!"
+      };
     }
     return baseDamage;
   }
@@ -1549,8 +2319,13 @@ module.exports = {
   description: "매턴 추가로 5의 고정 피해를 가하는 포탑을 설치합니다. (3턴 지속)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    defender.turret = { turns: 3, damage: 5 };
-    return baseDamage;
+    return {
+      baseDamage,
+      addEffect: [
+        { target: 'defender', effect: { type: "dot", damage: 5, turns: 3 } }
+      ],
+      log: "🛠️ 3턴간 매턴 5 피해(포탑)!"
+    };
   }
 },
 "헤카림": {
@@ -1558,7 +2333,13 @@ module.exports = {
   description: "공격 시 20% 확률로 즉시 추가 턴을 얻습니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) attacker.extraTurn = true;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        extraTurn: true,
+        log: "🐎 20% 확률로 즉시 추가 턴!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1567,7 +2348,15 @@ module.exports = {
   description: "공격 시 20% 확률로 상대에게 2턴간 혼란을 부여합니다. (혼란 상태: 행동 실패 확률 증가)",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    if (Math.random() < 0.2) defender.confused = 2;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "confused", turns: 2 } }
+        ],
+        log: "🌫️ 2턴간 혼란 부여!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1576,8 +2365,13 @@ module.exports = {
   description: "공격 시 20% 확률로 피해량이 2배가 됩니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    const double = Math.random() < 0.2;
-    return double ? baseDamage * 2 : baseDamage;
+    if (Math.random() < 0.2) {
+      return {
+        baseDamage: baseDamage * 2,
+        log: "⚔️ 20% 확률로 피해 2배!"
+      };
+    }
+    return baseDamage;
   }
 },
 "갈리오": {
@@ -1586,7 +2380,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (isAttack) return baseDamage;
     if (Math.random() < 0.3) {
-      defender.barrier = { reduction: 0.5, turns: 2 };
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "damageReductionPercent", value: 50, turns: 2 } }
+        ],
+        log: "🛡️ 2턴간 받는 피해 50% 감소!"
+      };
     }
     return baseDamage;
   }
@@ -1596,7 +2396,13 @@ module.exports = {
   description: "공격 시 25% 확률로 추가로 15의 고정 피해를 입힙니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
-    return Math.random() < 0.25 ? baseDamage + 15 : baseDamage;
+    if (Math.random() < 0.25) {
+      return {
+        baseDamage: baseDamage + 15,
+        log: "💣 25% 확률로 15 고정 피해!"
+      };
+    }
+    return baseDamage;
   }
 },
 "그라가스": {
@@ -1605,8 +2411,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.2) {
-      defender.defBreak = { value: 5, turns: 2 };
-      defender.stats.defense = Math.max(0, defender.stats.defense - 5);
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "defDown", value: 5, turns: 2 } }
+        ],
+        log: "🥃 2턴간 방어력 5 감소!"
+      };
     }
     return baseDamage;
   }
@@ -1617,7 +2428,13 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.15) {
-      defender.blinded = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "blinded", turns: 1 } }
+        ],
+        log: "💨 1턴간 실명(다음 공격 회피)!"
+      };
     }
     return baseDamage;
   }
@@ -1628,7 +2445,10 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.25) {
-      return baseDamage + 12 + 12;
+      return {
+        baseDamage: baseDamage + 24,
+        log: "✂️ 25% 확률로 12+12 추가 피해!"
+      };
     }
     return baseDamage;
   }
@@ -1639,9 +2459,14 @@ module.exports = {
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.3) {
-      attacker.buff = { attack: 5, defense: 5, turns: 2 };
-      attacker.stats.attack += 5;
-      attacker.stats.defense += 5;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'attacker', effect: { type: "atkBuff", value: 5, turns: 2 } },
+          { target: 'attacker', effect: { type: "defBuff", value: 5, turns: 2 } }
+        ],
+        log: "🐻 2턴간 공격력/방어력 +5!"
+      };
     }
     return baseDamage;
   }
@@ -1651,10 +2476,17 @@ module.exports = {
   description: "공격 시 100% 확률로 7의 고정 피해 + 10% 확률로 상대를 1턴간 기절시킵니다.",
   effect: (attacker, defender, isAttack, baseDamage) => {
     if (!isAttack) return baseDamage;
+    let stunLog = "";
+    let stunEffect = [];
     if (Math.random() < 0.1) {
-      defender.stunned = true;
+      stunEffect.push({ target: 'defender', effect: { type: "stunned", turns: 1 } });
+      stunLog = " + 10% 기절!";
     }
-    return baseDamage + 7;
+    return {
+      baseDamage: baseDamage + 7,
+      addEffect: stunEffect,
+      log: "🐧 7 고정 피해" + stunLog
+    };
   }
 }
 };
