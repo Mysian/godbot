@@ -22,7 +22,11 @@ const fileMap = {
     location: "📁 루트 경로"
   },
   "프로필정보": {
-    path: path.join(__dirname, "../data/profile-data.json"),
+    path: path.join(__dirname, "../data/profiles.json"),
+    location: "📁 data 폴더"
+  },
+  "호감도": {
+    path: path.join(__dirname, "../data/favor.json"),
     location: "📁 data 폴더"
   }
 };
@@ -41,7 +45,8 @@ module.exports = {
           { name: "서버 이용현황 관리 로그", value: "서버 이용현황 관리 로그" },
           { name: "챔피언 배틀 전적", value: "챔피언 배틀 전적" },
           { name: "일정", value: "일정" },
-          { name: "프로필정보", value: "프로필정보" }
+          { name: "프로필정보", value: "프로필정보" },
+          { name: "호감도", value: "호감도" }
         )
     ),
 
