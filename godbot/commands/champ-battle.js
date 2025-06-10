@@ -49,6 +49,7 @@ function getStatusIcons(effects = []) {
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '') {
   const ch = userData[challenger.id];
   const op = userData[opponent.id];
+  // 반드시 battle.hp 값 사용! (effect 체력변화 반영)
   const chp = battle.hp[challenger.id];
   const ohp = battle.hp[opponent.id];
   const iconCh = await getChampionIcon(ch.name);
@@ -230,9 +231,9 @@ module.exports = {
                 userData[uid].name,
                 false // 평타는 asSkill=false
               );
-              cur.hp[tgt] = Math.max(0, cur.hp[tgt] - dmgInfo.damage);
-              // 힐/버프류 적용 시 cur.hp[uid] 갱신
-              cur.hp[uid] = Math.min(cur.hp[uid], userData[uid].stats.hp);
+              // (핵심) battle.hp 갱신, healing/흡혈도 반영됨
+              cur.hp[uid] = cur.context.hp ? cur.context.hp[uid] : cur.hp[uid];
+              cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
               log = dmgInfo.log;
 
             // 방어
@@ -243,7 +244,6 @@ module.exports = {
 
             // 스킬
             } else if (i.customId === 'skill') {
-              // 쿨타임/최소턴 체크 후 사용
               const champName = userData[uid].name;
               const skillCheck = canUseSkill(uid, champName, cur.context);
               if (!skillCheck.ok) {
@@ -257,8 +257,9 @@ module.exports = {
                   champName,
                   true // asSkill=true
                 );
-                cur.hp[tgt] = Math.max(0, cur.hp[tgt] - dmgInfo.damage);
-                cur.hp[uid] = Math.min(cur.hp[uid], userData[uid].stats.hp);
+                // (핵심) healing/흡혈/회복 반영: battle.hp에 실시간 반영
+                cur.hp[uid] = cur.context.hp ? cur.context.hp[uid] : cur.hp[uid];
+                cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
                 log = dmgInfo.log;
               }
             }
