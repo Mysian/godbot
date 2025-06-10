@@ -19,7 +19,7 @@ function initBattleContext(battle) {
     blockSkill: {},
     magicResistDebuff: {},
     userData: battle.userData || {},
-    reviveFlags: {},  // 1회성 부활
+    reviveFlags: {},
     blind: {},
     fear: {},
     confused: {},
@@ -27,7 +27,7 @@ function initBattleContext(battle) {
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
     battle.context.cooldowns[id] = 0;
-    battle.context.skillTurn[id] = 0;
+    battle.context.skillTurn[id] = 1; // 🟢 1로 초기화(수정)
     battle.context.skillUsed[id] = null;
     battle.context.flatReduction[id] = 0;
     battle.context.percentReduction[id] = 0;
@@ -139,15 +139,17 @@ function processTurnStart(userData, battle, actingUserId) {
   });
 }
 
+// 🟢 쿨다운, 최소 턴 체크 로직
 function canUseSkill(userId, championName, context) {
   const cdInfo = skillCd[championName];
   if (!cdInfo) return { ok: false, reason: '쿨타임 정보 없음' };
   const minTurn = cdInfo.minTurn || 1;
   const cooldown = cdInfo.cooldown || 1;
-  const nowTurn = context.skillTurn[userId] || 0;
+  const nowTurn = context.skillTurn[userId] || 1; // 🟢 기본 1턴부터 시작(수정)
   if (context.skillBlocked && context.skillBlocked[userId] > 0) {
     return { ok: false, reason: `스킬 봉인 효과로 스킬 사용 불가!` };
   }
+  // "현재 내 턴이 minTurn 이상이어야 사용 가능"
   if (nowTurn < minTurn) {
     return { ok: false, reason: `최소 ${minTurn}턴 이후 사용 가능! (현재: ${nowTurn}턴)` };
   }
@@ -170,7 +172,7 @@ function calculateDamage(
     context.effects?.[attacker.id]?.some(e => e.type === 'stunned') ||
     attacker.stunned ||
     context.fear?.[attacker.id] > 0 ||
-    (context.confused?.[attacker.id] > 0 && Math.random() < 0.5) // 혼란: 50% 확률 행동실패
+    (context.confused?.[attacker.id] > 0 && Math.random() < 0.5)
   ) {
     let msg = `${attacker.name}은(는) `;
     if (context.fear?.[attacker.id] > 0) msg += '공포로 ';
@@ -317,7 +319,6 @@ function calculateDamage(
   }
 
   // 1회성 부활 및 최초 무효화(자크, 애니비아, 클레드, 킨드레드 등) 관리(여기서 처리하지 않으면 챔배틀js에서 관리)
-  // ex: context.reviveFlags[attacker.id] = true 등 활용
 
   let log = '';
   if (usedSkill) {
@@ -329,7 +330,6 @@ function calculateDamage(
   }
   log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
 
-  // extraAttack/extraTurn 정보 반환
   return { damage: Math.round(base), critical: crit, log, extraAttack, extraTurn };
 }
 
