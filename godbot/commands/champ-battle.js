@@ -67,16 +67,17 @@ function createStatField(user, effects = []) {
   );
 }
 function canUseSkill(userId, champName, context) {
-  // (내 턴이 skillTurn[uid]번 올 동안 쿨타임이 cooldowns[uid]에서 0이 되어야 재사용 가능)
   const cdObj = skillCd[champName];
   const minTurn = cdObj?.minTurn || 1;
   const cooldown = cdObj?.cooldown || 1;
-  const turn = context.skillTurn?.[userId] || 0;
-  const remain = context.cooldowns?.[userId] ?? cooldown; // undefined면 쿨타임 초기값으로
+  const turn = context.skillTurn?.[userId] ?? 0;
+  const remain = context.cooldowns?.[userId] ?? 0;
 
+  // 최소 턴이 지나야 사용 가능 (내 턴이 최소 minTurn 이상)
   if (turn < minTurn) {
     return { ok: false, reason: `${minTurn}턴 이후부터 사용 가능 (내 턴 ${turn}회 경과)` };
   }
+  // 쿨타임이 0이어야 사용 가능 (쿨타임이 남아있으면 불가)
   if (remain > 0) {
     return { ok: false, reason: `쿨타임: ${remain}턴 남음` };
   }
@@ -88,8 +89,8 @@ function createSkillField(userId, champName, context) {
   if (!skillObj || !cdObj) return '스킬 정보 없음';
   const { name, description } = skillObj;
   const { minTurn, cooldown } = cdObj;
-  const turn = context.skillTurn?.[userId] || 0;
-  const remain = context.cooldowns?.[userId] ?? cooldown;
+  const turn = context.skillTurn?.[userId] ?? 0;
+  const remain = context.cooldowns?.[userId] ?? 0;
   const check = canUseSkill(userId, champName, context);
   let txt = `✨ **${name}**\n${description}\n`;
   txt += `⏳ 최소 ${minTurn || 1}턴 후 사용, 쿨타임: ${cooldown || 1}턴\n`;
@@ -264,7 +265,8 @@ module.exports = {
 
       const startHpCh = userData[challenger.id].stats.hp;
       const startHpOp = userData[opponent.id].stats.hp;
-      // 쿨타임 및 본인 턴 카운트용 구조 세팅
+
+      // 쿨타임 및 본인 턴 카운트 구조 세팅
       bd[battleId] = {
         challenger: challenger.id,
         opponent:   opponent.id,
@@ -284,6 +286,7 @@ module.exports = {
       save(battlePath, bd);
 
       let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
+
       const getActionRow = (canUseSkillBtn) =>
         new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger).setDisabled(false),
@@ -296,12 +299,12 @@ module.exports = {
       let turnCol;
       const startTurn = async () => {
         const cur = bd[battleId];
-        cur.usedSkill = {};
+        cur.usedSkill = cur.usedSkill || {};
         const currentTurnUser = cur.turn;
         cur.context.skillTurn = cur.context.skillTurn || { [cur.challenger]: 0, [cur.opponent]: 0 };
         cur.context.cooldowns = cur.context.cooldowns || { [cur.challenger]: 0, [cur.opponent]: 0 };
 
-        // 본인 턴 도달시 카운트 증가 및 쿨다운 감소
+        // 1. 내 턴 시작시 본인 skillTurn+1, 쿨다운(남아있으면) 1 감소
         cur.context.skillTurn[currentTurnUser] = (cur.context.skillTurn[currentTurnUser] || 0) + 1;
         if (cur.context.cooldowns[currentTurnUser] > 0) {
           cur.context.cooldowns[currentTurnUser]--;
@@ -381,12 +384,12 @@ module.exports = {
               return;
             }
 
-            const nextEmbed = await createBattleEmbed(
-              challenger, opponent, cur, userData, cur.turn, log, true
-            );
-            await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [getActionRow(true)] });
-
             // 다음 턴: "본인 턴만 카운트 증가" 유지
+            const nextEmbed = await createBattleEmbed(
+              challenger, opponent, cur, userData, cur.turn, log, canUseSkill(cur)
+            );
+            await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [getActionRow(canUseSkill(cur))] });
+
             startTurn();
             return;
           }
@@ -417,20 +420,21 @@ module.exports = {
                 log = dmgInfo.log;
                 actionDone[uid].skill = true;
                 cur.usedSkill[uid] = true;
-                // 쿨타임(턴) - 쿨이 N이라면 스킬 사용 후 "N턴 뒤에 사용 가능"이므로 N으로 설정
+
+                // 쿨타임 세팅: 쿨이 N이면 "다음 내 턴부터 N턴 뒤에" 사용 가능 (0이면 사용 가능)
                 const cdObj = skillCd[champName];
                 if (cdObj) {
                   cur.context.cooldowns[uid] = cdObj.cooldown || 1;
-                  cur.context.skillTurn[uid] = 0; // 다음 내 턴부터 다시 카운트
+                  cur.context.skillTurn[uid] = 0; // 다음 내 턴부터 카운트
                 }
               }
             }
             cur.logs.push(log);
 
             const nextEmbed = await createBattleEmbed(
-              challenger, opponent, cur, userData, cur.turn, log, false
+              challenger, opponent, cur, userData, cur.turn, log, canUseSkill(cur)
             );
-            await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(false)] });
+            await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(canUseSkill(cur))] });
             // **턴은 그대로! 평타/무빙 때만 넘어감**
             return;
           }
@@ -459,6 +463,13 @@ module.exports = {
           } catch {}
         }
       });
+
+      // 스킬 사용 가능 여부 체크 함수 (매턴 UI 활성화용)
+      function canUseSkill(cur) {
+        const uid = cur.turn;
+        const champName = userData[uid]?.name;
+        return canUseSkill(uid, champName, cur.context).ok;
+      }
 
       startTurn();
     });
