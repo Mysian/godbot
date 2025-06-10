@@ -2,14 +2,15 @@ const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
+// 실제 계정정보는 이 파일 위치 기준으로 accounts.json에 있음!
 const fileMap = {
   "챔피언정보": path.join(__dirname, "../data/champion-users.json"),
   "호감도": path.join(__dirname, "../data/favorability-data.json"),
   "롤티어": path.join(__dirname, "../data/lol-tier.json"),
   "옵치티어": path.join(__dirname, "../data/ow-tier.json"),
-  "계정정보": path.join(__dirname, "../accounts.json"),
+  "계정정보": path.join(__dirname, "accounts.json"), // ⬅️ 여기만 수정!
   "서버 이용현황 관리 로그": path.join(__dirname, "../activity.json"),
-  "챔피언 배틀 전적": path.join(__dirname, "../data/champion-records.json") // ✅ 추가
+  "챔피언 배틀 전적": path.join(__dirname, "../data/champion-records.json")
 };
 
 module.exports = {
@@ -28,7 +29,7 @@ module.exports = {
           { name: "옵치티어", value: "옵치티어" },
           { name: "계정정보", value: "계정정보" },
           { name: "서버 이용현황 관리 로그", value: "서버 이용현황 관리 로그" },
-          { name: "챔피언 배틀 전적", value: "챔피언 배틀 전적" } // ✅ 추가
+          { name: "챔피언 배틀 전적", value: "챔피언 배틀 전적" }
         )
     ),
 
