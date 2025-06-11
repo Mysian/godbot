@@ -1,3 +1,4 @@
+// commands/champ-up.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -180,11 +181,12 @@ ${statDesc}
 
     await release();
 
+    // ✅ 버튼 대기 시간 60초로 연장!
     const collector = interaction.channel.createMessageComponentCollector({
       filter: i =>
         i.user.id === userId &&
         ["champion-upgrade-confirm", "champion-upgrade-cancel"].includes(i.customId),
-      time: 15000,
+      time: 60000,   // ← 이 부분을 60000(60초)으로 변경
       max: 1
     });
 
@@ -266,9 +268,10 @@ ${diffStatDesc}
               });
             } catch {}
 
+            // ✅ 연속 강화 버튼 대기 시간도 60초로 연장!
             const nextCollector = interaction.channel.createMessageComponentCollector({
               filter: i => i.user.id === userId && ["continue-upgrade", "stop-upgrade"].includes(i.customId),
-              time: 15000,
+              time: 60000,   // ← 이 부분을 60초로 변경
               max: 1
             });
 
