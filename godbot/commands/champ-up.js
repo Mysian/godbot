@@ -8,6 +8,7 @@ const { getChampionKeyByName } = require("../utils/champion-utils");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const battleActivePath = path.join(__dirname, "../data/battle-active.json");
+const historyPath = path.join(__dirname, "../data/champion-enhance-history.json"); // Add history path
 
 const SOUL_ROLE_ID = "1382169247538745404";
 
@@ -17,6 +18,15 @@ async function loadJSON(p) {
 }
 async function saveJSON(p, d) {
   fs.writeFileSync(p, JSON.stringify(d, null, 2));
+}
+
+// Add loadHistory and saveHistory functions
+async function loadHistory() {
+  if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, JSON.stringify({ highest: {} }, null, 2));
+  return JSON.parse(fs.readFileSync(historyPath, "utf8"));
+}
+async function saveHistory(d) {
+  fs.writeFileSync(historyPath, JSON.stringify(d, null, 2));
 }
 
 function getSuccessRate(level) {
@@ -228,6 +238,20 @@ ${statDesc}
           champNow.stats.penetration += gainNow.penetration;
 
           await saveJSON(dataPath, dataNow);
+
+          // Update champion-enhance-history.json
+          let historyData = await loadHistory();
+          if (!historyData.highest) {
+            historyData.highest = {};
+          }
+          if (!historyData.highest[userId] || champNow.level > historyData.highest[userId].level) {
+            historyData.highest[userId] = {
+              level: champNow.level,
+              champion: champNow.name,
+              timestamp: Date.now()
+            };
+          }
+          await saveHistory(historyData);
 
           let diffStatDesc = [
             { label: "공격력", key: "attack", emoji: "⚔️" },
