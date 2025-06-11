@@ -418,6 +418,23 @@ module.exports = {
     return { baseDamage: 0 };
   }
 },
+"리신": {
+  name: "용의 분노",
+  description: "공격 시 10% 확률로 상대를 밀쳐내며 1턴 기절시킵니다.",
+  effect: (attacker, defender, isAttack, baseDamage) => {
+    if (!isAttack) return { baseDamage: 0 };
+    if (Math.random() < 0.1) {
+      return {
+        baseDamage: 0,
+        addEffect: [
+          { target: 'defender', effect: { type: "stunned", turns: 1 } }
+        ],
+        log: "🐉 상대 1턴 기절!"
+      };
+    }
+    return { baseDamage: 0 };
+  }
+},
 "리븐": {
   name: "폭풍의 검",
   description: "공격 시 피해량이 15% 증가합니다.",
