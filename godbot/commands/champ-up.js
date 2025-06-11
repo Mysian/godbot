@@ -1,4 +1,3 @@
-// commands/champion/champ-upgrade.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -8,7 +7,6 @@ const { getChampionKeyByName } = require("../utils/champion-utils");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const battleActivePath = path.join(__dirname, "../data/battle-active.json");
-
 const SOUL_ROLE_ID = "1382169247538745404";
 
 async function loadJSON(p) {
@@ -64,7 +62,6 @@ module.exports = {
   async execute(interaction) {
     const userId = interaction.user.id;
     const userMention = `<@${userId}>`;
-
     let release;
     try {
       release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
@@ -75,26 +72,30 @@ module.exports = {
         b.challenger === userId || b.opponent === userId
       );
       if (inBattle) {
+        await release();
         return interaction.reply({
           content: "⚔️ 전투 중에는 강화할 수 없습니다!",
           ephemeral: true
         });
       }
       if (!data[userId] || !data[userId].name) {
+        await release();
         return interaction.reply({
           content: `❌ 먼저 /챔피언획득 으로 챔피언을 얻어야 합니다.`,
           ephemeral: true
         });
       }
       if (data[userId].level >= 999) {
+        await release();
         return interaction.reply({
           content: `⚠️ 이미 최대 강화 상태입니다! (**${data[userId].level}강**)`,
           ephemeral: true
         });
       }
-      await interaction.reply({ content: "⏳ 강화 준비 중...", ephemeral: true });
+
       await release();
-      return startUpgrade(interaction, userId, userMention);
+      await interaction.deferReply({ ephemeral: true });
+      await startUpgrade(interaction, userId, userMention);
     } catch (err) {
       if (release) { try { await release(); } catch {} }
       return interaction.reply({ content: "❌ 오류 발생! 잠시 후 다시 시도해주세요.", ephemeral: true });
@@ -102,7 +103,6 @@ module.exports = {
   }
 };
 
-// ---- 메인 로직 분리: 항상 최신 데이터로 표기 ----
 async function startUpgrade(interaction, userId, userMention) {
   let release;
   try {
@@ -189,22 +189,13 @@ ${statDesc}
     });
 
     collector.on("collect", async i => {
+      if (i.replied || i.deferred) return; // 이미 응답됐으면 무시
       if (i.customId === "champion-upgrade-cancel") {
-        await i.update({
-          content: "⚪ 강화가 취소되었습니다.",
-          embeds: [],
-          components: [],
-          ephemeral: true
-        });
+        try { await i.update({ content: "⚪ 강화가 취소되었습니다.", embeds: [], components: [], ephemeral: true }); } catch {}
         return;
       }
 
-      await i.update({
-        content: `⏳ 강화 시도 중...`,
-        embeds: [],
-        components: [],
-        ephemeral: true
-      });
+      try { await i.update({ content: `⏳ 강화 시도 중...`, embeds: [], components: [], ephemeral: true }); } catch {}
 
       setTimeout(async () => {
         let release2;
@@ -267,11 +258,13 @@ ${diffStatDesc}
                 .setStyle(ButtonStyle.Secondary)
             );
 
-            await interaction.editReply({
-              embeds: [resultEmbed],
-              components: [nextRow],
-              ephemeral: true
-            });
+            try {
+              await interaction.editReply({
+                embeds: [resultEmbed],
+                components: [nextRow],
+                ephemeral: true
+              });
+            } catch {}
 
             const nextCollector = interaction.channel.createMessageComponentCollector({
               filter: i => i.user.id === userId && ["continue-upgrade", "stop-upgrade"].includes(i.customId),
@@ -280,14 +273,11 @@ ${diffStatDesc}
             });
 
             nextCollector.on("collect", async i => {
+              if (i.replied || i.deferred) return;
               if (i.customId === "stop-upgrade") {
-                await i.update({
-                  content: "🛑 강화 세션이 종료되었습니다.",
-                  components: [],
-                  ephemeral: true
-                });
+                try { await i.update({ content: "🛑 강화 세션이 종료되었습니다.", components: [], ephemeral: true }); } catch {}
               } else {
-                await i.deferUpdate();
+                try { await i.deferUpdate(); } catch {}
                 await startUpgrade(interaction, userId, userMention);
               }
             });
@@ -297,17 +287,14 @@ ${diffStatDesc}
             if (survive) {
               const failEmbed = new EmbedBuilder()
                 .setTitle(`💦 강화 실패! 챔피언이 살아남았다!`)
-                .setDescription(`😮 ${userMention} 님이 **${champNow.name} ${champNow.level}강**에 실패했지만, 
+                .setDescription(`😮 ${userMention} 님이 **${champNow.name} ${champNow.level + 1}강**에 실패했지만, 
 불굴의 의지로 챔피언이 견뎌냅니다!
 🛡️ 현재 소실 방지 확률: **${Math.floor(surviveRateNow * 1000) / 10}%**
 `)
                 .setColor(0x2196f3);
               const champKeyFail = getChampionKeyByName(champNow.name);
               if (champKeyFail) failEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKeyFail}.png`);
-              await interaction.followUp({
-                embeds: [failEmbed],
-                ephemeral: true
-              });
+              try { await interaction.editReply({ embeds: [failEmbed], components: [], ephemeral: true }); } catch {}
             } else {
               const guild = interaction.guild;
               const member = await guild.members.fetch(userId).catch(() => null);
@@ -319,23 +306,17 @@ ${diffStatDesc}
                   .setDescription(`죽을 운명이었던 챔피언이 아이템: **불굴의 영혼** 효과로 살아납니다!\n해당 아이템이 대신 사라졌습니다.`)
                   .setColor(0xffe082);
                 if (getChampionKeyByName(champNow.name)) reviveEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${getChampionKeyByName(champNow.name)}.png`);
-                await interaction.followUp({
-                  embeds: [reviveEmbed],
-                  ephemeral: true
-                });
+                try { await interaction.editReply({ embeds: [reviveEmbed], components: [], ephemeral: true }); } catch {}
               } else {
                 const lostName = champNow.name;
                 delete dataNow[userId];
                 await saveJSON(dataPath, dataNow);
                 const failEmbed = new EmbedBuilder()
                   .setTitle(`💥 챔피언 소멸...`)
-                  .setDescription(`${userMention} 님이 **${lostName} ${champNow.level}강**에 실패하여 챔피언의 혼이 소멸되었습니다...`)
+                  .setDescription(`${userMention} 님이 **${lostName} ${champNow.level +1}강**에 실패하여 챔피언의 혼이 소멸되었습니다...`)
                   .setColor(0xf44336);
                 if (getChampionKeyByName(lostName)) failEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${getChampionKeyByName(lostName)}.png`);
-                await interaction.followUp({
-                  embeds: [failEmbed],
-                  ephemeral: true
-                });
+                try { await interaction.editReply({ embeds: [failEmbed], components: [], ephemeral: true }); } catch {}
               }
             }
           }
@@ -346,8 +327,22 @@ ${diffStatDesc}
         }
       }, 2000);
     });
+
+    collector.on("end", async (collected, reason) => {
+      // 콜렉터 만료 시 버튼 비활성화(만료됐으면 응답 안함)
+      if (reason === "time" || reason === "limit") {
+        try {
+          await interaction.editReply({
+            content: "⏰ 시간이 초과되어 강화가 취소되었습니다.",
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
+        } catch {}
+      }
+    });
   } catch (err) {
     if (release) { try { await release(); } catch {} }
-    await interaction.followUp({ content: "❌ 강화 오류! 잠시 후 다시 시도해주세요.", ephemeral: true });
+    try { await interaction.editReply({ content: "❌ 강화 오류! 잠시 후 다시 시도해주세요.", ephemeral: true }); } catch {}
   }
 }
