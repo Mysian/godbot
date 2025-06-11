@@ -60,7 +60,7 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setTitle("🏆 챔피언 강화 순위 Top 20")
       .setDescription(
-        `🥇 **최고 강화 기록**\n<@${top.userId}>: ${top.userName} (${top.level}강)\n\n` +
+        `🥇 **현재 최고 강화**\n<@${top.userId}>: ${top.userName} (${top.level}강)\n\n` +
         `**현재 강화 순위**\n` +
         (lines.length > 0 ? lines.join("\n") : "기록 없음")
       )
