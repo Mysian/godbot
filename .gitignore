@@ -8,3 +8,4 @@ schedule.json
 data/*.json
 /*.json
 .env
+.env
