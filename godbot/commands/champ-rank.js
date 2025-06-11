@@ -10,7 +10,7 @@ function loadData() {
   return JSON.parse(fs.readFileSync(userPath, "utf8"));
 }
 function loadHistory() {
-  if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, "{}");
+  if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, JSON.stringify({ highest: {} }, null, 2)); // Ensure highest is initialized
   return JSON.parse(fs.readFileSync(historyPath, "utf8"));
 }
 
@@ -29,7 +29,7 @@ module.exports = {
       if ((info.level ?? 0) > 0) {
         currentList.push({
           userId: id,
-          userName: info.name || "알 수 없음",
+          userName: interaction.client.users.cache.get(id)?.username || info.name || "알 수 없음", // Fetch username from cache
           champion: info.name || "챔피언 미상",
           level: info.level ?? 0
         });
@@ -38,15 +38,23 @@ module.exports = {
 
     currentList.sort((a, b) => b.level - a.level);
 
-    // 최고 강화 달성자(과거 소멸 챔피언도 포함, 유저는 현재 서버에 존재하는 유저만)
-    let top = null;
-    if (history && history.highest && data[history.highest.userId]) {
-      top = history.highest;
-    } else if (currentList.length > 0) {
-      top = currentList[0];
+    // 역대 최고 강화 기록 찾기
+    let overallHighest = null;
+    if (history.highest) {
+      for (const userId in history.highest) {
+        const record = history.highest[userId];
+        if (!overallHighest || record.level > overallHighest.level) {
+          overallHighest = {
+            userId: userId,
+            userName: interaction.client.users.cache.get(userId)?.username || "알 수 없음",
+            champion: record.champion,
+            level: record.level
+          };
+        }
+      }
     }
 
-    if (!top) {
+    if (!overallHighest && currentList.length === 0) {
       return interaction.reply({
         content: "아직 강화 기록이 없습니다!",
         ephemeral: true
@@ -59,14 +67,22 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setTitle("🏆 챔피언 강화 순위 Top 20")
-      .setDescription(
-        `🥇 **최고 강화 기록**\n<@${top.userId}>: ${top.userName} (${top.level}강)\n\n` +
-        `**현재 강화 순위**\n` +
-        (lines.length > 0 ? lines.join("\n") : "기록 없음")
-      )
       .setColor(0xf39c12)
       .setTimestamp();
+
+    let description = '';
+
+    if (overallHighest) {
+      description += `🥇 **역대 최고 강화 기록**\n<@${overallHighest.userId}>: ${overallHighest.userName} - ${overallHighest.champion} (${overallHighest.level}강)\n\n`;
+    }
+
+    description += `**현재 강화 순위**\n` +
+                   (lines.length > 0 ? lines.join("\n") : "기록 없음");
+
+    embed.setDescription(description);
 
     await interaction.reply({ embeds: [embed] });
   }
 };
+
+
