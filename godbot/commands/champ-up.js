@@ -75,32 +75,28 @@ module.exports = {
         b.challenger === userId || b.opponent === userId
       );
       if (inBattle) {
-        await release();
         return interaction.reply({
           content: "⚔️ 전투 중에는 강화할 수 없습니다!",
           ephemeral: true
         });
       }
       if (!data[userId] || !data[userId].name) {
-        await release();
         return interaction.reply({
           content: `❌ 먼저 /챔피언획득 으로 챔피언을 얻어야 합니다.`,
           ephemeral: true
         });
       }
       if (data[userId].level >= 999) {
-        await release();
         return interaction.reply({
           content: `⚠️ 이미 최대 강화 상태입니다! (**${data[userId].level}강**)`,
           ephemeral: true
         });
       }
-
-      await release();
       await interaction.reply({ content: "⏳ 강화 준비 중...", ephemeral: true });
+      await release();
       return startUpgrade(interaction, userId, userMention);
     } catch (err) {
-      if (release) await release();
+      if (release) { try { await release(); } catch {} }
       return interaction.reply({ content: "❌ 오류 발생! 잠시 후 다시 시도해주세요.", ephemeral: true });
     }
   }
@@ -114,7 +110,6 @@ async function startUpgrade(interaction, userId, userMention) {
     const data = await loadJSON(dataPath);
     const champ = data[userId];
 
-    // 강화 준비 (최신 값 반영)
     const champKey = getChampionKeyByName(champ.name);
     const champImg = champKey
       ? `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKey}.png`
@@ -130,7 +125,6 @@ async function startUpgrade(interaction, userId, userMention) {
 
     const { gain, mainStat } = calcStatGain(champ.level, champ.stats.attack, champ.stats.ap);
 
-    // 표기용 스탯
     const prevStats = { ...champ.stats };
     const upStats = {
       ...champ.stats,
@@ -213,7 +207,6 @@ ${statDesc}
       });
 
       setTimeout(async () => {
-        // ==== 실제 강화 처리 ====
         let release2;
         try {
           release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
@@ -295,13 +288,11 @@ ${diffStatDesc}
                 });
               } else {
                 await i.deferUpdate();
-                // **여기서 최신 상태로 다시 startUpgrade 호출**
                 await startUpgrade(interaction, userId, userMention);
               }
             });
 
           } else {
-            // 실패 처리 ↓
             const survive = Math.random() < surviveRateNow;
             if (survive) {
               const failEmbed = new EmbedBuilder()
@@ -349,16 +340,14 @@ ${diffStatDesc}
             }
           }
         } catch (err2) {
-          if (release2) await release2();
+          if (release2) { try { await release2(); } catch {} }
         } finally {
-          if (release2) await release2();
+          if (release2) { try { await release2(); } catch {} }
         }
       }, 2000);
     });
   } catch (err) {
-    if (release) await release();
+    if (release) { try { await release(); } catch {} }
     await interaction.followUp({ content: "❌ 강화 오류! 잠시 후 다시 시도해주세요.", ephemeral: true });
-  } finally {
-    if (release) await release();
   }
 }
