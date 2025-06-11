@@ -138,7 +138,18 @@ client.on(Events.InteractionCreate, async interaction => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-    await interaction.reply({ content: "❌ 명령어 실행 중 오류가 발생했습니다.", ephemeral: true });
+    // 이미 응답된 상태면 followUp, 아니면 reply (여기만 변경됨!)
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({
+        content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+        ephemeral: true
+      }).catch(() => {});
+    } else {
+      await interaction.reply({
+        content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+        ephemeral: true
+      }).catch(() => {});
+    }
     const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
     if (logChannel && logChannel.isTextBased()) {
       logChannel.send(`❗ 명령어 오류 발생\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
