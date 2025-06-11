@@ -23,20 +23,16 @@ module.exports = {
     const data = loadData();
     const history = loadHistory();
 
-    // 현재 남아있는 유저(0강 제외)
+    // champion-users.json 기준: 유저마다 1챔피언 단일 구조, info.level 사용!
     const currentList = [];
     for (const [id, info] of Object.entries(data)) {
-      if (info.champions) {
-        for (const [champName, champData] of Object.entries(info.champions)) {
-          if ((champData.level ?? 0) > 0) {
-            currentList.push({
-              userId: id,
-              userName: info.name || "알 수 없음",
-              champion: champName,
-              level: champData.level ?? 0
-            });
-          }
-        }
+      if ((info.level ?? 0) > 0) {
+        currentList.push({
+          userId: id,
+          userName: info.name || "알 수 없음",
+          champion: info.name || "챔피언 미상",
+          level: info.level ?? 0
+        });
       }
     }
 
@@ -45,10 +41,8 @@ module.exports = {
     // 최고 강화 달성자(과거 소멸 챔피언도 포함, 유저는 현재 서버에 존재하는 유저만)
     let top = null;
     if (history && history.highest && data[history.highest.userId]) {
-      // 유저가 남아있는 경우만
       top = history.highest;
     } else if (currentList.length > 0) {
-      // 그 외엔 현재 최고 강화로 대체
       top = currentList[0];
     }
 
@@ -60,13 +54,13 @@ module.exports = {
     }
 
     const lines = currentList.slice(0, 20).map((entry, idx) =>
-      `**${idx + 1}위** - <@${entry.userId}>: ${entry.userName} | ${entry.champion} (${entry.level}강)`
+      `**${idx + 1}위** - <@${entry.userId}>: ${entry.userName} (${entry.level}강)`
     );
 
     const embed = new EmbedBuilder()
       .setTitle("🏆 챔피언 강화 순위 Top 20")
       .setDescription(
-        `🥇 **최고 강화 기록**\n<@${top.userId}>: ${top.userName} | ${top.champion} (${top.level}강)\n\n` +
+        `🥇 **최고 강화 기록**\n<@${top.userId}>: ${top.userName} (${top.level}강)\n\n` +
         `**현재 강화 순위**\n` +
         (lines.length > 0 ? lines.join("\n") : "기록 없음")
       )
