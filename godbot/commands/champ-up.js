@@ -3,7 +3,7 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
-const championList = require("../utils/champion-data");
+const championLst = require("../utils/champion-data");
 const { getChampionKeyByName } = require("../utils/champion-utils");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
