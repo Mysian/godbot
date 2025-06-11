@@ -290,7 +290,7 @@ ${statDesc}
           if (survive) {
             const failEmbed = new EmbedBuilder()
               .setTitle(`💦 강화 실패! 챔피언이 살아남았다!`)
-              .setDescription(`😮 ${userMention} 님이 **${champNow.name} ${champNow.level}강**에 실패했지만, \n불굴의 의지로 챔피언이 견뎌냅니다!\n🛡️ 현재 소실 방지 확률: **${Math.floor(surviveRateNow * 1000) / 10}%**\n`)
+              .setDescription(`😮 ${userMention} 님이 **${champNow.name} ${champNow.level + 1}강**에 실패했지만, \n불굴의 의지로 챔피언이 견뎌냅니다!\n🛡️ 현재 소실 방지 확률: **${Math.floor(surviveRateNow * 1000) / 10}%**\n`)
               .setColor(0x2196f3);
             const champKeyFail = getChampionKeyByName(champNow.name);
             if (champKeyFail) failEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKeyFail}.png`);
@@ -319,7 +319,7 @@ ${statDesc}
               await saveJSON(dataPath, dataNow);
               const failEmbed = new EmbedBuilder()
                 .setTitle(`💥 챔피언 소멸...`)
-                .setDescription(`${userMention} 님이 **${lostName} ${champNow.level}강**에 실패하여 챔피언의 혼이 소멸되었습니다...`)
+                .setDescription(`${userMention} 님이 **${lostName} ${champNow.level + 1}강**에 실패하여 챔피언의 혼이 소멸되었습니다...`)
                 .setColor(0xf44336);
               if (getChampionKeyByName(lostName)) failEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${getChampionKeyByName(lostName)}.png`);
               await i.editReply({
