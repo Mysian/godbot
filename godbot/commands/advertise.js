@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -41,12 +41,27 @@ module.exports = {
           { name: "🎙️ 701호", value: "1209157524243091466" },
           { name: "🎙️ 702호", value: "1209157622662561813" },
         ),
+    )
+    .addRoleOption(option =>
+      option
+        .setName("mention_role")
+        .setDescription("알림 보낼 @역할을 선택하세요. (@here, @everyone 금지)")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
     const content = interaction.options.getString("내용");
     const count = interaction.options.getInteger("모집인원");
     const voiceId = interaction.options.getString("음성채널");
+    const mentionRole = interaction.options.getRole("mention_role");
+
+    // @here, @everyone 방지
+    if (mentionRole && (mentionRole.name === "@everyone" || mentionRole.name === "@here")) {
+      return await interaction.reply({
+        content: "❌ @everyone, @here 역할은 태그할 수 없습니다. 게임 역할만 선택해 주세요.",
+        ephemeral: true,
+      });
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("📢 모집 글")
@@ -70,7 +85,13 @@ module.exports = {
       });
     }
 
-    await 모집채널.send({ embeds: [embed] });
+    // 역할 mention + embed 같이 전송
+    let msg = { embeds: [embed] };
+    if (mentionRole) {
+      msg.content = `${mentionRole}`;
+    }
+
+    await 모집채널.send(msg);
 
     await interaction.reply({
       content: "✅ 모집 글이 전용 채널에 정상적으로 게시되었어요!",
