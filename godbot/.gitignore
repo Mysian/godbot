@@ -7,3 +7,4 @@ data/favor.json
 /*.json
 activity.json
 schedule.json
+.env
