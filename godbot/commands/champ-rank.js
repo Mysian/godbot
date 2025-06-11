@@ -2,11 +2,16 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-const dataPath = path.join(__dirname, "../data/champion-users.json");
+const userPath = path.join(__dirname, "../data/champion-users.json");
+const historyPath = path.join(__dirname, "../data/champion-enhance-history.json");
 
 function loadData() {
-  if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
-  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
+  if (!fs.existsSync(userPath)) fs.writeFileSync(userPath, "{}");
+  return JSON.parse(fs.readFileSync(userPath, "utf8"));
+}
+function loadHistory() {
+  if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, "{}");
+  return JSON.parse(fs.readFileSync(historyPath, "utf8"));
 }
 
 module.exports = {
@@ -16,31 +21,55 @@ module.exports = {
 
   async execute(interaction) {
     const data = loadData();
+    const history = loadHistory();
 
-    const sorted = Object.entries(data)
-      .map(([id, info]) => ({
-        id,
-        name: info.name || "알 수 없음",
-        level: info.level ?? 0,
-        success: info.success ?? 0
-      }))
-      .sort((a, b) => b.success - a.success)
-      .slice(0, 20);
+    // 현재 남아있는 유저(0강 제외)
+    const currentList = [];
+    for (const [id, info] of Object.entries(data)) {
+      if (info.champions) {
+        for (const [champName, champData] of Object.entries(info.champions)) {
+          if ((champData.level ?? 0) > 0) {
+            currentList.push({
+              userId: id,
+              userName: info.name || "알 수 없음",
+              champion: champName,
+              level: champData.level ?? 0
+            });
+          }
+        }
+      }
+    }
 
-    if (sorted.length === 0) {
+    currentList.sort((a, b) => b.level - a.level);
+
+    // 최고 강화 달성자(과거 소멸 챔피언도 포함, 유저는 현재 서버에 존재하는 유저만)
+    let top = null;
+    if (history && history.highest && data[history.highest.userId]) {
+      // 유저가 남아있는 경우만
+      top = history.highest;
+    } else if (currentList.length > 0) {
+      // 그 외엔 현재 최고 강화로 대체
+      top = currentList[0];
+    }
+
+    if (!top) {
       return interaction.reply({
         content: "아직 강화 기록이 없습니다!",
         ephemeral: true
       });
     }
 
-    const lines = sorted.map((entry, index) =>
-      `**${index + 1}위** - <@${entry.id}>: ${entry.name} (${entry.level}강, ✅ ${entry.success}회 성공)`
+    const lines = currentList.slice(0, 20).map((entry, idx) =>
+      `**${idx + 1}위** - <@${entry.userId}>: ${entry.userName} | ${entry.champion} (${entry.level}강)`
     );
 
     const embed = new EmbedBuilder()
       .setTitle("🏆 챔피언 강화 순위 Top 20")
-      .setDescription(lines.join("\n").slice(0, 4090)) // 안전 자르기
+      .setDescription(
+        `🥇 **최고 강화 기록**\n<@${top.userId}>: ${top.userName} | ${top.champion} (${top.level}강)\n\n` +
+        `**현재 강화 순위**\n` +
+        (lines.length > 0 ? lines.join("\n") : "기록 없음")
+      )
       .setColor(0xf39c12)
       .setTimestamp();
 
