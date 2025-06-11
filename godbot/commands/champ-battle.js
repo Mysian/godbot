@@ -43,6 +43,7 @@ function getStatusIcons(effects = []) {
     if (e.type === 'dot')     s += '☠️';
     if (e.type === 'dodgeNextAttack') s += '💨';
     if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') s += '🛡️';
+    if (e.type === 'revive') s += '🔁';
   }
   return s;
 }
@@ -137,45 +138,67 @@ ${createSkillField(opponent.id, op.name, battle.context)}
     .setColor(0x3498db);
 }
 
-// 결과 임베드
-async function createResultEmbed(winner, loser, userData, records, interaction) {
-  const winChampName = userData[winner].name;
-  const loseChampName = userData[loser].name;
-  const winStat = createStatField(userData[winner]);
-  const loseStat = createStatField(userData[loser]);
-  const winIcon = await getChampionIcon(winChampName);
-  const loseIcon = await getChampionIcon(loseChampName);
+// 결과 임베드 (무승부 포함)
+async function createResultEmbed(winner, loser, userData, records, interaction, isDraw = false, drawIds = []) {
+  if (isDraw) {
+    // 무승부 안내
+    const champ1 = userData[drawIds[0]], champ2 = userData[drawIds[1]];
+    const stat1 = createStatField(champ1);
+    const stat2 = createStatField(champ2);
+    const icon1 = await getChampionIcon(champ1.name);
+    const icon2 = await getChampionIcon(champ2.name);
 
-  return new EmbedBuilder()
-    .setTitle('🏆 배틀 결과')
-    .setDescription(
-      `### 👑 **승리자!**\n` +
-      `**${winChampName}** (${interaction.guild.members.cache.get(winner).user.username})\n` +
-      `전적: ${records[winner].win}승 ${records[winner].lose}패 ${records[winner].draw || 0}무\n`
-    )
-    .addFields(
-      {
-        name: '👑 승리자 챔피언',
-        value: `**${winChampName}**\n${winStat}`,
-        inline: true
-      },
-      {
-        name: '🪦 패배자 챔피언',
-        value: `**${loseChampName}**\n${loseStat}`,
-        inline: true
-      }
-    )
-    .addFields(
-      {
-        name: '🪦 패배자!',
-        value: `${loseChampName} (${interaction.guild.members.cache.get(loser).user.username})`,
-        inline: false
-      }
-    )
-    .setThumbnail(winIcon)  // 승리자(썸네일)
-    .setImage(loseIcon)     // 패배자(대표이미지)
-    .setColor(0x00ff88)
-    .setTimestamp();
+    return new EmbedBuilder()
+      .setTitle('🤝 무승부!')
+      .setDescription('두 챔피언이 동시에 쓰러졌습니다. 무승부로 기록됩니다!')
+      .addFields(
+        { name: `${champ1.name} (${interaction.guild.members.cache.get(drawIds[0]).user.username})`, value: stat1, inline: true },
+        { name: `${champ2.name} (${interaction.guild.members.cache.get(drawIds[1]).user.username})`, value: stat2, inline: true },
+      )
+      .setThumbnail(icon1)
+      .setImage(icon2)
+      .setColor(0xff9800)
+      .setTimestamp();
+  } else {
+    // 기존 승패 안내
+    const winChampName = userData[winner].name;
+    const loseChampName = userData[loser].name;
+    const winStat = createStatField(userData[winner]);
+    const loseStat = createStatField(userData[loser]);
+    const winIcon = await getChampionIcon(winChampName);
+    const loseIcon = await getChampionIcon(loseChampName);
+
+    return new EmbedBuilder()
+      .setTitle('🏆 배틀 결과')
+      .setDescription(
+        `### 👑 **승리자!**\n` +
+        `**${winChampName}** (${interaction.guild.members.cache.get(winner).user.username})\n` +
+        `전적: ${records[winner].win}승 ${records[winner].lose}패 ${records[winner].draw || 0}무\n`
+      )
+      .addFields(
+        {
+          name: '👑 승리자 챔피언',
+          value: `**${winChampName}**\n${winStat}`,
+          inline: true
+        },
+        {
+          name: '🪦 패배자 챔피언',
+          value: `**${loseChampName}**\n${loseStat}`,
+          inline: true
+        }
+      )
+      .addFields(
+        {
+          name: '🪦 패배자!',
+          value: `${loseChampName} (${interaction.guild.members.cache.get(loser).user.username})`,
+          inline: false
+        }
+      )
+      .setThumbnail(winIcon)
+      .setImage(loseIcon)
+      .setColor(0x00ff88)
+      .setTimestamp();
+  }
 }
 
 module.exports = {
@@ -245,7 +268,6 @@ module.exports = {
       fetchReply: true
     });
 
-    // --- 여기서 30초 타이머 (배틀 요청만) ---
     const reqCol = req.createMessageComponentCollector({ time: 30000 });
     reqCol.on('collect', async btn => {
       if (btn.user.id !== opponent.id) {
@@ -378,10 +400,112 @@ module.exports = {
             cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             save(battlePath, bd);
 
-            const loser = cur.hp[cur.challenger] <= 0 ? cur.challenger : (cur.hp[cur.opponent] <= 0 ? cur.opponent : null);
+            // 🟠 여기서 승패/무승부/부활 판정
+            const chId = cur.challenger, opId = cur.opponent;
+            const chp = cur.hp[chId], opp = cur.hp[opId];
+            const chEffects = cur.context.effects[chId] || [];
+            const opEffects = cur.context.effects[opId] || [];
+            // 부활 판정 (효과 리스트에 revive)
+            const chRevive = chEffects.some(e => e.type === 'revive' && e.applied !== true);
+            const opRevive = opEffects.some(e => e.type === 'revive' && e.applied !== true);
+
+            // 동시 사망
+            if (chp <= 0 && opp <= 0) {
+              turnCol.stop();
+
+              // 둘 다 revive 효과가 있으면 revive 처리
+              if (chRevive || opRevive) {
+                // 한 쪽만 revive면 그쪽 승리
+                if (chRevive && !opRevive) {
+                  // revive 효과 적용 처리 (배틀엔진에서 실제로 HP 회복했어야 함)
+                  const records = load(recordPath);
+                  records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+                  records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+                  records[chId].win++;
+                  records[opId].lose++;
+                  save(recordPath, records);
+
+                  const winEmbed = await createResultEmbed(chId, opId, userData, records, interaction);
+                  await i.editReply({ content: '🪄 부활! 승리!', embeds: [winEmbed], components: [] });
+                  delete bd[battleId]; save(battlePath, bd);
+                  return;
+                }
+                if (!chRevive && opRevive) {
+                  const records = load(recordPath);
+                  records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+                  records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+                  records[chId].lose++;
+                  records[opId].win++;
+                  save(recordPath, records);
+
+                  const winEmbed = await createResultEmbed(opId, chId, userData, records, interaction);
+                  await i.editReply({ content: '🪄 부활! 승리!', embeds: [winEmbed], components: [] });
+                  delete bd[battleId]; save(battlePath, bd);
+                  return;
+                }
+                // 둘 다 revive 있으면 HP 비교 (배틀엔진에서 실제로 HP 회복하고 반영해줘야 정확)
+                if (chRevive && opRevive) {
+                  // 배틀엔진에서 revive 적용 후의 HP로 승패/무승부 판정
+                  const realChp = cur.hp[chId];
+                  const realOpp = cur.hp[opId];
+                  if (realChp > realOpp) {
+                    const records = load(recordPath);
+                    records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+                    records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+                    records[chId].win++;
+                    records[opId].lose++;
+                    save(recordPath, records);
+                    const winEmbed = await createResultEmbed(chId, opId, userData, records, interaction);
+                    await i.editReply({ content: '🪄 동시 부활! HP 높은 쪽 승!', embeds: [winEmbed], components: [] });
+                    delete bd[battleId]; save(battlePath, bd);
+                    return;
+                  }
+                  if (realChp < realOpp) {
+                    const records = load(recordPath);
+                    records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+                    records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+                    records[chId].lose++;
+                    records[opId].win++;
+                    save(recordPath, records);
+                    const winEmbed = await createResultEmbed(opId, chId, userData, records, interaction);
+                    await i.editReply({ content: '🪄 동시 부활! HP 높은 쪽 승!', embeds: [winEmbed], components: [] });
+                    delete bd[battleId]; save(battlePath, bd);
+                    return;
+                  }
+                  // 부활 후 HP가 완전히 같으면 무승부
+                  if (realChp === realOpp) {
+                    const records = load(recordPath);
+                    records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+                    records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+                    records[chId].draw = (records[chId].draw || 0) + 1;
+                    records[opId].draw = (records[opId].draw || 0) + 1;
+                    save(recordPath, records);
+                    const drawEmbed = await createResultEmbed(null, null, userData, records, interaction, true, [chId, opId]);
+                    await i.editReply({ content: '🤝 완벽한 동시 부활 무승부!', embeds: [drawEmbed], components: [] });
+                    delete bd[battleId]; save(battlePath, bd);
+                    return;
+                  }
+                }
+              } else {
+                // 부활 없이 동시 사망 → 무승부
+                const records = load(recordPath);
+                records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+                records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+                records[chId].draw = (records[chId].draw || 0) + 1;
+                records[opId].draw = (records[opId].draw || 0) + 1;
+                save(recordPath, records);
+                const drawEmbed = await createResultEmbed(null, null, userData, records, interaction, true, [chId, opId]);
+                await i.editReply({ content: '🤝 동시 사망 무승부!', embeds: [drawEmbed], components: [] });
+                delete bd[battleId]; save(battlePath, bd);
+                return;
+              }
+            }
+
+            // 한 쪽만 죽었을 때 기존 승패
+            const loser = chp <= 0 ? chId : (opp <= 0 ? opId : null);
             if (loser) {
               turnCol.stop();
-              const winner = loser === cur.challenger ? cur.opponent : cur.challenger;
+              const winner = loser === chId ? opId : chId;
               const records = load(recordPath);
               records[winner] = records[winner] || { name: userData[winner].name, win: 0, draw: 0, lose: 0 };
               records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
@@ -390,7 +514,6 @@ module.exports = {
               save(recordPath, records);
 
               const winEmbed = await createResultEmbed(winner, loser, userData, records, interaction);
-
               await i.editReply({ content: '🏆 승리!', embeds: [winEmbed], components: [] });
               delete bd[battleId];
               save(battlePath, bd);
@@ -473,12 +596,10 @@ module.exports = {
       startTurn();
     });
 
-    // 👉 여기서 타임아웃 발생 시 배틀 기록 삭제 + 종료 안내 embed 출력
     reqCol.on('end', async (_col, reason) => {
       if (['time', 'idle'].includes(reason) && bd[battleId]?.pending) {
         delete bd[battleId];
         save(battlePath, bd);
-        // 종료 안내 embed
         const timeoutEmbed = new EmbedBuilder()
           .setTitle('⏰ 배틀 요청 시간 초과')
           .setDescription('30초 동안 아무런 응답이 없어 배틀이 종료되었습니다.')

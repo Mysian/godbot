@@ -45,7 +45,7 @@ function initBattleContext(battle) {
   });
 }
 
-// 매 턴 시작: 이펙트 처리 및 턴 감소, 스탯/상태 반영
+// 매 턴 시작: 이펙트 처리 및 턴 감소, 스탯/상태 반영, 부활/처형도 여기서 처리
 function processTurnStart(userData, battle, actingUserId) {
   [battle.challenger, battle.opponent].forEach(id => {
     if (id === actingUserId) {
@@ -60,6 +60,8 @@ function processTurnStart(userData, battle, actingUserId) {
     let atkModifier = 0, defModifier = 0;
 
     const next = [];
+    let justRevived = false;
+    let executed = false;
     for (const e of battle.context.effects[id]) {
       switch (e.type) {
         case 'dot':
@@ -111,9 +113,28 @@ function processTurnStart(userData, battle, actingUserId) {
         case 'confused':
           battle.context.confused[id] += (e.turns || 1);
           break;
+        case 'revive':
+          // 부활 조건: 아직 미적용, HP 0 이하
+          if (!e.applied && battle.hp[id] <= 0) {
+            battle.hp[id] = e.amount || Math.floor(userData[id].stats?.hp || 600) * 0.4 || 200; // 부활 HP
+            battle.context.reviveFlags[id] = true;
+            e.applied = true;
+            justRevived = true;
+            battle.logs.push(`🔁 ${userData[id].name}이(가) 기사회생! (HP ${Math.round(battle.hp[id])}로 부활)`);
+          }
+          break;
+        case 'execute':
+          // 처형 조건: HP 0 이하시 revive 무시하고 사망
+          if (battle.hp[id] <= 0) {
+            executed = true;
+            battle.hp[id] = 0;
+            battle.logs.push(`⚔️ ${userData[id].name}이(가) 처형 당했습니다!`);
+          }
+          break;
       }
-      if (e.turns > 1) next.push({ ...e, turns: e.turns - 1 });
+      if (e.turns > 1 && !e.applied && !executed) next.push({ ...e, turns: e.turns - 1 });
     }
+    // revive 효과 중복 적용 방지
     battle.context.effects[id] = next;
 
     // 스탯 변화 반영
@@ -324,7 +345,7 @@ function calculateDamage(
     }
   }
 
-  // 1회성 부활 및 최초 무효화 관리 (자크, 애니비아 등)
+  // 부활: 실제 적용은 processTurnStart에서 실행됨
 
   let log = '';
   if (usedSkill) {

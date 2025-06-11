@@ -12,6 +12,20 @@ module.exports = {
       return baseDamage;
     }
   },
+"말파이트": {
+  name: "멈출 수 없는 힘",
+  description: "공격 시 상대를 1턴 동안 기절시키고, 피해를 1.5배로 증가시킵니다.",
+  effect: (attacker, defender, isAttack, baseDamage) => {
+    if (!isAttack) return baseDamage;
+    return {
+      baseDamage: Math.floor(baseDamage * 1.5),
+      addEffect: [
+        { target: 'defender', effect: { type: "stunned", turns: 1 } }
+      ],
+      log: "🌋 상대를 1턴 기절시키고, 피해 1.5배!"
+    };
+  }
+},
   "나미": {
     name: "밀물 썰물",
     description: "공격 시 아군 체력을 10 회복시키고, 2턴간 받는 피해를 5 줄입니다.",
@@ -295,19 +309,31 @@ module.exports = {
 "렉사이": {
   name: "땅굴 습격",
   description: "공격 시 30% 확률로 상대 방어력을 무시하고 피해를 입힙니다.",
-  effect: (attacker, defender, isAttack, baseDamage) => {
+  effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
     if (Math.random() < 0.3) {
-      // 방어력 무시 → baseDamage(방어력 0)로 계산된 값이 이미 들어옴(카드 로직이 맞다면)
-      // 특별히 추가 로직 필요 없다면 log만
+      // 방어력 무시 데미지 재계산
+      const tempDef = defender.stats.defense;
+      defender.stats.defense = 0;
+      // 여기에 기존 데미지 계산 공식 한 번 더 적용!
+      // 예: 공격력+주문력 기반 본인 룰, 아래는 예시!
+      let ad = attacker.stats.attack || 0;
+      let ap = attacker.stats.ap || 0;
+      let pen = attacker.stats.penetration || 0;
+      let main = Math.max(ad, ap);
+      let sub = Math.min(ad, ap);
+      let newBase = Math.max(0, main * 1 + sub * 0.5 - pen); // defense 0이니 -pen만
+      defender.stats.defense = tempDef;
+
       return {
-        baseDamage,
-        log: "🕳️ 상대 방어력 무시!"
+        baseDamage: newBase,
+        log: "🕳️ 상대 방어력 무시! 방깎 데미지 적용"
       };
     }
     return baseDamage;
   }
-},
+}
+,
 "렐": {
   name: "철갑 돌진",
   description: "공격 시 1턴 동안 상대의 방어력을 절반으로 감소시킵니다.",
@@ -1261,7 +1287,17 @@ module.exports = {
   name: "부활의 알",
   description: "죽음에 이를 경우, 1번에 한해 체력 30으로 부활합니다.",
   effect: (attacker, defender, isAttack, baseDamage, context) => {
-    // 실제 부활 로직은 전투 종료/피격 타이밍에 따로 구현, 여긴 log만!
+    // 이미 부활 효과 부여됐다면 추가 부여 금지
+    if (!defender.aniviaRevived) {
+      defender.aniviaRevived = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "revive", amount: 30, turns: 99 } }
+        ],
+        log: "🥚 죽음에 이를 시 1번 부활(HP 30)!"
+      };
+    }
     return baseDamage;
   }
 },
@@ -1608,10 +1644,21 @@ module.exports = {
   name: "세포 분열",
   description: "피해를 받아 체력이 0이 되면, 한 번에 한해 체력을 1로 남기고 부활합니다. (1회)",
   effect: (attacker, defender, isAttack, baseDamage, context) => {
-    // 실제로는 battleEngine의 턴/피격 처리 시점에서 부활 체크
+    // 이미 부활 효과를 부여받았으면 더 부여하지 않음
+    if (!defender.zacRevived) {
+      defender.zacRevived = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "revive", amount: 1, turns: 99 } }
+        ],
+        log: "🧪 세포 분열! 죽음 시 HP 1로 한 번 부활!"
+      };
+    }
     return baseDamage;
   }
-},
+}
+,
 "잔나": {
   name: "폭풍의 눈",
   description: "방어 시 다음 공격 피해를 50% 감소시킵니다. (1턴 지속)",
@@ -1812,10 +1859,12 @@ module.exports = {
   description: "공격 시 방어력을 무시하고 공격합니다. (관통력 100%)",
   effect: (attacker, defender, isAttack, baseDamage, context) => {
     if (!isAttack) return baseDamage;
-    // battleEngine에서 관통 처리되면 여기선 log만!
+    // 방어력만큼 관통력을 즉시 추가
+    const realPen = attacker.stats.penetration || 0;
+    attacker.stats.penetration = realPen + (defender.stats.defense || 0);
     return {
       baseDamage,
-      log: "🦵 방어력 완전 무시!"
+      log: "🦵 방어력 100% 관통(완전 무시)!"
     };
   }
 },
@@ -1835,12 +1884,23 @@ module.exports = {
 },
 "카서스": {
   name: "진혼곡",
-  description: "사망 시 1턴간 살아있으며, 그 턴 동안 강력한 공격을 합니다.",
+  description: "사망 시 1턴간 살아있으며, 그 턴 동안 공격력이 2배가 됩니다.",
   effect: (attacker, defender, isAttack, baseDamage, context) => {
-    // 실제 부활/처리 battleEngine 타이밍에서 관리
+    if (!defender.karthusRevived) {
+      defender.karthusRevived = true;
+      return {
+        baseDamage,
+        addEffect: [
+          { target: 'defender', effect: { type: "revive", amount: 100, turns: 1 } }, // HP 100으로 부활, 1턴 지속
+          { target: 'defender', effect: { type: "doubleDamage", turns: 1 } } // 다음 1턴 동안 공격력 2배
+        ],
+        log: "💀 진혼곡! 1턴 부활 + 공격력 2배!"
+      };
+    }
     return baseDamage;
   }
-},
+}
+,
 "카시오페아": {
   name: "석화의 응시",
   description: "공격 시 20% 확률로 적을 2턴간 기절시킵니다.",
