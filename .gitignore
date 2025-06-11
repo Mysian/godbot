@@ -7,3 +7,4 @@ activity.json
 schedule.json
 data/*.json
 /*.json
+.env
