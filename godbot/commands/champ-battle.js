@@ -290,7 +290,8 @@ module.exports = {
         new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger).setDisabled(false),
           new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 무빙').setStyle(ButtonStyle.Secondary).setDisabled(false),
-          new ButtonBuilder().setCustomId('skill').setLabel('✨ 스킬').setStyle(ButtonStyle.Primary).setDisabled(!canUseSkillBtn)
+          new ButtonBuilder().setCustomId('skill').setLabel('✨ 스킬').setStyle(ButtonStyle.Primary).setDisabled(!canUseSkillBtn),
+          new ButtonBuilder().setCustomId('run').setLabel('🏃 도망').setStyle(ButtonStyle.Secondary).setDisabled(false)
         );
       await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [getActionRow(true)] });
       const battleMsg = await btn.fetchReply();
@@ -349,6 +350,73 @@ module.exports = {
           const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
           let log = '';
 
+          // 1. 도망 버튼
+          if (i.customId === 'run') {
+            // 도망 확정 임베드 & 예/아니오 버튼
+            const runConfirmEmbed = new EmbedBuilder()
+              .setTitle('🏃 도망가기')
+              .setDescription('정말 도망가시겠습니까?\n패배 기록이 쌓입니다.')
+              .setColor(0xff6666);
+            const runRow = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('run_yes').setLabel('예').setStyle(ButtonStyle.Danger),
+              new ButtonBuilder().setCustomId('run_no').setLabel('아니오').setStyle(ButtonStyle.Secondary)
+            );
+            await i.editReply({
+              content: null,
+              embeds: [runConfirmEmbed],
+              components: [runRow]
+            });
+            // 도망 버튼 전용 컬렉터
+            const runCol = battleMsg.createMessageComponentCollector({
+              filter: btn => btn.user.id === uid && ['run_yes', 'run_no'].includes(btn.customId),
+              time: 15000
+            });
+            runCol.on('collect', async btn => {
+              await btn.deferUpdate();
+              if (btn.customId === 'run_no') {
+                // 다시 평타/무빙/스킬/도망 버튼으로 복구
+                const nextEmbed = await createBattleEmbed(
+                  interaction.guild.members.cache.get(cur.challenger),
+                  interaction.guild.members.cache.get(cur.opponent),
+                  cur, userData, cur.turn, log, canUseSkillBtn(cur)
+                );
+                await btn.editReply({
+                  content: null,
+                  embeds: [nextEmbed],
+                  components: [getActionRow(canUseSkillBtn(cur))]
+                });
+                runCol.stop();
+                return;
+              } else if (btn.customId === 'run_yes') {
+                // 도망: 본인 패배, 상대방 승리, 배틀 종료
+                turnCol.stop();
+                runCol.stop();
+                // 기록 처리
+                const records = load(recordPath);
+                records[uid] = records[uid] || { name: userData[uid].name, win: 0, draw: 0, lose: 0 };
+                records[tgt] = records[tgt] || { name: userData[tgt].name, win: 0, draw: 0, lose: 0 };
+                records[uid].lose++;
+                records[tgt].win++;
+                save(recordPath, records);
+
+                // 결과 임베드
+                const winEmbed = await createResultEmbed(tgt, uid, userData, records, interaction);
+
+                await btn.editReply({
+                  content: '🏃 도망! 패배가 누적됩니다.',
+                  embeds: [winEmbed],
+                  components: []
+                });
+                // 배틀 종료/삭제
+                delete bd[battleId];
+                save(battlePath, bd);
+                return;
+              }
+            });
+            return;
+          }
+
+          // 2. 평타/무빙/스킬 (기존과 동일)
           if (i.customId === 'attack' || i.customId === 'defend') {
             actionDone[uid] = actionDone[uid] || { skill: false, done: false };
             actionDone[uid].done = true;
@@ -473,7 +541,6 @@ module.exports = {
       startTurn();
     });
 
-    // 👉 여기서 타임아웃 발생 시 배틀 기록 삭제 + 종료 안내 embed 출력
     reqCol.on('end', async (_col, reason) => {
       if (['time', 'idle'].includes(reason) && bd[battleId]?.pending) {
         delete bd[battleId];
