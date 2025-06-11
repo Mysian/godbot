@@ -1,14 +1,14 @@
 {
   "445590914874998794": {
     "name": "아트록스",
-    "level": 0,
-    "success": 0,
+    "level": 1,
+    "success": 1,
     "stats": {
-      "attack": 70,
-      "ap": 0,
-      "hp": 650,
-      "defense": 40,
-      "penetration": 25
+      "attack": 73,
+      "ap": 1,
+      "hp": 700,
+      "defense": 41,
+      "penetration": 26
     },
     "timestamp": 1749575598074
   },
@@ -79,29 +79,16 @@
   },
   "285645561582059520": {
     "name": "벨코즈",
-    "level": 0,
-    "success": 0,
+    "level": 1,
+    "success": 1,
     "stats": {
-      "attack": 20,
-      "ap": 75,
-      "hp": 570,
-      "defense": 26,
-      "penetration": 22
+      "attack": 21,
+      "ap": 78,
+      "hp": 620,
+      "defense": 27,
+      "penetration": 23
     },
     "timestamp": 1749621679523
-  },
-  "494852004112236544": {
-    "name": "문도 박사",
-    "level": 14,
-    "success": 14,
-    "stats": {
-      "attack": 111.5,
-      "ap": 46,
-      "hp": 1855,
-      "defense": 68,
-      "penetration": 17
-    },
-    "timestamp": 1749622175013
   },
   "783512002651750430": {
     "name": "니달리",
@@ -155,19 +142,6 @@
     },
     "timestamp": 1749623436138
   },
-  "757033323162763385": {
-    "name": "르블랑",
-    "level": 33,
-    "success": 33,
-    "stats": {
-      "attack": 117,
-      "ap": 310.5,
-      "hp": 4840,
-      "defense": 97,
-      "penetration": 45
-    },
-    "timestamp": 1749624841709
-  },
   "490417019028504597": {
     "name": "타릭",
     "level": 3,
@@ -193,5 +167,44 @@
       "penetration": 25
     },
     "timestamp": 1749625333895
+  },
+  "1255342003508478044": {
+    "name": "리산드라",
+    "level": 3,
+    "success": 3,
+    "stats": {
+      "attack": 23,
+      "ap": 83,
+      "hp": 745,
+      "defense": 29,
+      "penetration": 25
+    },
+    "timestamp": 1749633786021
+  },
+  "757033323162763385": {
+    "name": "퀸",
+    "level": 6,
+    "success": 6,
+    "stats": {
+      "attack": 93.5,
+      "ap": 6,
+      "hp": 995,
+      "defense": 36,
+      "penetration": 29
+    },
+    "timestamp": 1749633910910
+  },
+  "362413312954204160": {
+    "name": "모데카이저",
+    "level": 2,
+    "success": 2,
+    "stats": {
+      "attack": 76,
+      "ap": 42,
+      "hp": 775,
+      "defense": 42,
+      "penetration": 23
+    },
+    "timestamp": 1749634616737
   }
 }
