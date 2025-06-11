@@ -182,6 +182,11 @@ function getImageName(name) {
   return imageNameMap[name] || name.replace(/[\s\.']/g, '');
 }
 
+// (여기 추가!)
+function getChampionKeyByName(name) {
+  return getImageName(name);
+}
+
 // HEAD 요청으로 URL 유효 여부 검사. 실패 시 placeholder 리턴
 function fetchOrFallback(url) {
   const placeholder = 'https://via.placeholder.com/200/000000/000000.png';
@@ -385,11 +390,12 @@ function getChampionInfo(name) {
 "펭구": "롤토체스에서 까리한 디스코드로 구경온 펭구입니다. 뒤집개로 후두려 팹니다."
 
   };
-  return loreMap[name] || "설명이 등록되지 않았습니다.";
+  return loreMap[name] || "설명이 등록되지 않았습니다. 영갓에게 제보해주세요.";
 }
 
 module.exports = {
   getChampionIcon,
   getChampionSplash,
-  getChampionInfo
+  getChampionInfo,
+  getChampionKeyByName
 };
