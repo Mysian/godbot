@@ -13,7 +13,7 @@ const {
   getChampionSplash,
   getChampionInfo
 } = require("../utils/champion-utils");
-const lockfile = require("proper-lockfile"); // << 추가!
+const lockfile = require("proper-lockfile");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 
@@ -21,7 +21,6 @@ async function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
   return JSON.parse(fs.readFileSync(dataPath));
 }
-
 async function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
@@ -33,20 +32,20 @@ module.exports = {
 
   async execute(interaction) {
     const userId = interaction.user.id;
-
-    // ▼▼ 파일 Lock 획득! (다른 명령어와 충돌 방지)
     let release;
     try {
+      // 3초 초과 방지! 미리 deferReply로 응답 예약
+      await interaction.deferReply({ ephemeral: true });
+
       release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
 
-      // -- 반드시 lock 걸린 상태에서만 파일 접근 --
       const data = await loadData();
 
       if (data[userId]) {
         await release();
-        return interaction.reply({
-          content: `❌ 이미 챔피언을 보유 중입니다: **${data[userId].name}**`,
-          ephemeral: true
+        // 이미 챔피언이 있으면 editReply로 응답
+        return interaction.editReply({
+          content: `❌ 이미 챔피언을 보유 중입니다: **${data[userId].name}**`
         });
       }
 
@@ -63,12 +62,10 @@ module.exports = {
       };
       await saveData(data);
 
-      // --- 챔피언 이미지/스킬/쿨타임 정보 추가 ---
       const icon   = await getChampionIcon(randomChampion.name);
       const splash = await getChampionSplash(randomChampion.name);
       const lore   = getChampionInfo(randomChampion.name);
 
-      // 스킬/쿨타임 정보
       const skillObj = skills[randomChampion.name];
       const cdObj = skillCd[randomChampion.name];
       let skillText = '정보 없음';
@@ -105,19 +102,20 @@ module.exports = {
         .setFooter({ text: `${interaction.user.username} 님의 챔피언` })
         .setTimestamp();
 
-      await release(); // 파일 lock 해제!
+      await release();
 
-      return interaction.reply({
-        embeds: [embed],
-        ephemeral: true // 👈 본인만 볼 수 있게!
+      // 최종적으로 editReply로 결과 반환
+      return interaction.editReply({
+        embeds: [embed]
       });
     } catch (err) {
-      if (release) await release();
+      if (release) try { await release(); } catch {}
       console.error("[챔피언획득] 파일 접근 오류:", err);
-      return interaction.reply({
-        content: "❌ 오류 발생! 잠시 후 다시 시도해주세요.",
-        ephemeral: true
-      });
+      try {
+        return interaction.editReply({
+          content: "❌ 오류 발생! 잠시 후 다시 시도해주세요."
+        });
+      } catch (e) {}
     }
   }
 };
