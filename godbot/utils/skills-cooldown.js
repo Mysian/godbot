@@ -11,6 +11,12 @@ module.exports = {
     "minTurn": 2,
     "cooldown": 2
   },
+  "말파이트": {
+    "name": "멈출 수 없는 힘",
+    "description": "공격 시 상대를 1턴 동안 기절시키고, 피해를 1.5배로 증가시킵니다.",
+    "minTurn": 3,
+    "cooldown": 3
+  },
   "나서스": {
     "name": "흡수의 일격",
     "description": "공격 시 매턴 공격력이 2 증가합니다. (영구)",
