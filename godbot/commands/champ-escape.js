@@ -1,5 +1,4 @@
-// commands/champ-escape.js
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -24,7 +23,6 @@ module.exports = {
     const userTag = `<@${userId}>`;
 
     const bd = load(battlePath);
-    // 본인이 참가중인 배틀 찾기
     let battleId = null, battle = null;
     for (const [id, b] of Object.entries(bd)) {
       if ((b.challenger === userId || b.opponent === userId) && !b.pending) {
@@ -42,10 +40,7 @@ module.exports = {
       return;
     }
 
-    // 상대방
     const oppId = (battle.challenger === userId) ? battle.opponent : battle.challenger;
-
-    // 기록 반영
     const records = load(recordPath);
     const userData = load(userDataPath);
 
@@ -56,14 +51,46 @@ module.exports = {
     records[oppId].win++;
     save(recordPath, records);
 
-    // 배틀 삭제
     delete bd[battleId];
     save(battlePath, bd);
+
+    // 🔥 배틀 메시지 비활성화(최근 30개 메시지에서 챔피언배틀 메시지 탐색)
+    try {
+      const channel = interaction.channel;
+      const messages = await channel.messages.fetch({ limit: 30 });
+      for (const msg of messages.values()) {
+        if (
+          msg.author.id === interaction.client.user.id &&
+          msg.embeds.length &&
+          msg.embeds[0].title &&
+          msg.embeds[0].title.includes('챔피언 배틀')
+        ) {
+          // 배틀 참가자 mention 포함인지도 체크 (정확도↑)
+          const mentions = [battle.challenger, battle.opponent].map(id => `<@${id}>`);
+          const desc = msg.embeds[0].description || '';
+          if (mentions.every(mention => desc.includes(mention))) {
+            // 버튼 비활성화 + 안내로 메시지 덮어쓰기
+            await msg.edit({
+              content: '🚫 이 배틀은 탈주로 종료되었습니다.',
+              embeds: msg.embeds,
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId('disabled').setLabel('탈주 처리됨').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                )
+              ]
+            });
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      // 실패 시 무시 (메시지 못찾아도 무관)
+    }
 
     // 채널에 공개 메시지 (탈주)
     await interaction.reply({
       content: `🏃 **${userTag}**이(가) 탈주했습니다!`,
-      allowedMentions: { users: [userId] } // 유저 태그 허용
+      allowedMentions: { users: [userId] }
     });
   }
 };
