@@ -156,7 +156,7 @@ const imageNameMap = {
 "베인": "Vayne",
 "벡스": "Vex",
 "베이가": "Veigar",
-"벨코즈": "VelKoz",
+"벨코즈": "Velkoz",
 "바이": "Vi",
 "빅토르": "Viktor",
 "블라디미르": "Vladimir",

@@ -3,11 +3,14 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
+const { getChampionKeyByName } = require("../utils/champion-utils"); // ← 챔피언 영문명 매핑용
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
-// 여기에 배틀 중인 상태를 확인할 파일 경로 추가
 const battleActivePath = path.join(__dirname, "../data/battle-active.json");
+
+// 🟢 불굴의 영혼 역할 ID
+const SOUL_ROLE_ID = "1382169247538745404";
 
 function loadJSON(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
@@ -28,6 +31,41 @@ function getSuccessRate(level) {
   return 0.1;
 }
 
+// 실패 시 소멸 방지 확률(강화 레벨이 높을수록 증가, 최대 80%)
+function getSurviveRate(level) {
+  // 10%에서 80%까지 선형 증가
+  const maxRate = 0.8;
+  const minRate = 0.1;
+  let rate = minRate + (maxRate - minRate) * (level / 999);
+  if (rate > maxRate) rate = maxRate;
+  return rate;
+}
+
+// 스탯 증가 공식 (커스텀)
+function calcStatGain(level, baseAtk, baseAp) {
+  let mainStat = baseAtk >= baseAp ? 'attack' : 'ap';
+  let subStat = baseAtk >= baseAp ? 'ap' : 'attack';
+
+  let mainGain = Math.floor((level / 5) + 2) * 1.5;
+  let subGain = Math.floor((level / 7) + 1);
+
+  let hpGain = (level * 5) + 50;
+  let defGain = Math.floor((level / 10) + 1);
+  let penGain = level % 2 === 0 ? 1 : 0;
+
+  let gain = {
+    attack: 0,
+    ap: 0,
+    hp: hpGain,
+    defense: defGain,
+    penetration: penGain
+  };
+  gain[mainStat] = mainGain;
+  gain[subStat] = subGain;
+
+  return { gain, mainStat, subStat };
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("챔피언강화")
@@ -37,9 +75,8 @@ module.exports = {
     const userId = interaction.user.id;
     const userMention = `<@${userId}>`;
     const data = loadJSON(dataPath);
-
-    // --- 여기에 추가: 전투 중인지 체크 ---
     const battleActive = loadJSON(battleActivePath);
+
     const inBattle = Object.values(battleActive).some(b =>
       b.challenger === userId || b.opponent === userId
     );
@@ -49,7 +86,6 @@ module.exports = {
         ephemeral: true
       });
     }
-    // -----------------------------------------
 
     const champ = data[userId];
     if (!champ || !champ.name) {
@@ -69,22 +105,61 @@ module.exports = {
       });
     }
 
+    // 챔피언 이미지 경로 (영문키 추출)
+    const champKey = getChampionKeyByName(champ.name);
+    const champImg = champKey
+      ? `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKey}.png`
+      : null;
+
     const startUpgrade = async () => {
       const rate = getSuccessRate(champ.level);
+      const surviveRate = getSurviveRate(champ.level);
       const percent = Math.floor(rate * 1000) / 10;
+      const survivePercent = Math.floor(surviveRate * 1000) / 10;
+
+      // 기본 능력치 불러오기
+      const base = championList.find(c => c.name === champ.name)?.stats;
+      champ.stats = champ.stats || { ...base };
+
+      // 이번 강화 시 오를 스탯 계산
+      const { gain, mainStat, subStat } = calcStatGain(champ.level, champ.stats.attack, champ.stats.ap);
+
+      // 스탯 표기용 복사
+      const prevStats = { ...champ.stats };
+      const upStats = {
+        ...champ.stats,
+        attack: champ.stats.attack + gain.attack,
+        ap: champ.stats.ap + gain.ap,
+        hp: champ.stats.hp + gain.hp,
+        defense: champ.stats.defense + gain.defense,
+        penetration: champ.stats.penetration + gain.penetration,
+      };
+
+      const statList = [
+        { label: "공격력", key: "attack", emoji: "⚔️" },
+        { label: "주문력", key: "ap", emoji: "🔮" },
+        { label: "체력", key: "hp", emoji: "❤️" },
+        { label: "방어력", key: "defense", emoji: "🛡️" },
+        { label: "관통력", key: "penetration", emoji: "💥" },
+      ];
+      let statDesc = statList.map(stat =>
+        `${stat.emoji} **${stat.label}**\n${prevStats[stat.key]} → **${upStats[stat.key]}**\n`
+      ).join("\n");
 
       const embed = new EmbedBuilder()
         .setTitle(`🔧 챔피언 강화 준비`)
         .setDescription(`**${champ.name} ${champ.level}강** → **${champ.level + 1}강**
 📈 강화 확률: **${percent}%**
+🛡️ 실패 시 소멸 방지 확률(레벨에 따라 증가, 최대 80%): **${survivePercent}%**
+**스탯 변화 (성공 시):**
 
-📊 성공 시 능력치 상승:
-- 공격력 +1
-- 주문력 +1
-- 체력 +10
-- 방어력 +1
-- 관통력 +1 (2레벨마다)`)
-        .setColor(0x00bcd4);
+${statDesc}
+
+> **${mainStat === "attack" ? "공격력" : "주문력"}** 중심 챔피언이기 때문에 딜링 기반 스탯의 증가량이 더 큽니다!
+`)
+        .setColor(mainStat === "attack" ? 0xff9800 : 0x673ab7);
+
+      if (champImg) embed.setThumbnail(champImg);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -136,17 +211,28 @@ module.exports = {
             champ.level += 1;
             champ.success += 1;
 
-            const base = championList.find(c => c.name === champ.name)?.stats;
-            if (base) {
-              champ.stats = champ.stats || { ...base };
-              champ.stats.attack += 1;
-              champ.stats.ap += 1;
-              champ.stats.hp += 10;
-              champ.stats.defense += 1;
-              if (champ.level % 2 === 0) champ.stats.penetration += 1;
-            }
+            const oldStats = { ...champ.stats };
+
+            champ.stats.attack += gain.attack;
+            champ.stats.ap += gain.ap;
+            champ.stats.hp += gain.hp;
+            champ.stats.defense += gain.defense;
+            champ.stats.penetration += gain.penetration;
 
             saveJSON(dataPath, data);
+
+            let diffStatDesc = statList.map(stat =>
+              `${stat.emoji} **${stat.label}**\n${oldStats[stat.key]} → **${champ.stats[stat.key]}** _( +${champ.stats[stat.key] - oldStats[stat.key]} )_\n`
+            ).join("\n");
+
+            const resultEmbed = new EmbedBuilder()
+              .setTitle(`🎉 ${champ.name} ${champ.level}강 성공!`)
+              .setDescription(`**[강화 결과]**
+${diffStatDesc}
+`)
+              .setColor(mainStat === "attack" ? 0xff9800 : 0x673ab7);
+
+            if (champImg) resultEmbed.setThumbnail(champImg);
 
             const nextRow = new ActionRowBuilder().addComponents(
               new ButtonBuilder()
@@ -160,8 +246,7 @@ module.exports = {
             );
 
             await interaction.editReply({
-              content: `🎉 ${champ.name} 챔피언 ${champ.level}강에 성공했습니다!`,
-              embeds: [],
+              embeds: [resultEmbed],
               components: [nextRow],
               ephemeral: true
             });
@@ -186,18 +271,60 @@ module.exports = {
             });
 
           } else {
-            const survive = Math.random() < 0.3;
+            // 강화 실패 시 생존 확률
+            const survive = Math.random() < surviveRate;
             if (survive) {
-              interaction.followUp({
-                content: `😮 ${userMention} 님이 **${champ.name} ${champ.level}강**에 실패했지만, 불굴의 의지로 챔피언이 견뎌냅니다!`
+              // 실패했지만 챔피언이 남음
+              const failEmbed = new EmbedBuilder()
+                .setTitle(`💦 강화 실패! 챔피언이 살아남았다!`)
+                .setDescription(`😮 ${userMention} 님이 **${champ.name} ${champ.level}강**에 실패했지만, 
+불굴의 의지로 챔피언이 견뎌냅니다!
+🛡️ 현재 소실 방지 확률: **${Math.floor(surviveRate * 1000) / 10}%**
+`)
+                .setColor(0x2196f3);
+              if (champImg) failEmbed.setThumbnail(champImg);
+
+              await interaction.followUp({
+                embeds: [failEmbed],
+                ephemeral: true
               });
             } else {
-              const lostName = champ.name;
-              delete data[userId];
-              saveJSON(dataPath, data);
-              interaction.followUp({
-                content: `💥 ${userMention} 님이 **${lostName} ${champ.level}강**에 실패하여 챔피언이 소멸되었습니다...`
-              });
+              // 여기서 역할로 부활(소멸 방지) 처리
+              const guild = interaction.guild;
+              const member = await guild.members.fetch(userId).catch(() => null);
+
+              if (member && member.roles.cache.has(SOUL_ROLE_ID)) {
+                // 역할 제거 → 챔피언 소멸 막음
+                await member.roles.remove(SOUL_ROLE_ID).catch(() => null);
+
+                const reviveEmbed = new EmbedBuilder()
+                  .setTitle(`💎 불굴의 영혼 효과 발동!`)
+                  .setDescription(`죽을 운명이었던 챔피언이 아이템: **불굴의 영혼** 효과로 살아납니다!\n해당 아이템이 대신 사라졌습니다.`)
+                  .setColor(0xffe082);
+
+                if (champImg) reviveEmbed.setThumbnail(champImg);
+
+                await interaction.followUp({
+                  embeds: [reviveEmbed],
+                  ephemeral: true
+                });
+                // 챔피언은 소멸하지 않고 남음(데이터 삭제X)
+              } else {
+                const lostName = champ.name;
+                delete data[userId];
+                saveJSON(dataPath, data);
+
+                const failEmbed = new EmbedBuilder()
+                  .setTitle(`💥 챔피언 소멸...`)
+                  .setDescription(`${userMention} 님이 **${lostName} ${champ.level}강**에 실패하여 챔피언의 혼이 소멸되었습니다...`)
+                  .setColor(0xf44336);
+                if (champImg) failEmbed.setThumbnail(champImg);
+
+                await interaction.followUp({
+                  embeds: [failEmbed],
+                  ephemeral: true
+                });
+              }
             }
           }
         }, 2000);

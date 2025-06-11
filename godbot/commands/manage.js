@@ -42,6 +42,14 @@ module.exports = {
     const option = interaction.options.getString("옵션");
     const 기준날짜입력 = interaction.options.getString("기준날짜");
 
+    // ⭐ 잘못된 날짜 입력 시 함수 종료
+    if (option === "inactive") {
+      if (!기준날짜입력 || isNaN(new Date(기준날짜입력).getTime())) {
+        await interaction.editReply({ content: "❗ 기준 날짜 형식이 잘못되었습니다." });
+        return;
+      }
+    }
+
     const 기준날짜 = option === "inactive" ? new Date(기준날짜입력) : null;
     const guildMembers = await interaction.guild.members.fetch();
     const activityPath = path.join(__dirname, "..", "activity.json");
@@ -56,12 +64,6 @@ module.exports = {
       if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
 
       if (option === "inactive") {
-        if (!기준날짜 || isNaN(기준날짜.getTime())) {
-          return await interaction.editReply({
-            content: "❗ 기준 날짜 형식이 잘못되었습니다.",
-          });
-        }
-
         const lastActive = activity[member.id];
         if (!lastActive || new Date(lastActive) < 기준날짜) {
           추방대상.push(member);
@@ -137,6 +139,17 @@ module.exports = {
       } else {
         await i.update({
           content: "❌ 추방이 취소되었습니다.",
+          embeds: [],
+          components: [],
+        });
+      }
+    });
+
+    // ⭐ 타임아웃 시 이중 응답 방지
+    collector.on("end", async (collected) => {
+      if (collected.size === 0) {
+        await interaction.editReply({
+          content: "⏰ 시간이 초과되어 추방이 취소되었습니다.",
           embeds: [],
           components: [],
         });

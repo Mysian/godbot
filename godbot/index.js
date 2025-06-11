@@ -15,7 +15,8 @@ const client = new Client({
   ],
 });
 
-const LOG_CHANNEL_ID = "1381062597230460989";
+// ✅ 명령어 로그를 남길 채널 ID로 수정!
+const LOG_CHANNEL_ID = "1382168527015776287";
 
 module.exports.client = client;
 
@@ -94,9 +95,43 @@ client.once(Events.ClientReady, async () => {
   }
 });
 
-// ✅ 슬래시 명령어 처리
+// ✅ 명령어 사용 로그 전송 함수
+async function sendCommandLog(interaction) {
+  try {
+    const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    if (!logChannel || !logChannel.isTextBased()) return;
+    const userTag = interaction.user.tag;
+    const cmdName = interaction.commandName;
+    const time = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+
+    // 옵션값 로깅
+    let extra = "";
+    if (interaction.options && interaction.options.data) {
+      extra = interaction.options.data.map(opt =>
+        `\`${opt.name}: ${opt.value}\``
+      ).join(", ");
+    }
+
+    const embed = {
+      title: "명령어 사용 로그",
+      description: `**유저:** <@${interaction.user.id}> (\`${userTag}\`)
+**명령어:** \`/${cmdName}\`
+${extra ? `**옵션:** ${extra}\n` : ""}
+**시간:** ${time}`,
+      color: 0x009688
+    };
+    await logChannel.send({ embeds: [embed] });
+  } catch (e) { /* 무시 */ }
+}
+
+// ✅ 슬래시 명령어 처리 (명령어 로그 자동 전송)
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return;
+
+  // 1. 명령어 로그 자동 기록
+  await sendCommandLog(interaction);
+
+  // 2. 명령어 실행
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
   try {

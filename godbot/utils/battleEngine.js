@@ -27,7 +27,7 @@ function initBattleContext(battle) {
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
     battle.context.cooldowns[id] = 0;
-    battle.context.skillTurn[id] = 1; // 🟢 1로 초기화(수정)
+    battle.context.skillTurn[id] = 1;
     battle.context.skillUsed[id] = null;
     battle.context.flatReduction[id] = 0;
     battle.context.percentReduction[id] = 0;
@@ -48,12 +48,10 @@ function initBattleContext(battle) {
 // 매 턴 시작: 이펙트 처리 및 턴 감소, 스탯/상태 반영
 function processTurnStart(userData, battle, actingUserId) {
   [battle.challenger, battle.opponent].forEach(id => {
-    // 내 턴 증가, 쿨타임 감소
     if (id === actingUserId) {
       battle.context.skillTurn[id]++;
       if (battle.context.cooldowns[id] > 0) battle.context.cooldowns[id]--;
     }
-    // 상태 초기화
     battle.context.flatReduction[id] = 0;
     battle.context.percentReduction[id] = 0;
     battle.context.doubleDamage[id] = false;
@@ -139,17 +137,16 @@ function processTurnStart(userData, battle, actingUserId) {
   });
 }
 
-// 🟢 쿨다운, 최소 턴 체크 로직
+// 쿨다운, 최소 턴 체크 로직
 function canUseSkill(userId, championName, context) {
   const cdInfo = skillCd[championName];
   if (!cdInfo) return { ok: false, reason: '쿨타임 정보 없음' };
   const minTurn = cdInfo.minTurn || 1;
   const cooldown = cdInfo.cooldown || 1;
-  const nowTurn = context.skillTurn[userId] || 1; // 🟢 기본 1턴부터 시작(수정)
+  const nowTurn = context.skillTurn[userId] || 1;
   if (context.skillBlocked && context.skillBlocked[userId] > 0) {
     return { ok: false, reason: `스킬 봉인 효과로 스킬 사용 불가!` };
   }
-  // "현재 내 턴이 minTurn 이상이어야 사용 가능"
   if (nowTurn < minTurn) {
     return { ok: false, reason: `최소 ${minTurn}턴 이후 사용 가능! (현재: ${nowTurn}턴)` };
   }
@@ -216,17 +213,26 @@ function calculateDamage(
   let ap = isAttack ? (atkStats.ap || 0) : 0;
   let pen = atkStats.penetration || 0;
 
-  // 마법방어력 감소 적용
+  // 1. 마법방어력 디버프 계산
+  let magicResistDebuff = 0;
   if (context.magicResistDebuff && context.magicResistDebuff[defender.id]) {
-    if (defStats.magicResist !== undefined) {
-      defStats.magicResist += context.magicResistDebuff[defender.id];
-    }
+    magicResistDebuff = context.magicResistDebuff[defender.id];
+    // magicResist 값 자체에 더하지 않고, 방어력 감소에만 사용 (아래서 반영)
   }
 
-  let defVal = Math.max(0, (defStats.defense || 0) - pen);
-  let base = Math.max(0, ad + ap * 0.5 - defVal);
+  // 2. 일반 방어력 10%씩 추가 감소 적용
+  let defense = defStats.defense || 0;
+  if (magicResistDebuff) {
+    defense = defense * Math.max(0, 1 - 0.1 * Math.abs(magicResistDebuff));
+  }
+  let defVal = Math.max(0, defense - pen);
 
-  // 회피/치명
+  // 3. AD/AP중 더 높은 쪽 1배, 낮은 쪽 0.5배로 데미지 공식
+  let main = Math.max(ad, ap);
+  let sub = Math.min(ad, ap);
+  let base = Math.max(0, main * 1 + sub * 0.5 - defVal);
+
+  // 회피/치명타
   const evade = Math.random() < 0.05;
   if (evade) return { damage: 0, critical: false, log: `${defName}이(가) 회피!` };
   const crit = Math.random() < 0.1;
@@ -318,7 +324,7 @@ function calculateDamage(
     }
   }
 
-  // 1회성 부활 및 최초 무효화(자크, 애니비아, 클레드, 킨드레드 등) 관리(여기서 처리하지 않으면 챔배틀js에서 관리)
+  // 1회성 부활 및 최초 무효화 관리 (자크, 애니비아 등)
 
   let log = '';
   if (usedSkill) {
