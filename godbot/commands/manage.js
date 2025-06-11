@@ -1,4 +1,3 @@
-// commands/manage.js
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
@@ -87,13 +86,29 @@ module.exports = {
       }
     }
 
+    // description 길이 초과 방지 로직 추가 (최대 4096자, 안전빵 4000자)
+    const maxDescLength = 4000;
+    let descList = [];
+    let totalLength = 0;
+    for (const m of 추방대상) {
+      const line = `• <@${m.id}> (${m.user.tag})`;
+      // 길이 체크(줄바꿈 포함)
+      if (totalLength + line.length + 1 < maxDescLength) {
+        descList.push(line);
+        totalLength += line.length + 1;
+      } else {
+        descList.push(`외 ${추방대상.length - descList.length}명...`);
+        break;
+      }
+    }
+
     const preview = new EmbedBuilder()
       .setTitle(
         `[${option === "inactive" ? "장기 미이용" : "비활동 신규유저"}] 추방 대상 미리보기`,
       )
       .setDescription(
         추방대상.length > 0
-          ? 추방대상.map((m) => `• <@${m.id}> (${m.user.tag})`).join("\n")
+          ? descList.join("\n")
           : "✅ 추방 대상자가 없습니다.",
       )
       .setColor(0xffcc00);
