@@ -129,7 +129,7 @@ module.exports = {
 
     // 운세 랜덤 선택
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
-    const result = `@${username} 님, 오늘은 ${fortune}`;
+    const result = `<@${userId}> 님, 오늘은 ${fortune}`;
 
     // 데이터 저장 (오늘 날짜로 기록)
     userData[userId] = today;
@@ -140,7 +140,7 @@ module.exports = {
       .setTitle('오늘의 운세')
       .setDescription(result)
       .setColor(0x57D9A3)
-      .setFooter({ text: `내일 00:00 이후에 다시 뽑을 수 있습니다.` });
+      .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
     // 서버 전체 공개로 출력
     await interaction.reply({ embeds: [embed] });
