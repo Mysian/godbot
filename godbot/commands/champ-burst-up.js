@@ -131,7 +131,7 @@ async function startBurstUpgrade(interaction, userId, userMention) {
 - 강화 성공 확률: **연속 성공확률 = (개별확률)^N**
 - 한 번이라도 실패하면 강화 실패! (챔피언 소멸 위험 O)
 - **실패 시 소멸 방지 확률은 고정 10% (즉, 90%로 챔피언 소멸!)**
-- 불굴의 영혼이 있다면 자동으로 발동됨
+- 불굴의 영혼 전설등급이 있다면 해당 아이템이 대신 소멸!
 
 어떤 도전을 하시겠습니까?`)
       .setColor(0xef5350);
@@ -347,7 +347,7 @@ ${statDesc}
           failEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKeyFail}.png`);
         resultContent = { embeds: [failEmbed], components: [], ephemeral: true };
       } else {
-        // 불굴의 영혼 보호
+        // 불굴의 영혼 전설등급 보호
         const guild = interaction.guild;
         const member = await guild.members.fetch(userId).catch(() => null);
 
