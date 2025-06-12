@@ -15,7 +15,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
   const chp = cur.hp[chId], opp = cur.hp[opId];
   const chEffects = cur.context.effects[chId] || [];
   const opEffects = cur.context.effects[opId] || [];
-  // 부활 판정 (효과 리스트에 revive)
   const chRevive = chEffects.some(e => e.type === 'revive' && e.applied !== true);
   const opRevive = opEffects.some(e => e.type === 'revive' && e.applied !== true);
 
@@ -183,7 +182,8 @@ async function startBattleRequest(interaction) {
   const reqCol = req.createMessageComponentCollector({ time: 30000 });
   reqCol.on('collect', async btn => {
     if (btn.user.id !== opponent.id) {
-      return btn.reply({ content: '⛔ 요청받은 유저만 가능합니다.', ephemeral: true });
+      await btn.reply({ content: '⛔ 요청받은 유저만 가능합니다.', ephemeral: true });
+      return;
     }
     await btn.deferUpdate();
 
@@ -191,7 +191,8 @@ async function startBattleRequest(interaction) {
       delete bd[battleId];
       save(battlePath, bd);
       await btn.editReply({ content: '❌ 배틀 요청이 거절되었습니다.', embeds: [], components: [] });
-      return reqCol.stop();
+      reqCol.stop();
+      return;
     }
 
     reqCol.stop();
@@ -220,20 +221,20 @@ async function startBattleRequest(interaction) {
 
     let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
 
-  const getActionRows = (canUseSkillBtn) => [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 쉴드').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('blink').setLabel('✨ 점멸').setStyle(ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬').setStyle(ButtonStyle.Success).setDisabled(!canUseSkillBtn),
-      new ButtonBuilder().setCustomId('inventory').setLabel('🎒 인벤토리').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('escape').setLabel('🏃‍♂️ 탈주').setStyle(ButtonStyle.Secondary)
-    ),
-  ];
-    
-    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [getActionRow(true)] });
+    const getActionRows = (canUseSkillBtn) => [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 쉴드').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('blink').setLabel('✨ 점멸').setStyle(ButtonStyle.Primary)
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬').setStyle(ButtonStyle.Success).setDisabled(!canUseSkillBtn),
+        new ButtonBuilder().setCustomId('inventory').setLabel('🎒 인벤토리').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('escape').setLabel('🏃‍♂️ 탈주').setStyle(ButtonStyle.Secondary)
+      ),
+    ];
+
+    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: getActionRows(true) });
     const battleMsg = await btn.fetchReply();
 
     let turnCol;
@@ -283,7 +284,8 @@ async function startBattleRequest(interaction) {
         }
         const uid = i.user.id;
         if (uid !== cur.turn) {
-          return i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
+          await i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
+          return;
         }
         await i.deferUpdate();
 
@@ -333,8 +335,7 @@ async function startBattleRequest(interaction) {
           return;
         }
 
-          if (i.customId === 'blink') {
-          // 점멸(회피) 예시: 회피 버프 1턴 부여 (커스텀 효과)
+        if (i.customId === 'blink') {
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
           log = `✨ ${userData[uid].name}이(가) 순식간에 점멸! (다음 공격 1회 회피)`;
           cur.logs.push(log);
@@ -399,7 +400,7 @@ async function startBattleRequest(interaction) {
           const nextEmbed = await createBattleEmbed(
             challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
           );
-          await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: [getActionRow(canUseSkillBtn(cur))] });
+          await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: getActionRows(canUseSkillBtn(cur)) });
           return;
         }
       });
