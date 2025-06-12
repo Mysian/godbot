@@ -8,6 +8,7 @@ const { getChampionKeyByName } = require("../utils/champion-utils");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const battleActivePath = path.join(__dirname, "../data/battle-active.json");
+const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const SOUL_ROLE_ID = "1382169247538745404";
 
 async function loadJSON(p) {
@@ -16,6 +17,30 @@ async function loadJSON(p) {
 }
 async function saveJSON(p, d) {
   fs.writeFileSync(p, JSON.stringify(d, null, 2));
+}
+
+// 히스토리 기록 함수
+async function updateEnhanceHistory(userId, { success = false, fail = false, max = null } = {}) {
+  let release;
+  try {
+    release = await lockfile.lock(enhanceHistoryPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+    let hist = await loadJSON(enhanceHistoryPath);
+    if (!hist[userId]) hist[userId] = {
+      total: 0,
+      success: 0,
+      fail: 0,
+      max: 0,
+    };
+    hist[userId].total++;
+    if (success) hist[userId].success++;
+    if (fail) hist[userId].fail++;
+    if (max !== null && max > hist[userId].max) hist[userId].max = max;
+    await saveJSON(enhanceHistoryPath, hist);
+  } catch (e) {
+    // 무시(기록 오류)
+  } finally {
+    if (release) try { await release(); } catch {}
+  }
 }
 
 function getSuccessRate(level) {
@@ -220,9 +245,7 @@ async function setupUpgradeCollector(interaction, userId, userMention) {
 
   collector.on("end", async (collected, reason) => {
     if (collected.size === 0) {
-      // 이미 interaction이 만료됐거나 응답 불가일 수 있으니, try-catch로 방어
       try {
-        // Discord.js v14 기준 replied, deferred 둘 다 false면 응답 시도
         if (!interaction.replied && !interaction.deferred) {
           await interaction.editReply({
             content: "⏳ 강화 준비 시간이 초과되었습니다. 다시 시도해주세요.",
@@ -251,6 +274,9 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
 
     const success = Math.random() < rateNow;
 
+    // 강화 이력에 기록
+    await updateEnhanceHistory(userId, { success, fail: !success });
+
     if (success) {
       champNow.level += 1;
       champNow.success += 1;
@@ -262,6 +288,9 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
       champNow.stats.penetration += gainNow.penetration;
 
       await saveJSON(dataPath, dataNow);
+
+      // 강화 성공 시 최대 강화 기록 갱신
+      await updateEnhanceHistory(userId, { max: champNow.level });
 
       let diffStatDesc = [
         { label: "공격력", key: "attack", emoji: "⚔️" },
@@ -331,6 +360,8 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
             ephemeral: true
           };
         } else {
+          // 소멸되면 '최대 강화' 이력 남기고 삭제
+          await updateEnhanceHistory(userId, { max: champNow.level });
           const lostName = champNow.name;
           delete dataNow[userId];
           await saveJSON(dataPath, dataNow);
