@@ -22,10 +22,8 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply();
 
-    // 페이지 1: 현재 강화 현황
     const data = loadData();
     const history = loadHistory();
-
     const TIMEOUT_SECONDS = 60;
 
     // 현재 강화 현황 집계
@@ -42,12 +40,7 @@ module.exports = {
     }
     currentList.sort((a, b) => b.level - a.level);
 
-    let top = null;
-    if (currentList.length > 0) {
-      top = currentList[0];
-    }
-
-    // 1페이지 임베드
+    let top = currentList.length > 0 ? currentList[0] : null;
     const lines = currentList.slice(0, 20).map((entry, idx) =>
       `**${idx + 1}위** - <@${entry.userId}>: ${entry.userName} (${entry.level}강)`
     );
@@ -90,7 +83,6 @@ module.exports = {
       .setFooter({ text: `2/2 페이지 | ◀️ 현재 강화 순위 | ${TIMEOUT_SECONDS}초 후 버튼 비활성화` })
       .setTimestamp();
 
-    // 버튼 구성
     const nextBtn = new ButtonBuilder()
       .setCustomId("champ-rank-next")
       .setLabel("▶️ 역대 최대 강화 랭킹")
@@ -100,31 +92,23 @@ module.exports = {
       .setLabel("◀️ 현재 강화 순위")
       .setStyle(ButtonStyle.Secondary);
 
-    // 첫 페이지 표시
-    await interaction.editReply({
+    // 메시지 별도 생성(유저별)
+    const reply = await interaction.editReply({
       embeds: [page1],
       components: [
         new ActionRowBuilder().addComponents(nextBtn)
       ]
     });
 
-    // 버튼 이벤트 핸들러
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => ["champ-rank-next", "champ-rank-prev"].includes(i.customId),
+    // interaction id로 콜렉터 분리
+    const collector = reply.createMessageComponentCollector({
+      filter: i => ["champ-rank-next", "champ-rank-prev"].includes(i.customId) && i.user.id === interaction.user.id,
       time: TIMEOUT_SECONDS * 1000
     });
 
     let curPage = 1;
 
     collector.on("collect", async i => {
-      if (i.user.id !== interaction.user.id) {
-        await i.reply({
-          content: "❗ 다른 유저가 실행한 창입니다. `/챔피언강화순위` 명령어로 직접 확인하세요.",
-          ephemeral: true
-        });
-        return;
-      }
-
       if (i.customId === "champ-rank-next" && curPage === 1) {
         curPage = 2;
         await i.update({
@@ -145,8 +129,7 @@ module.exports = {
     });
 
     collector.on("end", () => {
-      // 버튼 비활성화
-      interaction.editReply({
+      reply.edit({
         components: []
       }).catch(() => {});
     });
