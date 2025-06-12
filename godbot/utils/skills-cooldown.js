@@ -7,7 +7,7 @@ module.exports = {
   },
   "나미": {
     "name": "밀물 썰물",
-    "description": "공격 시 아군 체력을 10 회복시키고, 2턴간 받는 피해를 5 줄입니다.",
+    "description": "공격 시 자신 체력을 10 회복시키고, 2턴간 받는 피해를 5 줄입니다.",
     "minTurn": 2,
     "cooldown": 2
   },
@@ -235,7 +235,7 @@ module.exports = {
   },
   "밀리오": {
     "name": "따뜻한 불꽃",
-    "description": "아군이 피해를 입으면 20% 확률로 피해량의 50%를 회복합니다.",
+    "description": "자신이 피해를 입으면 20% 확률로 피해량의 50%를 회복합니다.",
     "minTurn": 2,
     "cooldown": 2
   },
@@ -367,7 +367,7 @@ module.exports = {
   },
   "세나": {
     "name": "어둠 속의 빛",
-    "description": "공격 시 20% 확률로 아군 체력을 15 회복합니다.",
+    "description": "공격 시 20% 확률로 자신 체력을 15 회복합니다.",
     "minTurn": 2,
     "cooldown": 2
   },
@@ -571,7 +571,7 @@ module.exports = {
   },
   "오로라": {
     "name": "빛의 가호",
-    "description": "공격 시 15% 확률로 아군 체력을 20 회복합니다.",
+    "description": "공격 시 15% 확률로 자신 체력을 20 회복합니다.",
     "minTurn": 2,
     "cooldown": 2
   },
