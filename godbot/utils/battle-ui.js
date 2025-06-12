@@ -306,11 +306,22 @@ async function startBattleRequest(interaction) {
               userData[uid].name,
               false
             );
+            // hp 동기화!
             cur.hp[uid] = cur.context.hp ? cur.context.hp[uid] : cur.hp[uid];
             cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
+
+            // **동기화 추가**
+            if (cur.context.hp) {
+              cur.context.hp[uid] = cur.hp[uid];
+              cur.context.hp[tgt] = cur.hp[tgt];
+            }
+            if (cur.context.userData && cur.context.userData[uid]) cur.context.userData[uid].hp = cur.hp[uid];
+            if (cur.context.userData && cur.context.userData[tgt]) cur.context.userData[tgt].hp = cur.hp[tgt];
+            userData[uid].hp = cur.hp[uid];
+            userData[tgt].hp = cur.hp[tgt];
+
             log = dmgInfo.log;
 
-            // ★ 반드시 바로 battleEnd 체크 & return!
             const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
             if (battleEnd) return;
           } else {
@@ -346,7 +357,6 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          // battleEnd 반드시 체크!
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
@@ -389,8 +399,20 @@ async function startBattleRequest(interaction) {
                 champName,
                 true
               );
+              // hp 동기화!
               cur.hp[uid] = cur.context.hp ? cur.context.hp[uid] : cur.hp[uid];
               cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
+
+              // **동기화 추가**
+              if (cur.context.hp) {
+                cur.context.hp[uid] = cur.hp[uid];
+                cur.context.hp[tgt] = cur.hp[tgt];
+              }
+              if (cur.context.userData && cur.context.userData[uid]) cur.context.userData[uid].hp = cur.hp[uid];
+              if (cur.context.userData && cur.context.userData[tgt]) cur.context.userData[tgt].hp = cur.hp[tgt];
+              userData[uid].hp = cur.hp[uid];
+              userData[tgt].hp = cur.hp[tgt];
+
               log = dmgInfo.log;
               actionDone[uid].skill = true;
               cur.usedSkill[uid] = true;
@@ -400,7 +422,6 @@ async function startBattleRequest(interaction) {
                 cur.context.cooldowns[uid] = cdObj.cooldown || 1;
                 cur.context.skillTurn[uid] = 0;
               }
-              // ★ battleEnd 바로 체크 & return!
               const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
               if (battleEnd) return;
             }
