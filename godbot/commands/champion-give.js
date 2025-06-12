@@ -17,8 +17,7 @@ async function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
 
-// 한 페이지당 몇 개 보여줄지
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 6; // 한 페이지에 보여줄 챔피언 개수
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -47,7 +46,6 @@ module.exports = {
     const pageMax = Math.ceil(champions.length / PAGE_SIZE);
 
     async function renderPage(page) {
-      // 챔피언 1~N명 분할
       const start = page * PAGE_SIZE;
       const end = start + PAGE_SIZE;
       const champs = champions.slice(start, end);
@@ -67,16 +65,22 @@ module.exports = {
         });
       }
 
-      // 버튼(챔피언별 지급, 좌/우 페이지)
-      const champButtons = new ActionRowBuilder();
-      for (const champ of champs) {
-        champButtons.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`give-${champ.name}`)
-            .setLabel(`${champ.name} 지급`)
-            .setStyle(ButtonStyle.Primary)
-        );
+      // 버튼을 5개씩 ActionRowBuilder에 나눠 담는다!
+      const buttonRows = [];
+      for (let i = 0; i < champs.length; i += 5) {
+        const row = new ActionRowBuilder();
+        for (const champ of champs.slice(i, i + 5)) {
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`give-${champ.name}`)
+              .setLabel(`${champ.name} 지급`)
+              .setStyle(ButtonStyle.Primary)
+          );
+        }
+        buttonRows.push(row);
       }
+
+      // 페이지 이동 버튼
       const navButtons = new ActionRowBuilder();
       navButtons.addComponents(
         new ButtonBuilder()
@@ -91,14 +95,15 @@ module.exports = {
           .setDisabled(page === pageMax - 1)
       );
 
-      return { embed, champButtons, navButtons };
+      // 버튼 행 반환 (챔피언 지급 버튼 여러 줄 + 네비게이션 1줄)
+      return { embed, buttonRows, navButtons };
     }
 
-    let { embed, champButtons, navButtons } = await renderPage(page);
+    let { embed, buttonRows, navButtons } = await renderPage(page);
 
     await interaction.reply({
       embeds: [embed],
-      components: [champButtons, navButtons],
+      components: [...buttonRows, navButtons],
       ephemeral: true
     });
 
@@ -116,14 +121,14 @@ module.exports = {
     collector.on("collect", async i => {
       if (i.customId === "page-prev" && page > 0) {
         page--;
-        const { embed, champButtons, navButtons } = await renderPage(page);
-        await i.update({ embeds: [embed], components: [champButtons, navButtons] });
+        const { embed, buttonRows, navButtons } = await renderPage(page);
+        await i.update({ embeds: [embed], components: [...buttonRows, navButtons] });
         return;
       }
       if (i.customId === "page-next" && page < pageMax - 1) {
         page++;
-        const { embed, champButtons, navButtons } = await renderPage(page);
-        await i.update({ embeds: [embed], components: [champButtons, navButtons] });
+        const { embed, buttonRows, navButtons } = await renderPage(page);
+        await i.update({ embeds: [embed], components: [...buttonRows, navButtons] });
         return;
       }
       if (i.customId.startsWith("give-")) {
