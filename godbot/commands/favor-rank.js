@@ -15,7 +15,7 @@ module.exports = {
     .setName("호감도순위")
     .setDescription("서버 내 호감도가 높은 순서로 TOP 20을 확인합니다."),
   async execute(interaction) {
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply();
 
     const favor = loadFavor();
     const entries = Object.entries(favor);
