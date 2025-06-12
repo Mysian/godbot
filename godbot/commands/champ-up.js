@@ -11,6 +11,7 @@ const battleActivePath = path.join(__dirname, "../data/battle-active.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const SOUL_ROLE_ID = "1382169247538745404";
 
+// 공통 json
 async function loadJSON(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
   return JSON.parse(fs.readFileSync(p, "utf8"));
@@ -36,9 +37,7 @@ async function updateEnhanceHistory(userId, { success = false, fail = false, max
     if (fail) hist[userId].fail++;
     if (max !== null && max > hist[userId].max) hist[userId].max = max;
     await saveJSON(enhanceHistoryPath, hist);
-  } catch (e) {
-    // 무시(기록 오류)
-  } finally {
+  } catch (e) {} finally {
     if (release) try { await release(); } catch {}
   }
 }
@@ -116,8 +115,9 @@ module.exports = {
       errorMessage = "❌ 오류 발생! 잠시 후 다시 시도해주세요.";
     } finally {
       if (release) try { await release(); } catch {}
-      if (errorMessage) return interaction.editReply({ content: errorMessage });
-      if (immediateReply) return interaction.editReply(immediateReply);
+      // 딱 한 번만 응답!
+      if (errorMessage && !interaction.replied && !interaction.deferred) return interaction.editReply({ content: errorMessage });
+      if (immediateReply && !interaction.replied && !interaction.deferred) return interaction.editReply(immediateReply);
       return startUpgrade(interaction, interaction.user.id, `<@${interaction.user.id}>`);
     }
   }
@@ -203,8 +203,9 @@ ${statDesc}
     errorMessage = "❌ 강화 준비 중 오류 발생! 잠시 후 다시 시도해주세요.";
   } finally {
     if (release) try { await release(); } catch {}
-    if (errorMessage) return interaction.editReply({ content: errorMessage });
-    if (displayContent) {
+    // 한 번만 응답
+    if (errorMessage && !interaction.replied && !interaction.deferred) return interaction.editReply({ content: errorMessage });
+    if (displayContent && !interaction.replied && !interaction.deferred) {
       await interaction.editReply(displayContent);
       await setupUpgradeCollector(interaction, userId, userMention);
       return;
@@ -223,20 +224,22 @@ async function setupUpgradeCollector(interaction, userId, userMention) {
     max: 1
   });
 
-  let ended = false;
+  let processed = false;
 
   collector.on("collect", async i => {
-    if (ended) return;
-    ended = true;
+    if (processed) return;
+    processed = true;
     try { await i.deferUpdate(); } catch (err) {}
     if (i.customId === "champion-upgrade-cancel") {
       try {
-        await i.editReply({
-          content: "⚪ 강화가 취소되었습니다.",
-          embeds: [],
-          components: [],
-          ephemeral: true
-        });
+        if (!i.replied && !i.deferred) {
+          await i.editReply({
+            content: "⚪ 강화가 취소되었습니다.",
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
+        }
       } catch (err) {}
       return;
     }
@@ -263,10 +266,16 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
   let release2;
   let errorMessage = null;
   let resultContent = null;
+  let alreadyRemoved = false;
   try {
     release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
     let dataNow = await loadJSON(dataPath);
     let champNow = dataNow[userId];
+    if (!champNow) {
+      // 이미 소멸 처리된 경우 방어
+      errorMessage = "이미 챔피언이 소멸되었습니다.";
+      return;
+    }
 
     const rateNow = getSuccessRate(champNow.level);
     const surviveRateNow = getSurviveRate(champNow.level);
@@ -360,11 +369,12 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
             ephemeral: true
           };
         } else {
-          // 소멸되면 '최대 강화' 이력 남기고 삭제
+          // 소멸되면 '최대 강화' 이력 남기고 삭제(동시성 보완: 이미 지워졌으면 중복 삭제X)
           await updateEnhanceHistory(userId, { max: champNow.level });
           const lostName = champNow.name;
           delete dataNow[userId];
           await saveJSON(dataPath, dataNow);
+          alreadyRemoved = true;
           const failEmbed = new EmbedBuilder()
             .setTitle(`💥 챔피언 소멸...`)
             .setDescription(`${userMention} 님이 **${lostName} ${champNow.level + 1}강**에 실패하여 챔피언의 혼이 소멸되었습니다...`)
@@ -382,8 +392,9 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
     errorMessage = "❌ 강화 처리 중 오류 발생! 잠시 후 다시 시도해주세요.";
   } finally {
     if (release2) try { await release2(); } catch {}
-    if (errorMessage) return interaction.editReply({ content: errorMessage });
-    if (resultContent) {
+    // reply/deferred 상태 체크 후 한 번만 응답!
+    if (errorMessage && !interaction.replied && !interaction.deferred) return interaction.editReply({ content: errorMessage });
+    if (resultContent && !interaction.replied && !interaction.deferred) {
       await interaction.editReply(resultContent);
       if (resultContent.components && resultContent.components.length > 0) {
         await setupNextUpgradeCollector(interaction, userId, userMention);
@@ -404,19 +415,21 @@ async function setupNextUpgradeCollector(interaction, userId, userMention) {
     max: 1
   });
 
-  let ended = false;
+  let processed = false;
 
   collector.on("collect", async i => {
-    if (ended) return;
-    ended = true;
+    if (processed) return;
+    processed = true;
     try { await i.deferUpdate(); } catch (err) {}
     if (i.customId === "stop-upgrade") {
       try {
-        await i.editReply({
-          content: "🛑 강화 세션이 종료되었습니다.",
-          components: [],
-          ephemeral: true
-        });
+        if (!i.replied && !i.deferred) {
+          await i.editReply({
+            content: "🛑 강화 세션이 종료되었습니다.",
+            components: [],
+            ephemeral: true
+          });
+        }
       } catch (err) {}
       return;
     }
