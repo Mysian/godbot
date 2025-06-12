@@ -93,7 +93,6 @@ module.exports = {
       if (release) try { await release(); } catch {}
       if (errorMessage) return interaction.editReply({ content: errorMessage });
       if (immediateReply) return interaction.editReply(immediateReply);
-      // 정상 진입만 startUpgrade 진입
       return startUpgrade(interaction, interaction.user.id, `<@${interaction.user.id}>`);
     }
   }
@@ -195,33 +194,44 @@ async function setupUpgradeCollector(interaction, userId, userMention) {
 
   const collector = interaction.channel.createMessageComponentCollector({
     filter,
-    time: 60000, // 60초로 여유롭게!
+    time: 60000,
     max: 1
   });
 
+  let ended = false;
+
   collector.on("collect", async i => {
-    await i.deferUpdate();
+    if (ended) return;
+    ended = true;
+    try { await i.deferUpdate(); } catch (err) {}
     if (i.customId === "champion-upgrade-cancel") {
-      return i.editReply({
-        content: "⚪ 강화가 취소되었습니다.",
-        embeds: [],
-        components: [],
-        ephemeral: true
-      });
+      try {
+        await i.editReply({
+          content: "⚪ 강화가 취소되었습니다.",
+          embeds: [],
+          components: [],
+          ephemeral: true
+        });
+      } catch (err) {}
+      return;
     }
     await handleUpgradeProcess(i, userId, userMention);
   });
 
   collector.on("end", async (collected, reason) => {
     if (collected.size === 0) {
+      // 이미 interaction이 만료됐거나 응답 불가일 수 있으니, try-catch로 방어
       try {
-        await interaction.editReply({
-          content: "⏳ 강화 준비 시간이 초과되었습니다. 다시 시도해주세요.",
-          embeds: [],
-          components: [],
-          ephemeral: true
-        });
-      } catch {}
+        // Discord.js v14 기준 replied, deferred 둘 다 false면 응답 시도
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.editReply({
+            content: "⏳ 강화 준비 시간이 초과되었습니다. 다시 시도해주세요.",
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
+        }
+      } catch (err) {}
     }
   });
 }
@@ -344,7 +354,6 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
     if (errorMessage) return interaction.editReply({ content: errorMessage });
     if (resultContent) {
       await interaction.editReply(resultContent);
-      // 연속 강화 버튼을 누르면 여기서 다시 collector 세팅
       if (resultContent.components && resultContent.components.length > 0) {
         await setupNextUpgradeCollector(interaction, userId, userMention);
       }
@@ -364,29 +373,37 @@ async function setupNextUpgradeCollector(interaction, userId, userMention) {
     max: 1
   });
 
+  let ended = false;
+
   collector.on("collect", async i => {
-    await i.deferUpdate();
+    if (ended) return;
+    ended = true;
+    try { await i.deferUpdate(); } catch (err) {}
     if (i.customId === "stop-upgrade") {
-      return i.editReply({
-        content: "🛑 강화 세션이 종료되었습니다.",
-        components: [],
-        ephemeral: true
-      });
+      try {
+        await i.editReply({
+          content: "🛑 강화 세션이 종료되었습니다.",
+          components: [],
+          ephemeral: true
+        });
+      } catch (err) {}
+      return;
     }
-    // 연속 강화(새 상호작용으로)
     await startUpgrade(i, userId, userMention);
   });
 
   collector.on("end", async (collected, reason) => {
     if (collected.size === 0) {
       try {
-        await interaction.editReply({
-          content: "⏳ 연속 강화 대기 시간이 초과되었습니다. 다시 시도해주세요.",
-          embeds: [],
-          components: [],
-          ephemeral: true
-        });
-      } catch {}
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.editReply({
+            content: "⏳ 연속 강화 대기 시간이 초과되었습니다. 다시 시도해주세요.",
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
+        }
+      } catch (err) {}
     }
   });
 }
