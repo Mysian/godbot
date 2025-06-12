@@ -82,12 +82,19 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
+  // 턴 강조용
+  const isChTurn = (turnId === challenger.id);
+  const isOpTurn = (turnId === opponent.id);
+
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
-    .setDescription(`**${challenger.username}** vs **${opponent.username}**`)
+    .setDescription(
+      `**${challenger.username}** vs **${opponent.username}**\n\n` +
+      `👉 **지금 차례: <@${turnId}> (${isChTurn ? ch.name : op.name})**`
+    )
     .addFields(
       {
-        name: `👑 ${challenger.username}`,
+        name: `👑 ${challenger.username} ${isChTurn ? '👉 (내 턴)' : ''}`,
         value: `${ch.name} ${getStatusIcons(battle.context.effects[challenger.id])}
 💖 ${chp}/${ch.stats.hp}
 ${createHpBar(chp, ch.stats.hp)}
@@ -97,7 +104,7 @@ ${createSkillField(challenger.id, ch.name, battle.context)}
         inline: true
       },
       {
-        name: `🛡️ ${opponent.username}`,
+        name: `🛡️ ${opponent.username} ${isOpTurn ? '👉 (내 턴)' : ''}`,
         value: `${op.name} ${getStatusIcons(battle.context.effects[opponent.id])}
 💖 ${ohp}/${op.stats.hp}
 ${createHpBar(ohp, op.stats.hp)}
@@ -106,13 +113,14 @@ ${createSkillField(opponent.id, op.name, battle.context)}
 `,
         inline: true
       },
-      { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
+      { name: '🎯 현재 턴', value: `👉 <@${turnId}> (${isChTurn ? ch.name : op.name})`, inline: false },
       { name: '📢 행동 결과', value: log || '없음', inline: false }
     )
     .setThumbnail(iconOp)
     .setImage(iconCh)
     .setColor(0x3498db);
 }
+
 
 async function createResultEmbed(winner, loser, userData, records, interaction, isDraw = false, drawIds = []) {
   if (isDraw) {

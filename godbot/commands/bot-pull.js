@@ -6,7 +6,7 @@ const MAIN_STAFF_ROLE_ID = "786128824365482025";
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("봇깃업데이트")
+    .setName("봇업데이트")
     .setDescription("메인스탭만 사용 가능: 서버에서 git pull origin main 실행"),
 
   async execute(interaction) {
