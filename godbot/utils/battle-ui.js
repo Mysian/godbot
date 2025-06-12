@@ -297,30 +297,26 @@ async function startBattleRequest(interaction) {
           actionDone[uid] = actionDone[uid] || { skill: false, done: false };
           actionDone[uid].done = true;
 
-          if (i.customId === 'attack') {
-            const dmgInfo = calculateDamage(
-              { ...userData[uid], id: uid, hp: cur.hp[uid] },
-              { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
-              true,
-              cur.context,
-              userData[uid].name,
-              false
-            );
-            // hp 동기화!
-            cur.hp[uid] = cur.context.hp ? cur.context.hp[uid] : cur.hp[uid];
-            cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
+if (i.customId === 'attack') {
+  const dmgInfo = calculateDamage(
+    { ...userData[uid], id: uid, hp: cur.hp[uid] },
+    { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
+    true,
+    cur.context,
+    userData[uid].name,
+    false
+  );
+  // hp 동기화! (아래 딱 3종류만)
+  cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
+  cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
+  if (cur.context.hp) {
+    cur.context.hp[uid] = cur.hp[uid];
+    cur.context.hp[tgt] = cur.hp[tgt];
+  }
+  if (userData[uid]) userData[uid].hp = cur.hp[uid];
+  if (userData[tgt]) userData[tgt].hp = cur.hp[tgt];
 
-            // **동기화 추가**
-            if (cur.context.hp) {
-              cur.context.hp[uid] = cur.hp[uid];
-              cur.context.hp[tgt] = cur.hp[tgt];
-            }
-            if (cur.context.userData && cur.context.userData[uid]) cur.context.userData[uid].hp = cur.hp[uid];
-            if (cur.context.userData && cur.context.userData[tgt]) cur.context.userData[tgt].hp = cur.hp[tgt];
-            userData[uid].hp = cur.hp[uid];
-            userData[tgt].hp = cur.hp[tgt];
-
-            log = dmgInfo.log;
+  log = dmgInfo.log;
 
             const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
             if (battleEnd) return;
