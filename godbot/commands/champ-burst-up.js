@@ -1,4 +1,3 @@
-// commands/champ-burst-up.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -19,16 +18,16 @@ async function saveJSON(p, d) {
   fs.writeFileSync(p, JSON.stringify(d, null, 2));
 }
 
-// 히스토리 기록 함수 (동일)
-async function updateEnhanceHistory(userId, { success = false, fail = false, max = null } = {}) {
+// 히스토리 기록 함수 - 카운트만큼 누적(성공, 실패)
+async function updateEnhanceHistory(userId, { success = 0, fail = 0, max = null } = {}) {
   let release;
   try {
     release = await lockfile.lock(enhanceHistoryPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
     let hist = await loadJSON(enhanceHistoryPath);
     if (!hist[userId]) hist[userId] = { total: 0, success: 0, fail: 0, max: 0 };
-    hist[userId].total++;
-    if (success) hist[userId].success++;
-    if (fail) hist[userId].fail++;
+    hist[userId].total += (success + fail);
+    if (success) hist[userId].success += success;
+    if (fail) hist[userId].fail += fail;
     if (max !== null && max > hist[userId].max) hist[userId].max = max;
     await saveJSON(enhanceHistoryPath, hist);
   } catch (e) {} finally { if (release) try { await release(); } catch {} }
@@ -60,8 +59,7 @@ function calcStatGain(level, baseAtk, baseAp) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("챔피언한방강화")
-    .setDescription("한 번에 여러 번(5, 10, 20강) 강화에 도전한다!")
-    ,
+    .setDescription("한 번에 여러 번(5, 10, 20강) 강화에 도전한다!"),
   async execute(interaction) {
     let release;
     let errorMessage = null;
@@ -165,13 +163,86 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
   collector.on("collect", async i => {
     await i.deferUpdate();
     const count = parseInt(i.values[0], 10);
-    await handleBurstUpgradeProcess(interaction, userId, userMention, count);
+
+    // ====== 두 번째 임베드 (확률 안내 + 버튼) ======
+    let data = await loadJSON(dataPath);
+    let champ = data[userId];
+    const rate = getSuccessRate(champ.level);
+    const burstProb = Math.pow(rate, count);
+    const champKey = getChampionKeyByName(champ.name);
+    const champImg = champKey
+      ? `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKey}.png`
+      : null;
+    const percent = Math.floor(burstProb * 10000) / 100;
+
+    const infoEmbed = new EmbedBuilder()
+      .setTitle("🔥 강화 도전 확률 안내")
+      .setDescription(
+        `**${champ.name} ${champ.level}강 → ${champ.level + count}강(도전 시)\n\n**` +
+        `- 한 번에 ${count}회 연속 강화!\n` +
+        `- 연속 성공확률: **${percent}%**\n` +
+        `- 실패 시 챔피언 소멸 확률: **90%** (소멸 방지 10%)\n\n` +
+        `정말 강화에 도전하시겠습니까?`
+      )
+      .setColor(0xf5a623);
+    if (champImg) infoEmbed.setThumbnail(champImg);
+
+    const buttonRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`burst-confirm-${count}`)
+        .setLabel("강화 도전한다!")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId("burst-cancel")
+        .setLabel("취소")
+        .setStyle(ButtonStyle.Secondary)
+    );
+    await i.editReply({
+      embeds: [infoEmbed],
+      components: [buttonRow],
+      ephemeral: true
+    });
+    await setupBurstConfirmCollector(i, userId, userMention, count);
   });
   collector.on("end", async (collected, reason) => {
     if (collected.size === 0) {
       try {
         await interaction.editReply({
           content: "⏳ 강화 선택 시간이 초과되었습니다. 다시 시도해주세요.",
+          embeds: [],
+          components: [],
+          ephemeral: true
+        });
+      } catch (err) {}
+    }
+  });
+}
+
+async function setupBurstConfirmCollector(interaction, userId, userMention, burstCount) {
+  const filter = i =>
+    i.user.id === userId &&
+    (i.customId === `burst-confirm-${burstCount}` || i.customId === "burst-cancel");
+  const collector = interaction.channel.createMessageComponentCollector({
+    filter, time: 30000, max: 1
+  });
+  collector.on("collect", async i => {
+    await i.deferUpdate();
+    if (i.customId === "burst-cancel") {
+      await i.editReply({
+        content: "🛑 강화가 취소되었습니다.",
+        embeds: [],
+        components: [],
+        ephemeral: true
+      });
+      return;
+    }
+    await handleBurstUpgradeProcess(i, userId, userMention, burstCount);
+  });
+  collector.on("end", async (collected, reason) => {
+    if (collected.size === 0) {
+      try {
+        await interaction.editReply({
+          content: "⏳ 강화 대기 시간이 초과되었습니다. 다시 시도해주세요.",
           embeds: [],
           components: [],
           ephemeral: true
@@ -199,7 +270,7 @@ async function handleBurstUpgradeProcess(interaction, userId, userMention, burst
     let failAt = 0;
     const perRate = getSuccessRate(currentLevel);
     const burstProb = Math.pow(perRate, burstCount);
-    // 강화 진행
+
     for (let i = 0; i < burstCount; i++) {
       const curSuccess = Math.random() < getSuccessRate(currentLevel);
       if (!curSuccess) {
@@ -216,12 +287,12 @@ async function handleBurstUpgradeProcess(interaction, userId, userMention, burst
       champNow.stats.penetration += gain.penetration;
       currentLevel++;
     }
-    // 연속 성공
+    // === 연속 성공 ===
     if (allSuccess) {
       champNow.level += burstCount;
       champNow.success += burstCount;
       await saveJSON(dataPath, dataNow);
-      await updateEnhanceHistory(userId, { success: true, max: champNow.level });
+      await updateEnhanceHistory(userId, { success: burstCount, fail: 0, max: champNow.level });
 
       const statList = [
         { label: "공격력", key: "attack", emoji: "⚔️" },
@@ -254,14 +325,13 @@ ${statDesc}
         ephemeral: true
       };
     }
-    // 중간 실패!
+    // === 중간 실패! ===
     else {
+      // 실패한 시점까지의 성공, 실패 카운트 모두 누적!
+      await updateEnhanceHistory(userId, { success: failAt, fail: burstCount - failAt, max: champNow.level });
       // 실패 시 90% 확률로 챔피언 소멸, 10% 확률로 생존
       const surviveRate = 0.1;
       const survive = Math.random() < surviveRate;
-
-      // 이력 기록
-      await updateEnhanceHistory(userId, { fail: true, max: champNow.level });
 
       if (survive) {
         await saveJSON(dataPath, dataNow);
@@ -284,9 +354,9 @@ ${statDesc}
         if (member && member.roles.cache.has(GREAT_SOUL_ROLE_ID)) {
           await member.roles.remove(GREAT_SOUL_ROLE_ID).catch(() => null);
           const reviveEmbed = new EmbedBuilder()
-            .setTitle(`💎 불굴의 영혼 효과 발동!`)
+            .setTitle(`💎 불굴의 영혼 전설등급 효과 발동!`)
             .setDescription(`${champNow.name} ${startLevel + failAt + 1}강에서 실패했으나,
-아이템: **불굴의 영혼** 효과로 살아났습니다! (아이템 소모됨)`)
+아이템: **불굴의 영혼 전설등급** 효과로 살아났습니다! (아이템 소모됨)`)
             .setColor(0xffe082);
           const champKey = getChampionKeyByName(champNow.name);
           if (champKey)
@@ -301,7 +371,7 @@ ${statDesc}
           const failEmbed = new EmbedBuilder()
             .setTitle(`💥 챔피언 소멸...`)
             .setDescription(`${userMention}님, **${lostName}**가 ${startLevel + failAt + 1}강에서 소멸되었습니다...
-90% 확률로 소멸 (불굴의 영혼이 없었습니다)`)
+90% 확률로 소멸 (불굴의 영혼 전설등급이 없었습니다)`)
             .setColor(0xf44336);
           const champKey = getChampionKeyByName(lostName);
           if (champKey)
