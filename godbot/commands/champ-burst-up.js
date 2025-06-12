@@ -328,7 +328,7 @@ ${statDesc}
     // === 중간 실패! ===
     else {
       // 실패한 시점까지의 성공, 실패 카운트 모두 누적!
-      await updateEnhanceHistory(userId, { success: failAt, fail: burstCount - failAt, max: champNow.level });
+      await updateEnhanceHistory(userId, { success: failAt, fail: 1, max: champNow.level });
       // 실패 시 90% 확률로 챔피언 소멸, 10% 확률로 생존
       const surviveRate = 0.1;
       const survive = Math.random() < surviveRate;
