@@ -297,17 +297,17 @@ async function startBattleRequest(interaction) {
           actionDone[uid] = actionDone[uid] || { skill: false, done: false };
           actionDone[uid].done = true;
 
-          if (i.customId === 'attack') {
-            const dmgInfo = calculateDamage(
-              { ...userData[uid], id: uid, hp: cur.hp[uid] },
-              { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
-              true,
-              cur.context,
-              userData[uid].name,
-              false
-            );
-            // hp 동기화!
-              cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
+if (i.customId === 'attack') {
+  const dmgInfo = calculateDamage(
+    { ...userData[uid], id: uid, hp: cur.hp[uid] },
+    { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
+    true,
+    cur.context,
+    userData[uid].name,
+    false
+  );
+  // hp 동기화! (아래 딱 3종류만)
+  cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
   cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
   if (cur.context.hp) {
     cur.context.hp[uid] = cur.hp[uid];
