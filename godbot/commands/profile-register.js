@@ -22,23 +22,22 @@ function saveProfiles(data) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('프로필수정')
-    .setDescription('등록된 프로필을 수정합니다.'),
+    .setName('프로필등록')
+    .setDescription('프로필 정보를 등록합니다.'),
   async execute(interaction) {
     const userId = interaction.user.id;
     const profiles = readProfiles();
-    if (!profiles[userId]) {
-      return interaction.reply({ content: '먼저 `/프로필등록` 명령어로 프로필을 등록해주세요.', ephemeral: true });
+    if (profiles[userId]) {
+      return interaction.reply({ content: '이미 프로필이 등록되어 있습니다. `/프로필수정`을 사용해주세요!', ephemeral: true });
     }
 
-    let profile = profiles[userId];
-
     const embed = new EmbedBuilder()
-      .setTitle('프로필 수정')
-      .setDescription('수정할 정보를 버튼을 통해 변경할 수 있습니다.\n변경할 항목만 골라서 수정하세요.')
-      .setColor(0x00bb77);
+      .setTitle('프로필 등록')
+      .setDescription('버튼을 눌러 각 정보를 입력하세요!\n아래 버튼을 클릭해 정보를 입력하거나 수정할 수 있습니다.')
+      .setColor(0x0099ff)
+      .setFooter({ text: '최초 등록 완료 전까지는 프로필이 저장되지 않습니다.' });
 
-    // 버튼 분리(5개 초과 시 ActionRow 분할)
+    // 버튼 나누기 (한 줄에 5개까지 제한)
     const buttons1 = [
       new ButtonBuilder().setCustomId('statusMsg').setLabel('상태 메시지').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('favGames').setLabel('선호 게임(3개)').setStyle(ButtonStyle.Secondary),
@@ -49,10 +48,20 @@ module.exports = {
     const buttons2 = [
       new ButtonBuilder().setCustomId('lolNick').setLabel('롤 닉네임#태그').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('bnetNick').setLabel('배틀넷 닉네임').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('submitProfile').setLabel('수정 완료').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('submitProfile').setLabel('프로필 등록 완료').setStyle(ButtonStyle.Success),
     ];
     const row1 = new ActionRowBuilder().addComponents(buttons1);
     const row2 = new ActionRowBuilder().addComponents(buttons2);
+
+    let profile = {
+      statusMsg: '',
+      favGames: [],
+      owTier: '',
+      lolTier: '',
+      steamNick: '',
+      lolNick: '',
+      bnetNick: '',
+    };
 
     await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
 
@@ -65,7 +74,7 @@ module.exports = {
       if (i.customId === 'submitProfile') {
         profiles[userId] = profile;
         saveProfiles(profiles);
-        await i.update({ content: '✅ 프로필 수정이 완료되었습니다!', embeds: [], components: [], ephemeral: true });
+        await i.update({ content: '✅ 프로필 등록이 완료되었습니다!', embeds: [], components: [], ephemeral: true });
         collector.stop();
         return;
       }
@@ -74,7 +83,7 @@ module.exports = {
       if (i.customId === 'statusMsg') {
         modal = new ModalBuilder()
           .setCustomId('modalStatusMsg')
-          .setTitle('상태 메시지 수정')
+          .setTitle('상태 메시지 입력')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
@@ -82,7 +91,7 @@ module.exports = {
                 .setLabel('상태 메시지')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(30)
-                .setValue(profile.statusMsg || '')
+                .setPlaceholder('한마디를 입력하세요!')
                 .setRequired(true)
             )
           );
@@ -90,15 +99,15 @@ module.exports = {
       if (i.customId === 'favGames') {
         modal = new ModalBuilder()
           .setCustomId('modalFavGames')
-          .setTitle('선호 게임 수정 (최대 3개)')
+          .setTitle('선호 게임 입력 (최대 3개)')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
                 .setCustomId('favGamesInput')
-                .setLabel('게임명 (콤마로 구분)')
+                .setLabel('게임명을 콤마(,)로 구분하여 입력')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(50)
-                .setValue((profile.favGames || []).join(', '))
+                .setPlaceholder('예: 롤, 오버워치, 발로란트')
                 .setRequired(true)
             )
           );
@@ -106,15 +115,15 @@ module.exports = {
       if (i.customId === 'owTier') {
         modal = new ModalBuilder()
           .setCustomId('modalOwTier')
-          .setTitle('오버워치 티어/포지션 수정')
+          .setTitle('오버워치 티어/포지션 입력')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
                 .setCustomId('owTierInput')
-                .setLabel('티어/포지션')
+                .setLabel('예: 마스터/힐러')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(30)
-                .setValue(profile.owTier || '')
+                .setPlaceholder('티어/포지션')
                 .setRequired(true)
             )
           );
@@ -122,15 +131,15 @@ module.exports = {
       if (i.customId === 'lolTier') {
         modal = new ModalBuilder()
           .setCustomId('modalLolTier')
-          .setTitle('롤 티어/포지션 수정')
+          .setTitle('롤 티어/포지션 입력')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
                 .setCustomId('lolTierInput')
-                .setLabel('티어/포지션')
+                .setLabel('예: 플래티넘/정글')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(30)
-                .setValue(profile.lolTier || '')
+                .setPlaceholder('티어/포지션')
                 .setRequired(true)
             )
           );
@@ -138,7 +147,7 @@ module.exports = {
       if (i.customId === 'steamNick') {
         modal = new ModalBuilder()
           .setCustomId('modalSteamNick')
-          .setTitle('스팀 닉네임 수정')
+          .setTitle('스팀 닉네임 입력')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
@@ -146,7 +155,6 @@ module.exports = {
                 .setLabel('스팀 닉네임')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(30)
-                .setValue(profile.steamNick || '')
                 .setRequired(true)
             )
           );
@@ -154,7 +162,7 @@ module.exports = {
       if (i.customId === 'lolNick') {
         modal = new ModalBuilder()
           .setCustomId('modalLolNick')
-          .setTitle('롤 닉네임#태그 수정')
+          .setTitle('롤 닉네임#태그 입력')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
@@ -162,7 +170,7 @@ module.exports = {
                 .setLabel('롤 닉네임#태그')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(30)
-                .setValue(profile.lolNick || '')
+                .setPlaceholder('예: 나무늘보#KR1')
                 .setRequired(true)
             )
           );
@@ -170,7 +178,7 @@ module.exports = {
       if (i.customId === 'bnetNick') {
         modal = new ModalBuilder()
           .setCustomId('modalBnetNick')
-          .setTitle('배틀넷 닉네임 수정')
+          .setTitle('배틀넷 닉네임 입력')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
@@ -178,18 +186,20 @@ module.exports = {
                 .setLabel('배틀넷 닉네임')
                 .setStyle(TextInputStyle.Short)
                 .setMaxLength(30)
-                .setValue(profile.bnetNick || '')
                 .setRequired(true)
             )
           );
       }
+
       // 안전 처리: 모달 없는 경우는 무시
       if (!modal) {
         await i.reply({ content: '잘못된 버튼입니다.', ephemeral: true });
         return;
       }
+
       try {
         await i.showModal(modal);
+        // 모달 제출 대기 (개별 interaction 기반으로 awaitModalSubmit)
         const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
 
         if (modalSubmit.customId === 'modalStatusMsg')
@@ -207,7 +217,7 @@ module.exports = {
           profile.lolNick = modalSubmit.fields.getTextInputValue('lolNickInput');
         if (modalSubmit.customId === 'modalBnetNick')
           profile.bnetNick = modalSubmit.fields.getTextInputValue('bnetNickInput');
-        await modalSubmit.reply({ content: '수정 완료! 다른 항목도 계속 수정하려면 버튼을 눌러주세요.', ephemeral: true });
+        await modalSubmit.reply({ content: '저장 완료! 다른 항목도 입력하려면 버튼을 계속 눌러주세요.', ephemeral: true });
       } catch (err) {
         // 모달 대기 timeout 등
         await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
