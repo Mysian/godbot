@@ -23,6 +23,28 @@ function getStatusIcons(effects = []) {
   }
   return s;
 }
+
+// 🟢 버프/디버프/정상 상태 한글로 보기 좋게!
+function getBuffDebuffDescription(effects = []) {
+  if (!effects || effects.length === 0) return '정상';
+  const desc = [];
+  for (const e of effects) {
+    if (e.type === 'stunned') desc.push('💫기절');
+    if (e.type === 'dot') desc.push('☠️중독');
+    if (e.type === 'dodgeNextAttack') desc.push('💨회피');
+    if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') desc.push('🛡️방어상승');
+    if (e.type === 'revive') desc.push('🔁부활');
+    if (e.type === 'atkBuff') desc.push('🟩공격력↑');
+    if (e.type === 'atkDown') desc.push('🟥공격력↓');
+    if (e.type === 'defBuff') desc.push('🟦방어력↑');
+    if (e.type === 'defDown') desc.push('🟥방어력↓');
+    if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
+    if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
+    // 추가적으로 원하면 계속 확장 가능
+  }
+  return desc.length > 0 ? desc.join(', ') : '정상';
+}
+
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
@@ -74,6 +96,7 @@ function createSkillField(userId, champName, context) {
   return txt;
 }
 
+// 여기서 "상태" 한 줄 추가됨!
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
   const ch = userData[challenger.id];
   const op = userData[opponent.id];
@@ -82,9 +105,11 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
-  // 턴 강조용
   const isChTurn = (turnId === challenger.id);
   const isOpTurn = (turnId === opponent.id);
+
+  const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id]);
+  const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id]);
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
@@ -98,6 +123,7 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
         value: `${ch.name} ${getStatusIcons(battle.context.effects[challenger.id])}
 💖 ${chp}/${ch.stats.hp}
 ${createHpBar(chp, ch.stats.hp)}
+상태: ${chStatus}
 ${createStatField(ch, battle.context.effects[challenger.id])}
 ${createSkillField(challenger.id, ch.name, battle.context)}
 `,
@@ -108,6 +134,7 @@ ${createSkillField(challenger.id, ch.name, battle.context)}
         value: `${op.name} ${getStatusIcons(battle.context.effects[opponent.id])}
 💖 ${ohp}/${op.stats.hp}
 ${createHpBar(ohp, op.stats.hp)}
+상태: ${opStatus}
 ${createStatField(op, battle.context.effects[opponent.id])}
 ${createSkillField(opponent.id, op.name, battle.context)}
 `,
@@ -186,7 +213,7 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
 
 module.exports = {
   createBattleEmbed,
-  createResultEmbed,
+  getBuffDebuffDescription,
   createHpBar,
   getStatusIcons,
   createStatField,
