@@ -296,6 +296,7 @@ function calculateDamage(
   let addEffectArr = [];
   let extraAttack = false;
   let extraTurn = false;
+  let skillResult = undefined;
 
   if (
     championName &&
@@ -311,7 +312,7 @@ function calculateDamage(
     skillDesc = skills[championName].description;
     usedSkill = true;
 
-    let skillResult = skills[championName].effect(
+    skillResult = skills[championName].effect(
       attacker, defender, isAttack, base, context
     );
     if (typeof skillResult === 'object' && skillResult !== null) {
