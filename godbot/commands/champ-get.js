@@ -33,18 +33,17 @@ module.exports = {
   async execute(interaction) {
     const userId = interaction.user.id;
     let release;
-    let alreadyReplied = false;
+    let errorMessage = null;
+    let replyContent = null;
 
     try {
-      // ephemeral 옵션은 deprecated, flags 사용
-      await interaction.deferReply({ flags: 64 });
+      await interaction.deferReply({ ephemeral: true });
       release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
 
       const data = await loadData();
 
       if (data[userId]) {
-        alreadyReplied = true;
-        return interaction.editReply({ content: `❌ 이미 챔피언을 보유 중입니다: **${data[userId].name}**` });
+        replyContent = { content: `❌ 이미 챔피언을 보유 중입니다: **${data[userId].name}**` };
       } else {
         const randomChampion = champions[
           Math.floor(Math.random() * champions.length)
@@ -99,17 +98,22 @@ module.exports = {
           .setFooter({ text: `${interaction.user.username} 님의 챔피언` })
           .setTimestamp();
 
-        alreadyReplied = true;
-        return interaction.editReply({ embeds: [embed] });
+        replyContent = { embeds: [embed] };
       }
     } catch (err) {
       console.error("[챔피언획득] 파일 접근 오류:", err);
-      if (!alreadyReplied) {
-        alreadyReplied = true;
-        return interaction.editReply({ content: "❌ 오류 발생! 잠시 후 다시 시도해주세요." });
-      }
+      errorMessage = "❌ 오류 발생! 잠시 후 다시 시도해주세요.";
     } finally {
       if (release) try { await release(); } catch {}
+      // 오직 여기서만 editReply 1회 호출!
+      if (errorMessage) {
+        return interaction.editReply({ content: errorMessage });
+      }
+      if (replyContent) {
+        return interaction.editReply(replyContent);
+      }
+      // 예외적으로 아무 응답도 못 만들었으면 그냥 editReply 호출 (응답 보장)
+      return interaction.editReply({ content: "❌ 알 수 없는 오류! 잠시 후 다시 시도해주세요." });
     }
   }
 };
