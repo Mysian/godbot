@@ -1,3 +1,4 @@
+// commands/champ-burst-up.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -112,7 +113,6 @@ async function startBurstUpgrade(interaction, userId, userMention) {
       ? `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKey}.png`
       : null;
 
-    // 강화 횟수 선택 (5/10/20)
     const selectRow = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('burst-enhance-count')
@@ -266,15 +266,14 @@ async function handleBurstUpgradeProcess(interaction, userId, userMention, burst
     champNow.stats = champNow.stats || { ...base };
 
     let currentLevel = champNow.level;
-    let allSuccess = true;
+    let successCount = 0;
+    let failHappened = false;
     let failAt = 0;
-    const perRate = getSuccessRate(currentLevel);
-    const burstProb = Math.pow(perRate, burstCount);
 
     for (let i = 0; i < burstCount; i++) {
       const curSuccess = Math.random() < getSuccessRate(currentLevel);
       if (!curSuccess) {
-        allSuccess = false;
+        failHappened = true;
         failAt = i;
         break;
       }
@@ -286,9 +285,11 @@ async function handleBurstUpgradeProcess(interaction, userId, userMention, burst
       champNow.stats.defense += gain.defense;
       champNow.stats.penetration += gain.penetration;
       currentLevel++;
+      successCount++;
     }
-    // === 연속 성공 ===
-    if (allSuccess) {
+
+    if (!failHappened) {
+      // 완전 연속 성공
       champNow.level += burstCount;
       champNow.success += burstCount;
       await saveJSON(dataPath, dataNow);
@@ -309,7 +310,7 @@ async function handleBurstUpgradeProcess(interaction, userId, userMention, burst
         .setTitle(`🎉 한방 강화 성공!`)
         .setDescription(`**${champNow.name} ${startLevel}강 → ${champNow.level}강**
 연속 ${burstCount}회 강화 성공!
-연속 성공확률: **${Math.round(burstProb * 10000) / 100}%**
+연속 성공확률: **${Math.round(Math.pow(getSuccessRate(startLevel), burstCount) * 10000) / 100}%**
 
 ${statDesc}
 `)
@@ -325,11 +326,16 @@ ${statDesc}
         ephemeral: true
       };
     }
-    // === 중간 실패! ===
     else {
-      // 실패한 시점까지의 성공, 실패 카운트 모두 누적!
-      await updateEnhanceHistory(userId, { success: failAt, fail: 1, max: champNow.level });
-      // 실패 시 90% 확률로 챔피언 소멸, 10% 확률로 생존
+      // 중간 실패, 소실 판정
+      // [1] 성공분만큼 레벨/성공횟수 증가
+      champNow.level += successCount;
+      champNow.success += successCount;
+
+      // [2] 실패 카운트(실패는 1회만!)
+      await updateEnhanceHistory(userId, { success: successCount, fail: 1, max: champNow.level });
+
+      // [3] 소실방어(10%) 체크
       const surviveRate = 0.1;
       const survive = Math.random() < surviveRate;
 
@@ -337,9 +343,11 @@ ${statDesc}
         await saveJSON(dataPath, dataNow);
         const failEmbed = new EmbedBuilder()
           .setTitle(`💦 강화 실패! 챔피언이 살아남았다!`)
-          .setDescription(`${userMention}님, ${champNow.name} ${startLevel + failAt + 1}강에서 실패!
-**실패 위치:** ${failAt + 1}번째 강화 (총 ${burstCount}회 시도)
+          .setDescription(`${userMention}님, ${champNow.name} ${startLevel + successCount + 1}강에서 실패!
+**${successCount}회 연속 강화 성공 후 실패!**
 10% 확률로 챔피언이 살아남았습니다!
+
+> ${successCount > 0 ? `**${champNow.name} ${startLevel}강 → ${champNow.level}강**까지는 성공 처리됨!` : "아쉽게도 성공 없이 바로 실패..."}
 `)
           .setColor(0x2196f3);
         const champKeyFail = getChampionKeyByName(champNow.name);
@@ -353,10 +361,13 @@ ${statDesc}
 
         if (member && member.roles.cache.has(GREAT_SOUL_ROLE_ID)) {
           await member.roles.remove(GREAT_SOUL_ROLE_ID).catch(() => null);
+          await saveJSON(dataPath, dataNow);
           const reviveEmbed = new EmbedBuilder()
             .setTitle(`💎 불굴의 영혼 전설등급 효과 발동!`)
-            .setDescription(`${champNow.name} ${startLevel + failAt + 1}강에서 실패했으나,
-아이템: **불굴의 영혼 전설등급** 효과로 살아났습니다! (아이템 소모됨)`)
+            .setDescription(`${champNow.name} ${startLevel + successCount + 1}강에서 실패했으나,
+아이템: **불굴의 영혼 전설등급** 효과로 살아났습니다! (아이템 소모됨)
+> ${successCount > 0 ? `**${champNow.name} ${startLevel}강 → ${champNow.level}강**까지는 성공 처리됨!` : "아쉽게도 성공 없이 바로 실패..."}
+`)
             .setColor(0xffe082);
           const champKey = getChampionKeyByName(champNow.name);
           if (champKey)
@@ -370,7 +381,9 @@ ${statDesc}
           await saveJSON(dataPath, dataNow);
           const failEmbed = new EmbedBuilder()
             .setTitle(`💥 챔피언 소멸...`)
-            .setDescription(`${userMention}님, **${lostName}**가 ${startLevel + failAt + 1}강에서 소멸되었습니다...
+            .setDescription(`${userMention}님, **${lostName}**가 ${startLevel + successCount + 1}강에서 소멸되었습니다...
+> ${successCount > 0 ? `**${lostName} ${startLevel}강 → ${startLevel + successCount}강**까지는 성공 처리됨!` : "아쉽게도 성공 없이 바로 실패..."}
+
 90% 확률로 소멸 (불굴의 영혼 전설등급이 없었습니다)`)
             .setColor(0xf44336);
           const champKey = getChampionKeyByName(lostName);
