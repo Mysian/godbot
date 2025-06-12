@@ -211,8 +211,10 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
   }
 }
 
+// 기타 함수 및 export
 module.exports = {
   createBattleEmbed,
+  createResultEmbed, // ★ 꼭 포함!
   getBuffDebuffDescription,
   createHpBar,
   getStatusIcons,
