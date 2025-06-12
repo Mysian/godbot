@@ -3,6 +3,7 @@ const { getChampionIcon } = require('./champion-utils');
 const skills = require('./skills');
 const skillCd = require('./skills-cooldown');
 
+// HP바
 function createHpBar(current, max) {
   const total = 10;
   if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) {
@@ -12,6 +13,8 @@ function createHpBar(current, max) {
   const filled = Math.min(total, Math.max(0, Math.round(ratio * total)));
   return '🟥'.repeat(filled) + '⬜'.repeat(total - filled);
 }
+
+// 상태이펙트 이모지
 function getStatusIcons(effects = []) {
   let s = '';
   for (const e of effects) {
@@ -24,7 +27,7 @@ function getStatusIcons(effects = []) {
   return s;
 }
 
-// 🟢 버프/디버프/정상 상태 한글로 보기 좋게!
+// 버프/디버프/정상 상태
 function getBuffDebuffDescription(effects = []) {
   if (!effects || effects.length === 0) return '정상';
   const desc = [];
@@ -40,11 +43,12 @@ function getBuffDebuffDescription(effects = []) {
     if (e.type === 'defDown') desc.push('🟥방어력↓');
     if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
     if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
-    // 추가적으로 원하면 계속 확장 가능
+    // 필요시 추가 확장
   }
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
+// 스탯(버프/디버프 포함)
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
@@ -65,13 +69,14 @@ function createStatField(user, effects = []) {
     `✨ 마법저항: ${f(mr, mrBuf)}\n`
   );
 }
+
+// 스킬 사용 가능 여부
 function canUseSkill(userId, champName, context) {
   const cdObj = skillCd[champName];
   const minTurn = cdObj?.minTurn || 1;
   const cooldown = cdObj?.cooldown || 1;
   const turn = context.skillTurn?.[userId] ?? 0;
   const remain = context.cooldowns?.[userId] ?? 0;
-
   if (turn < minTurn) {
     return { ok: false, reason: `${minTurn}턴 이후부터 사용 가능 (내 턴 ${turn}회 경과)` };
   }
@@ -80,6 +85,8 @@ function canUseSkill(userId, champName, context) {
   }
   return { ok: true };
 }
+
+// 스킬 설명란
 function createSkillField(userId, champName, context) {
   const skillObj = skills[champName];
   const cdObj = skillCd[champName];
@@ -96,12 +103,16 @@ function createSkillField(userId, champName, context) {
   return txt;
 }
 
-// 여기서 "상태" 한 줄 추가됨!
+// 메인 배틀 임베드
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
   const ch = userData[challenger.id];
   const op = userData[opponent.id];
-  const chp = battle.hp[challenger.id];
-  const ohp = battle.hp[opponent.id];
+
+  // hp/컨텍스트 hp 값 우선 반영(패시브/리바이브 등 대응)
+  const chp = (battle.context?.hp && battle.context.hp[challenger.id] !== undefined)
+    ? battle.context.hp[challenger.id] : battle.hp[challenger.id];
+  const ohp = (battle.context?.hp && battle.context.hp[opponent.id] !== undefined)
+    ? battle.context.hp[opponent.id] : battle.hp[opponent.id];
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
@@ -148,7 +159,7 @@ ${createSkillField(opponent.id, op.name, battle.context)}
     .setColor(0x3498db);
 }
 
-
+// 배틀 결과 임베드
 async function createResultEmbed(winner, loser, userData, records, interaction, isDraw = false, drawIds = []) {
   if (isDraw) {
     // 무승부 안내
@@ -211,10 +222,9 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
   }
 }
 
-// 기타 함수 및 export
 module.exports = {
   createBattleEmbed,
-  createResultEmbed, // ★ 꼭 포함!
+  createResultEmbed,
   getBuffDebuffDescription,
   createHpBar,
   getStatusIcons,
