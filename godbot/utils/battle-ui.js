@@ -400,16 +400,14 @@ async function startBattleRequest(interaction) {
                 true
               );
               // hp 동기화!
-              cur.hp[uid] = cur.context.hp ? cur.context.hp[uid] : cur.hp[uid];
-              cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
-
-              // **동기화 추가**
-              if (cur.context.hp) {
-                cur.context.hp[uid] = cur.hp[uid];
-                cur.context.hp[tgt] = cur.hp[tgt];
-              }
-              if (cur.context.userData && cur.context.userData[uid]) cur.context.userData[uid].hp = cur.hp[uid];
-              if (cur.context.userData && cur.context.userData[tgt]) cur.context.userData[tgt].hp = cur.hp[tgt];
+    cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
+    cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
+    if (cur.context.hp) {
+      cur.context.hp[uid] = cur.hp[uid];
+      cur.context.hp[tgt] = cur.hp[tgt];
+  }
+    if (userData[uid]) userData[uid].hp = cur.hp[uid];
+    if (userData[tgt]) userData[tgt].hp = cur.hp[tgt];
               userData[uid].hp = cur.hp[uid];
               userData[tgt].hp = cur.hp[tgt];
 
