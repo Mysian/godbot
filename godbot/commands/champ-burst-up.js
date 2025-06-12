@@ -371,7 +371,7 @@ ${statDesc}
           const failEmbed = new EmbedBuilder()
             .setTitle(`💥 챔피언 소멸...`)
             .setDescription(`${userMention}님, **${lostName}**가 ${startLevel + failAt + 1}강에서 소멸되었습니다...
-90% 확률로 소멸 (불굴의 영혼이 없었습니다)`)
+90% 확률로 소멸 (불굴의 영혼 전설등급이 없었습니다)`)
             .setColor(0xf44336);
           const champKey = getChampionKeyByName(lostName);
           if (champKey)
