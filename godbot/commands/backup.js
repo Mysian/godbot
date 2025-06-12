@@ -3,7 +3,7 @@ const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip"); // npm install adm-zip 필요
-1
+
 // ✅ 실제 JSON 파일 경로들 설정
 const fileMap = {
   "모든 파일 백업하기": {
