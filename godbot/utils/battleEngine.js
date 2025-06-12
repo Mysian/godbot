@@ -1,8 +1,8 @@
-// utils/battleEngine.js
 const skills = require('./skills');
 const skillCd = require('./skills-cooldown');
+const passiveSkills = require('./passive-skills'); // ★ 패시브 불러오기
 
-// 전투 시작 시 컨텍스트 초기화 (버프/디버프 등 모든 상태 포함)
+// 전투 시작 시 컨텍스트 초기화
 function initBattleContext(battle) {
   battle.context = {
     effects: {},
@@ -23,6 +23,7 @@ function initBattleContext(battle) {
     blind: {},
     fear: {},
     confused: {},
+    hp: Object.assign({}, battle.hp), // ★ hp 미러링(패시브 대응)
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -45,9 +46,22 @@ function initBattleContext(battle) {
   });
 }
 
-// 매 턴 시작: 이펙트 처리 및 턴 감소, 스탯/상태 반영, 부활/처형도 여기서 처리
+// 매 턴 시작: 패시브 효과도 자동 발동
 function processTurnStart(userData, battle, actingUserId) {
   [battle.challenger, battle.opponent].forEach(id => {
+
+    // ★★★ 패시브 체크: (예) 애니비아 부활 등
+    const champName = userData[id]?.name;
+    if (
+      champName &&
+      passiveSkills[champName] &&
+      typeof passiveSkills[champName].effect === 'function'
+    ) {
+      // passive effect(user, context, battle)
+      passiveSkills[champName].effect(userData[id], battle.context, battle);
+      // passive effect에서 직접 hp, revive, 로그 등 조작 가능!
+    }
+
     if (id === actingUserId) {
       battle.context.skillTurn[id]++;
       if (battle.context.cooldowns[id] > 0) battle.context.cooldowns[id]--;
@@ -108,7 +122,6 @@ function processTurnStart(userData, battle, actingUserId) {
           battle.context.blockSkill[id] += (e.turns || 1);
           break;
         case 'magicResistBuff':
-          // (마법저항 증가 효과가 있다면 향후 여기서 처리)
           break;
         case 'magicResistDebuff':
           battle.context.magicResistDebuff[id] += (e.value || 0);
@@ -123,9 +136,8 @@ function processTurnStart(userData, battle, actingUserId) {
           battle.context.confused[id] += (e.turns || 1);
           break;
         case 'revive':
-          // 부활 조건: 아직 미적용, HP 0 이하
           if (!e.applied && battle.hp[id] <= 0) {
-            battle.hp[id] = e.amount || Math.floor(userData[id].stats?.hp || 600) * 0.4 || 200; // 부활 HP
+            battle.hp[id] = e.amount || Math.floor(userData[id].stats?.hp || 600) * 0.4 || 200;
             battle.context.reviveFlags[id] = true;
             e.applied = true;
             justRevived = true;
@@ -133,7 +145,6 @@ function processTurnStart(userData, battle, actingUserId) {
           }
           break;
         case 'execute':
-          // 처형 조건: HP 0 이하시 revive 무시하고 사망
           if (battle.hp[id] <= 0) {
             executed = true;
             battle.hp[id] = 0;
@@ -143,10 +154,8 @@ function processTurnStart(userData, battle, actingUserId) {
       }
       if (e.turns > 1 && !e.applied && !executed) next.push({ ...e, turns: e.turns - 1 });
     }
-    // revive 효과 중복 적용 방지
     battle.context.effects[id] = next;
 
-    // 스탯 변화 반영 (버프/디버프)
     if (userData[id].stats) {
       if (atkModifier !== 0) {
         userData[id].stats.attack = Math.max(0, userData[id].stats.attack + atkModifier);
@@ -197,6 +206,8 @@ function calculateDamage(
   championName = null,
   asSkill = false
 ) {
+  let skillResult = undefined;
+
   // 행동불능 (기절, 공포, 혼란)
   if (
     context.effects?.[attacker.id]?.some(e => e.type === 'stunned') ||
@@ -208,36 +219,30 @@ function calculateDamage(
     if (context.fear?.[attacker.id] > 0) msg += '공포로 ';
     if (context.confused?.[attacker.id] > 0) msg += '혼란으로 ';
     msg += '행동 불가!';
-    return { damage: 0, critical: false, log: msg };
+    return { damage: 0, critical: false, log: msg, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
 
-  // 다음 공격 무효
   if (context.missNext && context.missNext[attacker.id] > 0) {
     context.missNext[attacker.id]--;
-    return { damage: 0, critical: false, log: `${attacker.name}의 공격은 무효화됩니다!` };
+    return { damage: 0, critical: false, log: `${attacker.name}의 공격은 무효화됩니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-  // 실명 상태
   if (context.blind && context.blind[attacker.id] > 0) {
     context.blind[attacker.id]--;
-    return { damage: 0, critical: false, log: `${attacker.name}은(는) 실명 상태로 공격에 실패했습니다!` };
+    return { damage: 0, critical: false, log: `${attacker.name}은(는) 실명 상태로 공격에 실패했습니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-  // 회피
   if (context.dodgeNextAttack?.[defender.id]) {
     context.dodgeNextAttack[defender.id] = false;
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 회피!` };
+    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 회피!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-  // 무적
   if (context.invulnerable?.[defender.id]) {
     context.invulnerable[defender.id] = false;
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0` };
+    return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-  // 스킬 피해 무효
   if (asSkill && context.blockSkill && context.blockSkill[defender.id] > 0) {
     context.blockSkill[defender.id]--;
-    return { damage: 0, critical: false, log: `${defender.name}은(는) 스킬 피해를 무효화했습니다!` };
+    return { damage: 0, critical: false, log: `${defender.name}은(는) 스킬 피해를 무효화했습니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
 
-  // 스탯 추출
   const atkStats = attacker.stats ?? attacker;
   const defStats = defender.stats ?? defender;
   const atkName = attacker.name ?? '공격자';
@@ -246,38 +251,30 @@ function calculateDamage(
   let ap = isAttack ? (atkStats.ap || 0) : 0;
   let pen = atkStats.penetration || 0;
 
-  // 1. 마법방어력 디버프 계산
   let magicResistDebuff = 0;
   if (context.magicResistDebuff && context.magicResistDebuff[defender.id]) {
     magicResistDebuff = context.magicResistDebuff[defender.id];
-    // magicResist 값 자체에 더하지 않고, 방어력 감소에만 사용 (아래서 반영)
   }
-
-  // 2. 일반 방어력 10%씩 추가 감소 적용
   let defense = defStats.defense || 0;
   if (magicResistDebuff) {
     defense = defense * Math.max(0, 1 - 0.1 * Math.abs(magicResistDebuff));
   }
   let defVal = Math.max(0, defense - pen);
 
-  // 3. AD/AP중 더 높은 쪽 1배, 낮은 쪽 0.5배로 데미지 공식
   let main = Math.max(ad, ap);
   let sub = Math.min(ad, ap);
   let base = Math.max(0, main * 1 + sub * 0.5 - defVal);
 
-  // 회피/치명타
   const evade = Math.random() < 0.05;
-  if (evade) return { damage: 0, critical: false, log: `${defName}이(가) 회피!` };
+  if (evade) return { damage: 0, critical: false, log: `${defName}이(가) 회피!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   const crit = Math.random() < 0.1;
   if (crit) base = Math.floor(base * 1.5);
 
-  // 데미지 분산
   const variance = Math.floor(base * 0.15);
   const minD = Math.max(0, base - variance);
   const maxD = base + variance;
   base = minD + Math.floor(Math.random() * (maxD - minD + 1));
 
-  // doubleDamage
   if (isAttack && context.doubleDamage?.[attacker.id]) {
     base *= 2;
     context.doubleDamage[attacker.id] = false;
@@ -287,7 +284,6 @@ function calculateDamage(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
-  // 스킬 effect 적용
   let skillLog = '';
   let skillName = '';
   let skillDesc = '';
@@ -296,7 +292,6 @@ function calculateDamage(
   let addEffectArr = [];
   let extraAttack = false;
   let extraTurn = false;
-  let skillResult = undefined;
 
   if (
     championName &&
@@ -306,7 +301,7 @@ function calculateDamage(
   ) {
     const check = canUseSkill(attacker.id, championName, context);
     if (!check.ok) {
-      return { damage: 0, critical: false, log: `❌ 스킬 사용 불가: ${check.reason}` };
+      return { damage: 0, critical: false, log: `❌ 스킬 사용 불가: ${check.reason}`, attackerHp: attacker.hp, defenderHp: defender.hp };
     }
     skillName = skills[championName].name;
     skillDesc = skills[championName].description;
@@ -336,18 +331,17 @@ function calculateDamage(
         context.effects[attacker.id].push(eff.effect);
       } else {
         context.effects[defender.id].push(eff.effect);
+        if (eff.effect.type === 'execute') {
+          defender.hp = 0;
+          if (context.hp) context.hp[defender.id] = 0;
+        }
       }
     }
   }
 
-  // HP/스탯 변화 즉시 반영
   if (context && context.hp) {
-    if (attacker.hp !== undefined && context.hp[attacker.id] !== undefined) {
-      context.hp[attacker.id] = attacker.hp;
-    }
-    if (defender.hp !== undefined && context.hp[defender.id] !== undefined) {
-      context.hp[defender.id] = defender.hp;
-    }
+    if (attacker.hp !== undefined) context.hp[attacker.id] = attacker.hp;
+    if (defender.hp !== undefined) context.hp[defender.id] = defender.hp;
   }
   if (context && context.userData) {
     if (attacker.hp !== undefined && context.userData[attacker.id]) {
@@ -358,31 +352,27 @@ function calculateDamage(
     }
   }
 
-  // 부활: 실제 적용은 processTurnStart에서 실행됨
+  let log = '';
+  if (usedSkill) {
+    log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
+    log += `> _${skillDesc}_\n`;
+  }
+  if (effectMsg) {
+    log += `➡️ **${effectMsg}**\n`;
+  }
+  if (base > 0 && (!skillResult || skillResult.baseDamage > 0)) {
+    log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
+  }
 
-let log = '';
-if (usedSkill) {
-  log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
-  log += `> _${skillDesc}_\n`;
-}
-if (effectMsg) {
-  log += `➡️ **${effectMsg}**\n`;
-}
-if (base > 0 && (!skillResult || skillResult.baseDamage > 0)) {
-  log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
-}
-  // 데미지가 없고, 버프/디버프만 적용하는 스킬이면 멘트 없음
-
-return {
-  damage: Math.round(base),
-  critical: crit,
-  log,
-  extraAttack,
-  extraTurn,
-  attackerHp: attacker.hp,
-  defenderHp: defender.hp
-};
-  
+  return {
+    damage: Math.round(base),
+    critical: crit,
+    log,
+    extraAttack,
+    extraTurn,
+    attackerHp: attacker.hp,
+    defenderHp: defender.hp
+  };
 }
 
 module.exports = {
