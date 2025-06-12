@@ -2,7 +2,7 @@
 const skills = require('./skills');
 const skillCd = require('./skills-cooldown');
 
-// 전투 시작 시 컨텍스트 초기화
+// 전투 시작 시 컨텍스트 초기화 (버프/디버프 등 모든 상태 포함)
 function initBattleContext(battle) {
   battle.context = {
     effects: {},
@@ -86,11 +86,17 @@ function processTurnStart(userData, battle, actingUserId) {
         case 'dodgeNextAttack':
           battle.context.dodgeNextAttack[id] = true;
           break;
+        case 'atkBuff':
+          atkModifier += e.value;
+          break;
         case 'atkDown':
-          atkModifier = -e.value;
+          atkModifier -= e.value;
+          break;
+        case 'defBuff':
+          defModifier += e.value;
           break;
         case 'defDown':
-          defModifier = -e.value;
+          defModifier -= e.value;
           break;
         case 'missNext':
           battle.context.missNext[id] += (e.turns || 1);
@@ -100,6 +106,9 @@ function processTurnStart(userData, battle, actingUserId) {
           break;
         case 'blockSkill':
           battle.context.blockSkill[id] += (e.turns || 1);
+          break;
+        case 'magicResistBuff':
+          // (마법저항 증가 효과가 있다면 향후 여기서 처리)
           break;
         case 'magicResistDebuff':
           battle.context.magicResistDebuff[id] += (e.value || 0);
@@ -137,12 +146,14 @@ function processTurnStart(userData, battle, actingUserId) {
     // revive 효과 중복 적용 방지
     battle.context.effects[id] = next;
 
-    // 스탯 변화 반영
-    if (atkModifier !== 0 && userData[id].stats) {
-      userData[id].stats.attack = Math.max(0, userData[id].stats.attack + atkModifier);
-    }
-    if (defModifier !== 0 && userData[id].stats) {
-      userData[id].stats.defense = Math.max(0, userData[id].stats.defense + defModifier);
+    // 스탯 변화 반영 (버프/디버프)
+    if (userData[id].stats) {
+      if (atkModifier !== 0) {
+        userData[id].stats.attack = Math.max(0, userData[id].stats.attack + atkModifier);
+      }
+      if (defModifier !== 0) {
+        userData[id].stats.defense = Math.max(0, userData[id].stats.defense + defModifier);
+      }
     }
   });
 
@@ -177,6 +188,7 @@ function canUseSkill(userId, championName, context) {
   return { ok: true };
 }
 
+// 데미지 계산 (상태효과 반영)
 function calculateDamage(
   attacker,
   defender,
@@ -316,7 +328,7 @@ function calculateDamage(
     context.skillUsed[attacker.id] = context.skillTurn[attacker.id];
   }
 
-  // addEffect 처리
+  // addEffect 처리 (ex: 점멸, 쉴드 등 신규 상태 자연스럽게 지원)
   if (addEffectArr.length && context.effects) {
     for (const eff of addEffectArr) {
       if (eff.target === 'attacker') {
