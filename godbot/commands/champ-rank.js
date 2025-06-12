@@ -60,7 +60,7 @@ module.exports = {
         (lines.length > 0 ? lines.join("\n") : "기록 없음")
       )
       .setColor(0xf39c12)
-      .setFooter({ text: `1/2 페이지 | ▶️ 버튼으로 역대 최대 강화 랭킹 보기 | ${TIMEOUT_SECONDS}초 후 버튼이 비활성화됩니다.` })
+      .setFooter({ text: `1/2 페이지 | ▶️ 역대 최대 강화 랭킹 | ${TIMEOUT_SECONDS}초 후 버튼 비활성화` })
       .setTimestamp();
 
     // 2페이지: 역대 최대 강화 랭킹(성공률)
@@ -87,7 +87,7 @@ module.exports = {
         maxLines.length > 0 ? maxLines.join("\n") : "기록 없음"
       )
       .setColor(0x47a7f5)
-      .setFooter({ text: `2/2 페이지 | ◀️ 버튼으로 현재 강화 순위로 돌아가기 | ${TIMEOUT_SECONDS}초 후 버튼이 비활성화됩니다.` })
+      .setFooter({ text: `2/2 페이지 | ◀️ 현재 강화 순위 | ${TIMEOUT_SECONDS}초 후 버튼 비활성화` })
       .setTimestamp();
 
     // 버튼 구성
