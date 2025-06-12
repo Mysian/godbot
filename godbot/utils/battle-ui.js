@@ -220,12 +220,19 @@ async function startBattleRequest(interaction) {
 
     let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
 
-    const getActionRow = (canUseSkillBtn) =>
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger).setDisabled(false),
-        new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 무빙').setStyle(ButtonStyle.Secondary).setDisabled(false),
-        new ButtonBuilder().setCustomId('skill').setLabel('✨ 스킬').setStyle(ButtonStyle.Primary).setDisabled(!canUseSkillBtn)
-      );
+  const getActionRows = (canUseSkillBtn) => [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 쉴드').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('blink').setLabel('✨ 점멸').setStyle(ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬').setStyle(ButtonStyle.Success).setDisabled(!canUseSkillBtn),
+      new ButtonBuilder().setCustomId('inventory').setLabel('🎒 인벤토리').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('escape').setLabel('🏃‍♂️ 탈주').setStyle(ButtonStyle.Secondary)
+    ),
+  ];
+    
     await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: [getActionRow(true)] });
     const battleMsg = await btn.fetchReply();
 
@@ -321,12 +328,37 @@ async function startBattleRequest(interaction) {
           const nextEmbed = await createBattleEmbed(
             challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
           );
-          await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: [getActionRow(canUseSkillBtn(cur))] });
-
+          await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows(canUseSkillBtn(cur)) });
           startTurn();
           return;
         }
 
+          if (i.customId === 'blink') {
+          // 점멸(회피) 예시: 회피 버프 1턴 부여 (커스텀 효과)
+          cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
+          log = `✨ ${userData[uid].name}이(가) 순식간에 점멸! (다음 공격 1회 회피)`;
+          cur.logs.push(log);
+          cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          save(battlePath, bd);
+
+          const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
+          if (battleEnd) return;
+
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur));
+          await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows(canUseSkillBtn(cur)) });
+          startTurn();
+          return;
+        }
+        if (i.customId === 'inventory') {
+          log = '🎒 인벤토리 기능은 추후 업데이트 예정!';
+          await i.reply({ content: log, ephemeral: true });
+          return;
+        }
+        if (i.customId === 'escape') {
+          log = '🏃‍♂️ 탈주 기능은 추후 업데이트 예정!';
+          await i.reply({ content: log, ephemeral: true });
+          return;
+        }
         if (i.customId === 'skill') {
           actionDone[uid] = actionDone[uid] || { skill: false, done: false };
           cur.usedSkill[uid] = cur.usedSkill[uid] || false;
