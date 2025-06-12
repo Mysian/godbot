@@ -359,19 +359,17 @@ function calculateDamage(
 
   // 부활: 실제 적용은 processTurnStart에서 실행됨
 
-  let log = '';
-  if (usedSkill) {
-    log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
-    log += `> _${skillDesc}_\n`;
-  }
-  if (effectMsg) {
-    log += `➡️ **${effectMsg}**\n`;
-  }
-
-  // "데미지"가 있고 진짜 공격이면만 아래 문장 추가
-  if (base > 0 && !skillResult?.noDamage) {
-    log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
-  }
+let log = '';
+if (usedSkill) {
+  log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
+  log += `> _${skillDesc}_\n`;
+}
+if (effectMsg) {
+  log += `➡️ **${effectMsg}**\n`;
+}
+if (base > 0 && (!skillResult || skillResult.baseDamage > 0)) {
+  log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
+}
   // 데미지가 없고, 버프/디버프만 적용하는 스킬이면 멘트 없음
 
   return { damage: Math.round(base), critical: crit, log, extraAttack, extraTurn };
