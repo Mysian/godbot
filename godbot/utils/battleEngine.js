@@ -367,10 +367,14 @@ function calculateDamage(
   if (effectMsg) {
     log += `➡️ **${effectMsg}**\n`;
   }
-  log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
+
+  // "데미지"가 있고 진짜 공격이면만 아래 문장 추가
+  if (base > 0 && !skillResult?.noDamage) {
+    log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
+  }
+  // 데미지가 없고, 버프/디버프만 적용하는 스킬이면 멘트 없음
 
   return { damage: Math.round(base), critical: crit, log, extraAttack, extraTurn };
-}
 
 module.exports = {
   initBattleContext,
