@@ -47,7 +47,7 @@ module.exports = {
     const rankLines = await Promise.all(
       top20.map(async ([userId, favor], idx) => {
         const name = await getName(userId);
-        return `**${idx + 1}위. ${name}**  -  \`${favor}\`점`;
+        return `**${idx + 1}등. ${name}**  :  \`${favor}\`점`;
       })
     );
 
@@ -71,7 +71,7 @@ module.exports = {
           inline: true
         }
       )
-      .setFooter({ text: "호감도 시스템 by 이브" })
+      .setFooter({ text: "까리한 디스코드" })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
