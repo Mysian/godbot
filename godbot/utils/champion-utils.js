@@ -15,6 +15,7 @@ const imageNameMap = {
 "애니": "Annie",
 "애니비아": "Anivia",
 "아펠리오스": "Aphelios",
+"오공": "MonkeyKing",
 "애쉬": "Ashe",
 "암베사": "Ambessa",
 "아우렐리온 솔": "AurelionSol",

@@ -26,6 +26,8 @@ module.exports = {
     const data = loadData();
     const history = loadHistory();
 
+    const TIMEOUT_SECONDS = 60;
+
     // 현재 강화 현황 집계
     const currentList = [];
     for (const [id, info] of Object.entries(data)) {
@@ -58,11 +60,10 @@ module.exports = {
         (lines.length > 0 ? lines.join("\n") : "기록 없음")
       )
       .setColor(0xf39c12)
-      .setFooter({ text: "1/2 페이지 | ▶️ 버튼으로 역대 최대 강화 랭킹 보기" })
+      .setFooter({ text: `1/2 페이지 | ▶️ 버튼으로 역대 최대 강화 랭킹 보기 | ${TIMEOUT_SECONDS}초 후 버튼이 비활성화됩니다.` })
       .setTimestamp();
 
     // 2페이지: 역대 최대 강화 랭킹(성공률)
-    // history 기준: max(최대 강화), success(성공), fail(실패)
     const maxList = Object.entries(history)
       .filter(([userId, info]) => typeof info.max === "number" && (info.success + info.fail) > 0)
       .map(([userId, info]) => ({
@@ -86,7 +87,7 @@ module.exports = {
         maxLines.length > 0 ? maxLines.join("\n") : "기록 없음"
       )
       .setColor(0x47a7f5)
-      .setFooter({ text: "2/2 페이지 | ◀️ 버튼으로 현재 강화 순위로 돌아가기" })
+      .setFooter({ text: `2/2 페이지 | ◀️ 버튼으로 현재 강화 순위로 돌아가기 | ${TIMEOUT_SECONDS}초 후 버튼이 비활성화됩니다.` })
       .setTimestamp();
 
     // 버튼 구성
@@ -109,15 +110,21 @@ module.exports = {
 
     // 버튼 이벤트 핸들러
     const collector = interaction.channel.createMessageComponentCollector({
-      filter: i =>
-        i.user.id === interaction.user.id &&
-        ["champ-rank-next", "champ-rank-prev"].includes(i.customId),
-      time: 60 * 1000
+      filter: i => ["champ-rank-next", "champ-rank-prev"].includes(i.customId),
+      time: TIMEOUT_SECONDS * 1000
     });
 
     let curPage = 1;
 
     collector.on("collect", async i => {
+      if (i.user.id !== interaction.user.id) {
+        await i.reply({
+          content: "❗ 다른 유저가 실행한 창입니다. `/챔피언강화순위` 명령어로 직접 확인하세요.",
+          ephemeral: true
+        });
+        return;
+      }
+
       if (i.customId === "champ-rank-next" && curPage === 1) {
         curPage = 2;
         await i.update({
