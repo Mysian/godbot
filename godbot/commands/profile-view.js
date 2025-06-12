@@ -4,7 +4,8 @@ const path = require('path');
 
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 const favorPath = path.join(__dirname, '../data/favor.json');
-const champPath = path.join(__dirname, '../data/champion-records.json');
+const champUserPath = path.join(__dirname, '../champion-users.json'); // 루트
+const enhancePath = path.join(__dirname, '../data/champion-enhance-history.json');
 
 function readJson(p) { if (!fs.existsSync(p)) return {}; return JSON.parse(fs.readFileSync(p)); }
 
@@ -37,7 +38,8 @@ module.exports = {
     const userId = target.id;
     const profiles = readJson(profilesPath);
     const favor = readJson(favorPath);
-    const championRecords = readJson(champPath);
+    const champUsers = readJson(champUserPath);
+    const enhanceHistory = readJson(enhancePath);
 
     if (!profiles[userId]) {
       return interaction.reply({ content: '해당 유저는 프로필이 없습니다.', ephemeral: true });
@@ -47,13 +49,19 @@ module.exports = {
     const joinedAt = member?.joinedAt || new Date();
     const joinedStr = `<t:${Math.floor(joinedAt.getTime()/1000)}:R>`;
 
-    // 챔피언 기록
+    // 챔피언 정보
     let champInfo = '';
-    if (championRecords[userId]) {
-      const c = championRecords[userId];
-      champInfo = `🦸‍♂️ **${c.name}**\n✅ 승: **${c.win}** / 🤝 무: **${c.draw}** / ❌ 패: **${c.lose}**`;
+    if (champUsers[userId]) {
+      const c = champUsers[userId];
+      champInfo = `🦸‍♂️ **${c.name}**\n🔧 레벨(강화): **${c.level}**`;
     } else {
-      champInfo = '🔎 챔피언 기록 없음';
+      champInfo = '🔎 챔피언 정보 없음';
+    }
+
+    // 최고 강화 횟수
+    let maxEnhance = '기록 없음';
+    if (enhanceHistory[userId] && typeof enhanceHistory[userId].max === 'number') {
+      maxEnhance = String(enhanceHistory[userId].max);
     }
 
     const favorValue = favor[userId] ?? 0;
@@ -74,7 +82,8 @@ module.exports = {
         { name: '🟦 배틀넷 닉네임', value: profile.bnetNick ? `⚡ ${profile.bnetNick}` : '없음', inline: true },
         { name: `${favorEmoji} 호감도`, value: String(favorValue), inline: true },
         { name: '⏰ 서버 입장', value: joinedStr, inline: true },
-        { name: '🏆 챔피언 기록', value: champInfo, inline: false }
+        { name: '🏆 챔피언 정보', value: champInfo, inline: false },
+        { name: '🔝 최고 강화 횟수', value: maxEnhance, inline: false }
       )
       .setFooter({ text: '이 정보는 오직 명령어 입력자만 볼 수 있어요!', iconURL: interaction.client.user.displayAvatarURL() });
 
