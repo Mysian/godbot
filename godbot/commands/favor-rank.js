@@ -15,7 +15,7 @@ module.exports = {
     .setName("호감도순위")
     .setDescription("서버 내 호감도가 높은 순서로 TOP 20을 확인합니다."),
   async execute(interaction) {
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply();
 
     const favor = loadFavor();
     const entries = Object.entries(favor);
@@ -47,7 +47,7 @@ module.exports = {
     const rankLines = await Promise.all(
       top20.map(async ([userId, favor], idx) => {
         const name = await getName(userId);
-        return `**${idx + 1}위. ${name}**  -  \`${favor}\`점`;
+        return `**${idx + 1}등. ${name}**  :  \`${favor}\`점`;
       })
     );
 
@@ -71,7 +71,7 @@ module.exports = {
           inline: true
         }
       )
-      .setFooter({ text: "호감도 시스템 by 이브" })
+      .setFooter({ text: "까리한 디스코드" })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
