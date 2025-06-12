@@ -292,6 +292,7 @@ async function startBattleRequest(interaction) {
         const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
         let log = '';
 
+        // 평타/쉴드
         if (i.customId === 'attack' || i.customId === 'defend') {
           actionDone[uid] = actionDone[uid] || { skill: false, done: false };
           actionDone[uid].done = true;
@@ -309,6 +310,7 @@ async function startBattleRequest(interaction) {
             cur.hp[tgt] = cur.context.hp ? cur.context.hp[tgt] : Math.max(0, cur.hp[tgt] - dmgInfo.damage);
             log = dmgInfo.log;
 
+            // ★ 반드시 바로 battleEnd 체크 & return!
             const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
             if (battleEnd) return;
           } else {
@@ -324,6 +326,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
+          // 평타/쉴드는 한 번 더 battleEnd 체크(동시 사망 등). 반드시 return!
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
@@ -335,6 +338,7 @@ async function startBattleRequest(interaction) {
           return;
         }
 
+        // 점멸(회피)
         if (i.customId === 'blink') {
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
           log = `✨ ${userData[uid].name}이(가) 순식간에 점멸! (다음 공격 1회 회피)`;
@@ -342,6 +346,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
+          // battleEnd 반드시 체크!
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
@@ -350,6 +355,8 @@ async function startBattleRequest(interaction) {
           startTurn();
           return;
         }
+
+        // 인벤토리/탈주 (실제 종료 없음)
         if (i.customId === 'inventory') {
           log = '🎒 인벤토리 기능은 추후 업데이트 예정!';
           await i.reply({ content: log, ephemeral: true });
@@ -360,6 +367,8 @@ async function startBattleRequest(interaction) {
           await i.reply({ content: log, ephemeral: true });
           return;
         }
+
+        // 스킬
         if (i.customId === 'skill') {
           actionDone[uid] = actionDone[uid] || { skill: false, done: false };
           cur.usedSkill[uid] = cur.usedSkill[uid] || false;
@@ -391,6 +400,7 @@ async function startBattleRequest(interaction) {
                 cur.context.cooldowns[uid] = cdObj.cooldown || 1;
                 cur.context.skillTurn[uid] = 0;
               }
+              // ★ battleEnd 바로 체크 & return!
               const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
               if (battleEnd) return;
             }
