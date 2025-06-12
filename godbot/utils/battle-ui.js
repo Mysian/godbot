@@ -318,18 +318,6 @@ if (i.customId === 'attack') {
 
   log = dmgInfo.log;
 
-            // **동기화 추가**
-            if (cur.context.hp) {
-              cur.context.hp[uid] = cur.hp[uid];
-              cur.context.hp[tgt] = cur.hp[tgt];
-            }
-            if (cur.context.userData && cur.context.userData[uid]) cur.context.userData[uid].hp = cur.hp[uid];
-            if (cur.context.userData && cur.context.userData[tgt]) cur.context.userData[tgt].hp = cur.hp[tgt];
-            userData[uid].hp = cur.hp[uid];
-            userData[tgt].hp = cur.hp[tgt];
-
-            log = dmgInfo.log;
-
             const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
             if (battleEnd) return;
           } else {
