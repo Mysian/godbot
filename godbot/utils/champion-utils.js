@@ -193,7 +193,7 @@ function getChampionKeyByName(name) {
 
 // HEAD 요청으로 URL 유효 여부 검사. 실패 시 placeholder 리턴
 function fetchOrFallback(url) {
-  const placeholder = 'https://via.placeholder.com/200/000000/000000.png';
+  const placeholder = 'https://media.discordapp.net/stickers/1356444681847836845.png';
   return new Promise(resolve => {
     const req = https.request(url, { method: 'HEAD' }, res => {
       resolve(res.statusCode === 200 ? url : placeholder);
