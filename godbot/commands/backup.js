@@ -48,17 +48,32 @@ const fileMap = {
   }
 };
 
+// ★ 챔피언 배틀 시스템 전체 js/json 코드/설정 백업(폴더구조 유지)
+function addFolderRecursive(zip, absDir, baseDir) {
+  if (!fs.existsSync(absDir)) return;
+  const files = fs.readdirSync(absDir);
+  for (const file of files) {
+    const absPath = path.join(absDir, file);
+    const relPath = path.relative(baseDir, absPath);
+    const stat = fs.statSync(absPath);
+    if (stat.isDirectory()) {
+      addFolderRecursive(zip, absPath, baseDir);
+    } else if (file.endsWith('.js') || file.endsWith('.json')) {
+      zip.addLocalFile(absPath, path.dirname(relPath));
+    }
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("백업")
-    .setDescription("저장된 JSON 데이터를 백업합니다.")
+    .setDescription("저장된 JSON 데이터 또는 챔배 시스템 코드를 백업합니다.")
     .addStringOption(option =>
       option
         .setName("선택옵션")
         .setDescription("백업할 데이터 종류를 선택하세요.")
         .setRequired(true)
         .addChoices(
-          // "모든 파일 백업하기"를 무조건 최상단에
           { name: "모든 파일 백업하기", value: "모든 파일 백업하기" },
           { name: "챔피언정보", value: "챔피언정보" },
           { name: "챔피언 배틀 전적", value: "챔피언 배틀 전적" },
@@ -66,14 +81,45 @@ module.exports = {
           { name: "프로필정보", value: "프로필정보" },
           { name: "호감도", value: "호감도" },
           { name: "서버 이용현황 관리 로그", value: "서버 이용현황 관리 로그" },
-          { name: "일정", value: "일정" }
+          { name: "일정", value: "일정" },
+          // ★ 챔피언배틀시스템 전체 코드+설정+데이터 백업 옵션
+          { name: "챔배시스템파일 백업", value: "챔배시스템파일 백업" }
         )
     ),
 
   async execute(interaction) {
     const choice = interaction.options.getString("선택옵션");
 
-    // 모든 파일 백업(zip)
+    // 1. 챔배시스템 전체 코드/설정/데이터 zip 백업
+    if (choice === "챔배시스템파일 백업") {
+      const zip = new AdmZip();
+      const projectRoot = path.join(__dirname, "..");
+      const folders = ["commands", "utils", "data"];
+      let found = false;
+      for (const folder of folders) {
+        const absDir = path.join(projectRoot, folder);
+        if (fs.existsSync(absDir)) {
+          addFolderRecursive(zip, absDir, projectRoot);
+          found = true;
+        }
+      }
+      if (!found) {
+        return interaction.reply({
+          content: "❌ 압축할 코드/설정 파일이 없습니다.",
+          ephemeral: true
+        });
+      }
+      const zipBuffer = zip.toBuffer();
+      const file = new AttachmentBuilder(zipBuffer, { name: "champ-battle-system.zip" });
+      await interaction.reply({
+        content: `📦 챔피언 배틀 시스템 전체 코드/설정/데이터 백업본입니다.\n\n🗂 폴더 구조 그대로 압축되어 있습니다.`,
+        files: [file],
+        ephemeral: true
+      });
+      return;
+    }
+
+    // 2. 모든 json 데이터만 백업(zip)
     if (choice === "모든 파일 백업하기") {
       const entry = fileMap["모든 파일 백업하기"];
       const zip = new AdmZip();
@@ -100,7 +146,7 @@ module.exports = {
       return;
     }
 
-    // 단일 파일 백업
+    // 3. 단일 파일 백업
     const entry = fileMap[choice];
     if (!entry || !fs.existsSync(entry.path)) {
       return interaction.reply({
