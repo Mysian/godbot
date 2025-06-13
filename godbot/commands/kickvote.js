@@ -82,6 +82,18 @@ module.exports = {
 
       collector.on("collect", async (i) => {
         if (i.user.bot) return;
+
+        const voterMember = await interaction.guild.members.fetch(i.user.id);
+        if (
+          !voterMember.voice.channel ||
+          voterMember.voice.channel.id !== voiceChannel.id
+        ) {
+          return i.reply({
+            content: "❌ 이 투표는 현재 음성채널에 있는 사람만 참여할 수 있어요.",
+            ephemeral: true,
+          });
+        }
+
         if (voters.has(i.user.id)) {
           return i.reply({ content: "❗ 이미 투표하셨습니다.", ephemeral: true });
         }
