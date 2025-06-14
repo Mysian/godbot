@@ -53,7 +53,9 @@ module.exports = {
       .setCustomId("reason_input")
       .setLabel("이동 사유를 입력하세요.")
       .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+      .setRequired(true)
+      .setPlaceholder("예: 잠수")
+      .setValue("잠수");
 
     const modalRow = new ActionRowBuilder().addComponents(reasonInput);
     modal.addComponents(modalRow);
@@ -151,17 +153,14 @@ module.exports = {
 
           const resultEmbed = new EmbedBuilder()
             .setTitle("✅ 강퇴 처리 완료")
-            .setDescription(`**<@${target.id}>** 님을 잠수 채널로 이동시켰습니다.`)
+            .setDescription(`<#${voiceChannel.id}> 에서 (사유: ${reason})로 인해 <@${target.id}> 님을 잠수 채널로 이동시켰습니다.`)
             .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
             .setColor(0x00cc66);
 
           await interaction.followUp({ embeds: [resultEmbed] });
 
           if (resultLogChannel?.isTextBased()) {
-            await resultLogChannel.send({
-              content: `@${voiceChannel.name} 에서 (사유: ${reason})로 인해 <@${target.id}> 님을 잠수 채널로 이동시켰습니다.`,
-              embeds: [resultEmbed],
-            });
+            await resultLogChannel.send({ embeds: [resultEmbed] });
           }
         } catch (err) {
           console.error(err);
