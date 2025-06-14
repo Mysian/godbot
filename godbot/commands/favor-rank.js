@@ -1,9 +1,9 @@
-// commands/favor-rank.js
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
 const favorPath = path.join(__dirname, "../data/favor.json");
+const EXCLUDE_ROLE_ID = "1208987442234007582";
 
 function loadFavor() {
   if (!fs.existsSync(favorPath)) fs.writeFileSync(favorPath, "{}");
@@ -13,65 +13,50 @@ function loadFavor() {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("호감도순위")
-    .setDescription("서버 내 호감도가 높은 순서로 TOP 20을 확인합니다."),
+    .setDescription("서버 내 호감도가 높은 순서로 TOP 10을 확인합니다."),
   async execute(interaction) {
     await interaction.deferReply();
 
     const favor = loadFavor();
-    const entries = Object.entries(favor);
+    const entries = Object.entries(favor)
+      .filter(([_, score]) => score > 0); // 0점 제거
 
     if (entries.length === 0) {
       return interaction.editReply({ content: "아직 호감도 정보가 없습니다!" });
     }
 
-    // 호감도 내림차순 정렬
-    entries.sort((a, b) => b[1] - a[1]);
+    entries.sort((a, b) => b[1] - a[1]); // 내림차순
 
-    // 상위 20위
-    const top20 = entries.slice(0, 20);
-    // 1위/꼴찌(최하위)
-    const topUser = entries[0];
-    const lastUser = entries[entries.length - 1];
+    const filtered = [];
 
-    // 유저 태그/닉네임 불러오기 (비동기!)
-    async function getName(userId) {
+    for (const [userId, score] of entries) {
       try {
         const member = await interaction.guild.members.fetch(userId);
-        return member.displayName || member.user.username || "Unknown";
+        if (!member.roles.cache.has(EXCLUDE_ROLE_ID)) {
+          filtered.push([member, score]);
+        }
       } catch {
-        return "Unknown";
+        continue;
       }
+
+      if (filtered.length >= 10) break;
     }
 
-    // top20 표기
-    const rankLines = await Promise.all(
-      top20.map(async ([userId, favor], idx) => {
-        const name = await getName(userId);
-        return `**${idx + 1}등. ${name}**  :  \`${favor}\`점`;
-      })
-    );
+    if (filtered.length === 0) {
+      return interaction.editReply({ content: "표시할 유저가 없습니다. (제외 대상만 존재)" });
+    }
 
-    // top/bottom 유저명
-    const topName = await getName(topUser[0]);
-    const lastName = await getName(lastUser[0]);
+    const rankLines = filtered.map(([member, score], i) => {
+      const rank = i + 1;
+      const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}등.`;
+      return `**${medal} ${member.displayName}**  :  \`${score}\`점`;
+    });
 
     const embed = new EmbedBuilder()
-      .setTitle("🏆 서버 호감도 TOP 20")
+      .setTitle("🏆 서버 호감도 TOP 10")
       .setDescription(rankLines.join("\n"))
       .setColor(0xffd700)
-      .addFields(
-        {
-          name: "👑 가장 호감도가 높은 유저",
-          value: `**${topName}**  (\`${topUser[1]}\`점)`,
-          inline: true
-        },
-        {
-          name: "🐢 가장 호감도가 낮은 유저",
-          value: `**${lastName}**  (\`${lastUser[1]}\`점)`,
-          inline: true
-        }
-      )
-      .setFooter({ text: "까리한 디스코드" })
+      .setFooter({ text: "➕ /호감도지급 /호감도차감 명령어로 유저마다 호감도 부여 가능" })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });

@@ -4,8 +4,6 @@ const path = require('path');
 
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 const favorPath = path.join(__dirname, '../data/favor.json');
-const champUserPath = path.join(__dirname, '../champion-users.json'); // 루트에 있음
-const enhancePath = path.join(__dirname, '../data/champion-enhance-history.json');
 
 function readJson(p) { if (!fs.existsSync(p)) return {}; return JSON.parse(fs.readFileSync(p)); }
 
@@ -36,32 +34,15 @@ module.exports = {
     const userId = interaction.user.id;
     const profiles = readJson(profilesPath);
     const favor = readJson(favorPath);
-    const champUsers = readJson(champUserPath);
-    const enhanceHistory = readJson(enhancePath);
 
     if (!profiles[userId]) {
       return interaction.reply({ content: '먼저 `/프로필등록`으로 프로필을 등록해주세요!', ephemeral: true });
     }
+
     const profile = profiles[userId];
     const user = await interaction.guild.members.fetch(userId);
     const joinedAt = user.joinedAt || new Date();
     const joinedStr = `<t:${Math.floor(joinedAt.getTime()/1000)}:R>`;
-
-    // 챔피언 정보
-    let champInfo = '';
-    if (champUsers[userId]) {
-      const c = champUsers[userId];
-      champInfo = `🦸‍♂️ **${c.name}**\n🔧 레벨(강화): **${c.level}**`;
-    } else {
-      champInfo = '🔎 챔피언 정보 없음';
-    }
-
-    // 최고 강화 횟수
-    let maxEnhance = '기록 없음';
-    if (enhanceHistory[userId] && typeof enhanceHistory[userId].max === 'number') {
-      maxEnhance = String(enhanceHistory[userId].max);
-    }
-
     const favorValue = favor[userId] ?? 0;
     const favorEmoji = getFavorEmoji(favorValue);
 
@@ -78,10 +59,8 @@ module.exports = {
         { name: '💻 스팀 닉네임', value: profile.steamNick ? `🎮 ${profile.steamNick}` : '없음', inline: true },
         { name: '🔖 롤 닉네임#태그', value: profile.lolNick ? `🔵 ${profile.lolNick}` : '없음', inline: true },
         { name: '🟦 배틀넷 닉네임', value: profile.bnetNick ? `⚡ ${profile.bnetNick}` : '없음', inline: true },
-        { name: `${favorEmoji} 호감도`, value: String(favorValue), inline: true },
         { name: '⏰ 서버 입장', value: joinedStr, inline: true },
-        { name: '🏆 챔피언 정보', value: champInfo, inline: false },
-        { name: '🔝 최고 강화 횟수', value: maxEnhance, inline: false }
+        { name: `${favorEmoji} 호감도`, value: String(favorValue), inline: true }
       )
       .setFooter({ text: '내 프로필은 오직 나만 볼 수 있어요!', iconURL: interaction.client.user.displayAvatarURL() });
 
