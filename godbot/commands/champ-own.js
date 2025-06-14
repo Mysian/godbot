@@ -6,8 +6,7 @@ const path = require("path");
 const userDataPath = path.join(__dirname, "../data/champion-users.json");
 const recordPath = path.join(__dirname, "../data/champion-records.json");
 const championList = require("../utils/champion-data");
-const skills = require("../utils/skills");
-const skillCd = require("../utils/skills-cooldown");
+const passiveSkills = require("../utils/passive-skills");
 const {
   getChampionIcon,
   getChampionSplash,
@@ -61,15 +60,12 @@ module.exports = {
     const splash = await getChampionSplash(champ.name);
     const lore = getChampionInfo(champ.name);
 
-    // 스킬 정보 및 쿨타임
-    const skillObj = skills[champ.name];
-    const cdObj = skillCd[champ.name];
-    let skillText = '정보 없음';
-    if (skillObj && cdObj) {
-      skillText =
-        `**${skillObj.name}**\n` +
-        `${skillObj.description}\n` +
-        `⏳ 최소턴: ${cdObj.minTurn ?? 1}턴, 쿨타임: ${cdObj.cooldown ?? 1}턴`;
+    // 패시브 정보만 출력
+    const passiveObj = passiveSkills[champ.name];
+    let passiveText = '정보 없음';
+    if (passiveObj) {
+      passiveText =
+        `**${passiveObj.name}**\n${passiveObj.description}`;
     }
 
     const embed = new EmbedBuilder()
@@ -85,7 +81,8 @@ module.exports = {
           inline: true
         },
         { name: "🌟 설명", value: lore, inline: false },
-        { name: "🪄 스킬", value: skillText, inline: false }
+        { name: "🪄 패시브(지속효과)", value: passiveText, inline: false },
+        { name: "🧨 스킬", value: "[준비중입니다.]", inline: false }
       )
       .setThumbnail(icon)
       .setImage(splash)
