@@ -419,9 +419,9 @@ ${statDesc}
           const failEmbed = new EmbedBuilder()
             .setTitle(`💥 챔피언 소멸...`)
             .setDescription(`${userMention}님, **${lostName}**가 ${startLevel + successCount + 1}강에서 소멸되었습니다...
-> ${successCount > 0 ? `**${lostName} ${startLevel}강 → ${startLevel + successCount}강**까지는 성공 처리됨!` : "아쉽게도 성공 없이 바로 실패..."}
+> ${successCount > 0 ? `**${lostName} ${startLevel}강 → ${startLevel + successCount}강**까지는 성공했지만...` : "아쉽게도 성공 없이 바로 실패..."}
 
-90% 확률로 소멸 (불굴의 영혼 전설등급이 없었습니다)`)
+90% 확률로 소멸되었습니다. (소실 방지 아이템 없음)`)
             .setColor(0xf44336);
           const champKey = getChampionKeyByName(lostName);
           if (champKey)
