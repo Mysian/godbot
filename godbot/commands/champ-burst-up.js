@@ -164,7 +164,6 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
     await i.deferUpdate();
     const count = parseInt(i.values[0], 10);
 
-    // ====== 두 번째 임베드 (확률 안내 + 버튼) ======
     let data = await loadJSON(dataPath);
     let champ = data[userId];
     const rate = getSuccessRate(champ.level);
@@ -376,6 +375,16 @@ ${statDesc}
         } else {
           // 챔피언 소멸!
           await updateEnhanceHistory(userId, { max: champNow.level });
+
+          // ✅ 전적 기록까지 같이 삭제
+          const recordPath = path.join(__dirname, "../data/champion-records.json");
+          let records = {};
+          try {
+            if (fs.existsSync(recordPath)) records = JSON.parse(fs.readFileSync(recordPath, "utf8"));
+          } catch {}
+          delete records[userId];
+          try { fs.writeFileSync(recordPath, JSON.stringify(records, null, 2)); } catch {}
+
           const lostName = champNow.name;
           delete dataNow[userId];
           await saveJSON(dataPath, dataNow);

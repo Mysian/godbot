@@ -362,6 +362,16 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
         } else {
           // 소멸되면 '최대 강화' 이력 남기고 삭제
           await updateEnhanceHistory(userId, { max: champNow.level });
+
+          // ✅ [여기서 전적 기록도 같이 삭제!]
+          const recordPath = path.join(__dirname, "../data/champion-records.json");
+          let records = {};
+          try { 
+            if (fs.existsSync(recordPath)) records = JSON.parse(fs.readFileSync(recordPath, "utf8")); 
+          } catch {}
+          delete records[userId];
+          try { fs.writeFileSync(recordPath, JSON.stringify(records, null, 2)); } catch {}
+
           const lostName = champNow.name;
           delete dataNow[userId];
           await saveJSON(dataPath, dataNow);
