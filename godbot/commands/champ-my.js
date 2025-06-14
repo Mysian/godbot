@@ -8,8 +8,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 const championList = require("../utils/champion-data");
-const skills = require("../utils/skills");
-const skillCd = require("../utils/skills-cooldown");
+const passiveSkills = require("../utils/passive-skills"); // 패시브 정보
 const { getChampionIcon } = require("../utils/champion-utils");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
@@ -68,17 +67,17 @@ module.exports = {
     // 챔피언 아이콘 (비동기)
     const icon = await getChampionIcon(champData.name);
 
-    // 스킬/쿨타임 정보
-    const skillObj = skills[champData.name];
-    const cdObj = skillCd[champData.name];
-    let skillText = '정보 없음';
-    if (skillObj && cdObj) {
-      skillText =
-        `**${skillObj.name}**\n${skillObj.description}\n` +
-        `⏳ 최소턴: ${cdObj.minTurn ?? 1}턴, 쿨타임: ${cdObj.cooldown ?? 1}턴`;
+    // 패시브 정보
+    const passiveObj = passiveSkills[champData.name];
+    let passiveText = "정보 없음";
+    if (passiveObj) {
+      passiveText = `**${passiveObj.name}**\n${passiveObj.description}`;
     }
 
-    // 📄 페이지 1: 챔피언 정보 + 스킬/쿨타임
+    // 스킬 정보(잠정 막음)
+    const skillText = "⛔ [준비중입니다.]";
+
+    // 📄 페이지 1: 챔피언 정보 + 패시브
     const infoEmbed = new EmbedBuilder()
       .setTitle(`🧙‍♂️ ${target.username}님의 챔피언`)
       .setDescription(
@@ -92,6 +91,7 @@ module.exports = {
         `> ❤️ 체력: **${total.hp}**\n` +
         `> 🛡️ 방어력: **${total.defense}**\n` +
         `> 🦾 관통력: **${total.penetration}**\n\n` +
+        `✨ **패시브(지속효과) 정보**\n${passiveText}\n\n` +
         `🪄 **스킬 정보**\n${skillText}`
       )
       .setThumbnail(icon)
