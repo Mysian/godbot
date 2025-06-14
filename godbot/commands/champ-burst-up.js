@@ -174,14 +174,42 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
       : null;
     const percent = Math.floor(burstProb * 10000) / 100;
 
+    // ====== [추가] 강화 능력치 미리보기 ======
+    // 현재 능력치
+    const curStats = { ...champ.stats };
+    let previewStats = { ...curStats };
+    let previewLevel = champ.level;
+    for (let c = 0; c < count; c++) {
+      const { gain } = calcStatGain(previewLevel, previewStats.attack, previewStats.ap);
+      previewStats.attack += gain.attack;
+      previewStats.ap += gain.ap;
+      previewStats.hp += gain.hp;
+      previewStats.defense += gain.defense;
+      previewStats.penetration += gain.penetration;
+      previewLevel++;
+    }
+    const statFields = [
+      { label: "⚔️ 공격력", key: "attack" },
+      { label: "🔮 주문력", key: "ap" },
+      { label: "❤️ 체력", key: "hp" },
+      { label: "🛡️ 방어력", key: "defense" },
+      { label: "💥 관통력", key: "penetration" }
+    ];
+    let statPreview = statFields
+      .map(
+        (stat) =>
+          `${stat.label}   [${curStats[stat.key]} → **${previewStats[stat.key]}**]`
+      )
+      .join("\n");
+
     const infoEmbed = new EmbedBuilder()
       .setTitle("🔥 강화 도전 확률 안내")
       .setDescription(
-        `**${champ.name} ${champ.level}강 → ${champ.level + count}강(도전 시)\n\n**` +
+        `**${champ.name} ${champ.level}강 → ${champ.level + count}강(도전 시)**\n\n` +
         `- 한 번에 ${count}회 연속 강화!\n` +
         `- 연속 성공확률: **${percent}%**\n` +
         `- 실패 시 챔피언 소멸 확률: **90%** (소멸 방지 10%)\n\n` +
-        `정말 강화에 도전하시겠습니까?`
+        `**[능력치 미리보기]**\n${statPreview}\n\n정말 강화에 도전하시겠습니까?`
       )
       .setColor(0xf5a623);
     if (champImg) infoEmbed.setThumbnail(champImg);
