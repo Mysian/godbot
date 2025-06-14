@@ -6,8 +6,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 const champions = require("../utils/champion-data");
-const skills = require("../utils/skills");
-const skillCd = require("../utils/skills-cooldown");
+const passives = require("../utils/passive-skills"); // 패시브 정보로 교체!
 const {
   getChampionIcon,
   getChampionSplash,
@@ -62,13 +61,11 @@ module.exports = {
         const splash = await getChampionSplash(randomChampion.name);
         const lore   = getChampionInfo(randomChampion.name);
 
-        const skillObj = skills[randomChampion.name];
-        const cdObj = skillCd[randomChampion.name];
-        let skillText = '정보 없음';
-        if (skillObj && cdObj) {
-          skillText =
-            `**${skillObj.name}**\n${skillObj.description}\n` +
-            `⏳ 최소턴: ${cdObj.minTurn ?? 1}턴, 쿨타임: ${cdObj.cooldown ?? 1}턴`;
+        // 패시브 정보 출력
+        const passiveObj = passives[randomChampion.name];
+        let passiveText = '정보 없음';
+        if (passiveObj) {
+          passiveText = `**${passiveObj.name}**\n${passiveObj.description}`;
         }
 
         const embed = new EmbedBuilder()
@@ -87,8 +84,13 @@ module.exports = {
               inline: false
             },
             {
-              name: "🪄 스킬 정보",
-              value: skillText,
+              name: "🪄 패시브(지속효과) 정보",
+              value: passiveText,
+              inline: false
+            },
+            {
+              name: "스킬 정보",
+              value: '[준비중입니다.]',
               inline: false
             }
           )
