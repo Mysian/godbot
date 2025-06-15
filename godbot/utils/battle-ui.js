@@ -16,9 +16,6 @@ const userDataPath = path.join(__dirname, '../data/champion-users.json');
 const recordPath   = path.join(__dirname, '../data/champion-records.json');
 const battlePath   = path.join(__dirname, '../data/battle-active.json');
 
-// ===============================
-// ★ 전투 종료/결과 처리 함수
-// ===============================
 async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
   const chId = cur.challenger, opId = cur.opponent;
   const chp = cur.hp[chId], opp = cur.hp[opId];
@@ -131,9 +128,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
   return false;
 }
 
-// ===============================
-// ★ 전투 시작/턴 UI 핸들러
-// ===============================
 async function startBattleRequest(interaction) {
   const challenger = interaction.user;
   const opponent   = interaction.options.getUser('상대');
@@ -141,7 +135,6 @@ async function startBattleRequest(interaction) {
   const bd       = load(battlePath);
   const battleId = `${challenger.id}_${opponent.id}`;
 
-  // 기본 유효성 체크
   if (challenger.id === opponent.id) {
     return interaction.reply({ content: '❌ 자신과 대전할 수 없습니다.', ephemeral: true });
   }
@@ -230,9 +223,6 @@ async function startBattleRequest(interaction) {
 
     let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', false);
 
-    // ===============================
-    // ★ 전투 액션 버튼 세팅
-    // ===============================
     const getActionRows = () => [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
@@ -301,8 +291,11 @@ async function startBattleRequest(interaction) {
             userData[uid].name,
             false
           );
-          cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
-          cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
+          // 실제 HP 차감(피해만큼)
+          if (dmgInfo.damage > 0) {
+            cur.hp[tgt] = Math.max(0, cur.hp[tgt] - dmgInfo.damage);
+          }
+          // 회피, 방어 등은 데미지가 0
           if (cur.context.hp) {
             cur.context.hp[uid] = cur.hp[uid];
             cur.context.hp[tgt] = cur.hp[tgt];
@@ -311,7 +304,6 @@ async function startBattleRequest(interaction) {
           if (userData[tgt]) userData[tgt].hp = cur.hp[tgt];
 
           log = dmgInfo.log;
-
           cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
@@ -368,7 +360,6 @@ async function startBattleRequest(interaction) {
           const result = tryEscape(cur.context);
           log = result.log;
           if (result.success) {
-            // 전적 처리
             const records = load(recordPath);
             const winner = tgt, loser = uid;
             records[winner] = records[winner] || { name: userData[winner].name, win: 0, draw: 0, lose: 0 };
