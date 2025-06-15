@@ -1,6 +1,6 @@
-const passiveSkills = require('./passive-skills'); // ★ 패시브 불러오기
+const passiveSkills = require('./passive-skills');
 
-// 전투 시작 시 컨텍스트 초기화
+// 컨텍스트 초기화 (버프, 쿨타임 등)
 function initBattleContext(battle) {
   battle.context = {
     effects: {},
@@ -21,7 +21,9 @@ function initBattleContext(battle) {
     blind: {},
     fear: {},
     confused: {},
-    hp: Object.assign({}, battle.hp), // ★ hp 미러링(패시브 대응)
+    hp: Object.assign({}, battle.hp),
+    guardMode: {},         // ★ 추가: 방어 모드
+    turn: 1,               // ★ 현재 턴수 추적 (필요시 battle 객체와 연동)
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -41,23 +43,21 @@ function initBattleContext(battle) {
     battle.context.fear[id] = 0;
     battle.context.confused[id] = 0;
     battle.context.reviveFlags[id] = false;
+    battle.context.guardMode[id] = false; // ★ 방어모드 초기화
   });
+  battle.context.turn = 1; // ★ 첫 턴
 }
 
-// 매 턴 시작: 패시브 효과도 자동 발동
+// 턴 시작 시 상태, 패시브, 버프 등 처리
 function processTurnStart(userData, battle, actingUserId) {
   [battle.challenger, battle.opponent].forEach(id => {
-
-    // ★★★ 패시브 체크: (예) 애니비아 부활 등
     const champName = userData[id]?.name;
     if (
       champName &&
       passiveSkills[champName] &&
       typeof passiveSkills[champName].effect === 'function'
     ) {
-      // passive effect(user, context, battle)
       passiveSkills[champName].effect(userData[id], battle.context, battle);
-      // passive effect에서 직접 hp, revive, 로그 등 조작 가능!
     }
 
     if (id === actingUserId) {
@@ -164,7 +164,10 @@ function processTurnStart(userData, battle, actingUserId) {
     }
   });
 
-  // 상태(턴감소)
+  // 턴 카운트 증가 (추가)
+  battle.context.turn = (battle.context.turn || 1) + 1;
+
+  // 상태효과(턴 감소)
   ['missNext', 'skillBlocked', 'blockSkill', 'blind', 'fear', 'confused'].forEach(type => {
     const ctx = battle.context[type];
     if (ctx) {
@@ -176,7 +179,7 @@ function processTurnStart(userData, battle, actingUserId) {
   });
 }
 
-// 데미지 계산 (상태효과 반영)
+// ▶ 평타/스킬 데미지 계산 (상태효과, 회피, 방어 등 반영)
 function calculateDamage(
   attacker,
   defender,
@@ -185,7 +188,7 @@ function calculateDamage(
   championName = null,
   asSkill = false
 ) {
-  // 행동불능 (기절, 공포, 혼란)
+  // 상태: 기절/혼란/공포/실명/미스 등
   if (
     context.effects?.[attacker.id]?.some(e => e.type === 'stunned') ||
     attacker.stunned ||
@@ -198,7 +201,6 @@ function calculateDamage(
     msg += '행동 불가!';
     return { damage: 0, critical: false, log: msg, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-
   if (context.missNext && context.missNext[attacker.id] > 0) {
     context.missNext[attacker.id]--;
     return { damage: 0, critical: false, log: `${attacker.name}의 공격은 무효화됩니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
@@ -207,23 +209,30 @@ function calculateDamage(
     context.blind[attacker.id]--;
     return { damage: 0, critical: false, log: `${attacker.name}은(는) 실명 상태로 공격에 실패했습니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
+  // ▶ 점멸(회피) 확률 적용 (패시브/버프로 회피율 추가)
+  let dodgeRate = 0.2; // 기본 20%
+  if (defender.stats && defender.stats.dodge) dodgeRate += defender.stats.dodge;
   if (context.dodgeNextAttack?.[defender.id]) {
     context.dodgeNextAttack[defender.id] = false;
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 회피!`, attackerHp: attacker.hp, defenderHp: defender.hp };
+    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 점멸 회피!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
+  if (Math.random() < dodgeRate) {
+    return { damage: 0, critical: false, log: `${defender.name}이(가) 회피 성공!`, attackerHp: attacker.hp, defenderHp: defender.hp };
+  }
+  // ▶ 무적
   if (context.invulnerable?.[defender.id]) {
     context.invulnerable[defender.id] = false;
     return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
 
+  // 스탯 준비
   const atkStats = attacker.stats ?? attacker;
   const defStats = defender.stats ?? defender;
-  const atkName = attacker.name ?? '공격자';
-  const defName = defender.name ?? '방어자';
   let ad = isAttack ? (atkStats.attack || 0) : 0;
   let ap = isAttack ? (atkStats.ap || 0) : 0;
   let pen = atkStats.penetration || 0;
 
+  // 패시브/버프 디버프(마저 감소 등)
   let magicResistDebuff = 0;
   if (context.magicResistDebuff && context.magicResistDebuff[defender.id]) {
     magicResistDebuff = context.magicResistDebuff[defender.id];
@@ -234,32 +243,36 @@ function calculateDamage(
   }
   let defVal = Math.max(0, defense - pen);
 
+  // ▶ 실제 피해 공식 (확장버전)
   let main = Math.max(ad, ap);
   let sub = Math.min(ad, ap);
-  let base = Math.max(0, main * 1 + sub * 0.5 - defVal);
+  // (공/주 중 큰 값 100% + 작은 값 50%)의 0.5~1.5배 랜덤
+  let base = main * 1.0 + sub * 0.5;
+  base = Math.max(0, base - defVal);
 
-  const evade = Math.random() < 0.05;
-  if (evade) return { damage: 0, critical: false, log: `${defName}이(가) 회피!`, attackerHp: attacker.hp, defenderHp: defender.hp };
+  // 0.5~1.5배 랜덤 배수
+  let ratio = 0.5 + Math.random();
+  base = Math.floor(base * ratio);
+
+  // 치명타
   const crit = Math.random() < 0.1;
   if (crit) base = Math.floor(base * 1.5);
 
-  const variance = Math.floor(base * 0.15);
-  const minD = Math.max(0, base - variance);
-  const maxD = base + variance;
-  base = minD + Math.floor(Math.random() * (maxD - minD + 1));
-
+  // 더블데미지 등(버프)
   if (isAttack && context.doubleDamage?.[attacker.id]) {
     base *= 2;
     context.doubleDamage[attacker.id] = false;
   }
+
+  // 방어 효과(퍼센트, 고정감소)
   base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
   base = Math.floor(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
-  // 상태효과: 점멸, 쉴드, execute 등 addEffect 등도 남겨둠 (패시브 대비)
-  // 스킬 호출은 없음
+  // 쉴드: 나중에 별도 적용 가능
 
+  // 컨텍스트 HP 동기화
   if (context && context.hp) {
     if (attacker.hp !== undefined) context.hp[attacker.id] = attacker.hp;
     if (defender.hp !== undefined) context.hp[defender.id] = defender.hp;
@@ -272,12 +285,10 @@ function calculateDamage(
       context.userData[defender.id].hp = defender.hp;
     }
   }
-
   let log = '';
   if (base > 0) {
-    log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
+    log += `${attacker.name}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
   }
-
   return {
     damage: Math.round(base),
     critical: crit,
@@ -287,8 +298,39 @@ function calculateDamage(
   };
 }
 
+// ▶ 방어(Guard) 기능: 사용 시 다음 턴만 피해 30~70% 감소
+function activateGuard(context, userId, userStats = {}) {
+  // 관통력, 방어력 기반 피해감소율 산정 (관통력 많을수록 방어력 무효화)
+  let defense = userStats.defense || 0;
+  let penetration = userStats.penetration || 0;
+  let guardPercent = 0.3 + Math.random() * 0.4; // 30~70%
+  // 관통력/방어력 보정
+  if (defense > 0) {
+    guardPercent *= Math.max(0.2, 1 - penetration / (defense * 2));
+  }
+  // 적용(해당 유저의 context.percentReduction에)
+  context.percentReduction[userId] = Math.round(guardPercent * 100);
+  context.guardMode[userId] = true;
+  return guardPercent;
+}
+
+// ▶ 탈주(도망): 10턴~30턴만 사용 가능, 50% 확률 성공
+function tryEscape(context) {
+  const turn = context.turn || 1;
+  if (turn < 10 || turn > 30) {
+    return { success: false, log: '❌ 도망은 10~30턴에만 시도 가능!' };
+  }
+  if (Math.random() < 0.5) {
+    return { success: true, log: '🏃‍♂️ 탈주 성공! 전투에서 도망쳤다.' };
+  } else {
+    return { success: false, log: '💥 탈주 실패! 빈틈을 보였다.' };
+  }
+}
+
 module.exports = {
   initBattleContext,
   processTurnStart,
-  calculateDamage
+  calculateDamage,
+  activateGuard,
+  tryEscape
 };
