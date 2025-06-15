@@ -2693,7 +2693,7 @@ module.exports = {
 },
 "판테온": {
   name: "방패 돌진",
-  description: "방어 시 20% 확률로 상대 1턴간 기절, 실패 시 1턴간 자신 피해 50% 감소",
+  description: "방어 시 20% 확률로 상대 1턴간 기절, 실패 시 1턴간 자신이 받는 피해 50% 증가",
   passive: (user, enemy, context) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (context.lastAction === "defend") {
       if (Math.random() < 0.20) {
@@ -2701,7 +2701,7 @@ module.exports = {
         return "🛡️ 20% 확률! 상대 1턴간 기절!";
       } else {
         context.effects[user.id].push({ type: "damageTakenUpPercent", value: 50, turns: 1 });
-        return "🛡️ 실패! 1턴간 받는 피해 50% 감소!";
+        return "🛡️ 실패! 1턴간 받는 피해 50% 증가!";
       }
     }
   }
