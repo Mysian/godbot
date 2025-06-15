@@ -77,7 +77,7 @@ async function startBattleRequest(interaction) {
     .setFooter({ text: '30초 내에 의사를 표현하세요.' })
     .setTimestamp();
 
-  // 전투 context 세팅
+  // 전투 context 세팅 (총 턴 turn: 1부터 시작)
   bd[battleId] = {
     challenger: challenger.id,
     opponent:   opponent.id,
@@ -85,7 +85,7 @@ async function startBattleRequest(interaction) {
       [challenger.id]: chData.stats.hp,
       [opponent.id]:   opData.stats.hp
     },
-    turn: challenger.id,
+    turn: 1,
     logs: [],
     usedSkill: {},
     context: {
@@ -100,8 +100,10 @@ async function startBattleRequest(interaction) {
       personalTurns: {
         [challenger.id]: 0,
         [opponent.id]: 0
-      }
+      },
+      globalTurn: 1
     },
+    turnUser: challenger.id,
     turnStartTime: Date.now()
   };
   initBattleContext(bd[battleId]);
@@ -150,7 +152,11 @@ async function startBattleRequest(interaction) {
 
       cur.turnStartTime = Date.now();
 
-      // --- 턴 시작 전: 두 유저 모두 turnStart 효과/카운트 ---
+      // === 턴 시작시: 총 턴 증가 ===
+      cur.turn = (cur.turn || 0) + 1;
+      cur.context.globalTurn = cur.turn;
+
+      // 턴 시작 전: 효과 적용
       const user1 = cur.challenger, user2 = cur.opponent;
       applyEffects(userData[user1], cur.context, 'turnStart');
       applyEffects(userData[user2], cur.context, 'turnStart');
@@ -183,7 +189,7 @@ async function startBattleRequest(interaction) {
           return;
         }
         const uid = i.user.id;
-        if (uid !== cur.turn) {
+        if (uid !== cur.turnUser) {
           await i.reply({ content: '⛔ 당신 턴이 아닙니다.', ephemeral: true });
           return;
         }
@@ -205,13 +211,12 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          // 턴 종료: 두 유저 모두 turnEnd 효과
+          // 턴 종료: 효과 적용
           applyEffects(userData[uid], cur.context, 'turnEnd');
           applyEffects(userData[tgt], cur.context, 'turnEnd');
 
           // 턴 전환
-          const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
-          cur.turn = nextTurn;
+          cur.turnUser = cur.turnUser === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
           // 패시브 로그 마지막 한 줄만 전달
@@ -221,7 +226,7 @@ async function startBattleRequest(interaction) {
             plogs[key] = arr && arr.length > 0 ? [arr[arr.length - 1]] : [];
           }
 
-          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, plogs);
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turnUser, log, true, plogs);
           await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -239,22 +244,19 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          // 턴 종료: 두 유저 모두 turnEnd 효과
           applyEffects(userData[uid], cur.context, 'turnEnd');
           applyEffects(userData[tgt], cur.context, 'turnEnd');
 
-          const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
-          cur.turn = nextTurn;
+          cur.turnUser = cur.turnUser === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          // 패시브 로그 마지막 한 줄만 전달
           let plogs = {};
           for (const key of Object.keys(cur.context.passiveLogs || {})) {
             const arr = cur.context.passiveLogs[key];
             plogs[key] = arr && arr.length > 0 ? [arr[arr.length - 1]] : [];
           }
 
-          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, plogs);
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turnUser, log, true, plogs);
           await i.editReply({ content: '🛡️ 방어 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -272,22 +274,19 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          // 턴 종료: 두 유저 모두 turnEnd 효과
           applyEffects(userData[uid], cur.context, 'turnEnd');
           applyEffects(userData[tgt], cur.context, 'turnEnd');
 
-          const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
-          cur.turn = nextTurn;
+          cur.turnUser = cur.turnUser === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          // 패시브 로그 마지막 한 줄만 전달
           let plogs = {};
           for (const key of Object.keys(cur.context.passiveLogs || {})) {
             const arr = cur.context.passiveLogs[key];
             plogs[key] = arr && arr.length > 0 ? [arr[arr.length - 1]] : [];
           }
 
-          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, plogs);
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turnUser, log, true, plogs);
           await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
