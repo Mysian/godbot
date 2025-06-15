@@ -147,7 +147,6 @@ function makeSellModal(champName, champLevel) {
           .setStyle(TextInputStyle.Short)
           .setValue(`${champName} (Lv.${champLevel})`)
           .setRequired(false)
-          .setDisabled(true)
       )
     );
 }
