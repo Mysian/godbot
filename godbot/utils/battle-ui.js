@@ -9,7 +9,7 @@ const {
   activateGuard,
   tryEscape,
 } = require('./battleEngine');
-const { createResultEmbed } = require('./battle-embed');
+const { createResultEmbed, createBattleEmbed } = require('./battle-embed');
 const passiveSkills = require('./passive-skills');
 const { load, save } = require('./file-db');
 
@@ -23,15 +23,6 @@ function createHpBar(current, max) {
   const filled = Math.max(0, Math.round((current / max) * totalBars));
   return "🟥".repeat(filled) + "⬜".repeat(totalBars - filled);
 }
-
-// 능력치 이모지
-const statEmojis = {
-  attack: "⚔️",
-  ap: "✨",
-  defense: "🛡️",
-  penetration: "🔪",
-  dodge: "💨"
-};
 
 // 능력치 diff(증감) 실시간 계산
 function getStatDiffs(stats, effects = []) {
@@ -59,6 +50,13 @@ function statLines(stats, effects) {
     let diff = diffs[key] || 0;
     let plus = diff ? ` __(${diff > 0 ? '+' : ''}${diff}${percent ? '%' : ''})__` : '';
     return `${icon} ${name}: ${base}${plus}`;
+  };
+  const statEmojis = {
+    attack: "⚔️",
+    ap: "✨",
+    defense: "🛡️",
+    penetration: "🔪",
+    dodge: "💨"
   };
   return [
     field('attack', '공격력', statEmojis.attack, true),
@@ -124,90 +122,22 @@ function mergePassiveToLog(baseLog, passiveLogs) {
     passiveLogs.map(msg => `${emoji} 패시브 발동! : ${msg}`).join('\n');
 }
 
-// 임베드 생성
+// (실제 임베드는 battle-embed의 createBattleEmbed를 사용!)
+// 이 getBattleEmbed는 예전 호환용. (추후 삭제 가능)
 async function getBattleEmbed(
   challenger, opponent, cur, userData, turnUserId, log, isEnd = false
 ) {
-  const chId = challenger.id || challenger;
-  const opId = opponent.id || opponent;
-  const chData = userData[chId];
-  const opData = userData[opId];
-  const chIcon = await require('./champion-utils').getChampionIcon(chData.name);
-  const opIcon = await require('./champion-utils').getChampionIcon(opData.name);
-
-  const nowTurn = cur.turn;
-
-  const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
-  const opEffects = (cur.context.effects && cur.context.effects[opId]) ? cur.context.effects[opId] : [];
-  const chApplied = getAppliedPassiveEffect(chEffects);
-  const opApplied = getAppliedPassiveEffect(opEffects);
-
-  const chName = chId === nowTurn ? `[${chData.name}] (현재 턴!)` : `[${chData.name}]`;
-  const opName = opId === nowTurn ? `[${opData.name}] (현재 턴!)` : `[${opData.name}]`;
-
-  let bigImage, smallImage;
-  if (nowTurn === chId) {
-    bigImage = chIcon;
-    smallImage = opIcon;
-  } else {
-    bigImage = opIcon;
-    smallImage = chIcon;
-  }
-
-  // 패시브 발동 로그(각 챔피언별로 1개씩)
-  const chPassiveLog = (cur.context.passiveLogs && Array.isArray(cur.context.passiveLogs[chId]))
-    ? cur.context.passiveLogs[chId] : [];
-  const opPassiveLog = (cur.context.passiveLogs && Array.isArray(cur.context.passiveLogs[opId]))
-    ? cur.context.passiveLogs[opId] : [];
-
-  // 행동 결과 + 패시브 로그(하단)
-  let mergedLog = mergePassiveToLog(log, [...chPassiveLog, ...opPassiveLog]);
-
-  const fields = [
-    {
-      name: chName,
-      value: [
-        `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
-        `상태: ${chApplied ? chApplied : '정상'}`,
-        statLines(chData.stats, chEffects),
-        getPassiveLine(chData.name)
-      ].join('\n'),
-      inline: true
-    },
-    {
-      name: opName,
-      value: [
-        `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
-        `상태: ${opApplied ? opApplied : '정상'}`,
-        statLines(opData.stats, opEffects),
-        getPassiveLine(opData.name)
-      ].join('\n'),
-      inline: true
-    }
-  ];
-
-  return new EmbedBuilder()
-    .setTitle('⚔️ 챔피언 배틀')
-    .setDescription(
-      `**지금 차례:** <@${nowTurn}>${mergedLog ? `\n\n📍 **행동 결과**\n${mergedLog}` : ""}`
-    )
-    .addFields(...fields)
-    .setImage(bigImage)
-    .setThumbnail(smallImage)
-    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
-    .setTimestamp();
-}
-
-  return new EmbedBuilder()
-    .setTitle('⚔️ 챔피언 배틀')
-    .setDescription(
-      `**지금 차례:** <@${nowTurn}>${mergedLog ? `\n\n📍 **행동 결과**\n${mergedLog}` : ""}`
-    )
-    .addFields(...fields)
-    .setImage(bigImage)
-    .setThumbnail(smallImage)
-    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
-    .setTimestamp();
+  // 최신 임베드는 createBattleEmbed 사용 권장!
+  return await createBattleEmbed(
+    challenger,
+    opponent,
+    cur,
+    userData,
+    cur.turn,
+    log,
+    true,
+    cur.context.passiveLogs
+  );
 }
 
 async function startBattleRequest(interaction) {
@@ -303,7 +233,8 @@ async function startBattleRequest(interaction) {
         effects: {
           [challenger.id]: [],
           [opponent.id]: []
-        }
+        },
+        passiveLogs: {}
       },
       turnStartTime: Date.now()
     };
@@ -325,7 +256,7 @@ async function startBattleRequest(interaction) {
 
     let battleMsg = await btn.editReply({
       content: '⚔️ 전투 시작!',
-      embeds: [await getBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', false)],
+      embeds: [await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true, bd[battleId].context.passiveLogs)],
       components: getActionRows()
     });
 
@@ -375,30 +306,6 @@ async function startBattleRequest(interaction) {
 
         // === 평타 ===
         if (i.customId === 'attack') {
-          let effectsArr = cur.context.effects[tgt] || [];
-          let dodgeIdx = effectsArr.findIndex(e => e.type === 'dodgeNextAttack' && e.turns > 0);
-          if (dodgeIdx !== -1) {
-            let dodgeRate = 0.2 + (userData[tgt].stats.dodge || 0);
-            if (Math.random() < dodgeRate) {
-              log = `💨 ${userData[tgt].name}이(가) 점멸로 공격을 회피!`;
-              effectsArr[dodgeIdx].turns = 0;
-              cur.context.effects[tgt] = effectsArr.filter(e => e.turns > 0);
-              cur.logs.push(log);
-              cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
-              save(battlePath, bd);
-
-              const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
-              if (battleEnd) return;
-
-              const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
-              await i.editReply({ content: '💨 회피 성공!', embeds: [nextEmbed], components: getActionRows() });
-              startTurn();
-              return;
-            } else {
-              effectsArr[dodgeIdx].turns = 0;
-              cur.context.effects[tgt] = effectsArr.filter(e => e.turns > 0);
-            }
-          }
           const dmgInfo = calculateDamage(
             { ...userData[uid], id: uid, hp: cur.hp[uid] },
             { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
@@ -427,7 +334,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
           await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -446,7 +353,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
           await i.editReply({ content: '🛡️ 방어 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -467,7 +374,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
           await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -495,7 +402,7 @@ async function startBattleRequest(interaction) {
             cur.logs.push(log);
             save(battlePath, bd);
 
-            const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+            const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
             await i.editReply({ content: '❌ 탈주 실패! (턴 유지)', embeds: [nextEmbed], components: getActionRows() });
             return;
           }
@@ -580,7 +487,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
   }
   return false;
 }
-
 
 module.exports = {
   startBattleRequest,
