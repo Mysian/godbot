@@ -4,11 +4,30 @@ const championData = require('./champion-data');
 const passiveSkills = require('./passive-skills');
 const fileDb = require('./file-db');
 
+// HP 보정 유틸
+function safeHP(val, fallback = 1) {
+  return (typeof val === "number" && !isNaN(val) && val > 0) ? val : fallback;
+}
+
 function runAllPassives(userData, context, actingId, targetId) {
   [actingId, targetId].forEach(uid => {
     const user = userData[uid];
     const enemy = userData[uid === actingId ? targetId : actingId];
     if (!user || !enemy) return;
+
+    // 체력 보정 (모든 연산 직전)
+    user.stats = user.stats || {};
+    enemy.stats = enemy.stats || {};
+    user.stats.hp = safeHP(user.stats.hp, 1);
+    user.hp = safeHP(user.hp, user.stats.hp);
+    enemy.stats.hp = safeHP(enemy.stats.hp, 1);
+    enemy.hp = safeHP(enemy.hp, enemy.stats.hp);
+
+    // 효과 배열 미리 초기화 (패시브에서 push 오류 방지)
+    context.effects = context.effects || {};
+    context.effects[user.id] = context.effects[user.id] || [];
+    context.effects[enemy.id] = context.effects[enemy.id] || [];
+
     const champName = user.name;
     const passive = passiveSkills[champName]?.passive;
     if (typeof passive === 'function') {
@@ -18,10 +37,10 @@ function runAllPassives(userData, context, actingId, targetId) {
       } catch (e) {
         log = `❗패시브 실행 오류: ${e}`;
       }
+      // 패시브 로그: 마지막 발동 메시지 한 줄만!
       if (log) {
         context.passiveLogs = context.passiveLogs || {};
-        context.passiveLogs[uid] = context.passiveLogs[uid] || [];
-        context.passiveLogs[uid].push(log);
+        context.passiveLogs[uid] = [log];
       }
     }
   });
@@ -41,6 +60,11 @@ function applyEffects(user, context, phase) {
 }
 
 function calculateDamage(attacker, defender, context, ignoreDef = false) {
+  attacker.stats = attacker.stats || {};
+  defender.stats = defender.stats || {};
+  attacker.stats.hp = safeHP(attacker.stats.hp, 1);
+  defender.stats.hp = safeHP(defender.stats.hp, 1);
+
   let baseAtk = attacker.stats.attack;
   if (context.damage) baseAtk = context.damage;
   let def = ignoreDef ? 0 : (defender.stats.defense || 0);
@@ -50,26 +74,26 @@ function calculateDamage(attacker, defender, context, ignoreDef = false) {
   } else if (context.ignoreDefensePercent) {
     def = def * (1 - context.ignoreDefensePercent);
   }
-  if (context.ignoreDef) def = 0;
 
   let damage = Math.max(1, baseAtk - def);
 
-  // 버프/디버프/상태 적용
-  if (context.damageBuff) damage = Math.floor(damage * context.damageBuff);
-  if (context.damageUpPercent) damage = Math.floor(damage * (1 + context.damageUpPercent / 100));
-  if (context.damageReductionPercent) damage = Math.floor(damage * (1 - context.damageReductionPercent / 100));
-  if (context.skillDamageIncrease) damage = Math.floor(damage * (1 + context.skillDamageIncrease));
-  if (context.damageIncreasePercent) damage = Math.floor(damage * (1 + context.damageIncreasePercent / 100));
-  if (context.damageTakenUpPercent) damage = Math.floor(damage * (1 + context.damageTakenUpPercent / 100));
-  if (context.magicResistDebuffPercent) damage = Math.floor(damage * (1 + context.magicResistDebuffPercent / 100));
-  if (context.dmgDealtDownPercent) damage = Math.floor(damage * (1 - context.dmgDealtDownPercent / 100));
-
-  // 치명타(야스오/이즈리얼 등)
-  let critChance = attacker.critChance || 0;
-  let critDamage = attacker.critDamage || 1.5;
-  if (Math.random() < critChance) {
-    damage = Math.floor(damage * critDamage);
-    context.crit = true;
+  if (context.damageBuff) {
+    damage = Math.floor(damage * context.damageBuff);
+  }
+  if (context.damageUpPercent) {
+    damage = Math.floor(damage * (1 + context.damageUpPercent / 100));
+  }
+  if (context.damageReductionPercent) {
+    damage = Math.floor(damage * (1 - context.damageReductionPercent / 100));
+  }
+  if (context.skillDamageIncrease) {
+    damage = Math.floor(damage * (1 + context.skillDamageIncrease));
+  }
+  if (context.damageIncreasePercent) {
+    damage = Math.floor(damage * (1 + context.damageIncreasePercent / 100));
+  }
+  if (context.damageTakenUpPercent) {
+    damage = Math.floor(damage * (1 + context.damageTakenUpPercent / 100));
   }
 
   return { damage, log: `${attacker.name}의 공격! ${defender.name}에게 ${damage} 피해` };
@@ -80,32 +104,34 @@ function processTurn(userData, battle, actingId, targetId, action) {
   context.lastAction = action;
   context.turnUser = actingId;
 
+  // 턴 진입 시 체력/스탯 안전보정
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
-    if (!user) return;
-    user._lastMaxHp = user.stats.hp;
-    user._lastDamageTaken = user._lastDamageTaken || 0;
+    if (user) {
+      user.stats = user.stats || {};
+      user.stats.hp = safeHP(user.stats.hp, 1);
+      user.hp = safeHP(user.hp, user.stats.hp);
+      user._lastMaxHp = user.stats.hp;
+      user._lastDamageTaken = user._lastDamageTaken || 0;
+    }
   });
 
   runAllPassives(userData, context, actingId, targetId);
 
-  // === 특수 패시브 상황 엔진 전용 처리 ===
-
-  // 세트
+  // 세트 패시브: 50% 실패시 다음 턴 상대 체력 5% 회복
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     const enemy = userData[uid === actingId ? targetId : actingId];
     if (user && user.name === "세트" && user._setHealEnemyNextTurn && context.lastAction === "turnStart") {
-      const heal = Math.floor(enemy.stats.hp * 0.05);
-      enemy.hp = Math.min(enemy.hp + heal, enemy.stats.hp);
+      const heal = Math.floor(safeHP(enemy.stats.hp) * 0.05);
+      enemy.hp = Math.min(safeHP(enemy.hp), safeHP(enemy.stats.hp)) + heal;
       user._setHealEnemyNextTurn = false;
       context.passiveLogs = context.passiveLogs || {};
-      context.passiveLogs[uid] = context.passiveLogs[uid] || [];
-      context.passiveLogs[uid].push(`🥊 50% 실패! 다음 턴 상대 체력 5% 회복!`);
+      context.passiveLogs[uid] = [`🥊 50% 실패! 다음 턴 상대 체력 5% 회복!`];
     }
   });
 
-  // 아무무
+  // 아무무: 받은 피해 기억
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     if (user && user.name === "아무무" && context.lastAction === "turnEnd") {
@@ -113,7 +139,7 @@ function processTurn(userData, battle, actingId, targetId, action) {
     }
   });
 
-  // 애니비아
+  // 애니비아: 부활 후 피해 70% 증가
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     if (user && user.name === "애니비아" && user._aniviaAfterRevive && action === "defend" && context.damage > 0) {
@@ -121,7 +147,7 @@ function processTurn(userData, battle, actingId, targetId, action) {
     }
   });
 
-  // 일라오이
+  // 일라오이: 공격할 때 항상 피해량 증가
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     if (user && user.name === "일라오이" && user._illaoiDmgBonus && context.lastAction === "attack") {
@@ -129,26 +155,20 @@ function processTurn(userData, battle, actingId, targetId, action) {
     }
   });
 
-  // 카서스/트린다미어
+  // 카서스: 언데드 턴 감소
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
-    if (user) {
-      if (user.name === "카서스" && user._karthusUndyingTurns) {
-        if (context.lastAction === "turnEnd" && user._karthusUndyingTurns > 0) {
-          user._karthusUndyingTurns -= 1;
-          if (user._karthusUndyingTurns === 0 && user.hp > 0) user.hp = 0;
-        }
-      }
-      if (user.name === "트린다미어" && user._tryndUndyingTurns) {
-        if (context.lastAction === "turnEnd" && user._tryndUndyingTurns > 0) {
-          user._tryndUndyingTurns -= 1;
-          if (user._tryndUndyingTurns === 0 && user.hp > 0) user.hp = 0;
+    if (user && user.name === "카서스" && user._karthusUndyingTurns) {
+      if (context.lastAction === "turnEnd" && user._karthusUndyingTurns > 0) {
+        user._karthusUndyingTurns -= 1;
+        if (user._karthusUndyingTurns === 0 && user.hp > 0) {
+          user.hp = 0;
         }
       }
     }
   });
 
-  // 케인
+  // 케인: 행동불능 누적
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     const enemy = userData[uid === actingId ? targetId : actingId];
@@ -157,7 +177,7 @@ function processTurn(userData, battle, actingId, targetId, action) {
     }
   });
 
-  // 탈리야
+  // 탈리야: 스킬 피해 40% 증가 리스크
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     if (user && user.name === "탈리야" && context.lastAction === "defend" && context.isSkill) {
@@ -165,62 +185,14 @@ function processTurn(userData, battle, actingId, targetId, action) {
     }
   });
 
-  // 샤코(10턴간 회피율 20% 증가)
-  ["user1", "user2"].forEach(uid => {
-    const user = userData[uid];
-    if (user && user.name === "샤코" && !user._shacoDodgeTurnsInit) {
-      user._shacoDodgeTurnsInit = true;
-      user._shacoDodgeTurns = 10;
-    }
-    if (user && user.name === "샤코" && user._shacoDodgeTurns > 0 && context.lastAction === "turnStart") {
-      context.effects[user.id] = context.effects[user.id] || [];
-      context.effects[user.id].push({ type: "dodgeChanceUp", value: 20, turns: 1 });
-      user._shacoDodgeTurns -= 1;
-    }
-  });
-
-  // 피들스틱(공포의 수확: turnStart에 체크)
-  ["user1", "user2"].forEach(uid => {
-    const user = userData[uid];
-    const enemy = userData[uid === actingId ? targetId : actingId];
-    if (user && user.name === "피들스틱" && context.lastAction === "turnStart") {
-      if (user._fiddleNoAction && Math.random() < 0.5) {
-        context.effects[enemy.id] = context.effects[enemy.id] || [];
-        context.effects[enemy.id].push({ type: "skipNextTurn", turns: 1 });
-        context.effects[enemy.id].push({ type: "damageTakenUpPercent", value: 15, turns: 1 });
-        context.passiveLogs = context.passiveLogs || {};
-        context.passiveLogs[uid] = context.passiveLogs[uid] || [];
-        context.passiveLogs[uid].push("👻 상대 1턴 행동불능 + 받는 피해 15% 증가!");
-      }
-      user._fiddleNoAction = true;
-    }
-    if (user && user.name === "피들스틱" && (context.lastAction === "attack" || context.lastAction === "skill")) {
-      user._fiddleNoAction = false;
-    }
-  });
-
-  // 나르: 변신 이후 보정
-  ["user1", "user2"].forEach(uid => {
-    const user = userData[uid];
-    if (user && user.name === "나르" && user._gnarTransformed) {
-      if (context.lastAction === "attack") {
-        context.damage = Math.floor(context.damage * 1.3);
-      } else if (context.lastAction === "defend" && context.damage > 0) {
-        context.damage = Math.floor(context.damage * 1.1);
-      }
-    }
-  });
-
   let log = '';
   if (action === 'attack') {
     let result = calculateDamage(userData[actingId], userData[targetId], context);
-    userData[targetId].hp = Math.max(0, userData[targetId].hp - result.damage);
-
+    userData[targetId].hp = Math.max(0, safeHP(userData[targetId].hp, userData[targetId].stats.hp) - result.damage);
     userData[targetId]._lastDamageTaken = result.damage;
     userData[targetId]._lastMaxHp = userData[targetId].stats.hp;
-
     log = result.log;
-    runAllPassives(userData, context, actingId, targetId); // 후처리
+    runAllPassives(userData, context, actingId, targetId);
   } else if (action === 'defend') {
     context.effects[actingId] = context.effects[actingId] || [];
     context.effects[actingId].push({ type: "damageReductionPercent", value: 50, turns: 1 });
