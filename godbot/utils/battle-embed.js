@@ -89,8 +89,26 @@ function getPassiveLine(championName) {
   return `🧬 [패시브] ${data.name}: ${data.description}`;
 }
 
-// 메인 배틀 임베드 (battle-ui.js와 100% 호환)
-async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
+// 패시브 발동 로그
+function getPassiveLog(passiveLogs, userId, championName) {
+  if (!passiveLogs) return '현재 패시브 조건이 아닙니다.';
+  const arr = Array.isArray(passiveLogs[userId]) ? passiveLogs[userId] : [];
+  if (arr.length === 0) return '현재 패시브 조건이 아닙니다.';
+  // 최근 N개만 보여주고 싶다면 아래 slice(-3) 등으로 조정 가능
+  return arr.map((msg, i) => `• ${msg}`).join('\n');
+}
+
+// 메인 배틀 임베드 (패시브 발동 로그, 변동 수치 등 100% 반영)
+async function createBattleEmbed(
+  challenger,
+  opponent,
+  battle,
+  userData,
+  turnId,
+  log = '',
+  canUseSkillBtn = true,
+  passiveLogs = null // { [userId]: [msg, ...], ... }
+) {
   const ch = userData[challenger.id || challenger];
   const op = userData[opponent.id || opponent];
 
@@ -107,6 +125,10 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
 
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
   const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
+
+  // 패시브 발동 결과
+  const chPassiveLog = getPassiveLog(passiveLogs, challenger.id || challenger, ch.name);
+  const opPassiveLog = getPassiveLog(passiveLogs, opponent.id || opponent, op.name);
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
@@ -137,6 +159,16 @@ ${getPassiveLine(op.name)}
 `,
         inline: true
       },
+      {
+        name: `🧬 ${ch.name} 패시브 발동`,
+        value: chPassiveLog,
+        inline: true
+      },
+      {
+        name: `🧬 ${op.name} 패시브 발동`,
+        value: opPassiveLog,
+        inline: true
+      },
       { name: '🎯 현재 턴', value: `👉 <@${turnId}> (${isChTurn ? ch.name : op.name})`, inline: false },
       { name: '📢 행동 결과', value: log || '없음', inline: false }
     )
@@ -148,7 +180,6 @@ ${getPassiveLine(op.name)}
 // 배틀 결과 임베드
 async function createResultEmbed(winner, loser, userData, records, interaction, isDraw = false, drawIds = []) {
   if (isDraw) {
-    // 무승부 안내
     const champ1 = userData[drawIds[0]], champ2 = userData[drawIds[1]];
     const stat1 = createStatField(champ1);
     const stat2 = createStatField(champ2);
@@ -167,7 +198,6 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
       .setColor(0xff9800)
       .setTimestamp();
   } else {
-    // 승패 안내
     const winChampName = userData[winner].name;
     const loseChampName = userData[loser].name;
     const winStat = createStatField(userData[winner]);
