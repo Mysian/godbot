@@ -19,7 +19,7 @@ const champBattleSystemFiles = [
   { abs: "../data/champion-users.json", rel: "data/champion-users.json" }
 ];
 
-// 기존 json 데이터 백업용
+// 주요 json 데이터 백업용 (거래소, 파랑 정수 시스템 포함)
 const fileMap = {
   "모든 파일 백업하기": {
     paths: [
@@ -30,6 +30,10 @@ const fileMap = {
       { path: path.join(__dirname, "../data/favor.json"), rel: "data/favor.json" },
       { path: path.join(__dirname, "../activity.json"), rel: "activity.json" },
       { path: path.join(__dirname, "../schedule.json"), rel: "schedule.json" },
+      // 파랑 정수, 거래소 추가
+      { path: path.join(__dirname, "../data/BE.json"), rel: "data/BE.json" },
+      { path: path.join(__dirname, "../data/BE-config.json"), rel: "data/BE-config.json" },
+      { path: path.join(__dirname, "../data/champion-market.json"), rel: "data/champion-market.json" }
     ],
     location: "📦 전체 백업 (모든 폴더구조 유지)"
   },
@@ -61,28 +65,25 @@ const fileMap = {
     path: path.join(__dirname, "../schedule.json"),
     location: "📁 루트 경로"
   },
+  // 파랑 정수, 거래소 등 단일 파일 옵션 추가
+  "파랑 정수 데이터": {
+    path: path.join(__dirname, "../data/BE.json"),
+    location: "📁 data 폴더"
+  },
+  "파랑 정수 설정": {
+    path: path.join(__dirname, "../data/BE-config.json"),
+    location: "📁 data 폴더"
+  },
+  "챔피언 거래소": {
+    path: path.join(__dirname, "../data/champion-market.json"),
+    location: "📁 data 폴더"
+  },
   "챔배시스템파일 백업": {
     files: champBattleSystemFiles,
     desc: "챔피언 배틀 시스템 주요 파일(zip)만 포함",
     zipName: "champ-battle-system-only.zip"
   }
 };
-
-// ★ 폴더 전체 재귀 백업(전체 옵션에서만 사용, 지금 옵션은 사용 안함)
-function addFolderRecursive(zip, absDir, baseDir) {
-  if (!fs.existsSync(absDir)) return;
-  const files = fs.readdirSync(absDir);
-  for (const file of files) {
-    const absPath = path.join(absDir, file);
-    const relPath = path.relative(baseDir, absPath);
-    const stat = fs.statSync(absPath);
-    if (stat.isDirectory()) {
-      addFolderRecursive(zip, absPath, baseDir);
-    } else if (file.endsWith('.js') || file.endsWith('.json')) {
-      zip.addLocalFile(absPath, path.dirname(relPath));
-    }
-  }
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -102,6 +103,9 @@ module.exports = {
           { name: "호감도", value: "호감도" },
           { name: "서버 이용현황 관리 로그", value: "서버 이용현황 관리 로그" },
           { name: "일정", value: "일정" },
+          { name: "파랑 정수 데이터", value: "파랑 정수 데이터" },
+          { name: "파랑 정수 설정", value: "파랑 정수 설정" },
+          { name: "챔피언 거래소", value: "챔피언 거래소" },
           { name: "챔배시스템파일 백업", value: "챔배시스템파일 백업" }
         )
     ),
