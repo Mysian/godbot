@@ -520,6 +520,42 @@ async function startBattleRequest(interaction) {
   });
 }
 
+async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
+  const chId = cur.challenger, opId = cur.opponent;
+  const chHp = cur.hp[chId], opHp = cur.hp[opId];
+  if (chHp <= 0 && opHp <= 0) {
+    if (turnCol && !turnCol.ended) turnCol.stop();
+    const records = load(recordPath);
+    records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+    records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+    records[chId].draw = (records[chId].draw || 0) + 1;
+    records[opId].draw = (records[opId].draw || 0) + 1;
+    save(recordPath, records);
+    const drawEmbed = await createResultEmbed(null, null, userData, records, interaction, true, [chId, opId]);
+    await battleMsg.edit({ content: '🤝 동시 사망 무승부!', embeds: [drawEmbed], components: [] });
+    delete bd[battleId]; save(battlePath, bd);
+    return true;
+  }
+  const loser = chHp <= 0 ? chId : (opHp <= 0 ? opId : null);
+  if (loser) {
+    if (turnCol && !turnCol.ended) turnCol.stop();
+    const winner = loser === chId ? opId : chId;
+    const records = load(recordPath);
+    records[winner] = records[winner] || { name: userData[winner].name, win: 0, draw: 0, lose: 0 };
+    records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
+    records[winner].win++;
+    records[loser].lose++;
+    save(recordPath, records);
+
+    const winEmbed = await createResultEmbed(winner, loser, userData, records, interaction);
+    await battleMsg.edit({ content: '🏆 승리!', embeds: [winEmbed], components: [] });
+    delete bd[battleId]; save(battlePath, bd);
+    return true;
+  }
+  return false;
+}
+
+
 module.exports = {
   startBattleRequest,
   getBattleEmbed
