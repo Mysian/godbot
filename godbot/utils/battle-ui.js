@@ -68,8 +68,8 @@ async function startBattleRequest(interaction) {
     .setTitle('🗡️ 챔피언 배틀 요청')
     .setDescription(`<@${opponent.id}>님, ${challenger.username}님이 챔피언 배틀을 신청했어요!`)
     .addFields(
-      { name: '👑 도전하는 자', value: `${challenger.username}\n**${chData.name}** ( + ${chData.level}강)`, inline: true },
-      { name: '🛡️ 지키는 자',   value: `${opponent.username}\n**${opData.name}** ( + ${opData.level}강)`, inline: true }
+      { name: '👑 도전하는 자', value: `${challenger.username}\n**${chData.name}** (강화 ${chData.level}단계)`, inline: true },
+      { name: '🛡️ 지키는 자',   value: `${opponent.username}\n**${opData.name}** (강화 ${opData.level}단계)`, inline: true }
     )
     .setThumbnail(opIcon)
     .setImage(chIcon)
@@ -77,7 +77,6 @@ async function startBattleRequest(interaction) {
     .setFooter({ text: '30초 내에 의사를 표현하세요.' })
     .setTimestamp();
 
-  // 전투 context에 personalTurns 세팅
   bd[battleId] = {
     challenger: challenger.id,
     opponent:   opponent.id,
@@ -211,14 +210,12 @@ async function startBattleRequest(interaction) {
           log = dmgInfo.log;
           cur.logs.push(log);
 
-          // 내 턴 카운트 증가(내가 행동한 경우에만)
           if (!cur.context.personalTurns) cur.context.personalTurns = {};
           cur.context.personalTurns[uid] = (cur.context.personalTurns[uid] || 0) + 1;
 
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          // 턴 전환
           const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           cur.turn = nextTurn;
           save(battlePath, bd);
@@ -238,14 +235,12 @@ async function startBattleRequest(interaction) {
           log = `🛡️ ${userData[uid].name}이 방어 자세! (다음 턴 피해 ${Math.round(guardPercent * 100)}% 감소)`;
           cur.logs.push(log);
 
-          // 내 턴 카운트 증가
           if (!cur.context.personalTurns) cur.context.personalTurns = {};
           cur.context.personalTurns[uid] = (cur.context.personalTurns[uid] || 0) + 1;
 
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          // 턴 전환
           const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           cur.turn = nextTurn;
           save(battlePath, bd);
@@ -267,14 +262,12 @@ async function startBattleRequest(interaction) {
           log = `✨ ${userData[uid].name}이(가) 점멸을 사용! (다음 공격을 ${(blinkRate * 100).toFixed(1)}% 확률로 회피 시도)`;
           cur.logs.push(log);
 
-          // 내 턴 카운트 증가
           if (!cur.context.personalTurns) cur.context.personalTurns = {};
           cur.context.personalTurns[uid] = (cur.context.personalTurns[uid] || 0) + 1;
 
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          // 턴 전환
           const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           cur.turn = nextTurn;
           save(battlePath, bd);
@@ -306,14 +299,12 @@ async function startBattleRequest(interaction) {
           } else {
             cur.logs.push(log);
 
-            // 탈주 실패만 내 턴 카운트 증가
             if (!cur.context.personalTurns) cur.context.personalTurns = {};
             cur.context.personalTurns[uid] = (cur.context.personalTurns[uid] || 0) + 1;
 
             const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
             if (battleEnd) return;
 
-            // 턴 전환
             const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             cur.turn = nextTurn;
             save(battlePath, bd);
