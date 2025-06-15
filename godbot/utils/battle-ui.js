@@ -9,19 +9,31 @@ const {
   activateGuard,
   tryEscape,
 } = require('./battleEngine');
-const { createResultEmbed, createBattleEmbed } = require('./battle-embed');
+const { createResultEmbed } = require('./battle-embed');
 const passiveSkills = require('./passive-skills');
 const { load, save } = require('./file-db');
+const { getChampionIcon } = require('./champion-utils');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
 const recordPath   = path.join(__dirname, '../data/champion-records.json');
 const battlePath   = path.join(__dirname, '../data/battle-active.json');
 
-// 체력바 (빨간색 10칸)
-function createHpBar(current, max) {
-  const totalBars = 10;
-  const filled = Math.max(0, Math.round((current / max) * totalBars));
-  return "🟥".repeat(filled) + "⬜".repeat(totalBars - filled);
+// 패시브 발동 로그(한 줄씩)
+function getPassiveLogLine(passiveLogs, userId) {
+  if (!passiveLogs) return '';
+  const arr = Array.isArray(passiveLogs[userId]) ? passiveLogs[userId] : [];
+  if (!arr.length) return '';
+  return arr.map(msg => `🧬 ${msg}`).join('\n');
+}
+
+// 패시브 설명 + 발동내역 한 번에
+function getPassiveBlock(championName, passiveLogs, userId) {
+  const skill = passiveSkills[championName];
+  let desc = skill
+    ? `🧬 [패시브] ${skill.name}: ${skill.description}`
+    : "🧬 [패시브] 없음";
+  const logLine = getPassiveLogLine(passiveLogs, userId);
+  return logLine ? `${desc}\n${logLine}` : desc;
 }
 
 // 능력치 diff(증감) 실시간 계산
@@ -67,77 +79,84 @@ function statLines(stats, effects) {
   ].join('\n');
 }
 
-// 현재 적용 중인 패시브 효과를 "상태:" 아래 한 줄에 요약(있으면)
-function getAppliedPassiveEffect(effects = []) {
-  if (!effects || !effects.length) return null;
-  const map = {
-    'stunned': '💫기절',
-    'dot': '☠️중독',
-    'dodgeNextAttack': '💨회피',
-    'damageReduction': '🛡️방어상승',
-    'damageReductionPercent': '🛡️방어상승%',
-    'revive': '🔁부활',
-    'atkBuff': '🟩공격력↑',
-    'atkDown': '🟥공격력↓',
-    'atkUpPercent': '🟩공격력%',
-    'atkDownPercent': '🟥공격력%',
-    'defBuff': '🟦방어력↑',
-    'defDown': '🟥방어력↓',
-    'defUpPercent': '🟦방어력%',
-    'defDownPercent': '🟥방어력%',
-    'magicResistBuff': '🟪마저↑',
-    'magicResistDebuff': '🟧마저↓',
-    'extraAttack': '🔄추가공격',
-    'bonusDamage': '💥부가피해',
-    'execute': '⚔️즉사',
-    'kill': '💀즉사',
-    'dodgeChanceUp': '💨회피확률↑',
-    'dodgeChanceDown': '💨회피확률↓',
-    'damageUpPercent': '💥피해량↑',
-    'damageTakenUpPercent': '🔥받는 피해↑',
-    'damageBuff': '💥피해증가',
-    'damageIncreasePercent': '💥피해증가',
-    'damageReductionPercent': '🛡️피해감소%',
-    'invulnerable': '🛡️무적',
-    'skillBlocked': '🚫스킬봉인',
-    'undying': '💀불사',
-    'blockAttackAndSkill': '❌공격·스킬불가',
-    // ... 필요한 것들 추가
-  };
-  return effects.map(e => map[e.type] || '').filter(Boolean).join(', ') || null;
+// 상태효과(이모지)
+function getBuffDebuffDescription(effects = []) {
+  if (!effects || effects.length === 0) return '정상';
+  const desc = [];
+  for (const e of effects) {
+    if (e.type === 'stunned') desc.push('💫기절');
+    if (e.type === 'dot') desc.push('☠️중독');
+    if (e.type === 'dodgeNextAttack') desc.push('💨회피');
+    if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') desc.push('🛡️방어상승');
+    if (e.type === 'invulnerable') desc.push('🛡️무적');
+    if (e.type === 'revive') desc.push('🔁부활');
+    if (e.type === 'atkBuff') desc.push('🟩공격력↑');
+    if (e.type === 'atkDown') desc.push('🟥공격력↓');
+    if (e.type === 'defBuff') desc.push('🟦방어력↑');
+    if (e.type === 'defDown') desc.push('🟥방어력↓');
+    if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
+    if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
+    if (e.type === 'penBuff') desc.push('🟦관통↑');
+    if (e.type === 'penDown') desc.push('🟥관통↓');
+    if (e.type === 'dodgeBuff') desc.push('💨회피↑');
+    if (e.type === 'dodgeDown') desc.push('💨회피↓');
+    if (e.type === 'extraAttack') desc.push('🔄추가공격');
+    if (e.type === 'bonusDamage') desc.push('💥부가피해');
+    if (e.type === 'execute' || e.type === 'kill') desc.push('⚔️즉사/처형');
+    if (e.type === 'blockAttackAndSkill') desc.push('❌공/스불가');
+    if (e.type === 'skillBlocked') desc.push('🚫스킬봉인');
+    // 필요하면 추가
+  }
+  return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
-// 패시브 설명(상단)
-function getPassiveLine(championName) {
-  const data = passiveSkills[championName];
-  if (!data) return "🧬 [패시브] 없음";
-  return `🧬 [패시브] ${data.name}: ${data.description}`;
-}
-
-// 패시브 발동 로그 → 행동 결과 하단에만!
-function mergePassiveToLog(baseLog, passiveLogs) {
-  if (!passiveLogs || !Array.isArray(passiveLogs) || passiveLogs.length === 0) return baseLog;
-  const emoji = "🧬";
-  return (baseLog ? baseLog + "\n" : '') +
-    passiveLogs.map(msg => `${emoji} 패시브 발동! : ${msg}`).join('\n');
-}
-
-// (실제 임베드는 battle-embed의 createBattleEmbed를 사용!)
-// 이 getBattleEmbed는 예전 호환용. (추후 삭제 가능)
 async function getBattleEmbed(
   challenger, opponent, cur, userData, turnUserId, log, isEnd = false
 ) {
-  // 최신 임베드는 createBattleEmbed 사용 권장!
-  return await createBattleEmbed(
-    challenger,
-    opponent,
-    cur,
-    userData,
-    cur.turn,
-    log,
-    true,
-    cur.context.passiveLogs
-  );
+  const chId = challenger.id || challenger;
+  const opId = opponent.id || opponent;
+  const chData = userData[chId];
+  const opData = userData[opId];
+
+  const chIcon = await getChampionIcon(chData.name);
+  const opIcon = await getChampionIcon(opData.name);
+
+  const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
+  const opEffects = (cur.context.effects && cur.context.effects[opId]) ? cur.context.effects[opId] : [];
+
+  // 패시브 설명+발동내역, 챔피언별
+  const chPassiveBlock = getPassiveBlock(chData.name, cur.context.passiveLogs, chId);
+  const opPassiveBlock = getPassiveBlock(opData.name, cur.context.passiveLogs, opId);
+
+  return new EmbedBuilder()
+    .setTitle('⚔️ 챔피언 배틀')
+    .addFields(
+      {
+        name: `[${chData.name}]`,
+        value: [
+          `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
+          `상태: ${getBuffDebuffDescription(chEffects)}`,
+          statLines(chData.stats, chEffects),
+          chPassiveBlock
+        ].join('\n'),
+        inline: true
+      },
+      {
+        name: `[${opData.name}]`,
+        value: [
+          `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
+          `상태: ${getBuffDebuffDescription(opEffects)}`,
+          statLines(opData.stats, opEffects),
+          opPassiveBlock
+        ].join('\n'),
+        inline: true
+      },
+      { name: '📢 행동 결과', value: log || '없음', inline: false }
+    )
+    .setThumbnail(opIcon)
+    .setImage(chIcon)
+    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
+    .setTimestamp();
 }
 
 async function startBattleRequest(interaction) {
