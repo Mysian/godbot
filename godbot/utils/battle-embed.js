@@ -2,7 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const { getChampionIcon } = require('./champion-utils');
 const passiveSkills = require('./passive-skills');
 
-// 체력바 (빨간색 10칸) + 수치 한줄에
+// 체력바 (한 줄)
 function createHpBarInline(current, max) {
   const total = 10;
   if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) return '⬜'.repeat(total) + ` (0/${max || 0})`;
@@ -82,22 +82,26 @@ function getPassiveBlock(championName, passiveLogs, userId) {
   return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
 }
 
-// [개인 턴 카운트] → [n턴째] or [시작 턴]
+// [개인 턴 카운트] → [n턴째] (무조건 숫자)
 function getPersonalTurnStr(turnUserId, context) {
   const n = context?.personalTurns?.[turnUserId];
-  if (!n || n <= 1) return `[시작 턴]`;
-  return `[${n}턴째]`;
+  return n ? `[${n}턴째]` : `[1턴째]`;
 }
 
-// 가장 마지막으로 나온 행동/패시브/스킬 로그만, 같은 내용 중복 제거
+// 행동/패시브/스킬 로그 → 완전 중복 제거 (딱 한 번만)
 function getLatestUniqueLog(log, context) {
-  const lines = [];
-  if (log) lines.push(log);
-  const arrs = [
-    context?.actionLogs, context?.passiveLogLines, context?.skillLogLines
-  ].map(arr => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null).filter(Boolean);
-  const unique = Array.from(new Set(arrs));
-  return [...lines, ...unique].filter(Boolean).join('\n') || '없음';
+  const logs = [];
+  if (log) logs.push(log);
+  ['actionLogs', 'passiveLogLines', 'skillLogLines'].forEach(key => {
+    const arr = context?.[key];
+    if (Array.isArray(arr) && arr.length) logs.push(arr[arr.length - 1]);
+  });
+  // 완전히 같은 로그라면 한 번만!
+  const unique = [];
+  for (let l of logs) {
+    if (l && !unique.includes(l)) unique.push(l);
+  }
+  return unique.length ? unique.join('\n') : '없음';
 }
 
 // 임베드(행동결과/턴정보/이미지 스왑 포함)
