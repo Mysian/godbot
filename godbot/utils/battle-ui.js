@@ -10,6 +10,7 @@ const {
   tryEscape,
 } = require('./battleEngine');
 const { createResultEmbed } = require('./battle-embed');
+const passiveSkills = require('./passive-skills');
 const { load, save } = require('./file-db');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
@@ -32,7 +33,6 @@ const statEmojis = {
   dodge: "💨"
 };
 
-// 점멸 효과 반영 (파란 강조)
 function getDodgeLine(stats, effects, baseDodge) {
   const blink = effects.find(e => e.type === 'dodgeNextAttack' && e.turns > 0);
   let text = `${statEmojis.dodge} 회피: ${(baseDodge * 100).toFixed(0)}%`;
@@ -42,7 +42,6 @@ function getDodgeLine(stats, effects, baseDodge) {
   return text;
 }
 
-// 능력치 표기(한줄씩, 점멸 효과 반영)
 function statLines(stats, effects) {
   return [
     `${statEmojis.attack} 공격력: ${stats.attack || 0}`,
@@ -53,7 +52,14 @@ function statLines(stats, effects) {
   ].join('\n');
 }
 
-// 임베드 생성: [챔피언 이름] (현재 턴!) / 이미지 하단 배치
+// 패시브
+function getPassiveLine(championName) {
+  const data = passiveSkills[championName];
+  if (!data) return "🧬 [패시브] 없음";
+  return `🧬 [패시브] ${data.name}: ${data.description}`;
+}
+
+// 임베드 생성: [챔피언 이름] (현재 턴!) / 패시브 추가 / 이미지 하단 배치
 async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, log, isEnd = false) {
   const chId = challenger.id || challenger;
   const opId = opponent.id || opponent;
@@ -99,7 +105,8 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
         value: [
           `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
           `상태: ${chState}`,
-          statLines(chData.stats, chEffects)
+          statLines(chData.stats, chEffects),
+          getPassiveLine(chData.name)
         ].join('\n'),
         inline: true
       },
@@ -108,7 +115,8 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
         value: [
           `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
           `상태: ${opState}`,
-          statLines(opData.stats, opEffects)
+          statLines(opData.stats, opEffects),
+          getPassiveLine(opData.name)
         ].join('\n'),
         inline: true
       }
@@ -119,12 +127,10 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
     .setTimestamp();
 }
 
-// ====== 이하 로직/기능은 그대로 ======
 // 승패/무승부 처리
 async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
   const chId = cur.challenger, opId = cur.opponent;
   const chHp = cur.hp[chId], opHp = cur.hp[opId];
-  // 동시 사망 무승부
   if (chHp <= 0 && opHp <= 0) {
     if (turnCol && !turnCol.ended) turnCol.stop();
     const records = load(recordPath);
@@ -138,7 +144,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
     delete bd[battleId]; save(battlePath, bd);
     return true;
   }
-  // 승리/패배
   const loser = chHp <= 0 ? chId : (opHp <= 0 ? opId : null);
   if (loser) {
     if (turnCol && !turnCol.ended) turnCol.stop();
