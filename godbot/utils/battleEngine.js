@@ -139,8 +139,9 @@ function applyEffectsBeforeTurn(userData, battle) {
 function processTurnStart(userData, battle, actingUserId) {
   // 개인턴 증가(0→1로, 이후 +1씩)
   if (!battle.context.personalTurns) battle.context.personalTurns = {};
-  if (!battle.context.personalTurns[actingUserId]) battle.context.personalTurns[actingUserId] = 1;
-  else battle.context.personalTurns[actingUserId] += 1;
+  if (typeof battle.context.personalTurns[actingUserId] !== "number")
+    battle.context.personalTurns[actingUserId] = 0;
+  battle.context.personalTurns[actingUserId] += 1;
 
   runAllPassives('turnStart', userData, battle, actingUserId);
   applyEffectsBeforeTurn(userData, battle);

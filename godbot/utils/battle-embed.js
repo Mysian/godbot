@@ -85,7 +85,7 @@ function getPassiveBlock(championName, passiveLogs, userId) {
 // [개인 턴 카운트] → [n턴째] (무조건 숫자)
 function getPersonalTurnStr(turnUserId, context) {
   const n = context?.personalTurns?.[turnUserId];
-  return n ? `[${n}턴째]` : `[1턴째]`;
+  return `[${n || 1}턴째]`; // n이 없으면 1, 있으면 무조건 n턴째
 }
 
 // 행동/패시브/스킬 로그 → 완전 중복 제거 (딱 한 번만)
