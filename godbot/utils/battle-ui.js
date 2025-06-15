@@ -31,7 +31,6 @@ const statEmojis = {
   penetration: "🔪",
   dodge: "💨"
 };
-
 function statLines(stats) {
   return [
     `${statEmojis.attack} 공격력: ${stats.attack || 0}`,
@@ -40,6 +39,45 @@ function statLines(stats) {
     `${statEmojis.penetration} 관통력: ${stats.penetration || 0}`,
     `${statEmojis.dodge} 회피: ${((stats.dodge || 0) * 100).toFixed(0)}%`
   ].join('\n');
+}
+
+// 승패/무승부 처리 함수
+async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
+  const chId = cur.challenger, opId = cur.opponent;
+  const chHp = cur.hp[chId], opHp = cur.hp[opId];
+
+  // 무승부(동시 사망)
+  if (chHp <= 0 && opHp <= 0) {
+    if (turnCol && !turnCol.ended) turnCol.stop();
+    const records = load(recordPath);
+    records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
+    records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
+    records[chId].draw = (records[chId].draw || 0) + 1;
+    records[opId].draw = (records[opId].draw || 0) + 1;
+    save(recordPath, records);
+    const drawEmbed = await createResultEmbed(null, null, userData, records, interaction, true, [chId, opId]);
+    await battleMsg.edit({ content: '🤝 동시 사망 무승부!', embeds: [drawEmbed], components: [] });
+    delete bd[battleId]; save(battlePath, bd);
+    return true;
+  }
+  // 승리/패배
+  const loser = chHp <= 0 ? chId : (opHp <= 0 ? opId : null);
+  if (loser) {
+    if (turnCol && !turnCol.ended) turnCol.stop();
+    const winner = loser === chId ? opId : chId;
+    const records = load(recordPath);
+    records[winner] = records[winner] || { name: userData[winner].name, win: 0, draw: 0, lose: 0 };
+    records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
+    records[winner].win++;
+    records[loser].lose++;
+    save(recordPath, records);
+
+    const winEmbed = await createResultEmbed(winner, loser, userData, records, interaction);
+    await battleMsg.edit({ content: '🏆 승리!', embeds: [winEmbed], components: [] });
+    delete bd[battleId]; save(battlePath, bd);
+    return true;
+  }
+  return false;
 }
 
 // 임베드 생성: 이미지와 표, 턴 안내 등
@@ -184,7 +222,12 @@ async function startBattleRequest(interaction) {
       turn: challenger.id,
       logs: [],
       usedSkill: {},
-      context: {},
+      context: {
+        effects: {
+          [challenger.id]: [],
+          [opponent.id]: []
+        }
+      },
       turnStartTime: Date.now()
     };
     initBattleContext(bd[battleId]);
@@ -255,6 +298,36 @@ async function startBattleRequest(interaction) {
 
         // === 평타 ===
         if (i.customId === 'attack') {
+          // (회피 판정은 여기서 직접 구현)
+          let dodgeApplied = false;
+          let effectsArr = cur.context.effects[tgt] || [];
+          let dodgeIdx = effectsArr.findIndex(e => e.type === 'dodgeNextAttack' && e.turns > 0);
+          if (dodgeIdx !== -1) {
+            // 점멸 효과 있음 → 회피 시도
+            let dodgeRate = 0.2 + (userData[tgt].stats.dodge || 0);
+            if (Math.random() < dodgeRate) {
+              log = `💨 ${userData[tgt].name}이(가) 점멸로 공격을 회피!`;
+              effectsArr[dodgeIdx].turns = 0;
+              cur.context.effects[tgt] = effectsArr.filter(e => e.turns > 0);
+              cur.logs.push(log);
+              cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+              save(battlePath, bd);
+
+              const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
+              if (battleEnd) return;
+
+              const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+              await i.editReply({ content: '💨 회피 성공!', embeds: [nextEmbed], components: getActionRows() });
+              startTurn();
+              return;
+            } else {
+              // 점멸 효과는 소진
+              effectsArr[dodgeIdx].turns = 0;
+              cur.context.effects[tgt] = effectsArr.filter(e => e.turns > 0);
+              // 계속 공격 진행
+            }
+          }
+          // 일반 공격
           const dmgInfo = calculateDamage(
             { ...userData[uid], id: uid, hp: cur.hp[uid] },
             { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
@@ -275,6 +348,11 @@ async function startBattleRequest(interaction) {
 
           log = dmgInfo.log;
           cur.logs.push(log);
+
+          // 승패 체크 (즉시)
+          const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
+          if (battleEnd) return;
+
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
@@ -289,6 +367,11 @@ async function startBattleRequest(interaction) {
           const guardPercent = activateGuard(cur.context, uid, userData[uid].stats);
           log = `🛡️ ${userData[uid].name}이 방어 자세! (다음 턴 피해 ${Math.round(guardPercent * 100)}% 감소)`;
           cur.logs.push(log);
+
+          // 승패 체크 (즉시)
+          const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
+          if (battleEnd) return;
+
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
@@ -300,10 +383,17 @@ async function startBattleRequest(interaction) {
 
         // === 점멸 ===
         if (i.customId === 'blink') {
+          // 점멸 효과 부여
+          if (!cur.context.effects[uid]) cur.context.effects[uid] = [];
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
           const blinkRate = 0.2 + (userData[uid].stats?.dodge || 0);
           log = `✨ ${userData[uid].name}이(가) 점멸을 사용! (다음 공격을 ${(blinkRate * 100).toFixed(1)}% 확률로 회피 시도합니다)`;
           cur.logs.push(log);
+
+          // 승패 체크 (즉시)
+          const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
+          if (battleEnd) return;
+
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
