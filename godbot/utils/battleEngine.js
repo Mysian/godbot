@@ -27,10 +27,9 @@ function initBattleContext(battle) {
     bonusDamage: {},
     passiveVars: {},
     passiveLogs: {},
-    actionLogs: [], // 모든 행동 공식/내역 로그
-    passiveLogLines: [], // 패시브 공식/내역 로그
-    skillLogLines: [], // 스킬 공식/내역 로그
-    // personalTurns는 이제 battle-ui.js에서만 관리!
+    actionLogs: [],
+    passiveLogLines: [],
+    skillLogLines: [],
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -55,7 +54,6 @@ function initBattleContext(battle) {
     battle.context.bonusDamage[id] = 0;
     battle.context.passiveVars[id] = {};
     battle.context.passiveLogs[id] = [];
-    // personalTurns[id] = 0; <= 완전히 삭제!
   });
   battle.context.turn = 1;
 }
@@ -75,7 +73,7 @@ function logPassive(context, userId, message, detail) {
   if (detail) context.passiveLogLines.push(`${message} ${detail}`);
 }
 
-// 모든 패시브 실행 (공식/내역 로깅 추가)
+// 모든 패시브 실행
 function runAllPassives(trigger, userData, battle, actingUserId, extra = {}) {
   [battle.challenger, battle.opponent].forEach(id => {
     const champName = userData[id]?.name;
@@ -110,7 +108,7 @@ function runAllPassives(trigger, userData, battle, actingUserId, extra = {}) {
   });
 }
 
-// 효과/도트/회복/버프/디버프 등 적용
+// 효과 적용
 function applyEffectsBeforeTurn(userData, battle) {
   [battle.challenger, battle.opponent].forEach(id => {
     const effects = battle.context.effects[id] || [];
@@ -135,9 +133,8 @@ function applyEffectsBeforeTurn(userData, battle) {
   });
 }
 
-// 턴 시작 시 패시브 및 효과 적용
+// 턴 시작
 function processTurnStart(userData, battle, actingUserId) {
-  // personalTurns는 battle-ui.js에서만 관리!
   runAllPassives('turnStart', userData, battle, actingUserId);
   applyEffectsBeforeTurn(userData, battle);
 
@@ -230,7 +227,7 @@ function processTurnStart(userData, battle, actingUserId) {
   });
 }
 
-// 데미지 계산(공식/내역 추가, 행동로그 최신화)
+// 데미지 계산
 function calculateDamage(
   attacker,
   defender,
@@ -290,7 +287,7 @@ function calculateDamage(
     runAllPassives('invulnerable', { [attacker.id]: attacker, [defender.id]: defender }, context, defender.id, { asSkill });
     return { damage: 0, critical: false, log: `${defender.name} 무적 발동!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-  // 기본 피해 공식(+ 공식/내역 표기)
+  // 기본 피해 공식
   const atkStats = attacker.stats ?? attacker;
   const defStats = defender.stats ?? defender;
   let ad = isAttack ? (atkStats.attack || 0) : 0;
@@ -328,7 +325,7 @@ function calculateDamage(
   if (base > 0) log += `${attacker.name}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''} ${logDetail}`;
   context.actionLogs.push(log);
 
-  // 후처리 패시브(추가타, 도트, 즉사, 반사, 흡수 등)
+  // 후처리 패시브
   runAllPassives('postDamage', { [attacker.id]: attacker, [defender.id]: defender }, context, attacker.id, { baseDamage: base, asSkill, detail: logDetail });
 
   // 추가공격
@@ -353,7 +350,7 @@ function calculateDamage(
   };
 }
 
-// 방어(피해감소)
+// 방어
 function activateGuard(context, userId, userStats = {}) {
   let defense = userStats.defense || 0;
   let penetration = userStats.penetration || 0;
