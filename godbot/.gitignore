@@ -4,6 +4,7 @@ data/champion-records.json
 data/champion-enhance-history.json
 data/profiles.json
 data/favor.json
+data/champion-market.json
 /*.json
 activity.json
 schedule.json
