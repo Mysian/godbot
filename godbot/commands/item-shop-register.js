@@ -23,7 +23,7 @@ function saveMarket(market) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("아이템상점:상품등록")
+    .setName("아이템상점등록")
     .setDescription("상점에 판매할 아이템을 등록합니다. (관리자만)")
     .addStringOption(opt =>
       opt.setName("아이템명")
