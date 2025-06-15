@@ -2700,7 +2700,7 @@ module.exports = {
         context.effects[enemy.id].push({ type: "stunned", turns: 1 });
         return "🛡️ 20% 확률! 상대 1턴간 기절!";
       } else {
-        context.effects[user.id].push({ type: "damageReductionPercent", value: 50, turns: 1 });
+        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 50, turns: 1 });
         return "🛡️ 실패! 1턴간 받는 피해 50% 감소!";
       }
     }

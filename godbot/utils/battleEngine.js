@@ -4,7 +4,7 @@ const championData = require('./champion-data');
 const passiveSkills = require('./passive-skills');
 const fileDb = require('./file-db');
 
-// 패시브 실행
+// 패시브 실행 (마지막 로그 1줄만)
 function runAllPassives(userData, context, actingId, targetId) {
   [actingId, targetId].forEach(uid => {
     const user = userData[uid];
@@ -21,12 +21,7 @@ function runAllPassives(userData, context, actingId, targetId) {
       }
       if (log) {
         context.passiveLogs = context.passiveLogs || {};
-        context.passiveLogs[uid] = context.passiveLogs[uid] || [];
-        context.passiveLogs[uid].push(log);
-        // 마지막 로그 한 줄만 남기기 (battle-ui에서 가져감)
-        if (context.passiveLogs[uid].length > 1) {
-          context.passiveLogs[uid] = [context.passiveLogs[uid][context.passiveLogs[uid].length - 1]];
-        }
+        context.passiveLogs[uid] = [log]; // 마지막 한 줄만!
       }
     }
   });
@@ -48,13 +43,13 @@ function applyEffects(user, context, phase) {
   }
 }
 
-// 데미지 계산
+// 데미지 계산 (치명타 포함)
 function calculateDamage(attacker, defender, context, ignoreDef = false) {
   let baseAtk = attacker.stats.attack;
   if (context.damage) baseAtk = context.damage;
   let def = ignoreDef ? 0 : (defender.stats.defense || 0);
 
-  // 관통 처리(카밀, 카이사 등)
+  // 관통 처리
   if (context.defPenetrate !== undefined) {
     def = def * (1 - context.defPenetrate);
   } else if (context.ignoreDefensePercent) {
@@ -62,27 +57,13 @@ function calculateDamage(attacker, defender, context, ignoreDef = false) {
   }
 
   let damage = Math.max(1, Math.floor(baseAtk - def));
-
-  // 피해 관련 버프/디버프
-  if (context.damageBuff) {
-    damage = Math.floor(damage * context.damageBuff);
-  }
-  if (context.damageUpPercent) {
-    damage = Math.floor(damage * (1 + context.damageUpPercent / 100));
-  }
-  if (context.damageReductionPercent) {
-    damage = Math.floor(damage * (1 - context.damageReductionPercent / 100));
-  }
-  if (context.skillDamageIncrease) {
-    damage = Math.floor(damage * (1 + context.skillDamageIncrease));
-  }
-  if (context.damageIncreasePercent) {
-    damage = Math.floor(damage * (1 + context.damageIncreasePercent / 100));
-  }
-  if (context.damageTakenUpPercent) {
-    damage = Math.floor(damage * (1 + context.damageTakenUpPercent / 100));
-  }
-  // 치명타 (이즈리얼, 야스오 등)
+  if (context.damageBuff) damage = Math.floor(damage * context.damageBuff);
+  if (context.damageUpPercent) damage = Math.floor(damage * (1 + context.damageUpPercent / 100));
+  if (context.damageReductionPercent) damage = Math.floor(damage * (1 - context.damageReductionPercent / 100));
+  if (context.skillDamageIncrease) damage = Math.floor(damage * (1 + context.skillDamageIncrease));
+  if (context.damageIncreasePercent) damage = Math.floor(damage * (1 + context.damageIncreasePercent / 100));
+  if (context.damageTakenUpPercent) damage = Math.floor(damage * (1 + context.damageTakenUpPercent / 100));
+  // 치명타
   if (attacker.critChance && Math.random() < attacker.critChance) {
     damage = Math.floor(damage * (attacker.critDamage || 1.5));
     context.critHappened = true;
@@ -92,21 +73,28 @@ function calculateDamage(attacker, defender, context, ignoreDef = false) {
   return { damage, log: `${attacker.name}의 공격! ${defender.name}에게 ${damage} 피해` };
 }
 
-// 턴 처리
+// 턴 처리 (HP 동기화, 총 턴 증가)
 function processTurn(userData, battle, actingId, targetId, action) {
   const context = battle.context;
   context.lastAction = action;
   context.turnUser = actingId;
 
-  // 개인 턴 카운트 올리기 (battle-ui에서도 1씩 추가)
-  context.personalTurns = context.personalTurns || {};
-  context.personalTurns[actingId] = (context.personalTurns[actingId] || 0) + 1;
+  // === 총 턴 증가 ===
+  battle.turn = (battle.turn || 0) + 1;
+  context.globalTurn = battle.turn;
 
   // 효과 버프 배열 생성
   context.effects[actingId] = context.effects[actingId] || [];
   context.effects[targetId] = context.effects[targetId] || [];
 
-  // 이전 턴 기록(제라스 등)
+  // HP 동기화: userData <-> battle.hp
+  ["user1", "user2"].forEach(uid => {
+    if (userData[uid] && typeof battle.hp?.[uid] === "number") {
+      userData[uid].hp = battle.hp[uid];
+    }
+  });
+
+  // 턴 별 로그 기록용
   [actingId, targetId].forEach(uid => {
     const user = userData[uid];
     if (user) {
@@ -117,7 +105,7 @@ function processTurn(userData, battle, actingId, targetId, action) {
 
   runAllPassives(userData, context, actingId, targetId);
 
-  // "세트" 50% 실패시 다음턴 상대 5% 회복
+  // 세트, 아무무 등 기타 개별 챔피언 특수 처리(중복 방지, HP 동기화 필요)
   ["user1", "user2"].forEach(uid => {
     const user = userData[uid];
     const enemy = userData[uid === actingId ? targetId : actingId];
@@ -126,12 +114,7 @@ function processTurn(userData, battle, actingId, targetId, action) {
       enemy.hp = Math.min(enemy.hp + heal, enemy.stats.hp);
       user._setHealEnemyNextTurn = false;
       context.passiveLogs = context.passiveLogs || {};
-      context.passiveLogs[uid] = context.passiveLogs[uid] || [];
-      context.passiveLogs[uid].push(`🥊 50% 실패! 다음 턴 상대 체력 5% 회복!`);
-      // 마지막 로그만 유지
-      if (context.passiveLogs[uid].length > 1) {
-        context.passiveLogs[uid] = [context.passiveLogs[uid][context.passiveLogs[uid].length - 1]];
-      }
+      context.passiveLogs[uid] = [ `🥊 50% 실패! 다음 턴 상대 체력 5% 회복!` ];
     }
   });
 
@@ -193,13 +176,11 @@ function processTurn(userData, battle, actingId, targetId, action) {
   if (action === 'attack') {
     let result = calculateDamage(userData[actingId], userData[targetId], context);
     userData[targetId].hp = Math.max(0, Math.floor(userData[targetId].hp - result.damage));
-    // 동기화
-    userData[targetId].hp = isNaN(userData[targetId].hp) ? 1 : userData[targetId].hp;
-
-    // 제라스: 이번 턴 상대가 받은 피해 저장
-    userData[targetId]._lastDamageTaken = result.damage;
-    userData[targetId]._lastMaxHp = userData[targetId].stats.hp;
-
+    battle.hp[actingId] = userData[actingId].hp;
+    battle.hp[targetId] = userData[targetId].hp;
+    // NaN 방지
+    if (isNaN(battle.hp[actingId]) || battle.hp[actingId] === undefined) battle.hp[actingId] = userData[actingId].stats.hp;
+    if (isNaN(battle.hp[targetId]) || battle.hp[targetId] === undefined) battle.hp[targetId] = userData[targetId].stats.hp;
     log = result.log;
     runAllPassives(userData, context, actingId, targetId);
   } else if (action === 'defend') {
@@ -218,9 +199,11 @@ function processTurn(userData, battle, actingId, targetId, action) {
   applyEffects(userData[actingId], context, 'turnEnd');
   applyEffects(userData[targetId], context, 'turnEnd');
 
-  // HP 최소 0, NaN 방지
-  userData[actingId].hp = isNaN(userData[actingId].hp) ? 1 : Math.max(0, userData[actingId].hp);
-  userData[targetId].hp = isNaN(userData[targetId].hp) ? 1 : Math.max(0, userData[targetId].hp);
+  // HP 최소 0, NaN 방지, battle.hp <-> userData 동기화
+  [actingId, targetId].forEach(uid => {
+    userData[uid].hp = isNaN(userData[uid].hp) ? userData[uid].stats.hp : Math.max(0, userData[uid].hp);
+    battle.hp[uid]   = userData[uid].hp;
+  });
 
   return log;
 }
