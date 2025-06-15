@@ -33,43 +33,84 @@ const statEmojis = {
   dodge: "💨"
 };
 
-function getDodgeLine(stats, effects, baseDodge) {
-  const blink = effects.find(e => e.type === 'dodgeNextAttack' && e.turns > 0);
-  let text = `${statEmojis.dodge} 회피: ${(baseDodge * 100).toFixed(0)}%`;
-  if (blink) {
-    text += " **__+20%__**";
+// 능력치 diff(증감) 실시간 계산
+function getStatDiffs(stats, effects = []) {
+  const diffs = { attack: 0, ap: 0, defense: 0, penetration: 0, dodge: 0 };
+  for (const e of effects) {
+    if (e.type === 'atkBuff') diffs.attack += e.value;
+    if (e.type === 'atkDown') diffs.attack -= e.value;
+    if (e.type === 'apBuff') diffs.ap += e.value;
+    if (e.type === 'apDown') diffs.ap -= e.value;
+    if (e.type === 'defBuff') diffs.defense += e.value;
+    if (e.type === 'defDown') diffs.defense -= e.value;
+    if (e.type === 'penBuff') diffs.penetration += e.value;
+    if (e.type === 'penDown') diffs.penetration -= e.value;
+    if (e.type === 'dodgeBuff') diffs.dodge += e.value;
+    if (e.type === 'dodgeDown') diffs.dodge -= e.value;
   }
-  return text;
+  return diffs;
 }
 
+// 능력치 한줄에 하나씩, diff 표기(+n/-n, 밑줄)
 function statLines(stats, effects) {
+  const diffs = getStatDiffs(stats, effects);
+  const field = (key, name, icon, percent) => {
+    let base = stats[key] || 0;
+    let diff = diffs[key] || 0;
+    let plus = diff ? ` __(${diff > 0 ? '+' : ''}${diff}${percent ? '%' : ''})__` : '';
+    return `${icon} ${name}: ${base}${plus}`;
+  };
   return [
-    `${statEmojis.attack} 공격력: ${stats.attack || 0}`,
-    `${statEmojis.ap} 주문력: ${stats.ap || 0}`,
-    `${statEmojis.defense} 방어력: ${stats.defense || 0}`,
-    `${statEmojis.penetration} 관통력: ${stats.penetration || 0}`,
-    getDodgeLine(stats, effects, stats.dodge || 0)
+    field('attack', '공격력', statEmojis.attack),
+    field('ap',     '주문력', statEmojis.ap),
+    field('defense','방어력', statEmojis.defense),
+    field('penetration','관통력', statEmojis.penetration),
+    field('dodge',  '회피', statEmojis.dodge, true)
   ].join('\n');
 }
 
-// 패시브 설명 추가
+// 현재 적용 중인 패시브 효과를 "상태:" 아래 한 줄에 요약(있으면)
+function getAppliedPassiveEffect(effects = []) {
+  if (!effects || !effects.length) return null;
+  const map = {
+    'stunned': '💫기절',
+    'dot': '☠️중독',
+    'dodgeNextAttack': '💨회피',
+    'damageReduction': '🛡️방어상승',
+    'damageReductionPercent': '🛡️방어상승%',
+    'revive': '🔁부활',
+    'atkBuff': '🟩공격력↑',
+    'atkDown': '🟥공격력↓',
+    'defBuff': '🟦방어력↑',
+    'defDown': '🟥방어력↓',
+    'magicResistBuff': '🟪마저↑',
+    'magicResistDebuff': '🟧마저↓',
+    'extraAttack': '🔄추가공격',
+    'bonusDamage': '💥부가피해',
+    'execute': '⚔️즉사',
+    'kill': '💀즉사',
+  };
+  return effects.map(e => map[e.type] || '').filter(Boolean).join(', ') || null;
+}
+
+// 패시브 설명(상단)
 function getPassiveLine(championName) {
   const data = passiveSkills[championName];
   if (!data) return "🧬 [패시브] 없음";
   return `🧬 [패시브] ${data.name}: ${data.description}`;
 }
 
-// 패시브 발동 로그
-function getPassiveLog(passiveLogs, userId, championName) {
-  if (!passiveLogs) return undefined;
-  const arr = Array.isArray(passiveLogs[userId]) ? passiveLogs[userId] : [];
-  if (arr.length === 0) return '현재 패시브 조건이 아닙니다.';
-  return arr.map(msg => `• ${msg}`).join('\n');
+// 패시브 발동 로그 → 행동 결과 하단에만!
+function mergePassiveToLog(baseLog, passiveLogs) {
+  if (!passiveLogs || !Array.isArray(passiveLogs) || passiveLogs.length === 0) return baseLog;
+  const emoji = "🧬";
+  return (baseLog ? baseLog + "\n" : '') +
+    passiveLogs.map(msg => `${emoji} 패시브 발동! : ${msg}`).join('\n');
 }
 
-// 임베드 생성: 패시브 로그 포함
+// 임베드 생성
 async function getBattleEmbed(
-  challenger, opponent, cur, userData, turnUserId, log, isEnd = false, passiveLogs = null
+  challenger, opponent, cur, userData, turnUserId, log, isEnd = false
 ) {
   const chId = challenger.id || challenger;
   const opId = opponent.id || opponent;
@@ -78,11 +119,14 @@ async function getBattleEmbed(
   const chIcon = await require('./champion-utils').getChampionIcon(chData.name);
   const opIcon = await require('./champion-utils').getChampionIcon(opData.name);
 
-  // 상태(확장 가능)
   const chState = "정상";
   const opState = "정상";
   const nowTurn = cur.turn;
-  const logText = log ? `\n\n📍 **행동 결과**\n${log}` : "";
+  
+  const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
+  const opEffects = (cur.context.effects && cur.context.effects[opId]) ? cur.context.effects[opId] : [];
+  const chApplied = getAppliedPassiveEffect(chEffects);
+  const opApplied = getAppliedPassiveEffect(opEffects);
 
   const chName = chId === nowTurn ? `[${chData.name}] (현재 턴!)` : `[${chData.name}]`;
   const opName = opId === nowTurn ? `[${opData.name}] (현재 턴!)` : `[${opData.name}]`;
@@ -96,19 +140,21 @@ async function getBattleEmbed(
     smallImage = chIcon;
   }
 
-  const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
-  const opEffects = (cur.context.effects && cur.context.effects[opId]) ? cur.context.effects[opId] : [];
-
-  // 패시브 발동 로그
-  const chPassiveLog = getPassiveLog(passiveLogs, chId, chData.name);
-  const opPassiveLog = getPassiveLog(passiveLogs, opId, opData.name);
+  // 패시브 발동 로그만 추출(이전 턴 passiveLogs는 삭제)
+  const chPassiveLog = (cur.context.passiveLogs && Array.isArray(cur.context.passiveLogs[chId]))
+    ? cur.context.passiveLogs[chId] : [];
+  const opPassiveLog = (cur.context.passiveLogs && Array.isArray(cur.context.passiveLogs[opId]))
+    ? cur.context.passiveLogs[opId] : [];
+  
+  // 이 턴에 발동된 모든 패시브 로그만 합침(공격/피격/턴시작 등 여러 개일 수 있음)
+  let mergedLog = mergePassiveToLog(log, [...chPassiveLog, ...opPassiveLog]);
 
   const fields = [
     {
       name: chName,
       value: [
         `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
-        `상태: ${chState}`,
+        `상태: ${chState}${chApplied ? ' / ' + chApplied : ''}`,
         statLines(chData.stats, chEffects),
         getPassiveLine(chData.name)
       ].join('\n'),
@@ -118,65 +164,24 @@ async function getBattleEmbed(
       name: opName,
       value: [
         `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
-        `상태: ${opState}`,
+        `상태: ${opState}${opApplied ? ' / ' + opApplied : ''}`,
         statLines(opData.stats, opEffects),
         getPassiveLine(opData.name)
       ].join('\n'),
       inline: true
     }
   ];
-  // 패시브 로그 표시
-  if (chPassiveLog !== undefined)
-    fields.push({ name: `🧬 ${chData.name} 패시브 발동`, value: chPassiveLog, inline: true });
-  if (opPassiveLog !== undefined)
-    fields.push({ name: `🧬 ${opData.name} 패시브 발동`, value: opPassiveLog, inline: true });
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
     .setDescription(
-      `**지금 차례:** <@${nowTurn}>${logText}`
+      `**지금 차례:** <@${nowTurn}>${mergedLog ? `\n\n📍 **행동 결과**\n${mergedLog}` : ""}`
     )
     .addFields(...fields)
     .setImage(bigImage)
     .setThumbnail(smallImage)
     .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
     .setTimestamp();
-}
-
-// 승패/무승부 처리(동일)
-async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
-  const chId = cur.challenger, opId = cur.opponent;
-  const chHp = cur.hp[chId], opHp = cur.hp[opId];
-  if (chHp <= 0 && opHp <= 0) {
-    if (turnCol && !turnCol.ended) turnCol.stop();
-    const records = load(recordPath);
-    records[chId] = records[chId] || { name: userData[chId].name, win: 0, draw: 0, lose: 0 };
-    records[opId] = records[opId] || { name: userData[opId].name, win: 0, draw: 0, lose: 0 };
-    records[chId].draw = (records[chId].draw || 0) + 1;
-    records[opId].draw = (records[opId].draw || 0) + 1;
-    save(recordPath, records);
-    const drawEmbed = await createResultEmbed(null, null, userData, records, interaction, true, [chId, opId]);
-    await battleMsg.edit({ content: '🤝 동시 사망 무승부!', embeds: [drawEmbed], components: [] });
-    delete bd[battleId]; save(battlePath, bd);
-    return true;
-  }
-  const loser = chHp <= 0 ? chId : (opHp <= 0 ? opId : null);
-  if (loser) {
-    if (turnCol && !turnCol.ended) turnCol.stop();
-    const winner = loser === chId ? opId : chId;
-    const records = load(recordPath);
-    records[winner] = records[winner] || { name: userData[winner].name, win: 0, draw: 0, lose: 0 };
-    records[loser] = records[loser] || { name: userData[loser].name, win: 0, draw: 0, lose: 0 };
-    records[winner].win++;
-    records[loser].lose++;
-    save(recordPath, records);
-
-    const winEmbed = await createResultEmbed(winner, loser, userData, records, interaction);
-    await battleMsg.edit({ content: '🏆 승리!', embeds: [winEmbed], components: [] });
-    delete bd[battleId]; save(battlePath, bd);
-    return true;
-  }
-  return false;
 }
 
 async function startBattleRequest(interaction) {
@@ -359,9 +364,7 @@ async function startBattleRequest(interaction) {
               const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
               if (battleEnd) return;
 
-              const nextEmbed = await getBattleEmbed(
-                challenger, opponent, cur, userData, cur.turn, log, false, cur.context.passiveLogs
-              );
+              const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
               await i.editReply({ content: '💨 회피 성공!', embeds: [nextEmbed], components: getActionRows() });
               startTurn();
               return;
@@ -398,9 +401,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          const nextEmbed = await getBattleEmbed(
-            challenger, opponent, cur, userData, cur.turn, log, false, cur.context.passiveLogs
-          );
+          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
           await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -419,9 +420,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          const nextEmbed = await getBattleEmbed(
-            challenger, opponent, cur, userData, cur.turn, log, false, cur.context.passiveLogs
-          );
+          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
           await i.editReply({ content: '🛡️ 방어 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -442,9 +441,7 @@ async function startBattleRequest(interaction) {
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
 
-          const nextEmbed = await getBattleEmbed(
-            challenger, opponent, cur, userData, cur.turn, log, false, cur.context.passiveLogs
-          );
+          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
           await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
@@ -472,9 +469,7 @@ async function startBattleRequest(interaction) {
             cur.logs.push(log);
             save(battlePath, bd);
 
-            const nextEmbed = await getBattleEmbed(
-              challenger, opponent, cur, userData, cur.turn, log, false, cur.context.passiveLogs
-            );
+            const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
             await i.editReply({ content: '❌ 탈주 실패! (턴 유지)', embeds: [nextEmbed], components: getActionRows() });
             return;
           }
@@ -525,4 +520,7 @@ async function startBattleRequest(interaction) {
   });
 }
 
-module.exports = { startBattleRequest };
+module.exports = {
+  startBattleRequest,
+  getBattleEmbed
+};
