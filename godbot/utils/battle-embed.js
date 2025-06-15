@@ -2,13 +2,13 @@ const { EmbedBuilder } = require('discord.js');
 const { getChampionIcon } = require('./champion-utils');
 const passiveSkills = require('./passive-skills');
 
-// 체력바 (빨간색 10칸)
-function createHpBar(current, max) {
+// 체력바 (빨간색 10칸) + 수치 한줄에
+function createHpBarInline(current, max) {
   const total = 10;
-  if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) return '⬜'.repeat(total);
+  if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) return '⬜'.repeat(total) + ` (0/${max || 0})`;
   const ratio = current / max;
   const filled = Math.min(total, Math.max(0, Math.round(ratio * total)));
-  return '🟥'.repeat(filled) + '⬜'.repeat(total - filled);
+  return '🟥'.repeat(filled) + '⬜'.repeat(total - filled) + ` (${current}/${max})`;
 }
 
 // 상태효과(이모지)
@@ -82,10 +82,11 @@ function getPassiveBlock(championName, passiveLogs, userId) {
   return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
 }
 
-// [개인 턴 카운트] 표시
+// [개인 턴 카운트] → [n턴째] or [시작 턴]
 function getPersonalTurnStr(turnUserId, context) {
-  let turns = context?.personalTurns?.[turnUserId] || 1;
-  return `[개인턴: ${turns}회]`;
+  const n = context?.personalTurns?.[turnUserId];
+  if (!n || n <= 1) return `[시작 턴]`;
+  return `[${n}턴째]`;
 }
 
 // 가장 마지막으로 나온 행동/패시브/스킬 로그만, 같은 내용 중복 제거
@@ -144,7 +145,7 @@ async function createBattleEmbed(
     .addFields(
       {
         name: `[${ch.name}]`,
-        value: `${chp}/${ch.stats.hp} ${createHpBar(chp, ch.stats.hp)}
+        value: `${createHpBarInline(chp, ch.stats.hp)}
 상태: ${chStatus}
 ${createStatField(ch, battle.context.effects[challenger.id || challenger])}
 ${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
@@ -153,7 +154,7 @@ ${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
       },
       {
         name: `[${op.name}]`,
-        value: `${ohp}/${op.stats.hp} ${createHpBar(ohp, op.stats.hp)}
+        value: `${createHpBarInline(ohp, op.stats.hp)}
 상태: ${opStatus}
 ${createStatField(op, battle.context.effects[opponent.id || opponent])}
 ${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
@@ -233,6 +234,6 @@ module.exports = {
   createBattleEmbed,
   createResultEmbed,
   getBuffDebuffDescription,
-  createHpBar,
+  createHpBar: createHpBarInline,
   createStatField,
 };
