@@ -1,7 +1,8 @@
 const { EmbedBuilder } = require('discord.js');
 const { getChampionIcon } = require('./champion-utils');
+const passiveSkills = require('./passive-skills');
 
-// HP바
+// 체력바
 function createHpBar(current, max) {
   const total = 10;
   if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) {
@@ -17,15 +18,19 @@ function getStatusIcons(effects = []) {
   let s = '';
   for (const e of effects) {
     if (e.type === 'stunned') s += '💫';
-    if (e.type === 'dot')     s += '☠️';
+    if (e.type === 'dot') s += '☠️';
     if (e.type === 'dodgeNextAttack') s += '💨';
     if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') s += '🛡️';
     if (e.type === 'revive') s += '🔁';
+    if (e.type === 'extraAttack') s += '🔄';
+    if (e.type === 'bonusDamage') s += '💥';
+    if (e.type === 'execute' || e.type === 'kill') s += '⚔️';
+    // 필요한 효과 추가 가능
   }
   return s;
 }
 
-// 버프/디버프/정상 상태
+// 상태효과 상세
 function getBuffDebuffDescription(effects = []) {
   if (!effects || effects.length === 0) return '정상';
   const desc = [];
@@ -41,16 +46,19 @@ function getBuffDebuffDescription(effects = []) {
     if (e.type === 'defDown') desc.push('🟥방어력↓');
     if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
     if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
-    // 필요시 추가 확장
+    if (e.type === 'extraAttack') desc.push('🔄추가공격');
+    if (e.type === 'bonusDamage') desc.push('💥부가피해');
+    if (e.type === 'execute' || e.type === 'kill') desc.push('⚔️즉사/처형');
+    // 필요하면 추가
   }
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
-// 스탯(버프/디버프 포함)
+// 능력치(버프/디버프 반영)
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
-  let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0;
-  let atkBuf = 0, defBuf = 0, apBuf = 0, mrBuf = 0;
+  let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0, pen = stat.penetration || 0, dodge = stat.dodge || 0;
+  let atkBuf = 0, defBuf = 0, apBuf = 0, mrBuf = 0, penBuf = 0, dodgeBuf = 0;
   for (const e of effects) {
     if (e.type === 'atkBuff') atkBuf += e.value;
     if (e.type === 'atkDown') atkBuf -= e.value;
@@ -58,59 +66,74 @@ function createStatField(user, effects = []) {
     if (e.type === 'defDown') defBuf -= e.value;
     if (e.type === 'magicResistBuff') mrBuf += e.value;
     if (e.type === 'magicResistDebuff') mrBuf -= e.value;
+    if (e.type === 'penBuff') penBuf += e.value;
+    if (e.type === 'penDown') penBuf -= e.value;
+    if (e.type === 'dodgeBuff') dodgeBuf += e.value;
+    if (e.type === 'dodgeDown') dodgeBuf -= e.value;
   }
   const f = (base, buf) => buf ? `${base} ${buf > 0 ? `+${buf}` : `${buf}`}` : `${base}`;
   return (
     `🗡️ 공격력: ${f(atk, atkBuf)}\n` +
-    `🔮 주문력: ${f(ap, apBuf)}\n` +
+    `✨ 주문력: ${f(ap, apBuf)}\n` +
     `🛡️ 방어력: ${f(def, defBuf)}\n` +
-    `✨ 마법저항: ${f(mr, mrBuf)}\n`
+    `🔪 관통력: ${f(pen, penBuf)}\n` +
+    `💨 회피: ${(dodge * 100).toFixed(1)}%${dodgeBuf ? ` ${dodgeBuf > 0 ? `+${(dodgeBuf * 100).toFixed(1)}%` : `${(dodgeBuf * 100).toFixed(1)}%`}` : ''}\n` +
+    `🔮 마법저항: ${f(mr, mrBuf)}\n`
   );
 }
 
-// 메인 배틀 임베드
-async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
-  const ch = userData[challenger.id];
-  const op = userData[opponent.id];
+// 패시브 한 줄 설명
+function getPassiveLine(championName) {
+  const data = passiveSkills[championName];
+  if (!data) return "🧬 [패시브] 없음";
+  return `🧬 [패시브] ${data.name}: ${data.description}`;
+}
 
-  // hp/컨텍스트 hp 값 우선 반영(패시브/리바이브 등 대응)
-  const chp = (battle.context?.hp && battle.context.hp[challenger.id] !== undefined)
-    ? battle.context.hp[challenger.id] : battle.hp[challenger.id];
-  const ohp = (battle.context?.hp && battle.context.hp[opponent.id] !== undefined)
-    ? battle.context.hp[opponent.id] : battle.hp[opponent.id];
+// 메인 배틀 임베드 (battle-ui.js와 100% 호환)
+async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
+  const ch = userData[challenger.id || challenger];
+  const op = userData[opponent.id || opponent];
+
+  // HP값(컨텍스트 우선)
+  const chp = (battle.context?.hp && battle.context.hp[challenger.id || challenger] !== undefined)
+    ? battle.context.hp[challenger.id || challenger] : battle.hp[challenger.id || challenger];
+  const ohp = (battle.context?.hp && battle.context.hp[opponent.id || opponent] !== undefined)
+    ? battle.context.hp[opponent.id || opponent] : battle.hp[opponent.id || opponent];
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
-  const isChTurn = (turnId === challenger.id);
-  const isOpTurn = (turnId === opponent.id);
+  const isChTurn = (turnId === (challenger.id || challenger));
+  const isOpTurn = (turnId === (opponent.id || opponent));
 
-  const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id]);
-  const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id]);
+  const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
+  const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
     .setDescription(
-      `**${challenger.username}** vs **${opponent.username}**\n\n` +
+      `**${ch.name}** vs **${op.name}**\n\n` +
       `👉 **지금 차례: <@${turnId}> (${isChTurn ? ch.name : op.name})**`
     )
     .addFields(
       {
-        name: `👑 ${challenger.username} ${isChTurn ? '👉 (내 턴)' : ''}`,
-        value: `${ch.name} ${getStatusIcons(battle.context.effects[challenger.id])}
+        name: isChTurn ? `[${ch.name}] (현재 턴!)` : `[${ch.name}]`,
+        value: `${getStatusIcons(battle.context.effects[challenger.id || challenger])}
 💖 ${chp}/${ch.stats.hp}
 ${createHpBar(chp, ch.stats.hp)}
 상태: ${chStatus}
-${createStatField(ch, battle.context.effects[challenger.id])}
+${createStatField(ch, battle.context.effects[challenger.id || challenger])}
+${getPassiveLine(ch.name)}
 `,
         inline: true
       },
       {
-        name: `🛡️ ${opponent.username} ${isOpTurn ? '👉 (내 턴)' : ''}`,
-        value: `${op.name} ${getStatusIcons(battle.context.effects[opponent.id])}
+        name: isOpTurn ? `[${op.name}] (현재 턴!)` : `[${op.name}]`,
+        value: `${getStatusIcons(battle.context.effects[opponent.id || opponent])}
 💖 ${ohp}/${op.stats.hp}
 ${createHpBar(ohp, op.stats.hp)}
 상태: ${opStatus}
-${createStatField(op, battle.context.effects[opponent.id])}
+${createStatField(op, battle.context.effects[opponent.id || opponent])}
+${getPassiveLine(op.name)}
 `,
         inline: true
       },
@@ -136,15 +159,15 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
       .setTitle('🤝 무승부!')
       .setDescription('두 챔피언이 동시에 쓰러졌습니다. 무승부로 기록됩니다!')
       .addFields(
-        { name: `${champ1.name} (${interaction.guild.members.cache.get(drawIds[0]).user.username})`, value: stat1, inline: true },
-        { name: `${champ2.name} (${interaction.guild.members.cache.get(drawIds[1]).user.username})`, value: stat2, inline: true },
+        { name: `[${champ1.name}]`, value: stat1, inline: true },
+        { name: `[${champ2.name}]`, value: stat2, inline: true },
       )
       .setThumbnail(icon1)
       .setImage(icon2)
       .setColor(0xff9800)
       .setTimestamp();
   } else {
-    // 기존 승패 안내
+    // 승패 안내
     const winChampName = userData[winner].name;
     const loseChampName = userData[loser].name;
     const winStat = createStatField(userData[winner]);
@@ -156,7 +179,7 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
       .setTitle('🏆 배틀 결과')
       .setDescription(
         `### 👑 **승리자!**\n` +
-        `**${winChampName}** (${interaction.guild.members.cache.get(winner).user.username})\n` +
+        `**${winChampName}** (<@${winner}>)\n` +
         `전적: ${records[winner].win}승 ${records[winner].lose}패 ${records[winner].draw || 0}무\n`
       )
       .addFields(
@@ -174,7 +197,7 @@ async function createResultEmbed(winner, loser, userData, records, interaction, 
       .addFields(
         {
           name: '🪦 패배자!',
-          value: `${loseChampName} (${interaction.guild.members.cache.get(loser).user.username})`,
+          value: `${loseChampName} (<@${loser}>)`,
           inline: false
         }
       )

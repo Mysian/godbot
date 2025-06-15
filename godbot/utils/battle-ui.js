@@ -52,7 +52,7 @@ function statLines(stats, effects) {
   ].join('\n');
 }
 
-// 패시브
+// 패시브 설명 추가
 function getPassiveLine(championName) {
   const data = passiveSkills[championName];
   if (!data) return "🧬 [패시브] 없음";
@@ -353,7 +353,7 @@ async function startBattleRequest(interaction) {
               cur.context.effects[tgt] = effectsArr.filter(e => e.turns > 0);
             }
           }
-          // 일반 공격
+          // 일반 공격(패시브, 부활, 처형, 상태이상, 도트, 추가공격 등 battleEngine에 위임)
           const dmgInfo = calculateDamage(
             { ...userData[uid], id: uid, hp: cur.hp[uid] },
             { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
