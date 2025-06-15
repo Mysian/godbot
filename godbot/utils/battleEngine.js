@@ -22,8 +22,8 @@ function initBattleContext(battle) {
     fear: {},
     confused: {},
     hp: Object.assign({}, battle.hp),
-    guardMode: {},         // ★ 추가: 방어 모드
-    turn: 1,               // ★ 현재 턴수 추적 (필요시 battle 객체와 연동)
+    guardMode: {},
+    turn: 1,
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -43,9 +43,9 @@ function initBattleContext(battle) {
     battle.context.fear[id] = 0;
     battle.context.confused[id] = 0;
     battle.context.reviveFlags[id] = false;
-    battle.context.guardMode[id] = false; // ★ 방어모드 초기화
+    battle.context.guardMode[id] = false;
   });
-  battle.context.turn = 1; // ★ 첫 턴
+  battle.context.turn = 1;
 }
 
 // 턴 시작 시 상태, 패시브, 버프 등 처리
@@ -164,7 +164,7 @@ function processTurnStart(userData, battle, actingUserId) {
     }
   });
 
-  // 턴 카운트 증가 (추가)
+  // 턴 카운트 증가
   battle.context.turn = (battle.context.turn || 1) + 1;
 
   // 상태효과(턴 감소)
@@ -209,30 +209,48 @@ function calculateDamage(
     context.blind[attacker.id]--;
     return { damage: 0, critical: false, log: `${attacker.name}은(는) 실명 상태로 공격에 실패했습니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
-  // ▶ 점멸(회피) 확률 적용 (패시브/버프로 회피율 추가)
+
+  // === 회피 확률 계산 ===
   let dodgeRate = 0.2; // 기본 20%
   if (defender.stats && defender.stats.dodge) dodgeRate += defender.stats.dodge;
+  let dodgeFlag = false;
+
+  // [점멸 효과가 있다면] → 회피율로 dodge 시도, 사용 후 효과 해제
   if (context.dodgeNextAttack?.[defender.id]) {
     context.dodgeNextAttack[defender.id] = false;
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 완벽히 점멸 회피!`, attackerHp: attacker.hp, defenderHp: defender.hp };
+    if (Math.random() < dodgeRate) {
+      dodgeFlag = true;
+    }
+  } else {
+    // [버튼X, 평소 회피] → 회피율로 dodge 시도
+    if (Math.random() < dodgeRate) {
+      dodgeFlag = true;
+    }
   }
-  if (Math.random() < dodgeRate) {
-    return { damage: 0, critical: false, log: `${defender.name}이(가) 회피 성공!`, attackerHp: attacker.hp, defenderHp: defender.hp };
+
+  if (dodgeFlag) {
+    return {
+      damage: 0,
+      critical: false,
+      log: `${defender.name}이(가) 회피 성공!`,
+      attackerHp: attacker.hp,
+      defenderHp: defender.hp
+    };
   }
-  // ▶ 무적
+
+  // 무적
   if (context.invulnerable?.[defender.id]) {
     context.invulnerable[defender.id] = false;
     return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
 
-  // 스탯 준비
+  // === 실제 피해 공식 ===
   const atkStats = attacker.stats ?? attacker;
   const defStats = defender.stats ?? defender;
   let ad = isAttack ? (atkStats.attack || 0) : 0;
   let ap = isAttack ? (atkStats.ap || 0) : 0;
   let pen = atkStats.penetration || 0;
 
-  // 패시브/버프 디버프(마저 감소 등)
   let magicResistDebuff = 0;
   if (context.magicResistDebuff && context.magicResistDebuff[defender.id]) {
     magicResistDebuff = context.magicResistDebuff[defender.id];
@@ -243,48 +261,27 @@ function calculateDamage(
   }
   let defVal = Math.max(0, defense - pen);
 
-  // ▶ 실제 피해 공식 (확장버전)
   let main = Math.max(ad, ap);
   let sub = Math.min(ad, ap);
-  // (공/주 중 큰 값 100% + 작은 값 50%)의 0.5~1.5배 랜덤
   let base = main * 1.0 + sub * 0.5;
   base = Math.max(0, base - defVal);
 
-  // 0.5~1.5배 랜덤 배수
   let ratio = 0.5 + Math.random();
   base = Math.floor(base * ratio);
 
-  // 치명타
   const crit = Math.random() < 0.1;
   if (crit) base = Math.floor(base * 1.5);
 
-  // 더블데미지 등(버프)
   if (isAttack && context.doubleDamage?.[attacker.id]) {
     base *= 2;
     context.doubleDamage[attacker.id] = false;
   }
 
-  // 방어 효과(퍼센트, 고정감소)
   base = Math.max(0, base - (context.flatReduction[defender.id] || 0));
   base = Math.floor(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
-  // 쉴드: 나중에 별도 적용 가능
-
-  // 컨텍스트 HP 동기화
-  if (context && context.hp) {
-    if (attacker.hp !== undefined) context.hp[attacker.id] = attacker.hp;
-    if (defender.hp !== undefined) context.hp[defender.id] = defender.hp;
-  }
-  if (context && context.userData) {
-    if (attacker.hp !== undefined && context.userData[attacker.id]) {
-      context.userData[attacker.id].hp = attacker.hp;
-    }
-    if (defender.hp !== undefined && context.userData[defender.id]) {
-      context.userData[defender.id].hp = defender.hp;
-    }
-  }
   let log = '';
   if (base > 0) {
     log += `${attacker.name}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
@@ -300,15 +297,12 @@ function calculateDamage(
 
 // ▶ 방어(Guard) 기능: 사용 시 다음 턴만 피해 30~70% 감소
 function activateGuard(context, userId, userStats = {}) {
-  // 관통력, 방어력 기반 피해감소율 산정 (관통력 많을수록 방어력 무효화)
   let defense = userStats.defense || 0;
   let penetration = userStats.penetration || 0;
   let guardPercent = 0.3 + Math.random() * 0.4; // 30~70%
-  // 관통력/방어력 보정
   if (defense > 0) {
     guardPercent *= Math.max(0.2, 1 - penetration / (defense * 2));
   }
-  // 적용(해당 유저의 context.percentReduction에)
   context.percentReduction[userId] = Math.round(guardPercent * 100);
   context.guardMode[userId] = true;
   return guardPercent;
