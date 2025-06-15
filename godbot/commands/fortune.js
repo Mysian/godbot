@@ -129,7 +129,7 @@ module.exports = {
 
     // 운세 랜덤 선택
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
-    const result = `<@${userId}> 님, 오늘은 ${fortune}`;
+    const result = `<@${userId}> 님, ${fortune}`;
 
     // 데이터 저장 (오늘 날짜로 기록)
     userData[userId] = today;
