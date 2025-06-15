@@ -19,7 +19,7 @@ const champBattleSystemFiles = [
   { abs: "../data/champion-users.json", rel: "data/champion-users.json" }
 ];
 
-// 주요 json 데이터 백업용 (거래소, 파랑 정수 시스템 포함)
+// 모든 주요 .json 데이터 백업 (거래소/화폐/아이템/인벤토리 포함)
 const fileMap = {
   "모든 파일 백업하기": {
     paths: [
@@ -30,10 +30,12 @@ const fileMap = {
       { path: path.join(__dirname, "../data/favor.json"), rel: "data/favor.json" },
       { path: path.join(__dirname, "../activity.json"), rel: "activity.json" },
       { path: path.join(__dirname, "../schedule.json"), rel: "schedule.json" },
-      // 파랑 정수, 거래소 추가
+      // 파랑 정수, 거래소, 아이템 추가
       { path: path.join(__dirname, "../data/BE.json"), rel: "data/BE.json" },
       { path: path.join(__dirname, "../data/BE-config.json"), rel: "data/BE-config.json" },
-      { path: path.join(__dirname, "../data/champion-market.json"), rel: "data/champion-market.json" }
+      { path: path.join(__dirname, "../data/champion-market.json"), rel: "data/champion-market.json" },
+      { path: path.join(__dirname, "../data/items.json"), rel: "data/items.json" }, // 인벤토리
+      { path: path.join(__dirname, "../data/item-market.json"), rel: "data/item-market.json" } // 아이템상점
     ],
     location: "📦 전체 백업 (모든 폴더구조 유지)"
   },
@@ -65,7 +67,6 @@ const fileMap = {
     path: path.join(__dirname, "../schedule.json"),
     location: "📁 루트 경로"
   },
-  // 파랑 정수, 거래소 등 단일 파일 옵션 추가
   "파랑 정수 데이터": {
     path: path.join(__dirname, "../data/BE.json"),
     location: "📁 data 폴더"
@@ -76,6 +77,14 @@ const fileMap = {
   },
   "챔피언 거래소": {
     path: path.join(__dirname, "../data/champion-market.json"),
+    location: "📁 data 폴더"
+  },
+  "인벤토리": {
+    path: path.join(__dirname, "../data/items.json"),
+    location: "📁 data 폴더"
+  },
+  "아이템상점": {
+    path: path.join(__dirname, "../data/item-market.json"),
     location: "📁 data 폴더"
   },
   "챔배시스템파일 백업": {
@@ -106,6 +115,8 @@ module.exports = {
           { name: "파랑 정수 데이터", value: "파랑 정수 데이터" },
           { name: "파랑 정수 설정", value: "파랑 정수 설정" },
           { name: "챔피언 거래소", value: "챔피언 거래소" },
+          { name: "인벤토리", value: "인벤토리" },
+          { name: "아이템상점", value: "아이템상점" },
           { name: "챔배시스템파일 백업", value: "챔배시스템파일 백업" }
         )
     ),

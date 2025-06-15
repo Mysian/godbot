@@ -4,7 +4,7 @@ const { getBE, loadConfig, transferBE } = require('./be-util');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수송금')
-    .setDescription('다른 유저에게 파랑 정수(BE)를 송금합니다.')
+    .setDescription('다른 유저에게 파랑 정수(BE)를 송금합니다. (수수료 10%) ')
     .addUserOption(opt => opt.setName('유저').setDescription('받을 유저').setRequired(true))
     .addIntegerOption(opt => opt.setName('금액').setDescription('송금할 금액').setRequired(true)),
   async execute(interaction) {
