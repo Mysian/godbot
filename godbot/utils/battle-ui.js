@@ -37,16 +37,16 @@ const statEmojis = {
 function getStatDiffs(stats, effects = []) {
   const diffs = { attack: 0, ap: 0, defense: 0, penetration: 0, dodge: 0 };
   for (const e of effects) {
-    if (e.type === 'atkBuff') diffs.attack += e.value;
-    if (e.type === 'atkDown') diffs.attack -= e.value;
-    if (e.type === 'apBuff') diffs.ap += e.value;
-    if (e.type === 'apDown') diffs.ap -= e.value;
-    if (e.type === 'defBuff') diffs.defense += e.value;
-    if (e.type === 'defDown') diffs.defense -= e.value;
-    if (e.type === 'penBuff') diffs.penetration += e.value;
-    if (e.type === 'penDown') diffs.penetration -= e.value;
-    if (e.type === 'dodgeBuff') diffs.dodge += e.value;
-    if (e.type === 'dodgeDown') diffs.dodge -= e.value;
+    if (e.type === 'atkBuff' || e.type === 'atkUpPercent') diffs.attack += e.value || 0;
+    if (e.type === 'atkDown' || e.type === 'atkDownPercent') diffs.attack -= e.value || 0;
+    if (e.type === 'apBuff' || e.type === 'apUpPercent') diffs.ap += e.value || 0;
+    if (e.type === 'apDown' || e.type === 'apDownPercent') diffs.ap -= e.value || 0;
+    if (e.type === 'defBuff' || e.type === 'defUpPercent') diffs.defense += e.value || 0;
+    if (e.type === 'defDown' || e.type === 'defDownPercent') diffs.defense -= e.value || 0;
+    if (e.type === 'penBuff' || e.type === 'penetrationBuffPercent') diffs.penetration += e.value || 0;
+    if (e.type === 'penDown') diffs.penetration -= e.value || 0;
+    if (e.type === 'dodgeBuff' || e.type === 'dodgeChanceUp') diffs.dodge += e.value || 0;
+    if (e.type === 'dodgeDown') diffs.dodge -= e.value || 0;
   }
   return diffs;
 }
@@ -61,10 +61,10 @@ function statLines(stats, effects) {
     return `${icon} ${name}: ${base}${plus}`;
   };
   return [
-    field('attack', '공격력', statEmojis.attack),
-    field('ap',     '주문력', statEmojis.ap),
-    field('defense','방어력', statEmojis.defense),
-    field('penetration','관통력', statEmojis.penetration),
+    field('attack', '공격력', statEmojis.attack, true),
+    field('ap',     '주문력', statEmojis.ap, true),
+    field('defense','방어력', statEmojis.defense, true),
+    field('penetration','관통력', statEmojis.penetration, true),
     field('dodge',  '회피', statEmojis.dodge, true)
   ].join('\n');
 }
@@ -81,14 +81,30 @@ function getAppliedPassiveEffect(effects = []) {
     'revive': '🔁부활',
     'atkBuff': '🟩공격력↑',
     'atkDown': '🟥공격력↓',
+    'atkUpPercent': '🟩공격력%',
+    'atkDownPercent': '🟥공격력%',
     'defBuff': '🟦방어력↑',
     'defDown': '🟥방어력↓',
+    'defUpPercent': '🟦방어력%',
+    'defDownPercent': '🟥방어력%',
     'magicResistBuff': '🟪마저↑',
     'magicResistDebuff': '🟧마저↓',
     'extraAttack': '🔄추가공격',
     'bonusDamage': '💥부가피해',
     'execute': '⚔️즉사',
     'kill': '💀즉사',
+    'dodgeChanceUp': '💨회피확률↑',
+    'dodgeChanceDown': '💨회피확률↓',
+    'damageUpPercent': '💥피해량↑',
+    'damageTakenUpPercent': '🔥받는 피해↑',
+    'damageBuff': '💥피해증가',
+    'damageIncreasePercent': '💥피해증가',
+    'damageReductionPercent': '🛡️피해감소%',
+    'invulnerable': '🛡️무적',
+    'skillBlocked': '🚫스킬봉인',
+    'undying': '💀불사',
+    'blockAttackAndSkill': '❌공격·스킬불가',
+    // ... 필요한 것들 추가
   };
   return effects.map(e => map[e.type] || '').filter(Boolean).join(', ') || null;
 }
@@ -119,10 +135,8 @@ async function getBattleEmbed(
   const chIcon = await require('./champion-utils').getChampionIcon(chData.name);
   const opIcon = await require('./champion-utils').getChampionIcon(opData.name);
 
-  const chState = "정상";
-  const opState = "정상";
   const nowTurn = cur.turn;
-  
+
   const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
   const opEffects = (cur.context.effects && cur.context.effects[opId]) ? cur.context.effects[opId] : [];
   const chApplied = getAppliedPassiveEffect(chEffects);
@@ -140,13 +154,13 @@ async function getBattleEmbed(
     smallImage = chIcon;
   }
 
-  // 패시브 발동 로그만 추출(이전 턴 passiveLogs는 삭제)
+  // 패시브 발동 로그(각 챔피언별로 1개씩)
   const chPassiveLog = (cur.context.passiveLogs && Array.isArray(cur.context.passiveLogs[chId]))
     ? cur.context.passiveLogs[chId] : [];
   const opPassiveLog = (cur.context.passiveLogs && Array.isArray(cur.context.passiveLogs[opId]))
     ? cur.context.passiveLogs[opId] : [];
-  
-  // 이 턴에 발동된 모든 패시브 로그만 합침(공격/피격/턴시작 등 여러 개일 수 있음)
+
+  // 행동 결과 + 패시브 로그(하단)
   let mergedLog = mergePassiveToLog(log, [...chPassiveLog, ...opPassiveLog]);
 
   const fields = [
@@ -154,7 +168,7 @@ async function getBattleEmbed(
       name: chName,
       value: [
         `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
-        `상태: ${chState}${chApplied ? ' / ' + chApplied : ''}`,
+        `상태: ${chApplied ? chApplied : '정상'}`,
         statLines(chData.stats, chEffects),
         getPassiveLine(chData.name)
       ].join('\n'),
@@ -164,13 +178,25 @@ async function getBattleEmbed(
       name: opName,
       value: [
         `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
-        `상태: ${opState}${opApplied ? ' / ' + opApplied : ''}`,
+        `상태: ${opApplied ? opApplied : '정상'}`,
         statLines(opData.stats, opEffects),
         getPassiveLine(opData.name)
       ].join('\n'),
       inline: true
     }
   ];
+
+  return new EmbedBuilder()
+    .setTitle('⚔️ 챔피언 배틀')
+    .setDescription(
+      `**지금 차례:** <@${nowTurn}>${mergedLog ? `\n\n📍 **행동 결과**\n${mergedLog}` : ""}`
+    )
+    .addFields(...fields)
+    .setImage(bigImage)
+    .setThumbnail(smallImage)
+    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
+    .setTimestamp();
+}
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
