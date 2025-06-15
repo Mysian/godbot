@@ -249,17 +249,20 @@ module.exports = {
       if (modal.user.id !== interactionUserId) return; // 명령어 입력자만
 
       // 검색
-      if (modal.customId === 'champ_search_modal') {
-        filter = modal.fields.getTextInputValue('name');
-        page = 0;
-        market = loadMarket();
-        market = market.filter(item => item.championName.includes(filter));
-        maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
-        embed = await makeMarketEmbed(page, filter, interactionUserId);
-        [row1, row2] = makeButtons(page, maxPage);
-        await modal.reply({ embeds: [embed], components: [row1, row2], ephemeral: false });
-        return;
-      }
+if (modal.customId === 'champ_search_modal') {
+  filter = modal.fields.getTextInputValue('name');
+  page = 0;
+  market = loadMarket();
+  market = market.filter(item => item.championName.includes(filter));
+  maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
+  embed = await makeMarketEmbed(page, filter, interactionUserId);
+  [row1, row2] = makeButtons(page, maxPage);
+
+  // === 기존 메시지(거래소 임베드) 새로고침! ===
+  await interaction.editReply({ embeds: [embed], components: [row1, row2] });
+  await modal.deferUpdate(); // 이미 응답 처리했다고 알림
+  return;
+}
 
       // 구매
       if (modal.customId === 'champ_buy_modal') {
