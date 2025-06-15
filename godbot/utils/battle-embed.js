@@ -28,7 +28,6 @@ function getStatusIcons(effects = []) {
     if (e.type === 'execute' || e.type === 'kill') s += '⚔️';
     if (e.type === 'blockAttackAndSkill') s += '❌';
     if (e.type === 'skillBlocked') s += '🚫';
-    // 필요한 효과 이모지 추가
   }
   return s;
 }
@@ -59,7 +58,6 @@ function getBuffDebuffDescription(effects = []) {
     if (e.type === 'execute' || e.type === 'kill') desc.push('⚔️즉사/처형');
     if (e.type === 'blockAttackAndSkill') desc.push('❌공/스불가');
     if (e.type === 'skillBlocked') desc.push('🚫스킬봉인');
-    // 필요하면 추가
   }
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
@@ -94,22 +92,18 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 패시브 한 줄 설명
-function getPassiveLine(championName) {
+// 패시브 설명과 바로 아래 패시브 발동내역 한 줄씩
+function getPassiveBlock(championName, passiveLogs, userId) {
   const data = passiveSkills[championName];
-  if (!data) return "🧬 [패시브] 없음";
-  return `🧬 [패시브] ${data.name}: ${data.description}`;
+  const desc = data
+    ? `🧬 [패시브] ${data.name}: ${data.description}`
+    : "🧬 [패시브] 없음";
+  const arr = Array.isArray(passiveLogs?.[userId]) ? passiveLogs[userId] : [];
+  if (!arr.length) return desc;
+  return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
 }
 
-// 패시브 발동 로그
-function getPassiveLog(passiveLogs, userId, championName) {
-  if (!passiveLogs) return '현재 패시브 조건이 아닙니다.';
-  const arr = Array.isArray(passiveLogs[userId]) ? passiveLogs[userId] : [];
-  if (arr.length === 0) return '현재 패시브 조건이 아닙니다.';
-  return arr.map((msg) => `🧬 ${msg}`).join('\n');
-}
-
-// 메인 배틀 임베드 (패시브 발동 로그, 변동 수치 등 100% 반영)
+// 메인 배틀 임베드
 async function createBattleEmbed(
   challenger,
   opponent,
@@ -118,7 +112,7 @@ async function createBattleEmbed(
   turnId,
   log = '',
   canUseSkillBtn = true,
-  passiveLogs = null // { [userId]: [msg, ...], ... }
+  passiveLogs = null
 ) {
   const ch = userData[challenger.id || challenger];
   const op = userData[opponent.id || opponent];
@@ -131,56 +125,35 @@ async function createBattleEmbed(
   const iconCh = await getChampionIcon(ch.name);
   const iconOp = await getChampionIcon(op.name);
 
-  const isChTurn = (turnId === (challenger.id || challenger));
-  const isOpTurn = (turnId === (opponent.id || opponent));
-
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
   const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
 
-  // 패시브 발동 결과
-  const chPassiveLog = getPassiveLog(passiveLogs, challenger.id || challenger, ch.name);
-  const opPassiveLog = getPassiveLog(passiveLogs, opponent.id || opponent, op.name);
-
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
-    .setDescription(
-      `**${ch.name}** vs **${op.name}**\n\n` +
-      `👉 **지금 차례: <@${turnId}> (${isChTurn ? ch.name : op.name})**`
-    )
     .addFields(
       {
-        name: isChTurn ? `[${ch.name}] (현재 턴!)` : `[${ch.name}]`,
+        name: `[${ch.name}]`,
         value: `${getStatusIcons(battle.context.effects[challenger.id || challenger])}
 💖 ${chp}/${ch.stats.hp}
 ${createHpBar(chp, ch.stats.hp)}
 상태: ${chStatus}
 ${createStatField(ch, battle.context.effects[challenger.id || challenger])}
-${getPassiveLine(ch.name)}
+${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
 `,
         inline: true
       },
       {
-        name: isOpTurn ? `[${op.name}] (현재 턴!)` : `[${op.name}]`,
+        name: `[${op.name}]`,
         value: `${getStatusIcons(battle.context.effects[opponent.id || opponent])}
 💖 ${ohp}/${op.stats.hp}
 ${createHpBar(ohp, op.stats.hp)}
 상태: ${opStatus}
 ${createStatField(op, battle.context.effects[opponent.id || opponent])}
-${getPassiveLine(op.name)}
+${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
 `,
         inline: true
       },
-      {
-        name: `🧬 ${ch.name} 패시브 발동`,
-        value: chPassiveLog,
-        inline: true
-      },
-      {
-        name: `🧬 ${op.name} 패시브 발동`,
-        value: opPassiveLog,
-        inline: true
-      },
-      { name: '🎯 현재 턴', value: `👉 <@${turnId}> (${isChTurn ? ch.name : op.name})`, inline: false },
+      { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
       { name: '📢 행동 결과', value: log || '없음', inline: false }
     )
     .setThumbnail(iconOp)
