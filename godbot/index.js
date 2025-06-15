@@ -262,8 +262,8 @@ client.on("messageCreate", async (msg) => {
     if (Math.random() < 0.01) {
       const reward = Math.floor(Math.random() * 10) + 1; // 1~10
       addBE(msg.author.id, reward, "채널 주제 보상");
-      // DM으로만 알림 (실패 무시)
-      msg.author.send(`💙 행운! [${msg.channel.name}] 채팅 중 파랑 정수 ${reward} BE를 획득했습니다!`).catch(() => {});
+      // 채팅 채널에만 획득 메시지!
+      msg.channel.send(`💙 <@${msg.author.id}>님이 파랑 정수 ${reward} BE를 획득했습니다!`);
     }
   }
 });
