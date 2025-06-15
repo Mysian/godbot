@@ -378,9 +378,8 @@ async function startBattleRequest(interaction) {
             cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             save(battlePath, bd);
 
-            const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
-            await i.editReply({ content: '❌ 탈주 실패!', embeds: [nextEmbed], components: getActionRows() });
-            startTurn();
+            const nextEmbed = await getBattleEmbed(cur, log, false);
+            await i.editReply({ content: '❌ 탈주 실패! (턴 유지)', embeds: [nextEmbed], components: getActionRows() });
             return;
           }
         }
