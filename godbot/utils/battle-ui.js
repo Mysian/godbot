@@ -68,8 +68,8 @@ async function startBattleRequest(interaction) {
     .setTitle('🗡️ 챔피언 배틀 요청')
     .setDescription(`<@${opponent.id}>님, ${challenger.username}님이 챔피언 배틀을 신청했어요!`)
     .addFields(
-      { name: '👑 도전하는 자', value: `${challenger.username}\n**${chData.name}** (강화 ${chData.level}단계)`, inline: true },
-      { name: '🛡️ 지키는 자',   value: `${opponent.username}\n**${opData.name}** (강화 ${opData.level}단계)`, inline: true }
+      { name: '👑 도전하는 자', value: `${challenger.username}\n**${chData.name}** ( + ${chData.level}강)`, inline: true },
+      { name: '🛡️ 지키는 자',   value: `${opponent.username}\n**${opData.name}** ( + ${opData.level}강)`, inline: true }
     )
     .setThumbnail(opIcon)
     .setImage(chIcon)
