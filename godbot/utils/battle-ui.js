@@ -3,7 +3,7 @@ const {
 } = require('discord.js');
 const path = require('path');
 const { initBattleContext, processTurnStart, calculateDamage } = require('./battleEngine');
-const { createBattleEmbed, createResultEmbed, canUseSkill } = require('./battle-embed');
+const { createBattleEmbed, createResultEmbed } = require('./battle-embed');
 const { load, save } = require('./file-db');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
@@ -219,22 +219,22 @@ async function startBattleRequest(interaction) {
     initBattleContext(bd[battleId]);
     save(battlePath, bd);
 
-    let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true);
+    let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', false);
 
-    const getActionRows = (canUseSkillBtn) => [
+    const getActionRows = () => [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 쉴드').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('blink').setLabel('✨ 점멸').setStyle(ButtonStyle.Primary)
       ),
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬').setStyle(ButtonStyle.Success).setDisabled(!canUseSkillBtn),
+        new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬(준비중)').setStyle(ButtonStyle.Success).setDisabled(true),
         new ButtonBuilder().setCustomId('inventory').setLabel('🎒 인벤토리').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('escape').setLabel('🏃‍♂️ 탈주').setStyle(ButtonStyle.Secondary)
       ),
     ];
 
-    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: getActionRows(true) });
+    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: getActionRows() });
     const battleMsg = await btn.fetchReply();
 
     let turnCol;
@@ -297,26 +297,26 @@ async function startBattleRequest(interaction) {
           actionDone[uid] = actionDone[uid] || { skill: false, done: false };
           actionDone[uid].done = true;
 
-if (i.customId === 'attack') {
-  const dmgInfo = calculateDamage(
-    { ...userData[uid], id: uid, hp: cur.hp[uid] },
-    { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
-    true,
-    cur.context,
-    userData[uid].name,
-    false
-  );
-  // hp 동기화! (아래 딱 3종류만)
-  cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
-  cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
-  if (cur.context.hp) {
-    cur.context.hp[uid] = cur.hp[uid];
-    cur.context.hp[tgt] = cur.hp[tgt];
-  }
-  if (userData[uid]) userData[uid].hp = cur.hp[uid];
-  if (userData[tgt]) userData[tgt].hp = cur.hp[tgt];
+          if (i.customId === 'attack') {
+            const dmgInfo = calculateDamage(
+              { ...userData[uid], id: uid, hp: cur.hp[uid] },
+              { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
+              true,
+              cur.context,
+              userData[uid].name,
+              false
+            );
+            // hp 동기화!
+            cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
+            cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
+            if (cur.context.hp) {
+              cur.context.hp[uid] = cur.hp[uid];
+              cur.context.hp[tgt] = cur.hp[tgt];
+            }
+            if (userData[uid]) userData[uid].hp = cur.hp[uid];
+            if (userData[tgt]) userData[tgt].hp = cur.hp[tgt];
 
-  log = dmgInfo.log;
+            log = dmgInfo.log;
 
             const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
             if (battleEnd) return;
@@ -338,9 +338,9 @@ if (i.customId === 'attack') {
           if (battleEnd) return;
 
           const nextEmbed = await createBattleEmbed(
-            challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
+            challenger, opponent, cur, userData, cur.turn, log, false
           );
-          await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows(canUseSkillBtn(cur)) });
+          await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
@@ -356,8 +356,8 @@ if (i.customId === 'attack') {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur));
-          await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows(canUseSkillBtn(cur)) });
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
@@ -374,58 +374,9 @@ if (i.customId === 'attack') {
           return;
         }
 
-        // 스킬
+        // 스킬 버튼 (아직 준비중)
         if (i.customId === 'skill') {
-          actionDone[uid] = actionDone[uid] || { skill: false, done: false };
-          cur.usedSkill[uid] = cur.usedSkill[uid] || false;
-
-          if (actionDone[uid].skill || cur.usedSkill[uid]) {
-            log = '이 턴엔 이미 스킬을 사용했습니다!';
-          } else {
-            const champName = userData[uid].name;
-            const skillCheck = canUseSkill(uid, champName, cur.context);
-            if (!skillCheck.ok) {
-              log = `❌ 스킬 사용 불가: ${skillCheck.reason}`;
-            } else {
-              const dmgInfo = calculateDamage(
-                { ...userData[uid], id: uid, hp: cur.hp[uid] },
-                { ...userData[tgt], id: tgt, hp: cur.hp[tgt] },
-                true,
-                cur.context,
-                champName,
-                true
-              );
-              // hp 동기화!
-    cur.hp[uid] = dmgInfo.attackerHp ?? cur.hp[uid];
-    cur.hp[tgt] = dmgInfo.defenderHp ?? cur.hp[tgt];
-    if (cur.context.hp) {
-      cur.context.hp[uid] = cur.hp[uid];
-      cur.context.hp[tgt] = cur.hp[tgt];
-  }
-    if (userData[uid]) userData[uid].hp = cur.hp[uid];
-    if (userData[tgt]) userData[tgt].hp = cur.hp[tgt];
-              userData[uid].hp = cur.hp[uid];
-              userData[tgt].hp = cur.hp[tgt];
-
-              log = dmgInfo.log;
-              actionDone[uid].skill = true;
-              cur.usedSkill[uid] = true;
-
-              const cdObj = require('./skills-cooldown')[champName];
-              if (cdObj) {
-                cur.context.cooldowns[uid] = cdObj.cooldown || 1;
-                cur.context.skillTurn[uid] = 0;
-              }
-              const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
-              if (battleEnd) return;
-            }
-          }
-          cur.logs.push(log);
-
-          const nextEmbed = await createBattleEmbed(
-            challenger, opponent, cur, userData, cur.turn, log, canUseSkillBtn(cur)
-          );
-          await i.editReply({ content: '✨ 스킬 사용!', embeds: [nextEmbed], components: getActionRows(canUseSkillBtn(cur)) });
+          await i.reply({ content: '🌟 [아직 준비중입니다.]', ephemeral: true });
           return;
         }
       });
@@ -443,13 +394,6 @@ if (i.customId === 'attack') {
         }
       });
     };
-
-    function canUseSkillBtn(cur) {
-      if (!cur || typeof cur.turn === "undefined") return false;
-      const uid = cur.turn;
-      const champName = userData[uid]?.name;
-      return canUseSkill(uid, champName, cur.context).ok;
-    }
 
     startTurn();
   });
