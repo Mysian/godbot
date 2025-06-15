@@ -31,22 +31,87 @@ const statEmojis = {
   penetration: "🔪",
   dodge: "💨"
 };
-function statLines(stats) {
+
+// 점멸 효과 반영 (파란 강조)
+function getDodgeLine(stats, effects, baseDodge) {
+  const blink = effects.find(e => e.type === 'dodgeNextAttack' && e.turns > 0);
+  let text = `${statEmojis.dodge} 회피: ${(baseDodge * 100).toFixed(0)}%`;
+  if (blink) {
+    // 디스코드에서 파랑 강조: **__+20%__**
+    text += " **__+20%__**";
+  }
+  return text;
+}
+
+// 능력치 표기(한줄씩, 점멸 효과 반영)
+function statLines(stats, effects) {
   return [
     `${statEmojis.attack} 공격력: ${stats.attack || 0}`,
     `${statEmojis.ap} 주문력: ${stats.ap || 0}`,
     `${statEmojis.defense} 방어력: ${stats.defense || 0}`,
     `${statEmojis.penetration} 관통력: ${stats.penetration || 0}`,
-    `${statEmojis.dodge} 회피: ${((stats.dodge || 0) * 100).toFixed(0)}%`
+    getDodgeLine(stats, effects, stats.dodge || 0)
   ].join('\n');
 }
 
-// 승패/무승부 처리 함수
+// 임베드 생성: 멘션+닉네임+챔피언명+상태+능력치(점멸시 파란+20%)
+async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, log, isEnd = false) {
+  const chId = challenger.id || challenger;
+  const opId = opponent.id || opponent;
+  const chData = userData[chId];
+  const opData = userData[opId];
+  const chIcon = await require('./champion-utils').getChampionIcon(chData.name);
+  const opIcon = await require('./champion-utils').getChampionIcon(opData.name);
+
+  // 상태(확장 가능)
+  const chState = "정상";
+  const opState = "정상";
+
+  // 현재 턴
+  const nowTurn = cur.turn;
+  const nowTurnText = `<@${nowTurn}> (${userData[nowTurn].name})`;
+  const logText = log ? `\n\n📍 **행동 결과**\n${log}` : "";
+
+  // 점멸효과 포함한 능력치
+  const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
+  const opEffects = (cur.context.effects && cur.context.effects[opId]) ? cur.context.effects[opId] : [];
+
+  return new EmbedBuilder()
+    .setTitle('⚔️ 챔피언 배틀')
+    .setDescription(
+      `**지금 차례:** ${nowTurnText}${logText}`
+    )
+    .addFields(
+      {
+        name: `<@${chId}> (${userData[chId]?.username || chId}) [${chData.name}]`,
+        value: [
+          `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
+          `상태: ${chState}`,
+          statLines(chData.stats, chEffects)
+        ].join('\n'),
+        inline: true
+      },
+      {
+        name: `<@${opId}> (${userData[opId]?.username || opId}) [${opData.name}]`,
+        value: [
+          `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
+          `상태: ${opState}`,
+          statLines(opData.stats, opEffects)
+        ].join('\n'),
+        inline: true
+      }
+    )
+    .setImage(chIcon)
+    .setThumbnail(opIcon)
+    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
+    .setTimestamp();
+}
+
+// 승패/무승부 처리
 async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
   const chId = cur.challenger, opId = cur.opponent;
   const chHp = cur.hp[chId], opHp = cur.hp[opId];
-
-  // 무승부(동시 사망)
+  // 동시 사망 무승부
   if (chHp <= 0 && opHp <= 0) {
     if (turnCol && !turnCol.ended) turnCol.stop();
     const records = load(recordPath);
@@ -78,59 +143,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
     return true;
   }
   return false;
-}
-
-// 임베드 생성: 이미지와 표, 턴 안내 등
-async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, log, isEnd = false) {
-  // 두 챔피언
-  const chId = challenger.id || challenger;
-  const opId = opponent.id || opponent;
-  const chData = userData[chId];
-  const opData = userData[opId];
-  const chIcon = await require('./champion-utils').getChampionIcon(chData.name);
-  const opIcon = await require('./champion-utils').getChampionIcon(opData.name);
-
-  // 상태: 추후 디버프/이상 등 넣을때 확장
-  const chState = "정상";
-  const opState = "정상";
-
-  // 현재 턴
-  const nowTurn = cur.turn;
-  const nowTurnText = `<@${nowTurn}> (${userData[nowTurn].name})`;
-
-  // 행동 결과
-  const logText = log ? `\n\n📍 **행동 결과**\n${log}` : "";
-
-  // 임베드 필드: 두 명 모두 "닉네임/챔피언:이름", 체력바, 상태, 능력치 5줄씩
-  return new EmbedBuilder()
-    .setTitle('⚔️ 챔피언 배틀')
-    .setDescription(
-      `**지금 차례:** ${nowTurnText}${logText}`
-    )
-    .addFields(
-      {
-        name: `<@${chId}>의 챔피언 : ${chData.name}`,
-        value: [
-          `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
-          `상태: ${chState}`,
-          statLines(chData.stats)
-        ].join('\n'),
-        inline: true
-      },
-      {
-        name: `<@${opId}>의 챔피언 : ${opData.name}`,
-        value: [
-          `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
-          `상태: ${opState}`,
-          statLines(opData.stats)
-        ].join('\n'),
-        inline: true
-      }
-    )
-    .setImage(chIcon)
-    .setThumbnail(opIcon)
-    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
-    .setTimestamp();
 }
 
 async function startBattleRequest(interaction) {
@@ -298,12 +310,10 @@ async function startBattleRequest(interaction) {
 
         // === 평타 ===
         if (i.customId === 'attack') {
-          // (회피 판정은 여기서 직접 구현)
-          let dodgeApplied = false;
+          // 회피 판정 (점멸 효과만)
           let effectsArr = cur.context.effects[tgt] || [];
           let dodgeIdx = effectsArr.findIndex(e => e.type === 'dodgeNextAttack' && e.turns > 0);
           if (dodgeIdx !== -1) {
-            // 점멸 효과 있음 → 회피 시도
             let dodgeRate = 0.2 + (userData[tgt].stats.dodge || 0);
             if (Math.random() < dodgeRate) {
               log = `💨 ${userData[tgt].name}이(가) 점멸로 공격을 회피!`;
@@ -321,10 +331,8 @@ async function startBattleRequest(interaction) {
               startTurn();
               return;
             } else {
-              // 점멸 효과는 소진
               effectsArr[dodgeIdx].turns = 0;
               cur.context.effects[tgt] = effectsArr.filter(e => e.turns > 0);
-              // 계속 공격 진행
             }
           }
           // 일반 공격
@@ -349,7 +357,7 @@ async function startBattleRequest(interaction) {
           log = dmgInfo.log;
           cur.logs.push(log);
 
-          // 승패 체크 (즉시)
+          // 승패 체크
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
@@ -368,7 +376,7 @@ async function startBattleRequest(interaction) {
           log = `🛡️ ${userData[uid].name}이 방어 자세! (다음 턴 피해 ${Math.round(guardPercent * 100)}% 감소)`;
           cur.logs.push(log);
 
-          // 승패 체크 (즉시)
+          // 승패 체크
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
@@ -383,14 +391,13 @@ async function startBattleRequest(interaction) {
 
         // === 점멸 ===
         if (i.customId === 'blink') {
-          // 점멸 효과 부여
           if (!cur.context.effects[uid]) cur.context.effects[uid] = [];
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
           const blinkRate = 0.2 + (userData[uid].stats?.dodge || 0);
           log = `✨ ${userData[uid].name}이(가) 점멸을 사용! (다음 공격을 ${(blinkRate * 100).toFixed(1)}% 확률로 회피 시도합니다)`;
           cur.logs.push(log);
 
-          // 승패 체크 (즉시)
+          // 승패 체크
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
