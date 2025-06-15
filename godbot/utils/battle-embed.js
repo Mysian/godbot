@@ -21,11 +21,14 @@ function getStatusIcons(effects = []) {
     if (e.type === 'dot') s += '☠️';
     if (e.type === 'dodgeNextAttack') s += '💨';
     if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') s += '🛡️';
+    if (e.type === 'invulnerable') s += '🛡️';
     if (e.type === 'revive') s += '🔁';
     if (e.type === 'extraAttack') s += '🔄';
     if (e.type === 'bonusDamage') s += '💥';
     if (e.type === 'execute' || e.type === 'kill') s += '⚔️';
-    // 필요한 효과 추가 가능
+    if (e.type === 'blockAttackAndSkill') s += '❌';
+    if (e.type === 'skillBlocked') s += '🚫';
+    // 필요한 효과 이모지 추가
   }
   return s;
 }
@@ -39,6 +42,7 @@ function getBuffDebuffDescription(effects = []) {
     if (e.type === 'dot') desc.push('☠️중독');
     if (e.type === 'dodgeNextAttack') desc.push('💨회피');
     if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') desc.push('🛡️방어상승');
+    if (e.type === 'invulnerable') desc.push('🛡️무적');
     if (e.type === 'revive') desc.push('🔁부활');
     if (e.type === 'atkBuff') desc.push('🟩공격력↑');
     if (e.type === 'atkDown') desc.push('🟥공격력↓');
@@ -46,9 +50,15 @@ function getBuffDebuffDescription(effects = []) {
     if (e.type === 'defDown') desc.push('🟥방어력↓');
     if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
     if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
+    if (e.type === 'penBuff') desc.push('🟦관통↑');
+    if (e.type === 'penDown') desc.push('🟥관통↓');
+    if (e.type === 'dodgeBuff') desc.push('💨회피↑');
+    if (e.type === 'dodgeDown') desc.push('💨회피↓');
     if (e.type === 'extraAttack') desc.push('🔄추가공격');
     if (e.type === 'bonusDamage') desc.push('💥부가피해');
     if (e.type === 'execute' || e.type === 'kill') desc.push('⚔️즉사/처형');
+    if (e.type === 'blockAttackAndSkill') desc.push('❌공/스불가');
+    if (e.type === 'skillBlocked') desc.push('🚫스킬봉인');
     // 필요하면 추가
   }
   return desc.length > 0 ? desc.join(', ') : '정상';
@@ -62,6 +72,8 @@ function createStatField(user, effects = []) {
   for (const e of effects) {
     if (e.type === 'atkBuff') atkBuf += e.value;
     if (e.type === 'atkDown') atkBuf -= e.value;
+    if (e.type === 'apBuff') apBuf += e.value;
+    if (e.type === 'apDown') apBuf -= e.value;
     if (e.type === 'defBuff') defBuf += e.value;
     if (e.type === 'defDown') defBuf -= e.value;
     if (e.type === 'magicResistBuff') mrBuf += e.value;
@@ -94,8 +106,7 @@ function getPassiveLog(passiveLogs, userId, championName) {
   if (!passiveLogs) return '현재 패시브 조건이 아닙니다.';
   const arr = Array.isArray(passiveLogs[userId]) ? passiveLogs[userId] : [];
   if (arr.length === 0) return '현재 패시브 조건이 아닙니다.';
-  // 최근 N개만 보여주고 싶다면 아래 slice(-3) 등으로 조정 가능
-  return arr.map((msg, i) => `• ${msg}`).join('\n');
+  return arr.map((msg) => `🧬 ${msg}`).join('\n');
 }
 
 // 메인 배틀 임베드 (패시브 발동 로그, 변동 수치 등 100% 반영)
