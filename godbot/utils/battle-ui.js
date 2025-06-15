@@ -375,7 +375,6 @@ async function startBattleRequest(interaction) {
             return;
           } else {
             cur.logs.push(log);
-            cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             save(battlePath, bd);
 
             const nextEmbed = await getBattleEmbed(cur, log, false);
