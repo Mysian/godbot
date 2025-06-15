@@ -9,14 +9,21 @@ const {
   activateGuard,
   tryEscape,
 } = require('./battleEngine');
-const { createResultEmbed } = require('./battle-embed');
+const { createBattleEmbed, createResultEmbed } = require('./battle-embed');
 const { load, save } = require('./file-db');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
 const recordPath   = path.join(__dirname, '../data/champion-records.json');
 const battlePath   = path.join(__dirname, '../data/battle-active.json');
 
-// 예상값 실시간 계산 함수
+// ========== 체력바 생성 ==========
+function createHpBar(current, max) {
+  const totalBars = 10;
+  const filled = Math.max(0, Math.round((current / max) * totalBars));
+  return "🟥".repeat(filled) + "⬜".repeat(totalBars - filled);
+}
+
+// ========== 실시간 예상치 계산 ==========
 function calcRealtimeInfo(attacker, defender, context) {
   const atkStats = attacker.stats || attacker;
   const defStats = defender.stats || defender;
@@ -41,7 +48,7 @@ function calcRealtimeInfo(attacker, defender, context) {
   };
 }
 
-// 전투 종료 및 결과 처리
+// ========== 전투 종료/무승부/부활 등 처리 ==========
 async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
   const chId = cur.challenger, opId = cur.opponent;
   const chp = cur.hp[chId], opp = cur.hp[opId];
@@ -154,40 +161,64 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
   return false;
 }
 
+// ========== 임베드 생성 ==========
+async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, log, isEnd = false) {
+  // 남은 시간
+  const remainTime = cur.turnStartTime
+    ? Math.max(0, 60 - Math.floor((Date.now() - cur.turnStartTime) / 1000))
+    : 60;
+  const attackerId = turnUserId;
+  const defenderId = cur.challenger === attackerId ? cur.opponent : cur.challenger;
+  const attackerData = userData[attackerId];
+  const defenderData = userData[defenderId];
+  const rt = calcRealtimeInfo(attackerData, defenderData, cur.context);
+
+  // 캐릭터 아이콘, 체력바
+  const chIcon = await require('./champion-utils').getChampionIcon(attackerData.name);
+  const opIcon = await require('./champion-utils').getChampionIcon(defenderData.name);
+
+  let embed = new EmbedBuilder()
+    .setTitle('⚔️ 챔피언 배틀')
+    .setDescription(`${log || '행동을 선택하세요!'}`)
+    .addFields(
+      { name: '현재 턴', value: `<@${attackerId}> (${attackerData.name})\n남은 시간: **${remainTime}초**`, inline: false },
+      { name: 'HP', value: 
+        `${createHpBar(cur.hp[cur.challenger], userData[cur.challenger].stats.hp)} (${cur.hp[cur.challenger]} / ${userData[cur.challenger].stats.hp})\n`
+        + `${createHpBar(cur.hp[cur.opponent], userData[cur.opponent].stats.hp)} (${cur.hp[cur.opponent]} / ${userData[cur.opponent].stats.hp})`,
+        inline: false
+      },
+      { name: '👑 능력치 (내 챔피언)', value:
+        `공격력: **${attackerData.stats.attack}**\n주문력: **${attackerData.stats.ap}**\n방어력: **${attackerData.stats.defense}**\n관통력: **${attackerData.stats.penetration}**\n회피: **${(attackerData.stats.dodge || 0) * 100}%**`
+        , inline: true
+      },
+      { name: '🛡️ 능력치 (상대 챔피언)', value:
+        `공격력: **${defenderData.stats.attack}**\n주문력: **${defenderData.stats.ap}**\n방어력: **${defenderData.stats.defense}**\n관통력: **${defenderData.stats.penetration}**\n회피: **${(defenderData.stats.dodge || 0) * 100}%**`
+        , inline: true
+      }
+    )
+    .setThumbnail(chIcon)
+    .setImage(opIcon)
+    .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
+    .setTimestamp();
+
+  // 실시간 예상값 안내 (맨 아래 추가)
+  embed.addFields([
+    {
+      name: '📊 [실시간 예상치]',
+      value: `**평타 데미지:** ${rt.minDmg} ~ ${rt.maxDmg}\n**방어 피해감소:** ${rt.shieldPct}%\n**점멸(회피) 확률:** ${(rt.blinkRate * 100).toFixed(1)}%`,
+      inline: false,
+    }
+  ]);
+  return embed;
+}
+
+// ========== 메인 전투 요청 ==========
 async function startBattleRequest(interaction) {
   const challenger = interaction.user;
   const opponent   = interaction.options.getUser('상대');
   const userData = load(userDataPath);
   const bd       = load(battlePath);
   const battleId = `${challenger.id}_${opponent.id}`;
-
-  async function getBattleEmbed(cur, log, isEnd = false) {
-    const remainTime = Math.max(0, 60 - Math.floor((Date.now() - (cur.turnStartTime || Date.now())) / 1000));
-    const attackerId = cur.turn;
-    const defenderId = cur.challenger === attackerId ? cur.opponent : cur.challenger;
-    const attackerData = userData[attackerId];
-    const defenderData = userData[defenderId];
-    const rt = calcRealtimeInfo(attackerData, defenderData, cur.context);
-
-    let embed = new EmbedBuilder()
-      .setTitle('⚔️ 챔피언 배틀')
-      .setDescription(`${log || '행동을 선택하세요!'}`)
-      .addFields(
-        { name: '현재 턴', value: `<@${attackerId}> (${attackerData.name})\n남은 시간: **${remainTime}초**`, inline: false },
-        { name: 'HP', value: `**${cur.hp[cur.challenger]}** / **${userData[cur.challenger].stats.hp}** vs **${cur.hp[cur.opponent]}** / **${userData[cur.opponent].stats.hp}**`, inline: false },
-      )
-      .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
-      .setTimestamp();
-
-    embed.addFields([
-      {
-        name: '📊 [실시간 예상치]',
-        value: `**평타 데미지:** ${rt.minDmg} ~ ${rt.maxDmg}\n**방어 피해감소:** ${rt.shieldPct}%\n**점멸(회피) 확률:** ${(rt.blinkRate * 100).toFixed(1)}%`,
-        inline: false,
-      }
-    ]);
-    return embed;
-  }
 
   if (challenger.id === opponent.id) {
     return interaction.reply({ content: '❌ 자신과 대전할 수 없습니다.', ephemeral: true });
@@ -209,6 +240,7 @@ async function startBattleRequest(interaction) {
 
   const chData = userData[challenger.id];
   const opData = userData[opponent.id];
+
   const chIcon = await require('./champion-utils').getChampionIcon(chData.name);
   const opIcon = await require('./champion-utils').getChampionIcon(opData.name);
 
@@ -289,7 +321,7 @@ async function startBattleRequest(interaction) {
       ),
     ];
 
-    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [await getBattleEmbed(bd[battleId], '', false)], components: getActionRows() });
+    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [await getBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', false)], components: getActionRows() });
     const battleMsg = await btn.fetchReply();
 
     let turnCol;
@@ -336,6 +368,7 @@ async function startBattleRequest(interaction) {
         const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
         let log = '';
 
+        // === 평타 ===
         if (i.customId === 'attack') {
           const dmgInfo = calculateDamage(
             { ...userData[uid], id: uid, hp: cur.hp[uid] },
@@ -363,11 +396,13 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          await i.editReply({ content: '💥 턴 종료!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
 
+        // === 방어 ===
         if (i.customId === 'defend') {
           const guardPercent = activateGuard(cur.context, uid, userData[uid].stats);
           log = `🛡️ ${userData[uid].name}이 방어 자세! (다음 턴 피해 ${Math.round(guardPercent * 100)}% 감소)`;
@@ -378,11 +413,13 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          await i.editReply({ content: '🛡️ 방어 사용!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          await i.editReply({ content: '🛡️ 방어 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
 
+        // === 점멸 ===
         if (i.customId === 'blink') {
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
           const blinkRate = 0.2 + (userData[uid].stats?.dodge || 0);
@@ -394,11 +431,13 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          await i.editReply({ content: '✨ 점멸 사용!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+          const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
 
+        // === 탈주 ===
         if (i.customId === 'escape') {
           const result = tryEscape(cur.context);
           log = result.log;
@@ -420,12 +459,13 @@ async function startBattleRequest(interaction) {
             cur.logs.push(log);
             save(battlePath, bd);
 
-            const nextEmbed = await getBattleEmbed(cur, log, false);
+            const nextEmbed = await getBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
             await i.editReply({ content: '❌ 탈주 실패! (턴 유지)', embeds: [nextEmbed], components: getActionRows() });
             return;
           }
         }
 
+        // === 인벤토리/스킬(준비중) ===
         if (i.customId === 'inventory') {
           log = '🎒 인벤토리 기능은 추후 업데이트 예정!';
           await i.reply({ content: log, ephemeral: true });
