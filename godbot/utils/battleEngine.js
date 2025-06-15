@@ -30,6 +30,7 @@ function initBattleContext(battle) {
     actionLogs: [], // 모든 행동 공식/내역 로그
     passiveLogLines: [], // 패시브 공식/내역 로그
     skillLogLines: [], // 스킬 공식/내역 로그
+    personalTurns: {}, // 유저별 개인 턴 수 추가!
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -54,6 +55,7 @@ function initBattleContext(battle) {
     battle.context.bonusDamage[id] = 0;
     battle.context.passiveVars[id] = {};
     battle.context.passiveLogs[id] = [];
+    battle.context.personalTurns[id] = 0; // 개인턴 수 0으로 초기화!
   });
   battle.context.turn = 1;
 }
@@ -91,7 +93,6 @@ function runAllPassives(trigger, userData, battle, actingUserId, extra = {}) {
       } catch (e) {
         logPassive(context, id, `⚠️ [에러] 패시브 처리 실패: ${e.message}`);
       }
-      // passive 함수에서 {msg, detail} 또는 string
       if (typeof passiveResult === 'string') {
         logPassive(context, id, passiveResult);
       }
@@ -108,8 +109,6 @@ function runAllPassives(trigger, userData, battle, actingUserId, extra = {}) {
     }
   });
 }
-
-// ...위에서 이어짐
 
 // 효과/도트/회복/버프/디버프 등 적용
 function applyEffectsBeforeTurn(userData, battle) {
@@ -136,8 +135,13 @@ function applyEffectsBeforeTurn(userData, battle) {
   });
 }
 
-// 턴 시작 시 패시브 및 효과
+// 턴 시작 시 패시브 및 효과 + 개인턴 카운트 증가!
 function processTurnStart(userData, battle, actingUserId) {
+  // 개인턴 증가(0→1로, 이후 +1씩)
+  if (!battle.context.personalTurns) battle.context.personalTurns = {};
+  if (!battle.context.personalTurns[actingUserId]) battle.context.personalTurns[actingUserId] = 1;
+  else battle.context.personalTurns[actingUserId] += 1;
+
   runAllPassives('turnStart', userData, battle, actingUserId);
   applyEffectsBeforeTurn(userData, battle);
 
@@ -230,7 +234,7 @@ function processTurnStart(userData, battle, actingUserId) {
   });
 }
 
-// 데미지 계산(모든 공식/내역 추가)
+// 데미지 계산(공식/내역 추가, 행동로그 최신화)
 function calculateDamage(
   attacker,
   defender,
@@ -239,7 +243,6 @@ function calculateDamage(
   championName = null,
   asSkill = false
 ) {
-  // 사전 패시브
   if (championName) {
     runAllPassives('preDamage', { [attacker.id]: attacker, [defender.id]: defender }, { ...context, attacker, defender }, attacker.id, { asSkill });
   }
