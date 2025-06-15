@@ -30,7 +30,7 @@ function initBattleContext(battle) {
     actionLogs: [], // 모든 행동 공식/내역 로그
     passiveLogLines: [], // 패시브 공식/내역 로그
     skillLogLines: [], // 스킬 공식/내역 로그
-    personalTurns: {}, // 유저별 개인 턴 수 추가!
+    // personalTurns는 이제 battle-ui.js에서만 관리!
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -55,7 +55,7 @@ function initBattleContext(battle) {
     battle.context.bonusDamage[id] = 0;
     battle.context.passiveVars[id] = {};
     battle.context.passiveLogs[id] = [];
-    battle.context.personalTurns[id] = 0; // 개인턴 수 0으로 초기화!
+    // personalTurns[id] = 0; <= 완전히 삭제!
   });
   battle.context.turn = 1;
 }
@@ -135,14 +135,9 @@ function applyEffectsBeforeTurn(userData, battle) {
   });
 }
 
-// 턴 시작 시 패시브 및 효과 + 개인턴 카운트 증가!
+// 턴 시작 시 패시브 및 효과 적용
 function processTurnStart(userData, battle, actingUserId) {
-  // 개인턴 증가(0→1로, 이후 +1씩)
-  if (!battle.context.personalTurns) battle.context.personalTurns = {};
-  if (typeof battle.context.personalTurns[actingUserId] !== "number")
-    battle.context.personalTurns[actingUserId] = 0;
-  battle.context.personalTurns[actingUserId] += 1;
-
+  // personalTurns는 battle-ui.js에서만 관리!
   runAllPassives('turnStart', userData, battle, actingUserId);
   applyEffectsBeforeTurn(userData, battle);
 
