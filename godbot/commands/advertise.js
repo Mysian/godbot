@@ -22,10 +22,9 @@ module.exports = {
       option
         .setName("음성채널")
         .setDescription("모집할 음성 채널을 선택하세요.")
-        .setRequired(true)
+        .setRequired(false)
         .addChoices(
-          { name: "🎙️ 경비실", value: "1318601171522293811" },
-          { name: "🎙️ 방재실", value: "1349257903210758164" },
+          // 경비실, 방재실 삭제
           { name: "🎙️ 101호", value: "1222085152600096778" },
           { name: "🎙️ 102호", value: "1222085194706587730" },
           { name: "🎙️ 201호", value: "1230536383941050368" },
@@ -68,7 +67,10 @@ module.exports = {
       .setDescription(content)
       .addFields(
         { name: "모집 인원", value: `${count}명`, inline: true },
-        { name: "음성 채널", value: `<#${voiceId}>`, inline: true },
+        // 음성채널이 있으면 추가, 없으면 생략
+        ...(voiceId
+          ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }]
+          : []),
         { name: "모집자", value: `<@${interaction.user.id}>`, inline: true },
       )
       .setColor(0x57c3ff)

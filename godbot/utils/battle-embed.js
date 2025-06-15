@@ -1,7 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
 const { getChampionIcon } = require('./champion-utils');
-const skills = require('./skills');
-const skillCd = require('./skills-cooldown');
 
 // HP바
 function createHpBar(current, max) {
@@ -70,39 +68,6 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 스킬 사용 가능 여부
-function canUseSkill(userId, champName, context) {
-  const cdObj = skillCd[champName];
-  const minTurn = cdObj?.minTurn || 1;
-  const cooldown = cdObj?.cooldown || 1;
-  const turn = context.skillTurn?.[userId] ?? 0;
-  const remain = context.cooldowns?.[userId] ?? 0;
-  if (turn < minTurn) {
-    return { ok: false, reason: `${minTurn}턴 이후부터 사용 가능 (내 턴 ${turn}회 경과)` };
-  }
-  if (remain > 0) {
-    return { ok: false, reason: `쿨타임: ${remain}턴 남음` };
-  }
-  return { ok: true };
-}
-
-// 스킬 설명란
-function createSkillField(userId, champName, context) {
-  const skillObj = skills[champName];
-  const cdObj = skillCd[champName];
-  if (!skillObj || !cdObj) return '스킬 정보 없음';
-  const { name, description } = skillObj;
-  const { minTurn, cooldown } = cdObj;
-  const turn = context.skillTurn?.[userId] ?? 0;
-  const remain = context.cooldowns?.[userId] ?? 0;
-  const check = canUseSkill(userId, champName, context);
-  let txt = `✨ **${name}**\n${description}\n`;
-  txt += `⏳ 최소 ${minTurn || 1}턴 후 사용, 쿨타임: ${cooldown || 1}턴\n`;
-  txt += `내 턴 횟수: ${turn}, 남은 쿨다운: ${remain}\n`;
-  txt += check.ok ? '🟢 **사용 가능!**' : `🔴 사용 불가: ${check.reason}`;
-  return txt;
-}
-
 // 메인 배틀 임베드
 async function createBattleEmbed(challenger, opponent, battle, userData, turnId, log = '', canUseSkillBtn = true) {
   const ch = userData[challenger.id];
@@ -136,7 +101,6 @@ async function createBattleEmbed(challenger, opponent, battle, userData, turnId,
 ${createHpBar(chp, ch.stats.hp)}
 상태: ${chStatus}
 ${createStatField(ch, battle.context.effects[challenger.id])}
-${createSkillField(challenger.id, ch.name, battle.context)}
 `,
         inline: true
       },
@@ -147,7 +111,6 @@ ${createSkillField(challenger.id, ch.name, battle.context)}
 ${createHpBar(ohp, op.stats.hp)}
 상태: ${opStatus}
 ${createStatField(op, battle.context.effects[opponent.id])}
-${createSkillField(opponent.id, op.name, battle.context)}
 `,
         inline: true
       },
@@ -229,6 +192,4 @@ module.exports = {
   createHpBar,
   getStatusIcons,
   createStatField,
-  canUseSkill,
-  createSkillField,
 };
