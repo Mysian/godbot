@@ -1,5 +1,3 @@
-const skills = require('./skills');
-const skillCd = require('./skills-cooldown');
 const passiveSkills = require('./passive-skills'); // ★ 패시브 불러오기
 
 // 전투 시작 시 컨텍스트 초기화
@@ -178,25 +176,6 @@ function processTurnStart(userData, battle, actingUserId) {
   });
 }
 
-// 쿨다운, 최소 턴 체크 로직
-function canUseSkill(userId, championName, context) {
-  const cdInfo = skillCd[championName];
-  if (!cdInfo) return { ok: false, reason: '쿨타임 정보 없음' };
-  const minTurn = cdInfo.minTurn || 1;
-  const cooldown = cdInfo.cooldown || 1;
-  const nowTurn = context.skillTurn[userId] || 1;
-  if (context.skillBlocked && context.skillBlocked[userId] > 0) {
-    return { ok: false, reason: `스킬 봉인 효과로 스킬 사용 불가!` };
-  }
-  if (nowTurn < minTurn) {
-    return { ok: false, reason: `최소 ${minTurn}턴 이후 사용 가능! (현재: ${nowTurn}턴)` };
-  }
-  if (context.cooldowns[userId] > 0) {
-    return { ok: false, reason: `쿨다운 ${context.cooldowns[userId]}턴 남음!` };
-  }
-  return { ok: true };
-}
-
 // 데미지 계산 (상태효과 반영)
 function calculateDamage(
   attacker,
@@ -206,8 +185,6 @@ function calculateDamage(
   championName = null,
   asSkill = false
 ) {
-  let skillResult = undefined;
-
   // 행동불능 (기절, 공포, 혼란)
   if (
     context.effects?.[attacker.id]?.some(e => e.type === 'stunned') ||
@@ -237,10 +214,6 @@ function calculateDamage(
   if (context.invulnerable?.[defender.id]) {
     context.invulnerable[defender.id] = false;
     return { damage: 0, critical: false, log: `${defender.name}이(가) 무적! 피해 0`, attackerHp: attacker.hp, defenderHp: defender.hp };
-  }
-  if (asSkill && context.blockSkill && context.blockSkill[defender.id] > 0) {
-    context.blockSkill[defender.id]--;
-    return { damage: 0, critical: false, log: `${defender.name}은(는) 스킬 피해를 무효화했습니다!`, attackerHp: attacker.hp, defenderHp: defender.hp };
   }
 
   const atkStats = attacker.stats ?? attacker;
@@ -284,60 +257,8 @@ function calculateDamage(
     base * (1 - ((context.percentReduction[defender.id] || 0) / 100))
   );
 
-  let skillLog = '';
-  let skillName = '';
-  let skillDesc = '';
-  let effectMsg = '';
-  let usedSkill = false;
-  let addEffectArr = [];
-  let extraAttack = false;
-  let extraTurn = false;
-
-  if (
-    championName &&
-    skills[championName] &&
-    typeof skills[championName].effect === 'function' &&
-    asSkill
-  ) {
-    const check = canUseSkill(attacker.id, championName, context);
-    if (!check.ok) {
-      return { damage: 0, critical: false, log: `❌ 스킬 사용 불가: ${check.reason}`, attackerHp: attacker.hp, defenderHp: defender.hp };
-    }
-    skillName = skills[championName].name;
-    skillDesc = skills[championName].description;
-    usedSkill = true;
-
-    skillResult = skills[championName].effect(
-      attacker, defender, isAttack, base, context
-    );
-    if (typeof skillResult === 'object' && skillResult !== null) {
-      base = skillResult.baseDamage ?? base;
-      if (skillResult.log) effectMsg = skillResult.log;
-      if (Array.isArray(skillResult.addEffect)) addEffectArr = skillResult.addEffect;
-      if (skillResult.extraAttack) extraAttack = true;
-      if (skillResult.extraTurn) extraTurn = true;
-    } else {
-      base = skillResult;
-    }
-    const cdInfo = skillCd[championName] || {};
-    context.cooldowns[attacker.id] = cdInfo.cooldown || 1;
-    context.skillUsed[attacker.id] = context.skillTurn[attacker.id];
-  }
-
-  // addEffect 처리 (ex: 점멸, 쉴드 등 신규 상태 자연스럽게 지원)
-  if (addEffectArr.length && context.effects) {
-    for (const eff of addEffectArr) {
-      if (eff.target === 'attacker') {
-        context.effects[attacker.id].push(eff.effect);
-      } else {
-        context.effects[defender.id].push(eff.effect);
-        if (eff.effect.type === 'execute') {
-          defender.hp = 0;
-          if (context.hp) context.hp[defender.id] = 0;
-        }
-      }
-    }
-  }
+  // 상태효과: 점멸, 쉴드, execute 등 addEffect 등도 남겨둠 (패시브 대비)
+  // 스킬 호출은 없음
 
   if (context && context.hp) {
     if (attacker.hp !== undefined) context.hp[attacker.id] = attacker.hp;
@@ -353,14 +274,7 @@ function calculateDamage(
   }
 
   let log = '';
-  if (usedSkill) {
-    log += `\n✨ **${atkName}가 「${skillName}」를 사용합니다!**\n`;
-    log += `> _${skillDesc}_\n`;
-  }
-  if (effectMsg) {
-    log += `➡️ **${effectMsg}**\n`;
-  }
-  if (base > 0 && (!skillResult || skillResult.baseDamage > 0)) {
+  if (base > 0) {
     log += `${atkName}의 공격: ${Math.round(base)}${crit ? ' 💥크리티컬!' : ''}`;
   }
 
@@ -368,8 +282,6 @@ function calculateDamage(
     damage: Math.round(base),
     critical: crit,
     log,
-    extraAttack,
-    extraTurn,
     attackerHp: attacker.hp,
     defenderHp: defender.hp
   };
@@ -378,6 +290,5 @@ function calculateDamage(
 module.exports = {
   initBattleContext,
   processTurnStart,
-  calculateDamage,
-  canUseSkill
+  calculateDamage
 };
