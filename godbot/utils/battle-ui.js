@@ -18,83 +18,19 @@ const userDataPath = path.join(__dirname, '../data/champion-users.json');
 const recordPath   = path.join(__dirname, '../data/champion-records.json');
 const battlePath   = path.join(__dirname, '../data/battle-active.json');
 
-// 체력바 (빨간색 10칸)
-function createHpBar(current, max) {
-  const totalBars = 10;
-  const filled = Math.max(0, Math.round((current / max) * totalBars));
-  return "🟥".repeat(filled) + "⬜".repeat(totalBars - filled);
-}
-
-// 패시브 설명 + 발동내역 한 번에
-function getPassiveBlock(championName, passiveLogs, userId) {
-  const skill = passiveSkills[championName];
-  let desc = skill
-    ? `🧬 [패시브] ${skill.name}: ${skill.description}`
-    : "🧬 [패시브] 없음";
-  const arr = Array.isArray(passiveLogs[userId]) ? passiveLogs[userId] : [];
-  return arr.length ? `${desc}\n${arr.map(msg => `🧬 ${msg}`).join('\n')}` : desc;
-}
-
-// 상태효과(이모지)
-function getBuffDebuffDescription(effects = []) {
-  if (!effects || effects.length === 0) return '정상';
-  const desc = [];
-  for (const e of effects) {
-    if (e.type === 'stunned') desc.push('💫기절');
-    if (e.type === 'dot') desc.push('☠️중독');
-    if (e.type === 'dodgeNextAttack') desc.push('💨회피');
-    if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') desc.push('🛡️방어상승');
-    if (e.type === 'invulnerable') desc.push('🛡️무적');
-    if (e.type === 'revive') desc.push('🔁부활');
-    if (e.type === 'atkBuff') desc.push('🟩공격력↑');
-    if (e.type === 'atkDown') desc.push('🟥공격력↓');
-    if (e.type === 'defBuff') desc.push('🟦방어력↑');
-    if (e.type === 'defDown') desc.push('🟥방어력↓');
-    if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
-    if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
-    if (e.type === 'penBuff') desc.push('🟦관통↑');
-    if (e.type === 'penDown') desc.push('🟥관통↓');
-    if (e.type === 'dodgeBuff') desc.push('💨회피↑');
-    if (e.type === 'dodgeDown') desc.push('💨회피↓');
-    if (e.type === 'extraAttack') desc.push('🔄추가공격');
-    if (e.type === 'bonusDamage') desc.push('💥부가피해');
-    if (e.type === 'execute' || e.type === 'kill') desc.push('⚔️즉사/처형');
-    if (e.type === 'blockAttackAndSkill') desc.push('❌공/스불가');
-    if (e.type === 'skillBlocked') desc.push('🚫스킬봉인');
-  }
-  return desc.length > 0 ? desc.join(', ') : '정상';
-}
-
-// 능력치 한줄에 하나씩, diff 표기(+n/-n, 밑줄)
-function statLines(stats, effects) {
-  // ... (stat diff 계산 부분도 이전과 동일하게 들어갈 수 있음)
-  return ""; // (battle-embed에서 이미 처리됨. 중복 제거)
-}
-
-// 행동결과 + 공식/내역(log) 하단 표기
-function mergeAllLogs(mainLog, actionLogs, passiveLines, skillLines) {
-  let arr = [];
-  if (mainLog) arr.push(mainLog);
-  if (Array.isArray(actionLogs) && actionLogs.length) arr.push(...actionLogs);
-  if (Array.isArray(passiveLines) && passiveLines.length) arr.push(...passiveLines.map(l => `🧬 ${l}`));
-  if (Array.isArray(skillLines) && skillLines.length) arr.push(...skillLines.map(l => `🌟 ${l}`));
-  return arr.length ? arr.join('\n') : '없음';
-}
-
-async function getBattleEmbed(
-  challenger, opponent, cur, userData, turnUserId, log, isEnd = false
-) {
-  // 최신 임베드는 createBattleEmbed 사용 권장!
-  return await createBattleEmbed(
-    challenger,
-    opponent,
-    cur,
-    userData,
-    cur.turn,
-    log,
-    true,
-    cur.context.passiveLogs
-  );
+function getActionRows() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 방어').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('blink').setLabel('✨ 점멸').setStyle(ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬(준비중)').setStyle(ButtonStyle.Success).setDisabled(true),
+      new ButtonBuilder().setCustomId('inventory').setLabel('🎒 인벤토리').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('escape').setLabel('🏃‍♂️ 탈주').setStyle(ButtonStyle.Secondary)
+    ),
+  ];
 }
 
 async function startBattleRequest(interaction) {
@@ -141,7 +77,34 @@ async function startBattleRequest(interaction) {
     .setFooter({ text: '30초 내에 의사를 표현하세요.' })
     .setTimestamp();
 
-  bd[battleId] = { challenger: challenger.id, opponent: opponent.id, pending: true };
+  // 전투 context에 personalTurns 세팅
+  bd[battleId] = {
+    challenger: challenger.id,
+    opponent:   opponent.id,
+    hp: {
+      [challenger.id]: chData.stats.hp,
+      [opponent.id]:   opData.stats.hp
+    },
+    turn: challenger.id,
+    logs: [],
+    usedSkill: {},
+    context: {
+      effects: {
+        [challenger.id]: [],
+        [opponent.id]: []
+      },
+      passiveLogs: {},
+      actionLogs: [],
+      passiveLogLines: [],
+      skillLogLines: [],
+      personalTurns: {
+        [challenger.id]: 1,
+        [opponent.id]: 1
+      }
+    },
+    turnStartTime: Date.now()
+  };
+  initBattleContext(bd[battleId]);
   save(battlePath, bd);
 
   const req = await interaction.reply({
@@ -173,47 +136,6 @@ async function startBattleRequest(interaction) {
 
     reqCol.stop();
 
-    const startHpCh = userData[challenger.id].stats.hp;
-    const startHpOp = userData[opponent.id].stats.hp;
-
-    bd[battleId] = {
-      challenger: challenger.id,
-      opponent:   opponent.id,
-      hp: {
-        [challenger.id]: startHpCh,
-        [opponent.id]:   startHpOp
-      },
-      turn: challenger.id,
-      logs: [],
-      usedSkill: {},
-      context: {
-        effects: {
-          [challenger.id]: [],
-          [opponent.id]: []
-        },
-        passiveLogs: {},
-        actionLogs: [],
-        passiveLogLines: [],
-        skillLogLines: []
-      },
-      turnStartTime: Date.now()
-    };
-    initBattleContext(bd[battleId]);
-    save(battlePath, bd);
-
-    const getActionRows = () => [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 방어').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('blink').setLabel('✨ 점멸').setStyle(ButtonStyle.Primary)
-      ),
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('skill').setLabel('🌟 스킬(준비중)').setStyle(ButtonStyle.Success).setDisabled(true),
-        new ButtonBuilder().setCustomId('inventory').setLabel('🎒 인벤토리').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('escape').setLabel('🏃‍♂️ 탈주').setStyle(ButtonStyle.Secondary)
-      ),
-    ];
-
     let battleMsg = await btn.editReply({
       content: '⚔️ 전투 시작!',
       embeds: [await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', true, bd[battleId].context.passiveLogs)],
@@ -227,7 +149,6 @@ async function startBattleRequest(interaction) {
       if (!cur || typeof cur.turn === "undefined") return;
 
       cur.turnStartTime = Date.now();
-
       processTurnStart(userData, cur, cur.turn);
       save(battlePath, bd);
 
@@ -293,7 +214,12 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          // 턴 전환 및 개인 턴 증가 (평타만)
+          const prevTurn = cur.turn;
+          const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          if (!cur.context.personalTurns) cur.context.personalTurns = {};
+          cur.context.personalTurns[nextTurn] = (cur.context.personalTurns[nextTurn] || 1) + 1;
+          cur.turn = nextTurn;
           save(battlePath, bd);
 
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
@@ -314,7 +240,12 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          // 턴 전환 및 개인 턴 증가 (방어만)
+          const prevTurn = cur.turn;
+          const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          if (!cur.context.personalTurns) cur.context.personalTurns = {};
+          cur.context.personalTurns[nextTurn] = (cur.context.personalTurns[nextTurn] || 1) + 1;
+          cur.turn = nextTurn;
           save(battlePath, bd);
 
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
@@ -337,7 +268,12 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          // 턴 전환 및 개인 턴 증가 (점멸만)
+          const prevTurn = cur.turn;
+          const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+          if (!cur.context.personalTurns) cur.context.personalTurns = {};
+          cur.context.personalTurns[nextTurn] = (cur.context.personalTurns[nextTurn] || 1) + 1;
+          cur.turn = nextTurn;
           save(battlePath, bd);
 
           const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
@@ -366,15 +302,22 @@ async function startBattleRequest(interaction) {
             return;
           } else {
             cur.logs.push(log);
+            // 탈주 실패 시에만 턴 카운트
+            const prevTurn = cur.turn;
+            const nextTurn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
+            if (!cur.context.personalTurns) cur.context.personalTurns = {};
+            cur.context.personalTurns[nextTurn] = (cur.context.personalTurns[nextTurn] || 1) + 1;
+            cur.turn = nextTurn;
             save(battlePath, bd);
 
             const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, true, cur.context.passiveLogs);
             await i.editReply({ content: '❌ 탈주 실패! (턴 유지)', embeds: [nextEmbed], components: getActionRows() });
+            startTurn();
             return;
           }
         }
 
-        // === 인벤토리/스킬(준비중) ===
+        // === 인벤토리/스킬(준비중) === (턴 카운트/전환 X)
         if (i.customId === 'inventory') {
           log = '🎒 인벤토리 기능은 추후 업데이트 예정!';
           await i.reply({ content: log, ephemeral: true });
@@ -456,5 +399,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
 
 module.exports = {
   startBattleRequest,
-  getBattleEmbed
+  getActionRows,
+  checkAndHandleBattleEnd
 };
