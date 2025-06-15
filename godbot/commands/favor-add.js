@@ -3,9 +3,23 @@ const fs = require('fs');
 const path = require('path');
 const favorPath = path.join(__dirname, '../data/favor.json');
 const cooldownPath = path.join(__dirname, '../data/favor-cooldown.json');
+const bePath = path.join(__dirname, '../data/BE.json');
 
+// 유틸
 function readJson(p) { if (!fs.existsSync(p)) return {}; return JSON.parse(fs.readFileSync(p)); }
 function saveJson(p, d) { fs.writeFileSync(p, JSON.stringify(d, null, 2)); }
+function addBE(userId, amount, reason) {
+  const be = readJson(bePath);
+  if (!be[userId]) be[userId] = { amount: 0, history: [] };
+  be[userId].amount += amount;
+  be[userId].history.push({
+    type: "earn",
+    amount,
+    reason,
+    timestamp: Date.now()
+  });
+  saveJson(bePath, be);
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -33,6 +47,10 @@ module.exports = {
     saveJson(favorPath, favor);
     saveJson(cooldownPath, cooldown);
 
-    return interaction.reply({ content: `<@${receiver}>에게 호감도를 1점 지급했습니다!`, ephemeral: true });
+    // 파랑 정수 1~2개 랜덤 지급 (설정 바꾸고 싶으면 amount 수정)
+    const amount = Math.floor(Math.random() * 2) + 1; // 1 또는 2
+    addBE(giver, amount, "호감도 지급 성공 보상");
+
+    return interaction.reply({ content: `<@${receiver}>에게 호감도를 1점 지급했습니다!\n🎁 파랑 정수 ${amount} BE를 획득했습니다!`, ephemeral: true });
   }
 };
