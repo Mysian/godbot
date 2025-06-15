@@ -9,7 +9,7 @@ const {
   activateGuard,
   tryEscape,
 } = require('./battleEngine');
-const { createResultEmbed } = require('./battle-embed');
+const { createResultEmbed, createBattleEmbed } = require('./battle-embed');
 const passiveSkills = require('./passive-skills');
 const { load, save } = require('./file-db');
 const { getChampionIcon } = require('./champion-utils');
