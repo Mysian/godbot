@@ -22,43 +22,64 @@ function getBuffDebuffDescription(effects = []) {
     if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') desc.push('🛡️방어상승');
     if (e.type === 'invulnerable') desc.push('🛡️무적');
     if (e.type === 'revive') desc.push('🔁부활');
-    if (e.type === 'atkBuff') desc.push('🟩공격력↑');
-    if (e.type === 'atkDown') desc.push('🟥공격력↓');
-    if (e.type === 'defBuff') desc.push('🟦방어력↑');
-    if (e.type === 'defDown') desc.push('🟥방어력↓');
+    if (e.type === 'atkBuff' || e.type === 'atkUpPercent') desc.push('🟩공격력↑');
+    if (e.type === 'atkDown' || e.type === 'atkDownPercent') desc.push('🟥공격력↓');
+    if (e.type === 'defBuff' || e.type === 'defUpPercent') desc.push('🟦방어력↑');
+    if (e.type === 'defDown' || e.type === 'defDownPercent') desc.push('🟥방어력↓');
     if (e.type === 'magicResistBuff') desc.push('🟪마저↑');
-    if (e.type === 'magicResistDebuff') desc.push('🟧마저↓');
-    if (e.type === 'penBuff') desc.push('🟦관통↑');
+    if (e.type === 'magicResistDebuff' || e.type === 'magicResistDebuffPercent') desc.push('🟧마저↓');
+    if (e.type === 'penBuff' || e.type === 'penetrationBuffPercent') desc.push('🟦관통↑');
     if (e.type === 'penDown') desc.push('🟥관통↓');
     if (e.type === 'dodgeBuff') desc.push('💨회피↑');
     if (e.type === 'dodgeDown') desc.push('💨회피↓');
     if (e.type === 'extraAttack') desc.push('🔄추가공격');
+    if (e.type === 'extraTurn') desc.push('🔄추가턴');
     if (e.type === 'bonusDamage') desc.push('💥부가피해');
-    if (e.type === 'execute' || e.type === 'kill') desc.push('⚔️즉사/처형');
+    if (e.type === 'execute' || e.type === 'kill' || e.type === 'deathMark') desc.push('⚔️즉사/처형');
     if (e.type === 'blockAttackAndSkill') desc.push('❌공/스불가');
     if (e.type === 'skillBlocked') desc.push('🚫스킬봉인');
+    if (e.type === 'missNext') desc.push('❌공격무효');
+    if (e.type === 'delayedDamage') desc.push('⏳지연피해');
+    if (e.type === 'delayedStun') desc.push('⏳지연기절');
+    if (e.type === 'delayedDot') desc.push('⏳지연도트');
+    if (e.type === 'damageBuff') desc.push('🔥피해증폭');
+    if (e.type === 'damageUpPercent') desc.push('🔥피해증폭');
+    if (e.type === 'damageTakenUpPercent') desc.push('🔥피해증폭(피격)');
+    if (e.type === 'dmgDealtDownPercent') desc.push('❄️공격감소');
+    if (e.type === 'removeAllDebuffs') desc.push('🧹디버프해제');
+    if (e.type === 'debuffImmune') desc.push('🧬디버프면역');
+    if (e.type === 'ignoreDebuff') desc.push('🧬상태이상면역');
+    if (e.type === 'blockSkill') desc.push('🚫스킬무적');
+    if (e.type === 'undying') desc.push('💀불사');
+    if (e.type === 'critChanceBuff') desc.push('💯치명타확률↑');
+    if (e.type === 'critDamageBuff') desc.push('💥치명타피해↑');
+    if (e.type === 'confused') desc.push('😵혼란');
+    if (e.type === 'skipNextTurn') desc.push('⏭️턴스킵');
+    if (e.type === 'blinded') desc.push('🌫️실명');
+    if (e.type === 'hpDownPercent') desc.push('🟥최대체력↓');
+    if (e.type === 'hpUpPercent') desc.push('🟩최대체력↑');
   }
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
-// 능력치 한줄씩(버프 포함)
+// 능력치 한줄씩(버프 포함, 실제값+버프합산 표기)
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0, pen = stat.penetration || 0, dodge = stat.dodge || 0;
   let atkBuf = 0, defBuf = 0, apBuf = 0, mrBuf = 0, penBuf = 0, dodgeBuf = 0;
   for (const e of effects) {
-    if (e.type === 'atkBuff') atkBuf += e.value;
-    if (e.type === 'atkDown') atkBuf -= e.value;
-    if (e.type === 'apBuff') apBuf += e.value;
-    if (e.type === 'apDown') apBuf -= e.value;
-    if (e.type === 'defBuff') defBuf += e.value;
-    if (e.type === 'defDown') defBuf -= e.value;
-    if (e.type === 'magicResistBuff') mrBuf += e.value;
-    if (e.type === 'magicResistDebuff') mrBuf -= e.value;
-    if (e.type === 'penBuff') penBuf += e.value;
-    if (e.type === 'penDown') penBuf -= e.value;
-    if (e.type === 'dodgeBuff') dodgeBuf += e.value;
-    if (e.type === 'dodgeDown') dodgeBuf -= e.value;
+    if (e.type === 'atkBuff' || e.type === 'atkUpPercent') atkBuf += e.value || 0;
+    if (e.type === 'atkDown' || e.type === 'atkDownPercent') atkBuf -= e.value || 0;
+    if (e.type === 'apBuff' || e.type === 'apUpPercent') apBuf += e.value || 0;
+    if (e.type === 'apDown' || e.type === 'apDownPercent') apBuf -= e.value || 0;
+    if (e.type === 'defBuff' || e.type === 'defUpPercent') defBuf += e.value || 0;
+    if (e.type === 'defDown' || e.type === 'defDownPercent') defBuf -= e.value || 0;
+    if (e.type === 'magicResistBuff') mrBuf += e.value || 0;
+    if (e.type === 'magicResistDebuff' || e.type === 'magicResistDebuffPercent') mrBuf -= e.value || 0;
+    if (e.type === 'penBuff' || e.type === 'penetrationBuffPercent') penBuf += e.value || 0;
+    if (e.type === 'penDown') penBuf -= e.value || 0;
+    if (e.type === 'dodgeBuff') dodgeBuf += e.value || 0;
+    if (e.type === 'dodgeDown') dodgeBuf -= e.value || 0;
   }
   const f = (base, buf) => buf ? `${base} ${buf > 0 ? `+${buf}` : `${buf}`}` : `${base}`;
   return (
@@ -71,7 +92,7 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 패시브 설명+발동내역(상단 요약용)
+// 패시브 설명+발동내역 (패시브 로그까지 모두 표기)
 function getPassiveBlock(championName, passiveLogs, userId) {
   const data = passiveSkills[championName];
   const desc = data
@@ -96,6 +117,7 @@ function getLatestUniqueLog(log, context) {
     const arr = context?.[key];
     if (Array.isArray(arr) && arr.length) logs.push(arr[arr.length - 1]);
   });
+  // 완전히 같은 로그라면 한 번만!
   const unique = [];
   for (let l of logs) {
     if (l && !unique.includes(l)) unique.push(l);
@@ -103,19 +125,7 @@ function getLatestUniqueLog(log, context) {
   return unique.length ? unique.join('\n') : '없음';
 }
 
-// === 패시브 최근 발동 내역 필드 추가 ===
-function getLastPassiveLogField(context, userId, userData) {
-  const champName = userData[userId]?.name;
-  const arr = Array.isArray(context?.passiveLogs?.[userId]) ? context.passiveLogs[userId] : [];
-  if (!arr.length) return { name: `[${champName}] 패시브 발동`, value: '없음', inline: false };
-  return {
-    name: `[${champName}] 패시브 발동`,
-    value: arr.map(msg => `🧬 ${msg}`).join('\n'),
-    inline: false
-  };
-}
-
-// 임베드(행동결과/턴정보/이미지 스왑/패시브 로그)
+// 임베드(행동결과/턴정보/이미지 스왑 포함, battleEngine의 context/passiveLogs 100% 호환)
 async function createBattleEmbed(
   challenger,
   opponent,
@@ -129,9 +139,9 @@ async function createBattleEmbed(
   const ch = userData[challenger.id || challenger];
   const op = userData[opponent.id || opponent];
   const chp = (battle.context?.hp && battle.context.hp[challenger.id || challenger] !== undefined)
-    ? battle.context.hp[challenger.id || challenger] : battle.hp[challenger.id || challenger];
+    ? battle.context.hp[challenger.id || challenger] : ch.hp;
   const ohp = (battle.context?.hp && battle.context.hp[opponent.id || opponent] !== undefined)
-    ? battle.context.hp[opponent.id || opponent] : battle.hp[opponent.id || opponent];
+    ? battle.context.hp[opponent.id || opponent] : op.hp;
 
   // 턴정보
   const turnUser = userData[turnId];
@@ -139,6 +149,7 @@ async function createBattleEmbed(
   const personalTurnStr = getPersonalTurnStr(turnId, battle.context);
   const turnStr = `현재 턴: <@${turnId}> (${turnUser?.name || ''}) ${personalTurnStr}\n총 ${curTurn}턴째`;
 
+  // 이미지 위치 스왑 (본인턴: 이미지 하단, 아니면 상단/하단 반전)
   let imageUrl, thumbnailUrl;
   if (turnId === (challenger.id || challenger)) {
     imageUrl = await getChampionIcon(ch.name);
@@ -148,14 +159,11 @@ async function createBattleEmbed(
     thumbnailUrl = await getChampionIcon(ch.name);
   }
 
+  // 행동/패시브/스킬 로그(가장 최신+중복X)
   const allLogStr = getLatestUniqueLog(log, battle.context);
 
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
   const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
-
-  // 패시브 로그 필드(없으면 "없음"으로)
-  const chPassiveField = getLastPassiveLogField(battle.context, challenger.id || challenger, userData);
-  const opPassiveField = getLastPassiveLogField(battle.context, opponent.id || opponent, userData);
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
@@ -165,7 +173,7 @@ async function createBattleEmbed(
         value: `${createHpBarInline(chp, ch.stats.hp)}
 상태: ${chStatus}
 ${createStatField(ch, battle.context.effects[challenger.id || challenger])}
-${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
+${getPassiveBlock(ch.name, battle.context.passiveLogs, challenger.id || challenger)}
 `,
         inline: true
       },
@@ -174,14 +182,12 @@ ${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
         value: `${createHpBarInline(ohp, op.stats.hp)}
 상태: ${opStatus}
 ${createStatField(op, battle.context.effects[opponent.id || opponent])}
-${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
+${getPassiveBlock(op.name, battle.context.passiveLogs, opponent.id || opponent)}
 `,
         inline: true
       },
       { name: '🎯 턴 정보', value: turnStr, inline: false },
-      { name: '📢 행동 결과 / 공식', value: allLogStr, inline: false },
-      chPassiveField,
-      opPassiveField
+      { name: '📢 행동 결과 / 공식', value: allLogStr, inline: false }
     )
     .setThumbnail(thumbnailUrl)
     .setImage(imageUrl)
