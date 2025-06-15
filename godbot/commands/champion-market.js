@@ -114,7 +114,7 @@ async function makeMarketEmbed(page = 0, filter = null, interactionUserId = '') 
       : "정보 없음";
     const iconUrl = await getChampionIcon(item.championName);
     embed.addFields({
-      name: `#${start + i + 1} | ![icon](${iconUrl}) 🌟 ${item.championName} (Lv.${item.level})`,
+      name: `#${start + i + 1} | 🌟 ${item.championName} (Lv.${item.level})`,
       value: [
         `[이미지 바로보기](${iconUrl}) | 공격력: **${item.stats.attack}** | 주문력: **${item.stats.ap}** | 체력: **${item.stats.hp}** | 방어력: **${item.stats.defense}** | 관통력: **${item.stats.penetration}**`,
         `🪄 패시브: ${passive}`,
