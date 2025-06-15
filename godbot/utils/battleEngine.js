@@ -26,7 +26,7 @@ function initBattleContext(battle) {
     extraAttacks: {},
     bonusDamage: {},
     passiveVars: {},  // 스택, 부활, 영구버프 등 자유롭게
-    passiveLogs: {}   // <--- [userId]: [log, ...] 형식, 패시브 발동 내역
+    passiveLogs: {}   // [userId]: [log, ...] 형식, 패시브 발동 내역
   };
   [battle.challenger, battle.opponent].forEach(id => {
     battle.context.effects[id] = [];
@@ -50,7 +50,7 @@ function initBattleContext(battle) {
     battle.context.extraAttacks[id] = 0;
     battle.context.bonusDamage[id] = 0;
     battle.context.passiveVars[id] = {};
-    battle.context.passiveLogs[id] = []; // 패시브 발동 메시지 배열
+    battle.context.passiveLogs[id] = [];
   });
   battle.context.turn = 1;
 }
@@ -60,51 +60,31 @@ function logPassive(context, userId, message) {
   if (!context.passiveLogs) context.passiveLogs = {};
   if (!context.passiveLogs[userId]) context.passiveLogs[userId] = [];
   context.passiveLogs[userId].push(message);
-  // 최근 5개만 유지(길면 잘림)
+  // 최근 5개만 유지
   if (context.passiveLogs[userId].length > 5)
     context.passiveLogs[userId] = context.passiveLogs[userId].slice(-5);
 }
 
-// 모든 패시브 트리거별 실행 (발동여부/실패/스탯변동 모두 log)
+// 모든 패시브 트리거별 실행 (passive 함수 네이밍 지원!)
 function runAllPassives(trigger, userData, battle, actingUserId, extra = {}) {
   [battle.challenger, battle.opponent].forEach(id => {
     const champName = userData[id]?.name;
     if (!champName) return;
     const skill = passiveSkills[champName];
     if (!skill) return;
-    if (typeof skill.effect === 'function') {
+    // passive 키 함수만 지원!
+    if (typeof skill.passive === 'function') {
       const user = userData[id];
       const enemy = userData[[battle.challenger, battle.opponent].find(eid => eid !== id)];
-      // 패시브 함수가 log 반환 시 패시브로그에 자동 남김
       const context = battle.context;
       let passiveResult;
       try {
-        passiveResult = skill.effect(user, enemy, context, battle, trigger, extra);
+        passiveResult = skill.passive(user, enemy, context, battle, trigger, extra);
       } catch (e) {
         logPassive(context, id, `⚠️ [에러] 패시브 처리 실패: ${e.message}`);
       }
-      // 패시브 effect가 string(로그)이면 기록
-      if (typeof passiveResult === 'string') {
+      if (typeof passiveResult === 'string' && passiveResult.length > 0) {
         logPassive(context, id, passiveResult);
-      }
-      // 패시브 effect가 객체를 리턴하면 {success, msg, changedStats: {atk: +1, ...}, ...}등 지원
-      if (typeof passiveResult === 'object' && passiveResult !== null) {
-        if (passiveResult.msg) logPassive(context, id, passiveResult.msg);
-        if (passiveResult.changedStats) {
-          Object.entries(passiveResult.changedStats).forEach(([stat, diff]) => {
-            if (diff !== 0) {
-              const s = (diff > 0) ? `+${diff}` : `${diff}`;
-              logPassive(context, id, `(${stat}) ${s}`);
-            }
-          });
-        }
-      }
-      // 아무 반환 없으면 조건 미달 안내(패시브로그 중복 방지)
-      if (
-        (passiveResult === undefined || passiveResult === null || passiveResult === false)
-        && trigger !== 'turnStart'
-      ) {
-        logPassive(context, id, '현재 패시브 조건이 아닙니다.');
       }
     }
   });
@@ -116,18 +96,14 @@ function applyEffectsBeforeTurn(userData, battle) {
     const effects = battle.context.effects[id] || [];
     let next = [];
     effects.forEach(e => {
-      // 도트/회복/반사/스택/추가피해 등 효과 확장 가능
       if (e.type === 'dot' && e.turns > 0) {
         battle.hp[id] = Math.max(0, battle.hp[id] - e.damage);
-        battle.logs.push(`☠️ ${userData[id].name} 독 피해(${e.damage})`);
         runAllPassives('dot', userData, battle, id, { dotEffect: e });
       }
       if (e.type === 'heal' && e.turns > 0) {
         battle.hp[id] = Math.min((userData[id].stats?.hp || 600), battle.hp[id] + e.amount);
-        battle.logs.push(`💚 ${userData[id].name} 회복(${e.amount})`);
         runAllPassives('heal', userData, battle, id, { healEffect: e });
       }
-      // turns 없으면 영구, 1 이상이면 줄이기
       if (e.turns > 1 && !e.applied) next.push({ ...e, turns: e.turns - 1 });
       else if (e.turns === undefined) next.push(e);
     });
@@ -151,8 +127,8 @@ function processTurnStart(userData, battle, actingUserId) {
     let revived = false, executed = false, killed = false;
     effects.forEach(e => {
       switch (e.type) {
-        case 'dot': case 'heal': break; // 위에서 처리
-        case 'stunned': battle.logs.push(`💫 ${userData[id].name} 기절!`); break;
+        case 'dot': case 'heal': break;
+        case 'stunned': break;
         case 'damageReduction': battle.context.flatReduction[id] += e.value; break;
         case 'damageReductionPercent': battle.context.percentReduction[id] += e.value; break;
         case 'doubleDamage': battle.context.doubleDamage[id] = true; break;
@@ -177,7 +153,6 @@ function processTurnStart(userData, battle, actingUserId) {
             battle.context.reviveFlags[id] = true;
             e.applied = true;
             revived = true;
-            battle.logs.push(`🔁 ${userData[id].name} 부활! (HP ${Math.round(battle.hp[id])})`);
             runAllPassives('revive', userData, battle, id, { reviveEffect: e });
           }
           break;
@@ -185,15 +160,13 @@ function processTurnStart(userData, battle, actingUserId) {
           if (battle.hp[id] <= 0) {
             executed = true;
             battle.hp[id] = 0;
-            battle.logs.push(`⚔️ ${userData[id].name} 처형됨!`);
             runAllPassives('execute', userData, battle, id, { executeEffect: e });
           }
           break;
-        case 'kill': // 즉사
+        case 'kill':
           if (battle.hp[id] > 0 && e.chance && Math.random() < e.chance) {
             killed = true;
             battle.hp[id] = 0;
-            battle.logs.push(`💀 ${userData[id].name} 즉사!`);
             runAllPassives('kill', userData, battle, id, { killEffect: e });
           }
           break;
@@ -215,10 +188,8 @@ function processTurnStart(userData, battle, actingUserId) {
     }
   });
 
-  // 턴 카운트
   battle.context.turn = (battle.context.turn || 1) + 1;
 
-  // 상태이상 카운트 다운
   ['missNext', 'skillBlocked', 'blockSkill', 'blind', 'fear', 'confused'].forEach(type => {
     const ctx = battle.context[type];
     if (ctx) {
@@ -335,9 +306,6 @@ function calculateDamage(
     context.extraAttacks[attacker.id] = 0;
   }
 
-  // 즉사/처형/부활(패시브에서 effect로 관리)
-  // (실제 사망 체크, 부활, 처형 등은 processTurnStart에서 처리함)
-
   return {
     damage: Math.round(base),
     critical: crit,
@@ -373,5 +341,5 @@ module.exports = {
   activateGuard,
   tryEscape,
   runAllPassives,
-  logPassive // <-- 필요시 외부에서 패시브로그 직접 남길 수 있게 export
+  logPassive
 };
