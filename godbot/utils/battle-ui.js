@@ -9,6 +9,7 @@ const {
   activateGuard,
   tryEscape,
 } = require('./battleEngine');
+const { createBattleEmbed, createResultEmbed } = require('./battle-embed');
 const { load, save } = require('./file-db');
 
 const userDataPath = path.join(__dirname, '../data/champion-users.json');
@@ -127,43 +128,6 @@ async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd,
   return false;
 }
 
-// 예상 데미지, 쉴드, 점멸 등 실시간 계산 함수
-function calcRealtimeInfo(attacker, defender, context) {
-  // 예상 평타 데미지 범위(50~150%)
-  const atkStats = attacker.stats || attacker;
-  const defStats = defender.stats || defender;
-  let ad = atkStats.attack || 0;
-  let ap = atkStats.ap || 0;
-  let pen = atkStats.penetration || 0;
-  let def = defStats.defense || 0;
-  let dodge = defStats.dodge || 0;
-
-  let main = Math.max(ad, ap);
-  let sub = Math.min(ad, ap);
-  let defVal = Math.max(0, def - pen);
-
-  // 방어효과
-  let guardPct = context.percentReduction?.[defender.id] || 0;
-
-  // 데미지 공식(랜덤 X, 최소/최대만)
-  let minBase = Math.max(0, (main * 1.0 + sub * 0.5) - defVal) * 0.5;
-  let maxBase = Math.max(0, (main * 1.0 + sub * 0.5) - defVal) * 1.5;
-
-  // 더블데미지 적용 X (평균화)
-  minBase = Math.floor(minBase * (1 - (guardPct / 100)));
-  maxBase = Math.floor(maxBase * (1 - (guardPct / 100)));
-
-  // 점멸 회피 확률 (20% + dodge + 버프)
-  let blinkRate = 0.2 + (defStats.dodge || 0);
-
-  return {
-    minDmg: minBase,
-    maxDmg: maxBase,
-    shieldPct: guardPct,
-    blinkRate: blinkRate
-  };
-}
-
 async function startBattleRequest(interaction) {
   const challenger = interaction.user;
   const opponent   = interaction.options.getUser('상대');
@@ -252,13 +216,14 @@ async function startBattleRequest(interaction) {
       turn: challenger.id,
       logs: [],
       usedSkill: {},
-      context: {},
-      turnStartTime: Date.now()
+      context: {}
     };
     initBattleContext(bd[battleId]);
     save(battlePath, bd);
 
-    let getActionRows = () => [
+    let embed = await createBattleEmbed(challenger, opponent, bd[battleId], userData, challenger.id, '', false);
+
+    const getActionRows = () => [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('attack').setLabel('🗡️ 평타').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId('defend').setLabel('🛡️ 방어').setStyle(ButtonStyle.Secondary),
@@ -271,39 +236,7 @@ async function startBattleRequest(interaction) {
       ),
     ];
 
-    // 임베드 생성 함수(턴 시간/예상 수치 반영)
-    async function getBattleEmbed(cur, log, isEnd = false) {
-      // 턴 시간 계산
-      const remainTime = Math.max(0, 60 - Math.floor((Date.now() - (cur.turnStartTime || Date.now())) / 1000));
-      const attackerId = cur.turn;
-      const defenderId = cur.challenger === attackerId ? cur.opponent : cur.challenger;
-      const attackerData = userData[attackerId];
-      const defenderData = userData[defenderId];
-      // 예상값 계산
-      const rt = calcRealtimeInfo(attackerData, defenderData, cur.context);
-
-      let embed = new EmbedBuilder()
-        .setTitle('⚔️ 챔피언 배틀')
-        .setDescription(`${log || '행동을 선택하세요!'}`)
-        .addFields(
-          { name: '현재 턴', value: `<@${attackerId}> (${attackerData.name})\n남은 시간: **${remainTime}초**`, inline: false },
-          { name: 'HP', value: `**${cur.hp[cur.challenger]}** / **${userData[cur.challenger].stats.hp}** vs **${cur.hp[cur.opponent]}** / **${userData[cur.opponent].stats.hp}**`, inline: false },
-        )
-        .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
-        .setTimestamp();
-
-      // 예상값(오른쪽 아래)
-      embed.addFields([
-        {
-          name: '📊 [실시간 예상치]',
-          value: `**평타 데미지:** ${rt.minDmg} ~ ${rt.maxDmg}\n**방어 피해감소:** ${rt.shieldPct}%\n**점멸(회피) 확률:** ${(rt.blinkRate * 100).toFixed(1)}%`,
-          inline: false,
-        }
-      ]);
-      return embed;
-    }
-
-    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [await getBattleEmbed(bd[battleId], '', false)], components: getActionRows() });
+    await btn.editReply({ content: '⚔️ 전투 시작!', embeds: [embed], components: getActionRows() });
     const battleMsg = await btn.fetchReply();
 
     let turnCol;
@@ -311,9 +244,6 @@ async function startBattleRequest(interaction) {
       if (!bd[battleId]) return;
       const cur = bd[battleId];
       if (!cur || typeof cur.turn === "undefined") return;
-
-      // 턴 시작시 시간 갱신
-      cur.turnStartTime = Date.now();
 
       processTurnStart(userData, cur, cur.turn);
       save(battlePath, bd);
@@ -351,6 +281,7 @@ async function startBattleRequest(interaction) {
         const tgt = cur.challenger === uid ? cur.opponent : cur.challenger;
         let log = '';
 
+        // === 평타 ===
         if (i.customId === 'attack') {
           const dmgInfo = calculateDamage(
             { ...userData[uid], id: uid, hp: cur.hp[uid] },
@@ -360,9 +291,11 @@ async function startBattleRequest(interaction) {
             userData[uid].name,
             false
           );
+          // 실제 HP 차감(피해만큼)
           if (dmgInfo.damage > 0) {
             cur.hp[tgt] = Math.max(0, cur.hp[tgt] - dmgInfo.damage);
           }
+          // 회피, 방어 등은 데미지가 0
           if (cur.context.hp) {
             cur.context.hp[uid] = cur.hp[uid];
             cur.context.hp[tgt] = cur.hp[tgt];
@@ -378,11 +311,15 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          await i.editReply({ content: '💥 턴 종료!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+          const nextEmbed = await createBattleEmbed(
+            challenger, opponent, cur, userData, cur.turn, log, false
+          );
+          await i.editReply({ content: '💥 턴 종료!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
 
+        // === 방어 ===
         if (i.customId === 'defend') {
           const guardPercent = activateGuard(cur.context, uid, userData[uid].stats);
           log = `🛡️ ${userData[uid].name}이 방어 자세! (다음 턴 피해 ${Math.round(guardPercent * 100)}% 감소)`;
@@ -393,15 +330,18 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          await i.editReply({ content: '🛡️ 방어 사용!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+          const nextEmbed = await createBattleEmbed(
+            challenger, opponent, cur, userData, cur.turn, log, false
+          );
+          await i.editReply({ content: '🛡️ 방어 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
 
+        // === 점멸 ===
         if (i.customId === 'blink') {
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
-          const blinkRate = 0.2 + (userData[uid].stats?.dodge || 0);
-          log = `✨ ${userData[uid].name}이(가) 점멸을 사용! (다음 공격을 ${(blinkRate * 100).toFixed(1)}% 확률로 회피 시도합니다)`;
+          log = `✨ ${userData[uid].name}이(가) 점멸을 사용! (다음 공격을 ${Math.round( (0.2 + (userData[uid].stats?.dodge || 0)) * 100 )}% 확률로 회피 시도합니다)`;
           cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
@@ -409,11 +349,13 @@ async function startBattleRequest(interaction) {
           const battleEnd = await checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol);
           if (battleEnd) return;
 
-          await i.editReply({ content: '✨ 점멸 사용!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+          const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+          await i.editReply({ content: '✨ 점멸 사용!', embeds: [nextEmbed], components: getActionRows() });
           startTurn();
           return;
         }
 
+        // === 탈주 ===
         if (i.customId === 'escape') {
           const result = tryEscape(cur.context);
           log = result.log;
@@ -436,12 +378,14 @@ async function startBattleRequest(interaction) {
             cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
             save(battlePath, bd);
 
-            await i.editReply({ content: '❌ 탈주 실패!', embeds: [await getBattleEmbed(cur, log, false)], components: getActionRows() });
+            const nextEmbed = await createBattleEmbed(challenger, opponent, cur, userData, cur.turn, log, false);
+            await i.editReply({ content: '❌ 탈주 실패!', embeds: [nextEmbed], components: getActionRows() });
             startTurn();
             return;
           }
         }
 
+        // === 인벤토리/스킬(준비중) ===
         if (i.customId === 'inventory') {
           log = '🎒 인벤토리 기능은 추후 업데이트 예정!';
           await i.reply({ content: log, ephemeral: true });
