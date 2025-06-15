@@ -13,26 +13,7 @@ function createHpBar(current, max) {
   return '🟥'.repeat(filled) + '⬜'.repeat(total - filled);
 }
 
-// 상태이펙트 이모지
-function getStatusIcons(effects = []) {
-  let s = '';
-  for (const e of effects) {
-    if (e.type === 'stunned') s += '💫';
-    if (e.type === 'dot') s += '☠️';
-    if (e.type === 'dodgeNextAttack') s += '💨';
-    if (e.type === 'damageReduction' || e.type === 'damageReductionPercent') s += '🛡️';
-    if (e.type === 'invulnerable') s += '🛡️';
-    if (e.type === 'revive') s += '🔁';
-    if (e.type === 'extraAttack') s += '🔄';
-    if (e.type === 'bonusDamage') s += '💥';
-    if (e.type === 'execute' || e.type === 'kill') s += '⚔️';
-    if (e.type === 'blockAttackAndSkill') s += '❌';
-    if (e.type === 'skillBlocked') s += '🚫';
-  }
-  return s;
-}
-
-// 상태효과 상세
+// 상태효과/능력치
 function getBuffDebuffDescription(effects = []) {
   if (!effects || effects.length === 0) return '정상';
   const desc = [];
@@ -62,7 +43,7 @@ function getBuffDebuffDescription(effects = []) {
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
-// 능력치(버프/디버프 반영)
+// 능력치 표기
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0, pen = stat.penetration || 0, dodge = stat.dodge || 0;
@@ -92,7 +73,7 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 패시브 설명과 바로 아래 패시브 발동내역 한 줄씩
+// 패시브 설명/발동 로그
 function getPassiveBlock(championName, passiveLogs, userId) {
   const data = passiveSkills[championName];
   const desc = data
@@ -101,6 +82,16 @@ function getPassiveBlock(championName, passiveLogs, userId) {
   const arr = Array.isArray(passiveLogs?.[userId]) ? passiveLogs[userId] : [];
   if (!arr.length) return desc;
   return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
+}
+
+// 모든 공식/내역 로그 한데 모으기
+function mergeAllLogs(mainLog, actionLogs, passiveLines, skillLines) {
+  let arr = [];
+  if (mainLog) arr.push(mainLog);
+  if (Array.isArray(actionLogs) && actionLogs.length) arr.push(...actionLogs);
+  if (Array.isArray(passiveLines) && passiveLines.length) arr.push(...passiveLines.map(l => `🧬 ${l}`));
+  if (Array.isArray(skillLines) && skillLines.length) arr.push(...skillLines.map(l => `🌟 ${l}`));
+  return arr.length ? arr.join('\n') : '없음';
 }
 
 // 메인 배틀 임베드
@@ -117,7 +108,6 @@ async function createBattleEmbed(
   const ch = userData[challenger.id || challenger];
   const op = userData[opponent.id || opponent];
 
-  // HP값(컨텍스트 우선)
   const chp = (battle.context?.hp && battle.context.hp[challenger.id || challenger] !== undefined)
     ? battle.context.hp[challenger.id || challenger] : battle.hp[challenger.id || challenger];
   const ohp = (battle.context?.hp && battle.context.hp[opponent.id || opponent] !== undefined)
@@ -128,14 +118,20 @@ async function createBattleEmbed(
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
   const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
 
+  // 공식/내역 로그
+  const allLogStr = mergeAllLogs(
+    log,
+    battle.context?.actionLogs,
+    battle.context?.passiveLogLines,
+    battle.context?.skillLogLines
+  );
+
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
     .addFields(
       {
         name: `[${ch.name}]`,
-        value: `${getStatusIcons(battle.context.effects[challenger.id || challenger])}
-💖 ${chp}/${ch.stats.hp}
-${createHpBar(chp, ch.stats.hp)}
+        value: `${chp}/${ch.stats.hp} ${createHpBar(chp, ch.stats.hp)}
 상태: ${chStatus}
 ${createStatField(ch, battle.context.effects[challenger.id || challenger])}
 ${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
@@ -144,17 +140,14 @@ ${getPassiveBlock(ch.name, passiveLogs, challenger.id || challenger)}
       },
       {
         name: `[${op.name}]`,
-        value: `${getStatusIcons(battle.context.effects[opponent.id || opponent])}
-💖 ${ohp}/${op.stats.hp}
-${createHpBar(ohp, op.stats.hp)}
+        value: `${ohp}/${op.stats.hp} ${createHpBar(ohp, op.stats.hp)}
 상태: ${opStatus}
 ${createStatField(op, battle.context.effects[opponent.id || opponent])}
 ${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
 `,
         inline: true
       },
-      { name: '🎯 현재 턴', value: `<@${turnId}>`, inline: false },
-      { name: '📢 행동 결과', value: log || '없음', inline: false }
+      { name: '📢 행동 결과 / 공식', value: allLogStr, inline: false }
     )
     .setThumbnail(iconOp)
     .setImage(iconCh)
@@ -227,6 +220,5 @@ module.exports = {
   createResultEmbed,
   getBuffDebuffDescription,
   createHpBar,
-  getStatusIcons,
   createStatField,
 };
