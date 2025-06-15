@@ -37,7 +37,6 @@ function getDodgeLine(stats, effects, baseDodge) {
   const blink = effects.find(e => e.type === 'dodgeNextAttack' && e.turns > 0);
   let text = `${statEmojis.dodge} 회피: ${(baseDodge * 100).toFixed(0)}%`;
   if (blink) {
-    // 디스코드에서 파랑 강조: **__+20%__**
     text += " **__+20%__**";
   }
   return text;
@@ -54,7 +53,7 @@ function statLines(stats, effects) {
   ].join('\n');
 }
 
-// 임베드 생성: 멘션+닉네임+챔피언명+상태+능력치(점멸시 파란+20%)
+// 임베드 생성: [챔피언 이름] (현재 턴!) / 이미지 하단 배치
 async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, log, isEnd = false) {
   const chId = challenger.id || challenger;
   const opId = opponent.id || opponent;
@@ -69,8 +68,21 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
 
   // 현재 턴
   const nowTurn = cur.turn;
-  const nowTurnText = `<@${nowTurn}> (${userData[nowTurn].name})`;
   const logText = log ? `\n\n📍 **행동 결과**\n${log}` : "";
+
+  // 본인 턴일 때 본인 이름에 (현재 턴!) 표시
+  const chName = chId === nowTurn ? `[${chData.name}] (현재 턴!)` : `[${chData.name}]`;
+  const opName = opId === nowTurn ? `[${opData.name}] (현재 턴!)` : `[${opData.name}]`;
+
+  // 본인 턴이면 본인 이미지를 하단(Embed bigImage)에!
+  let bigImage, smallImage;
+  if (nowTurn === chId) {
+    bigImage = chIcon;
+    smallImage = opIcon;
+  } else {
+    bigImage = opIcon;
+    smallImage = chIcon;
+  }
 
   // 점멸효과 포함한 능력치
   const chEffects = (cur.context.effects && cur.context.effects[chId]) ? cur.context.effects[chId] : [];
@@ -79,11 +91,11 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
     .setDescription(
-      `**지금 차례:** ${nowTurnText}${logText}`
+      `**지금 차례:** <@${nowTurn}>${logText}`
     )
     .addFields(
       {
-        name: `<@${chId}> (${userData[chId]?.username || chId}) [${chData.name}]`,
+        name: chName,
         value: [
           `${createHpBar(cur.hp[chId], chData.stats.hp)} (${cur.hp[chId]} / ${chData.stats.hp})`,
           `상태: ${chState}`,
@@ -92,7 +104,7 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
         inline: true
       },
       {
-        name: `<@${opId}> (${userData[opId]?.username || opId}) [${opData.name}]`,
+        name: opName,
         value: [
           `${createHpBar(cur.hp[opId], opData.stats.hp)} (${cur.hp[opId]} / ${opData.stats.hp})`,
           `상태: ${opState}`,
@@ -101,12 +113,13 @@ async function getBattleEmbed(challenger, opponent, cur, userData, turnUserId, l
         inline: true
       }
     )
-    .setImage(chIcon)
-    .setThumbnail(opIcon)
+    .setImage(bigImage)
+    .setThumbnail(smallImage)
     .setColor(isEnd ? 0xaaaaaa : 0x3399ff)
     .setTimestamp();
 }
 
+// ====== 이하 로직/기능은 그대로 ======
 // 승패/무승부 처리
 async function checkAndHandleBattleEnd(cur, userData, interaction, battleId, bd, challenger, opponent, battleMsg, turnCol) {
   const chId = cur.challenger, opId = cur.opponent;
