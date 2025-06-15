@@ -58,7 +58,6 @@ function sortMarket(market) {
 
 // --- 버튼 2줄(매물관리 추가) ---
 function makeButtons(page, maxPage, inManage = false) {
-  // 첫 줄: 페이지+새로고침
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('champ_market_prev')
@@ -75,7 +74,6 @@ function makeButtons(page, maxPage, inManage = false) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= maxPage)
   );
-  // 두 번째 줄: 검색/구매/판매/매물관리
   const row2 = new ActionRowBuilder().addComponents(
     ...(inManage
       ? [
@@ -156,7 +154,6 @@ function makeManageButtons(page, maxPage, items) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= maxPage)
   );
-  // 두 번째 줄: 회수버튼, 뒤로가기
   const row2 = new ActionRowBuilder();
   items.forEach((item, idx) =>
     row2.addComponents(
@@ -356,6 +353,13 @@ module.exports = {
           await i.reply({ content: '현재 보유 중인 챔피언이 없습니다. 챔피언을 먼저 획득하세요!', ephemeral: true });
           return;
         }
+        // ---- 매물 개수 제한 ----
+        const marketArr = loadMarket();
+        const mySellCount = marketArr.filter(m => m.sellerId === i.user.id).length;
+        if (mySellCount >= 5) {
+          await i.reply({ content: '한 사람당 최대 5개의 매물만 등록할 수 있습니다.\n매물을 회수하거나 팔린 뒤에 추가 등록이 가능합니다.', ephemeral: true });
+          return;
+        }
         await i.showModal(makeSellModal(champ.name, champ.level));
         return;
       }
@@ -438,12 +442,17 @@ module.exports = {
         // 매물 삭제
         let marketArr = loadMarket();
         const idx = marketArr.findIndex(m => m.timestamp === item.timestamp && m.sellerId === item.sellerId);
+        let sellerId = item.sellerId;
         if (idx !== -1) {
           marketArr.splice(idx, 1);
           saveMarket(marketArr);
         }
 
-        await modal.reply({ content: `🎉 ${item.championName} 챔피언을 ${item.price} BE에 구매 완료!`, ephemeral: false });
+        // 구매 멘트: @구매자께서 OO 챔피언을 n BE에 구매하였습니다. [판매자: @판매자]
+        await modal.reply({
+          content: `<@${modal.user.id}> 께서 ${item.championName} 챔피언을 ${item.price} BE에 구매하였습니다. [판매자: <@${sellerId}>]`,
+          ephemeral: false
+        });
         return;
       }
 
@@ -460,8 +469,14 @@ module.exports = {
           await modal.reply({ content: '판매할 챔피언 정보가 없습니다.', ephemeral: true });
           return;
         }
-        // champion-market.json에 매물 추가
+        // 매물 최대 5개 제한
         const marketArr = loadMarket();
+        const mySellCount = marketArr.filter(m => m.sellerId === modal.user.id).length;
+        if (mySellCount >= 5) {
+          await modal.reply({ content: '한 사람당 최대 5개의 매물만 등록할 수 있습니다.\n매물을 회수하거나 팔린 뒤에 추가 등록이 가능합니다.', ephemeral: true });
+          return;
+        }
+        // champion-market.json에 매물 추가
         marketArr.push({
           championName: champ.name,
           level: champ.level,
