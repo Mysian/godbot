@@ -82,10 +82,21 @@ function getPassiveBlock(championName, passiveLogs, userId) {
   return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
 }
 
-// 중복 제거(마지막 한 줄만)
-function dedupLogs(arr) {
-  if (!Array.isArray(arr) || !arr.length) return [];
-  return [arr[arr.length - 1]];
+// [개인 턴 카운트] 표시
+function getPersonalTurnStr(turnUserId, context) {
+  let turns = context?.personalTurns?.[turnUserId] || 1;
+  return `[개인턴: ${turns}회]`;
+}
+
+// 가장 마지막으로 나온 행동/패시브/스킬 로그만, 같은 내용 중복 제거
+function getLatestUniqueLog(log, context) {
+  const lines = [];
+  if (log) lines.push(log);
+  const arrs = [
+    context?.actionLogs, context?.passiveLogLines, context?.skillLogLines
+  ].map(arr => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null).filter(Boolean);
+  const unique = Array.from(new Set(arrs));
+  return [...lines, ...unique].filter(Boolean).join('\n') || '없음';
 }
 
 // 임베드(행동결과/턴정보/이미지 스왑 포함)
@@ -109,20 +120,21 @@ async function createBattleEmbed(
   // 턴정보
   const turnUser = userData[turnId];
   const curTurn = battle.context?.turn || 1;
-  const turnStr = `현재 턴: <@${turnId}> (${turnUser?.name || ''})\n총 ${curTurn}턴째`;
+  const personalTurnStr = getPersonalTurnStr(turnId, battle.context);
+  const turnStr = `현재 턴: <@${turnId}> (${turnUser?.name || ''}) ${personalTurnStr}\n총 ${curTurn}턴째`;
 
-  // 본인턴이면 본인 이미지 하단, 아니면 상대
-  let imageUrl;
-  if (turnId === (challenger.id || challenger)) imageUrl = await getChampionIcon(ch.name);
-  else imageUrl = await getChampionIcon(op.name);
+  // 이미지 위치 스왑 (본인턴: 이미지 하단, 아니면 상단/하단 반전)
+  let imageUrl, thumbnailUrl;
+  if (turnId === (challenger.id || challenger)) {
+    imageUrl = await getChampionIcon(ch.name);
+    thumbnailUrl = await getChampionIcon(op.name);
+  } else {
+    imageUrl = await getChampionIcon(op.name);
+    thumbnailUrl = await getChampionIcon(ch.name);
+  }
 
-  // 행동/패시브/스킬 로그(1줄씩만)
-  let allLogs = [];
-  if (log) allLogs.push(log);
-  if (battle.context?.actionLogs?.length) allLogs.push(...dedupLogs(battle.context.actionLogs));
-  if (battle.context?.passiveLogLines?.length) allLogs.push(...dedupLogs(battle.context.passiveLogLines));
-  if (battle.context?.skillLogLines?.length) allLogs.push(...dedupLogs(battle.context.skillLogLines));
-  const allLogStr = allLogs.length ? allLogs.join('\n') : '없음';
+  // 행동/패시브/스킬 로그(가장 최신+중복X)
+  const allLogStr = getLatestUniqueLog(log, battle.context);
 
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
   const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
@@ -151,12 +163,12 @@ ${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
       { name: '🎯 턴 정보', value: turnStr, inline: false },
       { name: '📢 행동 결과 / 공식', value: allLogStr, inline: false }
     )
-    .setThumbnail(await getChampionIcon(op.name))
+    .setThumbnail(thumbnailUrl)
     .setImage(imageUrl)
     .setColor(0x3498db);
 }
 
-// 배틀 결과 임베드
+// 배틀 결과 임베드 (변경 없음)
 async function createResultEmbed(winner, loser, userData, records, interaction, isDraw = false, drawIds = []) {
   if (isDraw) {
     const champ1 = userData[drawIds[0]], champ2 = userData[drawIds[1]];
