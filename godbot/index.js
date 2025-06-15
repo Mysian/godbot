@@ -228,6 +228,47 @@ client.on("messageCreate", async (message) => {
   }
 });
 
+
+const bePath = path.join(__dirname, "data/BE.json");
+function loadBE() {
+  if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, "{}");
+  return JSON.parse(fs.readFileSync(bePath, "utf8"));
+}
+function saveBE(data) {
+  fs.writeFileSync(bePath, JSON.stringify(data, null, 2));
+}
+function addBE(userId, amount, reason = "") {
+  const be = loadBE();
+  if (!be[userId]) be[userId] = { amount: 0, history: [] };
+  be[userId].amount += amount;
+  be[userId].history.push({
+    type: "earn",
+    amount,
+    reason,
+    timestamp: Date.now()
+  });
+  saveBE(be);
+}
+
+client.on("messageCreate", async (msg) => {
+  if (msg.author.bot) return;
+  if (!msg.guild || !msg.channel || !msg.content) return;
+  if (
+    msg.channel.type === 0 && // GUILD_TEXT
+    msg.channel.topic &&
+    msg.channel.topic.includes("파랑 정수")
+  ) {
+    // 1% 확률로 지급 (스팸방지 쿨타임 없이, 추가 원하면 말해줘!)
+    if (Math.random() < 0.01) {
+      const reward = Math.floor(Math.random() * 10) + 1; // 1~10
+      addBE(msg.author.id, reward, "채널 주제 보상");
+      // DM으로만 알림 (실패 무시)
+      msg.author.send(`💙 행운! [${msg.channel.name}] 채팅 중 파랑 정수 ${reward} BE를 획득했습니다!`).catch(() => {});
+    }
+  }
+});
+
+
 // ✅ 예외 핸들링
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
