@@ -1,3 +1,4 @@
+const { createResultEmbed, createBattleEmbed } = require('./battle-embed');
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder
 } = require('discord.js');
