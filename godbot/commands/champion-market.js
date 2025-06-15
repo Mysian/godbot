@@ -12,14 +12,12 @@ const {
 const fs = require('fs');
 const path = require('path');
 const passiveSkills = require('../utils/passive-skills');
-const { getChampionIcon } = require('../utils/champion-utils');
 
 // 경로
 const marketPath = path.join(__dirname, '../data/champion-market.json');
 const userChampPath = path.join(__dirname, '../data/champion-users.json');
 const bePath = path.join(__dirname, '../data/BE.json');
 
-// 데이터 로딩/세이브 유틸
 function loadMarket() {
   if (!fs.existsSync(marketPath)) fs.writeFileSync(marketPath, '[]');
   try {
@@ -48,8 +46,18 @@ function saveBE(data) {
   fs.writeFileSync(bePath, JSON.stringify(data, null, 2));
 }
 
-// === 버튼 2줄 ===
-function makeButtons(page, maxPage) {
+// --- 정렬 함수 ---
+function sortMarket(market) {
+  // level 높은 순 → 가격 낮은 순 → 최신순
+  return [...market].sort((a, b) => {
+    if (b.level !== a.level) return b.level - a.level;
+    if (a.price !== b.price) return a.price - b.price;
+    return b.timestamp - a.timestamp;
+  });
+}
+
+// --- 버튼 2줄(매물관리 추가) ---
+function makeButtons(page, maxPage, inManage = false) {
   // 첫 줄: 페이지+새로고침
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -67,41 +75,51 @@ function makeButtons(page, maxPage) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= maxPage)
   );
-  // 두 번째 줄: 검색/구매/판매
+  // 두 번째 줄: 검색/구매/판매/매물관리
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('champ_market_search')
-      .setLabel('챔피언 검색')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('champ_market_buy')
-      .setLabel('챔피언 구매')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId('champ_market_sell')
-      .setLabel('챔피언 판매')
-      .setStyle(ButtonStyle.Danger)
+    ...(inManage
+      ? [
+          new ButtonBuilder()
+            .setCustomId('champ_market_exit_manage')
+            .setLabel('거래소로 돌아가기')
+            .setStyle(ButtonStyle.Primary)
+        ]
+      : [
+          new ButtonBuilder()
+            .setCustomId('champ_market_search')
+            .setLabel('챔피언 검색')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId('champ_market_buy')
+            .setLabel('챔피언 구매')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId('champ_market_sell')
+            .setLabel('챔피언 판매')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId('champ_market_manage')
+            .setLabel('매물 관리')
+            .setStyle(ButtonStyle.Secondary)
+        ])
   );
   return [row1, row2];
 }
 
-// === 임베드 생성 === (이미지 전부 제거!!)
-async function makeMarketEmbed(page = 0, filter = null, interactionUserId = '') {
-  let market = loadMarket().sort((a, b) => b.timestamp - a.timestamp);
-  if (filter) market = market.filter(item => item.championName.includes(filter));
+// --- 일반/검색/매물관리 임베드 생성 ---
+async function makeMarketEmbed(page, market, interactionUserId, isManage = false) {
   const perPage = 5;
   const start = page * perPage;
   const items = market.slice(start, start + perPage);
 
   const embed = new EmbedBuilder()
-    .setTitle(filter ? `챔피언 거래소 (검색: ${filter})` : '챔피언 거래소')
+    .setTitle(isManage ? '내 매물 관리' : '챔피언 거래소')
     .setDescription(
       (items.length ? `총 ${market.length}건 | ${page + 1}페이지\n` : '현재 등록된 매물이 없습니다.\n') +
       `\n**이 거래소 버튼은 <@${interactionUserId}>님만 사용 가능하며, 2분 후 자동으로 닫힙니다.**`
     )
-    .setColor(0x1d8fff);
+    .setColor(isManage ? 0x10c933 : 0x1d8fff);
 
-  // 이미지는 아예 사용 X
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const passive = passiveSkills[item.championName]
@@ -120,7 +138,44 @@ async function makeMarketEmbed(page = 0, filter = null, interactionUserId = '') 
   return embed;
 }
 
-// === 챔피언 판매 모달 ===
+// --- 매물관리 회수버튼 ---
+function makeManageButtons(page, maxPage, items) {
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('champ_market_prev')
+      .setLabel('이전 페이지')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === 0),
+    new ButtonBuilder()
+      .setCustomId('champ_market_refresh')
+      .setLabel('새로고침')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('champ_market_next')
+      .setLabel('다음 페이지')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page >= maxPage)
+  );
+  // 두 번째 줄: 회수버튼, 뒤로가기
+  const row2 = new ActionRowBuilder();
+  items.forEach((item, idx) =>
+    row2.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`champ_manage_recall_${idx}`)
+        .setLabel(`#${page * 5 + idx + 1} 회수`)
+        .setStyle(ButtonStyle.Danger)
+    )
+  );
+  row2.addComponents(
+    new ButtonBuilder()
+      .setCustomId('champ_market_exit_manage')
+      .setLabel('거래소로 돌아가기')
+      .setStyle(ButtonStyle.Primary)
+  );
+  return [row1, row2];
+}
+
+// --- 챔피언 판매 모달 ---
 function makeSellModal(champName, champLevel) {
   return new ModalBuilder()
     .setCustomId('champ_sell_modal')
@@ -145,7 +200,7 @@ function makeSellModal(champName, champLevel) {
     );
 }
 
-// === 구매 모달 ===
+// --- 구매 모달 ---
 function makeBuyModal() {
   return new ModalBuilder()
     .setCustomId('champ_buy_modal')
@@ -161,7 +216,7 @@ function makeBuyModal() {
     );
 }
 
-// === 검색 모달 ===
+// --- 검색 모달 ---
 function makeSearchModal() {
   return new ModalBuilder()
     .setCustomId('champ_search_modal')
@@ -184,26 +239,104 @@ module.exports = {
   async execute(interaction) {
     let page = 0;
     let filter = null;
-    let market = loadMarket();
+    let isManage = false;
+    let market = sortMarket(loadMarket());
+    let interactionUserId = interaction.user.id;
     let maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
 
-    const interactionUserId = interaction.user.id;
-    let embed = await makeMarketEmbed(page, filter, interactionUserId);
-    let [row1, row2] = makeButtons(page, maxPage);
+    let embed = await makeMarketEmbed(page, market, interactionUserId, isManage);
+    let [row1, row2] = makeButtons(page, maxPage, isManage);
 
     await interaction.reply({ embeds: [embed], components: [row1, row2] });
 
-    // collector: 명령어 입력자만, 120초간
+    // --- collector: 명령어 입력자만, 120초간 ---
     const collector = interaction.channel.createMessageComponentCollector({
       filter: i => i.user.id === interactionUserId,
       time: 120000
     });
 
+    let manageMarket = [];
+    let managePage = 0;
+    let manageMaxPage = 0;
+
     collector.on('collect', async i => {
-      // 페이지/새로고침
+      if (isManage) {
+        // 관리 모드
+        if (i.customId === 'champ_market_exit_manage') {
+          // 거래소로 돌아가기
+          isManage = false;
+          market = sortMarket(loadMarket());
+          maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
+          embed = await makeMarketEmbed(page, market, interactionUserId, false);
+          [row1, row2] = makeButtons(page, maxPage, false);
+          await i.update({ embeds: [embed], components: [row1, row2] });
+          return;
+        }
+        if (i.customId.startsWith('champ_manage_recall_')) {
+          // 매물 회수 시도
+          const idx = parseInt(i.customId.replace('champ_manage_recall_', ''));
+          const allMine = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
+          const item = allMine[managePage * 5 + idx];
+          if (!item) {
+            await i.reply({ content: '해당 매물을 찾을 수 없습니다.', ephemeral: true });
+            return;
+          }
+          // 본인 소유 챔피언이 있으면 불가
+          const users = loadUsers();
+          if (users[interactionUserId]) {
+            await i.reply({ content: '챔피언을 이미 보유 중일 땐 회수할 수 없습니다.', ephemeral: true });
+            return;
+          }
+          // 매물 제거 + 챔피언 소유 복구
+          let all = loadMarket();
+          all = all.filter(m => !(m.timestamp === item.timestamp && m.sellerId === interactionUserId));
+          saveMarket(all);
+          users[interactionUserId] = {
+            name: item.championName,
+            level: item.level,
+            success: item.success ?? 0,
+            stats: item.stats,
+            timestamp: Date.now()
+          };
+          saveUsers(users);
+
+          // 매물관리 임베드 갱신
+          manageMarket = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
+          manageMaxPage = Math.max(0, Math.ceil(manageMarket.length / 5) - 1);
+          embed = await makeMarketEmbed(managePage, manageMarket, interactionUserId, true);
+          [row1, row2] = makeManageButtons(managePage, manageMaxPage, manageMarket.slice(managePage * 5, managePage * 5 + 5));
+          await i.update({ embeds: [embed], components: [row1, row2] });
+          await i.followUp({ content: '매물을 성공적으로 회수했습니다!', ephemeral: true });
+          return;
+        }
+        // 관리 모드 페이지 이동/새로고침
+        if (i.customId === 'champ_market_prev') managePage--;
+        if (i.customId === 'champ_market_next') managePage++;
+        if (i.customId === 'champ_market_refresh') { /* 새로고침 */ }
+        manageMarket = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
+        manageMaxPage = Math.max(0, Math.ceil(manageMarket.length / 5) - 1);
+        embed = await makeMarketEmbed(managePage, manageMarket, interactionUserId, true);
+        [row1, row2] = makeManageButtons(managePage, manageMaxPage, manageMarket.slice(managePage * 5, managePage * 5 + 5));
+        await i.update({ embeds: [embed], components: [row1, row2] });
+        return;
+      }
+
+      // 거래소 일반 모드
       if (i.customId === 'champ_market_prev') page--;
       if (i.customId === 'champ_market_next') page++;
       if (i.customId === 'champ_market_refresh') { /* 새로고침 */ }
+
+      if (i.customId === 'champ_market_manage') {
+        // 매물 관리 모드 진입
+        isManage = true;
+        managePage = 0;
+        manageMarket = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
+        manageMaxPage = Math.max(0, Math.ceil(manageMarket.length / 5) - 1);
+        embed = await makeMarketEmbed(managePage, manageMarket, interactionUserId, true);
+        [row1, row2] = makeManageButtons(managePage, manageMaxPage, manageMarket.slice(managePage * 5, managePage * 5 + 5));
+        await i.update({ embeds: [embed], components: [row1, row2] });
+        return;
+      }
 
       // 검색 버튼
       if (i.customId === 'champ_market_search') {
@@ -217,7 +350,6 @@ module.exports = {
       }
       // 판매 버튼
       if (i.customId === 'champ_market_sell') {
-        // 유저가 챔피언을 갖고 있어야만 판매 가능
         const users = loadUsers();
         const champ = users[i.user.id];
         if (!champ) {
@@ -229,30 +361,28 @@ module.exports = {
       }
 
       // 임베드 새로고침
-      market = loadMarket();
-      if (filter) market = market.filter(item => item.championName.includes(filter));
+      market = sortMarket(filter
+        ? loadMarket().filter(item => item.championName.includes(filter))
+        : loadMarket());
       maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
-      embed = await makeMarketEmbed(page, filter, interactionUserId);
-      [row1, row2] = makeButtons(page, maxPage);
+      embed = await makeMarketEmbed(page, market, interactionUserId, false);
+      [row1, row2] = makeButtons(page, maxPage, false);
       await i.update({ embeds: [embed], components: [row1, row2] });
     });
 
-    // 모달 제출 핸들러(한 번만)
+    // 모달 제출 핸들러
     const modalHandler = async modal => {
       if (!modal.isModalSubmit()) return;
-      if (modal.user.id !== interactionUserId) return; // 명령어 입력자만
+      if (modal.user.id !== interactionUserId) return;
 
       // 검색
       if (modal.customId === 'champ_search_modal') {
         filter = modal.fields.getTextInputValue('name');
         page = 0;
-        market = loadMarket();
-        market = market.filter(item => item.championName.includes(filter));
+        market = sortMarket(loadMarket().filter(item => item.championName.includes(filter)));
         maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
-        embed = await makeMarketEmbed(page, filter, interactionUserId);
-        [row1, row2] = makeButtons(page, maxPage);
-
-        // === 기존 메시지(거래소 임베드) 새로고침! ===
+        embed = await makeMarketEmbed(page, market, interactionUserId, false);
+        [row1, row2] = makeButtons(page, maxPage, false);
         await interaction.editReply({ embeds: [embed], components: [row1, row2] });
         await modal.deferUpdate();
         return;
@@ -262,8 +392,8 @@ module.exports = {
       if (modal.customId === 'champ_buy_modal') {
         const itemNum = parseInt(modal.fields.getTextInputValue('itemNum')) - 1;
         const allMarket = filter
-          ? loadMarket().filter(item => item.championName.includes(filter)).sort((a, b) => b.timestamp - a.timestamp)
-          : loadMarket().sort((a, b) => b.timestamp - a.timestamp);
+          ? sortMarket(loadMarket().filter(item => item.championName.includes(filter)))
+          : sortMarket(loadMarket());
 
         if (!allMarket[itemNum]) {
           await modal.reply({ content: '해당 번호의 매물이 없습니다.', ephemeral: true });
@@ -306,11 +436,11 @@ module.exports = {
         saveUsers(users);
 
         // 매물 삭제
-        let market = loadMarket();
-        const idx = market.findIndex(m => m.timestamp === item.timestamp && m.sellerId === item.sellerId);
+        let marketArr = loadMarket();
+        const idx = marketArr.findIndex(m => m.timestamp === item.timestamp && m.sellerId === item.sellerId);
         if (idx !== -1) {
-          market.splice(idx, 1);
-          saveMarket(market);
+          marketArr.splice(idx, 1);
+          saveMarket(marketArr);
         }
 
         await modal.reply({ content: `🎉 ${item.championName} 챔피언을 ${item.price} BE에 구매 완료!`, ephemeral: false });
@@ -331,8 +461,8 @@ module.exports = {
           return;
         }
         // champion-market.json에 매물 추가
-        const market = loadMarket();
-        market.push({
+        const marketArr = loadMarket();
+        marketArr.push({
           championName: champ.name,
           level: champ.level,
           success: champ.success ?? 0,
@@ -342,7 +472,7 @@ module.exports = {
           sellerTag: modal.user.tag,
           timestamp: Date.now()
         });
-        saveMarket(market);
+        saveMarket(marketArr);
 
         // 유저에서 챔피언 정보 삭제
         delete users[modal.user.id];
@@ -350,7 +480,7 @@ module.exports = {
 
         await modal.reply({
           content: `챔피언 ${champ.name}이(가) ${price} BE에 거래소에 등록되었습니다!`,
-          ephemeral: true // 나만 보기!
+          ephemeral: true
         });
         return;
       }
@@ -363,10 +493,9 @@ module.exports = {
         await interaction.editReply({ components: [] });
         await interaction.followUp({
           content: `⏰ **챔피언 거래소가 닫혔습니다!** (버튼 비활성화)`,
-          ephemeral: true // 명령어 입력자에게만!
+          ephemeral: true
         });
       } catch (e) {}
-      // 핸들러 제거(메모리릭 방지)
       interaction.client.removeListener('interactionCreate', modalHandler);
     });
   }
