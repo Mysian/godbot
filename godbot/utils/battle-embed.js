@@ -2,18 +2,16 @@ const { EmbedBuilder } = require('discord.js');
 const { getChampionIcon } = require('./champion-utils');
 const passiveSkills = require('./passive-skills');
 
-// 체력바
+// 체력바 (빨간색 10칸)
 function createHpBar(current, max) {
   const total = 10;
-  if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) {
-    return '⬜'.repeat(total);
-  }
+  if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) return '⬜'.repeat(total);
   const ratio = current / max;
   const filled = Math.min(total, Math.max(0, Math.round(ratio * total)));
   return '🟥'.repeat(filled) + '⬜'.repeat(total - filled);
 }
 
-// 상태효과/능력치
+// 상태효과(이모지)
 function getBuffDebuffDescription(effects = []) {
   if (!effects || effects.length === 0) return '정상';
   const desc = [];
@@ -43,7 +41,7 @@ function getBuffDebuffDescription(effects = []) {
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
-// 능력치 표기
+// 능력치 한줄씩(버프 포함)
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0, pen = stat.penetration || 0, dodge = stat.dodge || 0;
@@ -73,7 +71,7 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 패시브 설명/발동 로그
+// 패시브 설명+발동내역
 function getPassiveBlock(championName, passiveLogs, userId) {
   const data = passiveSkills[championName];
   const desc = data
@@ -84,17 +82,13 @@ function getPassiveBlock(championName, passiveLogs, userId) {
   return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
 }
 
-// 모든 공식/내역 로그 한데 모으기
-function mergeAllLogs(mainLog, actionLogs, passiveLines, skillLines) {
-  let arr = [];
-  if (mainLog) arr.push(mainLog);
-  if (Array.isArray(actionLogs) && actionLogs.length) arr.push(...actionLogs);
-  if (Array.isArray(passiveLines) && passiveLines.length) arr.push(...passiveLines.map(l => `🧬 ${l}`));
-  if (Array.isArray(skillLines) && skillLines.length) arr.push(...skillLines.map(l => `🌟 ${l}`));
-  return arr.length ? arr.join('\n') : '없음';
+// 중복 제거(마지막 한 줄만)
+function dedupLogs(arr) {
+  if (!Array.isArray(arr) || !arr.length) return [];
+  return [arr[arr.length - 1]];
 }
 
-// 메인 배틀 임베드
+// 임베드(행동결과/턴정보/이미지 스왑 포함)
 async function createBattleEmbed(
   challenger,
   opponent,
@@ -107,24 +101,31 @@ async function createBattleEmbed(
 ) {
   const ch = userData[challenger.id || challenger];
   const op = userData[opponent.id || opponent];
-
   const chp = (battle.context?.hp && battle.context.hp[challenger.id || challenger] !== undefined)
     ? battle.context.hp[challenger.id || challenger] : battle.hp[challenger.id || challenger];
   const ohp = (battle.context?.hp && battle.context.hp[opponent.id || opponent] !== undefined)
     ? battle.context.hp[opponent.id || opponent] : battle.hp[opponent.id || opponent];
-  const iconCh = await getChampionIcon(ch.name);
-  const iconOp = await getChampionIcon(op.name);
+
+  // 턴정보
+  const turnUser = userData[turnId];
+  const curTurn = battle.context?.turn || 1;
+  const turnStr = `현재 턴: <@${turnId}> (${turnUser?.name || ''})\n총 ${curTurn}턴째`;
+
+  // 본인턴이면 본인 이미지 하단, 아니면 상대
+  let imageUrl;
+  if (turnId === (challenger.id || challenger)) imageUrl = await getChampionIcon(ch.name);
+  else imageUrl = await getChampionIcon(op.name);
+
+  // 행동/패시브/스킬 로그(1줄씩만)
+  let allLogs = [];
+  if (log) allLogs.push(log);
+  if (battle.context?.actionLogs?.length) allLogs.push(...dedupLogs(battle.context.actionLogs));
+  if (battle.context?.passiveLogLines?.length) allLogs.push(...dedupLogs(battle.context.passiveLogLines));
+  if (battle.context?.skillLogLines?.length) allLogs.push(...dedupLogs(battle.context.skillLogLines));
+  const allLogStr = allLogs.length ? allLogs.join('\n') : '없음';
 
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
   const opStatus = getBuffDebuffDescription(battle.context.effects[opponent.id || opponent]);
-
-  // 공식/내역 로그
-  const allLogStr = mergeAllLogs(
-    log,
-    battle.context?.actionLogs,
-    battle.context?.passiveLogLines,
-    battle.context?.skillLogLines
-  );
 
   return new EmbedBuilder()
     .setTitle('⚔️ 챔피언 배틀')
@@ -147,10 +148,11 @@ ${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
 `,
         inline: true
       },
+      { name: '🎯 턴 정보', value: turnStr, inline: false },
       { name: '📢 행동 결과 / 공식', value: allLogStr, inline: false }
     )
-    .setThumbnail(iconOp)
-    .setImage(iconCh)
+    .setThumbnail(await getChampionIcon(op.name))
+    .setImage(imageUrl)
     .setColor(0x3498db);
 }
 
