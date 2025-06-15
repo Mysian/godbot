@@ -341,7 +341,7 @@ async function startBattleRequest(interaction) {
         // === 점멸 ===
         if (i.customId === 'blink') {
           cur.context.effects[uid].push({ type: 'dodgeNextAttack', turns: 1 });
-          log = `✨ ${userData[uid].name}이(가) 순식간에 점멸! (다음 공격 1회 완전 회피)`;
+          log = `✨ ${userData[uid].name}이(가) 점멸을 사용! (다음 공격을 ${Math.round( (0.2 + (userData[uid].stats?.dodge || 0)) * 100 )}% 확률로 회피 시도합니다)`;
           cur.logs.push(log);
           cur.turn = cur.turn === cur.challenger ? cur.opponent : cur.challenger;
           save(battlePath, bd);
