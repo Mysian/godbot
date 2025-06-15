@@ -2,7 +2,6 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-// 운세 메시지 1,000개
 const fortunes = [
   "행운이 가득한 하루가 될 거예요.",
   "작은 기쁨이 찾아오는 하루가 될 거예요.",
@@ -80,8 +79,32 @@ const fortunes = [
   "가까운 사람에게 소비하는 것을 아까워 하지 말아요.",
   "약속을 꼭 지켜야될 것 같아요.",
   "후회하지말고 쭉 나아가야해요.",
-  "더 많이 휴식하시고 더 많은 안정을 가지세요."
+  "더 많이 휴식하시고 더 많은 안정을 가지세요.",
+  "오늘 외출하실 일이 있으시다면 하얀색 옷을 입어보세요."
 ];
+
+// BE 연동
+const bePath = path.join(__dirname, '../data/BE.json');
+function loadBE() {
+  if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, "{}");
+  return JSON.parse(fs.readFileSync(bePath, "utf8"));
+}
+function saveBE(data) {
+  fs.writeFileSync(bePath, JSON.stringify(data, null, 2));
+}
+function addBE(userId, amount, reason) {
+  const be = loadBE();
+  if (!be[userId]) be[userId] = { amount: 0, history: [] };
+  be[userId].amount += amount;
+  be[userId].history.push({
+    type: "earn",
+    amount,
+    reason,
+    timestamp: Date.now()
+  });
+  saveBE(be);
+}
+
 
 // 유저별 마지막 사용일 저장 경로
 const dataDir = path.join(__dirname, '../data');
@@ -131,18 +154,22 @@ module.exports = {
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
     const result = `<@${userId}> 님, ${fortune}`;
 
+    // 파랑 정수 5~50 지급
+    const reward = Math.floor(Math.random() * 46) + 5;
+    addBE(userId, reward, "오늘의 운세 보상");
+
     // 데이터 저장 (오늘 날짜로 기록)
     userData[userId] = today;
     saveUserData(userData);
 
-    // 임베드 생성
+    // 임베드 생성 (BE 획득 안내 포함)
     const embed = new EmbedBuilder()
       .setTitle('오늘의 운세')
-      .setDescription(result)
+      .setDescription(`${result}\n\n🎁 파랑 정수 ${reward} BE를 획득했습니다!`)
       .setColor(0x57D9A3)
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
-    // 서버 전체 공개로 출력
+    // 전체 공개로 출력
     await interaction.reply({ embeds: [embed] });
   }
 };
