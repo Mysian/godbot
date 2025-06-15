@@ -2,7 +2,6 @@ const { EmbedBuilder } = require('discord.js');
 const { getChampionIcon } = require('./champion-utils');
 const passiveSkills = require('./passive-skills');
 
-// 체력바 (한 줄)
 function createHpBarInline(current, max) {
   const total = 10;
   if (typeof current !== 'number' || typeof max !== 'number' || max <= 0) return '⬜'.repeat(total) + ` (0/${max || 0})`;
@@ -11,7 +10,6 @@ function createHpBarInline(current, max) {
   return '🟥'.repeat(filled) + '⬜'.repeat(total - filled) + ` (${current}/${max})`;
 }
 
-// 상태효과(이모지)
 function getBuffDebuffDescription(effects = []) {
   if (!effects || effects.length === 0) return '정상';
   const desc = [];
@@ -41,7 +39,6 @@ function getBuffDebuffDescription(effects = []) {
   return desc.length > 0 ? desc.join(', ') : '정상';
 }
 
-// 능력치 한줄씩(버프 포함)
 function createStatField(user, effects = []) {
   const stat = user.stats || {};
   let atk = stat.attack || 0, ap = stat.ap || 0, def = stat.defense || 0, mr = stat.magicResist || 0, pen = stat.penetration || 0, dodge = stat.dodge || 0;
@@ -71,7 +68,6 @@ function createStatField(user, effects = []) {
   );
 }
 
-// 패시브 설명+발동내역
 function getPassiveBlock(championName, passiveLogs, userId) {
   const data = passiveSkills[championName];
   const desc = data
@@ -82,13 +78,11 @@ function getPassiveBlock(championName, passiveLogs, userId) {
   return desc + '\n' + arr.map(msg => `🧬 ${msg}`).join('\n');
 }
 
-// [개인 턴 카운트] → [n턴째] (무조건 숫자)
 function getPersonalTurnStr(turnUserId, context) {
   const n = context?.personalTurns?.[turnUserId] || 0;
   return `[${n + 1}턴째]`;
 }
 
-// 행동/패시브/스킬 로그 → 완전 중복 제거 (딱 한 번만)
 function getLatestUniqueLog(log, context) {
   const logs = [];
   if (log) logs.push(log);
@@ -96,7 +90,6 @@ function getLatestUniqueLog(log, context) {
     const arr = context?.[key];
     if (Array.isArray(arr) && arr.length) logs.push(arr[arr.length - 1]);
   });
-  // 완전히 같은 로그라면 한 번만!
   const unique = [];
   for (let l of logs) {
     if (l && !unique.includes(l)) unique.push(l);
@@ -104,7 +97,6 @@ function getLatestUniqueLog(log, context) {
   return unique.length ? unique.join('\n') : '없음';
 }
 
-// 임베드(행동결과/턴정보/이미지 스왑 포함)
 async function createBattleEmbed(
   challenger,
   opponent,
@@ -122,13 +114,11 @@ async function createBattleEmbed(
   const ohp = (battle.context?.hp && battle.context.hp[opponent.id || opponent] !== undefined)
     ? battle.context.hp[opponent.id || opponent] : battle.hp[opponent.id || opponent];
 
-  // 턴정보
   const turnUser = userData[turnId];
   const curTurn = battle.context?.turn || 1;
   const personalTurnStr = getPersonalTurnStr(turnId, battle.context);
   const turnStr = `현재 턴: <@${turnId}> (${turnUser?.name || ''}) ${personalTurnStr}\n총 ${curTurn}턴째`;
 
-  // 이미지 위치 스왑 (본인턴: 이미지 하단, 아니면 상단/하단 반전)
   let imageUrl, thumbnailUrl;
   if (turnId === (challenger.id || challenger)) {
     imageUrl = await getChampionIcon(ch.name);
@@ -138,7 +128,6 @@ async function createBattleEmbed(
     thumbnailUrl = await getChampionIcon(ch.name);
   }
 
-  // 행동/패시브/스킬 로그(가장 최신+중복X)
   const allLogStr = getLatestUniqueLog(log, battle.context);
 
   const chStatus = getBuffDebuffDescription(battle.context.effects[challenger.id || challenger]);
@@ -173,7 +162,6 @@ ${getPassiveBlock(op.name, passiveLogs, opponent.id || opponent)}
     .setColor(0x3498db);
 }
 
-// 배틀 결과 임베드 (변경 없음)
 async function createResultEmbed(winner, loser, userData, records, interaction, isDraw = false, drawIds = []) {
   if (isDraw) {
     const champ1 = userData[drawIds[0]], champ2 = userData[drawIds[1]];
