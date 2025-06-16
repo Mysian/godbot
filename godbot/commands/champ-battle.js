@@ -313,20 +313,20 @@ module.exports = {
 
     if (action === 'defend') {
       user.isDefending = true;
-      logs.push(`${user.nickname} 방어! 다음 상대 공격/스킬 피해 50%로 감소.`);
+      logs.push(`${user.nickname} 방어자세! 다음 받는 피해가 50% 감소됨`);
     }
     if (action === 'dodge') {
       user.isDodging = true;
-      logs.push(`${user.nickname} 점멸! 다음 상대 공격/스킬 20% 확률 완벽 회피.`);
+      logs.push(`${user.nickname} 점멸 시도! 다음 공격 20% 확률로 회피`);
     }
     if (action === 'attack') {
       battleEngine.calcDamage(user, enemy, context);
       if (enemy.isDodging) {
         if (Math.random() < 0.2) {
           context.damage = 0;
-          logs.push(`${enemy.nickname} 점멸 성공! 모든 피해 회피!`);
+          logs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
         } else {
-          logs.push(`${enemy.nickname} 점멸 실패! 피해를 입음.`);
+          logs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
         }
         enemy.isDodging = false;
       }
@@ -335,7 +335,7 @@ module.exports = {
         logs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
         enemy.isDefending = false;
       }
-      logs.push(`${user.nickname}의 평타! (${context.damage} 데미지)`);
+      logs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
       logs.push(...battleEngine.resolvePassive(user, enemy, context));
       logs.push(...battleEngine.applyEffects(enemy, user, context));
       enemy.hp = Math.max(0, enemy.hp - context.damage);
