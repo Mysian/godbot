@@ -3,7 +3,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getChampionIcon } = require('../utils/champion-utils');
 
-// 체력 바 생성 함수
+// 체력 바 함수
 function createHpBar(current, max, length = 20) {
   const ratio = Math.max(0, Math.min(1, current / max));
   const filled = Math.round(ratio * length);
@@ -12,13 +12,11 @@ function createHpBar(current, max, length = 20) {
   return bar;
 }
 
-// 전투 임베드 생성
 async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
-  // 이미지
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
 
-  // HP
+  // HP, 체력바
   const userHpPct = Math.max(0, Math.floor((user.hp / user.stats.hp) * 100));
   const enemyHpPct = Math.max(0, Math.floor((enemy.hp / enemy.stats.hp) * 100));
   const userHpBar = createHpBar(user.hp, user.stats.hp);
@@ -36,15 +34,28 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
   if (enemy.debuffImmune) enemyState.push('🟣디버프 면역');
   if (enemy._itemUsedCount >= 3) enemyState.push('🔒아이템 제한');
 
-  // 본인 턴 챔피언 이미지(크게)
+  // 본인 턴 챔피언 이미지를 setImage로 (맨 하단에 크게)
   const mainChampionIcon = isUserTurn ? userIcon : enemyIcon;
+
+  // 공격/주문/방어/관통 이모지
+  const atkEmoji = "⚔️";
+  const apEmoji = "✨";
+  const defEmoji = "🛡️";
+  const penEmoji = "🗡️";
 
   // 임베드
   const embed = new EmbedBuilder()
     .setColor(isUserTurn ? '#e44d26' : '#1769e0')
     .setTitle(`⚔️ ${user.nickname} vs ${enemy.nickname} | ${turn}턴`)
-    .setThumbnail(userIcon)  // 좌측 상단
-    .setAuthor({ name: `${enemy.nickname} (${enemy.name})`, iconURL: enemyIcon }) // 우측 상단(상대 초상화)
+    // 상대 챔피언만 우상단에 작게 표시
+    .setAuthor({
+      name: isUserTurn
+        ? `${enemy.nickname} (${enemy.name})`
+        : `${user.nickname} (${user.name})`,
+      iconURL: isUserTurn ? enemyIcon : userIcon
+    })
+    // 본인 턴 챔피언 이미지를 임베드 맨 하단에 크게!
+    .setImage(mainChampionIcon)
     .addFields(
       {
         name: `🟦 ${user.nickname} (${user.name})`,
@@ -52,8 +63,10 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
           `HP: **${user.hp}/${user.stats.hp}** (${userHpPct}%)\n` +
           `${userHpBar}\n` +
           `상태: ${userState.length ? userState.join(', ') : '정상'}\n` +
-          `공격력: ${user.stats.attack} | 주문력: ${user.stats.ap}\n` +
-          `방어력: ${user.stats.defense} | 관통력: ${user.stats.penetration}`,
+          `${atkEmoji} 공격력: ${user.stats.attack}  ` +
+          `${apEmoji} 주문력: ${user.stats.ap}  ` +
+          `${defEmoji} 방어력: ${user.stats.defense}  ` +
+          `${penEmoji} 관통력: ${user.stats.penetration}`,
         inline: false
       },
       {
@@ -62,8 +75,10 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
           `HP: **${enemy.hp}/${enemy.stats.hp}** (${enemyHpPct}%)\n` +
           `${enemyHpBar}\n` +
           `상태: ${enemyState.length ? enemyState.join(', ') : '정상'}\n` +
-          `공격력: ${enemy.stats.attack} | 주문력: ${enemy.stats.ap}\n` +
-          `방어력: ${enemy.stats.defense} | 관통력: ${enemy.stats.penetration}`,
+          `${atkEmoji} 공격력: ${enemy.stats.attack}  ` +
+          `${apEmoji} 주문력: ${enemy.stats.ap}  ` +
+          `${defEmoji} 방어력: ${enemy.stats.defense}  ` +
+          `${penEmoji} 관통력: ${enemy.stats.penetration}`,
         inline: false
       }
     )
@@ -71,8 +86,7 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
       text: isUserTurn
         ? `🎮 ${user.nickname}의 턴! 행동을 선택하세요.`
         : `⏳ ${enemy.nickname}의 턴을 기다리는 중...`
-    })
-    .setImage(mainChampionIcon);
+    });
 
   // 로그
   const LOG_LIMIT = 7;
@@ -82,31 +96,31 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
   });
 
-  // 버튼 (행동)
+  // 버튼에 이모지 추가
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
-      .setLabel('평타')
+      .setLabel('⚔️ 평타')
       .setStyle(ButtonStyle.Primary)
       .setDisabled(!isUserTurn || user.stunned),
     new ButtonBuilder()
       .setCustomId('defend')
-      .setLabel('방어')
+      .setLabel('🛡️ 방어')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!isUserTurn || user.stunned),
     new ButtonBuilder()
       .setCustomId('dodge')
-      .setLabel('점멸(회피)')
+      .setLabel('💨 점멸(회피)')
       .setStyle(ButtonStyle.Success)
       .setDisabled(!isUserTurn || user.stunned),
     new ButtonBuilder()
       .setCustomId('item')
-      .setLabel('아이템')
+      .setLabel('🧪 아이템')
       .setStyle(ButtonStyle.Primary)
       .setDisabled(!isUserTurn || user._itemUsedCount >= 3 || user.stunned),
     new ButtonBuilder()
       .setCustomId('skill')
-      .setLabel('스킬')
+      .setLabel('✨ 스킬')
       .setStyle(ButtonStyle.Primary)
       .setDisabled(!isUserTurn || user.stunned)
   );
@@ -116,12 +130,11 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
   const escapeRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('escape')
-      .setLabel('도망 (50% 확률)')
+      .setLabel('🏃‍♂️ 도망 (50%)')
       .setStyle(ButtonStyle.Danger)
       .setDisabled(!canEscape || user.stunned)
   );
 
-  // 버튼 2줄로 반환
   return {
     embeds: [embed],
     components: [row, escapeRow],
