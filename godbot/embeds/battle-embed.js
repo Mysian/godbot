@@ -12,7 +12,16 @@ function createHpBar(current, max, length = 20) {
   return bar;
 }
 
-async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
+/**
+ * @param {Object} param
+ * @param {Object} param.user - 내 챔피언
+ * @param {Object} param.enemy - 상대 챔피언
+ * @param {number} param.turn - 현재 턴
+ * @param {Array<string>} param.logs - 전투 로그
+ * @param {boolean} param.isUserTurn - 현재 턴이 내 턴인지
+ * @param {string} [param.activeUserId] - 버튼을 활성화할 Discord 유저ID (필수!)
+ */
+async function battleEmbed({ user, enemy, turn, logs, isUserTurn, activeUserId }) {
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
 
@@ -43,18 +52,22 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
   const defEmoji = "🛡️";
   const penEmoji = "🗡️";
 
+  // 현재 턴 유저ID
+  const currentTurnUserId = isUserTurn ? user.id : enemy.id;
+  const currentTurnNickname = isUserTurn ? user.nickname : enemy.nickname;
+  const currentTurnChamp = isUserTurn ? user.name : enemy.name;
+
   // 임베드
   const embed = new EmbedBuilder()
     .setColor(isUserTurn ? '#e44d26' : '#1769e0')
     .setTitle(`⚔️ ${user.nickname} vs ${enemy.nickname} | ${turn}턴`)
-    // 상대 챔피언만 우상단에 작게 표시
+    // 우상단 작은 이미지: 상대 챔피언 (본인 턴이 아니면 내 챔피언)
     .setAuthor({
       name: isUserTurn
         ? `${enemy.nickname} (${enemy.name})`
         : `${user.nickname} (${user.name})`,
       iconURL: isUserTurn ? enemyIcon : userIcon
     })
-    // 본인 턴 챔피언 이미지를 임베드 맨 하단에 크게!
     .setImage(mainChampionIcon)
     .addFields(
       {
@@ -84,8 +97,8 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
     )
     .setFooter({
       text: isUserTurn
-        ? `🎮 ${user.nickname}의 턴! 행동을 선택하세요.`
-        : `⏳ ${enemy.nickname}의 턴을 기다리는 중...`
+        ? `🎮 ${currentTurnChamp} (<@${currentTurnUserId}>)의 턴! 행동을 선택하세요.`
+        : `⏳ ${currentTurnChamp} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
     });
 
   // 로그
@@ -96,43 +109,45 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn }) {
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
   });
 
-  // 버튼에 이모지 추가
+  // 현재 버튼 클릭 가능한 유저만 활성화
+  const enable = !!activeUserId && currentTurnUserId === activeUserId && isUserTurn && !user.stunned;
+
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
       .setLabel('⚔️ 평타')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!isUserTurn || user.stunned),
+      .setDisabled(!enable),
     new ButtonBuilder()
       .setCustomId('defend')
       .setLabel('🛡️ 방어')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(!isUserTurn || user.stunned),
+      .setDisabled(!enable),
     new ButtonBuilder()
       .setCustomId('dodge')
       .setLabel('💨 점멸(회피)')
       .setStyle(ButtonStyle.Success)
-      .setDisabled(!isUserTurn || user.stunned),
+      .setDisabled(!enable),
     new ButtonBuilder()
       .setCustomId('item')
       .setLabel('🧪 아이템')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!isUserTurn || user._itemUsedCount >= 3 || user.stunned),
+      .setDisabled(!enable || user._itemUsedCount >= 3),
     new ButtonBuilder()
       .setCustomId('skill')
       .setLabel('✨ 스킬')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!isUserTurn || user.stunned)
+      .setDisabled(!enable)
   );
 
   // 도망(탈주) 버튼 (10~30턴, 확률 안내)
-  let canEscape = turn >= 10 && turn <= 30 && isUserTurn;
+  let canEscape = turn >= 10 && turn <= 30 && enable;
   const escapeRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('escape')
       .setLabel('🏃‍♂️ 도망 (50%)')
       .setStyle(ButtonStyle.Danger)
-      .setDisabled(!canEscape || user.stunned)
+      .setDisabled(!canEscape)
   );
 
   return {
