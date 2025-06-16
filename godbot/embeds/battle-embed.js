@@ -109,7 +109,10 @@ async function battleEmbed({
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
   });
 
-  const enable = !!activeUserId && currentTurnUserId === activeUserId && isUserTurn && !user.stunned;
+  // 🔥 여기 수정!
+  const currentPlayer = isUserTurn ? user : enemy;
+  const enable = !!activeUserId && currentPlayer.id === activeUserId && !currentPlayer.stunned;
+
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
@@ -130,7 +133,7 @@ async function battleEmbed({
       .setCustomId('item')
       .setLabel('🧪 아이템')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!enable || user._itemUsedCount >= 3),
+      .setDisabled(!enable || currentPlayer._itemUsedCount >= 3),
     new ButtonBuilder()
       .setCustomId('skill')
       .setLabel('✨ 스킬')
