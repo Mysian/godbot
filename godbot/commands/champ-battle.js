@@ -339,7 +339,6 @@ module.exports = {
       logs.push(...battleEngine.resolvePassive(user, enemy, context));
       logs.push(...battleEngine.applyEffects(enemy, user, context));
       enemy.hp = Math.max(0, enemy.hp - context.damage);
-      logs.push(`${enemy.nickname}의 남은 HP: ${enemy.hp}/${enemy.stats.hp}`);
     }
     if (action === 'defend' || action === 'dodge' || action === 'attack') {
       battle.logs = (battle.logs || []).concat(logs).slice(-7);
