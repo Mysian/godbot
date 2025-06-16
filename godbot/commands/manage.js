@@ -2,7 +2,6 @@ const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   ActionRowBuilder,
-  StringSelectMenuBuilder,
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -12,8 +11,6 @@ const path = require("path");
 
 const EXCLUDE_ROLE_ID = "1371476512024559756";
 const NEWBIE_ROLE_ID = "1295701019430227988";
-const VOICE_CATEGORY_ID = "1207980297854124032";
-const LOG_CHANNEL_ID = "1380874052855529605";
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -26,8 +23,7 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: "장기 미이용 유저 추방", value: "inactive" },
-          { name: "비활동 신규유저 추방", value: "newbie" },
-          { name: "음성채널 상태 변경", value: "rename_voice_channel" },
+          { name: "비활동 신규유저 추방", value: "newbie" }
         )
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -124,84 +120,6 @@ module.exports = {
             content: "⏰ 시간이 초과되어 추방이 취소되었습니다.",
             embeds: [],
             components: [],
-          });
-        }
-      });
-    } else if (option === "rename_voice_channel") {
-      const channels = guild.channels.cache.filter(
-        (c) => c.parentId === VOICE_CATEGORY_ID && c.type === 2
-      );
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId("voice_select")
-        .setPlaceholder("상태명을 바꿀 음성채널을 선택하세요.")
-        .addOptions(
-          channels.map((c) => ({
-            label: c.name,
-            value: c.id,
-          }))
-        );
-
-      const row = new ActionRowBuilder().addComponents(select);
-      await interaction.editReply({
-        content: "🎙️ 상태명을 변경할 음성채널을 선택하세요.",
-        components: [row],
-      });
-
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id,
-        time: 20000,
-      });
-
-      collector.on("collect", async (i) => {
-        if (i.customId === "voice_select") {
-          const channelId = i.values[0];
-          const channel = guild.channels.cache.get(channelId);
-          const oldName = channel.name;
-
-          await i.update({
-            content: "✏️ 새로운 상태명을 입력해주세요.",
-            components: [],
-          });
-
-          const msgCollector = interaction.channel.createMessageCollector({
-            filter: (m) => m.author.id === interaction.user.id,
-            time: 20000,
-            max: 1,
-          });
-
-          msgCollector.on("collect", async (msg) => {
-            const newName = msg.content;
-            await channel.setName(newName);
-
-            const logEmbed = new EmbedBuilder()
-              .setTitle("📢 음성채널 상태명 변경")
-              .setDescription(`<@${interaction.user.id}> 님이 **${oldName}** → **${newName}** 으로 변경함`)
-              .addFields(
-                { name: "기존", value: oldName, inline: true },
-                { name: "현재", value: newName, inline: true }
-              )
-              .setColor(0x00bfff)
-              .setTimestamp();
-
-            const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-            if (logChannel?.isTextBased()) {
-              await logChannel.send({ embeds: [logEmbed] });
-            }
-
-            await interaction.followUp({
-              content: `✅ 채널 이름이 성공적으로 변경되었습니다.`,
-              ephemeral: true,
-            });
-          });
-
-          msgCollector.on("end", (collected) => {
-            if (collected.size === 0) {
-              interaction.followUp({
-                content: "⏰ 시간이 초과되어 입력이 취소되었습니다.",
-                ephemeral: true,
-              });
-            }
           });
         }
       });
