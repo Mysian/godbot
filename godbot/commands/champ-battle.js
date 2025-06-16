@@ -60,7 +60,7 @@ async function updateBattleView(interaction, battle, activeUserId) {
     battles.delete(battle.enemy.id);
     try {
       await interaction.followUp({
-        content: '⏰ 2분간 행동이 없어 배틀이 자동 종료되었습니다.',
+        content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
         ephemeral: false
       });
     } catch (e) {}
@@ -148,16 +148,18 @@ module.exports = {
       battleRequests.delete(request.userId);
       battleRequests.delete(request.enemyId);
 
+      // 첫 턴의 activeUserId는 user.id!
       const view = await battleEmbed({
         user: battleState.user,
         enemy: battleState.enemy,
         turn: battleState.turn,
         logs: battleState.logs,
         isUserTurn: battleState.isUserTurn,
-        activeUserId: interaction.user.id
+        activeUserId: battleState.user.id // 👈 반드시 "첫 턴 유저 id"
       });
       await interaction.update({ content: '배틀이 시작됩니다!', embeds: view.embeds, components: view.components });
 
+      // 120초 타이머 시작
       const key = `${battleState.user.id}:${battleState.enemy.id}`;
       if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
       battleTimers.set(key, setTimeout(async () => {
@@ -277,6 +279,8 @@ module.exports = {
     battle.turn += 1;
     battle.isUserTurn = !battle.isUserTurn;
 
-    await updateBattleView(interaction, battle, enemy.id);
+    // 👇 여기가 진짜 핵심! 항상 "다음 턴 유저 id"로 activeUserId 넘김
+    const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
+    await updateBattleView(interaction, battle, nextTurnUserId);
   }
 };
