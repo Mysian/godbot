@@ -124,40 +124,83 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// ✅ 슬래시 명령어 처리 (명령어 로그 자동 전송)
+// ✅ 챔피언배틀 통합 명령어/버튼 처리(중복X!)
+const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  // 1. 명령어 로그 자동 기록
-  await sendCommandLog(interaction);
-
-  // 2. 명령어 실행
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    // 이미 응답된 상태면 followUp, 아니면 reply (여기만 변경됨!)
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({
-        content: "❌ 명령어 실행 중 오류가 발생했습니다.",
-        ephemeral: true
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: "❌ 명령어 실행 중 오류가 발생했습니다.",
-        ephemeral: true
-      }).catch(() => {});
+  // 1. 챔피언배틀 명령어는 여기서만!
+  if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
+    await sendCommandLog(interaction);
+    try {
+      await champBattle.execute(interaction);
+    } catch (error) {
+      console.error(error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      } else {
+        await interaction.reply({
+          content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      }
     }
-    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-    if (logChannel && logChannel.isTextBased()) {
-      logChannel.send(`❗ 명령어 오류 발생\n\`\`\`\n${error.stack?.slice(0, 1900)}\n\`\`\``);
+    return; // 아래 코드 실행X
+  }
+
+  // 2. 챔피언배틀 버튼만 여기서!
+  if (interaction.isButton() && interaction.customId && (
+      interaction.customId.startsWith('accept_battle_') ||
+      interaction.customId.startsWith('decline_battle_') ||
+      [
+        'attack', 'defend', 'dodge', 'item', 'skill', 'escape'
+      ].includes(interaction.customId)
+    )) {
+    try {
+      await champBattle.handleButton(interaction);
+    } catch (error) {
+      console.error(error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: "❌ 버튼 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      } else {
+        await interaction.reply({
+          content: "❌ 버튼 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  // 3. 그 외 명령어/버튼(로그 및 명령어 실행)
+  if (interaction.isChatInputCommand()) {
+    await sendCommandLog(interaction);
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+    try {
+      await command.execute(interaction);
+    } catch (error) {
+      console.error(error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      } else {
+        await interaction.reply({
+          content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      }
     }
   }
 });
 
-// ✅ 게임 메시지 핸들링 (러시안룰렛)
+// ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
 client.on("messageCreate", async (message) => {
@@ -228,27 +271,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-
-const champBattle = require('./commands/champ-battle');
-
-client.on('interactionCreate', async interaction => {
-  // 1. 명령어 입력(슬래시커맨드)
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === '챔피언배틀') {
-      return champBattle.execute(interaction);
-    }
-    // 만약 다른 명령어(챔피언배틀종료 등) 추가 시 아래에 else if ...
-  }
-
-  // 2. 버튼 인터랙션(행동/수락/거절 등)
-  if (interaction.isButton()) {
-    return champBattle.handleButton(interaction);
-  }
-});
-
-
-
-
+// 파랑 정수(보상) 기능 등 기존 로직은 유지
 const bePath = path.join(__dirname, "data/BE.json");
 function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, "{}");
@@ -274,22 +297,19 @@ client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
   if (!msg.guild || !msg.channel || !msg.content) return;
   if (
-    msg.channel.type === 0 && // GUILD_TEXT
+    msg.channel.type === 0 &&
     msg.channel.topic &&
     msg.channel.topic.includes("파랑 정수")
   ) {
-    // 1% 확률로 지급 (스팸방지 쿨타임 없이, 추가 원하면 말해줘!)
     if (Math.random() < 0.01) {
-      const reward = Math.floor(Math.random() * 10) + 1; // 1~10
+      const reward = Math.floor(Math.random() * 10) + 1;
       addBE(msg.author.id, reward, "채널 주제 보상");
-      // 채팅 채널에만 획득 메시지!
       msg.channel.send(`💙 <@${msg.author.id}>님이 파랑 정수 ${reward} BE를 획득했습니다!`);
     }
   }
 });
 
-
-// ✅ 예외 핸들링
+// ✅ 예외 핸들링/자동 재접속/Express 서버는 그대로
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
   try {
@@ -311,7 +331,6 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
-// ✅ 자동 재접속
 setInterval(async () => {
   if (!client || !client.user || !client.ws || client.ws.status !== 0) {
     console.warn("🛑 클라이언트 연결이 끊겼습니다. 재로그인 시도 중...");
@@ -324,10 +343,8 @@ setInterval(async () => {
   }
 }, 1000 * 60 * 1800);
 
-// ✅ 봇 로그인
 client.login(process.env.DISCORD_TOKEN);
 
-// ✅ Railway 용 Express 상태 체크 서버
 const app = express();
 const PORT = process.env.PORT || 3000;
 
