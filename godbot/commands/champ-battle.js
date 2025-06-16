@@ -100,6 +100,7 @@ module.exports = {
     .setDescription('상대와 롤 챔피언 턴제 배틀을 시작합니다.')
     .addUserOption(option => option.setName('상대').setDescription('대결 상대').setRequired(false)),
   battles,
+  battleRequests,
 
   async execute(interaction) {
     const user = interaction.user;
