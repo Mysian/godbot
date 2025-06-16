@@ -1,5 +1,3 @@
-// embeds/battle-embed.js
-
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getChampionIcon } = require('../utils/champion-utils');
 const passives = require('../utils/passive-skills');
@@ -19,7 +17,7 @@ async function battleEmbed({
   turn,
   logs,
   isUserTurn,
-  activeUserId // 반드시 챔피언배틀에서 interaction.user.id로 넘겨줄 것!
+  activeUserId // 반드시 champ-battle에서 interaction.user.id로 넘길 것!
 }) {
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
