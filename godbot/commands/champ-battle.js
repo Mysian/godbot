@@ -32,6 +32,8 @@ async function loadChampionUser(userId) {
   champ.items = champ.items || {};
   champ.skills = champ.skills || [];
   champ._itemUsedCount = 0;
+  champ.isDefending = false;
+  champ.isDodging = false;
   return champ;
 }
 async function loadRecords() {
@@ -149,14 +151,13 @@ module.exports = {
       battleRequests.delete(request.userId);
       battleRequests.delete(request.enemyId);
 
-      // 첫 턴의 activeUserId는 user.id!
       const view = await battleEmbed({
         user: battleState.user,
         enemy: battleState.enemy,
         turn: battleState.turn,
         logs: battleState.logs,
         isUserTurn: battleState.isUserTurn,
-        activeUserId: battleState.user.id // 👈 반드시 "첫 턴 유저 id"
+        activeUserId: battleState.user.id
       });
       await interaction.update({ content: '배틀이 시작됩니다!', embeds: view.embeds, components: view.components });
 
@@ -184,7 +185,6 @@ module.exports = {
     if (battle.finished)
       return interaction.reply({ content: '이미 종료된 배틀입니다.', ephemeral: true });
 
-    // 🔥 "자기 턴"만 판정
     const isMyTurn = (battle.isUserTurn && battle.user.id === userId) ||
                      (!battle.isUserTurn && battle.enemy.id === userId);
     const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
@@ -201,28 +201,105 @@ module.exports = {
       effects: battle.effects,
       damage: 0,
     };
+
+    // -----------------------
+    // 🟢 "보조" 액션: 아이템/스킬 - 턴 안넘김
+    // -----------------------
+    if (action === 'item') {
+      const itemName = '회복포션';
+      logs.push(...battleEngine.resolveItem(user, itemName, context));
+      battle.logs = (battle.logs || []).concat(logs).slice(-7);
+      await updateBattleView(interaction, battle, userId); // 내 턴 유지
+      return;
+    }
+    if (action === 'skill') {
+      const skillName = '섬광';
+      logs.push(...battleEngine.resolveActiveSkill(user, enemy, skillName, context));
+      battle.logs = (battle.logs || []).concat(logs).slice(-7);
+      await updateBattleView(interaction, battle, userId); // 내 턴 유지
+      return;
+    }
+
+    // -----------------------
+    // 🟢 "주" 액션: 공격/방어/점멸/도망 - 턴 넘김
+    // -----------------------
+    // 사전 상태 초기화 (내가 방어/회피 했던 것은 턴 종료 후 자동으로 풀림)
+    user.isDefending = false;
+    user.isDodging = false;
+
+    if (action === 'defend') {
+      user.isDefending = true;
+      logs.push(`${user.nickname} 방어! 다음 상대 공격/스킬 피해 50%로 감소.`);
+    }
+    if (action === 'dodge') {
+      user.isDodging = true;
+      logs.push(`${user.nickname} 점멸! 다음 상대 공격/스킬 20% 확률 완벽 회피.`);
+    }
     if (action === 'attack') {
+      // 공격 들어가기 전에 상대가 방어/점멸 중이면 반영
+      if (enemy.isDodging) {
+        if (Math.random() < 0.2) {
+          context.damage = 0;
+          logs.push(`${enemy.nickname} 점멸 성공! 모든 피해 회피!`);
+        } else {
+          logs.push(`${enemy.nickname} 점멸 실패! 피해를 입음.`);
+        }
+        enemy.isDodging = false;
+      }
+      if (enemy.isDefending && context.damage > 0) {
+        context.damage = Math.floor(context.damage * 0.5);
+        logs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
+        enemy.isDefending = false;
+      }
       battleEngine.calcDamage(user, enemy, context);
       logs.push(`${user.nickname}의 평타! (${context.damage} 데미지)`);
       logs.push(...battleEngine.resolvePassive(user, enemy, context));
       logs.push(...battleEngine.applyEffects(enemy, user, context));
       enemy.hp = Math.max(0, enemy.hp - context.damage);
       logs.push(`${enemy.nickname}의 남은 HP: ${enemy.hp}/${enemy.stats.hp}`);
-    } else if (action === 'defend') {
-      logs.push(`${user.nickname} 방어!`);
-    } else if (action === 'dodge') {
-      if (Math.random() < 0.2) {
-        logs.push(`${user.nickname} 점멸로 적의 공격을 완전히 피했다!`);
-      } else {
-        logs.push(`${user.nickname}의 점멸 실패!`);
+    }
+    if (action === 'defend' || action === 'dodge' || action === 'attack') {
+      // 턴 끝
+      battle.logs = (battle.logs || []).concat(logs).slice(-7);
+
+      // 끝판 체크 (승리/패배/무승부)
+      let winner = null;
+      if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
+        battle.finished = true;
+        if (user.hp > 0) winner = user;
+        else if (enemy.hp > 0) winner = enemy;
+
+        let resultMsg = '';
+        if (winner) {
+          resultMsg = `🎉 **${winner.nickname} (${winner.name})** 승리!`;
+          await updateRecord(winner.id, winner.name, 'win');
+          await updateRecord(winner.id === user.id ? enemy.id : user.id, (winner.id === user.id ? enemy.name : user.name), 'lose');
+        } else {
+          resultMsg = '⚖️ 무승부! 둘 다 쓰러졌다!';
+          await updateRecord(user.id, user.name, 'draw');
+          await updateRecord(enemy.id, enemy.name, 'draw');
+        }
+        battles.delete(battle.user.id);
+        battles.delete(battle.enemy.id);
+        if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+          clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+          battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+        }
+        return interaction.update({
+          content: resultMsg,
+          embeds: [],
+          components: [],
+        });
       }
-    } else if (action === 'item') {
-      const itemName = '회복포션';
-      logs.push(...battleEngine.resolveItem(user, itemName, context));
-    } else if (action === 'skill') {
-      const skillName = '섬광';
-      logs.push(...battleEngine.resolveActiveSkill(user, enemy, skillName, context));
-    } else if (action === 'escape') {
+
+      battle.turn += 1;
+      battle.isUserTurn = !battle.isUserTurn;
+      const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
+      await updateBattleView(interaction, battle, nextTurnUserId);
+      return;
+    }
+
+    if (action === 'escape') {
       if (battle.turn >= 10 && battle.turn <= 30) {
         if (Math.random() < 0.5) {
           logs.push(`${user.nickname} 도망 성공!`);
@@ -242,49 +319,24 @@ module.exports = {
           });
         } else {
           logs.push(`${user.nickname} 도망 실패... 턴을 소모합니다.`);
+          battle.logs = (battle.logs || []).concat(logs).slice(-7);
+          battle.turn += 1;
+          battle.isUserTurn = !battle.isUserTurn;
+          const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
+          await updateBattleView(interaction, battle, nextTurnUserId);
+          return;
         }
       } else {
         logs.push('지금은 도망칠 수 없습니다! (10~30턴만)');
+        battle.logs = (battle.logs || []).concat(logs).slice(-7);
+        await updateBattleView(interaction, battle, userId);
+        return;
       }
-    } else {
-      logs.push('지원하지 않는 행동입니다.');
     }
 
+    // 지원하지 않는 행동
+    logs.push('지원하지 않는 행동입니다.');
     battle.logs = (battle.logs || []).concat(logs).slice(-7);
-
-    let winner = null;
-    if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
-      battle.finished = true;
-      if (user.hp > 0) winner = user;
-      else if (enemy.hp > 0) winner = enemy;
-
-      let resultMsg = '';
-      if (winner) {
-        resultMsg = `🎉 **${winner.nickname} (${winner.name})** 승리!`;
-        await updateRecord(winner.id, winner.name, 'win');
-        await updateRecord(winner.id === user.id ? enemy.id : user.id, (winner.id === user.id ? enemy.name : user.name), 'lose');
-      } else {
-        resultMsg = '⚖️ 무승부! 둘 다 쓰러졌다!';
-        await updateRecord(user.id, user.name, 'draw');
-        await updateRecord(enemy.id, enemy.name, 'draw');
-      }
-      battles.delete(battle.user.id);
-      battles.delete(battle.enemy.id);
-      if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-        clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-        battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
-      }
-      return interaction.update({
-        content: resultMsg,
-        embeds: [],
-        components: [],
-      });
-    }
-
-    battle.turn += 1;
-    battle.isUserTurn = !battle.isUserTurn;
-
-    const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
-    await updateBattleView(interaction, battle, nextTurnUserId);
+    await updateBattleView(interaction, battle, userId);
   }
 };
