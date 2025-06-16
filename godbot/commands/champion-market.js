@@ -112,7 +112,7 @@ async function makeMarketEmbed(page, market, interactionUserId, isManage = false
   const items = market.slice(start, start + perPage);
 
   const embed = new EmbedBuilder()
-    .setTitle(isManage ? '내 매물 관리' : '챔피언 거래소')
+    .setTitle(isManage ? '내 매물 관리 (최대 5개 등록 가능)' : '챔피언 거래소')
     .setDescription(
       (items.length ? `총 ${market.length}건 | ${page + 1}페이지\n` : '현재 등록된 매물이 없습니다.\n') +
       `\n**이 거래소 버튼은 <@${interactionUserId}>님만 사용 가능하며, 2분 후 자동으로 닫힙니다.**`
