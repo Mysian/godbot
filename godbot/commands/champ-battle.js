@@ -22,23 +22,13 @@ async function readJson(file) {
 async function writeJson(file, obj) {
   await fs.writeFile(file, JSON.stringify(obj, null, 2));
 }
-async function loadChampionUser(userId, interaction) {
+async function loadChampionUser(userId) {
   const users = await readJson(USER_FILE);
   if (!users[userId]) return null;
   const champ = { ...users[userId] };
   champ.hp = champ.hp ?? champ.stats.hp;
   champ.id = userId;
-  champ.id = userId;
-  if (interaction && interaction.guild) {
-    try {
-      const member = await interaction.guild.members.fetch(userId);
-      champ.nickname = member.nickname || member.user.username;
-    } catch {
-      champ.nickname = champ.nickname ?? champ.name;
-    }
-  } else {
-    champ.nickname = champ.nickname ?? champ.name;
-  }
+  champ.nickname = champ.nickname ?? champ.name;
   champ.items = champ.items || {};
   champ.skills = champ.skills || [];
   champ._itemUsedCount = 0;
@@ -124,6 +114,7 @@ module.exports = {
 
   async handleButton(interaction) {
     const customId = interaction.customId;
+    const userId = interaction.user.id;
 
     // 1) 배틀 요청 수락/거절
     if (customId.startsWith('accept_battle_') || customId.startsWith('decline_battle_')) {
@@ -187,17 +178,21 @@ module.exports = {
     }
 
     // 2) 배틀 진행 버튼
-    const userId = interaction.user.id;
     if (!battles.has(userId))
       return interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
     const battle = battles.get(userId);
     if (battle.finished)
       return interaction.reply({ content: '이미 종료된 배틀입니다.', ephemeral: true });
 
+    // 🔥 "자기 턴"만 판정
+    const isMyTurn = (battle.isUserTurn && battle.user.id === userId) ||
+                     (!battle.isUserTurn && battle.enemy.id === userId);
+    const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
+    if (!isMyTurn || currentPlayer.stunned)
+      return interaction.reply({ content: '행동 불가 상태입니다. (기절/비활성/상대턴)', ephemeral: true });
+
     const user = battle.isUserTurn ? battle.user : battle.enemy;
     const enemy = battle.isUserTurn ? battle.enemy : battle.user;
-    if (!battle.isUserTurn || user.id !== userId || user.stunned)
-      return interaction.reply({ content: '행동 불가 상태입니다. (기절/비활성/상대턴)', ephemeral: true });
 
     const action = interaction.customId;
     let logs = [];
@@ -289,7 +284,6 @@ module.exports = {
     battle.turn += 1;
     battle.isUserTurn = !battle.isUserTurn;
 
-    // 👇 여기가 진짜 핵심! 항상 "다음 턴 유저 id"로 activeUserId 넘김
     const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
     await updateBattleView(interaction, battle, nextTurnUserId);
   }
