@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const battleEngine = require('../utils/battle-engine');
+const battleEngine = require('../battle-system/battle-engine');
 const { battleEmbed } = require('../embeds/battle-embed');
 const fs = require('fs').promises;
 const path = require('path');
@@ -12,7 +12,7 @@ const RECORD_FILE = path.join(__dirname, '../data/champion-records.json');
 const battles = new Map();
 const battleRequests = new Map();
 const battleTimers = new Map();
-const openBattleTimers = new Map(); // 오픈매칭 전용 타이머
+const openBattleTimers = new Map();
 
 async function readJson(file) {
   try {
@@ -31,7 +31,6 @@ async function loadChampionUser(userId, interaction) {
   const champ = { ...users[userId] };
   champ.hp = champ.hp ?? champ.stats.hp;
   champ.id = userId;
-  // 진짜 디스코드 닉네임/별명으로 nickname 할당!
   if (interaction && interaction.guild) {
     try {
       const member = await interaction.guild.members.fetch(userId);
@@ -80,7 +79,6 @@ async function updateBattleView(interaction, battle, activeUserId) {
       });
     } catch (e) {}
   }, 120000));
-
   const view = await battleEmbed({
     user: battle.user,
     enemy: battle.enemy,
@@ -370,18 +368,21 @@ module.exports = {
       effects: battle.effects,
       damage: 0,
     };
-
+    
     // 아이템/스킬: 턴 유지
     if (action === 'item') {
+      // 예: 아이템명은 실제 버튼 데이터/유저 선택 등으로 받도록 확장
       const itemName = '회복포션';
-      logs.push(...battleEngine.resolveItem(user, itemName, context));
+      logs.push(...battleEngine.useItem(user, itemName, context));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem'));
       battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, userId);
       return;
     }
     if (action === 'skill') {
       const skillName = '섬광';
-      logs.push(...battleEngine.resolveActiveSkill(user, enemy, skillName, context));
+      logs.push(...battleEngine.useSkill(user, enemy, skillName, context));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill'));
       battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, userId);
       return;
@@ -392,15 +393,17 @@ module.exports = {
     user.isDodging = false;
 
     if (action === 'defend') {
-      user.isDefending = true;
-      logs.push(`${user.nickname} 방어자세! 다음 받는 피해가 50% 감소됨`);
+      logs.push(battleEngine.defend(user, context));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
     }
     if (action === 'dodge') {
-      user.isDodging = true;
-      logs.push(`${user.nickname} 점멸 시도! 다음 공격 20% 확률로 회피`);
+      logs.push(battleEngine.dodge(user, context));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
     }
     if (action === 'attack') {
-      battleEngine.calcDamage(user, enemy, context);
+      battleEngine.attack(user, enemy, context);
+
+      // 점멸(회피)
       if (enemy.isDodging) {
         if (Math.random() < 0.2) {
           context.damage = 0;
@@ -410,13 +413,14 @@ module.exports = {
         }
         enemy.isDodging = false;
       }
+      // 방어
       if (enemy.isDefending && context.damage > 0) {
         context.damage = Math.floor(context.damage * 0.5);
         logs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
         enemy.isDefending = false;
       }
       logs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
-      logs.push(...battleEngine.resolvePassive(user, enemy, context));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack'));
       logs.push(...battleEngine.applyEffects(enemy, user, context));
       enemy.hp = Math.max(0, enemy.hp - context.damage);
     }
@@ -431,7 +435,6 @@ module.exports = {
 
         let resultEmbed;
         if (winner) {
-          // 승리자, 패배자 정보
           const loser = winner.id === user.id ? enemy : user;
           const champIcon = await getChampionIcon(winner.name);
           resultEmbed = new EmbedBuilder()
@@ -462,7 +465,6 @@ module.exports = {
         });
       }
 
-      // 턴 넘기기 전, 턴 안내 로그 추가!
       battle.turn += 1;
       battle.isUserTurn = !battle.isUserTurn;
       const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
@@ -476,7 +478,6 @@ module.exports = {
     if (action === 'escape') {
       if (battle.turn >= 10 && battle.turn <= 30) {
         if (Math.random() < 0.5) {
-          // 승리/패배자 정보
           const champIcon = await getChampionIcon(enemy.name);
           const resultEmbed = new EmbedBuilder()
             .setTitle('🏃‍♂️ 도망 성공! 전투 종료')
@@ -521,7 +522,6 @@ module.exports = {
       }
     }
 
-    // 지원하지 않는 행동
     logs.push('지원하지 않는 행동입니다.');
     battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
     await updateBattleView(interaction, battle, userId);
