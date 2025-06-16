@@ -21,6 +21,9 @@ async function battleEmbed({
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
 
+  const userLabel = `${user.name} (${user.nickname})`;
+  const enemyLabel = `${enemy.name} (${enemy.nickname})`;
+
   const userHpPct = Math.max(0, Math.floor((user.hp / user.stats.hp) * 100));
   const enemyHpPct = Math.max(0, Math.floor((enemy.hp / enemy.stats.hp) * 100));
   const userHpBar = createHpBar(user.hp, user.stats.hp);
@@ -44,25 +47,24 @@ async function battleEmbed({
   const defEmoji = "🛡️";
   const penEmoji = "🗡️";
 
+  // 모든 안내문구, 필드에 "챔피언 (닉네임)" 표시!
+  const currentLabel = isUserTurn ? userLabel : enemyLabel;
   const currentTurnUserId = isUserTurn ? user.id : enemy.id;
-  const currentTurnNickname = isUserTurn ? user.nickname : enemy.nickname;
 
   const userPassive = passives[user.name]?.description || '정보 없음';
   const enemyPassive = passives[enemy.name]?.description || '정보 없음';
 
   const embed = new EmbedBuilder()
     .setColor(isUserTurn ? '#e44d26' : '#1769e0')
-    .setTitle(`⚔️ ${user.nickname} vs ${enemy.nickname} | ${turn}턴`)
+    .setTitle(`⚔️ ${userLabel} vs ${enemyLabel} | ${turn}턴`)
     .setAuthor({
-      name: isUserTurn
-        ? `${enemy.nickname} (${enemy.name})`
-        : `${user.nickname} (${user.name})`,
+      name: isUserTurn ? enemyLabel : userLabel,
       iconURL: isUserTurn ? enemyIcon : userIcon
     })
     .setImage(mainChampionIcon)
     .addFields(
       {
-        name: `🟦 ${user.nickname} (${user.name})`,
+        name: `🟦 ${userLabel}`,
         value:
           `HP: **${user.hp}/${user.stats.hp}** (${userHpPct}%)\n` +
           `${userHpBar}\n` +
@@ -74,7 +76,7 @@ async function battleEmbed({
         inline: false
       },
       {
-        name: `🟥 ${enemy.nickname} (${enemy.name})`,
+        name: `🟥 ${enemyLabel}`,
         value:
           `HP: **${enemy.hp}/${enemy.stats.hp}** (${enemyHpPct}%)\n` +
           `${enemyHpBar}\n` +
@@ -86,20 +88,20 @@ async function battleEmbed({
         inline: false
       },
       {
-        name: `🟦 ${user.name} 패시브`,
+        name: `🟦 ${userLabel} 패시브`,
         value: userPassive,
         inline: false
       },
       {
-        name: `🟥 ${enemy.name} 패시브`,
+        name: `🟥 ${enemyLabel} 패시브`,
         value: enemyPassive,
         inline: false
       }
     )
     .setFooter({
       text: isUserTurn
-        ? `🎮 ${currentTurnNickname} (<@${currentTurnUserId}>)의 턴! 행동을 선택하세요.`
-        : `⏳ ${currentTurnNickname} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
+        ? `🎮 ${currentLabel} (<@${currentTurnUserId}>)의 턴! 행동을 선택하세요.`
+        : `⏳ ${currentLabel} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
     });
 
   const LOG_LIMIT = 7;
@@ -109,7 +111,9 @@ async function battleEmbed({
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
   });
 
-  const enable = !!activeUserId && currentTurnUserId === activeUserId && isUserTurn && !user.stunned;
+  const currentPlayer = isUserTurn ? user : enemy;
+  const enable = !!activeUserId && currentPlayer.id === activeUserId && !currentPlayer.stunned;
+
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
@@ -130,7 +134,7 @@ async function battleEmbed({
       .setCustomId('item')
       .setLabel('🧪 아이템')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!enable || user._itemUsedCount >= 3),
+      .setDisabled(!enable || currentPlayer._itemUsedCount >= 3),
     new ButtonBuilder()
       .setCustomId('skill')
       .setLabel('✨ 스킬')
