@@ -2,7 +2,6 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { getChampionIcon } = require('../utils/champion-utils');
 const passives = require('../utils/passive-skills');
 
-// 체력 바 함수
 function createHpBar(current, max, length = 20) {
   const ratio = Math.max(0, Math.min(1, current / max));
   const filled = Math.round(ratio * length);
@@ -17,18 +16,16 @@ async function battleEmbed({
   turn,
   logs,
   isUserTurn,
-  activeUserId // 반드시 champ-battle에서 interaction.user.id로 넘길 것!
+  activeUserId
 }) {
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
 
-  // HP, 체력바
   const userHpPct = Math.max(0, Math.floor((user.hp / user.stats.hp) * 100));
   const enemyHpPct = Math.max(0, Math.floor((enemy.hp / enemy.stats.hp) * 100));
   const userHpBar = createHpBar(user.hp, user.stats.hp);
   const enemyHpBar = createHpBar(enemy.hp, enemy.stats.hp);
 
-  // 상태
   const userState = [];
   if (user.stunned) userState.push('⚡기절');
   if (user.undying) userState.push('💀언데드');
@@ -40,24 +37,19 @@ async function battleEmbed({
   if (enemy.debuffImmune) enemyState.push('🟣디버프 면역');
   if (enemy._itemUsedCount >= 3) enemyState.push('🔒아이템 제한');
 
-  // 본인 턴 챔피언 이미지를 setImage로 (맨 하단에 크게)
   const mainChampionIcon = isUserTurn ? userIcon : enemyIcon;
 
-  // 공격/주문/방어/관통 이모지
   const atkEmoji = "⚔️";
   const apEmoji = "✨";
   const defEmoji = "🛡️";
   const penEmoji = "🗡️";
 
-  // 현재 턴 유저ID, 닉네임, 멘션
   const currentTurnUserId = isUserTurn ? user.id : enemy.id;
   const currentTurnNickname = isUserTurn ? user.nickname : enemy.nickname;
 
-  // 패시브 설명
   const userPassive = passives[user.name]?.description || '정보 없음';
   const enemyPassive = passives[enemy.name]?.description || '정보 없음';
 
-  // 임베드
   const embed = new EmbedBuilder()
     .setColor(isUserTurn ? '#e44d26' : '#1769e0')
     .setTitle(`⚔️ ${user.nickname} vs ${enemy.nickname} | ${turn}턴`)
@@ -110,7 +102,6 @@ async function battleEmbed({
         : `⏳ ${currentTurnNickname} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
     });
 
-  // 로그
   const LOG_LIMIT = 7;
   const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`).reverse();
   embed.addFields({
@@ -118,7 +109,6 @@ async function battleEmbed({
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
   });
 
-  // 버튼: 현재 턴이고 본인만 클릭 가능해야 활성화!
   const enable = !!activeUserId && currentTurnUserId === activeUserId && isUserTurn && !user.stunned;
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
