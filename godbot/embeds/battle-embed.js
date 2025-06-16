@@ -104,7 +104,7 @@ async function battleEmbed({
         : `⏳ ${currentLabel} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
     });
 
-  const LOG_LIMIT = 15;
+  const LOG_LIMIT = 20;
   const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
   embed.addFields({
     name: '전투 로그',
