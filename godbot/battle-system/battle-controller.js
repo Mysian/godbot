@@ -302,7 +302,7 @@ async function handleBattleButton(interaction) {
     battle.turn += 1;
     battle.isUserTurn = !battle.isUserTurn;
     const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-    battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+    battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
     battle.logs = battle.logs.slice(-LOG_LIMIT);
     const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
 
@@ -325,7 +325,7 @@ if (action === 'dodge') {
     battle.turn += 1;
     battle.isUserTurn = !battle.isUserTurn;
     const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-    battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+    battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
     battle.logs = battle.logs.slice(-LOG_LIMIT);
     const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
 
@@ -407,7 +407,7 @@ if (action === 'dodge') {
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-        battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+        battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
         battle.logs = battle.logs.slice(-LOG_LIMIT);
         const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
         await updateBattleView(interaction, battle, nextTurnUserId);
@@ -455,7 +455,7 @@ if (action === 'dodge') {
             battle.turn += 1;
             battle.isUserTurn = !battle.isUserTurn;
             const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-            battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+            battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
             battle.logs = battle.logs.slice(-LOG_LIMIT);
             const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
             await updateBattleView(interaction, battle, nextTurnUserId);
