@@ -2,6 +2,7 @@
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getChampionIcon } = require('../utils/champion-utils');
+const passives = require('../utils/passive-skills');
 
 // 체력 바 함수
 function createHpBar(current, max, length = 20) {
@@ -12,16 +13,14 @@ function createHpBar(current, max, length = 20) {
   return bar;
 }
 
-/**
- * @param {Object} param
- * @param {Object} param.user - 내 챔피언
- * @param {Object} param.enemy - 상대 챔피언
- * @param {number} param.turn - 현재 턴
- * @param {Array<string>} param.logs - 전투 로그
- * @param {boolean} param.isUserTurn - 현재 턴이 내 턴인지
- * @param {string} [param.activeUserId] - 버튼을 활성화할 Discord 유저ID (필수!)
- */
-async function battleEmbed({ user, enemy, turn, logs, isUserTurn, activeUserId }) {
+async function battleEmbed({
+  user,
+  enemy,
+  turn,
+  logs,
+  isUserTurn,
+  activeUserId // 반드시 챔피언배틀에서 interaction.user.id로 넘겨줄 것!
+}) {
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
 
@@ -52,16 +51,18 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn, activeUserId }
   const defEmoji = "🛡️";
   const penEmoji = "🗡️";
 
-  // 현재 턴 유저ID
+  // 현재 턴 유저ID, 닉네임, 멘션
   const currentTurnUserId = isUserTurn ? user.id : enemy.id;
   const currentTurnNickname = isUserTurn ? user.nickname : enemy.nickname;
-  const currentTurnChamp = isUserTurn ? user.name : enemy.name;
+
+  // 패시브 설명
+  const userPassive = passives[user.name]?.description || '정보 없음';
+  const enemyPassive = passives[enemy.name]?.description || '정보 없음';
 
   // 임베드
   const embed = new EmbedBuilder()
     .setColor(isUserTurn ? '#e44d26' : '#1769e0')
     .setTitle(`⚔️ ${user.nickname} vs ${enemy.nickname} | ${turn}턴`)
-    // 우상단 작은 이미지: 상대 챔피언 (본인 턴이 아니면 내 챔피언)
     .setAuthor({
       name: isUserTurn
         ? `${enemy.nickname} (${enemy.name})`
@@ -93,12 +94,22 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn, activeUserId }
           `${defEmoji} 방어력: ${enemy.stats.defense}  ` +
           `${penEmoji} 관통력: ${enemy.stats.penetration}`,
         inline: false
+      },
+      {
+        name: `🟦 ${user.name} 패시브`,
+        value: userPassive,
+        inline: false
+      },
+      {
+        name: `🟥 ${enemy.name} 패시브`,
+        value: enemyPassive,
+        inline: false
       }
     )
     .setFooter({
       text: isUserTurn
-        ? `🎮 ${currentTurnChamp} (<@${currentTurnUserId}>)의 턴! 행동을 선택하세요.`
-        : `⏳ ${currentTurnChamp} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
+        ? `🎮 ${currentTurnNickname} (<@${currentTurnUserId}>)의 턴! 행동을 선택하세요.`
+        : `⏳ ${currentTurnNickname} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
     });
 
   // 로그
@@ -109,9 +120,8 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn, activeUserId }
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
   });
 
-  // 현재 버튼 클릭 가능한 유저만 활성화
+  // 버튼: 현재 턴이고 본인만 클릭 가능해야 활성화!
   const enable = !!activeUserId && currentTurnUserId === activeUserId && isUserTurn && !user.stunned;
-
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
@@ -139,8 +149,6 @@ async function battleEmbed({ user, enemy, turn, logs, isUserTurn, activeUserId }
       .setStyle(ButtonStyle.Primary)
       .setDisabled(!enable)
   );
-
-  // 도망(탈주) 버튼 (10~30턴, 확률 안내)
   let canEscape = turn >= 10 && turn <= 30 && enable;
   const escapeRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()

@@ -230,11 +230,22 @@ client.on("messageCreate", async (message) => {
 
 
 const champBattle = require('./commands/champ-battle');
+
 client.on('interactionCreate', async interaction => {
+  // 1. 명령어 입력(슬래시커맨드)
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === '챔피언배틀') {
+      return champBattle.execute(interaction);
+    }
+    // 만약 다른 명령어(챔피언배틀종료 등) 추가 시 아래에 else if ...
+  }
+
+  // 2. 버튼 인터랙션(행동/수락/거절 등)
   if (interaction.isButton()) {
-    await champBattle.handleButton(interaction);
+    return champBattle.handleButton(interaction);
   }
 });
+
 
 
 
