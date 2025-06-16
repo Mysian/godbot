@@ -1014,25 +1014,27 @@ module.exports = {
   name: "스킬 강탈자",
   description: "공격 시 50% 확률로 상대 스킬 1턴 봉인하고 자신 주문력 1% 증가(최대 20%), 자신은 항상 받는 스킬 피해 50% 증가(리스크)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
-    if (trigger === "onAttack") {
-      let msg = "";
-      if (Math.random() < 0.50) {
-        context.effects[enemy.id].push({ type: "skillBlocked", turns: 1 });
-        msg += "🔗 1턴간 상대 스킬 봉인! ";
-        if (!user._silasApStacks) user._silasApStacks = 0;
-        if (user._silasApStacks < 20) {
-          user._silasApStacks += 1;
-          if (!user._baseAp) user._baseAp = user.stats.ap;
-          user.stats.ap = Math.round(user._baseAp * (1 + 0.01 * user._silasApStacks));
-          msg += `🟪 주문력 +${user._silasApStacks}%! `;
-        }
-      }
-      // 리스크로 항상 받는 스킬 피해 50% 증가 처리
-      context.skillDamageIncrease = 0.5;
-      return msg || undefined;
+if (trigger === "onAttack") {
+  let msg = "";
+  if (Math.random() < 0.50) {
+    context.effects[enemy.id].push({ type: "skillBlocked", turns: 1 });
+    msg += "🔗 1턴간 상대 스킬 봉인! ";
+    if (!user._silasApStacks) user._silasApStacks = 0;
+    if (user._silasApStacks < 20) {
+      user._silasApStacks += 1;
+      if (!user._baseAp) user._baseAp = user.stats.ap;
+      user.stats.ap = Math.round(user._baseAp * (1 + 0.01 * user._silasApStacks));
+      msg += `🟪 주문력 +${user._silasApStacks}%! `;
     }
   }
-},
+  // 리스크 효과: (턴 제한 없는 버프)
+  // 이미 존재하는지 확인해서 중복 push 방지
+  const already = (context.effects[user.id] || []).some(e => e.type === "skillDamageTakenUp");
+  if (!already) {
+    context.effects[user.id].push({ type: "skillDamageTakenUp", value: 0.5, turns: 9999 });
+  }
+  return msg || undefined;
+}
 "샤코": {
   name: "환영 복제",
   description: "피해를 한 번도 입지 않았다면 모든 피해 무효(1회), 배틀 시작 후 10턴간 회피 확률 20% 증가",
