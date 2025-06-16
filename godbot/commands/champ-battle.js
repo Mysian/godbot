@@ -130,6 +130,7 @@ module.exports = {
         turn: battleState.turn,
         logs: battleState.logs,
         isUserTurn: battleState.isUserTurn,
+        activeUserId: interaction.user.id
       });
       return interaction.update({ content: '배틀이 시작됩니다!', embeds: view.embeds, components: view.components });
     }
