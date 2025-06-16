@@ -292,33 +292,51 @@ async function handleBattleButton(interaction) {
       }
     }
     // 방어
-    if (action === 'defend') {
-      try {
-        logs.push(battleEngine.defend(user, context));
-        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
-        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-        await updateBattleView(interaction, battle, userId);
-        return;
-      } catch (e) {
-        console.error('defend 분기 에러:', e);
-        try { await interaction.reply({ content: '❌ 방어 오류!', ephemeral: true }); } catch {}
-        return;
-      }
-    }
-    // 점멸
-    if (action === 'dodge') {
-      try {
-        logs.push(battleEngine.dodge(user, context));
-        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
-        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-        await updateBattleView(interaction, battle, userId);
-        return;
-      } catch (e) {
-        console.error('dodge 분기 에러:', e);
-        try { await interaction.reply({ content: '❌ 점멸 오류!', ephemeral: true }); } catch {}
-        return;
-      }
-    }
+   if (action === 'defend') {
+  try {
+    logs.push(battleEngine.defend(user, context));
+    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
+    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+
+    // ★ 여기서 턴 넘김
+    battle.turn += 1;
+    battle.isUserTurn = !battle.isUserTurn;
+    const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+    battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+    battle.logs = battle.logs.slice(-LOG_LIMIT);
+    const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
+
+    await updateBattleView(interaction, battle, nextTurnUserId);
+    return;
+  } catch (e) {
+    console.error('defend 분기 에러:', e);
+    try { await interaction.reply({ content: '❌ 방어 오류!', ephemeral: true }); } catch {}
+    return;
+  }
+}
+ // 점멸
+if (action === 'dodge') {
+  try {
+    logs.push(battleEngine.dodge(user, context));
+    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
+    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+
+    // ★ 여기서 턴 넘김
+    battle.turn += 1;
+    battle.isUserTurn = !battle.isUserTurn;
+    const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+    battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+    battle.logs = battle.logs.slice(-LOG_LIMIT);
+    const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
+
+    await updateBattleView(interaction, battle, nextTurnUserId);
+    return;
+  } catch (e) {
+    console.error('dodge 분기 에러:', e);
+    try { await interaction.reply({ content: '❌ 점멸 오류!', ephemeral: true }); } catch {}
+    return;
+  }
+}
     // 공격
     if (action === 'attack') {
       try {
