@@ -1,13 +1,12 @@
-// commands/champ-up.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
 const championList = require("../utils/champion-data");
 const { getChampionKeyByName } = require("../utils/champion-utils");
+const { battles, battleRequests } = require("./champ-battle"); // 배틀 상태 체크
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
-const battleActivePath = path.join(__dirname, "../data/battle-active.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const SOUL_ROLE_ID = "1382169247538745404";
 
@@ -91,19 +90,20 @@ module.exports = {
     let immediateReply = null;
     try {
       await interaction.deferReply({ ephemeral: true });
-      release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+
+      // [추가] 배틀 진행/대기 중 차단!
       const userId = interaction.user.id;
+      if (battles.has(userId) || battleRequests.has(userId)) {
+        return interaction.editReply({
+          content: "⚔️ 진행중이거나 대기중인 챔피언 배틀이 있어 강화할 수 없습니다!",
+          ephemeral: true
+        });
+      }
+
+      release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
       const userMention = `<@${userId}>`;
       const data = await loadJSON(dataPath);
-      const battleActive = await loadJSON(battleActivePath);
 
-      const inBattle = Object.values(battleActive).some(b =>
-        b.challenger === userId || b.opponent === userId
-      );
-      if (inBattle) {
-        immediateReply = { content: "⚔️ 전투 중에는 강화할 수 없습니다!" };
-        return;
-      }
       if (!data[userId] || !data[userId].name) {
         immediateReply = { content: `❌ 먼저 /챔피언획득 으로 챔피언을 얻어야 합니다.` };
         return;

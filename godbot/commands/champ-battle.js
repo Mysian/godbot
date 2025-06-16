@@ -12,6 +12,7 @@ const RECORD_FILE = path.join(__dirname, '../data/champion-records.json');
 const battles = new Map();
 const battleRequests = new Map();
 const battleTimers = new Map();
+const openBattleTimers = new Map(); // 오픈매칭 전용 타이머
 
 async function readJson(file) {
   try {
@@ -30,7 +31,7 @@ async function loadChampionUser(userId, interaction) {
   const champ = { ...users[userId] };
   champ.hp = champ.hp ?? champ.stats.hp;
   champ.id = userId;
-  // ⬇️ 실제 디스코드 닉네임/별명으로 nickname 강제 할당!
+  // 진짜 디스코드 닉네임/별명으로 nickname 할당!
   if (interaction && interaction.guild) {
     try {
       const member = await interaction.guild.members.fetch(userId);
@@ -117,19 +118,20 @@ module.exports = {
         .setTitle('오픈 배틀 요청 (아무나 수락 가능)')
         .setDescription(
           `\`${userChamp.nickname}\` 님이 오픈 배틀을 신청했습니다.\n` +
-          `수락 시, 아래 챔피언으로 대결하게 됩니다.\n\n`
+          `수락 시, 아래 챔피언과 대결하게 됩니다.\n\n` +
+          `⏰ **120초 이내 수락 없으면 자동 종료됩니다.**`
         )
         .setThumbnail(userIcon)
         .addFields(
-          { name: `챔피언`, value: userChamp.name, inline: true },
-          { name: `닉네임`, value: userChamp.nickname, inline: true },
-          { name: `강화`, value: String(userChamp.level ?? 0), inline: true },
-          { name: `공격력`, value: String(userChamp.stats.attack), inline: true },
-          { name: `주문력`, value: String(userChamp.stats.ap), inline: true },
-          { name: `체력`, value: String(userChamp.stats.hp), inline: true },
-          { name: `방어력`, value: String(userChamp.stats.defense), inline: true },
-          { name: `관통력`, value: String(userChamp.stats.penetration), inline: true },
-          { name: `패시브`, value: userPassive, inline: false }
+          { name: `🧙 챔피언`, value: userChamp.name, inline: true },
+          { name: `🕹️ 소환사`, value: userChamp.nickname, inline: true },
+          { name: `🔨 강화`, value: String(userChamp.level ?? 0), inline: true },
+          { name: `⚔️ 공격력`, value: String(userChamp.stats.attack), inline: true },
+          { name: `🔮 주문력`, value: String(userChamp.stats.ap), inline: true },
+          { name: `♥️ 체력`, value: String(userChamp.stats.hp), inline: true },
+          { name: `🛡️ 방어력`, value: String(userChamp.stats.defense), inline: true },
+          { name: `💣 관통력`, value: String(userChamp.stats.penetration), inline: true },
+          { name: `🧬 패시브`, value: userPassive, inline: false }
         )
         .setColor('#f6ad55');
 
@@ -137,13 +139,22 @@ module.exports = {
         new ButtonBuilder()
           .setCustomId(`accept_battle_open_${user.id}`)
           .setLabel('수락')
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`decline_battle_open_${user.id}`)
-          .setLabel('거절')
-          .setStyle(ButtonStyle.Danger)
+          .setStyle(ButtonStyle.Success)
       );
       battleRequests.set(user.id, { userId: user.id, enemyId: null, channelId: interaction.channel.id, open: true });
+
+      // 120초 뒤 아무도 수락 안 하면 자동종료
+      if (openBattleTimers.has(user.id)) clearTimeout(openBattleTimers.get(user.id));
+      openBattleTimers.set(user.id, setTimeout(async () => {
+        battleRequests.delete(user.id);
+        try {
+          await interaction.followUp({
+            content: `⏰ 2분(120초) 동안 아무도 수락하지 않아 오픈 배틀 요청이 자동 종료되었습니다.`,
+            ephemeral: false
+          });
+        } catch (e) {}
+      }, 120000));
+
       return interaction.reply({ embeds: [embed], components: [row] });
     }
 
@@ -212,8 +223,8 @@ module.exports = {
     const customId = interaction.customId;
     const userId = interaction.user.id;
 
-    // 1) 오픈매칭 수락/거절
-    if (customId.startsWith('accept_battle_open_') || customId.startsWith('decline_battle_open_')) {
+    // 1) 오픈매칭 수락만 허용
+    if (customId.startsWith('accept_battle_open_')) {
       const challengerId = customId.replace(/^.*_/, '');
       const request = battleRequests.get(challengerId);
       if (!request || !request.open)
@@ -223,16 +234,17 @@ module.exports = {
       if (battles.has(userId) || battleRequests.has(userId))
         return interaction.reply({ content: '이미 배틀 중이거나 대기중입니다.', ephemeral: true });
 
-      if (customId.startsWith('decline')) {
-        battleRequests.delete(challengerId);
-        return interaction.update({ content: '배틀 요청이 거절되었습니다.', embeds: [], components: [] });
+      // 타이머 해제(모집 창 종료)
+      if (openBattleTimers.has(challengerId)) {
+        clearTimeout(openBattleTimers.get(challengerId));
+        openBattleTimers.delete(challengerId);
       }
+      battleRequests.delete(challengerId);
 
       // 배틀 시작 (challenger vs 수락자)
       const userChamp = await loadChampionUser(challengerId, interaction);
       const enemyChamp = await loadChampionUser(userId, interaction);
       if (!userChamp || !enemyChamp) {
-        battleRequests.delete(challengerId);
         return interaction.update({ content: '챔피언 정보를 불러올 수 없습니다.', embeds: [], components: [] });
       }
       const battleState = {
@@ -246,7 +258,6 @@ module.exports = {
       };
       battles.set(challengerId, battleState);
       battles.set(userId, battleState);
-      battleRequests.delete(challengerId);
 
       const view = await battleEmbed({
         user: battleState.user,

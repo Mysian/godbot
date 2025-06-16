@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
+const { battles, battleRequests } = require("./champ-battle"); // 배틀 체크용 추가
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 
@@ -20,6 +21,15 @@ module.exports = {
 
   async execute(interaction) {
     const userId = interaction.user.id;
+
+    // [추가] 배틀 진행/대기 중이면 유기 금지!
+    if (battles.has(userId) || battleRequests.has(userId)) {
+      return interaction.reply({
+        content: "진행중/대기중인 챔피언 배틀이 있어 챔피언을 유기할 수 없습니다!",
+        ephemeral: true
+      });
+    }
+
     const data = loadData();
     const champ = data[userId];
 

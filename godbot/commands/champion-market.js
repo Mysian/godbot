@@ -12,6 +12,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 const passiveSkills = require('../utils/passive-skills');
+const { battles, battleRequests } = require("./champ-battle"); // ★ 추가
 
 // 경로
 const marketPath = path.join(__dirname, '../data/champion-market.json');
@@ -234,6 +235,15 @@ module.exports = {
     .setName('챔피언거래소')
     .setDescription('파랑 정수로 챔피언을 사고팔 수 있는 거래소를 엽니다.'),
   async execute(interaction) {
+    // [추가] 배틀 중/대기 중이면 거래소 이용 불가!
+    const userId = interaction.user.id;
+    if (battles.has(userId) || battleRequests.has(userId)) {
+      return interaction.reply({
+        content: "진행중/대기중인 챔피언 배틀이 있어 거래소를 이용할 수 없습니다!",
+        ephemeral: true
+      });
+    }
+
     let page = 0;
     let filter = null;
     let isManage = false;
@@ -378,6 +388,15 @@ module.exports = {
     const modalHandler = async modal => {
       if (!modal.isModalSubmit()) return;
       if (modal.user.id !== interactionUserId) return;
+
+      // [추가] 배틀 중/대기 중이면 거래소 모달(검색/구매/판매)도 막음!
+      if (battles.has(modal.user.id) || battleRequests.has(modal.user.id)) {
+        await modal.reply({
+          content: "진행중/대기중인 챔피언 배틀이 있어 거래소를 이용할 수 없습니다!",
+          ephemeral: true
+        });
+        return;
+      }
 
       // 검색
       if (modal.customId === 'champ_search_modal') {
