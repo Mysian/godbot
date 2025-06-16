@@ -107,7 +107,7 @@ async function battleEmbed({
 const LOG_LIMIT = 10;
 const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
 embed.addFields({
-  name: '전투 로그',
+  name: '전투 로그 (최근 로그가 아래쪽부터 갱신)',
   value: viewLogs.length ? viewLogs.join('\n') : '이곳의 아랫줄부터 행동이 기록됩니다.',
 });
 
