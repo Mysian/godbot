@@ -117,19 +117,19 @@ module.exports = {
         .setTitle('오픈 배틀 요청 (아무나 수락 가능)')
         .setDescription(
           `\`${userChamp.nickname}\` 님이 오픈 배틀을 신청했습니다.\n` +
-          `수락 시, 아래 챔피언으로 대결하게 됩니다.\n\n`
+          `수락 시, 아래 챔피언과 대결하게 됩니다.\n\n`
         )
         .setThumbnail(userIcon)
         .addFields(
-          { name: `챔피언`, value: userChamp.name, inline: true },
-          { name: `닉네임`, value: userChamp.nickname, inline: true },
-          { name: `강화`, value: String(userChamp.level ?? 0), inline: true },
-          { name: `공격력`, value: String(userChamp.stats.attack), inline: true },
-          { name: `주문력`, value: String(userChamp.stats.ap), inline: true },
-          { name: `체력`, value: String(userChamp.stats.hp), inline: true },
-          { name: `방어력`, value: String(userChamp.stats.defense), inline: true },
-          { name: `관통력`, value: String(userChamp.stats.penetration), inline: true },
-          { name: `패시브`, value: userPassive, inline: false }
+          { name: `🧙 챔피언`, value: userChamp.name, inline: true },
+          { name: `🕹️ 소환사`, value: userChamp.nickname, inline: true },
+          { name: `🔨 강화`, value: String(userChamp.level ?? 0), inline: true },
+          { name: `⚔️ 공격력`, value: String(userChamp.stats.attack), inline: true },
+          { name: `🔮 주문력`, value: String(userChamp.stats.ap), inline: true },
+          { name: `♥️ 체력`, value: String(userChamp.stats.hp), inline: true },
+          { name: `🛡️ 방어력`, value: String(userChamp.stats.defense), inline: true },
+          { name: `💣 관통력`, value: String(userChamp.stats.penetration), inline: true },
+          { name: `🧬 패시브`, value: userPassive, inline: false }
         )
         .setColor('#f6ad55');
 
