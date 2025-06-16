@@ -79,6 +79,8 @@ async function updateBattleView(interaction, battle, activeUserId) {
   await interaction.update(view);
 }
 
+const LOG_LIMIT = 10; // 전투 로그 줄 수 여기에서 관리!
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('챔피언배틀')
@@ -176,6 +178,8 @@ module.exports = {
         finished: false,
         effects: {},
       };
+      // 첫 턴 턴 알림 로그 추가!
+      battleState.logs.push(`🎲 ${userChamp.nickname}의 턴입니다!`);
       battles.set(challengerId, battleState);
       battles.set(userId, battleState);
       battleRequests.delete(challengerId);
@@ -235,6 +239,8 @@ module.exports = {
         finished: false,
         effects: {},
       };
+      // 첫 턴 턴 알림 로그 추가!
+      battleState.logs.push(`🎲 ${userChamp.nickname}의 턴입니다!`);
       battles.set(request.userId, battleState);
       battles.set(request.enemyId, battleState);
       battleRequests.delete(request.userId);
@@ -267,7 +273,7 @@ module.exports = {
       return;
     }
 
-    // 3) 배틀 진행 버튼 (이전 구조 동일)
+    // 3) 배틀 진행 버튼
     if (!battles.has(userId))
       return interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
     const battle = battles.get(userId);
@@ -295,14 +301,14 @@ module.exports = {
     if (action === 'item') {
       const itemName = '회복포션';
       logs.push(...battleEngine.resolveItem(user, itemName, context));
-      battle.logs = (battle.logs || []).concat(logs).slice(-7);
+      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, userId);
       return;
     }
     if (action === 'skill') {
       const skillName = '섬광';
       logs.push(...battleEngine.resolveActiveSkill(user, enemy, skillName, context));
-      battle.logs = (battle.logs || []).concat(logs).slice(-7);
+      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, userId);
       return;
     }
@@ -341,7 +347,7 @@ module.exports = {
       enemy.hp = Math.max(0, enemy.hp - context.damage);
     }
     if (action === 'defend' || action === 'dodge' || action === 'attack') {
-      battle.logs = (battle.logs || []).concat(logs).slice(-7);
+      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
 
       let winner = null;
       if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
@@ -372,8 +378,13 @@ module.exports = {
         });
       }
 
+      // 턴 넘기기 전, 턴 안내 로그 추가!
       battle.turn += 1;
       battle.isUserTurn = !battle.isUserTurn;
+      const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+      battle.logs.push(`🎲 ${nextTurnUser.nickname}의 턴입니다!`);
+      // 10줄 제한 유지!
+      battle.logs = battle.logs.slice(-LOG_LIMIT);
       const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
       await updateBattleView(interaction, battle, nextTurnUserId);
       return;
@@ -398,17 +409,20 @@ module.exports = {
             components: [],
           });
         } else {
-          logs.push(`${user.nickname} 도망 실패... 턴을 소모합니다.`);
-          battle.logs = (battle.logs || []).concat(logs).slice(-7);
+          logs.push(`${user.nickname} 도망 실패... 턴만 날립니다.`);
+          battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
           battle.turn += 1;
           battle.isUserTurn = !battle.isUserTurn;
+          const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+          battle.logs.push(`🎲 ${nextTurnUser.nickname}의 턴입니다!`);
+          battle.logs = battle.logs.slice(-LOG_LIMIT);
           const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
           await updateBattleView(interaction, battle, nextTurnUserId);
           return;
         }
       } else {
         logs.push('지금은 도망칠 수 없습니다! (10~30턴만)');
-        battle.logs = (battle.logs || []).concat(logs).slice(-7);
+        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
         await updateBattleView(interaction, battle, userId);
         return;
       }
@@ -416,7 +430,7 @@ module.exports = {
 
     // 지원하지 않는 행동
     logs.push('지원하지 않는 행동입니다.');
-    battle.logs = (battle.logs || []).concat(logs).slice(-7);
+    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
     await updateBattleView(interaction, battle, userId);
   }
 };
