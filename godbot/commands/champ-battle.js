@@ -404,7 +404,7 @@ module.exports = {
             battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
           }
           return interaction.update({
-            content: `🏃‍♂️ ${user.nickname}가 도망쳤습니다! ${enemy.nickname}의 승리!`,
+            content: `🏃‍♂️ ${user.nickname}이(가) 도망쳤습니다! ${enemy.nickname}의 승리!`,
             embeds: [],
             components: [],
           });
