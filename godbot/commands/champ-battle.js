@@ -22,13 +22,23 @@ async function readJson(file) {
 async function writeJson(file, obj) {
   await fs.writeFile(file, JSON.stringify(obj, null, 2));
 }
-async function loadChampionUser(userId) {
+async function loadChampionUser(userId, interaction) {
   const users = await readJson(USER_FILE);
   if (!users[userId]) return null;
   const champ = { ...users[userId] };
   champ.hp = champ.hp ?? champ.stats.hp;
   champ.id = userId;
-  champ.nickname = champ.nickname ?? champ.name;
+  champ.id = userId;
+  if (interaction && interaction.guild) {
+    try {
+      const member = await interaction.guild.members.fetch(userId);
+      champ.nickname = member.nickname || member.user.username;
+    } catch {
+      champ.nickname = champ.nickname ?? champ.name;
+    }
+  } else {
+    champ.nickname = champ.nickname ?? champ.name;
+  }
   champ.items = champ.items || {};
   champ.skills = champ.skills || [];
   champ._itemUsedCount = 0;
