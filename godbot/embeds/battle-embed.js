@@ -105,7 +105,7 @@ async function battleEmbed({
     });
 
   const LOG_LIMIT = 7;
-  const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`).reverse();
+  const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
   embed.addFields({
     name: '전투 로그',
     value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
