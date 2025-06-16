@@ -123,7 +123,7 @@ module.exports = {
         .addFields(
           { name: `챔피언`, value: userChamp.name, inline: true },
           { name: `닉네임`, value: userChamp.nickname, inline: true },
-          { name: `레벨`, value: String(userChamp.level ?? 0), inline: true },
+          { name: `강화`, value: String(userChamp.level ?? 0), inline: true },
           { name: `공격력`, value: String(userChamp.stats.attack), inline: true },
           { name: `주문력`, value: String(userChamp.stats.ap), inline: true },
           { name: `체력`, value: String(userChamp.stats.hp), inline: true },
@@ -170,22 +170,22 @@ module.exports = {
       )
       .addFields(
         { name: `🟦 ${userChamp.name} (${userChamp.nickname})`, value:
-            `레벨: ${userChamp.level ?? 0}\n` +
+            `🔨 강화: ${userChamp.level ?? 0}\n` +
             `공격력: ${userChamp.stats.attack}\n` +
             `주문력: ${userChamp.stats.ap}\n` +
             `체력: ${userChamp.stats.hp}\n` +
             `방어력: ${userChamp.stats.defense}\n` +
             `관통력: ${userChamp.stats.penetration}\n` +
-            `패시브: ${userPassive}\n`
+            `🧬 패시브: ${userPassive}\n`
         },
         { name: `🟥 ${enemyChamp.name} (${enemyChamp.nickname})`, value:
-            `레벨: ${enemyChamp.level ?? 0}\n` +
+            `🔨 강화: ${enemyChamp.level ?? 0}\n` +
             `공격력: ${enemyChamp.stats.attack}\n` +
             `주문력: ${enemyChamp.stats.ap}\n` +
             `체력: ${enemyChamp.stats.hp}\n` +
             `방어력: ${enemyChamp.stats.defense}\n` +
             `관통력: ${enemyChamp.stats.penetration}\n` +
-            `패시브: ${enemyPassive}\n`
+            `🧬 패시브: ${enemyPassive}\n`
         }
       )
       .setThumbnail(userIcon)
