@@ -104,12 +104,12 @@ async function battleEmbed({
         : `⏳ ${currentLabel} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
     });
 
-  const LOG_LIMIT = 20;
-  const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
-  embed.addFields({
-    name: '전투 로그',
-    value: viewLogs.length ? viewLogs.join('\n') : '전투 로그가 없습니다.',
-  });
+const LOG_LIMIT = 10;
+const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
+embed.addFields({
+  name: '전투 로그',
+  value: viewLogs.length ? viewLogs.join('\n') : '이곳의 아랫줄부터 행동이 기록됩니다.',
+});
 
   const currentPlayer = isUserTurn ? user : enemy;
   const enable = !!activeUserId && currentPlayer.id === activeUserId && !currentPlayer.stunned;
