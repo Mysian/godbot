@@ -7,9 +7,9 @@ const path = require('path');
 const USER_FILE = path.join(__dirname, '../data/champion-users.json');
 const RECORD_FILE = path.join(__dirname, '../data/champion-records.json');
 
-const battles = new Map();        // 실제 진행 중인 배틀
-const battleRequests = new Map(); // 수락 대기중인 요청
-const battleTimers = new Map();   // 120초 타이머
+const battles = new Map();
+const battleRequests = new Map();
+const battleTimers = new Map();
 
 async function readJson(file) {
   try {
@@ -51,9 +51,7 @@ async function updateRecord(userId, champName, type) {
   await saveRecords(records);
 }
 
-// 타이머 포함 임베드 업데이트 함수
 async function updateBattleView(interaction, battle, activeUserId) {
-  // 타이머 리셋
   const key = `${battle.user.id}:${battle.enemy.id}`;
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
   battleTimers.set(key, setTimeout(async () => {
@@ -62,10 +60,10 @@ async function updateBattleView(interaction, battle, activeUserId) {
     battles.delete(battle.enemy.id);
     try {
       await interaction.followUp({
-        content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
+        content: '⏰ 2분간 행동이 없어 배틀이 자동 종료되었습니다.',
         ephemeral: false
       });
-    } catch (e) { }
+    } catch (e) {}
   }, 120000));
 
   const view = await battleEmbed({
@@ -94,7 +92,6 @@ module.exports = {
     if (battles.has(user.id) || battles.has(enemyUser.id) || battleRequests.has(user.id) || battleRequests.has(enemyUser.id))
       return interaction.reply({ content: '이미 배틀 중이거나 대기중인 유저가 있습니다.', ephemeral: true });
 
-    // 수락 임베드+버튼
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`accept_battle_${user.id}`)
@@ -112,7 +109,7 @@ module.exports = {
     battleRequests.set(user.id, { userId: user.id, enemyId: enemyUser.id, channelId: interaction.channel.id });
     battleRequests.set(enemyUser.id, { userId: user.id, enemyId: enemyUser.id, channelId: interaction.channel.id });
 
-    await interaction.reply({ content: `${enemyUser}`, embeds: [embed], components: [row] });
+    return interaction.reply({ content: `${enemyUser}`, embeds: [embed], components: [row] });
   },
 
   async handleButton(interaction) {
@@ -126,12 +123,10 @@ module.exports = {
         return interaction.reply({ content: '이 요청을 처리할 권한이 없습니다.', ephemeral: true });
       }
       if (action === 'decline') {
-        // 요청 거절
         battleRequests.delete(request.userId);
         battleRequests.delete(request.enemyId);
         return interaction.update({ content: '배틀 요청이 거절되었습니다.', embeds: [], components: [] });
       }
-      // 요청 수락 → 실제 배틀 시작
       const userChamp = await loadChampionUser(request.userId);
       const enemyChamp = await loadChampionUser(request.enemyId);
       if (!userChamp || !enemyChamp) {
@@ -153,7 +148,6 @@ module.exports = {
       battleRequests.delete(request.userId);
       battleRequests.delete(request.enemyId);
 
-      // 첫 턴 유저만 버튼 활성화!
       const view = await battleEmbed({
         user: battleState.user,
         enemy: battleState.enemy,
@@ -164,7 +158,6 @@ module.exports = {
       });
       await interaction.update({ content: '배틀이 시작됩니다!', embeds: view.embeds, components: view.components });
 
-      // 120초 타이머 시작
       const key = `${battleState.user.id}:${battleState.enemy.id}`;
       if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
       battleTimers.set(key, setTimeout(async () => {
@@ -176,7 +169,7 @@ module.exports = {
             content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
             ephemeral: false
           });
-        } catch (e) { }
+        } catch (e) {}
       }, 120000));
       return;
     }
@@ -231,6 +224,10 @@ module.exports = {
           await updateRecord(enemy.id, enemy.name, 'win');
           battles.delete(user.id);
           battles.delete(enemy.id);
+          if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+            clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+            battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+          }
           return interaction.update({
             content: `🏃‍♂️ ${user.nickname}가 도망쳤습니다! ${enemy.nickname}의 승리!`,
             embeds: [],
