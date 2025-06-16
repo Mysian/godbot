@@ -23,15 +23,21 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: "장기 미이용 유저 추방", value: "inactive" },
-          { name: "비활동 신규유저 추방", value: "newbie" }
+          { name: "비활동 신규유저 추방", value: "newbie" },
+          { name: "유저 정보 조회", value: "user" }
         )
+    )
+    .addUserOption(option =>
+      option
+        .setName("대상유저")
+        .setDescription("정보를 조회할 유저")
+        .setRequired(false)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
     const option = interaction.options.getString("옵션");
-
     const guild = interaction.guild;
     const activityPath = path.join(__dirname, "..", "activity.json");
     const activity = fs.existsSync(activityPath)
@@ -123,6 +129,89 @@ module.exports = {
           });
         }
       });
+    }
+    else if (option === "user") {
+      const target = interaction.options.getUser("대상유저") || interaction.user;
+      const member = await guild.members.fetch(target.id).catch(() => null);
+
+      if (!member) {
+        await interaction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다." });
+        return;
+      }
+
+      const lastActive = activity[target.id];
+      const joinedAt = member.joinedAt;
+      const lastActiveStr = lastActive ? new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "기록 없음";
+      const joinedAtStr = joinedAt ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "기록 없음";
+
+      const embed = new EmbedBuilder()
+        .setTitle(`유저 정보: ${target.tag}`)
+        .setThumbnail(target.displayAvatarURL())
+        .addFields(
+          { name: "유저 ID", value: target.id, inline: false },
+          { name: "서버 입장일", value: joinedAtStr, inline: false },
+          { name: "마지막 활동일", value: lastActiveStr, inline: false }
+        )
+        .setColor(0x00bfff);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("nickname_change").setLabel("별명 변경").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("timeout").setLabel("타임아웃 (1시간)").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("kick").setLabel("추방").setStyle(ButtonStyle.Danger)
+      );
+
+      await interaction.editReply({ embeds: [embed], components: [row] });
+
+      const collector = interaction.channel.createMessageComponentCollector({
+        filter: (i) => i.user.id === interaction.user.id,
+        time: 20000,
+      });
+
+      collector.on("collect", async (i) => {
+        if (i.customId === "nickname_change") {
+          await i.update({ content: "✏️ 새로운 별명을 입력해주세요.", embeds: [], components: [] });
+
+          const msgCollector = interaction.channel.createMessageCollector({
+            filter: (m) => m.author.id === interaction.user.id,
+            time: 20000,
+            max: 1,
+          });
+
+          msgCollector.on("collect", async (msg) => {
+            try {
+              await member.setNickname(msg.content);
+              await interaction.followUp({ content: `✅ 별명이 **${msg.content}**(으)로 변경되었습니다.`, ephemeral: true });
+            } catch (err) {
+              await interaction.followUp({ content: "❌ 별명 변경 실패 (권한 문제일 수 있음)", ephemeral: true });
+            }
+          });
+
+          msgCollector.on("end", collected => {
+            if (collected.size === 0) {
+              interaction.followUp({ content: "⏰ 시간이 초과되어 별명 변경이 취소되었습니다.", ephemeral: true });
+            }
+          });
+
+        } else if (i.customId === "timeout") {
+          await i.update({ content: "⏳ 타임아웃(1시간) 적용 중...", embeds: [], components: [] });
+          try {
+            await member.timeout(60 * 60 * 1000, "관리 명령어로 타임아웃");
+            await interaction.followUp({ content: `✅ <@${member.id}>님에게 1시간 타임아웃을 적용했습니다.`, ephemeral: true });
+          } catch (err) {
+            await interaction.followUp({ content: "❌ 타임아웃 실패 (권한 문제일 수 있음)", ephemeral: true });
+          }
+        } else if (i.customId === "kick") {
+          await i.update({ content: "⏳ 유저 추방 중...", embeds: [], components: [] });
+          try {
+            await member.kick("관리 명령어로 추방");
+            await interaction.followUp({ content: `✅ <@${member.id}>님을 서버에서 추방했습니다.`, ephemeral: true });
+          } catch (err) {
+            await interaction.followUp({ content: "❌ 추방 실패 (권한 문제일 수 있음)", ephemeral: true });
+          }
+        }
+      });
+
+      collector.on("end", collected => {});
     }
   },
 };
