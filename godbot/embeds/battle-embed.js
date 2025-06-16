@@ -100,8 +100,8 @@ async function battleEmbed({
     )
     .setFooter({
       text: isUserTurn
-        ? `🎮 ${currentLabel} (<@${currentTurnUserId}>)의 턴! 행동을 선택하세요.`
-        : `⏳ ${currentLabel} (<@${currentTurnUserId}>)의 턴을 기다리는 중...`
+        ? `🟦 ${currentLabel} 의 턴! (아이템과 스킬 사용은 턴이 감소하지 않습니다.)`
+        : `🟥 ${currentLabel} 의 턴! (아이템과 스킬 사용은 턴이 감소하지 않습니다.)`
     });
 
 const LOG_LIMIT = 10;
