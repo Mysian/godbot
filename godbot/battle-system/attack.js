@@ -1,7 +1,6 @@
 // attack.js
 const { runPassive } = require('./passive');
-const { getChampionNameByUserId } = require('./champion-utils');
-const { getUserStatus } = require('./user-utils');
+const { getChampionNameByUserId } = require('./utils/champion-utils');
 
 // attack(user, enemy, context, logs) 형식 가정
 module.exports = async function attack(user, enemy, context, logs) {
