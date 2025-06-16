@@ -1034,7 +1034,7 @@ if (trigger === "onAttack") {
     context.effects[user.id].push({ type: "skillDamageTakenUp", value: 0.5, turns: 9999 });
   }
   return msg || undefined;
-}
+},
 "샤코": {
   name: "환영 복제",
   description: "피해를 한 번도 입지 않았다면 모든 피해 무효(1회), 배틀 시작 후 10턴간 회피 확률 20% 증가",
