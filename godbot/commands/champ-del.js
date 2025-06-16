@@ -22,6 +22,16 @@ module.exports = {
   async execute(interaction) {
     const userId = interaction.user.id;
 
+    // 디버그 테스트
+  console.log("DEBUG CHECK", {
+    battlesType: typeof battles,
+    brType: typeof battleRequests,
+    battlesSize: battles?.size,
+    brSize: battleRequests?.size,
+    hasBattle: battles?.has(userId),
+    hasBR: battleRequests?.has(userId)
+  });
+    
     // [추가] 배틀 진행/대기 중이면 유기 금지!
     if (battles.has(userId) || battleRequests.has(userId)) {
       return interaction.reply({
