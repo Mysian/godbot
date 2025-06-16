@@ -1033,8 +1033,9 @@ if (trigger === "onAttack") {
   if (!already) {
     context.effects[user.id].push({ type: "skillDamageTakenUp", value: 0.5, turns: 9999 });
   }
-  return msg || undefined;
-  } // ← 함수 닫는 괄호
+    return msg || undefined;
+    }
+  }
 },
 "샤코": {
   name: "환영 복제",
