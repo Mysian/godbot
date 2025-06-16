@@ -179,7 +179,7 @@ module.exports = {
         effects: {},
       };
       // 첫 턴 턴 알림 로그 추가!
-      battleState.logs.push(`🎲 ${userChamp.nickname}의 턴입니다!`);
+      battleState.logs.push(`🎲 ${userChamp.nickname} 턴!`);
       battles.set(challengerId, battleState);
       battles.set(userId, battleState);
       battleRequests.delete(challengerId);
@@ -240,7 +240,7 @@ module.exports = {
         effects: {},
       };
       // 첫 턴 턴 알림 로그 추가!
-      battleState.logs.push(`🎲 ${userChamp.nickname}의 턴입니다!`);
+      battleState.logs.push(`🎲 ${userChamp.nickname} 턴!`);
       battles.set(request.userId, battleState);
       battles.set(request.enemyId, battleState);
       battleRequests.delete(request.userId);
@@ -382,7 +382,7 @@ module.exports = {
       battle.turn += 1;
       battle.isUserTurn = !battle.isUserTurn;
       const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-      battle.logs.push(`🎲 ${nextTurnUser.nickname}의 턴입니다!`);
+      battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
       // 10줄 제한 유지!
       battle.logs = battle.logs.slice(-LOG_LIMIT);
       const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
@@ -414,7 +414,7 @@ module.exports = {
           battle.turn += 1;
           battle.isUserTurn = !battle.isUserTurn;
           const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-          battle.logs.push(`🎲 ${nextTurnUser.nickname}의 턴입니다!`);
+          battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
           battle.logs = battle.logs.slice(-LOG_LIMIT);
           const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
           await updateBattleView(interaction, battle, nextTurnUserId);
