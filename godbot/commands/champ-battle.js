@@ -1,6 +1,6 @@
 // commands/champ-battle.js
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { battleEmbed } = require('../embeds/battle-embed');
 const battleEngine = require('../utils/battle-engine');
 const fs = require('fs').promises;
@@ -8,7 +8,8 @@ const path = require('path');
 const USER_FILE = path.join(__dirname, '../data/champion-users.json');
 const RECORD_FILE = path.join(__dirname, '../data/champion-records.json');
 
-const battles = new Map();
+const battles = new Map();        // 실제 진행 중인 배틀
+const battleRequests = new Map(); // 수락 대기중인 요청
 
 async function readJson(file) {
   try {
@@ -62,60 +63,97 @@ module.exports = {
     const enemyUser = interaction.options.getUser('상대');
     if (user.id === enemyUser.id)
       return interaction.reply({ content: '본인과는 배틀할 수 없습니다!', ephemeral: true });
-    if (battles.has(user.id) || battles.has(enemyUser.id))
-      return interaction.reply({ content: '이미 배틀 중인 유저가 있습니다.', ephemeral: true });
+    if (battles.has(user.id) || battles.has(enemyUser.id) || battleRequests.has(user.id) || battleRequests.has(enemyUser.id))
+      return interaction.reply({ content: '이미 배틀 중이거나 대기중인 유저가 있습니다.', ephemeral: true });
 
-    const userChamp = await loadChampionUser(user.id);
-    const enemyChamp = await loadChampionUser(enemyUser.id);
-    if (!userChamp || !enemyChamp)
-      return interaction.reply({ content: '챔피언 정보를 불러올 수 없습니다.', ephemeral: true });
+    // 수락 임베드+버튼
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`accept_battle_${user.id}`)
+        .setLabel('수락')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`decline_battle_${user.id}`)
+        .setLabel('거절')
+        .setStyle(ButtonStyle.Danger)
+    );
+    const embed = new EmbedBuilder()
+      .setTitle('챔피언 배틀 요청')
+      .setDescription(`${enemyUser}, ${user}의 배틀 신청을 수락하시겠습니까?`)
+      .setColor('#f6ad55');
+    battleRequests.set(user.id, { userId: user.id, enemyId: enemyUser.id, channelId: interaction.channel.id });
+    battleRequests.set(enemyUser.id, { userId: user.id, enemyId: enemyUser.id, channelId: interaction.channel.id });
 
-    const battleState = {
-      turn: 1,
-      user: userChamp,
-      enemy: enemyChamp,
-      logs: [],
-      isUserTurn: true,
-      finished: false,
-      effects: {},
-    };
-    battles.set(user.id, battleState);
-    battles.set(enemyUser.id, battleState);
-
-    const view = await battleEmbed({
-      user: battleState.user,
-      enemy: battleState.enemy,
-      turn: battleState.turn,
-      logs: battleState.logs,
-      isUserTurn: battleState.isUserTurn,
-    });
-    await interaction.reply(view);
+    await interaction.reply({ content: `${enemyUser}`, embeds: [embed], components: [row] });
   },
 
   async handleButton(interaction) {
+    const customId = interaction.customId;
+
+    // 1) 배틀 요청 수락/거절
+    if (customId.startsWith('accept_battle_') || customId.startsWith('decline_battle_')) {
+      const [action, , challengerId] = customId.split('_');
+      const request = battleRequests.get(interaction.user.id);
+      if (!request || request.enemyId !== interaction.user.id) {
+        return interaction.reply({ content: '이 요청을 처리할 권한이 없습니다.', ephemeral: true });
+      }
+      if (action === 'decline') {
+        // 요청 거절
+        battleRequests.delete(request.userId);
+        battleRequests.delete(request.enemyId);
+        return interaction.update({ content: '배틀 요청이 거절되었습니다.', embeds: [], components: [] });
+      }
+      // 요청 수락 → 실제 배틀 시작
+      const userChamp = await loadChampionUser(request.userId);
+      const enemyChamp = await loadChampionUser(request.enemyId);
+      if (!userChamp || !enemyChamp) {
+        battleRequests.delete(request.userId);
+        battleRequests.delete(request.enemyId);
+        return interaction.update({ content: '챔피언 정보를 불러올 수 없습니다.', embeds: [], components: [] });
+      }
+      const battleState = {
+        turn: 1,
+        user: userChamp,
+        enemy: enemyChamp,
+        logs: [],
+        isUserTurn: true,
+        finished: false,
+        effects: {},
+      };
+      battles.set(request.userId, battleState);
+      battles.set(request.enemyId, battleState);
+      battleRequests.delete(request.userId);
+      battleRequests.delete(request.enemyId);
+      const view = await battleEmbed({
+        user: battleState.user,
+        enemy: battleState.enemy,
+        turn: battleState.turn,
+        logs: battleState.logs,
+        isUserTurn: battleState.isUserTurn,
+      });
+      return interaction.update({ content: '배틀이 시작됩니다!', embeds: view.embeds, components: view.components });
+    }
+
+    // 2) 배틀 진행 버튼
     const userId = interaction.user.id;
     if (!battles.has(userId))
       return interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
-
     const battle = battles.get(userId);
     if (battle.finished)
       return interaction.reply({ content: '이미 종료된 배틀입니다.', ephemeral: true });
 
     const user = battle.isUserTurn ? battle.user : battle.enemy;
     const enemy = battle.isUserTurn ? battle.enemy : battle.user;
-
-    const action = interaction.customId;
-
     if (!battle.isUserTurn || user.stunned)
       return interaction.reply({ content: '행동 불가 상태입니다. (기절 등)', ephemeral: true });
 
+    const action = interaction.customId;
     let logs = [];
     let context = {
       lastAction: action,
       effects: battle.effects,
       damage: 0,
     };
-
     if (action === 'attack') {
       battleEngine.calcDamage(user, enemy, context);
       logs.push(`${user.nickname}의 평타! (${context.damage} 데미지)`);
@@ -123,26 +161,21 @@ module.exports = {
       logs.push(...battleEngine.applyEffects(enemy, user, context));
       enemy.hp = Math.max(0, enemy.hp - context.damage);
       logs.push(`${enemy.nickname}의 남은 HP: ${enemy.hp}/${enemy.stats.hp}`);
-    }
-    else if (action === 'defend') {
+    } else if (action === 'defend') {
       logs.push(`${user.nickname} 방어!`);
-    }
-    else if (action === 'dodge') {
+    } else if (action === 'dodge') {
       if (Math.random() < 0.2) {
         logs.push(`${user.nickname} 점멸로 적의 공격을 완전히 피했다!`);
       } else {
         logs.push(`${user.nickname}의 점멸 실패!`);
       }
-    }
-    else if (action === 'item') {
+    } else if (action === 'item') {
       const itemName = '회복포션';
       logs.push(...battleEngine.resolveItem(user, itemName, context));
-    }
-    else if (action === 'skill') {
+    } else if (action === 'skill') {
       const skillName = '섬광';
       logs.push(...battleEngine.resolveActiveSkill(user, enemy, skillName, context));
-    }
-    else if (action === 'escape') {
+    } else if (action === 'escape') {
       if (battle.turn >= 10 && battle.turn <= 30) {
         if (Math.random() < 0.5) {
           logs.push(`${user.nickname} 도망 성공!`);
@@ -153,6 +186,7 @@ module.exports = {
           battles.delete(enemy.id);
           return interaction.update({
             content: `🏃‍♂️ ${user.nickname}가 도망쳤습니다! ${enemy.nickname}의 승리!`,
+            embeds: [],
             components: [],
           });
         } else {

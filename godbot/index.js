@@ -229,6 +229,15 @@ client.on("messageCreate", async (message) => {
 });
 
 
+const champBattle = require('./commands/champ-battle');
+client.on('interactionCreate', async interaction => {
+  if (interaction.isButton()) {
+    await champBattle.handleButton(interaction);
+  }
+});
+
+
+
 const bePath = path.join(__dirname, "data/BE.json");
 function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, "{}");
