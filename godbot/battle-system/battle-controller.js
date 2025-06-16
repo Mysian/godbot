@@ -136,267 +136,256 @@ async function handleBattleCommand(interaction) {
 
 
 async function handleBattleButton(interaction) {
-  const customId = interaction.customId;
-  const userId = interaction.user.id;
+  try {
+    const customId = interaction.customId;
+    const userId = interaction.user.id;
+    console.log('버튼 이벤트:', { customId, userId });
 
-  // 1) 오픈매칭 수락 (accept_battle_open_유저ID)
-  if (customId.startsWith('accept_battle_open_')) {
-    const challengerId = customId.replace(/^.*_/, '');
-    const request = battleRequests.get('open');
-    if (!request)
-      return interaction.reply({ content: '오픈배틀이 존재하지 않습니다.', ephemeral: true });
-    if (challengerId === userId)
-      return interaction.reply({ content: '자기 자신은 수락할 수 없습니다!', ephemeral: true });
-    if (battles.has(userId) || battleRequests.has(userId))
-      return interaction.reply({ content: '이미 배틀 중이거나 대기중입니다.', ephemeral: true });
+    // 오픈배틀 수락
+    if (customId.startsWith('accept_battle_open_')) {
+      try {
+        const challengerId = customId.replace(/^.*_/, '');
+        const request = battleRequests.get('open');
+        if (!request)
+          return await interaction.reply({ content: '오픈배틀이 존재하지 않습니다.', ephemeral: true });
+        if (challengerId === userId)
+          return await interaction.reply({ content: '자기 자신은 수락할 수 없습니다!', ephemeral: true });
+        if (battles.has(userId) || battleRequests.has(userId))
+          return await interaction.reply({ content: '이미 배틀 중이거나 대기중입니다.', ephemeral: true });
 
-    // 상대 챔피언 정보 로딩
-    let enemyChamp = await loadChampionUser(userId, interaction);
-    if (!enemyChamp)
-      return interaction.reply({ content: "챔피언을 소유하고 있지 않습니다!", ephemeral: true });
+        let enemyChamp = await loadChampionUser(userId, interaction);
+        if (!enemyChamp)
+          return await interaction.reply({ content: "챔피언을 소유하고 있지 않습니다!", ephemeral: true });
 
-    // 전투 세팅 (user: 챌린저, enemy: 수락자)
-    const userChamp = request.user;
-    const enemyUser = interaction.user;
+        const userChamp = request.user;
 
-    battleRequests.delete('open');
-    if (openBattleTimers.has(challengerId)) {
-      clearTimeout(openBattleTimers.get(challengerId));
-      openBattleTimers.delete(challengerId);
-    }
+        battleRequests.delete('open');
+        if (openBattleTimers.has(challengerId)) {
+          clearTimeout(openBattleTimers.get(challengerId));
+          openBattleTimers.delete(challengerId);
+        }
 
-    // 배틀 상태 저장
-    const battle = {
-      user: userChamp,
-      enemy: enemyChamp,
-      turn: 1,
-      isUserTurn: true,
-      finished: false,
-      logs: [],
-      effects: {},
-    };
-    battles.set(userChamp.id, battle);
-    battles.set(enemyChamp.id, battle);
+        const battle = {
+          user: userChamp,
+          enemy: enemyChamp,
+          turn: 1,
+          isUserTurn: true,
+          finished: false,
+          logs: [],
+          effects: {},
+        };
+        battles.set(userChamp.id, battle);
+        battles.set(enemyChamp.id, battle);
 
-    // 첫 임베드 출력
-    await updateBattleView(interaction, battle, userChamp.id);
-    return;
-  }
-
-  // 2) 기존 배틀 수락/거절
-  if (customId.startsWith('accept_battle_') || customId.startsWith('decline_battle_')) {
-    const challengerId = customId.replace(/^.*_/, '');
-    const request = battleRequests.get(challengerId);
-    if (!request)
-      return interaction.reply({ content: '이미 만료되었거나 존재하지 않는 배틀 요청입니다.', ephemeral: true });
-
-    // 거절
-    if (customId.startsWith('decline_battle_')) {
-      battleRequests.delete(challengerId);
-      if (battleTimers.has(`${challengerId}:${userId}`)) {
-        clearTimeout(battleTimers.get(`${challengerId}:${userId}`));
-        battleTimers.delete(`${challengerId}:${userId}`);
+        await updateBattleView(interaction, battle, userChamp.id);
+        return;
+      } catch (e) {
+        console.error('오픈배틀 수락 에러:', e);
+        try { await interaction.reply({ content: '❌ 오픈배틀 수락 오류!', ephemeral: true }); } catch {}
+        return;
       }
-      return interaction.update({ content: '배틀 요청을 거절했습니다.', embeds: [], components: [] });
     }
 
-    // 수락
-    if (battles.has(userId) || battleRequests.has(userId))
-      return interaction.reply({ content: '이미 배틀 중이거나 대기중입니다.', ephemeral: true });
+    // 기존 배틀 수락/거절
+    if (customId.startsWith('accept_battle_') || customId.startsWith('decline_battle_')) {
+      try {
+        const challengerId = customId.replace(/^.*_/, '');
+        const request = battleRequests.get(challengerId);
+        if (!request)
+          return await interaction.reply({ content: '이미 만료되었거나 존재하지 않는 배틀 요청입니다.', ephemeral: true });
 
-    let enemyChamp = await loadChampionUser(userId, interaction);
-    if (!enemyChamp)
-      return interaction.reply({ content: "챔피언을 소유하고 있지 않습니다!", ephemeral: true });
+        if (customId.startsWith('decline_battle_')) {
+          battleRequests.delete(challengerId);
+          if (battleTimers.has(`${challengerId}:${userId}`)) {
+            clearTimeout(battleTimers.get(`${challengerId}:${userId}`));
+            battleTimers.delete(`${challengerId}:${userId}`);
+          }
+          return await interaction.update({ content: '배틀 요청을 거절했습니다.', embeds: [], components: [] });
+        }
 
-    const userChamp = request.user;
+        if (battles.has(userId) || battleRequests.has(userId))
+          return await interaction.reply({ content: '이미 배틀 중이거나 대기중입니다.', ephemeral: true });
 
-    battleRequests.delete(challengerId);
-    if (battleTimers.has(`${challengerId}:${userId}`)) {
-      clearTimeout(battleTimers.get(`${challengerId}:${userId}`));
-      battleTimers.delete(`${challengerId}:${userId}`);
-    }
+        let enemyChamp = await loadChampionUser(userId, interaction);
+        if (!enemyChamp)
+          return await interaction.reply({ content: "챔피언을 소유하고 있지 않습니다!", ephemeral: true });
 
-    // 배틀 상태 저장
-    const battle = {
-      user: userChamp,
-      enemy: enemyChamp,
-      turn: 1,
-      isUserTurn: true,
-      finished: false,
-      logs: [],
-      effects: {},
-    };
-    battles.set(userChamp.id, battle);
-    battles.set(enemyChamp.id, battle);
+        const userChamp = request.user;
 
-    await updateBattleView(interaction, battle, userChamp.id);
-    return;
-  }
+        battleRequests.delete(challengerId);
+        if (battleTimers.has(`${challengerId}:${userId}`)) {
+          clearTimeout(battleTimers.get(`${challengerId}:${userId}`));
+          battleTimers.delete(`${challengerId}:${userId}`);
+        }
 
-  // 3) 배틀 진행 버튼 (공격/방어/점멸/아이템/스킬/도망 등)
-  if (!battles.has(userId))
-    return interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
-  const battle = battles.get(userId);
-  if (battle.finished)
-    return interaction.reply({ content: '이미 종료된 배틀입니다.', ephemeral: true });
+        const battle = {
+          user: userChamp,
+          enemy: enemyChamp,
+          turn: 1,
+          isUserTurn: true,
+          finished: false,
+          logs: [],
+          effects: {},
+        };
+        battles.set(userChamp.id, battle);
+        battles.set(enemyChamp.id, battle);
 
-  const isMyTurn = (battle.isUserTurn && battle.user.id === userId) ||
-                   (!battle.isUserTurn && battle.enemy.id === userId);
-  const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
-  if (!isMyTurn || currentPlayer.stunned)
-    return interaction.reply({ content: '행동 불가 상태입니다. (기절/비활성/상대턴)', ephemeral: true });
-
-  const user = battle.isUserTurn ? battle.user : battle.enemy;
-  const enemy = battle.isUserTurn ? battle.enemy : battle.user;
-
-  const action = interaction.customId;
-  let logs = [];
-  let context = {
-    lastAction: action,
-    effects: battle.effects,
-    damage: 0,
-  };
-
-  // 1. 아이템/스킬: 턴 유지 (분할 엔진 사용)
-  if (action === 'item') {
-    const itemName = '회복포션';
-    logs.push(...battleEngine.useItem(user, itemName, context));
-    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem'));
-    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-    await updateBattleView(interaction, battle, userId);
-    return;
-  }
-  if (action === 'skill') {
-    const skillName = '섬광';
-    logs.push(...battleEngine.useSkill(user, enemy, skillName, context));
-    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill'));
-    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-    await updateBattleView(interaction, battle, userId);
-    return;
-  }
-
-  // 2. 주 액션: 공격/방어/점멸/도망 - 턴 넘김
-  user.isDefending = false;
-  user.isDodging = false;
-
-  if (action === 'defend') {
-    logs.push(battleEngine.defend(user, context));
-    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
-  }
-  if (action === 'dodge') {
-    logs.push(battleEngine.dodge(user, context));
-    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
-  }
-  if (action === 'attack') {
-    battleEngine.attack(user, enemy, context);
-
-    // 점멸(회피)
-    if (enemy.isDodging) {
-      if (Math.random() < 0.2) {
-        context.damage = 0;
-        logs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
-      } else {
-        logs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
+        await updateBattleView(interaction, battle, userChamp.id);
+        return;
+      } catch (e) {
+        console.error('지목 배틀 수락/거절 에러:', e);
+        try { await interaction.reply({ content: '❌ 배틀 수락/거절 오류!', ephemeral: true }); } catch {}
+        return;
       }
-      enemy.isDodging = false;
+    }
+
+    // 배틀 진행(공격/방어/점멸/아이템/스킬/도망 등)
+    if (!battles.has(userId))
+      return await interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
+    const battle = battles.get(userId);
+    if (battle.finished)
+      return await interaction.reply({ content: '이미 종료된 배틀입니다.', ephemeral: true });
+
+    const isMyTurn = (battle.isUserTurn && battle.user.id === userId) ||
+                     (!battle.isUserTurn && battle.enemy.id === userId);
+    const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
+    if (!isMyTurn || currentPlayer.stunned)
+      return await interaction.reply({ content: '행동 불가 상태입니다. (기절/비활성/상대턴)', ephemeral: true });
+
+    const user = battle.isUserTurn ? battle.user : battle.enemy;
+    const enemy = battle.isUserTurn ? battle.enemy : battle.user;
+
+    const action = interaction.customId;
+    let logs = [];
+    let context = {
+      lastAction: action,
+      effects: battle.effects,
+      damage: 0,
+    };
+
+    // 아이템
+    if (action === 'item') {
+      try {
+        logs.push(...battleEngine.useItem(user, '회복포션', context));
+        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem'));
+        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+        await updateBattleView(interaction, battle, userId);
+        return;
+      } catch (e) {
+        console.error('item 분기 에러:', e);
+        try { await interaction.reply({ content: '❌ 아이템 사용 오류!', ephemeral: true }); } catch {}
+        return;
+      }
+    }
+    // 스킬
+    if (action === 'skill') {
+      try {
+        logs.push(...battleEngine.useSkill(user, enemy, '섬광', context));
+        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill'));
+        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+        await updateBattleView(interaction, battle, userId);
+        return;
+      } catch (e) {
+        console.error('skill 분기 에러:', e);
+        try { await interaction.reply({ content: '❌ 스킬 사용 오류!', ephemeral: true }); } catch {}
+        return;
+      }
     }
     // 방어
-    if (enemy.isDefending && context.damage > 0) {
-      context.damage = Math.floor(context.damage * 0.5);
-      logs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
-      enemy.isDefending = false;
-    }
-    logs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
-    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack'));
-    logs.push(...battleEngine.applyEffects(enemy, user, context));
-    enemy.hp = Math.max(0, enemy.hp - context.damage);
-  }
-  if (action === 'defend' || action === 'dodge' || action === 'attack') {
-    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-
-    // 배틀 종료, 승패, 턴 넘김
-    let winner = null;
-    if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
-      battle.finished = true;
-      if (user.hp > 0) winner = user;
-      else if (enemy.hp > 0) winner = enemy;
-
-      let resultEmbed;
-      if (winner) {
-        const loser = winner.id === user.id ? enemy : user;
-        const champIcon = await getChampionIcon(winner.name);
-        resultEmbed = {
-          content: null,
-          embeds: [
-            {
-              title: '🎉 전투 결과! 승리!',
-              description:
-                `**${winner.nickname}** (${winner.name})\n` +
-                `> <@${winner.id}>\n\n` +
-                `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
-              thumbnail: { url: champIcon },
-              color: 0xffe45c
-            }
-          ],
-          components: []
-        };
-      } else {
-        resultEmbed = {
-          content: null,
-          embeds: [{ title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }],
-          components: []
-        };
-      }
-      battles.delete(battle.user.id);
-      battles.delete(battle.enemy.id);
-      if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-        clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-        battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
-      }
-      return interaction.update(resultEmbed);
-    }
-
-    battle.turn += 1;
-    battle.isUserTurn = !battle.isUserTurn;
-    const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-    battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
-    battle.logs = battle.logs.slice(-LOG_LIMIT);
-    const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
-    await updateBattleView(interaction, battle, nextTurnUserId);
-    return;
-  }
-
-  if (action === 'escape') {
-    if (battle.turn >= 10 && battle.turn <= 30) {
-      if (Math.random() < 0.5) {
-        const champIcon = await getChampionIcon(enemy.name);
-        const resultEmbed = {
-          content: null,
-          embeds: [
-            {
-              title: '🏃‍♂️ 도망 성공! 전투 종료',
-              description:
-                `**${enemy.nickname}** (${enemy.name})\n> <@${enemy.id}>\n\n` +
-                `상대: ${user.nickname} (${user.name})\n> <@${user.id}> (도망)`,
-              thumbnail: { url: champIcon },
-              color: 0xc4eaa4
-            }
-          ],
-          components: []
-        };
-        battle.finished = true;
-        await updateRecord(user.id, user.name, 'lose');
-        await updateRecord(enemy.id, enemy.name, 'win');
-        battles.delete(user.id);
-        battles.delete(enemy.id);
-        if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-          clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-          battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
-        }
-        return interaction.update(resultEmbed);
-      } else {
-        logs.push(`${user.nickname} 도망 실패... 턴만 날립니다.`);
+    if (action === 'defend') {
+      try {
+        logs.push(battleEngine.defend(user, context));
+        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
         battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+        await updateBattleView(interaction, battle, userId);
+        return;
+      } catch (e) {
+        console.error('defend 분기 에러:', e);
+        try { await interaction.reply({ content: '❌ 방어 오류!', ephemeral: true }); } catch {}
+        return;
+      }
+    }
+    // 점멸
+    if (action === 'dodge') {
+      try {
+        logs.push(battleEngine.dodge(user, context));
+        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
+        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+        await updateBattleView(interaction, battle, userId);
+        return;
+      } catch (e) {
+        console.error('dodge 분기 에러:', e);
+        try { await interaction.reply({ content: '❌ 점멸 오류!', ephemeral: true }); } catch {}
+        return;
+      }
+    }
+    // 공격
+    if (action === 'attack') {
+      try {
+        battleEngine.attack(user, enemy, context);
+        if (enemy.isDodging) {
+          if (Math.random() < 0.2) {
+            context.damage = 0;
+            logs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
+          } else {
+            logs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
+          }
+          enemy.isDodging = false;
+        }
+        if (enemy.isDefending && context.damage > 0) {
+          context.damage = Math.floor(context.damage * 0.5);
+          logs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
+          enemy.isDefending = false;
+        }
+        logs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
+        logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack'));
+        logs.push(...battleEngine.applyEffects(enemy, user, context));
+        enemy.hp = Math.max(0, enemy.hp - context.damage);
+
+        battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+
+        let winner = null;
+        if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
+          battle.finished = true;
+          if (user.hp > 0) winner = user;
+          else if (enemy.hp > 0) winner = enemy;
+
+          let resultEmbed;
+          if (winner) {
+            const loser = winner.id === user.id ? enemy : user;
+            const champIcon = await getChampionIcon(winner.name);
+            resultEmbed = {
+              content: null,
+              embeds: [
+                {
+                  title: '🎉 전투 결과! 승리!',
+                  description:
+                    `**${winner.nickname}** (${winner.name})\n` +
+                    `> <@${winner.id}>\n\n` +
+                    `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
+                  thumbnail: { url: champIcon },
+                  color: 0xffe45c
+                }
+              ],
+              components: []
+            };
+          } else {
+            resultEmbed = {
+              content: null,
+              embeds: [{ title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }],
+              components: []
+            };
+          }
+          battles.delete(battle.user.id);
+          battles.delete(battle.enemy.id);
+          if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+            clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+            battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+          }
+          await interaction.update(resultEmbed);
+          return;
+        }
+
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
@@ -405,18 +394,82 @@ async function handleBattleButton(interaction) {
         const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
         await updateBattleView(interaction, battle, nextTurnUserId);
         return;
+      } catch (e) {
+        console.error('attack 분기 에러:', e);
+        try { await interaction.reply({ content: '❌ 공격 오류!', ephemeral: true }); } catch {}
+        return;
       }
-    } else {
-      logs.push('지금은 도망칠 수 없습니다! (10~30턴만)');
-      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, userId);
-      return;
     }
-  }
+    // 도망
+    if (action === 'escape') {
+      try {
+        if (battle.turn >= 10 && battle.turn <= 30) {
+          if (Math.random() < 0.5) {
+            const champIcon = await getChampionIcon(enemy.name);
+            const resultEmbed = {
+              content: null,
+              embeds: [
+                {
+                  title: '🏃‍♂️ 도망 성공! 전투 종료',
+                  description:
+                    `**${enemy.nickname}** (${enemy.name})\n> <@${enemy.id}>\n\n` +
+                    `상대: ${user.nickname} (${user.name})\n> <@${user.id}> (도망)`,
+                  thumbnail: { url: champIcon },
+                  color: 0xc4eaa4
+                }
+              ],
+              components: []
+            };
+            battle.finished = true;
+            await updateRecord(user.id, user.name, 'lose');
+            await updateRecord(enemy.id, enemy.name, 'win');
+            battles.delete(user.id);
+            battles.delete(enemy.id);
+            if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+              clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+              battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+            }
+            await interaction.update(resultEmbed);
+            return;
+          } else {
+            logs.push(`${user.nickname} 도망 실패... 턴만 날립니다.`);
+            battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+            battle.turn += 1;
+            battle.isUserTurn = !battle.isUserTurn;
+            const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+            battle.logs.push(`🎲 ${nextTurnUser.nickname} 턴!`);
+            battle.logs = battle.logs.slice(-LOG_LIMIT);
+            const nextTurnUserId = battle.isUserTurn ? battle.user.id : battle.enemy.id;
+            await updateBattleView(interaction, battle, nextTurnUserId);
+            return;
+          }
+        } else {
+          logs.push('지금은 도망칠 수 없습니다! (10~30턴만)');
+          battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+          await updateBattleView(interaction, battle, userId);
+          return;
+        }
+      } catch (e) {
+        console.error('escape 분기 에러:', e);
+        try { await interaction.reply({ content: '❌ 도망 오류!', ephemeral: true }); } catch {}
+        return;
+      }
+    }
 
-  logs.push('지원하지 않는 행동입니다.');
-  battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-  await updateBattleView(interaction, battle, userId);
+    logs.push('지원하지 않는 행동입니다.');
+    battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+    try {
+      await updateBattleView(interaction, battle, userId);
+    } catch (e) {
+      console.error('지원하지 않는 행동 에러:', e);
+      try { await interaction.reply({ content: '❌ 지원하지 않는 행동 오류!', ephemeral: true }); } catch {}
+    }
+    return;
+  } catch (e) {
+    console.error('handleBattleButton 전체 에러:', e);
+    try { await interaction.reply({ content: '❌ 버튼 실행 중 알 수 없는 오류 발생. (관리자 로그 참고)', ephemeral: true }); } catch {}
+    return;
+  }
 }
 
 async function updateBattleView(interaction, battle, activeUserId) {
@@ -431,17 +484,24 @@ async function updateBattleView(interaction, battle, activeUserId) {
         content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
         ephemeral: false
       });
-    } catch (e) {}
+    } catch (e) {
+      console.error('배틀 자동종료 followUp 에러:', e);
+    }
   }, 120000));
-  const view = await battleEmbed({
-    user: battle.user,
-    enemy: battle.enemy,
-    turn: battle.turn,
-    logs: battle.logs,
-    isUserTurn: battle.isUserTurn,
-    activeUserId
-  });
-  await interaction.update(view);
+  try {
+    const view = await battleEmbed({
+      user: battle.user,
+      enemy: battle.enemy,
+      turn: battle.turn,
+      logs: battle.logs,
+      isUserTurn: battle.isUserTurn,
+      activeUserId
+    });
+    await interaction.update(view);
+  } catch (e) {
+    console.error('updateBattleView 내부 에러:', e);
+    try { await interaction.reply({ content: '❌ 배틀창 갱신 오류!', ephemeral: true }); } catch {}
+  }
 }
 
 module.exports = {
