@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { battles, battleRequests } = require("./champ-battle"); // 추가: 배틀 중/대기 중 체크
 
 // 경로
 const bePath = path.join(__dirname, '../data/BE.json');
@@ -22,6 +23,15 @@ module.exports = {
     .setDescription('파랑 정수(BE)로 아이템을 구매할 수 있는 상점을 엽니다.'),
 
   async execute(interaction) {
+    // [추가] 배틀 진행/대기 중이면 상점 차단!
+    const userId = interaction.user.id;
+    if (battles.has(userId) || battleRequests.has(userId)) {
+      return interaction.reply({
+        content: "진행중/대기중인 챔피언 배틀이 있어 아이템 상점을 이용할 수 없습니다!",
+        ephemeral: true
+      });
+    }
+
     const market = loadJson(marketPath);
     const itemKeys = Object.keys(market);
     if (!itemKeys.length) {
@@ -60,6 +70,15 @@ module.exports = {
     const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
 
     collector.on('collect', async i => {
+      // [추가] 버튼/구매 등 상호작용도 배틀 상태 재확인!
+      if (battles.has(i.user.id) || battleRequests.has(i.user.id)) {
+        await i.reply({
+          content: "진행중/대기중인 챔피언 배틀이 있어 아이템 상점을 이용할 수 없습니다!",
+          ephemeral: true
+        });
+        return;
+      }
+
       let nowPage = page;
       if (i.customId === "item_prev" && page > 0) nowPage--;
       if (i.customId === "item_next" && (page + 1) * 5 < sorted.length) nowPage++;
@@ -115,7 +134,7 @@ module.exports = {
 
       // 검색(미구현)
       if (i.customId === "item_search") {
-        await i.reply({ content: "아이템 검색 기능은 추후 추가!", ephemeral: true });
+        await i.reply({ content: "아이템 검색 기능을 쓸만큼 아이템이 많지는 않습니다. 메롱", ephemeral: true });
       }
     });
 
