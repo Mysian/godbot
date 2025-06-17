@@ -367,6 +367,7 @@ if (!myEffects.some(e => e.type === 'stunned' && e.turns > 0)) user.stunned = fa
 if (!myEffects.some(e => e.type === 'invulnerable' && e.turns > 0)) user.invulnerable = false;
 
 context.effects[user.id] = myEffects;
-return logs;
-} 
-};
+  return logs;
+  } 
+
+}; 
