@@ -270,6 +270,8 @@ async function handleBattleButton(interaction) {
       lastAction: action,
       effects: battle.effects,
       damage: 0,
+      enemyId: enemy.id, // ★ context에 적 id 항상 포함(적 효과 필요시)
+      enemy,             // 일부 아이템/스킬에서 직접 enemy 필요시
     };
 
     // 패시브 onTurnStart
@@ -335,7 +337,7 @@ async function handleBattleButton(interaction) {
     // 실제 아이템 사용
     if (action.startsWith('useitem_')) {
       const itemName = action.replace('useitem_', '');
-      if (!ITEMS[itemName]) {
+      if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
         await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
         return;
       }
@@ -345,10 +347,10 @@ async function handleBattleButton(interaction) {
         await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
         return;
       }
+      // 아이템 효과 실행 (★ effect 함수 통일)
+      const log = ITEMS[itemName].effect(user, context);
       items[user.id][itemName].count -= 1;
       fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
-      // 아이템 효과 실행
-      const log = ITEMS[itemName](user, context);
       battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, user.id);
       return;
@@ -357,12 +359,12 @@ async function handleBattleButton(interaction) {
     // 실제 스킬 사용
     if (action.startsWith('useskill_')) {
       const skillName = action.replace('useskill_', '');
-      if (!ACTIVE_SKILLS[skillName]) {
+      if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
         await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
         return;
       }
-      // 쿨타임 등은 효과 함수에서 관리
-      const log = ACTIVE_SKILLS[skillName](user, enemy, context, battle);
+      // 쿨타임 등은 effect 함수에서 관리
+      const log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
       battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, user.id);
       return;
