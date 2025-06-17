@@ -91,7 +91,7 @@ async function handleBattleCommand(interaction) {
   if (battles.has(enemyId) || battleRequests.has(enemyId))
     return interaction.reply({ content: "상대가 이미 다른 배틀에 참여 중입니다!", ephemeral: true });
 
-  battleRequests.set(enemyId, { user: userChamp, enemy: enemyChamp, interaction, createdAt: Date.now() });
+  battleRequests.set(userId, { user: userChamp, enemy: enemyChamp, interaction, createdAt: Date.now() });
 
   const userIcon = await getChampionIcon(userChamp.name);
   const userPassive = passives[userChamp.name]?.description || '정보 없음';
