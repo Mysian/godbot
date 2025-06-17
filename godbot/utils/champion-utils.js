@@ -409,9 +409,22 @@ function getChampionInfo(name) {
   return loreMap[name] || "설명이 등록되지 않았습니다. 영갓에게 제보해주세요.";
 }
 
+const fs = require('fs');
+const path = require('path');
+
+function getChampionNameByUserId(userId) {
+  try {
+    const users = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/champion-users.json'), 'utf-8'));
+    return users[userId]?.name || '이름없음';
+  } catch (e) {
+    return '이름없음';
+  }
+}
+
 module.exports = {
   getChampionIcon,
   getChampionSplash,
   getChampionInfo,
-  getChampionKeyByName
+  getChampionKeyByName,
+  getChampionNameByUserId
 };
