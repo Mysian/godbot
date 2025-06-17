@@ -336,32 +336,39 @@ async function handleBattleButton(interaction) {
 
     // 실제 아이템 사용
     if (action.startsWith('useitem_')) {
+  console.log('아이템 사용 시도');
   const itemName = action.replace('useitem_', '');
+  const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+  console.log('user:', user);
+  console.log('items[user.id]:', items[user.id]);
+  user.items = items[user.id];
+  console.log('user.items 할당 후:', user.items);
+
+  if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
+    await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
+    return;
+  }
   if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
     await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
     return;
   }
-  const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
-  items[user.id] = items[user.id] || {};
-  if (!items[user.id][itemName] || items[user.id][itemName].count <= 0) {
-    await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
+
+  let log;
+  try {
+    log = ITEMS[itemName].effect(user, context);
+    console.log('아이템 효과 실행 결과:', log);
+  } catch (e) {
+    console.error('[아이템 효과 실행 중 에러]', e);
+    await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true });
     return;
   }
-  // user 객체에도 인벤토리 연결 (이 한 줄이 중요!!)
-  user.items = items[user.id];
 
-  // 아이템 효과 실행 (함수 호출)
-  const log = ITEMS[itemName].effect(user, context);
-
-  // 인벤토리 감소 및 파일 저장
   items[user.id][itemName].count -= 1;
   fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
-
   battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
   await updateBattleView(interaction, battle, user.id);
   return;
 }
-
     // 실제 스킬 사용
     if (action.startsWith('useskill_')) {
   const skillName = action.replace('useskill_', '');
