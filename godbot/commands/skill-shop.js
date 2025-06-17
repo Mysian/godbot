@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const SKILL_LIST = require('../data/skill-list.js');
+const SKILLS = require('../utils/active-skills.js');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 const skillsPath = path.join(__dirname, '../data/skills.json');
@@ -20,7 +20,8 @@ module.exports = {
     .setDescription('파랑 정수(BE)로 유니크 스킬을 구매할 수 있는 상점입니다.'),
 
   async execute(interaction) {
-    const sorted = SKILL_LIST.slice().sort((a, b) => b.price - a.price); // 비싼 순(혹은 등록순 등 자유)
+    const SKILL_LIST = Object.values(SKILLS); // ← active-skills.js에서 바로 읽음
+    const sorted = SKILL_LIST.slice().sort((a, b) => b.price - a.price);
     let page = 0;
     const showSkills = sorted.slice(page * 5, (page + 1) * 5);
 
@@ -64,7 +65,6 @@ module.exports = {
         return;
       }
 
-      // 구매(맨 위 스킬)
       if (i.customId === "skill_buy") {
         const showSkills = sorted.slice(page * 5, (page + 1) * 5);
         const skill = showSkills[0];
@@ -100,7 +100,6 @@ module.exports = {
         return;
       }
 
-      // 검색(미구현)
       if (i.customId === "skill_search") {
         await i.reply({ content: "스킬 검색 기능은 추후 추가!", ephemeral: true });
       }
