@@ -405,7 +405,10 @@ if (action.startsWith('useitem_')) {
     fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 전투창 갱신 없이 본인에게만 안내(텍스트)
+    // 공용 임베드 갱신 (전투창만 새로고침!)
+    
+
+    // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `아이템 **${itemName}** 사용!\n${log}`, ephemeral: true });
     replied = true; return;
   } catch (e) {
@@ -414,6 +417,7 @@ if (action.startsWith('useitem_')) {
     replied = true; return;
   }
 }
+
 
 
 
@@ -438,15 +442,19 @@ if (action.startsWith('useskill_')) {
     }
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 전투창 갱신 없이 본인에게만 안내(텍스트)
+    // 공용 임베드 갱신 (전투창만 새로고침!)
+    
+
+    // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `스킬 **${skillName}** 사용!\n${log}`, ephemeral: true });
     replied = true; return;
   } catch (e) {
     console.error('❌ [디버그] 스킬 사용 처리 에러:', e);
-    if (!replied) try { await interaction.followUp({ content: '❌ 스킬 효과 실행 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+    if (!replied) try { await interaction.followUp({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
     replied = true; return;
   }
 }
+
 
 
 
