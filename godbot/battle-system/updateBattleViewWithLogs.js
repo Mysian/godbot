@@ -2,8 +2,8 @@ const { battleEmbed } = require('../embeds/battle-embed');
 const LOG_LIMIT = 10;
 
 async function updateBattleViewWithLogs(interaction, battle, newLogs, activeUserId) {
-  const baseLogs = (battle.logs || []).slice(-LOG_LIMIT - newLogs.length);
-  const logsView = baseLogs.concat(newLogs).slice(-LOG_LIMIT);
+  // battle.logs는 이미 최신 로그로 갱신되어 있으므로, 그대로 사용
+  const logsView = (battle.logs || []).slice(-LOG_LIMIT);
 
   const view = await battleEmbed({
     user: battle.user,
