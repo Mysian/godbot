@@ -1,5 +1,5 @@
 // battle-system/escape.js
-const applyPassives = require("../passive");
+const applyPassives = require("./passive");
 
 module.exports = function escape(user, enemy, context = {}) {
   context.logs = context.logs || [];
