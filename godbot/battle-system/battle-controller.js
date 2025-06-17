@@ -336,39 +336,49 @@ async function handleBattleButton(interaction) {
 
     // 실제 아이템 사용
     if (action.startsWith('useitem_')) {
-      const itemName = action.replace('useitem_', '');
-      if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
-        await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
-        return;
-      }
-      const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
-      items[user.id] = items[user.id] || {};
-      if (!items[user.id][itemName] || items[user.id][itemName].count <= 0) {
-        await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
-        return;
-      }
-      // 아이템 효과 실행 (★ effect 함수 통일)
-      const log = ITEMS[itemName].effect(user, context);
-      items[user.id][itemName].count -= 1;
-      fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
-      battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, user.id);
-      return;
-    }
+  const itemName = action.replace('useitem_', '');
+  if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
+    await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
+    return;
+  }
+  const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+  items[user.id] = items[user.id] || {};
+  if (!items[user.id][itemName] || items[user.id][itemName].count <= 0) {
+    await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
+    return;
+  }
+  // user 객체에도 인벤토리 연결 (이 한 줄이 중요!!)
+  user.items = items[user.id];
+
+  // 아이템 효과 실행 (함수 호출)
+  const log = ITEMS[itemName].effect(user, context);
+
+  // 인벤토리 감소 및 파일 저장
+  items[user.id][itemName].count -= 1;
+  fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
+
+  battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
+  await updateBattleView(interaction, battle, user.id);
+  return;
+}
 
     // 실제 스킬 사용
     if (action.startsWith('useskill_')) {
-      const skillName = action.replace('useskill_', '');
-      if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
-        await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
-        return;
-      }
-      // 쿨타임 등은 effect 함수에서 관리
-      const log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
-      battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, user.id);
-      return;
-    }
+  const skillName = action.replace('useskill_', '');
+  if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
+    await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
+    return;
+  }
+  // 스킬 보유 정보 동기화 (중요!)
+  const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
+  user.skills = Object.keys(skills[user.id] || {});
+
+  // 쿨타임 등은 effect 함수에서 관리
+  const log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
+  battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
+  await updateBattleView(interaction, battle, user.id);
+  return;
+}
 
     // ★ 공격/방어/점멸/턴 진행/피해 처리 (기존 구조)
     if (action === 'defend' || action === 'dodge' || action === 'attack') {
