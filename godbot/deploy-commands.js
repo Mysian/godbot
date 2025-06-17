@@ -8,6 +8,9 @@ const nameSet = new Set();
 const commandFiles = fs.readdirSync("./commands").filter(file => file.endsWith(".js"));
 
 for (const file of commandFiles) {
+  // be-util.js만 예외처리
+  if (file === "be-util.js") continue;
+
   const command = require(`./commands/${file}`);
 
   if (!command.data) {
@@ -37,13 +40,13 @@ const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log("📡 명령어 등록 중...");
+    console.log("📡 명령어 까리하게 등록 중...");
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
-    console.log("✅ 명령어 등록 완료!");
+    console.log("✅ 명령어 아주 까리하게 등록 완료!");
   } catch (error) {
-    console.error("❌ 등록 실패:", error);
+    console.error("❌ 아 문제 생겼다 확인해보자! 등록 실패!!:", error);
   }
 })();
