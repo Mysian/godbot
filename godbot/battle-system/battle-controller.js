@@ -336,6 +336,7 @@ async function handleBattleButton(interaction) {
 
     // 실제 아이템 사용
     if (action.startsWith('useitem_')) {
+  let replied = false;
   try {
     const itemName = action.replace('useitem_', '');
     const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
@@ -343,11 +344,11 @@ async function handleBattleButton(interaction) {
 
     if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
       await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
-      return;
+      replied = true; return;
     }
     if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
       await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
-      return;
+      replied = true; return;
     }
 
     let log;
@@ -356,38 +357,51 @@ async function handleBattleButton(interaction) {
     } catch (e) {
       console.error('[아이템 효과 실행 중 에러]', e);
       await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true });
-      return;
+      replied = true; return;
     }
 
     items[user.id][itemName].count -= 1;
     fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
     await updateBattleView(interaction, battle, user.id);
-    return;
+    replied = true; return;
 
   } catch (e) {
     console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
-    try { await interaction.reply({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+    if (!replied) {
+      try { await interaction.reply({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+    }
     return;
   }
 }
+
     
     // 실제 스킬 사용
     if (action.startsWith('useskill_')) {
-  const skillName = action.replace('useskill_', '');
-  if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
-    await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
+  try {
+    const skillName = action.replace('useskill_', '');
+    if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
+      await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
+      return;
+    }
+    const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
+    user.skills = Object.keys(skills[user.id] || {});
+    let log;
+    try {
+      log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
+    } catch (e) {
+      console.error('[스킬 효과 실행 에러]', e);
+      await interaction.reply({ content: '❌ 스킬 효과 실행 중 오류!', ephemeral: true });
+      return;
+    }
+    battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
+    await updateBattleView(interaction, battle, user.id);
+    return;
+  } catch (e) {
+    console.error('❌ [디버그] 스킬 사용 처리 에러:', e);
+    try { await interaction.reply({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
     return;
   }
-  // 스킬 보유 정보 동기화 (중요!)
-  const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
-  user.skills = Object.keys(skills[user.id] || {});
-
-  // 쿨타임 등은 effect 함수에서 관리
-  const log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
-  battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
-  await updateBattleView(interaction, battle, user.id);
-  return;
 }
 
     // ★ 공격/방어/점멸/턴 진행/피해 처리 (기존 구조)
