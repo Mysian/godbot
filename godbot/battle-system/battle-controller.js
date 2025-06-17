@@ -227,7 +227,7 @@ async function handleBattleButton(interaction) {
       }
     }
 
-    // ↓↓↓ 실제 배틀의 모든 버튼(공격/방어/점멸/아이템/스킬/도망 등) 분기 ↓↓↓
+ // ↓↓↓ 실제 배틀의 모든 버튼(공격/방어/점멸/아이템/스킬/도망 등) 분기 ↓↓↓
     if (!battles.has(userId))
       return await interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
     const battle = battles.get(userId);
@@ -273,7 +273,7 @@ async function handleBattleButton(interaction) {
     }
     // 방어
     if (action === 'defend') {
-      logs.push(battleEngine.defend(user, context));
+      logs.push(...battleEngine.defend(user, enemy, context, logs));
       logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
       battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
 
@@ -287,7 +287,7 @@ async function handleBattleButton(interaction) {
     }
     // 점멸(회피)
     if (action === 'dodge') {
-      logs.push(battleEngine.dodge(user, context));
+      logs.push(...battleEngine.dodge(user, enemy, context, logs));
       logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
       battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
 
@@ -301,7 +301,7 @@ async function handleBattleButton(interaction) {
     }
     // 공격
     if (action === 'attack') {
-      battleEngine.attack(user, enemy, context);
+      logs.push(...battleEngine.attack(user, enemy, context, logs));
       // 회피 판정
       if (enemy.isDodging) {
         if (Math.random() < 0.2) {
