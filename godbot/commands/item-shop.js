@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const ITEM_LIST = require('../data/item-list.js');
+const ITEMS = require('../utils/items.js');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 const itemsPath = path.join(__dirname, '../data/items.json');
@@ -20,7 +20,8 @@ module.exports = {
     .setDescription('파랑 정수(BE)로 아이템을 구매할 수 있는 상점입니다.'),
 
   async execute(interaction) {
-    const sorted = ITEM_LIST.slice().sort((a, b) => b.price - a.price); // 비싼 순 정렬(또는 필요에 따라)
+    const ITEM_LIST = Object.values(ITEMS); // ← items.js에서 바로 읽음
+    const sorted = ITEM_LIST.slice().sort((a, b) => b.price - a.price);
     let page = 0;
     const showItems = sorted.slice(page * 5, (page + 1) * 5);
 
@@ -64,7 +65,6 @@ module.exports = {
         return;
       }
 
-      // 구매(맨 위 아이템)
       if (i.customId === "item_buy") {
         const showItems = sorted.slice(page * 5, (page + 1) * 5);
         const item = showItems[0];
@@ -92,7 +92,6 @@ module.exports = {
         be[i.user.id].history.push({ type: "spend", amount: item.price, reason: `${item.name} 구매`, timestamp: Date.now() });
         saveJson(bePath, be);
 
-        // 인벤토리 적재
         myItem.count += 1;
         items[i.user.id][item.name] = myItem;
         saveJson(itemsPath, items);
@@ -101,7 +100,6 @@ module.exports = {
         return;
       }
 
-      // 검색(미구현)
       if (i.customId === "item_search") {
         await i.reply({ content: "아이템 검색 기능은 추후 추가!", ephemeral: true });
       }
