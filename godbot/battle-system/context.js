@@ -3,9 +3,88 @@ module.exports = {
   applyEffects(user, enemy, context) {
     const logs = [];
     const myEffects = context.effects[user.id] || [];
+    // 중첩 효과 누적 변수(턴 동안 합산) - ex. 스탯% 등
+    let atkBuffPct = 0, apBuffPct = 0, maxHpBuffPct = 0, defBuffPct = 0, critUp = 0, lifesteal = 0, damageReduce = 0, penguBuff = 0;
+
     for (let i = myEffects.length - 1; i >= 0; i--) {
       const effect = myEffects[i];
 
+      // 매턴 HP 5% 회복 등(healOverTime)
+      if (effect.type === "healOverTime" && effect.turns > 0) {
+        const value = Math.max(1, Math.floor(effect.value));
+        user.hp = Math.min(user.stats.hp, user.hp + value);
+        logs.push(`💧 매턴 HP 회복! (+${value})`);
+        effect.turns--;
+      }
+      // 주문력 5% 상승(apBuff) - 중첩 지원
+      else if (effect.type === "apBuff" && effect.turns > 0) {
+        apBuffPct += effect.value / user.stats.ap;
+        logs.push(`✨ 주문력 +${Math.round(effect.value)} (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 공격력 5% 상승(atkBuff) - 중첩 지원
+      else if (effect.type === "atkBuff" && effect.turns > 0) {
+        atkBuffPct += effect.value / user.stats.attack;
+        logs.push(`⚔️ 공격력 +${Math.round(effect.value)} (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 최대체력 5% 상승(maxHpBuff) - 중첩 지원
+      else if (effect.type === "maxHpBuff" && effect.turns > 0) {
+        maxHpBuffPct += effect.value / user.stats.hp;
+        logs.push(`❤️ 최대체력 +${Math.round(effect.value)} (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 방어력 2% 상승(defBuff) - 중첩 지원
+      else if (effect.type === "defBuff" && effect.turns > 0) {
+        defBuffPct += effect.value / user.stats.defense;
+        logs.push(`🛡️ 방어력 +${Math.round(effect.value)} (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 3턴간 흡혈(lifesteal) - 중첩 지원
+      else if (effect.type === "lifesteal" && effect.turns > 0) {
+        lifesteal += effect.value;
+        logs.push(`🩸 흡혈 +${Math.round(effect.value * 100)}% (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 피해감소 2% 등(damageReduce) - 중첩 지원
+      else if (effect.type === "damageReduce" && effect.turns > 0) {
+        damageReduce += effect.value;
+        logs.push(`🛡️ 받는 피해 -${Math.round(effect.value * 100)}% (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 치명타 확률 2% 상승(critUp) - 중첩 지원
+      else if (effect.type === "critUp" && effect.turns > 0) {
+        critUp += effect.value;
+        logs.push(`🎯 치명타 확률 +${Math.round(effect.value * 100)}% (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 펭구의 뒤집개: 모든 스탯 0.1%씩 상승 - 중첩 지원
+      else if (effect.type === "penguBuff" && effect.turns > 0) {
+        penguBuff += effect.value;
+        logs.push(`🥄 모든 스탯 +${(effect.value * 100).toFixed(1)}% (${effect.turns}턴)`);
+        effect.turns--;
+      }
+      // 회피 확률 감소(dodgeDown) - 상대 효과(적중률 상승)
+      else if (effect.type === "dodgeDown" && effect.turns > 0) {
+        if (user.dodgeDown === undefined) user.dodgeDown = 0;
+        user.dodgeDown += effect.value;
+        logs.push(`👁️ 회피 확률 ${Math.round(effect.value * 100)}% 감소 (피격 확률↑)`);
+        effect.turns--;
+      }
+      // --- 기존 효과(도트, 디버프 등은 그대로 ---
+      // 예시: dot(고정피해), burn, poison 등
+      else if (effect.type === "burn" && effect.turns > 0) {
+        const value = Math.max(1, Math.floor(effect.value));
+        user.hp = Math.max(0, user.hp - value);
+        logs.push(`🔥 화상/중독 피해! (-${value})`);
+        effect.turns--;
+      }
+      // invincible, stunned, etc도 추가로 지원
+      else if (effect.type === "invincible" && effect.turns > 0) {
+        user.invincible = true;
+        logs.push("🦾 무적!");
+        effect.turns--;
+      }
       // 도트(고정 피해) - damageRatio 우선 처리 (자이라 등)
       if (effect.type === 'dot' && effect.turns > 0) {
         let dmg = effect.damage;
@@ -274,9 +353,18 @@ module.exports = {
         myEffects.splice(i, 1);
       }
     }
-    // 턴 종료 후 상태 초기화
-    if (!myEffects.some(e => e.type === 'stunned' && e.turns > 0)) user.stunned = false;
-    if (!myEffects.some(e => e.type === 'invulnerable' && e.turns > 0)) user.invulnerable = false;
+
+    // 턴마다 합산된 중첩/버프 반영(실스탯 계산은 배틀 시작 전 or 타 함수에서 진행)
+    if (atkBuffPct > 0) user.bonusAtkPct = atkBuffPct;
+    if (apBuffPct > 0) user.bonusApPct = apBuffPct;
+    if (maxHpBuffPct > 0) user.bonusMaxHpPct = maxHpBuffPct;
+    if (defBuffPct > 0) user.bonusDefPct = defBuffPct;
+    if (critUp > 0) user.critUp = critUp;
+    if (lifesteal > 0) user.lifesteal = lifesteal;
+    if (damageReduce > 0) user.damageReduce = damageReduce;
+    if (penguBuff > 0) user.penguBuff = penguBuff;
+
+    // 효과배열 갱신
     context.effects[user.id] = myEffects;
     return logs;
   }
