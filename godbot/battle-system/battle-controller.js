@@ -382,10 +382,12 @@ if (action.startsWith('useitem_')) {
     const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
     user.items = items[user.id];
     if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
+      await interaction.update({ components: [] });
       await interaction.followUp({ content: "해당 아이템이 없습니다!", ephemeral: true });
       replied = true; return;
     }
     if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
+      await interaction.update({ components: [] });
       await interaction.followUp({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
       replied = true; return;
     }
@@ -398,6 +400,7 @@ if (action.startsWith('useitem_')) {
       }
     } catch (e) {
       console.error('[아이템 효과 실행 중 에러]', e);
+      await interaction.update({ components: [] });
       await interaction.followUp({ content: `아이템 효과 실행 중 오류!`, ephemeral: true });
       replied = true; return;
     }
@@ -405,17 +408,20 @@ if (action.startsWith('useitem_')) {
     fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 전투창 갱신 없이 본인에게만 안내(텍스트)
+    // 전투창 새로고침 없이 버튼만 제거
+    await interaction.update({ components: [] });
+    // 본인 안내만
     await interaction.followUp({ content: `아이템 **${itemName}** 사용!\n${log}`, ephemeral: true });
     replied = true; return;
   } catch (e) {
     console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
-    if (!replied) try { await interaction.followUp({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+    if (!replied) {
+      await interaction.update({ components: [] });
+      await interaction.followUp({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true });
+    }
     replied = true; return;
   }
 }
-
-
 
 
 // [스킬 사용]
@@ -424,6 +430,7 @@ if (action.startsWith('useskill_')) {
     const ACTIVE_SKILLS = require('../utils/active-skills.js');
     const skillName = action.replace('useskill_', '');
     if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
+      await interaction.update({ components: [] });
       await interaction.followUp({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
       replied = true; return;
     }
@@ -434,22 +441,26 @@ if (action.startsWith('useskill_')) {
       log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
     } catch (e) {
       console.error('[스킬 효과 실행 에러]', e);
+      await interaction.update({ components: [] });
       await interaction.followUp({ content: '❌ 스킬 효과 실행 중 오류!', ephemeral: true });
       replied = true; return;
     }
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 전투창 갱신 없이 본인에게만 안내(텍스트)
+    // 전투창 갱신 없이 버튼만 제거
+    await interaction.update({ components: [] });
+    // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `스킬 **${skillName}** 사용!\n${log}`, ephemeral: true });
     replied = true; return;
   } catch (e) {
     console.error('❌ [디버그] 스킬 사용 처리 에러:', e);
-    if (!replied) try { await interaction.followUp({ content: '❌ 스킬 효과 실행 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+    if (!replied) {
+      await interaction.update({ components: [] });
+      await interaction.followUp({ content: '❌ 스킬 효과 실행 중 알 수 없는 오류 발생!', ephemeral: true });
+    }
     replied = true; return;
   }
 }
-
-
 
 
 
