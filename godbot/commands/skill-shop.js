@@ -56,7 +56,7 @@ module.exports = {
     };
 
     const { embed, rows } = getEmbedAndRows(page);
-    await interaction.reply({ embeds: [embed], components: rows, ephemeral: false });
+    await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
 
     const filter = i => i.user.id === interaction.user.id;
     const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
