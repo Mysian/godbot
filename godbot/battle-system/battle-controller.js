@@ -450,12 +450,13 @@ async function updateBattleView(interaction, battle, activeUserId) {
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
   battleTimers.set(key, setTimeout(async () => {
     battle.finished = true;
-    // ★ 꼭 완전 삭제!
     forceDeleteBattle(battle.user.id, battle.enemy.id);
     try {
-      await interaction.followUp({
+      // ★ 기존 메시지에서 임베드/버튼 싹 제거
+      await interaction.editReply({
         content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
-        ephemeral: false
+        embeds: [],
+        components: []
       });
     } catch (e) {}
   }, 120000));
