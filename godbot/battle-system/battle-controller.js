@@ -374,6 +374,10 @@ async function handleBattleButton(interaction) {
         const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
         user.items = items[user.id];
 
+     // 오류 콘솔 로그 체그   
+    console.log('effect 실행 전', { user, context, itemName, items: user.items });
+
+        
         if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
           await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true }); replied = true; return;
         }
