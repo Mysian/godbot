@@ -86,7 +86,7 @@ module.exports = {
         effect.turns--;
       }
       // 도트(고정 피해) - damageRatio 우선 처리 (자이라 등)
-      if (effect.type === 'dot' && effect.turns > 0) {
+      else if (effect.type === 'dot' && effect.turns > 0) {
         let dmg = effect.damage;
         if (effect.damageRatio) dmg = Math.floor(user.stats.hp * effect.damageRatio);
         user.hp = Math.max(0, user.hp - dmg);
@@ -352,21 +352,21 @@ module.exports = {
       if (effect.turns !== undefined && effect.turns <= 0) {
   myEffects.splice(i, 1);
 }
-// 누적 버프/중첩
-if (atkBuffPct > 0) user.bonusAtkPct = atkBuffPct;
-if (apBuffPct > 0) user.bonusApPct = apBuffPct;
-if (maxHpBuffPct > 0) user.bonusMaxHpPct = maxHpBuffPct;
-if (defBuffPct > 0) user.bonusDefPct = defBuffPct;
-if (critUp > 0) user.critUp = critUp;
-if (lifesteal > 0) user.lifesteal = lifesteal;
-if (damageReduce > 0) user.damageReduce = damageReduce;
-if (penguBuff > 0) user.penguBuff = penguBuff;
+      // 누적 버프/중첩
+    if (atkBuffPct > 0) user.bonusAtkPct = atkBuffPct;
+    if (apBuffPct > 0) user.bonusApPct = apBuffPct;
+    if (maxHpBuffPct > 0) user.bonusMaxHpPct = maxHpBuffPct;
+    if (defBuffPct > 0) user.bonusDefPct = defBuffPct;
+    if (critUp > 0) user.critUp = critUp;
+    if (lifesteal > 0) user.lifesteal = lifesteal;
+    if (damageReduce > 0) user.damageReduce = damageReduce;
+    if (penguBuff > 0) user.penguBuff = penguBuff;
 
-// 특수상태 해제
-if (!myEffects.some(e => e.type === 'stunned' && e.turns > 0)) user.stunned = false;
-if (!myEffects.some(e => e.type === 'invulnerable' && e.turns > 0)) user.invulnerable = false;
+    // 특수상태 해제
+    if (!myEffects.some(e => e.type === 'stunned' && e.turns > 0)) user.stunned = false;
+    if (!myEffects.some(e => e.type === 'invulnerable' && e.turns > 0)) user.invulnerable = false;
 
-context.effects[user.id] = myEffects;
-  return logs;
-  } 
+    context.effects[user.id] = myEffects;
+    return logs;
+  }
 }
