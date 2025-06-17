@@ -406,7 +406,7 @@ if (action.startsWith('useitem_')) {
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
     // 공용 임베드 갱신 (전투창만 새로고침!)
-    await updateBattleView(interaction, battle, user.id);
+    
 
     // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `아이템 **${itemName}** 사용!\n${log}`, ephemeral: true });
@@ -441,7 +441,7 @@ if (action.startsWith('useskill_')) {
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
     // 공용 임베드 갱신 (전투창만 새로고침!)
-    await updateBattleView(interaction, battle, user.id);
+    
 
     // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `스킬 **${skillName}** 사용!\n${log}`, ephemeral: true });
