@@ -286,33 +286,26 @@ async function handleBattleButton(interaction) {
     };
 
     // 패시브 onTurnStart
-    try {
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle));
-    } catch (e) {
-      console.error('[패시브 onTurnStart user]', e);
-    }
-    try {
-      logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle));
-    } catch (e) {
-      console.error('[패시브 onTurnStart enemy]', e);
-    }
+    try { logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle)); } catch (e) {}
+    try { logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle)); } catch (e) {}
 
-    // 아이템 버튼 → 소지품 목록 임베드 전환
-    if (action === 'item') {
-      try {
+    // [핵심] 아이템/스킬 목록 노출 및 선택 → 공개 임베드에서 버튼으로만 처리!
+    if (action === 'item' || action === 'skill') {
+      // 아이템/스킬 목록 생성해서 "같은 임베드에서 update"만!
+      let listButtons = [];
+      let embed;
+      if (action === 'item') {
         const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
         const myItems = items[user.id] || {};
         const itemList = Object.entries(myItems).filter(([name, v]) => v.count > 0);
-
         if (itemList.length === 0) {
-          await interaction.reply({ content: "소지한 아이템이 없습니다!", ephemeral: true }); replied = true; return;
+          await interaction.update({ content: "소지한 아이템이 없습니다!", embeds: [], components: [] });
+          replied = true; return;
         }
-
-        const embed = new EmbedBuilder()
+        embed = new EmbedBuilder()
           .setTitle('🎒 내 아이템 목록')
           .setDescription(itemList.map(([name, v], idx) => `${idx + 1}. **${name}** x${v.count}\n${v.desc || ''}`).join('\n'))
           .setFooter({ text: '사용할 아이템을 선택하세요!' });
-
         const row = new ActionRowBuilder();
         itemList.slice(0, 5).forEach(([name, v], idx) => {
           row.addComponents(
@@ -322,32 +315,20 @@ async function handleBattleButton(interaction) {
               .setStyle(ButtonStyle.Primary)
           );
         });
-
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-        replied = true; return;
-      } catch (e) {
-        console.error('[아이템 목록 임베드 오류]', e);
-        if (!replied) try { await interaction.reply({ content: "아이템 임베드 생성 오류!", ephemeral: true }); } catch {}
-        replied = true; return;
+        listButtons = [row];
       }
-    }
-
-    // 스킬 버튼 → 소지 스킬 목록 임베드 전환
-    if (action === 'skill') {
-      try {
+      if (action === 'skill') {
         const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
         const mySkills = skills[user.id] || {};
         const skillList = Object.keys(mySkills);
-
         if (skillList.length === 0) {
-          await interaction.reply({ content: "소지한 스킬이 없습니다!", ephemeral: true }); replied = true; return;
+          await interaction.update({ content: "소지한 스킬이 없습니다!", embeds: [], components: [] });
+          replied = true; return;
         }
-
-        const embed = new EmbedBuilder()
+        embed = new EmbedBuilder()
           .setTitle('📚 내 스킬 목록')
           .setDescription(skillList.map((name, idx) => `${idx + 1}. **${name}**\n${mySkills[name].desc || ''}`).join('\n'))
           .setFooter({ text: '사용할 스킬을 선택하세요!' });
-
         const row = new ActionRowBuilder();
         skillList.slice(0, 5).forEach((name, idx) => {
           row.addComponents(
@@ -357,76 +338,58 @@ async function handleBattleButton(interaction) {
               .setStyle(ButtonStyle.Primary)
           );
         });
-
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-        replied = true; return;
-      } catch (e) {
-        console.error('[스킬 목록 임베드 오류]', e);
-        if (!replied) try { await interaction.reply({ content: "스킬 임베드 생성 오류!", ephemeral: true }); } catch {}
-        replied = true; return;
+        listButtons = [row];
       }
+      await interaction.update({
+        embeds: [embed],
+        components: listButtons
+      });
+      replied = true; return;
     }
 
     // 실제 아이템 사용
-if (action.startsWith('useitem_')) {
-  try {
-    const itemName = action.replace('useitem_', '');
-    const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
-    user.items = items[user.id];
+    if (action.startsWith('useitem_')) {
+      try {
+        const itemName = action.replace('useitem_', '');
+        const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+        user.items = items[user.id];
+        if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
+          await interaction.update({ content: "해당 아이템이 없습니다!", embeds: [], components: [] });
+          replied = true; return;
+        }
+        if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
+          await interaction.update({ content: `해당 아이템 효과를 찾을 수 없습니다.`, embeds: [], components: [] });
+          replied = true; return;
+        }
+        let log;
+        try {
+          log = ITEMS[itemName].effect(user, context);
+        } catch (e) {
+          console.error('[아이템 효과 실행 중 에러]', e);
+          await interaction.update({ content: `아이템 효과 실행 중 오류!`, embeds: [], components: [] });
+          replied = true; return;
+        }
+        items[user.id][itemName].count -= 1;
+        fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
+        battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 오류 콘솔 로그 체크   
-    console.log('effect 실행 전', { user, context, itemName, items: user.items });
-
-    if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
-      await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true }); replied = true; return;
+        // 아이템/스킬 사용 후, 전투 기본 화면(공개 임베드)로 돌아가서 update!
+        await updateBattleView(interaction, battle, user.id);
+        replied = true; return;
+      } catch (e) {
+        console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
+        if (!replied) try { await interaction.update({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', embeds: [], components: [] }); } catch {}
+        replied = true; return;
+      }
     }
-    if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
-      await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true }); replied = true; return;
-    }
-
-    let log;
-    try {
-      log = ITEMS[itemName].effect(user, context);
-    } catch (e) {
-      console.error('[아이템 효과 실행 중 에러]', e);
-      await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true }); replied = true; return;
-    }
-
-    items[user.id][itemName].count -= 1;
-    fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
-    battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
-
-    // **[1] 먼저, 버튼 누른 유저에게 안내 (ephemeral reply)**
-    await interaction.reply({ 
-      content: log || `${itemName} 아이템을 사용했습니다!`, 
-      ephemeral: true 
-    });
-    replied = true;
-
-    // **[2] 공개 배틀 임베드는 별도 메시지에서 update (public 메시지 핸들러에서 따로)**
-    // 아래 라인을 "여기"에서 바로 실행하면 안되고,  
-    // (현재 interaction이 ephemeral이므로) updateBattleView는  
-    // 실제 배틀 공개 메시지의 interaction/message로 따로 갱신해야 함!
-    //
-    // 예시: (만약 battleMessage 라는 변수에 기존 공개 메시지 interaction을 가지고 있다면)
-    // await updateBattleView(battleMessage, battle, user.id);
-
-    return;
-
-  } catch (e) {
-    console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
-    if (!replied) try { await interaction.reply({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
-    replied = true; return;
-  }
-}
-
 
     // 실제 스킬 사용
     if (action.startsWith('useskill_')) {
       try {
         const skillName = action.replace('useskill_', '');
         if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
-          await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true }); replied = true; return;
+          await interaction.update({ content: `해당 스킬 효과를 찾을 수 없습니다.`, embeds: [], components: [] });
+          replied = true; return;
         }
         const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
         user.skills = Object.keys(skills[user.id] || {});
@@ -435,15 +398,17 @@ if (action.startsWith('useitem_')) {
           log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
         } catch (e) {
           console.error('[스킬 효과 실행 에러]', e);
-          await interaction.reply({ content: '❌ 스킬 효과 실행 중 오류!', ephemeral: true }); replied = true; return;
+          await interaction.update({ content: '❌ 스킬 효과 실행 중 오류!', embeds: [], components: [] });
+          replied = true; return;
         }
         battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
+        // 아이템/스킬 사용 후, 전투 기본 화면(공개 임베드)로 돌아가서 update!
         await updateBattleView(interaction, battle, user.id);
         replied = true; return;
       } catch (e) {
         console.error('❌ [디버그] 스킬 사용 처리 에러:', e);
-        if (!replied) try { await interaction.reply({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+        if (!replied) try { await interaction.update({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', embeds: [], components: [] }); } catch {}
         replied = true; return;
       }
     }
@@ -612,7 +577,7 @@ if (action.startsWith('useitem_')) {
   } catch (e) {
     console.error('❌ [디버그] 버튼 클릭시 에러:', e);
     if (!replied) {
-      try { await interaction.reply({ content: '❌ 오류 발생! 영갓에게 제보해주세요.', ephemeral: true }); } catch {}
+      try { await interaction.update({ content: '❌ 오류 발생! 영갓에게 제보해주세요.', embeds: [], components: [] }); } catch {}
     }
     return;
   }
