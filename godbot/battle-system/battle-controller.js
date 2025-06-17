@@ -5,6 +5,13 @@ const { getChampionIcon } = require('../utils/champion-utils');
 const passives = require('../utils/passive-skills');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const updateBattleViewWithLogs = require('./updateBattleViewWithLogs');
+const ITEMS = require('../utils/items.js');
+const ACTIVE_SKILLS = require('../utils/active-skills.js');
+const fs = require('fs');
+const path = require('path');
+
+const itemsPath = path.join(__dirname, '../data/items.json');
+const skillsPath = path.join(__dirname, '../data/skills.json');
 
 const battles = new Map();
 const battleRequests = new Map();
@@ -13,7 +20,6 @@ const openBattleTimers = new Map();
 
 const LOG_LIMIT = 10;
 
-// ★ 배틀 완전 삭제 유틸
 function forceDeleteBattle(userId, enemyId) {
   if (userId) battles.delete(userId);
   if (enemyId) battles.delete(enemyId);
@@ -266,32 +272,105 @@ async function handleBattleButton(interaction) {
       damage: 0,
     };
 
-    // 턴 시작 패시브 처리 ★ battle 인자 넘기도록 수정!
+    // 패시브 onTurnStart
     logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle));
     logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle));
 
-    // 아이템/스킬/도망/기타는 기존 방식(즉시 전체 갱신)
+    // 아이템 버튼 → 소지품 목록 임베드 전환
     if (action === 'item') {
-      logs.push(...battleEngine.useItem(user, '회복포션', context));
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem', battle));
-      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, user.id);
+      const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+      const myItems = items[user.id] || {};
+      const itemList = Object.entries(myItems).filter(([name, v]) => v.count > 0);
+
+      if (itemList.length === 0)
+        return await interaction.reply({ content: "소지한 아이템이 없습니다!", ephemeral: true });
+
+      const embed = new EmbedBuilder()
+        .setTitle('🎒 내 아이템 목록')
+        .setDescription(itemList.map(([name, v], idx) => `${idx + 1}. **${name}** x${v.count}\n${v.desc || ''}`).join('\n'))
+        .setFooter({ text: '사용할 아이템을 선택하세요!' });
+
+      const row = new ActionRowBuilder();
+      itemList.slice(0, 5).forEach(([name, v], idx) => {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`useitem_${name}`)
+            .setLabel(name)
+            .setStyle(ButtonStyle.Primary)
+        );
+      });
+
+      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
       return;
     }
+
+    // 스킬 버튼 → 소지 스킬 목록 임베드 전환
     if (action === 'skill') {
-      logs.push(...battleEngine.useSkill(user, enemy, '섬광', context));
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill', battle));
-      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
+      const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
+      const mySkills = skills[user.id] || {};
+      const skillList = Object.keys(mySkills);
+
+      if (skillList.length === 0)
+        return await interaction.reply({ content: "소지한 스킬이 없습니다!", ephemeral: true });
+
+      const embed = new EmbedBuilder()
+        .setTitle('📚 내 스킬 목록')
+        .setDescription(skillList.map((name, idx) => `${idx + 1}. **${name}**\n${mySkills[name].desc || ''}`).join('\n'))
+        .setFooter({ text: '사용할 스킬을 선택하세요!' });
+
+      const row = new ActionRowBuilder();
+      skillList.slice(0, 5).forEach((name, idx) => {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`useskill_${name}`)
+            .setLabel(name)
+            .setStyle(ButtonStyle.Primary)
+        );
+      });
+
+      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+      return;
+    }
+
+    // 실제 아이템 사용
+    if (action.startsWith('useitem_')) {
+      const itemName = action.replace('useitem_', '');
+      if (!ITEMS[itemName]) {
+        await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true });
+        return;
+      }
+      const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+      items[user.id] = items[user.id] || {};
+      if (!items[user.id][itemName] || items[user.id][itemName].count <= 0) {
+        await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true });
+        return;
+      }
+      items[user.id][itemName].count -= 1;
+      fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
+      // 아이템 효과 실행
+      const log = ITEMS[itemName](user, context);
+      battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, user.id);
       return;
     }
 
-    // ★ 공격/방어/점멸
-    if (action === 'defend' || action === 'dodge' || action === 'attack') {
-      // 기존 로그 저장
-      const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
+    // 실제 스킬 사용
+    if (action.startsWith('useskill_')) {
+      const skillName = action.replace('useskill_', '');
+      if (!ACTIVE_SKILLS[skillName]) {
+        await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
+        return;
+      }
+      // 쿨타임 등은 효과 함수에서 관리
+      const log = ACTIVE_SKILLS[skillName](user, enemy, context, battle);
+      battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
+      await updateBattleView(interaction, battle, user.id);
+      return;
+    }
 
-      // 이번 액션으로 새로 쌓이는 로그만 분리(애니메이션용)
+    // ★ 공격/방어/점멸/턴 진행/피해 처리 (기존 구조)
+    if (action === 'defend' || action === 'dodge' || action === 'attack') {
+      const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
       let newLogs = [];
       if (action === 'defend') {
         newLogs.push(...battleEngine.defend(user, enemy, context, []));
@@ -328,10 +407,10 @@ async function handleBattleButton(interaction) {
         newLogs.push(...battleEngine.applyEffects(enemy, user, context));
         enemy.hp = Math.max(0, enemy.hp - context.damage);
 
-        // ★★★ onDeath 부활 언데드 가능 여부 확인
+        // onDeath 패시브(부활, 언데드 등)
         const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
-         if (deathLog && deathLog.length) newLogs.push(...deathLog);
-        
+        if (deathLog && deathLog.length) newLogs.push(...deathLog);
+
         let winner = null;
         if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
           battle.finished = true;
@@ -364,7 +443,6 @@ async function handleBattleButton(interaction) {
             };
           }
           battle.finished = true;
-          // ★ 꼭 완전 삭제!
           forceDeleteBattle(battle.user.id, battle.enemy.id);
           if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
             clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
@@ -380,11 +458,8 @@ async function handleBattleButton(interaction) {
         newLogs.push(` <@${nextTurnUser.id}> 턴!`);
       }
 
-      // battle.logs에 누적
       battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
-
       await updateBattleViewWithLogs(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
-
       await updateBattleView(interaction, battle, battle.isUserTurn ? battle.user.id : battle.enemy.id);
       return;
     }
