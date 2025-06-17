@@ -369,5 +369,4 @@ if (!myEffects.some(e => e.type === 'invulnerable' && e.turns > 0)) user.invulne
 context.effects[user.id] = myEffects;
   return logs;
   } 
-
-}; 
+}
