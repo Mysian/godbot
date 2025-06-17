@@ -29,5 +29,6 @@ module.exports = function defend(user, enemy, context, logs) {
 
   logs.push(`${getChampionNameByUserId(user.id)}가 방어 행동을 취함!`);
   user.isDefending = true;
+  // 체력 변화 없음!
   return logs;
 };
