@@ -14,10 +14,9 @@ module.exports = function dodge(user, enemy, context, logs) {
     logs.push("❌ 회피 불가 상태!");
     user.isDodging = false;
     context.dodging = false;
-    return;
+    return logs;
   }
 
-  // 패시브 처리 (예외 발생 방지)
   try {
     let passiveLog = runPassive(user, enemy, context, "onDodge");
     if (Array.isArray(passiveLog) && passiveLog.length > 0) logs.push(...passiveLog);
@@ -25,5 +24,5 @@ module.exports = function dodge(user, enemy, context, logs) {
   } catch (e) {}
 
   logs.push(`${getChampionNameByUserId(user.id)} 점멸(회피) 시도!`);
-  // return logs; ← 이거 절대 반환하지 마!
+  return logs;
 };
