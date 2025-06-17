@@ -328,6 +328,10 @@ async function handleBattleButton(interaction) {
         newLogs.push(...battleEngine.applyEffects(enemy, user, context));
         enemy.hp = Math.max(0, enemy.hp - context.damage);
 
+        // ★★★ onDeath 부활 언데드 가능 여부 확인
+        const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
+         if (deathLog && deathLog.length) newLogs.push(...deathLog);
+        
         let winner = null;
         if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
           battle.finished = true;
