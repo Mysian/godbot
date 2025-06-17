@@ -1,6 +1,7 @@
+// battle-system/passive.js
 const passives = require('../utils/passive-skills');
 
-function runPassive(user, enemy, context, trigger) {
+function resolvePassive(user, enemy, context, trigger) {
   let logs = [];
   const champName = user.name;
   if (passives[champName] && typeof passives[champName].passive === 'function') {
@@ -10,4 +11,4 @@ function runPassive(user, enemy, context, trigger) {
   return logs;
 }
 
-module.exports = { runPassive };
+module.exports = resolvePassive;
