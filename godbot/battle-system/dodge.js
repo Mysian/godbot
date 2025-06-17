@@ -17,12 +17,14 @@ module.exports = function dodge(user, enemy, context, logs) {
     return logs;
   }
 
-  // 패시브 처리 (예외 발생 방지)
+  // 패시브 트리거
   try {
-    let passiveLog = runPassive(user, enemy, context, "onDodge");
-    if (Array.isArray(passiveLog) && passiveLog.length > 0) logs.push(...passiveLog);
+    const passiveLog = runPassive(user, enemy, context, "onDodge");
+    if (Array.isArray(passiveLog)) logs.push(...passiveLog);
     else if (passiveLog) logs.push(passiveLog);
-  } catch (e) {}
+  } catch (e) {
+    // 패시브 에러 무시
+  }
 
   logs.push(`${getChampionNameByUserId(user.id)} 점멸(회피) 시도!`);
   return logs;
