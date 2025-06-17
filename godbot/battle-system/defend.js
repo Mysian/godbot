@@ -1,13 +1,13 @@
-// defend.js
-const runPassive = require('./passive'); // 기본 export라 이렇게 임포트
+const runPassive = require('./passive');
 const { getChampionNameByUserId } = require('../utils/champion-utils');
 
 module.exports = function defend(user, enemy, context, logs) {
   context.effects = context.effects || {};
   context.effects[user.id] = context.effects[user.id] || [];
   context.effects[enemy.id] = context.effects[enemy.id] || [];
+  logs = logs || [];
 
-  // 상태 체크 (기절 등)
+  // 기절 등 상태 이상
   if (user.stunned) {
     logs.push('😵 행동 불가! (기절)');
     user.stunned = false;
@@ -22,16 +22,15 @@ module.exports = function defend(user, enemy, context, logs) {
     return;
   }
 
-  // 패시브 효과 트리거 (방어자, 수비시)
-  let passiveLog = runPassive(user, enemy, context, "onDefend");
-  if (passiveLog) logs.push(passiveLog);
-
-  // 추가로, 공격자 패시브 중 방어에 영향 주는 것도 트리거
-  passiveLog = runPassive(enemy, user, context, "onAttackDefend");
-  if (passiveLog) logs.push(passiveLog);
-
-  // 기타 상태/버프 처리(필요하면 추가)
+  // 패시브 처리 (예외 발생 방지)
+  try {
+    let passiveLog = runPassive(user, enemy, context, "onDefend");
+    if (Array.isArray(passiveLog) && passiveLog.length > 0) logs.push(...passiveLog);
+    else if (passiveLog) logs.push(passiveLog);
+  } catch (e) {
+    // 패시브 오류 무시, 기본 행동만 진행
+  }
 
   logs.push(`${getChampionNameByUserId(user.id)}가 방어 행동을 취함!`);
-  return;
+  return logs;
 };
