@@ -13,6 +13,12 @@ const openBattleTimers = new Map();
 
 const LOG_LIMIT = 10;
 
+// ★ 배틀 완전 삭제 유틸
+function forceDeleteBattle(userId, enemyId) {
+  if (userId) battles.delete(userId);
+  if (enemyId) battles.delete(enemyId);
+}
+
 async function handleBattleCommand(interaction) {
   const userId = interaction.user.id;
   const enemyUser = interaction.options.getUser('상대');
@@ -156,6 +162,9 @@ async function handleBattleButton(interaction) {
           openBattleTimers.delete(challengerId);
         }
 
+        // 오픈배틀 신청 중 기존 배틀 정보 남아있으면 강제 삭제!
+        forceDeleteBattle(userChamp.id, enemyChamp.id);
+
         const battle = {
           user: userChamp,
           enemy: enemyChamp,
@@ -190,6 +199,8 @@ async function handleBattleButton(interaction) {
             clearTimeout(battleTimers.get(`${challengerId}:${userId}`));
             battleTimers.delete(`${challengerId}:${userId}`);
           }
+          // 강제 삭제!
+          forceDeleteBattle(request.user.id, userId);
           return await interaction.update({ content: '배틀 요청을 거절했습니다.', embeds: [], components: [] });
         }
 
@@ -207,6 +218,9 @@ async function handleBattleButton(interaction) {
           clearTimeout(battleTimers.get(`${challengerId}:${userId}`));
           battleTimers.delete(`${challengerId}:${userId}`);
         }
+
+        // 기존 배틀 정보 남아있으면 강제 삭제!
+        forceDeleteBattle(userChamp.id, enemyChamp.id);
 
         const battle = {
           user: userChamp,
@@ -272,7 +286,7 @@ async function handleBattleButton(interaction) {
       return;
     }
 
-    // ★ 공격/방어/점멸은 "차례 출력 + 버튼잠금" 효과!
+    // ★ 공격/방어/점멸
     if (action === 'defend' || action === 'dodge' || action === 'attack') {
       // 기존 로그 저장
       const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
@@ -345,8 +359,9 @@ async function handleBattleButton(interaction) {
               components: []
             };
           }
-          battles.delete(battle.user.id);
-          battles.delete(battle.enemy.id);
+          battle.finished = true;
+          // ★ 꼭 완전 삭제!
+          forceDeleteBattle(battle.user.id, battle.enemy.id);
           if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
             clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
             battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
@@ -364,19 +379,8 @@ async function handleBattleButton(interaction) {
       // battle.logs에 누적
       battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
 
-      // "차례로 출력 & 버튼 비활성화"
       await updateBattleViewWithLogs(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
 
-      // ★ 여기다가 콘솔 출력!
-console.log(
-  '턴:', battle.turn,
-  'isUserTurn:', battle.isUserTurn,
-  'user.id:', battle.user.id,
-  'enemy.id:', battle.enemy.id,
-  'activeUserId:', battle.isUserTurn ? battle.user.id : battle.enemy.id
-);
-
-      // 마지막엔 "최신 전체 로그 & 버튼 활성화"로 한 번 더 갱신!
       await updateBattleView(interaction, battle, battle.isUserTurn ? battle.user.id : battle.enemy.id);
       return;
     }
@@ -403,8 +407,8 @@ console.log(
           battle.finished = true;
           await updateRecord(user.id, user.name, 'lose');
           await updateRecord(enemy.id, enemy.name, 'win');
-          battles.delete(user.id);
-          battles.delete(enemy.id);
+          // ★ 꼭 완전 삭제!
+          forceDeleteBattle(user.id, enemy.id);
           if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
             clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
             battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
@@ -446,8 +450,8 @@ async function updateBattleView(interaction, battle, activeUserId) {
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
   battleTimers.set(key, setTimeout(async () => {
     battle.finished = true;
-    battles.delete(battle.user.id);
-    battles.delete(battle.enemy.id);
+    // ★ 꼭 완전 삭제!
+    forceDeleteBattle(battle.user.id, battle.enemy.id);
     try {
       await interaction.followUp({
         content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
