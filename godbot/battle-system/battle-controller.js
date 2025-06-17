@@ -290,56 +290,56 @@ async function handleBattleButton(interaction) {
     try { logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle)); } catch (e) {}
 
     // [아이템 목록 노출]
-    if (action === 'item') {
-      const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
-      const myItems = items[user.id] || {};
-      const itemList = Object.entries(myItems).filter(([name, v]) => v.count > 0);
-      if (itemList.length === 0) {
-        await interaction.update({ content: "소지한 아이템이 없습니다!", embeds: [], components: [] });
-        replied = true; return;
-      }
-      const embed = new EmbedBuilder()
-        .setTitle('🎒 내 아이템 목록')
-        .setDescription(itemList.map(([name, v], idx) => `${idx + 1}. **${name}** x${v.count}\n${v.desc || ''}`).join('\n'))
-        .setFooter({ text: '사용할 아이템을 선택하세요!' });
-      const row = new ActionRowBuilder();
-      itemList.slice(0, 5).forEach(([name, v], idx) => {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`useitem_${name}`)
-            .setLabel(name)
-            .setStyle(ButtonStyle.Primary)
-        );
-      });
-      await interaction.update({ embeds: [embed], components: [row] });
-      replied = true; return;
-    }
+if (action === 'item') {
+  const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+  const myItems = items[user.id] || {};
+  const itemList = Object.entries(myItems).filter(([name, v]) => v.count > 0);
+  if (itemList.length === 0) {
+    await interaction.reply({ content: "소지한 아이템이 없습니다!", ephemeral: true });
+    replied = true; return;
+  }
+  const embed = new EmbedBuilder()
+    .setTitle('🎒 내 아이템 목록')
+    .setDescription(itemList.map(([name, v], idx) => `${idx + 1}. **${name}** x${v.count}\n${v.desc || ''}`).join('\n'))
+    .setFooter({ text: '사용할 아이템을 선택하세요!' });
+  const row = new ActionRowBuilder();
+  itemList.slice(0, 5).forEach(([name, v], idx) => {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`useitem_${name}`)
+        .setLabel(name)
+        .setStyle(ButtonStyle.Primary)
+    );
+  });
+  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true }); // ← reply, ephemeral
+  replied = true; return;
+}
 
-    // [스킬 목록 노출]
-    if (action === 'skill') {
-      const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
-      const mySkills = skills[user.id] || {};
-      const skillList = Object.keys(mySkills);
-      if (skillList.length === 0) {
-        await interaction.update({ content: "소지한 스킬이 없습니다!", embeds: [], components: [] });
-        replied = true; return;
-      }
-      const embed = new EmbedBuilder()
-        .setTitle('📚 내 스킬 목록')
-        .setDescription(skillList.map((name, idx) => `${idx + 1}. **${name}**\n${mySkills[name].desc || ''}`).join('\n'))
-        .setFooter({ text: '사용할 스킬을 선택하세요!' });
-      const row = new ActionRowBuilder();
-      skillList.slice(0, 5).forEach((name, idx) => {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`useskill_${name}`)
-            .setLabel(name)
-            .setStyle(ButtonStyle.Primary)
-        );
-      });
-      await interaction.update({ embeds: [embed], components: [row] });
-      replied = true; return;
-    }
+// [스킬 목록 노출]
+if (action === 'skill') {
+  const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
+  const mySkills = skills[user.id] || {};
+  const skillList = Object.keys(mySkills);
+  if (skillList.length === 0) {
+    await interaction.reply({ content: "소지한 스킬이 없습니다!", ephemeral: true });
+    replied = true; return;
+  }
+  const embed = new EmbedBuilder()
+    .setTitle('📚 내 스킬 목록')
+    .setDescription(skillList.map((name, idx) => `${idx + 1}. **${name}**\n${mySkills[name].desc || ''}`).join('\n'))
+    .setFooter({ text: '사용할 스킬을 선택하세요!' });
+  const row = new ActionRowBuilder();
+  skillList.slice(0, 5).forEach((name, idx) => {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`useskill_${name}`)
+        .setLabel(name)
+        .setStyle(ButtonStyle.Primary)
+    );
+  });
+  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true }); // ← reply, ephemeral
+  replied = true; return;
+}
 
     // [아이템 사용]
     if (action.startsWith('useitem_')) {
