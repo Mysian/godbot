@@ -369,4 +369,4 @@ module.exports = {
     context.effects[user.id] = myEffects;
     return logs;
   }
-}
+};
