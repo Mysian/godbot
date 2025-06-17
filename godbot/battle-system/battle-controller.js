@@ -405,10 +405,10 @@ if (action.startsWith('useitem_')) {
     fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 1. 기존 전투 임베드(공용)만 새로고침!
+    // 공용 임베드 갱신 (전투창만 새로고침!)
     await updateBattleView(interaction, battle, user.id);
 
-    // 2. 내 ephemeral 알림 (텍스트)
+    // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `아이템 **${itemName}** 사용!\n${log}`, ephemeral: true });
     replied = true; return;
   } catch (e) {
@@ -417,6 +417,7 @@ if (action.startsWith('useitem_')) {
     replied = true; return;
   }
 }
+
 
 // [스킬 사용]
 if (action.startsWith('useskill_')) {
@@ -439,10 +440,10 @@ if (action.startsWith('useskill_')) {
     }
     battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-    // 1. 기존 전투 임베드(공용)만 새로고침!
+    // 공용 임베드 갱신 (전투창만 새로고침!)
     await updateBattleView(interaction, battle, user.id);
 
-    // 2. 내 ephemeral 알림 (텍스트)
+    // 본인에게만 안내(텍스트)
     await interaction.followUp({ content: `스킬 **${skillName}** 사용!\n${log}`, ephemeral: true });
     replied = true; return;
   } catch (e) {
@@ -451,6 +452,7 @@ if (action.startsWith('useskill_')) {
     replied = true; return;
   }
 }
+
 
 
     // ★ 공격/방어/점멸/턴 진행/피해 처리
