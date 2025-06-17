@@ -2,29 +2,60 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { getChampionIcon } = require('../utils/champion-utils');
 const passives = require('../utils/passive-skills');
 
+// HP바 생성
 function createHpBar(current, max, length = 20) {
   const ratio = Math.max(0, Math.min(1, current / max));
   const filled = Math.round(ratio * length);
   const empty = length - filled;
-  const bar = '🟩'.repeat(filled) + '⬛'.repeat(empty);
-  return bar;
+  return '🟩'.repeat(filled) + '⬛'.repeat(empty);
 }
 
+// 효과→상태변환
 function effectToState(effect) {
   if (!effect || !effect.type) return null;
-  // 감성 이모지 + 상태 이름
   switch (effect.type) {
     case 'poison':    return '☠️중독';
-    case 'burn':      return '🔥화상';
+    case 'burn':      return `🔥화상(${effect.value ?? ""})`;
     case 'blind':     return '🌫️실명';
     case 'silence':   return '🔇침묵';
     case 'dot':       return '☠️도트';
     case 'heal':      return '💚회복';
     case 'shield':    return '🛡️실드';
     case 'execute':   return '💀처형예정';
-    // 필요시 추가
+    // **중첩/버프/신규효과 추가**
+    case 'healOverTime': return `💧재생(${effect.value ? `${effect.value}` : ''}, ${effect.turns ?? 0}턴)`;
+    case 'apBuff':    return `✨공격력↑`;
+    case 'atkBuff':   return `⚔️주문력↑`;
+    case 'defBuff':   return `🛡️방어력↑`;
+    case 'maxHpBuff': return `❤️최대체력↑`;
+    case 'damageReduce': return `🔽피해감소`;
+    case 'dodgeUp':   return `👟회피↑`;
+    case 'dodgeDown': return `👁️회피↓`;
+    case 'critUp':    return `🎯치명타↑`;
+    case 'lifesteal': return `🩸흡혈`;
+    case 'immune':    return `🛡️상태이상면역`;
+    case 'penguBuff': return `🥄스탯상승+`;
     default:          return null;
   }
+}
+
+// 상태 효과(버프/디버프/중첩) 요약 리스트 (이모지+이름+중첩/수치)
+function getAllStates(effectsArr = []) {
+  const counted = {};
+  for (const e of effectsArr) {
+    const base = effectToState(e);
+    if (!base) continue;
+    // 중첩 타입은 중첩 숫자+합산
+    let key = base;
+    if (!counted[key]) counted[key] = { count: 0, value: 0 };
+    counted[key].count += 1;
+    if (e.value && typeof e.value === 'number') counted[key].value += e.value;
+  }
+  // 출력 (중첩은 N회, 수치는 총합)
+  return Object.entries(counted).map(([k, v]) =>
+    v.count > 1 ? `${k}x${v.count}${v.value ? `(${v.value})` : ''}` :
+    v.value ? `${k}(${v.value})` : k
+  );
 }
 
 async function battleEmbed({
@@ -47,35 +78,23 @@ async function battleEmbed({
   const userHpBar = createHpBar(user.hp, user.stats.hp);
   const enemyHpBar = createHpBar(enemy.hp, enemy.stats.hp);
 
-  // 기존 기본 상태들
-  const userState = [];
+  // 상태 효과 정리 (context.effects 기준)
+  const userEffects = (user.effects && Array.isArray(user.effects)) ? user.effects : 
+    (user.effects ? Object.values(user.effects).flat() : []);
+  const enemyEffects = (enemy.effects && Array.isArray(enemy.effects)) ? enemy.effects : 
+    (enemy.effects ? Object.values(enemy.effects).flat() : []);
+  const userState = getAllStates(userEffects);
+  const enemyState = getAllStates(enemyEffects);
+
+  // 특수 상태
   if (user.stunned) userState.push('⚡기절');
   if (user.undying) userState.push('💀언데드');
   if (user.debuffImmune) userState.push('🟣디버프 면역');
   if (user._itemUsedCount >= 3) userState.push('🔒아이템 제한');
-  // context.effects 기반 효과 추가
-  if (user.effects) {
-    Object.values(user.effects).forEach(effectsArr => {
-      effectsArr.forEach(effect => {
-        const str = effectToState(effect);
-        if (str && !userState.includes(str)) userState.push(str);
-      });
-    });
-  }
-
-  const enemyState = [];
   if (enemy.stunned) enemyState.push('⚡기절');
   if (enemy.undying) enemyState.push('💀언데드');
   if (enemy.debuffImmune) enemyState.push('🟣디버프 면역');
   if (enemy._itemUsedCount >= 3) enemyState.push('🔒아이템 제한');
-  if (enemy.effects) {
-    Object.values(enemy.effects).forEach(effectsArr => {
-      effectsArr.forEach(effect => {
-        const str = effectToState(effect);
-        if (str && !enemyState.includes(str)) enemyState.push(str);
-      });
-    });
-  }
 
   const mainChampionIcon = isUserTurn ? userIcon : enemyIcon;
 
@@ -141,7 +160,6 @@ async function battleEmbed({
     });
 
   const LOG_LIMIT = 10;
-  // 아래쪽이 "최신 로그"가 되게 (배열 맨 뒤쪽이 최근)
   const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
   embed.addFields({
     name: '전투 로그 (최신 로그가 아래에 표시됨)',
@@ -155,17 +173,17 @@ async function battleEmbed({
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
-      .setLabel('⚔️ 평타')
+      .setLabel('⚔️ 평타 (턴 넘김)')
       .setStyle(ButtonStyle.Primary)
       .setDisabled(allDisabled),
     new ButtonBuilder()
       .setCustomId('defend')
-      .setLabel('🛡️ 방어')
+      .setLabel('🛡️ 방어 (턴 넘김)')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(allDisabled),
     new ButtonBuilder()
       .setCustomId('dodge')
-      .setLabel('💨 점멸(회피)')
+      .setLabel('💨 점멸 (턴 넘김)')
       .setStyle(ButtonStyle.Success)
       .setDisabled(allDisabled),
     new ButtonBuilder()
