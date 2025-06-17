@@ -29,4 +29,4 @@ async function updateBattleViewWithLogs(interaction, battle, newLogs, activeUser
   }
 }
 
-module.exports = updateBattleViewWithLogs;
+module.exports = {};
