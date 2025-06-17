@@ -299,14 +299,14 @@ async function handleBattleButton(interaction) {
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-        newLogs.push(` ${nextTurnUser.nickname} 턴!`);
+        newLogs.push(` <@${nextTurnUser.id}> 턴!`);
       } else if (action === 'dodge') {
         newLogs.push(...battleEngine.dodge(user, enemy, context, []));
         newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-        newLogs.push(` ${nextTurnUser.nickname} 턴!`);
+        newLogs.push(` <@${nextTurnUser.id}> 턴!`);
       } else if (action === 'attack') {
         newLogs.push(...battleEngine.attack(user, enemy, context, []));
         if (enemy.isDodging) {
@@ -373,7 +373,7 @@ async function handleBattleButton(interaction) {
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-        newLogs.push(` ${nextTurnUser.nickname} 턴!`);
+        newLogs.push(` <@${nextTurnUser.id}> 턴!`);
       }
 
       // battle.logs에 누적
@@ -421,7 +421,7 @@ async function handleBattleButton(interaction) {
           battle.turn += 1;
           battle.isUserTurn = !battle.isUserTurn;
           const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-          battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
+          battle.logs.push(` <@${nextTurnUser.id}> 턴!`);
           battle.logs = battle.logs.slice(-LOG_LIMIT);
           await updateBattleView(interaction, battle, nextTurnUser.id);
           return;
