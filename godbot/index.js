@@ -150,15 +150,19 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
   // 2. 챔피언배틀 버튼만 여기서!
-  if (interaction.isButton() && interaction.customId && (
-      interaction.customId.startsWith('accept_battle_') ||
-      interaction.customId.startsWith('decline_battle_') ||
-      [
-        'attack', 'defend', 'dodge', 'item', 'skill', 'escape'
-      ].includes(interaction.customId)
-    )) {
-    try {
-      await champBattle.handleButton(interaction);
+  if (
+  interaction.isButton() && interaction.customId && (
+    interaction.customId.startsWith('accept_battle_') ||
+    interaction.customId.startsWith('decline_battle_') ||
+    [
+      'attack', 'defend', 'dodge', 'item', 'skill', 'escape'
+    ].includes(interaction.customId) ||
+    interaction.customId.startsWith('useitem_') ||
+    interaction.customId.startsWith('useskill_')
+  )
+) {
+  try {
+    await champBattle.handleButton(interaction);
     } catch (error) {
       console.error(error);
       if (interaction.deferred || interaction.replied) {
