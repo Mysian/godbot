@@ -1,3 +1,4 @@
+// battle-system/dodge.js
 const runPassive = require('./passive');
 const { getChampionNameByUserId } = require('../utils/champion-utils');
 
@@ -17,14 +18,11 @@ module.exports = function dodge(user, enemy, context, logs) {
     return logs;
   }
 
-  // 패시브 트리거
   try {
-    const passiveLog = runPassive(user, enemy, context, "onDodge");
+    let passiveLog = runPassive(user, enemy, context, "onDodge");
     if (Array.isArray(passiveLog)) logs.push(...passiveLog);
     else if (passiveLog) logs.push(passiveLog);
-  } catch (e) {
-    // 패시브 에러 무시
-  }
+  } catch (e) {}
 
   logs.push(`${getChampionNameByUserId(user.id)} 점멸(회피) 시도!`);
   return logs;
