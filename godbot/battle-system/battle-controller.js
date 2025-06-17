@@ -539,30 +539,31 @@ async function handleBattleButton(interaction) {
                 content: null,
                 embeds: [
                   { title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }
-      ],
-      components: []
-    };
-  }
-  forceDeleteBattle(battle.user.id, battle.enemy.id);
-  if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-    clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-    battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
-  }
-  await interaction.update(resultEmbed);
-  replied = true; return;
-}
-
+                ],
+                components: []
+              };
+            }
+            forceDeleteBattle(battle.user.id, battle.enemy.id);
+            if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+              clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+              battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+            }
+            await interaction.update(resultEmbed);
+            replied = true; return;
+          }
           battle.turn += 1;
           battle.isUserTurn = !battle.isUserTurn;
           const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
           newLogs.push(` <@${nextTurnUser.id}> 턴!`);
         }
 
-        // battle.logs = prevLogs + newLogs, 딱 한 번만!
         battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
 
-        // updateBattleViewWithLogs만 한 번!
-        await updateBattleViewWithLogs(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
+        // 행동 후 타이머 갱신
+        await updateBattleTimer(battle, interaction);
+
+        // 임베드 갱신
+        await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
 
         replied = true; return;
       } catch (e) {
@@ -610,13 +611,20 @@ async function handleBattleButton(interaction) {
             const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
             battle.logs.push(` <@${nextTurnUser.id}> 턴!`);
             battle.logs = battle.logs.slice(-LOG_LIMIT);
-            await updateBattleViewWithLogs(interaction, battle, logs, nextTurnUser.id);
+
+            // 도망 실패 시에도 타이머 갱신
+            await updateBattleTimer(battle, interaction);
+
+            await require('./updateBattleViewWithLogs')(interaction, battle, logs, nextTurnUser.id);
             replied = true; return;
           }
         } else {
           logs.push('지금은 도망칠 수 없습니다! (10~30턴만)');
           battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-          await updateBattleViewWithLogs(interaction, battle, logs, user.id);
+
+          await updateBattleTimer(battle, interaction);
+
+          await require('./updateBattleViewWithLogs')(interaction, battle, logs, user.id);
           replied = true; return;
         }
       } catch (e) {
@@ -629,7 +637,10 @@ async function handleBattleButton(interaction) {
     // 예외/기타 행동
     logs.push('지원하지 않는 행동입니다.');
     battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-    await updateBattleViewWithLogs(interaction, battle, logs, user.id);
+
+    await updateBattleTimer(battle, interaction);
+
+    await require('./updateBattleViewWithLogs')(interaction, battle, logs, user.id);
     replied = true; return;
 
   } catch (e) {
@@ -641,7 +652,7 @@ async function handleBattleButton(interaction) {
   }
 }
 
-async function updateBattleView(interaction, battle, activeUserId) {
+async function updateBattleTimer(battle, interaction) {
   const key = `${battle.user.id}:${battle.enemy.id}`;
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
   battleTimers.set(key, setTimeout(async () => {
@@ -655,19 +666,6 @@ async function updateBattleView(interaction, battle, activeUserId) {
       });
     } catch (e) {}
   }, 120000));
-  try {
-    const view = await battleEmbed({
-      user: battle.user,
-      enemy: battle.enemy,
-      turn: battle.turn,
-      logs: battle.logs,
-      isUserTurn: battle.isUserTurn,
-      activeUserId
-    });
-    await interaction.update(view);
-  } catch (e) {
-    try { await interaction.reply({ content: '❌ 배틀창 갱신 오류!', ephemeral: true }); } catch {}
-  }
 }
 
 module.exports = {
