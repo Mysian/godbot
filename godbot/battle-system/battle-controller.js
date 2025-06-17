@@ -385,10 +385,16 @@ if (action.startsWith('useitem_')) {
     }
 
     let log;
-    try {
-      log = ITEMS[itemName].effect(user, context);
-    } catch (e) {
-      console.error('[아이템 효과 실행 중 에러]', e);
+try {
+  log = ITEMS[itemName].effect(user, context);
+
+  // 아이템 효과 즉시 반영!
+  const effectLogs = require('./context').applyEffects(user, enemy, context);
+  if (effectLogs && effectLogs.length > 0) {
+    log += "\n" + effectLogs.join('\n');
+  }
+} catch (e) {
+  console.error('[아이템 효과 실행 중 에러]', e);
       await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true }); replied = true; return;
     }
 
