@@ -42,24 +42,27 @@ module.exports = function attack(user, enemy, context, logs) {
     return logs;
   }
 
-  // 기본 데미지 계산
+  // 1. 기본 데미지(±15% 변동)
   let damage = 0;
   const atk = user.stats.attack || 0;
   const ap = user.stats.ap || 0;
   if (atk >= ap) damage = atk + Math.floor(ap * 0.5);
   else damage = ap + Math.floor(atk * 0.5);
+  // ±15% 랜덤 변동 (0.85 ~ 1.15)
+  const variation = 0.85 + Math.random() * 0.3;
+  damage = Math.round(damage * variation);
 
-  // 관통/방어력
+  // 2. 관통/방어력 (너프!)
   let finalPen = user.stats.penetration || 0;
   let finalDef = enemy.stats.defense || 0;
   if (context.defPenetrate !== undefined) finalDef = Math.floor(finalDef * (1 - context.defPenetrate));
   if (context.ignoreDefensePercent !== undefined) finalDef = Math.floor(finalDef * (1 - context.ignoreDefensePercent));
   let penRatio = 0;
-  if (finalDef > 0) penRatio = Math.min(finalPen / finalDef, 1);
+  if (finalDef > 0) penRatio = Math.min(finalPen / finalDef, 0.5); // ★ 최대 0.5까지만(1.5배)
   let bonusAmp = 1 + penRatio;
   damage = Math.floor(damage * bonusAmp);
 
-  // 패시브 적용
+  // 3. 패시브
   context.damage = damage;
   let passiveLog = runPassive(user, enemy, context, "onAttack");
   if (Array.isArray(passiveLog)) logs.push(...passiveLog);
@@ -69,7 +72,7 @@ module.exports = function attack(user, enemy, context, logs) {
   if (Array.isArray(passiveLog)) logs.push(...passiveLog);
   else if (passiveLog) logs.push(passiveLog);
 
-  // 치명타
+  // 4. 치명타
   if (user.critChance && Math.random() < user.critChance) {
     const cd = user.critDamage || 1.5;
     context.damage = Math.floor(context.damage * cd);
@@ -79,6 +82,5 @@ module.exports = function attack(user, enemy, context, logs) {
   context.damage = Math.max(0, context.damage);
 
   logs.push(`🗡️ ${getChampionNameByUserId(user.id)}의 공격! → ${getChampionNameByUserId(enemy.id)}에게 ${context.damage} 피해`);
-  // enemy.hp 감소는 하지 않는다!!
   return logs;
 };
