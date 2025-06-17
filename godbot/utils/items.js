@@ -121,16 +121,20 @@ module.exports = {
     }
   },
   "펭구의뒤집개": {
-    name: "펭구의 뒤집개",
-    desc: "공격력,주문력,최대체력,방어력,관통력,피해량 0.1% 상승 (최대 0.5%까지 중첩)",
-    icon: "🥄",
-    price: 220,
-    effect: (user, context) => {
+  name: "펭구의 뒤집개",
+  desc: "공격력,주문력,최대체력,방어력,관통력,피해량 0.1% 상승 (최대 0.5%까지 중첩)",
+  icon: "🥄",
+  price: 220,
+  effect: (user, context) => {
+    try {
       context.effects[user.id] = context.effects[user.id] || [];
       const count = context.effects[user.id].filter(e => e.type === "penguBuff").length;
       if (count >= 5) return "🚫 이미 최대(5중첩) 펭구의 뒤집개 효과가 적용중입니다!";
       context.effects[user.id].push({ type: "penguBuff", value: 0.001, turns: 3 }); // 0.1% = 0.001
       return `🥄 펭구의 뒤집개! 모든 주요 스탯 0.1% 상승 (현재 중첩 ${count + 1}/5)`;
+    } catch (e) {
+      console.error('펭구의뒤집개 effect 에러', e);
+      return '❌ 펭구의 뒤집개 효과 실행 중 오류!';
     }
   }
-};
+}
