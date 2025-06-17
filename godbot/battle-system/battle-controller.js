@@ -4,6 +4,7 @@ const { battleEmbed } = require('../embeds/battle-embed');
 const { getChampionIcon } = require('../utils/champion-utils');
 const passives = require('../utils/passive-skills');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const updateBattleViewWithLogs = require('./updateBattleViewWithLogs');
 
 const battles = new Map();
 const battleRequests = new Map();
@@ -227,7 +228,7 @@ async function handleBattleButton(interaction) {
       }
     }
 
- // ↓↓↓ 실제 배틀의 모든 버튼(공격/방어/점멸/아이템/스킬/도망 등) 분기 ↓↓↓
+    // ↓↓↓ 실제 배틀의 모든 버튼(공격/방어/점멸/아이템/스킬/도망 등) 분기 ↓↓↓
     if (!battles.has(userId))
       return await interaction.reply({ content: '진행 중인 배틀이 없습니다.', ephemeral: true });
     const battle = battles.get(userId);
@@ -282,7 +283,9 @@ async function handleBattleButton(interaction) {
       const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
       battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
       battle.logs = battle.logs.slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, nextTurnUser.id);
+
+      // ★ 여기만 순차 출력!
+      await updateBattleViewWithLogs(interaction, battle, battle.logs, nextTurnUser.id);
       return;
     }
     // 점멸(회피)
@@ -296,7 +299,9 @@ async function handleBattleButton(interaction) {
       const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
       battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
       battle.logs = battle.logs.slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, nextTurnUser.id);
+
+      // ★ 여기만 순차 출력!
+      await updateBattleViewWithLogs(interaction, battle, battle.logs, nextTurnUser.id);
       return;
     }
     // 공격
@@ -372,7 +377,9 @@ async function handleBattleButton(interaction) {
       const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
       battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
       battle.logs = battle.logs.slice(-LOG_LIMIT);
-      await updateBattleView(interaction, battle, nextTurnUser.id);
+
+      // ★ 여기만 순차 출력!
+      await updateBattleViewWithLogs(interaction, battle, battle.logs, nextTurnUser.id);
       return;
     }
     // 도망
@@ -435,6 +442,7 @@ async function handleBattleButton(interaction) {
   }
 }
 
+// updateBattleView는 그대로(기존 방식, 즉시 전체 갱신용)
 async function updateBattleView(interaction, battle, activeUserId) {
   const key = `${battle.user.id}:${battle.enemy.id}`;
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
