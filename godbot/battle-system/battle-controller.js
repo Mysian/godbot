@@ -367,6 +367,15 @@ async function handleBattleButton(interaction) {
       // "차례로 출력 & 버튼 비활성화"
       await updateBattleViewWithLogs(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
 
+      // ★ 여기다가 콘솔 출력!
+console.log(
+  '턴:', battle.turn,
+  'isUserTurn:', battle.isUserTurn,
+  'user.id:', battle.user.id,
+  'enemy.id:', battle.enemy.id,
+  'activeUserId:', battle.isUserTurn ? battle.user.id : battle.enemy.id
+);
+
       // 마지막엔 "최신 전체 로그 & 버튼 활성화"로 한 번 더 갱신!
       await updateBattleView(interaction, battle, battle.isUserTurn ? battle.user.id : battle.enemy.id);
       return;
