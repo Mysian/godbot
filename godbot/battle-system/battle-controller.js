@@ -429,7 +429,8 @@ async function handleBattleButton(interaction) {
     await updateBattleView(interaction, battle, user.id);
     return;
   } catch (e) {
-    try { await interaction.reply({ content: '❌ 버튼 실행 중 알 수 없는 오류 발생.', ephemeral: true }); } catch {}
+    console.error('❌ [디버그] 버튼 클릭시 에러:', e);
+    try { await interaction.reply({ content: '❌ 오류 발생! 영갓에게 제보해주세요.', ephemeral: true }); } catch {}
     return;
   }
 }
