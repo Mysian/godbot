@@ -1038,29 +1038,23 @@ if (trigger === "onAttack") {
   }
 },
 "샤코": {
-  name: "환영 복제",
-  description: "피해를 한 번도 입지 않았다면 모든 피해 무효(1회), 배틀 시작 후 10턴간 회피 확률 20% 증가",
-  passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
-    // 첫 피해 전까지 모든 피해 무효
-    if (!user._shacoFirstHit && trigger === "onDefend" && context.damage > 0) {
-      user._shacoFirstHit = true; // 최초 피해받은 이후엔 발동 불가
+    name: "환영 복제",
+    description: "피해를 한 번도 입지 않았다면 모든 피해 무효(1회), 배틀 시작 후 10턴간 회피 확률 20% 증가",
+    // 실제 효과 함수!
+    passive: (user, enemy, context, trigger, battle) => {
+      // 첫 피해 무효 1회
+      if (!user._shacoFirstHit && trigger === "onDefend" && context.damage > 0) {
+        context.damage = 0;
+        user._shacoFirstHit = true;
+        return "🎭 피해 무효! (아직 한 번도 피해받지 않음)";
+      }
+      // 10턴간 회피 확률 20% 증가
+      if (trigger === "onTurnStart" && battle && battle.turn <= 10) {
+        context.dodgeBonus = (context.dodgeBonus || 0) + 0.2;
+        return "🎭 회피 확률 20% 증가!";
+      }
     }
-    if (!user._shacoFirstHit && trigger === "onDefend" && context.damage > 0) {
-      context.damage = 0;
-      return "🎭 피해 무효! (아직 한 번도 피해받지 않음)";
-    }
-    // 배틀 시작 후 10턴간 무조건 회피 확률 20% 증가
-    if (!user._shacoDodgeTurnsInit) {
-      user._shacoDodgeTurnsInit = true;
-      user._shacoDodgeTurns = 10;
-    }
-    if (user._shacoDodgeTurns > 0 && trigger === "onTurnStart") {
-      context.effects[user.id].push({ type: "dodgeChanceUp", value: 20, turns: 1 });
-      user._shacoDodgeTurns -= 1;
-      return "🎭 회피 확률 20% 증가!";
-    }
-  }
-},
+  },
 "세나": {
   name: "어둠 속의 빛",
   description: "공격 시 15% 확률로 자신 체력 10% 회복",
