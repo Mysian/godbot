@@ -10,33 +10,39 @@ module.exports = function attack(user, enemy, context, logs) {
   if (user.stunned) {
     logs.push('😵 행동 불가! (기절)');
     user.stunned = false;
+    context.damage = 0;
     return logs;
   }
   if (user.noAttack) {
     logs.push('🚫 공격 불가 상태!');
     user.noAttack = false;
+    context.damage = 0;
     return logs;
   }
   if (user.escaped) {
     logs.push('🏃 이미 탈주 상태입니다.');
+    context.damage = 0;
     return logs;
   }
   if (enemy.invulnerable) {
     logs.push('🛡️ 상대 무적! 피해를 줄 수 없음.');
+    context.damage = 0;
     return logs;
   }
   if (enemy.missNext) {
     logs.push('😶‍🌫️ 상대의 공격 무효(회피/실명 등)!');
     enemy.missNext = false;
+    context.damage = 0;
     return logs;
   }
   if (enemy.dodgeNext) {
     logs.push('💨 상대가 회피했습니다!');
     enemy.dodgeNext = false;
+    context.damage = 0;
     return logs;
   }
 
-  // 기본 데미지
+  // 기본 데미지 계산
   let damage = 0;
   const atk = user.stats.attack || 0;
   const ap = user.stats.ap || 0;
@@ -53,13 +59,12 @@ module.exports = function attack(user, enemy, context, logs) {
   let bonusAmp = 1 + penRatio;
   damage = Math.floor(damage * bonusAmp);
 
-  // 공격자 패시브
+  // 패시브 적용
   context.damage = damage;
   let passiveLog = runPassive(user, enemy, context, "onAttack");
   if (Array.isArray(passiveLog)) logs.push(...passiveLog);
   else if (passiveLog) logs.push(passiveLog);
 
-  // 방어자 패시브
   passiveLog = runPassive(enemy, user, context, "onDefend");
   if (Array.isArray(passiveLog)) logs.push(...passiveLog);
   else if (passiveLog) logs.push(passiveLog);
@@ -72,8 +77,8 @@ module.exports = function attack(user, enemy, context, logs) {
   }
 
   context.damage = Math.max(0, context.damage);
-  enemy.hp = Math.max(0, enemy.hp - context.damage);
-  logs.push(`🗡️ ${getChampionNameByUserId(user.id)}의 공격! → ${getChampionNameByUserId(enemy.id)}에게 ${context.damage} 피해`);
 
+  logs.push(`🗡️ ${getChampionNameByUserId(user.id)}의 공격! → ${getChampionNameByUserId(enemy.id)}에게 ${context.damage} 피해`);
+  // enemy.hp 감소는 하지 않는다!!
   return logs;
 };

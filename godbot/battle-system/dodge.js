@@ -24,5 +24,6 @@ module.exports = function dodge(user, enemy, context, logs) {
   } catch (e) {}
 
   logs.push(`${getChampionNameByUserId(user.id)} 점멸(회피) 시도!`);
+  // 체력 변화 없음!
   return logs;
 };

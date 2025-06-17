@@ -10,7 +10,23 @@ function createHpBar(current, max, length = 20) {
   return bar;
 }
 
-// disableAllButtons 파라미터 추가!
+function effectToState(effect) {
+  if (!effect || !effect.type) return null;
+  // 감성 이모지 + 상태 이름
+  switch (effect.type) {
+    case 'poison':    return '☠️중독';
+    case 'burn':      return '🔥화상';
+    case 'blind':     return '🌫️실명';
+    case 'silence':   return '🔇침묵';
+    case 'dot':       return '☠️도트';
+    case 'heal':      return '💚회복';
+    case 'shield':    return '🛡️실드';
+    case 'execute':   return '💀처형예정';
+    // 필요시 추가
+    default:          return null;
+  }
+}
+
 async function battleEmbed({
   user,
   enemy,
@@ -18,7 +34,7 @@ async function battleEmbed({
   logs,
   isUserTurn,
   activeUserId,
-  disableAllButtons = false // ★ 추가!
+  disableAllButtons = false
 }) {
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
@@ -31,16 +47,35 @@ async function battleEmbed({
   const userHpBar = createHpBar(user.hp, user.stats.hp);
   const enemyHpBar = createHpBar(enemy.hp, enemy.stats.hp);
 
+  // 기존 기본 상태들
   const userState = [];
   if (user.stunned) userState.push('⚡기절');
   if (user.undying) userState.push('💀언데드');
   if (user.debuffImmune) userState.push('🟣디버프 면역');
   if (user._itemUsedCount >= 3) userState.push('🔒아이템 제한');
+  // context.effects 기반 효과 추가
+  if (user.effects) {
+    Object.values(user.effects).forEach(effectsArr => {
+      effectsArr.forEach(effect => {
+        const str = effectToState(effect);
+        if (str && !userState.includes(str)) userState.push(str);
+      });
+    });
+  }
+
   const enemyState = [];
   if (enemy.stunned) enemyState.push('⚡기절');
   if (enemy.undying) enemyState.push('💀언데드');
   if (enemy.debuffImmune) enemyState.push('🟣디버프 면역');
   if (enemy._itemUsedCount >= 3) enemyState.push('🔒아이템 제한');
+  if (enemy.effects) {
+    Object.values(enemy.effects).forEach(effectsArr => {
+      effectsArr.forEach(effect => {
+        const str = effectToState(effect);
+        if (str && !enemyState.includes(str)) enemyState.push(str);
+      });
+    });
+  }
 
   const mainChampionIcon = isUserTurn ? userIcon : enemyIcon;
 
@@ -115,8 +150,6 @@ async function battleEmbed({
 
   const currentPlayer = isUserTurn ? user : enemy;
   const enable = !!activeUserId && currentPlayer.id === activeUserId && !currentPlayer.stunned;
-
-  // ★ disableAllButtons 파라미터로 모든 버튼 비활성화 지원
   const allDisabled = disableAllButtons ? true : !enable;
 
   const row = new ActionRowBuilder().addComponents(
