@@ -459,44 +459,70 @@ if (action === 'skill') {
 
           let winner = null;
           if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
-            battle.finished = true;
-            if (user.hp > 0) winner = user;
-            else if (enemy.hp > 0) winner = enemy;
-            let resultEmbed;
-            if (winner) {
-              const loser = winner.id === user.id ? enemy : user;
-              const champIcon = await getChampionIcon(winner.name);
-              resultEmbed = {
-                content: null,
-                embeds: [
-                  {
-                    title: '🎉 전투 결과! 승리!',
-                    description:
-                      `**${winner.nickname}** (${winner.name})\n` +
-                      `> <@${winner.id}>\n\n` +
-                      `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
-                    thumbnail: { url: champIcon },
-                    color: 0xffe45c
-                  }
-                ],
-                components: []
-              };
-            } else {
-              resultEmbed = {
-                content: null,
-                embeds: [{ title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }],
-                components: []
-              };
-            }
-            battle.finished = true;
-            forceDeleteBattle(battle.user.id, battle.enemy.id);
-            if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-              clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-              battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
-            }
-            await interaction.update(resultEmbed);
-            replied = true; return;
-          }
+  battle.finished = true;
+  let winner = null;
+  let loser = null;
+  let resultEmbed;
+  if (user.hp > 0 && enemy.hp <= 0) {
+    winner = user;
+    loser = enemy;
+    await updateRecord(winner.id, winner.name, 'win');
+    await updateRecord(loser.id, loser.name, 'lose');
+    const champIcon = await getChampionIcon(winner.name);
+    resultEmbed = {
+      content: null,
+      embeds: [
+        {
+          title: '🎉 전투 결과! 승리!',
+          description:
+            `**${winner.nickname}** (${winner.name})\n> <@${winner.id}>\n\n` +
+            `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
+          thumbnail: { url: champIcon },
+          color: 0xffe45c
+        }
+      ],
+      components: []
+    };
+  } else if (enemy.hp > 0 && user.hp <= 0) {
+    winner = enemy;
+    loser = user;
+    await updateRecord(winner.id, winner.name, 'win');
+    await updateRecord(loser.id, loser.name, 'lose');
+    const champIcon = await getChampionIcon(winner.name);
+    resultEmbed = {
+      content: null,
+      embeds: [
+        {
+          title: '🎉 전투 결과! 승리!',
+          description:
+            `**${winner.nickname}** (${winner.name})\n> <@${winner.id}>\n\n` +
+            `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
+          thumbnail: { url: champIcon },
+          color: 0xffe45c
+        }
+      ],
+      components: []
+    };
+  } else {
+    // 무승부
+    await updateRecord(user.id, user.name, 'draw');
+    await updateRecord(enemy.id, enemy.name, 'draw');
+    resultEmbed = {
+      content: null,
+      embeds: [
+        { title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }
+      ],
+      components: []
+    };
+  }
+  forceDeleteBattle(battle.user.id, battle.enemy.id);
+  if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+    clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+    battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+  }
+  await interaction.update(resultEmbed);
+  replied = true; return;
+}
 
           battle.turn += 1;
           battle.isUserTurn = !battle.isUserTurn;
