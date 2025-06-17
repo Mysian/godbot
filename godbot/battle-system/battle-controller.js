@@ -252,11 +252,11 @@ async function handleBattleButton(interaction) {
       damage: 0,
     };
 
-    // 패시브: 턴 시작 시 (모든 유저, turn마다) 처리
+    // 턴 시작 패시브 처리
     logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart'));
     logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart'));
 
-    // 아이템
+    // 아이템/스킬/도망/기타는 기존 방식(즉시 전체 갱신)
     if (action === 'item') {
       logs.push(...battleEngine.useItem(user, '회복포션', context));
       logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem'));
@@ -264,7 +264,6 @@ async function handleBattleButton(interaction) {
       await updateBattleView(interaction, battle, user.id);
       return;
     }
-    // 스킬
     if (action === 'skill') {
       logs.push(...battleEngine.useSkill(user, enemy, '섬광', context));
       logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill'));
@@ -272,116 +271,107 @@ async function handleBattleButton(interaction) {
       await updateBattleView(interaction, battle, user.id);
       return;
     }
-    // 방어
-    if (action === 'defend') {
-      logs.push(...battleEngine.defend(user, enemy, context, logs));
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
-      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
 
-      battle.turn += 1;
-      battle.isUserTurn = !battle.isUserTurn;
-      const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-      battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
-      battle.logs = battle.logs.slice(-LOG_LIMIT);
+    // ★ 공격/방어/점멸은 "차례 출력 + 버튼잠금" 효과!
+    if (action === 'defend' || action === 'dodge' || action === 'attack') {
+      // 기존 로그 저장
+      const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
 
-      // ★ 여기만 순차 출력!
-      await updateBattleViewWithLogs(interaction, battle, battle.logs, nextTurnUser.id);
-      return;
-    }
-    // 점멸(회피)
-    if (action === 'dodge') {
-      logs.push(...battleEngine.dodge(user, enemy, context, logs));
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
-      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-
-      battle.turn += 1;
-      battle.isUserTurn = !battle.isUserTurn;
-      const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-      battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
-      battle.logs = battle.logs.slice(-LOG_LIMIT);
-
-      // ★ 여기만 순차 출력!
-      await updateBattleViewWithLogs(interaction, battle, battle.logs, nextTurnUser.id);
-      return;
-    }
-    // 공격
-    if (action === 'attack') {
-      logs.push(...battleEngine.attack(user, enemy, context, logs));
-      // 회피 판정
-      if (enemy.isDodging) {
-        if (Math.random() < 0.2) {
-          context.damage = 0;
-          logs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
-        } else {
-          logs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
+      // 이번 액션으로 새로 쌓이는 로그만 분리(애니메이션용)
+      let newLogs = [];
+      if (action === 'defend') {
+        newLogs.push(...battleEngine.defend(user, enemy, context, []));
+        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
+        battle.turn += 1;
+        battle.isUserTurn = !battle.isUserTurn;
+        const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+        newLogs.push(` ${nextTurnUser.nickname} 턴!`);
+      } else if (action === 'dodge') {
+        newLogs.push(...battleEngine.dodge(user, enemy, context, []));
+        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
+        battle.turn += 1;
+        battle.isUserTurn = !battle.isUserTurn;
+        const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+        newLogs.push(` ${nextTurnUser.nickname} 턴!`);
+      } else if (action === 'attack') {
+        newLogs.push(...battleEngine.attack(user, enemy, context, []));
+        if (enemy.isDodging) {
+          if (Math.random() < 0.2) {
+            context.damage = 0;
+            newLogs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
+          } else {
+            newLogs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
+          }
+          enemy.isDodging = false;
         }
-        enemy.isDodging = false;
-      }
-      // 방어 판정
-      if (enemy.isDefending && context.damage > 0) {
-        context.damage = Math.floor(context.damage * 0.5);
-        logs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
-        enemy.isDefending = false;
-      }
-      logs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack'));
-      logs.push(...battleEngine.applyEffects(enemy, user, context));
-      enemy.hp = Math.max(0, enemy.hp - context.damage);
-
-      battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
-
-      let winner = null;
-      if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
-        battle.finished = true;
-        if (user.hp > 0) winner = user;
-        else if (enemy.hp > 0) winner = enemy;
-
-        let resultEmbed;
-        if (winner) {
-          const loser = winner.id === user.id ? enemy : user;
-          const champIcon = await getChampionIcon(winner.name);
-          resultEmbed = {
-            content: null,
-            embeds: [
-              {
-                title: '🎉 전투 결과! 승리!',
-                description:
-                  `**${winner.nickname}** (${winner.name})\n` +
-                  `> <@${winner.id}>\n\n` +
-                  `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
-                thumbnail: { url: champIcon },
-                color: 0xffe45c
-              }
-            ],
-            components: []
-          };
-        } else {
-          resultEmbed = {
-            content: null,
-            embeds: [{ title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }],
-            components: []
-          };
+        if (enemy.isDefending && context.damage > 0) {
+          context.damage = Math.floor(context.damage * 0.5);
+          newLogs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
+          enemy.isDefending = false;
         }
-        battles.delete(battle.user.id);
-        battles.delete(battle.enemy.id);
-        if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-          clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-          battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+        newLogs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
+        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack'));
+        newLogs.push(...battleEngine.applyEffects(enemy, user, context));
+        enemy.hp = Math.max(0, enemy.hp - context.damage);
+
+        let winner = null;
+        if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
+          battle.finished = true;
+          if (user.hp > 0) winner = user;
+          else if (enemy.hp > 0) winner = enemy;
+          let resultEmbed;
+          if (winner) {
+            const loser = winner.id === user.id ? enemy : user;
+            const champIcon = await getChampionIcon(winner.name);
+            resultEmbed = {
+              content: null,
+              embeds: [
+                {
+                  title: '🎉 전투 결과! 승리!',
+                  description:
+                    `**${winner.nickname}** (${winner.name})\n` +
+                    `> <@${winner.id}>\n\n` +
+                    `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
+                  thumbnail: { url: champIcon },
+                  color: 0xffe45c
+                }
+              ],
+              components: []
+            };
+          } else {
+            resultEmbed = {
+              content: null,
+              embeds: [{ title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }],
+              components: []
+            };
+          }
+          battles.delete(battle.user.id);
+          battles.delete(battle.enemy.id);
+          if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+            clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+            battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+          }
+          await interaction.update(resultEmbed);
+          return;
         }
-        await interaction.update(resultEmbed);
-        return;
+
+        battle.turn += 1;
+        battle.isUserTurn = !battle.isUserTurn;
+        const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+        newLogs.push(` ${nextTurnUser.nickname} 턴!`);
       }
 
-      battle.turn += 1;
-      battle.isUserTurn = !battle.isUserTurn;
-      const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-      battle.logs.push(` ${nextTurnUser.nickname} 턴!`);
-      battle.logs = battle.logs.slice(-LOG_LIMIT);
+      // battle.logs에 누적
+      battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
 
-      // ★ 여기만 순차 출력!
-      await updateBattleViewWithLogs(interaction, battle, battle.logs, nextTurnUser.id);
+      // "차례로 출력 & 버튼 비활성화"
+      await updateBattleViewWithLogs(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
+
+      // 마지막엔 "최신 전체 로그 & 버튼 활성화"로 한 번 더 갱신!
+      await updateBattleView(interaction, battle, battle.isUserTurn ? battle.user.id : battle.enemy.id);
       return;
     }
+
     // 도망
     if (action === 'escape') {
       if (battle.turn >= 10 && battle.turn <= 30) {
@@ -442,7 +432,6 @@ async function handleBattleButton(interaction) {
   }
 }
 
-// updateBattleView는 그대로(기존 방식, 즉시 전체 갱신용)
 async function updateBattleView(interaction, battle, activeUserId) {
   const key = `${battle.user.id}:${battle.enemy.id}`;
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));

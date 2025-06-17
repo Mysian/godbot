@@ -10,13 +10,15 @@ function createHpBar(current, max, length = 20) {
   return bar;
 }
 
+// disableAllButtons 파라미터 추가!
 async function battleEmbed({
   user,
   enemy,
   turn,
   logs,
   isUserTurn,
-  activeUserId
+  activeUserId,
+  disableAllButtons = false // ★ 추가!
 }) {
   const userIcon = await getChampionIcon(user.name);
   const enemyIcon = await getChampionIcon(enemy.name);
@@ -47,7 +49,6 @@ async function battleEmbed({
   const defEmoji = "🛡️";
   const penEmoji = "🗡️";
 
-  // 모든 안내문구, 필드에 "챔피언 (닉네임)" 표시!
   const currentLabel = isUserTurn ? userLabel : enemyLabel;
   const currentTurnUserId = isUserTurn ? user.id : enemy.id;
 
@@ -104,42 +105,46 @@ async function battleEmbed({
         : `🟥 ${currentLabel} 의 턴! (아이템과 스킬 사용은 턴이 감소하지 않습니다.)`
     });
 
-const LOG_LIMIT = 10;
-const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
-embed.addFields({
-  name: '전투 로그 (최근 로그가 아래쪽부터 갱신)',
-  value: viewLogs.length ? viewLogs.join('\n') : '이곳의 아랫줄부터 행동이 기록됩니다.',
-});
+  const LOG_LIMIT = 10;
+  // 아래쪽이 "최신 로그"가 되게 (배열 맨 뒤쪽이 최근)
+  const viewLogs = (logs || []).slice(-LOG_LIMIT).map(log => `• ${log}`);
+  embed.addFields({
+    name: '전투 로그 (최신 로그가 아래에 표시됨)',
+    value: viewLogs.length ? viewLogs.join('\n') : '이곳의 아랫줄부터 행동이 기록됩니다.',
+  });
 
   const currentPlayer = isUserTurn ? user : enemy;
   const enable = !!activeUserId && currentPlayer.id === activeUserId && !currentPlayer.stunned;
+
+  // ★ disableAllButtons 파라미터로 모든 버튼 비활성화 지원
+  const allDisabled = disableAllButtons ? true : !enable;
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
       .setLabel('⚔️ 평타')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!enable),
+      .setDisabled(allDisabled),
     new ButtonBuilder()
       .setCustomId('defend')
       .setLabel('🛡️ 방어')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(!enable),
+      .setDisabled(allDisabled),
     new ButtonBuilder()
       .setCustomId('dodge')
       .setLabel('💨 점멸(회피)')
       .setStyle(ButtonStyle.Success)
-      .setDisabled(!enable),
+      .setDisabled(allDisabled),
     new ButtonBuilder()
       .setCustomId('item')
       .setLabel('🧪 아이템')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!enable || currentPlayer._itemUsedCount >= 3),
+      .setDisabled(allDisabled || currentPlayer._itemUsedCount >= 3),
     new ButtonBuilder()
       .setCustomId('skill')
       .setLabel('✨ 스킬')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!enable)
+      .setDisabled(allDisabled)
   );
   let canEscape = turn >= 10 && turn <= 30 && enable;
   const escapeRow = new ActionRowBuilder().addComponents(
@@ -147,7 +152,7 @@ embed.addFields({
       .setCustomId('escape')
       .setLabel('🏃‍♂️ 도망 (50%)')
       .setStyle(ButtonStyle.Danger)
-      .setDisabled(!canEscape)
+      .setDisabled(disableAllButtons || !canEscape)
   );
 
   return {
