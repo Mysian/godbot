@@ -21,7 +21,7 @@ module.exports = {
     } else {
       // 지급
       addBE(target.id, amount, `관리자 지급 by <@${interaction.user.id}>`);
-      return interaction.reply({ content: `<@${target.id}>에게 **${amount} BE** 지급 완료!`, ephemeral: false });
+      return interaction.reply({ content: `<@${target.id}>에게 **${amount} BE** 지급 완료! (/정수확인)`, ephemeral: false });
     }
   }
 };
