@@ -25,10 +25,9 @@ module.exports = function defend(user, enemy, context, logs) {
     let passiveLog = runPassive(user, enemy, context, "onDefend");
     if (Array.isArray(passiveLog) && passiveLog.length > 0) logs.push(...passiveLog);
     else if (passiveLog) logs.push(passiveLog);
-  } catch (e) {
-    // 패시브 오류 무시
-  }
+  } catch (e) {}
 
   logs.push(`${getChampionNameByUserId(user.id)}가 방어 행동을 취함!`);
+  user.isDefending = true;
   return logs;
 };

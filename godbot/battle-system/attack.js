@@ -1,4 +1,3 @@
-// battle-system/attack.js
 const runPassive = require('./passive');
 const { getChampionNameByUserId } = require('../utils/champion-utils');
 
