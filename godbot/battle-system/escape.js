@@ -1,26 +1,22 @@
-// battle-system/escape.js
-const applyPassives = require("./passive");
+// escape.js
+const runPassive = require('./passive');
+const { getChampionNameByUserId } = require('../utils/champion-utils');
 
-module.exports = function escape(user, enemy, context = {}) {
-  context.logs = context.logs || [];
+module.exports = function escape(user, enemy, context, logs) {
+  context.effects = context.effects || {};
+  context.effects[user.id] = context.effects[user.id] || [];
+  context.effects[enemy.id] = context.effects[enemy.id] || [];
 
-  // 패시브 효과 (onEscape)
-  applyPassives(user, enemy, context, "onEscape");
-  applyPassives(enemy, user, context, "onEnemyEscape");
+  if (user.escaped) {
+    logs.push('🏃 이미 탈주 상태입니다.');
+    return;
+  }
 
-  // 이 부분에서 실제 도망 성공/실패 확률 계산은 champ-battle.js 또는 battle-controller.js 등에서 판정 후 전달해야 함
-  // 단순 로그만 표시
-  context.logs.push(`${user.nickname || user.name}이(가) 도망을 시도했습니다.`);
+  // 패시브 트리거 (탈주 시도자)
+  let passiveLog = runPassive(user, enemy, context, "onEscape");
+  if (passiveLog) logs.push(passiveLog);
 
-  // 패시브에서 상태 변화가 있으면 반영(예: 도망불가 효과 등)
-  // 예시: user.escapeBlocked = true; 등 패시브 구현에서 적용
-
-  // 최종 로그/상태 반환
-  return {
-    success: true, // 성공/실패 여부는 외부에서 판정
-    logs: context.logs,
-    user,
-    enemy,
-    context,
-  };
+  // 탈주 성공 여부 판정은 별도 처리
+  logs.push(`${getChampionNameByUserId(user.id)}가 탈주를 시도합니다!`);
+  return;
 };
