@@ -46,4 +46,4 @@ async function updateBattleViewWithLogs(interaction, battle, newLogs, activeUser
     await new Promise(r => setTimeout(r, 550));
   }
 }
-module.exports = updateBattleViewWithLogs;
+module.exports = async () => {};
