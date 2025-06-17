@@ -1,3 +1,4 @@
+// battle-system/escape.js
 const runPassive = require('./passive');
 const { getChampionNameByUserId } = require('../utils/champion-utils');
 
@@ -14,10 +15,11 @@ module.exports = function escape(user, enemy, context, logs) {
 
   try {
     let passiveLog = runPassive(user, enemy, context, "onEscape");
-    if (Array.isArray(passiveLog) && passiveLog.length > 0) logs.push(...passiveLog);
+    if (Array.isArray(passiveLog)) logs.push(...passiveLog);
     else if (passiveLog) logs.push(passiveLog);
   } catch (e) {}
 
-  logs.push(`${getChampionNameByUserId(user.id)}가 탈주를 시도합니다!`);
+  // (탈주 성공/실패 여부 처리 로직 네 게임 엔진 쪽에 추가해야 함)
+  logs.push(`${getChampionNameByUserId(user.id)}가 탈주 시도!`);
   return logs;
 };
