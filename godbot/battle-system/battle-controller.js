@@ -286,8 +286,16 @@ async function handleBattleButton(interaction) {
     };
 
     // 패시브 onTurnStart
-    try { logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle)); } catch (e) {}
-    try { logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle)); } catch (e) {}
+    try {
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle));
+    } catch (e) {
+      console.error('[패시브 onTurnStart user]', e);
+    }
+    try {
+      logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle));
+    } catch (e) {
+      console.error('[패시브 onTurnStart enemy]', e);
+    }
 
     // 아이템 버튼 → 소지품 목록 임베드 전환
     if (action === 'item') {
@@ -377,16 +385,10 @@ if (action.startsWith('useitem_')) {
     }
 
     let log;
-try {
-  log = ITEMS[itemName].effect(user, context);
-
-  // 아이템 효과 즉시 반영!
-  const effectLogs = require('./context').applyEffects(user, enemy, context);
-  if (effectLogs && effectLogs.length > 0) {
-    log += "\n" + effectLogs.join('\n');
-  }
-} catch (e) {
-  console.error('[아이템 효과 실행 중 에러]', e);
+    try {
+      log = ITEMS[itemName].effect(user, context);
+    } catch (e) {
+      console.error('[아이템 효과 실행 중 에러]', e);
       await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true }); replied = true; return;
     }
 
@@ -446,15 +448,12 @@ try {
       }
     }
 
-    // ★ 공격/방어/점멸/턴 진행/피해 처리 (여기가 핵심!!)
+    // ★ 공격/방어/점멸/턴 진행/피해 처리 (기존 구조)
     if (action === 'defend' || action === 'dodge' || action === 'attack') {
       try {
-        // **기존 로그는 중복 없이 slice(-LOG_LIMIT)**
         const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
         let newLogs = [];
-
         if (action === 'defend') {
-          // defend 함수가 한 번만 로그 리턴
           newLogs.push(...battleEngine.defend(user, enemy, context, []));
           newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend', battle));
           battle.turn += 1;
@@ -469,11 +468,7 @@ try {
           const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
           newLogs.push(` <@${nextTurnUser.id}> 턴!`);
         } else if (action === 'attack') {
-          // ★ 한 번만 push! (중복 방지)
-          const attackLogs = battleEngine.attack(user, enemy, context, []);
-          newLogs.push(...attackLogs); // attack 함수에서 평타/추가피해 등 1회만 로그 생성해야 함
-
-          // 점멸/방어 판정 및 추가 로그도 1회만 push
+          newLogs.push(...battleEngine.attack(user, enemy, context, []));
           if (enemy.isDodging) {
             if (Math.random() < 0.2) {
               context.damage = 0;
@@ -488,10 +483,7 @@ try {
             newLogs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
             enemy.isDefending = false;
           }
-
-          // ★ 중복 push 금지! (attack 함수 안에서 평타/추가피해/데미지 로그만 출력)
-          // newLogs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`); <-- 중복 방지! (attack 함수에서만 한 번 출력)
-
+          newLogs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
           newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack', battle));
           newLogs.push(...battleEngine.applyEffects(enemy, user, context));
           enemy.hp = Math.max(0, enemy.hp - context.damage);
@@ -547,14 +539,9 @@ try {
           newLogs.push(` <@${nextTurnUser.id}> 턴!`);
         }
 
-        // ★ battle.logs에 한 번만, prevLogs와 newLogs concat (중복 없이 최신만)
         battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
-
-        // ★ updateBattleViewWithLogs, updateBattleView 중 하나만 호출
         await updateBattleViewWithLogs(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
-        // 또는 아래 한 줄만 쓸 수도 있음 (logs만 최신으로 넣어서 update)
-        // await updateBattleView(interaction, battle, battle.isUserTurn ? battle.user.id : battle.enemy.id);
-
+        await updateBattleView(interaction, battle, battle.isUserTurn ? battle.user.id : battle.enemy.id);
         replied = true; return;
       } catch (e) {
         console.error('[공격/방어/점멸 처리 오류]', e);
