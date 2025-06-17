@@ -266,21 +266,21 @@ async function handleBattleButton(interaction) {
       damage: 0,
     };
 
-    // 턴 시작 패시브 처리
-    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart'));
-    logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart'));
+    // 턴 시작 패시브 처리 ★ battle 인자 넘기도록 수정!
+    logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle));
+    logs.push(...battleEngine.resolvePassive(enemy, user, context, 'onTurnStart', battle));
 
     // 아이템/스킬/도망/기타는 기존 방식(즉시 전체 갱신)
     if (action === 'item') {
       logs.push(...battleEngine.useItem(user, '회복포션', context));
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem'));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onItem', battle));
       battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, user.id);
       return;
     }
     if (action === 'skill') {
       logs.push(...battleEngine.useSkill(user, enemy, '섬광', context));
-      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill'));
+      logs.push(...battleEngine.resolvePassive(user, enemy, context, 'onSkill', battle));
       battle.logs = (battle.logs || []).concat(logs).slice(-LOG_LIMIT);
       await updateBattleView(interaction, battle, user.id);
       return;
@@ -295,14 +295,14 @@ async function handleBattleButton(interaction) {
       let newLogs = [];
       if (action === 'defend') {
         newLogs.push(...battleEngine.defend(user, enemy, context, []));
-        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend'));
+        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend', battle));
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
         newLogs.push(` <@${nextTurnUser.id}> 턴!`);
       } else if (action === 'dodge') {
         newLogs.push(...battleEngine.dodge(user, enemy, context, []));
-        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge'));
+        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge', battle));
         battle.turn += 1;
         battle.isUserTurn = !battle.isUserTurn;
         const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
@@ -324,7 +324,7 @@ async function handleBattleButton(interaction) {
           enemy.isDefending = false;
         }
         newLogs.push(`⚔️ ${user.nickname}의 평타! (${context.damage} 데미지)`);
-        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack'));
+        newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack', battle));
         newLogs.push(...battleEngine.applyEffects(enemy, user, context));
         enemy.hp = Math.max(0, enemy.hp - context.damage);
 
