@@ -382,11 +382,11 @@ async function handleBattleButton(interaction) {
         const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
         user.items = items[user.id];
         if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
-          await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true }); // 개인 안내
+          await interaction.update({ content: "해당 아이템이 없습니다!", embeds: [], components: [] });
           replied = true; return;
         }
         if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
-          await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true }); // 개인 안내
+          await interaction.update({ content: `해당 아이템 효과를 찾을 수 없습니다.`, embeds: [], components: [] });
           replied = true; return;
         }
         let log;
@@ -398,18 +398,18 @@ async function handleBattleButton(interaction) {
           }
         } catch (e) {
           console.error('[아이템 효과 실행 중 에러]', e);
-          await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true }); // 개인 안내
+          await interaction.update({ content: `아이템 효과 실행 중 오류!`, embeds: [], components: [] });
           replied = true; return;
         }
         items[user.id][itemName].count -= 1;
         fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
         battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-        await updateBattleView(interaction, battle, user.id); // 모두가 보는 배틀 임베드 갱신
+        await updateBattleView(interaction, battle, user.id);
         replied = true; return;
       } catch (e) {
         console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
-        if (!replied) try { await interaction.reply({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+        if (!replied) try { await interaction.update({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', embeds: [], components: [] }); } catch {}
         replied = true; return;
       }
     }
@@ -420,7 +420,7 @@ async function handleBattleButton(interaction) {
         const ACTIVE_SKILLS = require('../utils/active-skills.js');
         const skillName = action.replace('useskill_', '');
         if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
-          await interaction.reply({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true }); // 개인 안내
+          await interaction.update({ content: `해당 스킬 효과를 찾을 수 없습니다.`, embeds: [], components: [] });
           replied = true; return;
         }
         const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
@@ -430,16 +430,16 @@ async function handleBattleButton(interaction) {
           log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
         } catch (e) {
           console.error('[스킬 효과 실행 에러]', e);
-          await interaction.reply({ content: '❌ 스킬 효과 실행 중 오류!', ephemeral: true }); // 개인 안내
+          await interaction.update({ content: '❌ 스킬 효과 실행 중 오류!', embeds: [], components: [] });
           replied = true; return;
         }
         battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
 
-        await updateBattleView(interaction, battle, user.id); // 모두가 보는 배틀 임베드 갱신
+        await updateBattleView(interaction, battle, user.id);
         replied = true; return;
       } catch (e) {
         console.error('❌ [디버그] 스킬 사용 처리 에러:', e);
-        if (!replied) try { await interaction.reply({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+        if (!replied) try { await interaction.update({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', embeds: [], components: [] }); } catch {}
         replied = true; return;
       }
     }
