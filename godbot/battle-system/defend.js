@@ -1,32 +1,37 @@
-// battle-system/defend.js
-const applyPassives = require('./passive');
+// defend.js
+const runPassive = require('./passive'); // 기본 export라 이렇게 임포트
+const { getChampionNameByUserId } = require('../utils/champion-utils');
 
-module.exports = function defend(user, enemy, context) {
-  // 기본 방어 상태 플래그
-  user.isDefending = true;
-  context.defending = true;
-
-  // effect 적용 준비 (없으면 초기화)
+module.exports = function defend(user, enemy, context, logs) {
   context.effects = context.effects || {};
   context.effects[user.id] = context.effects[user.id] || [];
   context.effects[enemy.id] = context.effects[enemy.id] || [];
 
-  const logs = [];
-  
-  // 1. 'onDefend' 트리거로 패시브 처리 (ex: 람머스, 알리스타, 유미 등)
-  //    passive.js는 모든 챔피언 패시브를 context.js 구조로 갖고 있다고 가정
-  let passiveLog = applyPassives(user, enemy, context, 'onDefend');
+  // 상태 체크 (기절 등)
+  if (user.stunned) {
+    logs.push('😵 행동 불가! (기절)');
+    user.stunned = false;
+    return;
+  }
+  if (user.escaped) {
+    logs.push('🏃 이미 탈주 상태입니다.');
+    return;
+  }
+  if (user.invulnerable) {
+    logs.push('🛡️ 무적! 피해 없음.');
+    return;
+  }
+
+  // 패시브 효과 트리거 (방어자, 수비시)
+  let passiveLog = runPassive(user, enemy, context, "onDefend");
   if (passiveLog) logs.push(passiveLog);
 
-  // 2. 방어시 자동 적용되는 효과 (피해 50% 경감 등)
-  //    - context에 맞춰 효과를 push (ex: 기본 방어효과)
-  //    - 이 값은 실제 피해 계산 시 context.damage에 곱해짐
-  context.effects[user.id].push({ type: 'damageReductionPercent', value: 50, turns: 1 });
-  logs.push('🛡️ 방어자세! 다음 피해 50% 감소');
+  // 추가로, 공격자 패시브 중 방어에 영향 주는 것도 트리거
+  passiveLog = runPassive(enemy, user, context, "onAttackDefend");
+  if (passiveLog) logs.push(passiveLog);
 
-  // 3. 기타 패시브/효과 후처리 hook (유저 상태, 무적, 반사 등)
-  //    예) 유저가 무적(effect.invulnerable) 등 상태라면 이후 판정에서 damage 0
-  
-  // 4. 이펙트/상태 로그 반환 (배틀엔진에서 logs 누적 사용)
-  return logs.join('\n');
+  // 기타 상태/버프 처리(필요하면 추가)
+
+  logs.push(`${getChampionNameByUserId(user.id)}가 방어 행동을 취함!`);
+  return;
 };
