@@ -368,44 +368,58 @@ async function handleBattleButton(interaction) {
     }
 
     // 실제 아이템 사용
-    if (action.startsWith('useitem_')) {
-      try {
-        const itemName = action.replace('useitem_', '');
-        const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
-        user.items = items[user.id];
+if (action.startsWith('useitem_')) {
+  try {
+    const itemName = action.replace('useitem_', '');
+    const items = fs.existsSync(itemsPath) ? JSON.parse(fs.readFileSync(itemsPath, 'utf8')) : {};
+    user.items = items[user.id];
 
-     // 오류 콘솔 로그 체그   
+    // 오류 콘솔 로그 체크   
     console.log('effect 실행 전', { user, context, itemName, items: user.items });
 
-        
-        if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
-          await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true }); replied = true; return;
-        }
-        if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
-          await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true }); replied = true; return;
-        }
-
-        let log;
-        try {
-          log = ITEMS[itemName].effect(user, context);
-        } catch (e) {
-          console.error('[아이템 효과 실행 중 에러]', e);
-          await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true }); replied = true; return;
-        }
-
-        items[user.id][itemName].count -= 1;
-        fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
-        battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
-
-        await updateBattleView(interaction, battle, user.id);
-        replied = true; return;
-
-      } catch (e) {
-        console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
-        if (!replied) try { await interaction.reply({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
-        replied = true; return;
-      }
+    if (!items[user.id] || !items[user.id][itemName] || items[user.id][itemName].count <= 0) {
+      await interaction.reply({ content: "해당 아이템이 없습니다!", ephemeral: true }); replied = true; return;
     }
+    if (!ITEMS[itemName] || typeof ITEMS[itemName].effect !== 'function') {
+      await interaction.reply({ content: `해당 아이템 효과를 찾을 수 없습니다.`, ephemeral: true }); replied = true; return;
+    }
+
+    let log;
+    try {
+      log = ITEMS[itemName].effect(user, context);
+    } catch (e) {
+      console.error('[아이템 효과 실행 중 에러]', e);
+      await interaction.reply({ content: `아이템 효과 실행 중 오류!`, ephemeral: true }); replied = true; return;
+    }
+
+    items[user.id][itemName].count -= 1;
+    fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2));
+    battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
+
+    // **[1] 먼저, 버튼 누른 유저에게 안내 (ephemeral reply)**
+    await interaction.reply({ 
+      content: log || `${itemName} 아이템을 사용했습니다!`, 
+      ephemeral: true 
+    });
+    replied = true;
+
+    // **[2] 공개 배틀 임베드는 별도 메시지에서 update (public 메시지 핸들러에서 따로)**
+    // 아래 라인을 "여기"에서 바로 실행하면 안되고,  
+    // (현재 interaction이 ephemeral이므로) updateBattleView는  
+    // 실제 배틀 공개 메시지의 interaction/message로 따로 갱신해야 함!
+    //
+    // 예시: (만약 battleMessage 라는 변수에 기존 공개 메시지 interaction을 가지고 있다면)
+    // await updateBattleView(battleMessage, battle, user.id);
+
+    return;
+
+  } catch (e) {
+    console.error('❌ [디버그] 아이템 사용 처리 에러:', e);
+    if (!replied) try { await interaction.reply({ content: '❌ 아이템 사용 중 알 수 없는 오류 발생!', ephemeral: true }); } catch {}
+    replied = true; return;
+  }
+}
+
 
     // 실제 스킬 사용
     if (action.startsWith('useskill_')) {
