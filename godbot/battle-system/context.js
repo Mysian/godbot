@@ -350,22 +350,22 @@ module.exports = {
 
       // 만료된 효과 삭제
       if (effect.turns !== undefined && effect.turns <= 0) {
-        myEffects.splice(i, 1);
-      }
-    }
+  myEffects.splice(i, 1);
+}
+// 누적 버프/중첩
+if (atkBuffPct > 0) user.bonusAtkPct = atkBuffPct;
+if (apBuffPct > 0) user.bonusApPct = apBuffPct;
+if (maxHpBuffPct > 0) user.bonusMaxHpPct = maxHpBuffPct;
+if (defBuffPct > 0) user.bonusDefPct = defBuffPct;
+if (critUp > 0) user.critUp = critUp;
+if (lifesteal > 0) user.lifesteal = lifesteal;
+if (damageReduce > 0) user.damageReduce = damageReduce;
+if (penguBuff > 0) user.penguBuff = penguBuff;
 
-    // 턴마다 합산된 중첩/버프 반영(실스탯 계산은 배틀 시작 전 or 타 함수에서 진행)
-    if (atkBuffPct > 0) user.bonusAtkPct = atkBuffPct;
-    if (apBuffPct > 0) user.bonusApPct = apBuffPct;
-    if (maxHpBuffPct > 0) user.bonusMaxHpPct = maxHpBuffPct;
-    if (defBuffPct > 0) user.bonusDefPct = defBuffPct;
-    if (critUp > 0) user.critUp = critUp;
-    if (lifesteal > 0) user.lifesteal = lifesteal;
-    if (damageReduce > 0) user.damageReduce = damageReduce;
-    if (penguBuff > 0) user.penguBuff = penguBuff;
+// 특수상태 해제
+if (!myEffects.some(e => e.type === 'stunned' && e.turns > 0)) user.stunned = false;
+if (!myEffects.some(e => e.type === 'invulnerable' && e.turns > 0)) user.invulnerable = false;
 
-    // 효과배열 갱신
-    context.effects[user.id] = myEffects;
-    return logs;
-  }
+context.effects[user.id] = myEffects;
+return logs;
 };
