@@ -350,9 +350,11 @@ module.exports = {
 
       // 만료된 효과 삭제
       if (effect.turns !== undefined && effect.turns <= 0) {
-  myEffects.splice(i, 1);
-}
-      // 누적 버프/중첩
+        myEffects.splice(i, 1);
+      }
+    }
+
+    // 누적 버프/중첩
     if (atkBuffPct > 0) user.bonusAtkPct = atkBuffPct;
     if (apBuffPct > 0) user.bonusApPct = apBuffPct;
     if (maxHpBuffPct > 0) user.bonusMaxHpPct = maxHpBuffPct;
@@ -369,4 +371,4 @@ module.exports = {
     context.effects[user.id] = myEffects;
     return logs;
   }
-};
+}
