@@ -22,15 +22,6 @@ function forceDeleteBattle(userId, enemyId) {
   if (enemyId) battles.delete(enemyId);
 }
 
-// 실시간 스탯 세팅 함수 (기본값 복사)
-function setupBattleUser(user) {
-  user.attack = user.stats.attack;
-  user.ap = user.stats.ap;
-  user.defense = user.stats.defense;
-  user.penetration = user.stats.penetration;
-  user.hp = user.hp ?? user.stats.hp;
-}
-
 async function handleBattleCommand(interaction) {
   const userId = interaction.user.id;
   const enemyUser = interaction.options.getUser('상대');
@@ -48,10 +39,6 @@ async function handleBattleCommand(interaction) {
     if (battleRequests.has('open')) {
       return interaction.reply({ content: "이미 모집 중인 오픈배틀이 있습니다!", ephemeral: true });
     }
-
-    // 실시간 스탯 복사
-    setupBattleUser(userChamp);
-
     battleRequests.set('open', { user: userChamp, interaction, createdAt: Date.now() });
 
     const userIcon = await getChampionIcon(userChamp.name);
@@ -106,10 +93,6 @@ async function handleBattleCommand(interaction) {
     return interaction.reply({ content: "상대가 챔피언을 소유하고 있지 않습니다!", ephemeral: true });
   if (battles.has(enemyId) || battleRequests.has(enemyId))
     return interaction.reply({ content: "상대가 이미 다른 배틀에 참여 중입니다!", ephemeral: true });
-
-  // 실시간 스탯 복사
-  setupBattleUser(userChamp);
-  setupBattleUser(enemyChamp);
 
   battleRequests.set(userId, { user: userChamp, enemy: enemyChamp, interaction, createdAt: Date.now() });
 
