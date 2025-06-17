@@ -10,6 +10,15 @@ function createHpBar(current, max, length = 20) {
   return '🟩'.repeat(filled) + '⬛'.repeat(empty);
 }
 
+// 스탯 +추가/감소 표기
+function statWithBonus(base, current) {
+  const diff = current - base;
+  if (!isFinite(current)) return '0';
+  if (diff === 0) return `${current}`;
+  const sign = diff > 0 ? '+' : '';
+  return `${current} (${sign}${diff.toFixed(1)})`;
+}
+
 // 효과→상태변환
 function effectToState(effect) {
   if (!effect || !effect.type) return null;
@@ -22,7 +31,6 @@ function effectToState(effect) {
     case 'heal':      return '💚회복';
     case 'shield':    return '🛡️실드';
     case 'execute':   return '💀처형예정';
-    // **중첩/버프/신규효과 추가**
     case 'healOverTime': return `💧재생(${effect.value ? `${effect.value}` : ''}, ${effect.turns ?? 0}턴)`;
     case 'apBuff':    return `✨공격력↑`;
     case 'atkBuff':   return `⚔️주문력↑`;
@@ -45,13 +53,11 @@ function getAllStates(effectsArr = []) {
   for (const e of effectsArr) {
     const base = effectToState(e);
     if (!base) continue;
-    // 중첩 타입은 중첩 숫자+합산
     let key = base;
     if (!counted[key]) counted[key] = { count: 0, value: 0 };
     counted[key].count += 1;
     if (e.value && typeof e.value === 'number') counted[key].value += e.value;
   }
-  // 출력 (중첩은 N회, 수치는 총합)
   return Object.entries(counted).map(([k, v]) =>
     v.count > 1 ? `${k}x${v.count}${v.value ? `(${v.value})` : ''}` :
     v.value ? `${k}(${v.value})` : k
@@ -78,10 +84,10 @@ async function battleEmbed({
   const userHpBar = createHpBar(user.hp, user.stats.hp);
   const enemyHpBar = createHpBar(enemy.hp, enemy.stats.hp);
 
-  // 상태 효과 정리 (context.effects 기준)
-  const userEffects = (user.effects && Array.isArray(user.effects)) ? user.effects : 
+  // 상태 효과 정리
+  const userEffects = (user.effects && Array.isArray(user.effects)) ? user.effects :
     (user.effects ? Object.values(user.effects).flat() : []);
-  const enemyEffects = (enemy.effects && Array.isArray(enemy.effects)) ? enemy.effects : 
+  const enemyEffects = (enemy.effects && Array.isArray(enemy.effects)) ? enemy.effects :
     (enemy.effects ? Object.values(enemy.effects).flat() : []);
   const userState = getAllStates(userEffects);
   const enemyState = getAllStates(enemyEffects);
@@ -124,10 +130,10 @@ async function battleEmbed({
           `HP: **${user.hp}/${user.stats.hp}** (${userHpPct}%)\n` +
           `${userHpBar}\n` +
           `상태: ${userState.length ? userState.join(', ') : '정상'}\n` +
-          `${atkEmoji} 공격력: ${user.stats.attack}  ` +
-          `${apEmoji} 주문력: ${user.stats.ap}  ` +
-          `${defEmoji} 방어력: ${user.stats.defense}  ` +
-          `${penEmoji} 관통력: ${user.stats.penetration}`,
+          `${atkEmoji} 공격력: ${statWithBonus(user.stats.attack, user.attack ?? user.stats.attack)}  ` +
+          `${apEmoji} 주문력: ${statWithBonus(user.stats.ap, user.ap ?? user.stats.ap)}  ` +
+          `${defEmoji} 방어력: ${statWithBonus(user.stats.defense, user.defense ?? user.stats.defense)}  ` +
+          `${penEmoji} 관통력: ${statWithBonus(user.stats.penetration, user.penetration ?? user.stats.penetration)}`,
         inline: false
       },
       {
@@ -136,10 +142,10 @@ async function battleEmbed({
           `HP: **${enemy.hp}/${enemy.stats.hp}** (${enemyHpPct}%)\n` +
           `${enemyHpBar}\n` +
           `상태: ${enemyState.length ? enemyState.join(', ') : '정상'}\n` +
-          `${atkEmoji} 공격력: ${enemy.stats.attack}  ` +
-          `${apEmoji} 주문력: ${enemy.stats.ap}  ` +
-          `${defEmoji} 방어력: ${enemy.stats.defense}  ` +
-          `${penEmoji} 관통력: ${enemy.stats.penetration}`,
+          `${atkEmoji} 공격력: ${statWithBonus(enemy.stats.attack, enemy.attack ?? enemy.stats.attack)}  ` +
+          `${apEmoji} 주문력: ${statWithBonus(enemy.stats.ap, enemy.ap ?? enemy.stats.ap)}  ` +
+          `${defEmoji} 방어력: ${statWithBonus(enemy.stats.defense, enemy.defense ?? enemy.stats.defense)}  ` +
+          `${penEmoji} 관통력: ${statWithBonus(enemy.stats.penetration, enemy.penetration ?? enemy.stats.penetration)}`,
         inline: false
       },
       {
