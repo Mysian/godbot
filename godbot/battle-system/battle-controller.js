@@ -591,9 +591,8 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
         replied = true; return;
       }
     } else if (action === 'pass') {
-      //턴 넘기기 휴식
-      newLogs.push(`😴 <@${user.id}>이(가) 쉬기를 선택하여 턴을 넘깁니다.`);
-    }
+  newLogs.push(...battleEngine.pass(user, enemy, context, []));
+} // 휴식 턴 넘기기
 
     // 턴 넘김(모든 행위 통일)
     battle.turn += 1;
