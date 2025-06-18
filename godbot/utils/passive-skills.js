@@ -25,7 +25,7 @@ module.exports = {
   description: "공격 시 15% 확률로 25% 증가된 피해를 입히고 1턴간 기절시킨다.",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       context.damage = Math.floor(context.damage * 1.25);
       return "🌋 15% 확률 기절+피해 1.25배!";
     }
@@ -88,7 +88,7 @@ module.exports = {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (user._naafiriChance === undefined) user._naafiriChance = 0.15;
     if (trigger === "onAttack" && Math.random() < user._naafiriChance) {
-      context.effects[user.id].push({ type: "damageBuff", value: 1.5, turns: 1 });
+      context.effects[user.id].push({ type: "damageBuff", value: 1.5, turns: 2 });
       user._naafiriChance += 0.01;
       return `🐺 ${Math.floor(user._naafiriChance * 100)}% 확률로 다음 공격 1.5배!`;
     }
@@ -99,7 +99,7 @@ module.exports = {
   description: "공격 시 15% 확률로 상대 1턴 기절",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       return "💫 상대 1턴 기절!";
     }
   }
@@ -109,13 +109,13 @@ module.exports = {
   description: "방어 시 10% 확률로 1턴 무적, 해당 효과 발동 시 5턴간 공격력 1.25배, 피해량 1.5배 증가 (최대 2회 중첩)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onDefend" && Math.random() < 0.10) {
-      context.effects[user.id].push({ type: "invulnerable", turns: 1 });
+      context.effects[user.id].push({ type: "invulnerable", turns: 2 });
 
       user._nocturneBuffCount = user._nocturneBuffCount || 0;
       if (user._nocturneBuffCount < 2) {
         user._nocturneBuffCount += 1;
-        context.effects[user.id].push({ type: "atkBuffPercent", value: 25, turns: 5 });
-        context.effects[user.id].push({ type: "damageBuff", value: 1.5, turns: 5 });
+        context.effects[user.id].push({ type: "atkBuffPercent", value: 25, turns: 10 });
+        context.effects[user.id].push({ type: "damageBuff", value: 1.5, turns: 10 });
         return `🛡️ 10% 확률 1턴 무적 + 공격력 25%, 피해량 1.5배 증가 (중첩 ${user._nocturneBuffCount}/2)`;
       } else {
         return "🛡️ 10% 확률 1턴 무적 + 공격력 50% 및 피해량 3배 증가 (최대 중첩)";
@@ -128,13 +128,13 @@ module.exports = {
   description: "방어 시 2턴간 20% 피해감소, 방어 5회마다 다음 공격 2배 피해",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onDefend") {
-      context.effects[user.id].push({ type: "damageReductionPercent", value: 20, turns: 2 });
+      context.effects[user.id].push({ type: "damageReductionPercent", value: 20, turns: 4 });
 
       user._nunuDefCount = (user._nunuDefCount || 0) + 1;
 
       if (user._nunuDefCount >= 5) {
         user._nunuDefCount = 0;
-        context.effects[user.id].push({ type: "damageBuff", value: 2, turns: 1 });
+        context.effects[user.id].push({ type: "damageBuff", value: 2, turns: 2 });
         return "❄️ 2턴간 피해 20% 감소 + 방어 5회 후 다음 공격 2배 피해!";
       }
       return "❄️ 2턴간 피해 20% 감소!";
@@ -162,7 +162,7 @@ module.exports = {
   description: "공격 시 15% 확률로 상대 다음 공격 무효, 발동 시 50% 확률로 추가 턴 획득",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "missNext", turns: 1 });
+      context.effects[enemy.id].push({ type: "missNext", turns: 2 });
       let msg = "🦎 상대 다음 공격 무효!";
       if (Math.random() < 0.5) {
         context.extraTurn = context.extraTurn || {};
@@ -178,8 +178,8 @@ module.exports = {
   description: "공격 시 10% 확률로 본인 1턴 회피 + 1턴 공격력 30% 증가",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[user.id].push({ type: "dodgeNextAttack", turns: 1 });
-      context.effects[user.id].push({ type: "atkUpPercent", value: 30, turns: 1 });
+      context.effects[user.id].push({ type: "dodgeNextAttack", turns: 2 });
+      context.effects[user.id].push({ type: "atkUpPercent", value: 30, turns: 2 });
       return "💃 1턴 회피 + 1턴 공격력 30% 증가!";
     }
   }
@@ -217,7 +217,7 @@ module.exports = {
   description: "공격 시 15% 확률로 상대 1턴 기절, 발동 시 본인은 주문력의 50% 피해를 입음(리스크)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       const selfDamage = Math.floor(user.stats.ap * 0.5);
       user.hp = Math.max(0, user.hp - selfDamage);
       return `💥 상대 1턴 기절! 자신은 주문력의 50%(${selfDamage}) 피해!`;
@@ -229,8 +229,8 @@ module.exports = {
   description: "공격 시 15% 확률로 상대 1턴 기절, 발동 시 3턴간 자신 방어/스킬 사용 불가",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
-      context.effects[user.id].push({ type: "noDefOrSkill", turns: 3 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
+      context.effects[user.id].push({ type: "noDefOrSkill", turns: 6 });
       return "💘 상대 1턴 기절! 자신은 3턴간 방어 및 스킬 사용 불가!";
     }
   }
@@ -268,7 +268,7 @@ module.exports = {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (user._luxStunChance === undefined) user._luxStunChance = 0.20;
     if (trigger === "onAttack" && Math.random() < user._luxStunChance) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       // 확률 1% 감소, 최저 10%
       user._luxStunChance = Math.max(0.10, user._luxStunChance - 0.01);
       return `✨ 상대 1턴 기절! (확률 ${Math.round(user._luxStunChance * 100)}%)`;
@@ -287,7 +287,7 @@ module.exports = {
       const damage = Math.floor(enemy.stats.hp * damagePercent);
 
       // 추가 도트 효과로 등록
-      context.effects[enemy.id].push({ type: "dot", damage: damage, turns: 1 });
+      context.effects[enemy.id].push({ type: "dot", damage: damage, turns: 2 });
 
       return `🔥 45% 확률 화상 피해 발동! (중첩 ${user._rumbleDotStacks}회, 최대 1.5%) - ${damage} 고정 피해!`;
     }
@@ -305,7 +305,7 @@ module.exports = {
 
       context.effects[enemy.id] = context.effects[enemy.id] || [];
       // 중첩된 디버프 추가
-      context.effects[enemy.id].push({ type: "atkDownPercent", value: downValue, turns: 3 });
+      context.effects[enemy.id].push({ type: "atkDownPercent", value: downValue, turns: 6 });
 
       return `🤝 상대 공격력 3턴간 ${downValue}% 감소 (스택 ${enemy._relenaAtkDownStacks})`;
     }
@@ -318,7 +318,7 @@ module.exports = {
         // 자신에게 같은 디버프 부여
         context.effects[user.id] = context.effects[user.id] || [];
         const downValue = 10 + (enemy._relenaAtkDownStacks - 1) * 5;
-        context.effects[user.id].push({ type: "atkDownPercent", value: downValue, turns: 3 });
+        context.effects[user.id].push({ type: "atkDownPercent", value: downValue, turns: 6 });
 
         // 상대 스택 초기화
         enemy._relenaAtkDownStacks = 0;
@@ -349,7 +349,7 @@ module.exports = {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onDefend" && context.damage > 0 && Math.random() < 0.10) {
       context.damage = 0;
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       return "🌞 피해 0 + 상대 1턴 기절!";
     }
   }
@@ -373,7 +373,7 @@ module.exports = {
     if (trigger === "onAttack" && Math.random() < 0.25) {
       // 방어력 증가량 10%~50% 사이 랜덤
       const increaseValue = 10 + Math.floor(Math.random() * 41); 
-      context.effects[user.id].push({ type: "defUpPercent", value: increaseValue, turns: 2 });
+      context.effects[user.id].push({ type: "defUpPercent", value: increaseValue, turns: 4 });
       return `🐎 2턴간 방어력 ${increaseValue}% 증가!`;
     }
   }
@@ -407,8 +407,8 @@ module.exports = {
   description: "공격 시 20% 확률로 상대 1턴간 공격력 40% 감소, 자신도 1턴간 공격력 20% 감소 (리스크)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.20) {
-      context.effects[enemy.id].push({ type: "atkDownPercent", value: 40, turns: 1 });
-      context.effects[user.id].push({ type: "atkDownPercent", value: 20, turns: 1 });
+      context.effects[enemy.id].push({ type: "atkDownPercent", value: 40, turns: 2 });
+      context.effects[user.id].push({ type: "atkDownPercent", value: 20, turns: 2 });
       return "🦎 상대 공격력 1턴간 40%↓ + 자신 공격력 1턴간 20%↓ (리스크)";
     }
   }
@@ -418,7 +418,7 @@ module.exports = {
   description: "공격 시 10% 확률로 2턴 뒤 동일 피해 1회",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[enemy.id].push({ type: "delayedDamage", damage: context.damage, turns: 2 });
+      context.effects[enemy.id].push({ type: "delayedDamage", damage: context.damage, turns: 4 });
       return "🌀 2턴 뒤 동일 피해!";
     }
   }
@@ -435,7 +435,7 @@ module.exports = {
       let chance = user._leesin_exileBase + (user._leesin_turnCount - 1) * 0.0025;
       if (chance > 0.30) chance = 0.30;  // 최대 30% 제한
       if (Math.random() < chance) {
-        context.effects[enemy.id].push({ type: "execute", turns: 1 });
+        context.effects[enemy.id].push({ type: "execute", turns: 2 });
         return "🐉 상대를 강제로 탈주시켜 즉사시켰다!";
       }
     }
@@ -462,10 +462,10 @@ module.exports = {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack") {
       if (Math.random() < 0.15) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         let msg = "❄️ 상대 1턴 기절!";
         if (Math.random() < 0.05) {
-          context.effects[user.id].push({ type: "stunned", turns: 1 });
+          context.effects[user.id].push({ type: "stunned", turns: 2 });
           msg += " ⚠️ 5% 확률로 자신도 1턴 기절!";
         }
         return msg;
@@ -499,7 +499,7 @@ module.exports = {
         // 10~20% 확률 랜덤 적용
         const dodgeChance = 0.1 + Math.random() * 0.1;
         if (Math.random() < dodgeChance) {
-          context.effects[user.id].push({ type: "dodgeNextAttack", turns: 1 });
+          context.effects[user.id].push({ type: "dodgeNextAttack", turns: 2 });
           return `⚡ 5회 공격 후 ${Math.floor(dodgeChance * 100)}% 확률로 다음 피해 회피!`;
         }
       }
@@ -515,7 +515,7 @@ module.exports = {
       enemy.hp = Math.max(0, enemy.hp - reflect);
       let msg = `🌳 반사 피해! ${reflect}`;
       if (Math.random() < 0.2) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         msg += " + 1턴 기절!";
       }
       return msg;
@@ -527,7 +527,7 @@ module.exports = {
   description: "공격 시 25% 확률로 다음 받는 자신의 피해 25% 감소",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.25) {
-      context.effects[user.id].push({ type: "damageReductionPercent", value: 25, turns: 1 });
+      context.effects[user.id].push({ type: "damageReductionPercent", value: 25, turns: 2 });
       return "🟣 다음 받는 피해 25% 감소!";
     }
   }
@@ -541,7 +541,7 @@ module.exports = {
       user._melDebuffApplied = true;
       context.effects = context.effects || {};
       context.effects[enemy.id] = context.effects[enemy.id] || [];
-      context.effects[enemy.id].push({ type: "atkDownPercent", value: 25, turns: 5 });
+      context.effects[enemy.id].push({ type: "atkDownPercent", value: 25, turns: 10 });
       return "🏛️ 상대 5턴간 공격력 25%↓";
     }
 
@@ -570,15 +570,15 @@ module.exports = {
     if (trigger === "onAttack" && Math.random() < 0.3) {
       // 방어 불가, 회피 불가 효과 추가
       context.effects[enemy.id] = context.effects[enemy.id] || [];
-      context.effects[enemy.id].push({ type: "defendBlocked", turns: 2 });
-      context.effects[enemy.id].push({ type: "dodgeBlocked", turns: 2 });
+      context.effects[enemy.id].push({ type: "defendBlocked", turns: 4 });
+      context.effects[enemy.id].push({ type: "dodgeBlocked", turns: 4 });
 
       // 받는 피해 증가 효과 중첩 방지
       const hasDamageIncrease = context.effects[enemy.id].some(
         e => e.type === "damageIncreasePercent"
       );
       if (!hasDamageIncrease) {
-        context.effects[enemy.id].push({ type: "damageIncreasePercent", value: 20, turns: 2 });
+        context.effects[enemy.id].push({ type: "damageIncreasePercent", value: 20, turns: 4 });
       }
 
       return "☠️ 상대 2턴간 방어 및 회피 불가 + 피해 20% 증가!";
@@ -594,7 +594,7 @@ module.exports = {
 
     if (trigger === "onAttack") {
       if (Math.random() < user._morganaStunChance) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 4 });
         // 발동 후 확률을 5%로 낮춤
         user._morganaStunChance = 0.05;
         return "🌑 상대 2턴 기절!";
@@ -609,11 +609,11 @@ module.exports = {
     if (trigger === "onTurnStart") {
       const heal = Math.floor(user.stats.hp * 0.05);
       user.hp = Math.min(user.hp + heal, user.stats.hp);
-      context.effects[user.id].push({ type: "debuffImmune", turns: 10 });
+      context.effects[user.id].push({ type: "debuffImmune", turns: 20 });
       // 리스크로 받는 피해 20% 증가 효과 추가 (중첩 방지)
       if (!user._mundoRisk) {
         user._mundoRisk = true;
-        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 20, turns: 99 });
+        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 20, turns: 999 });
       }
       return `🩹 체력 ${heal} 회복 + 10턴간 디버프 면역! (받는 피해 20% 증가)`;
     }
@@ -646,7 +646,7 @@ module.exports = {
   description: "공격 시 20% 확률로 다음 공격 회피(1턴), 방어 시 20% 확률로 공격력, 주문력, 방어력 1% 증가 (최대 20%)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.20) {
-      context.effects[user.id].push({ type: "dodgeNextAttack", turns: 1 });
+      context.effects[user.id].push({ type: "dodgeNextAttack", turns: 2 });
       return "✨ 다음 공격 회피(1턴)!";
     }
     if (trigger === "onDefend" && Math.random() < 0.20) {
@@ -686,14 +686,14 @@ module.exports = {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     // 상대 기절 확률 20%
     if (trigger === "onAttack" && Math.random() < 0.20) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       return "👊 상대 1턴 기절!";
     }
     // 자신에게 방어력 20% 감소, 체력 20% 감소 디버프 지속
     if (!user._voidDebuffApplied) {
       user._voidDebuffApplied = true;
-      context.effects[user.id].push({ type: "defDownPercent", value: 20, turns: 99 });
-      context.effects[user.id].push({ type: "hpDownPercent", value: 20, turns: 99 });
+      context.effects[user.id].push({ type: "defDownPercent", value: 20, turns: 999 });
+      context.effects[user.id].push({ type: "hpDownPercent", value: 20, turns: 999 });
     }
   }
 },
@@ -839,7 +839,7 @@ module.exports = {
       const currentDots = (context.effects[enemy.id] || []).filter(e => e.type === "dot").length;
       if (currentDots < 3) {
         const dot = Math.floor(enemy.stats.hp * 0.003); // 0.3%
-        context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 2 });
+        context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 4 });
         return `🔥 2턴간 매턴 ${dot} 고정 피해! (중첩 ${currentDots + 1}/3)`;
       }
     }
@@ -897,9 +897,9 @@ module.exports = {
     if (trigger === "onAttack") {
       let msg = "";
       if (Math.random() < 0.10) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         msg += "⚡️ 10% 확률로 상대 1턴 기절! ";
-        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 20, turns: 1 }); // 리스크 효과 추가
+        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 20, turns: 2 }); // 리스크 효과 추가
         msg += "⚠️ 자신 다음 턴 받는 피해 20% 증가! ";
       }
       if (enemy.stunned) {
@@ -1017,7 +1017,7 @@ module.exports = {
 if (trigger === "onAttack") {
   let msg = "";
   if (Math.random() < 0.50) {
-    context.effects[enemy.id].push({ type: "skillBlocked", turns: 1 });
+    context.effects[enemy.id].push({ type: "skillBlocked", turns: 2 });
     msg += "🔗 1턴간 상대 스킬 봉인! ";
     if (!user._silasApStacks) user._silasApStacks = 0;
     if (user._silasApStacks < 20) {
@@ -1181,7 +1181,7 @@ if (trigger === "onAttack") {
       return {
         baseDamage: 0,
         addEffect: [
-          { target: 'defender', effect: { type: "invulnerable", turns: 1 } }
+          { target: 'defender', effect: { type: "invulnerable", turns: 2 } }
         ],
         log: "🛡️ 다음 턴 무적(1턴)!"
       };
@@ -1244,7 +1244,7 @@ if (trigger === "onAttack") {
   description: "공격 시 10% 확률로 상대의 다음 공격 무효",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[enemy.id].push({ type: "missNext", turns: 1 });
+      context.effects[enemy.id].push({ type: "missNext", turns: 2 });
       return "👁️ 상대의 다음 공격 무효!";
     }
   }
@@ -1254,7 +1254,7 @@ if (trigger === "onAttack") {
   description: "공격 시 15% 확률로 1턴간 상대 스킬 봉인",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "skillBlocked", turns: 1 });
+      context.effects[enemy.id].push({ type: "skillBlocked", turns: 2 });
       return "🔗 1턴간 상대 스킬 봉인!";
     }
   }
@@ -1311,7 +1311,7 @@ if (trigger === "onAttack") {
       context.damage = Math.floor(context.damage * 1.15);
       let msg = "⚫ 피해 15% 증가!";
       if (Math.random() < 0.5) {
-        context.effects[enemy.id].push({ type: "magicResistDebuffPercent", value: 50, turns: 2 });
+        context.effects[enemy.id].push({ type: "magicResistDebuffPercent", value: 50, turns: 4 });
         msg += " + 마법저항 2턴간 50% 감소!";
       }
       return msg;
@@ -1330,7 +1330,7 @@ if (trigger === "onAttack") {
       }
       const dotPercent = baseDotPercent * enemy._singedDotStacks;
       const dotDamage = Math.floor(enemy.stats.hp * dotPercent);
-      context.effects[enemy.id].push({ type: "dot", damage: dotDamage, turns: 3 });
+      context.effects[enemy.id].push({ type: "dot", damage: dotDamage, turns: 6 });
       return `☣️ 3턴간 매턴 ${dotDamage} 중첩 도트 피해! (스택 ${enemy._singedDotStacks})`;
     }
   }
@@ -1347,7 +1347,7 @@ if (trigger === "onAttack") {
       let chance = user._threshBaseChance + (user._threshTurnCount - 1) * 0.01;
       if (chance > 0.10) chance = 0.30; // 최대 30% 제한
       if (Math.random() < chance) {
-        context.effects[enemy.id].push({ type: "deathMark", turns: 30 });
+        context.effects[enemy.id].push({ type: "deathMark", turns: 60 });
         user._threshDeathMarkGiven = true; // 1회성 플래그!
         return "⚖️ 사형 선고! 상대는 30턴 뒤 사망! (한 번만 발동)";
       }
@@ -1450,7 +1450,7 @@ if (trigger === "onAttack") {
   description: "공격 시 25% 확률로 다음 턴 받는 피해 무효(1턴)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.25) {
-      context.effects[user.id].push({ type: "invulnerable", turns: 1 });
+      context.effects[user.id].push({ type: "invulnerable", turns: 2 });
       return "🌒 다음 턴 피해 무효(1턴)!";
     }
   }
@@ -1517,7 +1517,7 @@ if (trigger === "onAttack") {
   description: "공격 시 20% 확률로 2턴간 상대 방어력 20% 감소",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.20) {
-      context.effects[enemy.id].push({ type: "defDownPercent", value: 20, turns: 2 });
+      context.effects[enemy.id].push({ type: "defDownPercent", value: 20, turns: 4 });
       return "🗡️ 2턴간 방어력 20% 감소!";
     }
   }
@@ -1528,7 +1528,7 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
       const dot = Math.floor(enemy.stats.hp * 0.003);
-      context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 3 });
+      context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 6 });
       return `🔥 3턴간 매턴 ${dot} 화염 피해!`;
     }
   }
@@ -1560,7 +1560,7 @@ if (trigger === "onAttack") {
       let chance = user._asheBaseStunChance + (user._asheTurnCount - 1) * 0.002;
       if (chance > 0.20) chance = 0.20;  // 최대 확률 20% 제한
       if (Math.random() < chance) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         // 이번 공격에 추가 피해 10%
         context.damage = Math.floor(context.damage * 1.10);
         return `❄️ 기절(1턴)! 추가 피해 10%! (확률 ${(chance*100).toFixed(1)}%)`;
@@ -1616,7 +1616,7 @@ if (trigger === "onAttack") {
   description: "공격 시 30% 확률로 2턴간 상대 방어력 15% 감소",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "defDownPercent", value: 30, turns: 2 });
+      context.effects[enemy.id].push({ type: "defDownPercent", value: 30, turns: 4 });
       return "🕷️ 2턴간 방어력 30% 감소!";
     }
   }
@@ -1631,7 +1631,7 @@ if (trigger === "onAttack") {
       let msg = `🐵 추가 타격! 피해 +${bonus}`;
       // 패시브 터지면 50% 확률로 무적
       if (Math.random() < 0.5) {
-        context.effects[user.id].push({ type: "blockSkill", turns: 1 });
+        context.effects[user.id].push({ type: "blockSkill", turns: 2 });
         msg += " + 다음 1턴간 상대 스킬 무적!";
       }
       return msg;
@@ -1648,7 +1648,7 @@ if (trigger === "onAttack") {
         user.hp = Math.min(user.hp + heal, user.stats.hp);
         return `🌈 자신의 체력 10%(${heal}) 회복!`;
       } else {
-        context.effects[enemy.id].push({ type: "defDownPercent", value: 20, turns: 1 });
+        context.effects[enemy.id].push({ type: "defDownPercent", value: 20, turns: 2 });
         return "🌑 1턴간 상대 방어력 20% 감소!";
       }
     }
@@ -1659,10 +1659,10 @@ if (trigger === "onAttack") {
   description: "공격 시 10% 확률로 5턴간 방어력 10% 증가, 이 효과 터지면 25% 확률로 상대 1턴 기절",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[user.id].push({ type: "defUpPercent", value: 10, turns: 5 });
+      context.effects[user.id].push({ type: "defUpPercent", value: 10, turns: 10 });
       let msg = "⚒️ 5턴간 방어력 10% 증가!";
       if (Math.random() < 0.25) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         msg += " + 상대 1턴 기절!";
       }
       return msg;
@@ -1676,7 +1676,7 @@ if (trigger === "onAttack") {
     if (trigger === "onAttack") {
       let msg = "";
       if (Math.random() < 0.20) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         msg += "🔮 1턴간 기절! ";
       }
       if (Math.random() < 0.10) {
@@ -1716,7 +1716,7 @@ if (trigger === "onAttack") {
     if (trigger === "onAttack" && Math.random() < 0.20) {
       const extraDamage = Math.floor(enemy.stats.hp * 0.03);
       context.damage += extraDamage;
-      context.effects[user.id].push({ type: "damageReductionPercent", value: 30, turns: 1 });
+      context.effects[user.id].push({ type: "damageReductionPercent", value: 30, turns: 2 });
       return `⚔️ 최대 체력 3% 추가 피해 + 1턴간 받는 피해 30% 감소!`;
     }
   }
@@ -1726,8 +1726,8 @@ if (trigger === "onAttack") {
   description: "공격 시 10% 확률로 2턴간 공격력 5% & 방어력 3% 증가",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[user.id].push({ type: "atkUpPercent", value: 5, turns: 2 });
-      context.effects[user.id].push({ type: "defUpPercent", value: 3, turns: 2 });
+      context.effects[user.id].push({ type: "atkUpPercent", value: 5, turns: 4 });
+      context.effects[user.id].push({ type: "defUpPercent", value: 3, turns: 4 });
       return "💀 2턴간 공격력 5% & 방어력 3% 증가!";
     }
   }
@@ -1739,16 +1739,16 @@ if (trigger === "onAttack") {
     if (!user._udyrMode) user._udyrMode = "tiger";
     if (trigger === "onAttack") {
       user._udyrMode = "tiger";
-      context.effects[user.id].push({ type: "damageUpPercent", value: 15, turns: 1 });
+      context.effects[user.id].push({ type: "damageUpPercent", value: 15, turns: 2 });
       return "🐯 1턴간 피해 15% 증가!";
     }
     if (trigger === "onDefend") {
       user._udyrMode = "turtle";
-      context.effects[user.id].push({ type: "damageReductionPercent", value: 15, turns: 1 });
+      context.effects[user.id].push({ type: "damageReductionPercent", value: 15, turns: 2 });
       return "🐢 1턴간 받는 피해 15% 감소!";
     }
     if (trigger === "onDodge") {
-      context.effects[user.id].push({ type: "dodgeChanceUp", value: 15, turns: 1 });
+      context.effects[user.id].push({ type: "dodgeChanceUp", value: 15, turns: 2 });
       return "🐾 1턴간 회피율 15% 증가!";
     }
   }
@@ -1822,7 +1822,7 @@ if (trigger === "onAttack") {
       // 현재 중첩 개수 파악 (atkUpPercent 버프만 필터)
       const currentStacks = (context.effects[user.id] || []).filter(e => e.type === "atkUpPercent").length;
       if (currentStacks < 15) {
-        context.effects[user.id].push({ type: "atkUpPercent", value: 10, turns: 2 });
+        context.effects[user.id].push({ type: "atkUpPercent", value: 10, turns: 4 });
         return "🗡️ 2턴간 공격력 10% 증가!(중첩)";
       } else {
         return "🗡️ 공격력 버프 최대 중첩 도달!";
@@ -1935,7 +1935,7 @@ if (trigger === "onAttack") {
         e => e.type === "dot" && e.damageRatio === 0.003
       );
       if (!hasDot) {
-        context.effects[enemy.id].push({ type: "dot", damageRatio: 0.003, turns: 2 });
+        context.effects[enemy.id].push({ type: "dot", damageRatio: 0.003, turns: 4 });
         return "🌿 2턴간 매턴 상대 최대 체력의 0.3% 덩굴 피해!";
       }
     }
@@ -1975,7 +1975,7 @@ if (trigger === "onAttack") {
       return "🌪️ 상대가 나에게 주는 피해 1턴간 25% 감소!";
     }
     if (trigger === "onDefend" && Math.random() < 0.5) {
-      context.effects[user.id].push({ type: "damageReductionPercent", value: 30, turns: 1 });
+      context.effects[user.id].push({ type: "damageReductionPercent", value: 30, turns: 2 });
       return "🌪️ 자신이 받는 피해 1턴간 30% 추가 감소!";
     }
   }
@@ -2057,12 +2057,12 @@ if (trigger === "onAttack") {
     if (trigger === "onAttack") {
       let msg = "";
       if (Math.random() < 0.20) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
-        context.effects[user.id].push({ type: "dodgeChanceUp", value: 10, turns: 2 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
+        context.effects[user.id].push({ type: "dodgeChanceUp", value: 10, turns: 4 });
         msg += "🌟 1턴 기절 + 2턴간 회피 10% 증가! ";
       }
       if (Math.random() < 0.10) {
-        context.effects[user.id].push({ type: "stunned", turns: 1 });
+        context.effects[user.id].push({ type: "stunned", turns: 2 });
         msg += "⚠️ 10% 확률로 본인 1턴 기절 (리스크)!";
       }
       return msg.trim() || undefined;
@@ -2078,10 +2078,10 @@ if (trigger === "onAttack") {
       // 중첩 불가: 이미 도트 효과 있으면 덮어쓰기 혹은 무시 처리
       const existingDotIndex = (context.effects[enemy.id] || []).findIndex(e => e.type === "dot");
       if (existingDotIndex !== -1) {
-        context.effects[enemy.id][existingDotIndex] = { type: "dot", damage: dot, turns: 2 };
+        context.effects[enemy.id][existingDotIndex] = { type: "dot", damage: dot, turns: 4 };
       } else {
         context.effects[enemy.id] = context.effects[enemy.id] || [];
-        context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 2 });
+        context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 4 });
       }
       return `💣 2턴간 매턴 ${dot} 도트 피해!`;
     }
@@ -2119,16 +2119,16 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     user._zileanImmuneCD = (user._zileanImmuneCD || 0) - 1;
     if (trigger === "onDefend" && user._zileanImmuneCD <= 0) {
-      context.effects[user.id].push({ type: "ignoreDebuff", turns: 1 });
+      context.effects[user.id].push({ type: "ignoreDebuff", turns: 2 });
       user._zileanImmuneCD = 3;
       return "⏳ 1턴간 상태이상 면역!";
     }
     if (trigger === "onDodge") {
-      context.effects[user.id].push({ type: "extraDamageImmune", turns: 1 });
+      context.effects[user.id].push({ type: "extraDamageImmune", turns: 2 });
       return "⏳ 1턴간 추가 피해 면역!";
     }
     if (trigger === "onAttack") {
-      context.effects[user.id].push({ type: "damageTakenUpPercent", value: 20, turns: 1 });
+      context.effects[user.id].push({ type: "damageTakenUpPercent", value: 20, turns: 2 });
       return "⚠️ 1턴간 받는 피해 20% 증가!";
     }
   }
@@ -2138,7 +2138,7 @@ if (trigger === "onAttack") {
   description: "공격 시 30% 확률로 다음 턴 피해 50% 증가",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.3) {
-      context.effects[user.id].push({ type: "damageBuff", value: 1.5, turns: 1 });
+      context.effects[user.id].push({ type: "damageBuff", value: 1.5, turns: 2 });
       return "🔫 다음 턴 피해 1.5배!";
     }
   }
@@ -2191,7 +2191,7 @@ if (trigger === "onAttack") {
 
     // 10턴까지 디버프 면역
     if (user._kassadinTurn <= 10 && trigger === "onTurnStart") {
-      context.effects[user.id].push({ type: "debuffImmune", turns: 1 });
+      context.effects[user.id].push({ type: "debuffImmune", turns: 2 });
       return "🛡️ 모든 디버프 면역!";
     }
 
@@ -2211,7 +2211,7 @@ if (trigger === "onAttack") {
       user._karthusRevived = true;
       user.hp = 1;
       user._karthusUndyingTurns = 4;
-      context.effects[user.id].push({ type: "undying", turns: 4 }); // 즉사기/처형 면역
+      context.effects[user.id].push({ type: "undying", turns: 8 }); // 즉사기/처형 면역
       return "💀 4턴간 체력 1로 생존! 처형/즉사기 면역!";
     }
     // 부활상태 유지 중일 때: 피해 50% 증가
@@ -2230,7 +2230,7 @@ if (trigger === "onAttack") {
     if (!user._cassioPopped) user._cassioPopped = 0;
     const chance = user._cassioBaseChance + user._cassioPopped * 0.005;
     if (trigger === "onAttack" && Math.random() < chance) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 4 });
       user._cassioPopped += 1;
       return `🐍 2턴간 기절! (현재 확률 ${(chance * 100).toFixed(1)}%)`;
     }
@@ -2249,7 +2249,7 @@ if (trigger === "onAttack") {
       if (!user._kaisaPenBuff) user._kaisaPenBuff = 0;
       user._kaisaPenBuff += 1;
       user.stats.penetration = Math.round(user.stats.penetration * (1 + 0.1 * user._kaisaPenBuff));
-      context.effects[user.id].push({ type: "penetrationBuffPercent", value: 10, turns: 2 });
+      context.effects[user.id].push({ type: "penetrationBuffPercent", value: 10, turns: 4 });
       return `👾 2턴간 관통력 10% 증가! (누적 +${user._kaisaPenBuff * 10}%)`;
     }
   }
@@ -2301,7 +2301,7 @@ if (trigger === "onAttack") {
   description: "공격 시 15% 확률로 1턴간 상대 기절",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       return "⚡ 1턴간 기절!";
     }
   }
@@ -2327,7 +2327,7 @@ if (trigger === "onAttack") {
     // 행동불능 부여 패시브
     let msg = "";
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[enemy.id].push({ type: "skipNextTurn", turns: 1 });
+      context.effects[enemy.id].push({ type: "skipNextTurn", turns: 2 });
       msg += "🌑 1턴 행동불능(턴 스킵)! ";
     }
     // 행동불능 누적 피해 증가
@@ -2356,7 +2356,7 @@ if (trigger === "onAttack") {
       user.hp / user.stats.hp <= 0.5 &&
       Math.random() < 0.5
     ) {
-      context.effects[user.id].push({ type: "invulnerable", turns: 1 });
+      context.effects[user.id].push({ type: "invulnerable", turns: 2 });
       return "👼 체력 50% 이하! 50% 확률로 1턴간 무적!";
     }
   }
@@ -2370,7 +2370,7 @@ if (trigger === "onAttack") {
       if (!enemy._kogmawDefDownStacks) enemy._kogmawDefDownStacks = 0;
       if (enemy._kogmawDefDownStacks < 5) {
         enemy._kogmawDefDownStacks += 1;
-        context.effects[enemy.id].push({ type: "defDownPercent", value: 10, turns: 2 });
+        context.effects[enemy.id].push({ type: "defDownPercent", value: 10, turns: 4 });
         return `🦷 2턴간 방어력 10% 감소! (누적: ${enemy._kogmawDefDownStacks * 10}%)`;
       }
     }
@@ -2391,7 +2391,7 @@ if (trigger === "onAttack") {
   description: "공격 시 10% 확률로 1턴간 상대는 공격·스킬 사용 불가(방어만 가능)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.10) {
-      context.effects[enemy.id].push({ type: "blockAttackAndSkill", turns: 1 });
+      context.effects[enemy.id].push({ type: "blockAttackAndSkill", turns: 2 });
       return "🦅 1턴간 상대 공격·스킬 불가(방어만 가능)!";
     }
   }
@@ -2521,7 +2521,7 @@ if (trigger === "onAttack") {
 
     if (trigger === "onAttack" && Math.random() < chance) {
       user._taliyaChanceBuff += 0.02;
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       user._taliyaStun = true;
       return "🌋 1턴간 기절!";
     }
@@ -2544,7 +2544,7 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onDefend" && context.damage > 0 && Math.random() < 0.3) {
       context.damage = 0;
-      context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+      context.effects[enemy.id].push({ type: "stunned", turns: 2 });
       return "🐸 피해 무효 + 상대 1턴 기절!";
     }
   }
@@ -2592,7 +2592,7 @@ if (trigger === "onAttack") {
         });
       }
       if (current < 25) {
-        context.effects[enemy.id].push({ type: "defDownPercent", value: 5, turns: 2 });
+        context.effects[enemy.id].push({ type: "defDownPercent", value: 5, turns: 4 });
         return "💥 2턴간 방어력 5% 감소(중첩)!";
       }
     }
@@ -2607,9 +2607,9 @@ if (trigger === "onAttack") {
       user._tryndUndying = true;
       user.hp = 1;
       user._tryndUndyingTurns = 4;
-      context.effects[user.id].push({ type: "undying", turns: 4 }); // 처형/즉사기 면역
-      context.effects[user.id].push({ type: "critChanceBuff", value: 100, turns: 4 });
-      context.effects[user.id].push({ type: "critDamageBuff", value: 150, turns: 4 }); // 치명타 피해 2배(=기존+100%)
+      context.effects[user.id].push({ type: "undying", turns: 8 }); // 처형/즉사기 면역
+      context.effects[user.id].push({ type: "critChanceBuff", value: 100, turns: 8 });
+      context.effects[user.id].push({ type: "critDamageBuff", value: 150, turns: 8 }); // 치명타 피해 2배(=기존+100%)
       return "🗡️ 4턴간 불사! 처형/즉사기 면역, 치명타 확률 100%+치명타 피해 2배!";
     }
     // 언데드 상태 관리(배틀엔진에서 4턴간 효과 유지, 턴 카운트 감소)
@@ -2641,7 +2641,7 @@ if (trigger === "onAttack") {
           // 옐로카드: 20~50% 확률로 1턴 기절, 실패 시 확률 증가
           if (Math.random() < user._tfYellowChance) {
             user._tfYellowChance = 0.20;
-            context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+            context.effects[enemy.id].push({ type: "stunned", turns: 2 });
             return "💛 옐로카드! 상대 1턴 기절!";
           } else {
             user._tfYellowChance = Math.min(user._tfYellowChance + 0.01, 0.50);
@@ -2658,7 +2658,7 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack") {
       const dot = Math.floor(enemy.stats.hp * 0.003); // 0.3%
-      context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 2 });
+      context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 4 });
       return `☠️ 2턴간 매턴 ${dot} 도트 피해! (중첩가능)`;
     }
   }
@@ -2669,7 +2669,7 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack") {
       const dot = Math.floor(enemy.stats.hp * 0.002); // 0.2%
-      context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 3 });
+      context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 6 });
       return `🍄 3턴간 매턴 ${dot} 도트 피해! (중첩가능)`;
     }
   }
@@ -2683,7 +2683,7 @@ if (trigger === "onAttack") {
         enemy.hp = 0;
         return "☠️ 처형! 상대 체력 10% 이하 즉사!";
       } else if (Math.random() < 0.15) {
-        context.effects[enemy.id].push({ type: "defDownPercent", value: 50, turns: 2 });
+        context.effects[enemy.id].push({ type: "defDownPercent", value: 50, turns: 4 });
         return "☠️ 2턴간 상대 방어력 50% 감소!";
       }
     }
@@ -2695,10 +2695,10 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onDefend") {
       if (Math.random() < 0.20) {
-        context.effects[enemy.id].push({ type: "stunned", turns: 1 });
+        context.effects[enemy.id].push({ type: "stunned", turns: 2 });
         return "🛡️ 20% 확률! 상대 1턴간 기절!";
       } else {
-        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 50, turns: 1 });
+        context.effects[user.id].push({ type: "damageTakenUpPercent", value: 50, turns: 2 });
         return "🛡️ 실패! 1턴간 받는 피해 50% 증가!";
       }
     }
@@ -2716,8 +2716,8 @@ if (trigger === "onAttack") {
     // 공격/스킬 안 썼으면 true
     if (trigger === "onTurnStart") {
       if (user._fiddleNoAction && Math.random() < 0.5) {
-        context.effects[enemy.id].push({ type: "skipNextTurn", turns: 1 });
-        context.effects[enemy.id].push({ type: "damageTakenUpPercent", value: 15, turns: 1 });
+        context.effects[enemy.id].push({ type: "skipNextTurn", turns: 2 });
+        context.effects[enemy.id].push({ type: "damageTakenUpPercent", value: 15, turns: 2 });
         return "👻 상대 1턴 행동불능 + 받는 피해 15% 증가!";
       }
       user._fiddleNoAction = true;
@@ -2729,7 +2729,7 @@ if (trigger === "onAttack") {
   description: "공격 시 15% 확률로 2턴간 자신의 피해량 15% 증가 (중첩)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[user.id].push({ type: "damageUpPercent", value: 15, turns: 2 });
+      context.effects[user.id].push({ type: "damageUpPercent", value: 15, turns: 4 });
       return "⚔️ 2턴간 피해량 15% 증가!";
     }
   }
@@ -2743,7 +2743,7 @@ if (trigger === "onAttack") {
 
     if (trigger === "onDodge") { // 점멸(회피) 시에만
       if (Math.random() < user._fizzInvulnChance) {
-        context.effects[user.id].push({ type: "invulnerable", turns: 1 });
+        context.effects[user.id].push({ type: "invulnerable", turns: 2 });
         user._fizzInvulnChance = Math.max(0, user._fizzInvulnChance - 0.02);
         return `🐟 1턴간 무적! (확률 ${(user._fizzInvulnChance*100).toFixed(1)}%)`;
       } else {
@@ -2761,7 +2761,7 @@ if (trigger === "onAttack") {
       if (!enemy._heimerDotCount) enemy._heimerDotCount = 0;
       if (enemy._heimerDotCount < 3) {
         const dot = Math.floor(enemy.stats.hp * 0.005);
-        context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 2 });
+        context.effects[enemy.id].push({ type: "dot", damage: dot, turns: 4 });
         enemy._heimerDotCount += 1;
         return `🛠️ 2턴간 매턴 ${dot} 포탑 피해! (중첩 ${enemy._heimerDotCount}/3)`;
       }
@@ -2774,7 +2774,7 @@ if (trigger === "onAttack") {
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.20 && !user._hecarimExtraTurn) {
       user._hecarimExtraTurn = true;
-      context.effects[user.id].push({ type: "extraTurn", turns: 1 });
+      context.effects[user.id].push({ type: "extraTurn", turns: 2 });
       return "🐎 20% 확률로 추가 턴!";
     }
     // 추가턴 사용 후 초기화 (배틀엔진에서 턴종료 시 관리)
@@ -2785,7 +2785,7 @@ if (trigger === "onAttack") {
   description: "공격 시 20% 확률로 2턴간 상대 혼란 (행동 실패 확률 20%)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.2) {
-      context.effects[enemy.id].push({ type: "confused", value: 20, turns: 2 });
+      context.effects[enemy.id].push({ type: "confused", value: 20, turns: 4 });
       return "🌫️ 2턴간 혼란(행동실패 확률 20%)!";
     }
   }
@@ -2795,7 +2795,7 @@ if (trigger === "onAttack") {
   description: "공격 시 20% 확률로 2턴간 자신의 피해량 10% 증가 (중첩)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.20) {
-      context.effects[user.id].push({ type: "damageUpPercent", value: 10, turns: 2 });
+      context.effects[user.id].push({ type: "damageUpPercent", value: 10, turns: 4 });
       return "⚔️ 2턴간 피해량 10% 증가!";
     }
   }
@@ -2805,7 +2805,7 @@ if (trigger === "onAttack") {
   description: "방어 시 20% 확률로 2턴간 받는 피해 40% 감소",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onDefend" && Math.random() < 0.20) {
-      context.effects[user.id].push({ type: "damageReductionPercent", value: 40, turns: 2 });
+      context.effects[user.id].push({ type: "damageReductionPercent", value: 40, turns: 4 });
       return "🛡️ 2턴간 받는 피해 40% 감소!";
     }
   }
@@ -2828,7 +2828,7 @@ if (trigger === "onAttack") {
     if (trigger === "onAttack" && Math.random() < 0.2) {
       enemy._gragasDefDown = (enemy._gragasDefDown || 0) + 1;
       if (enemy._gragasDefDown > 5) enemy._gragasDefDown = 5;
-      context.effects[enemy.id].push({ type: "defDownPercent", value: 10, turns: 2 });
+      context.effects[enemy.id].push({ type: "defDownPercent", value: 10, turns: 4 });
       return `🥃 2턴간 방어력 10% 감소! (중첩 ${enemy._gragasDefDown}/5)`;
     }
   }
@@ -2838,7 +2838,7 @@ if (trigger === "onAttack") {
   description: "공격 시 15% 확률로 상대 1턴간 실명(피해 100% 회피)",
   passive: (user, enemy, context, trigger) => {   context.effects[enemy.id] = context.effects[enemy.id] || [];   context.effects[user.id] = context.effects[user.id] || [];
     if (trigger === "onAttack" && Math.random() < 0.15) {
-      context.effects[enemy.id].push({ type: "blinded", turns: 1 });
+      context.effects[enemy.id].push({ type: "blinded", turns: 2 });
       return "💨 1턴간 실명(공격 완전 회피)!";
     }
   }
