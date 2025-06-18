@@ -10,6 +10,8 @@ const dataPath = path.join(__dirname, "../data/champion-users.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const SOUL_ROLE_ID = "1382169247538745404";
 
+const GREAT_SUCCESS_RATE = 0.05; // 대성공 확률 (5%)
+
 async function loadJSON(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
   return JSON.parse(fs.readFileSync(p, "utf8"));
@@ -273,19 +275,34 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
     const { gain: gainNow, mainStat: mainNow } = calcStatGain(champNow.level, champNow.stats.attack, champNow.stats.ap);
 
     const success = Math.random() < rateNow;
+    let greatSuccess = false;
+    let greatGainNum = 1;
 
     // 강화 이력에 기록
     await updateEnhanceHistory(userId, { success, fail: !success });
 
     if (success) {
-      champNow.level += 1;
+      // 대성공 확률 체크
+      if (Math.random() < GREAT_SUCCESS_RATE) {
+        greatSuccess = true;
+        greatGainNum = Math.floor(Math.random() * 4) + 2; // 2~5강 랜덤
+      }
+
+      let beforeLevel = champNow.level;
+      let oldStats = { ...champNow.stats };
+      champNow.level += greatGainNum;
+      if (champNow.level > 999) champNow.level = 999;
       champNow.success += 1;
-      const oldStats = { ...champNow.stats };
-      champNow.stats.attack += gainNow.attack;
-      champNow.stats.ap += gainNow.ap;
-      champNow.stats.hp += gainNow.hp;
-      champNow.stats.defense += gainNow.defense;
-      champNow.stats.penetration += gainNow.penetration;
+
+      // 여러 번 gain 누적
+      for (let i = 0; i < greatGainNum; i++) {
+        const { gain } = calcStatGain(beforeLevel + i, champNow.stats.attack, champNow.stats.ap);
+        champNow.stats.attack += gain.attack;
+        champNow.stats.ap += gain.ap;
+        champNow.stats.hp += gain.hp;
+        champNow.stats.defense += gain.defense;
+        champNow.stats.penetration += gain.penetration;
+      }
 
       await saveJSON(dataPath, dataNow);
 
@@ -302,15 +319,23 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
         `${stat.emoji} **${stat.label}**\n${oldStats[stat.key]} → **${champNow.stats[stat.key]}** _( +${champNow.stats[stat.key] - oldStats[stat.key]} )_\n`
       ).join("\n");
 
-      const resultEmbed = new EmbedBuilder()
-        .setTitle(`🎉 ${champNow.name} ${champNow.level}강 성공!`)
-        .setDescription(`**[강화 결과]**\n${diffStatDesc}\n`)
-        .setColor(mainNow === "attack" ? 0xff9800 : 0x673ab7);
-
       const champKeyNow = getChampionKeyByName(champNow.name);
       const champImgNow = champKeyNow
         ? `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKeyNow}.png`
         : null;
+
+      let title = greatSuccess
+        ? `🎊 강화 대성공!! ${champNow.name} +${greatGainNum}강!!`
+        : `🎉 ${champNow.name} ${champNow.level}강 성공!`;
+      let desc = greatSuccess
+        ? `**[강화 대성공]**\n무려 **+${greatGainNum}강**이 한 번에 강화되었습니다!\n\n${diffStatDesc}`
+        : `**[강화 결과]**\n${diffStatDesc}`;
+
+      const resultEmbed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(desc)
+        .setColor(mainNow === "attack" ? 0xff9800 : 0x673ab7);
+
       if (champImgNow) resultEmbed.setThumbnail(champImgNow);
 
       const nextRow = new ActionRowBuilder().addComponents(
