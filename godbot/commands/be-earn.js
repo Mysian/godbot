@@ -107,7 +107,7 @@ module.exports = {
 
       // 고액 이펙트
       let effectMsg = "";
-      if (reward >= 1500) effectMsg = `\n\n🎉 **대박! 고액 출석 보상 (${reward} BE)** 🎉\n✨✨✨✨✨`;
+      if (reward >= 1500) effectMsg = `\n\n🎉 **대박! 고액 출석 보상  (${reward} BE 🔷)** 🎉\n✨✨✨✨✨`;
       await interaction.reply({
         embeds: [new EmbedBuilder()
           .setTitle("📅 출석 완료!")
@@ -121,17 +121,17 @@ module.exports = {
             // 1. 알바 (색찾기 5연속 미니게임)
     if (kind === 'alba') {
   try {
-    let round = 1;
     const MAX_ROUND = 5;
     const TIME_LIMIT = 60 * 1000; // 60초
-
     const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
     const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
+    const BE_EMOJI = '🔷';
 
-    function makeRow() {
+    // 버튼 9개 중 하나만 색 다름(그 위치엔 이모지 포함)
+    function makeBoard() {
       const base = colorList[Math.floor(Math.random() * colorList.length)];
-      let arr = Array(6).fill(base);
-      let diffIdx = Math.floor(Math.random() * 6);
+      let arr = Array(9).fill(base);
+      let diffIdx = Math.floor(Math.random() * 9);
       let diff;
       do {
         diff = colorList[Math.floor(Math.random() * colorList.length)];
@@ -140,26 +140,39 @@ module.exports = {
       return { arr, answer: diffIdx, base, diff };
     }
 
+    let round = 1;
     let state = { round: 1, correct: 0 };
-    let { arr, answer, base, diff } = makeRow();
+    let { arr, answer, base, diff } = makeBoard();
+
+    function buttonRows(arr, answerIdx) {
+      // 9개 → 3개씩 3줄
+      const rows = [];
+      for (let r = 0; r < 3; r++) {
+        rows.push(
+          new ActionRowBuilder().addComponents(
+            ...arr.slice(r * 3, r * 3 + 3).map((c, idx) => {
+              const realIdx = r * 3 + idx;
+              const isAnswer = realIdx === answerIdx;
+              return new ButtonBuilder()
+                .setCustomId(`alba_${state.round}_${realIdx}_${c}_${isAnswer ? 1 : 0}`)
+                .setStyle(ButtonStyle[c])
+                .setLabel(isAnswer ? `${BE_EMOJI}` : `${realIdx + 1}`);
+            })
+          )
+        );
+      }
+      return rows;
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("💼 알바 미니게임 1/5")
-      .setDescription(`아래 6개 버튼 중에서, **색이 다른 버튼**을 클릭해!\n\n시간 제한: 60초`)
+      .setDescription(
+        `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n` +
+        `시간 제한: 60초`
+      )
       .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
 
-    let rows = [
-      new ActionRowBuilder().addComponents(
-        ...arr.map((c, idx) =>
-          new ButtonBuilder()
-            .setCustomId(`alba_${state.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
-            .setStyle(ButtonStyle[c])
-            .setLabel(`${idx + 1}`)
-        )
-      )
-    ];
-
-    await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: buttonRows(arr, answer), ephemeral: true });
 
     const filter = i => i.user.id === interaction.user.id;
     const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
@@ -181,32 +194,24 @@ module.exports = {
               ],
               components: [],
               ephemeral: true
-            }).catch(e => console.error(e));
+            }).catch(() => {});
             collector.stop('done');
           } else {
             state.round++;
-            let { arr, answer, base, diff } = makeRow();
-            let rows = [
-              new ActionRowBuilder().addComponents(
-                ...arr.map((c, idx) =>
-                  new ButtonBuilder()
-                    .setCustomId(`alba_${state.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
-                    .setStyle(ButtonStyle[c])
-                    .setLabel(`${idx + 1}`)
-                )
-              )
-            ];
+            let { arr, answer, base, diff } = makeBoard();
             await interaction.editReply({
               embeds: [
                 new EmbedBuilder()
                   .setTitle(`💼 알바 미니게임 ${state.round}/5`)
-                  .setDescription(`색이 다른 버튼을 클릭해!\n\n시간 제한: 60초`)
+                  .setDescription(
+                    `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n시간 제한: 60초`
+                  )
                   .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
                   )
               ],
-              components: rows,
+              components: buttonRows(arr, answer),
               ephemeral: true
-            }).catch(e => console.error(e));
+            }).catch(() => {});
           }
         } else {
           await interaction.editReply({
@@ -217,7 +222,7 @@ module.exports = {
             ],
             components: [],
             ephemeral: true
-          }).catch(e => console.error(e));
+          }).catch(() => {});
           collector.stop('fail');
         }
       } catch (e) {
@@ -241,7 +246,7 @@ module.exports = {
           ],
           components: [],
           ephemeral: true
-        }).catch(e => {});
+        }).catch(() => {});
       }
     });
     return;
@@ -254,8 +259,6 @@ module.exports = {
     return;
   }
 }
-
-
 
 
     // 2. 도박
@@ -271,7 +274,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle("🎰 도박 미니게임")
-        .setDescription(`베팅할 금액을 선택하세요!\n(최대 소지금: ${myBe} BE)`);
+        .setDescription(`베팅할 금액을 선택하세요!\n(당신의 정수🔷: ${myBe} BE)`);
 
       const row1 = new ActionRowBuilder().addComponents(
         coins.map(a => new ButtonBuilder()
@@ -299,7 +302,7 @@ module.exports = {
         if (!i.customId.startsWith('gamble_bet_')) return;
         const bet = parseInt(i.customId.split('_')[2]);
         if (getUserBe(userId) < bet) {
-          await i.reply({ content: "베팅금이 부족해!", ephemeral: true });
+          await i.reply({ content: "정수가 부족해!", ephemeral: true });
           unlock(userId);
           collector.stop();
           return;
@@ -320,7 +323,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setTitle(`🎰 도박 ${stage+1}단계 / 최대 5단계`)
             .setDescription(
-              `현재 금액: **${total} BE**\n` +
+              `현재 금액🔷: **${total} BE**\n` +
               `GO! → ${Math.round(total*minRate)}~${Math.round(total*maxRate)} BE (성공시)\n` +
               `실패확률: ${(GO_FAIL_RATE[stage]*100).toFixed(0)}%`
             )
@@ -386,7 +389,7 @@ module.exports = {
             await i2.update({
               embeds: [new EmbedBuilder()
                 .setTitle("🏆 도박 5단계 대성공!")
-                .setDescription(`최종 금액: **${currentTotal} BE**\n최고단계까지 성공!!`)
+                .setDescription(`최종 금액🔷: **${currentTotal} BE**\n최고단계까지 성공!!`)
               ],
               components: [],
               ephemeral: true
