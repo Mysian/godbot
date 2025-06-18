@@ -405,7 +405,10 @@ if (action.startsWith('useitem_')) {
       msg = `해당 아이템 효과를 찾을 수 없습니다.`;
     } else {
       try {
+        // 1. 효과 부여
         let log = ITEMS[itemName].effect(user, context);
+
+        // 2. 즉시 효과 1회 적용!
         const effectLogs = require('./context').applyEffects(user, enemy, context);
         if (effectLogs && effectLogs.length > 0) {
           log += "\n" + effectLogs.join('\n');
@@ -420,12 +423,11 @@ if (action.startsWith('useitem_')) {
       }
     }
 
-    // 버튼 제거 1회
+    // 버튼 제거
     if (!interaction.replied && !interaction.deferred) {
       await interaction.update({ components: [] });
     }
-
-    // 본인 안내 1회
+    // 본인 안내
     await interaction.followUp({ content: msg, ephemeral: true });
     replied = true; return;
   } catch (e) {
@@ -452,11 +454,11 @@ if (action.startsWith('useskill_')) {
     const useSkill = require('./skill');
     const skillLogs = useSkill(user, enemy, skillName, context, battle);
 
-    // 🔥 복합 효과 지원: "나", "상대" 둘 다 효과 적용
+    // 🔥 복합 효과 지원: "나", "상대" 모두 즉시 효과 적용
     const userEffectLogs = require('./context').applyEffects(user, enemy, context);
     const enemyEffectLogs = require('./context').applyEffects(enemy, user, context);
 
-    // 로그/메시지 합치기
+    // 메시지 만들기
     let msg = `스킬 **${skillName}** 사용!\n${Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs}`;
     if (userEffectLogs && userEffectLogs.length > 0) {
       msg += '\n' + userEffectLogs.join('\n');
@@ -465,7 +467,7 @@ if (action.startsWith('useskill_')) {
       msg += '\n' + enemyEffectLogs.join('\n');
     }
 
-    // battle.logs에 모든 로그 합치기
+    // battle.logs에 모든 로그 반영
     battle.logs = (battle.logs || []).concat(skillLogs, userEffectLogs, enemyEffectLogs).slice(-LOG_LIMIT);
 
     if (!interaction.replied && !interaction.deferred) {
@@ -482,6 +484,7 @@ if (action.startsWith('useskill_')) {
     replied = true; return;
   }
 }
+
 
 
 
