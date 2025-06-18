@@ -300,6 +300,8 @@ async function handleBattleButton(interaction) {
                  (!battle.isUserTurn && battle.enemy.id === userId);
 const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
 
+const action = interaction.customId;
+
 // 버튼별 예외 분기
 const canUseAction = action => ['item', 'skill', 'pass', 'useskill_', 'useitem_'].some(k => action.startsWith(k));
 
@@ -321,8 +323,7 @@ if (currentPlayer.stunned && !canUseAction(action)) {
 
     const user = battle.isUserTurn ? battle.user : battle.enemy;
     const enemy = battle.isUserTurn ? battle.enemy : battle.user;
-
-    const action = interaction.customId;
+    
     let logs = [];
     let context = {
       lastAction: action,
