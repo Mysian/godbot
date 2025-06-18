@@ -436,16 +436,21 @@ if (action.startsWith('useskill_')) {
     const useSkill = require('./skill');
     const skillLogs = useSkill(user, enemy, skillName, context, battle);
 
-    // ★★★ [핵심] applyEffects 즉시 실행! ★★★
-    const effectLogs = require('./context').applyEffects(user, enemy, context);
-    let msg;
-    if (effectLogs && effectLogs.length > 0) {
-      msg = `스킬 **${skillName}** 사용!\n${(Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs) }\n` + effectLogs.join('\n');
-    } else {
-      msg = `스킬 **${skillName}** 사용!\n${Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs}`;
+    // 🔥 복합 효과 지원: "나", "상대" 둘 다 효과 적용
+    const userEffectLogs = require('./context').applyEffects(user, enemy, context);
+    const enemyEffectLogs = require('./context').applyEffects(enemy, user, context);
+
+    // 로그/메시지 합치기
+    let msg = `스킬 **${skillName}** 사용!\n${Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs}`;
+    if (userEffectLogs && userEffectLogs.length > 0) {
+      msg += '\n' + userEffectLogs.join('\n');
+    }
+    if (enemyEffectLogs && enemyEffectLogs.length > 0) {
+      msg += '\n' + enemyEffectLogs.join('\n');
     }
 
-    battle.logs = (battle.logs || []).concat(skillLogs, effectLogs).slice(-LOG_LIMIT);
+    // battle.logs에 모든 로그 합치기
+    battle.logs = (battle.logs || []).concat(skillLogs, userEffectLogs, enemyEffectLogs).slice(-LOG_LIMIT);
 
     if (!interaction.replied && !interaction.deferred) {
       await interaction.update({ components: [] });
@@ -461,6 +466,7 @@ if (action.startsWith('useskill_')) {
     replied = true; return;
   }
 }
+
 
 
 
