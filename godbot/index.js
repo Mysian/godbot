@@ -204,6 +204,13 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
+if (interaction.isStringSelectMenu() && interaction.commandName === '챔피언배틀종료') {
+  const cmd = require('./commands/champ-battle-end');
+  await cmd.handleSelect(interaction);
+}
+
+
+
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
@@ -235,6 +242,7 @@ client.on("messageCreate", async (message) => {
       });
     }, 20000);
   };
+
 
   if (message.content === "!장전") {
     if (!isTurn) return message.reply("❌ 지금은 당신 차례가 아닙니다!");
