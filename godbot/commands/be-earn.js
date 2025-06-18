@@ -118,7 +118,7 @@ module.exports = {
       return;
     }
 
-    // 1. 알바 (색찾기 5연속 미니게임)
+        // 1. 알바 (색찾기 5연속 미니게임)
     if (kind === 'alba') {
       let round = 1;
       let correct = 0;
@@ -129,7 +129,6 @@ module.exports = {
       const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
 
       function makeRow() {
-        // 5개는 같은 색, 1개만 랜덤 다른색
         const base = colorList[Math.floor(Math.random() * colorList.length)];
         let arr = Array(6).fill(base);
         let diffIdx = Math.floor(Math.random() * 6);
@@ -141,7 +140,9 @@ module.exports = {
         return { arr, answer: diffIdx, base, diff };
       }
 
-      const { arr, answer, base, diff } = makeRow();
+      // 1라운드 시작
+      let state = { round: 1, correct: 0 };
+      let { arr, answer, base, diff } = makeRow();
 
       const embed = new EmbedBuilder()
         .setTitle("💼 알바 미니게임 1/5")
@@ -152,7 +153,7 @@ module.exports = {
         new ActionRowBuilder().addComponents(
           ...arr.map((c, idx) =>
             new ButtonBuilder()
-              .setCustomId(`alba_${round}_${idx}_${c}_${c === diff ? 1 : 0}`)
+              .setCustomId(`alba_${state.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
               .setStyle(ButtonStyle[c])
               .setLabel(`${idx + 1}`)
           )
@@ -164,16 +165,15 @@ module.exports = {
       const filter = i => i.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
 
-      let stage = { round: 1, correct: 0 };
-
       collector.on('collect', async i => {
+        await i.deferUpdate(); // 무조건 deferUpdate (상호작용 잔여시간 보존)
         const [_, r, idx, c, isAnswer] = i.customId.split('_');
-        if (parseInt(r) !== stage.round) return; // old 버튼 무시
+        if (parseInt(r) !== state.round) return;
         if (parseInt(isAnswer) === 1) {
-          stage.correct++;
-          if (stage.round === MAX_ROUND) {
+          state.correct++;
+          if (state.round === MAX_ROUND) {
             setUserBe(userId, 300, "알바(미니게임) 성공");
-            await i.update({
+            await interaction.editReply({
               embeds: [
                 new EmbedBuilder()
                   .setTitle("💼 알바 성공!")
@@ -182,26 +182,26 @@ module.exports = {
               components: [],
               ephemeral: true
             });
-            collector.stop();
+            collector.stop('done');
           } else {
-            stage.round++;
-            const { arr, answer, base, diff } = makeRow();
+            state.round++;
+            let { arr, answer, base, diff } = makeRow();
             let rows = [
               new ActionRowBuilder().addComponents(
                 ...arr.map((c, idx) =>
                   new ButtonBuilder()
-                    .setCustomId(`alba_${stage.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
+                    .setCustomId(`alba_${state.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
                     .setStyle(ButtonStyle[c])
                     .setLabel(`${idx + 1}`)
                 )
               )
             ];
-            await i.update({
+            await interaction.editReply({
               embeds: [
                 new EmbedBuilder()
-                  .setTitle(`💼 알바 미니게임 ${stage.round}/5`)
+                  .setTitle(`💼 알바 미니게임 ${state.round}/5`)
                   .setDescription(`색이 다른 버튼을 클릭해!\n\n시간 제한: 60초`)
-                  .setFooter({ text: `${stage.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
+                  .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
                   )
               ],
               components: rows,
@@ -209,7 +209,7 @@ module.exports = {
             });
           }
         } else {
-          await i.update({
+          await interaction.editReply({
             embeds: [
               new EmbedBuilder()
                 .setTitle("💤 알바 실패!")
@@ -218,11 +218,11 @@ module.exports = {
             components: [],
             ephemeral: true
           });
-          collector.stop();
+          collector.stop('fail');
         }
       });
       collector.on('end', async (_, reason) => {
-        if (reason !== 'user') {
+        if (reason !== 'done' && reason !== 'fail') {
           await interaction.editReply({
             embeds: [
               new EmbedBuilder()
@@ -236,6 +236,7 @@ module.exports = {
       });
       return;
     }
+
 
     // 2. 도박
     if (kind === 'gamble') {
