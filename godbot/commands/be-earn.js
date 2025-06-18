@@ -53,7 +53,7 @@ function unlock(userId) {
 }
 
 // 도박 단계별 실패확률
-const GO_FAIL_RATE = [0.15, 0.25, 0.40, 0.55, 0.75];
+const GO_FAIL_RATE = [0.50, 0.55, 0.60, 0.70, 0.80];
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -122,7 +122,7 @@ module.exports = {
     if (kind === 'alba') {
   try {
     const MAX_ROUND = 5;
-    const TIME_LIMIT = 60 * 1000; // 60초
+    const TIME_LIMIT = 30 * 1000; // 30초
     const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
     const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
     const BE_EMOJI = '🔷';
@@ -168,7 +168,7 @@ module.exports = {
       .setTitle("💼 알바 미니게임 1/5")
       .setDescription(
         `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n` +
-        `시간 제한: 60초`
+        `시간 제한: 30초`
       )
       .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
 
@@ -204,7 +204,7 @@ module.exports = {
                 new EmbedBuilder()
                   .setTitle(`💼 알바 미니게임 ${state.round}/5`)
                   .setDescription(
-                    `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n시간 제한: 60초`
+                    `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n시간 제한: 30초`
                   )
                   .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
                   )
@@ -242,7 +242,7 @@ module.exports = {
           embeds: [
             new EmbedBuilder()
               .setTitle("⏰ 알바 시간초과!")
-              .setDescription("60초 내에 5라운드를 모두 성공하지 못했어! **0 BE**")
+              .setDescription("30초 내에 5라운드를 모두 성공하지 못했어! **0 BE**")
           ],
           components: [],
           ephemeral: true
