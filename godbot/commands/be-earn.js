@@ -107,7 +107,7 @@ module.exports = {
 
       // 고액 이펙트
       let effectMsg = "";
-      if (reward >= 1500) effectMsg = `\n\n🎉 **대박! 고액 출석 보상 (${reward} BE)** 🎉\n✨✨✨✨✨`;
+      if (reward >= 1500) effectMsg = `\n\n🎉 **대박! 고액 출석 보상  (${reward} BE 🔷)** 🎉\n✨✨✨✨✨`;
       await interaction.reply({
         embeds: [new EmbedBuilder()
           .setTitle("📅 출석 완료!")
@@ -274,7 +274,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setTitle("🎰 도박 미니게임")
-        .setDescription(`베팅할 금액을 선택하세요!\n(최대 소지금: ${myBe} BE)`);
+        .setDescription(`베팅할 금액을 선택하세요!\n(당신의 정수🔷: ${myBe} BE)`);
 
       const row1 = new ActionRowBuilder().addComponents(
         coins.map(a => new ButtonBuilder()
@@ -302,7 +302,7 @@ module.exports = {
         if (!i.customId.startsWith('gamble_bet_')) return;
         const bet = parseInt(i.customId.split('_')[2]);
         if (getUserBe(userId) < bet) {
-          await i.reply({ content: "베팅금이 부족해!", ephemeral: true });
+          await i.reply({ content: "정수가 부족해!", ephemeral: true });
           unlock(userId);
           collector.stop();
           return;
@@ -323,7 +323,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setTitle(`🎰 도박 ${stage+1}단계 / 최대 5단계`)
             .setDescription(
-              `현재 금액: **${total} BE**\n` +
+              `현재 금액🔷: **${total} BE**\n` +
               `GO! → ${Math.round(total*minRate)}~${Math.round(total*maxRate)} BE (성공시)\n` +
               `실패확률: ${(GO_FAIL_RATE[stage]*100).toFixed(0)}%`
             )
@@ -389,7 +389,7 @@ module.exports = {
             await i2.update({
               embeds: [new EmbedBuilder()
                 .setTitle("🏆 도박 5단계 대성공!")
-                .setDescription(`최종 금액: **${currentTotal} BE**\n최고단계까지 성공!!`)
+                .setDescription(`최종 금액🔷: **${currentTotal} BE**\n최고단계까지 성공!!`)
               ],
               components: [],
               ephemeral: true
