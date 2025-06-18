@@ -498,6 +498,9 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
     const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
     let newLogs = [];
 
+// ★ 매턴, 행동 전 효과 적용!
+    newLogs.push(...battleEngine.applyEffects(user, enemy, context));
+    
 // ====== 혼란(행동실패 확률) 체크 ======
     if (user._confused && Math.random() < (user._confused / 100)) {
       newLogs.push("🌫️ 혼란에 빠져 행동에 실패했습니다!");
