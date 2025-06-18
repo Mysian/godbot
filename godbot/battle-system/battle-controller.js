@@ -434,29 +434,27 @@ if (action.startsWith('useskill_')) {
       await interaction.followUp({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
       replied = true; return;
     }
-    const skills = fs.existsSync(skillsPath) ? JSON.parse(fs.readFileSync(skillsPath, 'utf8')) : {};
-    user.skills = Object.keys(skills[user.id] || {});
-    let log;
-    try {
-      log = ACTIVE_SKILLS[skillName].effect(user, enemy, context, battle);
-    } catch (e) {
-      console.error('[스킬 효과 실행 에러]', e);
-      await interaction.update({ components: [] });
-      await interaction.followUp({ content: '❌ 스킬 효과 실행 중 오류!', ephemeral: true });
-      replied = true; return;
-    }
-    battle.logs = (battle.logs || []).concat([log]).slice(-LOG_LIMIT);
+
+    // [수정: 스킬 효과를 skill.js로 실행(반드시 상태/로그 관리 통일)]
+    const useSkill = require('./skill'); // battle-system/skill.js 경로
+    // useSkill의 반환값이 로그 배열이면 아래처럼 처리!
+    const skillLogs = useSkill(user, enemy, skillName, context, battle);
+
+    // battle.logs에 로그 반영
+    battle.logs = (battle.logs || []).concat(skillLogs).slice(-LOG_LIMIT);
 
     // 전투창 갱신 없이 버튼만 제거
     await interaction.update({ components: [] });
+
     // 본인에게만 안내(텍스트)
-    await interaction.followUp({ content: `스킬 **${skillName}** 사용!\n${log}`, ephemeral: true });
+    await interaction.followUp({ content: `스킬 **${skillName}** 사용!\n${Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs}`, ephemeral: true });
+
     replied = true; return;
   } catch (e) {
     console.error('❌ [디버그] 스킬 사용 처리 에러:', e);
     if (!replied) {
       await interaction.update({ components: [] });
-      await interaction.followUp({ content: '❌ 스킬 효과 실행 중 알 수 없는 오류 발생!', ephemeral: true });
+      await interaction.followUp({ content: '❌ 스킬 사용 중 알 수 없는 오류 발생!', ephemeral: true });
     }
     replied = true; return;
   }
