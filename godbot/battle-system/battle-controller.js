@@ -427,20 +427,25 @@ if (action.startsWith('useskill_')) {
   try {
     const ACTIVE_SKILLS = require('../utils/active-skills.js');
     const skillName = action.replace('useskill_', '');
-    let msg = "";
     if (!ACTIVE_SKILLS[skillName] || typeof ACTIVE_SKILLS[skillName].effect !== 'function') {
-      msg = `해당 스킬 효과를 찾을 수 없습니다.`;
-    } else {
-      try {
-        const useSkill = require('./skill');
-        const skillLogs = useSkill(user, enemy, skillName, context, battle);
-        battle.logs = (battle.logs || []).concat(skillLogs).slice(-LOG_LIMIT);
-        msg = `스킬 **${skillName}** 사용!\n${Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs}`;
-      } catch (e) {
-        console.error('❌ [스킬 효과 실행 에러]', e);
-        msg = '❌ 스킬 효과 실행 중 오류!';
-      }
+      await interaction.update({ components: [] });
+      await interaction.followUp({ content: `해당 스킬 효과를 찾을 수 없습니다.`, ephemeral: true });
+      replied = true; return;
     }
+
+    const useSkill = require('./skill');
+    const skillLogs = useSkill(user, enemy, skillName, context, battle);
+
+    // ★★★ [핵심] applyEffects 즉시 실행! ★★★
+    const effectLogs = require('./context').applyEffects(user, enemy, context);
+    let msg;
+    if (effectLogs && effectLogs.length > 0) {
+      msg = `스킬 **${skillName}** 사용!\n${(Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs) }\n` + effectLogs.join('\n');
+    } else {
+      msg = `스킬 **${skillName}** 사용!\n${Array.isArray(skillLogs) ? skillLogs.join('\n') : skillLogs}`;
+    }
+
+    battle.logs = (battle.logs || []).concat(skillLogs, effectLogs).slice(-LOG_LIMIT);
 
     if (!interaction.replied && !interaction.deferred) {
       await interaction.update({ components: [] });
@@ -456,6 +461,7 @@ if (action.startsWith('useskill_')) {
     replied = true; return;
   }
 }
+
 
 
 
