@@ -27,11 +27,13 @@ module.exports = {
         }
       }
       // 회피(점멸) 효과
-else if (effect.type === "dodgeNext" && effect.turns > 0) {
-  user.dodgeNext = true;
-  effect.turns--;
-  logs.push("⚡ 점멸! 상대 공격을 완전히 회피합니다!");
-  if (effect.turns === 0) logs.push("⚡ 점멸 효과 종료!");
+else if (effect.type === "dodgeNext") {
+  if (user._applyEffectPhase !== "itemUse") {
+    user.dodgeNext = true;
+    logs.push("⚡ 점멸! 상대 공격을 완전히 회피합니다!");
+    effect.turns--;
+    if (effect.turns === 0) logs.push("⚡ 점멸 효과 종료!");
+  }
 }
       // 매턴 HP 5% 회복 등(healOverTime)
       else if (effect.type === "healOverTime" && effect.turns > 0) {
