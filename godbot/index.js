@@ -155,7 +155,7 @@ client.on(Events.InteractionCreate, async interaction => {
     interaction.customId.startsWith('accept_battle_') ||
     interaction.customId.startsWith('decline_battle_') ||
     [
-      'attack', 'defend', 'dodge', 'item', 'skill', 'escape'
+      'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
     ].includes(interaction.customId) ||
     interaction.customId.startsWith('useitem_') ||
     interaction.customId.startsWith('useskill_')
