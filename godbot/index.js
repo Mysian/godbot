@@ -124,32 +124,6 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// 챔피언 획득
-const champGetCommand = require('./commands/champ-get.js');
-
-client.on('interactionCreate', async interaction => {
-  // 버튼 눌렀을 때만 처리
-  if (!interaction.isButton()) return;
-
-  // champ-get.js에서 사용하는 버튼이면
-  if (
-    interaction.customId === 'pick_champion' ||
-    interaction.customId === 'reroll_champion'
-  ) {
-    try {
-      await champGetCommand.handleButton(interaction);
-    } catch (e) {
-      console.error('[챔피언획득 버튼]', e);
-      // 오류시 임시 안내
-      await interaction.reply({ content: "❌ 오류! 다시 시도해줘.", ephemeral: true });
-    }
-  }
-
-  // 다른 버튼 있으면 아래에 else if로 추가
-});
-
-
-
 // ✅ 챔피언배틀 통합 명령어/버튼 처리(중복X!)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
