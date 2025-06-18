@@ -172,49 +172,68 @@ async function battleEmbed({
     value: viewLogs.length ? viewLogs.join('\n') : '이곳의 아랫줄부터 행동이 기록됩니다.',
   });
 
+   // [핵심] 버튼 상태별 활성화 로직!
   const currentPlayer = isUserTurn ? user : enemy;
-  const enable = !!activeUserId && currentPlayer.id === activeUserId && !currentPlayer.stunned;
-  const allDisabled = disableAllButtons ? true : !enable;
+  const enable = !!activeUserId && currentPlayer.id === activeUserId;
+  // 상태 체크
+  const isStunned = !!currentPlayer.stunned;
+  const isSkipTurn = !!currentPlayer.skipNextTurn;
 
+  // 버튼 별 활성화 로직
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('attack')
       .setLabel('⚔️ 평타 (턴 넘김)')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(allDisabled),
+      .setDisabled(!enable || isStunned || isSkipTurn),
+
     new ButtonBuilder()
       .setCustomId('defend')
       .setLabel('🛡️ 방어 (턴 넘김)')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(allDisabled),
+      .setDisabled(!enable || isStunned || isSkipTurn),
+
     new ButtonBuilder()
       .setCustomId('dodge')
       .setLabel('💨 점멸 (턴 넘김)')
       .setStyle(ButtonStyle.Success)
-      .setDisabled(allDisabled),
+      .setDisabled(!enable || isStunned || isSkipTurn),
+
     new ButtonBuilder()
       .setCustomId('item')
       .setLabel('🧪 아이템')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(allDisabled || currentPlayer._itemUsedCount >= 3),
+      .setDisabled(!enable || isSkipTurn || currentPlayer._itemUsedCount >= 3),
+
     new ButtonBuilder()
       .setCustomId('skill')
       .setLabel('✨ 스킬')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(allDisabled)
+      .setDisabled(!enable || isSkipTurn)
   );
+
+  // 항상 활성화된 쉬기(턴 넘기기) 버튼!
+  const passRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('pass')
+      .setLabel('😴 쉬기 (턴 넘기기)')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!enable ? true : false)
+  );
+
+  // 도망 버튼 기존 로직 유지
   let canEscape = turn >= 10 && turn <= 30 && enable;
   const escapeRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('escape')
       .setLabel('🏃‍♂️ 도망 (50%)')
       .setStyle(ButtonStyle.Danger)
-      .setDisabled(disableAllButtons || !canEscape)
+      .setDisabled(!canEscape)
   );
 
   return {
     embeds: [embed],
-    components: [row, escapeRow],
+    components: [row, passRow, escapeRow], // passRow 추가!
   };
 }
 
