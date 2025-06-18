@@ -36,7 +36,7 @@ module.exports = function attack(user, enemy, context, logs) {
     return logs;
   }
   if (enemy.dodgeNext) {
-    logs.push('💨 상대가 회피했습니다!');
+    logs.push('💨 상대가 점멸로 피했습니다!');
     enemy.dodgeNext = false;
     context.damage = 0;
     return logs;
