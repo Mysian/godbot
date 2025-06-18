@@ -8,8 +8,8 @@ module.exports = {
       user._flashCooldown = user._flashCooldown || 0;
       if (user._flashCooldown > 0) return "⚡ 점멸은 아직 쿨타임입니다!";
       context.effects[user.id] = context.effects[user.id] || [];
-      context.effects[user.id].push({ type: "dodgeNext", turns: 1 });
-      user._flashCooldown = 4;
+      context.effects[user.id].push({ type: "dodgeNext", turns: 2 });
+      user._flashCooldown = 8;
       return "⚡ 점멸! 다음 상대 공격 완전 회피 (4턴 쿨타임)";
     }
   },
@@ -24,8 +24,8 @@ module.exports = {
       const heal = Math.floor(user.stats.hp * 0.25);
       user.hp = Math.min(user.hp + heal, user.stats.hp);
       context.effects[user.id] = context.effects[user.id] || [];
-      context.effects[user.id].push({ type: "damageReduce", value: 0.2, turns: 1 });
-      user._healCooldown = 5;
+      context.effects[user.id].push({ type: "damageReduce", value: 0.2, turns: 2 });
+      user._healCooldown = 10;
       return `💚 회복! HP ${heal} 회복, 1턴간 받는 피해 20% 감소 (5턴 쿨타임)`;
     }
   },
@@ -38,9 +38,9 @@ module.exports = {
       user._igniteCooldown = user._igniteCooldown || 0;
       if (user._igniteCooldown > 0) return "🔥 점화는 아직 쿨타임입니다!";
       context.effects[enemy.id] = context.effects[enemy.id] || [];
-      context.effects[enemy.id].push({ type: "burn", value: Math.floor(enemy.stats.hp * 0.15), turns: 2 });
+      context.effects[enemy.id].push({ type: "burn", value: Math.floor(enemy.stats.hp * 0.15), turns: 4 });
       context.effects[enemy.id].push({ type: "healReduce", value: 0.5, turns: 2 });
-      user._igniteCooldown = 4;
+      user._igniteCooldown = 8;
       return "🔥 점화! 2턴간 매턴 15% 고정 피해+회복효과 50% 감소 (4턴 쿨타임)";
     }
   },
@@ -60,8 +60,8 @@ module.exports = {
       enemy.stats.ap = Math.floor(enemy.stats.ap * 0.6);
 
       context.effects[enemy.id] = context.effects[enemy.id] || [];
-      context.effects[enemy.id].push({ type: "exhaust", turns: 2 }); // 복구용 버프
-      user._exhaustCooldown = 5;
+      context.effects[enemy.id].push({ type: "exhaust", turns: 4 }); // 복구용 버프
+      user._exhaustCooldown = 10;
       return "🥵 탈진! 상대 공격력/주문력 40% 즉시 감소 (2턴), 이후 원상복구 (5턴 쿨타임)";
     }
   },
@@ -75,8 +75,8 @@ module.exports = {
       if (user._cleanseCooldown > 0) return "🧼 정화는 아직 쿨타임입니다!";
       // 디버프 효과만 제거
       context.effects[user.id] = (context.effects[user.id] || []).filter(e => e.type.endsWith('Buff'));
-      context.effects[user.id].push({ type: "immune", turns: 1 });
-      user._cleanseCooldown = 6;
+      context.effects[user.id].push({ type: "immune", turns: 2 });
+      user._cleanseCooldown = 12;
       return "🧼 정화! 모든 디버프 해제+1턴간 상태이상 면역 (6턴 쿨타임)";
     }
   },
@@ -89,8 +89,8 @@ module.exports = {
       user._ghostCooldown = user._ghostCooldown || 0;
       if (user._ghostCooldown > 0) return "👻 유체화는 아직 쿨타임입니다!";
       context.effects[user.id] = context.effects[user.id] || [];
-      context.effects[user.id].push({ type: "dodgeUp", value: 0.25, turns: 3 });
-      user._ghostCooldown = 6;
+      context.effects[user.id].push({ type: "dodgeUp", value: 0.25, turns: 6 });
+      user._ghostCooldown = 12;
       return "👻 유체화! 3턴간 회피 확률 25% 증가 (6턴 쿨타임)";
     }
   }
