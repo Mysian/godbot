@@ -136,21 +136,19 @@ async function handleBattleCommand(interaction) {
   }, 120000));
 }
 
-async function updateBattleTimer(battle, interaction, force = false) {
+async function updateBattleTimer(battle, interaction) {
   const key = `${battle.user.id}:${battle.enemy.id}`;
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
   battleTimers.set(key, setTimeout(async () => {
-    if (!force) {
-      battle.finished = true;
-      forceDeleteBattle(battle.user.id, battle.enemy.id);
-      try {
-        await interaction.editReply({
-          content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
-          embeds: [],
-          components: []
-        });
-      } catch (e) {}
-    }
+    battle.finished = true;
+    forceDeleteBattle(battle.user.id, battle.enemy.id);
+    try {
+      await interaction.editReply({
+        content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
+        embeds: [],
+        components: []
+      });
+    } catch (e) {}
   }, 120000));
 }
 
@@ -606,13 +604,29 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
     newLogs.push(` <@${nextTurnUser.id}> 턴!`);
 
     battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
+    
+    // 만약 턴 넘기기인 경우에만 예외
+    if (action === 'pass') {
+      await updateBattleTimer(battle, interaction);
+
+      const view = await battleEmbed({
+        user: battle.user,
+        enemy: battle.enemy,
+        turn: battle.turn,
+        logs: battle.logs,
+        isUserTurn: battle.isUserTurn,
+        activeUserId: nextTurnUser.id,
+      });
+      try {
+        await interaction.reply({ ...view, ephemeral: true });
+      } catch (e) {
+        try { await interaction.editReply({ ...view }); } catch (e2) {}
+      }
+      replied = true; return;
+    }
 
     // 행동 후 타이머 갱신
-     if (action === 'pass') {
-      await updateBattleTimer(battle, interaction, true);
-    } else {
-      await updateBattleTimer(battle, interaction);
-    }
+    await updateBattleTimer(battle, interaction);
 
     // 임베드 갱신
     await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
@@ -705,21 +719,19 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
   }
 }
 
-async function updateBattleTimer(battle, interaction, force = false) {
+async function updateBattleTimer(battle, interaction) {
   const key = `${battle.user.id}:${battle.enemy.id}`;
   if (battleTimers.has(key)) clearTimeout(battleTimers.get(key));
   battleTimers.set(key, setTimeout(async () => {
-    if (!force) {
-      battle.finished = true;
-      forceDeleteBattle(battle.user.id, battle.enemy.id);
-      try {
-        await interaction.editReply({
-          content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
-          embeds: [],
-          components: []
-        });
-      } catch (e) {}
-    }
+    battle.finished = true;
+    forceDeleteBattle(battle.user.id, battle.enemy.id);
+    try {
+      await interaction.editReply({
+        content: '⏰ 2분(120초) 동안 행동이 없어 배틀이 자동 종료되었습니다.',
+        embeds: [],
+        components: []
+      });
+    } catch (e) {}
   }, 120000));
 }
 
