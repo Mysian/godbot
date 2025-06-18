@@ -8,7 +8,7 @@ module.exports = {
       user._flashCooldown = user._flashCooldown || 0;
       if (user._flashCooldown > 0) return "⚡ 점멸은 아직 쿨타임입니다!";
       context.effects[user.id] = context.effects[user.id] || [];
-      context.effects[user.id].push({ type: "dodgeNext", turns: 2 });
+      context.effects[user.id].push({ type: "dodgeNext", turns: 3 });
       user._flashCooldown = 8;
       return "⚡ 점멸! 다음 상대 공격 완전 회피 (4턴 쿨타임)";
     }
@@ -75,7 +75,7 @@ module.exports = {
       if (user._cleanseCooldown > 0) return "🧼 정화는 아직 쿨타임입니다!";
       // 디버프 효과만 제거
       context.effects[user.id] = (context.effects[user.id] || []).filter(e => e.type.endsWith('Buff'));
-      context.effects[user.id].push({ type: "immune", turns: 2 });
+      context.effects[user.id].push({ type: "immune", turns: 3 });
       user._cleanseCooldown = 12;
       return "🧼 정화! 모든 디버프 해제+1턴간 상태이상 면역 (6턴 쿨타임)";
     }
