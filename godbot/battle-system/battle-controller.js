@@ -544,11 +544,8 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
       const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
       if (deathLog && deathLog.length) newLogs.push(...deathLog);
 
-      else if (action === 'attack') {
-  newLogs.push(...battleEngine.attack(user, enemy, context, []));
-
   // 추가 공격 트리거
-  if (context.extraAttack) {
+    if (context.extraAttack) {
     const origMultiplier = context.damageMultiplier;
     context.damageMultiplier = context.extraAttackDamageMultiplier || 1;
 
