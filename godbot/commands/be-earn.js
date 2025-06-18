@@ -140,33 +140,54 @@ module.exports = {
         return { arr, answer: diffIdx, base, diff };
       }
 
-      // 1라운드 시작
-      let state = { round: 1, correct: 0 };
-      let { arr, answer, base, diff } = makeRow();
+      if (kind === 'alba') {
+  try {
+    let round = 1;
+    const MAX_ROUND = 5;
+    const TIME_LIMIT = 60 * 1000; // 60초
 
-      const embed = new EmbedBuilder()
-        .setTitle("💼 알바 미니게임 1/5")
-        .setDescription(`아래 6개 버튼 중에서, **색이 다른 버튼**을 클릭해!\n\n시간 제한: 60초`)
-        .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
+    const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
+    const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
 
-      let rows = [
-        new ActionRowBuilder().addComponents(
-          ...arr.map((c, idx) =>
-            new ButtonBuilder()
-              .setCustomId(`alba_${state.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
-              .setStyle(ButtonStyle[c])
-              .setLabel(`${idx + 1}`)
-          )
+    function makeRow() {
+      const base = colorList[Math.floor(Math.random() * colorList.length)];
+      let arr = Array(6).fill(base);
+      let diffIdx = Math.floor(Math.random() * 6);
+      let diff;
+      do {
+        diff = colorList[Math.floor(Math.random() * colorList.length)];
+      } while (diff === base);
+      arr[diffIdx] = diff;
+      return { arr, answer: diffIdx, base, diff };
+    }
+
+    let state = { round: 1, correct: 0 };
+    let { arr, answer, base, diff } = makeRow();
+
+    const embed = new EmbedBuilder()
+      .setTitle("💼 알바 미니게임 1/5")
+      .setDescription(`아래 6개 버튼 중에서, **색이 다른 버튼**을 클릭해!\n\n시간 제한: 60초`)
+      .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
+
+    let rows = [
+      new ActionRowBuilder().addComponents(
+        ...arr.map((c, idx) =>
+          new ButtonBuilder()
+            .setCustomId(`alba_${state.round}_${idx}_${c}_${c === diff ? 1 : 0}`)
+            .setStyle(ButtonStyle[c])
+            .setLabel(`${idx + 1}`)
         )
-      ];
+      )
+    ];
 
-      await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
 
-      const filter = i => i.user.id === interaction.user.id;
-      const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
+    const filter = i => i.user.id === interaction.user.id;
+    const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
 
-      collector.on('collect', async i => {
-        await i.deferUpdate(); // 무조건 deferUpdate (상호작용 잔여시간 보존)
+    collector.on('collect', async i => {
+      try {
+        await i.deferUpdate();
         const [_, r, idx, c, isAnswer] = i.customId.split('_');
         if (parseInt(r) !== state.round) return;
         if (parseInt(isAnswer) === 1) {
@@ -181,7 +202,7 @@ module.exports = {
               ],
               components: [],
               ephemeral: true
-            });
+            }).catch(e => console.error(e));
             collector.stop('done');
           } else {
             state.round++;
@@ -206,7 +227,7 @@ module.exports = {
               ],
               components: rows,
               ephemeral: true
-            });
+            }).catch(e => console.error(e));
           }
         } else {
           await interaction.editReply({
@@ -217,25 +238,44 @@ module.exports = {
             ],
             components: [],
             ephemeral: true
-          });
+          }).catch(e => console.error(e));
           collector.stop('fail');
         }
-      });
-      collector.on('end', async (_, reason) => {
-        if (reason !== 'done' && reason !== 'fail') {
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("⏰ 알바 시간초과!")
-                .setDescription("60초 내에 5라운드를 모두 성공하지 못했어! **0 BE**")
-            ],
-            components: [],
-            ephemeral: true
-          }).catch(() => {});
-        }
-      });
-      return;
-    }
+      } catch (e) {
+        console.error(e);
+        await interaction.editReply({
+          content: "❌ 예기치 못한 오류가 발생했습니다.",
+          components: [],
+          ephemeral: true
+        }).catch(() => {});
+        collector.stop('fail');
+      }
+    });
+
+    collector.on('end', async (_, reason) => {
+      if (reason !== 'done' && reason !== 'fail') {
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("⏰ 알바 시간초과!")
+              .setDescription("60초 내에 5라운드를 모두 성공하지 못했어! **0 BE**")
+          ],
+          components: [],
+          ephemeral: true
+        }).catch(e => {});
+      }
+    });
+    return;
+  } catch (e) {
+    console.error(e);
+    await interaction.reply({
+      content: '❌ 알바 미니게임 중 오류가 발생했습니다.',
+      ephemeral: true
+    }).catch(() => {});
+    return;
+  }
+}
+
 
 
     // 2. 도박
