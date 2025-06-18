@@ -592,19 +592,7 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
         replied = true; return;
       }
     } else if (action === 'pass') {
-  await interaction.deferUpdate();
-  
   newLogs.push(...battleEngine.pass(user, enemy, context, []));
-  battle.turn += 1;
-  battle.isUserTurn = !battle.isUserTurn;
-  const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-  newLogs.push(` <@${nextTurnUser.id}> 턴!`);
-  battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
-
-  setTimeout(async () => {
-    await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
-  }, 100); // 0.1초 후 느긋하게!
-  replied = true; return;
 } // 휴식 턴 넘기기
 
     // 턴 넘김(모든 행위 통일)
