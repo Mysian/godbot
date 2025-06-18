@@ -14,16 +14,11 @@ async function updateBattleViewWithLogs(interaction, battle, newLogs, activeUser
   });
 
   try {
-    // 1. 이미 응답(replied) 또는 defer됐으면 editReply만!
-    if (interaction.replied || interaction.deferred) {
-      await interaction.editReply(view);
-    } else {
-      // 2. 아직 아무 응답도 안 했으면 update만!
-      await interaction.update(view);
-    }
+    // 항상 editReply만 사용 (update/reply 꼬임 방지)
+    await interaction.editReply(view);
   } catch (e) {
-    // (진짜 예외상황만 로그, 중복 호출은 절대 없음)
     console.error('❌ [디버그] updateBattleViewWithLogs 실패:', e);
+    try { await interaction.reply({ content: '❌ 배틀 임베드 갱신 오류!', ephemeral: true }); } catch {}
   }
 }
 
