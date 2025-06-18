@@ -591,9 +591,10 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
         replied = true; return;
       }
     } else if (action === 'pass') {
-      // 추가효과, 패시브, 피해 전혀 없음. (단순 턴 넘기기)
-      newLogs.push(`😴 <@${user.id}>이(가) 휴식을 취합니다.`);
+      //턴 넘기기 휴식
+      newLogs.push(`😴 <@${user.id}>이(가) 쉬기를 선택하여 턴을 넘깁니다.`);
     }
+
     // 턴 넘김(모든 행위 통일)
     battle.turn += 1;
     battle.isUserTurn = !battle.isUserTurn;
@@ -602,19 +603,6 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
 
     battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
 
-    // 행동 후 타이머 갱신
-    await updateBattleTimer(battle, interaction);
-
-    // 임베드 갱신
-    await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
-
-    replied = true; return;
-  } catch (e) {
-    console.error('[공격/방어/점멸/쉬기 처리 오류]', e);
-    if (!replied) try { await interaction.reply({ content: '❌ 행동 처리 중 오류!', ephemeral: true }); } catch {}
-    replied = true; return;
-  }
-}
     // 행동 후 타이머 갱신
     await updateBattleTimer(battle, interaction);
 
