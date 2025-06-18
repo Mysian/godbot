@@ -14,7 +14,6 @@ async function updateBattleViewWithLogs(interaction, battle, newLogs, activeUser
   });
 
   try {
-    // 항상 editReply만 사용 (update/reply 꼬임 방지)
     await interaction.editReply(view);
   } catch (e) {
     console.error('❌ [디버그] updateBattleViewWithLogs 실패:', e);
