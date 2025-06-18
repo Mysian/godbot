@@ -308,7 +308,7 @@ client.on("messageCreate", async (msg) => {
     if (Math.random() < 0.01) {
       const reward = Math.floor(Math.random() * 10) + 1;
       addBE(msg.author.id, reward, "채널 주제 보상");
-      msg.channel.send(`💙 <@${msg.author.id}>님이 파랑 정수 ${reward} BE를 획득했습니다!`);
+      msg.channel.send(`🔷 <@${msg.author.id}>님이 파랑 정수 ${reward} BE 획득!`);
     }
   }
 });
