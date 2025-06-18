@@ -7,6 +7,7 @@ const useSkill = require('./skill');
 const escape = require('./escape');
 const resolvePassive = require('./passive');
 const { applyEffects } = require('./context');
+const pass = require('./pass');
 
 module.exports = {
   attack,
@@ -17,4 +18,5 @@ module.exports = {
   escape,
   resolvePassive,
   applyEffects,
+  pass,
 };
