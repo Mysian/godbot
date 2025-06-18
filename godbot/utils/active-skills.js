@@ -8,7 +8,7 @@ module.exports = {
       user._flashCooldown = user._flashCooldown || 0;
       if (user._flashCooldown > 0) return "⚡ 점멸은 아직 쿨타임입니다!";
       context.effects[user.id] = context.effects[user.id] || [];
-      context.effects[user.id].push({ type: "dodgeNext", turns: 3 });
+      context.effects[user.id].push({ type: "dodgeNext", turns: 2 });
       user._flashCooldown = 8;
       return "⚡ 점멸! 다음 상대 공격 완전 회피 (4턴 쿨타임)";
     }
@@ -31,14 +31,14 @@ module.exports = {
   },
   "점화": {
     name: "점화",
-    desc: "상대 2턴간 매턴 HP 15% 고정 피해 (회복효과 50% 감소, 4턴 쿨타임)",
+    desc: "상대 2턴간 매턴 HP 5% 고정 피해 (회복효과 50% 감소, 4턴 쿨타임)",
     icon: "🔥",
     price: 2000,
     effect: (user, enemy, context, battle) => {
       user._igniteCooldown = user._igniteCooldown || 0;
       if (user._igniteCooldown > 0) return "🔥 점화는 아직 쿨타임입니다!";
       context.effects[enemy.id] = context.effects[enemy.id] || [];
-      context.effects[enemy.id].push({ type: "burn", value: Math.floor(enemy.stats.hp * 0.15), turns: 4 });
+      context.effects[enemy.id].push({ type: "burn", value: Math.floor(enemy.stats.hp * 0.05), turns: 2 });
       context.effects[enemy.id].push({ type: "healReduce", value: 0.5, turns: 2 });
       user._igniteCooldown = 8;
       return "🔥 점화! 2턴간 매턴 15% 고정 피해+회복효과 50% 감소 (4턴 쿨타임)";
@@ -75,7 +75,7 @@ module.exports = {
       if (user._cleanseCooldown > 0) return "🧼 정화는 아직 쿨타임입니다!";
       // 디버프 효과만 제거
       context.effects[user.id] = (context.effects[user.id] || []).filter(e => e.type.endsWith('Buff'));
-      context.effects[user.id].push({ type: "immune", turns: 3 });
+      context.effects[user.id].push({ type: "immune", turns: 2 });
       user._cleanseCooldown = 12;
       return "🧼 정화! 모든 디버프 해제+1턴간 상태이상 면역 (6턴 쿨타임)";
     }

@@ -26,6 +26,13 @@ module.exports = {
           logs.push(`🥵 탈진 해제! 공격력/주문력 정상 복구`);
         }
       }
+      // 회피(점멸) 효과
+else if (effect.type === "dodgeNext" && effect.turns > 0) {
+  user.dodgeNext = true;
+  effect.turns--;
+  logs.push("⚡ 점멸! 상대 공격을 완전히 회피합니다!");
+  if (effect.turns === 0) logs.push("⚡ 점멸 효과 종료!");
+}
       // 매턴 HP 5% 회복 등(healOverTime)
       else if (effect.type === "healOverTime" && effect.turns > 0) {
         const value = Math.max(1, Math.floor(effect.value));
@@ -376,6 +383,27 @@ else if (effect.type === "atkUpPercent" && effect.turns > 0) {
         logs.push(`🌫️ 혼란! (${effect.value}% 확률로 행동 실패)`);
         effect.turns--;
       }
+      // 상태이상 면역(immune) 효과
+else if (effect.type === "immune" && effect.turns > 0) {
+  user._immune = true;
+  logs.push("🛡️ 상태이상 면역!");
+  effect.turns--;
+  if (effect.turns === 0) {
+    user._immune = false;
+    logs.push("🛡️ 상태이상 면역 해제!");
+  }
+}
+// 회피 확률 증가
+else if (effect.type === "dodgeUp" && effect.turns > 0) {
+  user._dodgeUp = (user._dodgeUp || 0) + effect.value;
+  logs.push(`👻 회피 확률 +${Math.floor(effect.value * 100)}%`);
+  effect.turns--;
+  if (effect.turns === 0) {
+    user._dodgeUp -= effect.value;
+    logs.push("👻 유체화 효과 종료!");
+  }
+}
+
 
       // 만료된 효과 삭제
       if (effect.turns !== undefined && effect.turns <= 0) {
