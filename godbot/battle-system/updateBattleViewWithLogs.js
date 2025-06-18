@@ -3,7 +3,11 @@ const LOG_LIMIT = 10;
 
 async function updateBattleViewWithLogs(interaction, battle, newLogs, activeUserId) {
   const logsView = (battle.logs || []).slice(-LOG_LIMIT);
-
+  // 쉬기 테스트
+  console.log('[pass debug] interaction', { replied: interaction.replied, deferred: interaction.deferred });
+  console.log('[pass debug] battle', battle);
+  console.log('[pass debug] newLogs', newLogs);
+  // 끝나면 위 3줄 지울거임
   const view = await battleEmbed({
     user: battle.user,
     enemy: battle.enemy,
