@@ -544,7 +544,7 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
       const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
       if (deathLog && deathLog.length) newLogs.push(...deathLog);
 
-  // 추가 공격 트리거
+    // 추가 공격 트리거
     if (context.extraAttack) {
     const origMultiplier = context.damageMultiplier;
     context.damageMultiplier = context.extraAttackDamageMultiplier || 1;
@@ -556,8 +556,8 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
     context.damageMultiplier = origMultiplier;
     context.extraAttack = false;
     context.extraAttackDamageMultiplier = undefined;
-  }
-}
+    }
+
 
       if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
         battle.finished = true;
