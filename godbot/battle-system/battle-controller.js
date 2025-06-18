@@ -602,8 +602,10 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
 
     battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
 
-    // 타이머, 임베드 갱신은 기존대로
+    // 행동 후 타이머 갱신
     await updateBattleTimer(battle, interaction);
+
+    // 임베드 갱신
     await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
 
     replied = true; return;
