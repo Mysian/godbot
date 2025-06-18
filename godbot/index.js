@@ -124,34 +124,10 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// 챔피언 획득
-const champGetCommand = require('./commands/champ-get.js');
-
-client.on('interactionCreate', async interaction => {
-  // 버튼 눌렀을 때만 처리
-  if (!interaction.isButton()) return;
-
-  // champ-get.js에서 사용하는 버튼이면
-  if (
-    interaction.customId === 'pick_champion' ||
-    interaction.customId === 'reroll_champion'
-  ) {
-    try {
-      await champGetCommand.handleButton(interaction);
-    } catch (e) {
-      console.error('[챔피언획득 버튼]', e);
-      // 오류시 임시 안내
-      await interaction.reply({ content: "❌ 오류! 다시 시도해줘.", ephemeral: true });
-    }
-  }
-
-  // 다른 버튼 있으면 아래에 else if로 추가
-});
-
-
-
 // ✅ 챔피언배틀 통합 명령어/버튼 처리(중복X!)
 const champBattle = require('./commands/champ-battle');
+const champGet = require('./commands/champ-get'); // 챔피언획득 명령어 버튼 위해 추가
+
 client.on(Events.InteractionCreate, async interaction => {
   // 1. 챔피언배틀 명령어는 여기서만!
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
@@ -177,18 +153,44 @@ client.on(Events.InteractionCreate, async interaction => {
 
   // 2. 챔피언배틀 버튼만 여기서!
   if (
-  interaction.isButton() && interaction.customId && (
-    interaction.customId.startsWith('accept_battle_') ||
-    interaction.customId.startsWith('decline_battle_') ||
-    [
-      'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
-    ].includes(interaction.customId) ||
-    interaction.customId.startsWith('useitem_') ||
-    interaction.customId.startsWith('useskill_')
-  )
-) {
-  try {
-    await champBattle.handleButton(interaction);
+    interaction.isButton() && interaction.customId && (
+      interaction.customId.startsWith('accept_battle_') ||
+      interaction.customId.startsWith('decline_battle_') ||
+      [
+        'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
+      ].includes(interaction.customId) ||
+      interaction.customId.startsWith('useitem_') ||
+      interaction.customId.startsWith('useskill_')
+    )
+  ) {
+    try {
+      await champBattle.handleButton(interaction);
+    } catch (error) {
+      console.error(error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({
+          content: "❌ 버튼 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      } else {
+        await interaction.reply({
+          content: "❌ 버튼 실행 중 오류가 발생했습니다.",
+          ephemeral: true
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  // 2-1. 챔피언획득 버튼 (pick, reroll)
+  if (
+    interaction.isButton() && (
+      interaction.customId === 'pick_champion' ||
+      interaction.customId === 'reroll_champion'
+    )
+  ) {
+    try {
+      await champGet.handleButton(interaction);
     } catch (error) {
       console.error(error);
       if (interaction.deferred || interaction.replied) {
@@ -379,9 +381,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-  res.send("봇이 실행 중입니다!");
+  res.send("봇이 멋지게 실행 중입니다!");
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Express 서버가 ${PORT}번 포트에서 실행 중입니다.`);
+  console.log(`✅ Express 서버가 ${PORT}번 포트에서 아주 까리하게 실행 중입니다.`);
 });
