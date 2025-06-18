@@ -1,6 +1,6 @@
 // battle-system/skill.js
 const activeSkills = require('../utils/active-skills'); // 반드시 active-skills.js에 등록!
-const { applyPassive } = require('./passive'); // 패시브 효과 적용
+const applyPassive = require('./passive'); // 패시브 효과 적용
 
 module.exports = function useSkill(user, enemy, skillName, context) {
   // skillName 유효성
