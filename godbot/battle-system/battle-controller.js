@@ -297,11 +297,27 @@ async function handleBattleButton(interaction) {
     }
 
     const isMyTurn = (battle.isUserTurn && battle.user.id === userId) ||
-                     (!battle.isUserTurn && battle.enemy.id === userId);
-    const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
-    if (!isMyTurn || currentPlayer.stunned) {
-      await interaction.reply({ content: '행동 불가 상태입니다. (기절/비활성/상대턴)', ephemeral: true }); replied = true; return;
-    }
+                 (!battle.isUserTurn && battle.enemy.id === userId);
+const currentPlayer = battle.isUserTurn ? battle.user : battle.enemy;
+
+// 버튼별 예외 분기
+const canUseAction = action => ['item', 'skill', 'pass', 'useskill_', 'useitem_'].some(k => action.startsWith(k));
+
+// 내 턴이 아니면 무조건 금지
+if (!isMyTurn) {
+  await interaction.reply({ content: '상대의 턴입니다.', ephemeral: true }); replied = true; return;
+}
+
+// 행동불능(완전불능): pass(쉬기)만 가능
+if (currentPlayer.skipNextTurn && action !== 'pass') {
+  await interaction.reply({ content: '행동불능 상태! 쉬기(턴 넘기기)만 할 수 있습니다.', ephemeral: true }); replied = true; return;
+}
+
+// 기절: 스킬/아이템/턴넘기기만 가능, 그 외는 금지
+if (currentPlayer.stunned && !canUseAction(action)) {
+  await interaction.reply({ content: '기절 상태에서는 공격/방어/점멸만 사용할 수 없습니다.', ephemeral: true }); replied = true; return;
+}
+
 
     const user = battle.isUserTurn ? battle.user : battle.enemy;
     const enemy = battle.isUserTurn ? battle.enemy : battle.user;
@@ -472,134 +488,134 @@ if (action.startsWith('useskill_')) {
 
 
 
-    // ★ 공격/방어/점멸/턴 진행/피해 처리
-    if (action === 'defend' || action === 'dodge' || action === 'attack') {
-      try {
-        const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
-        let newLogs = [];
+    // ★ 공격/방어/점멸/턴 넘기기(쉬기)/피해 처리
+if (action === 'defend' || action === 'dodge' || action === 'attack' || action === 'pass') {
+  try {
+    const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
+    let newLogs = [];
 
-        if (action === 'defend') {
-          newLogs.push(...battleEngine.defend(user, enemy, context, []));
-          newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend', battle));
-          battle.turn += 1;
-          battle.isUserTurn = !battle.isUserTurn;
-          const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-          newLogs.push(` <@${nextTurnUser.id}> 턴!`);
-        } else if (action === 'dodge') {
-          newLogs.push(...battleEngine.dodge(user, enemy, context, []));
-          newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge', battle));
-          battle.turn += 1;
-          battle.isUserTurn = !battle.isUserTurn;
-          const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-          newLogs.push(` <@${nextTurnUser.id}> 턴!`);
-        } else if (action === 'attack') {
-          newLogs.push(...battleEngine.attack(user, enemy, context, []));
-          if (enemy.isDodging) {
-            if (Math.random() < 0.2) {
-              context.damage = 0;
-              newLogs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
-            } else {
-              newLogs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
-            }
-            enemy.isDodging = false;
-          }
-          if (enemy.isDefending && context.damage > 0) {
-            context.damage = Math.floor(context.damage * 0.5);
-            newLogs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
-            enemy.isDefending = false;
-          }
-          newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack', battle));
-          newLogs.push(...battleEngine.applyEffects(enemy, user, context));
-          enemy.hp = Math.max(0, enemy.hp - context.damage);
-
-          const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
-          if (deathLog && deathLog.length) newLogs.push(...deathLog);
-
-          if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
-            battle.finished = true;
-            let winner = null;
-            let loser = null;
-            let resultEmbed;
-            if (user.hp > 0 && enemy.hp <= 0) {
-              winner = user;
-              loser = enemy;
-              await updateRecord(winner.id, winner.name, 'win');
-              await updateRecord(loser.id, loser.name, 'lose');
-              const champIcon = await getChampionIcon(winner.name);
-              resultEmbed = {
-                content: null,
-                embeds: [
-                  {
-                    title: '🎉 전투 결과! 승리!',
-                    description:
-                      `**${winner.nickname}** (${winner.name})\n> <@${winner.id}>\n\n` +
-                      `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
-                    thumbnail: { url: champIcon },
-                    color: 0xffe45c
-                  }
-                ],
-                components: []
-              };
-            } else if (enemy.hp > 0 && user.hp <= 0) {
-              winner = enemy;
-              loser = user;
-              await updateRecord(winner.id, winner.name, 'win');
-              await updateRecord(loser.id, loser.name, 'lose');
-              const champIcon = await getChampionIcon(winner.name);
-              resultEmbed = {
-                content: null,
-                embeds: [
-                  {
-                    title: '🎉 전투 결과! 승리!',
-                    description:
-                      `**${winner.nickname}** (${winner.name})\n> <@${winner.id}>\n\n` +
-                      `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
-                    thumbnail: { url: champIcon },
-                    color: 0xffe45c
-                  }
-                ],
-                components: []
-              };
-            } else {
-              await updateRecord(user.id, user.name, 'draw');
-              await updateRecord(enemy.id, enemy.name, 'draw');
-              resultEmbed = {
-                content: null,
-                embeds: [
-                  { title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }
-                ],
-                components: []
-              };
-            }
-            forceDeleteBattle(battle.user.id, battle.enemy.id);
-            if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
-              clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
-              battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
-            }
-            await interaction.update(resultEmbed);
-            replied = true; return;
-          }
-          battle.turn += 1;
-          battle.isUserTurn = !battle.isUserTurn;
-          const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-          newLogs.push(` <@${nextTurnUser.id}> 턴!`);
+    if (action === 'defend') {
+      newLogs.push(...battleEngine.defend(user, enemy, context, []));
+      newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend', battle));
+    } else if (action === 'dodge') {
+      newLogs.push(...battleEngine.dodge(user, enemy, context, []));
+      newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDodge', battle));
+    } else if (action === 'attack') {
+      newLogs.push(...battleEngine.attack(user, enemy, context, []));
+      if (enemy.isDodging) {
+        if (Math.random() < 0.2) {
+          context.damage = 0;
+          newLogs.push(`⚡ ${enemy.nickname} 점멸 성공!`);
+        } else {
+          newLogs.push(`🌧️ ${enemy.nickname} 점멸 실패!`);
         }
+        enemy.isDodging = false;
+      }
+      if (enemy.isDefending && context.damage > 0) {
+        context.damage = Math.floor(context.damage * 0.5);
+        newLogs.push(`${enemy.nickname}의 방어! 피해 50% 감소.`);
+        enemy.isDefending = false;
+      }
+      newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onAttack', battle));
+      newLogs.push(...battleEngine.applyEffects(enemy, user, context));
+      enemy.hp = Math.max(0, enemy.hp - context.damage);
 
-        battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
+      const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
+      if (deathLog && deathLog.length) newLogs.push(...deathLog);
 
-        // 행동 후 타이머 갱신
-        await updateBattleTimer(battle, interaction);
-
-        // 임베드 갱신
-        await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, battle.isUserTurn ? battle.user.id : battle.enemy.id);
-
-        replied = true; return;
-      } catch (e) {
-        console.error('[공격/방어/점멸 처리 오류]', e);
-        if (!replied) try { await interaction.reply({ content: '❌ 행동 처리 중 오류!', ephemeral: true }); } catch {}
+      if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
+        battle.finished = true;
+        let winner = null;
+        let loser = null;
+        let resultEmbed;
+        if (user.hp > 0 && enemy.hp <= 0) {
+          winner = user;
+          loser = enemy;
+          await updateRecord(winner.id, winner.name, 'win');
+          await updateRecord(loser.id, loser.name, 'lose');
+          const champIcon = await getChampionIcon(winner.name);
+          resultEmbed = {
+            content: null,
+            embeds: [
+              {
+                title: '🎉 전투 결과! 승리!',
+                description:
+                  `**${winner.nickname}** (${winner.name})\n> <@${winner.id}>\n\n` +
+                  `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
+                thumbnail: { url: champIcon },
+                color: 0xffe45c
+              }
+            ],
+            components: []
+          };
+        } else if (enemy.hp > 0 && user.hp <= 0) {
+          winner = enemy;
+          loser = user;
+          await updateRecord(winner.id, winner.name, 'win');
+          await updateRecord(loser.id, loser.name, 'lose');
+          const champIcon = await getChampionIcon(winner.name);
+          resultEmbed = {
+            content: null,
+            embeds: [
+              {
+                title: '🎉 전투 결과! 승리!',
+                description:
+                  `**${winner.nickname}** (${winner.name})\n> <@${winner.id}>\n\n` +
+                  `상대: ${loser.nickname} (${loser.name})\n> <@${loser.id}>`,
+                thumbnail: { url: champIcon },
+                color: 0xffe45c
+              }
+            ],
+            components: []
+          };
+        } else {
+          await updateRecord(user.id, user.name, 'draw');
+          await updateRecord(enemy.id, enemy.name, 'draw');
+          resultEmbed = {
+            content: null,
+            embeds: [
+              { title: '⚖️ 무승부', description: '둘 다 쓰러졌습니다!', color: 0xbdbdbd }
+            ],
+            components: []
+          };
+        }
+        forceDeleteBattle(battle.user.id, battle.enemy.id);
+        if (battleTimers.has(`${battle.user.id}:${battle.enemy.id}`)) {
+          clearTimeout(battleTimers.get(`${battle.user.id}:${battle.enemy.id}`));
+          battleTimers.delete(`${battle.user.id}:${battle.enemy.id}`);
+        }
+        await interaction.update(resultEmbed);
         replied = true; return;
       }
+    } else if (action === 'pass') {
+      // 패시브(턴 시작) & 이펙트(버프/디버프/쿨타임) 처리!
+      newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle));
+      newLogs.push(...battleEngine.applyEffects(user, enemy, context));
+      newLogs.push(`😴 <@${user.id}>이(가) 쉬기를 선택하여 턴을 넘깁니다.`);
     }
+
+    // 턴 넘김(모든 행위 통일)
+    battle.turn += 1;
+    battle.isUserTurn = !battle.isUserTurn;
+    const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+    newLogs.push(` <@${nextTurnUser.id}> 턴!`);
+
+    battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
+
+    // 행동 후 타이머 갱신
+    await updateBattleTimer(battle, interaction);
+
+    // 임베드 갱신
+    await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
+
+    replied = true; return;
+  } catch (e) {
+    console.error('[공격/방어/점멸/쉬기 처리 오류]', e);
+    if (!replied) try { await interaction.reply({ content: '❌ 행동 처리 중 오류!', ephemeral: true }); } catch {}
+    replied = true; return;
+  }
+}
+
 
     // 도망
     if (action === 'escape') {
