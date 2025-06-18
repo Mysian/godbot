@@ -52,11 +52,17 @@ module.exports = {
     effect: (user, enemy, context, battle) => {
       user._exhaustCooldown = user._exhaustCooldown || 0;
       if (user._exhaustCooldown > 0) return "🥵 탈진은 아직 쿨타임입니다!";
+
+      // 즉시 stats 감소 (원래 수치 저장)
+      enemy._origAttack = enemy._origAttack ?? enemy.stats.attack;
+      enemy._origAp = enemy._origAp ?? enemy.stats.ap;
+      enemy.stats.attack = Math.floor(enemy.stats.attack * 0.6);
+      enemy.stats.ap = Math.floor(enemy.stats.ap * 0.6);
+
       context.effects[enemy.id] = context.effects[enemy.id] || [];
-      context.effects[enemy.id].push({ type: "atkDebuff", value: Math.floor(enemy.stats.attack * 0.4), turns: 2 });
-      context.effects[enemy.id].push({ type: "apDebuff", value: Math.floor(enemy.stats.ap * 0.4), turns: 2 });
+      context.effects[enemy.id].push({ type: "exhaust", turns: 2 }); // 복구용 버프
       user._exhaustCooldown = 5;
-      return "🥵 탈진! 상대 2턴간 공격력/주문력 40% 감소 (5턴 쿨타임)";
+      return "🥵 탈진! 상대 공격력/주문력 40% 즉시 감소 (2턴), 이후 원상복구 (5턴 쿨타임)";
     }
   },
   "정화": {
@@ -67,6 +73,7 @@ module.exports = {
     effect: (user, enemy, context, battle) => {
       user._cleanseCooldown = user._cleanseCooldown || 0;
       if (user._cleanseCooldown > 0) return "🧼 정화는 아직 쿨타임입니다!";
+      // 디버프 효과만 제거
       context.effects[user.id] = (context.effects[user.id] || []).filter(e => e.type.endsWith('Buff'));
       context.effects[user.id].push({ type: "immune", turns: 1 });
       user._cleanseCooldown = 6;
