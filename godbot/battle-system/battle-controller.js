@@ -604,6 +604,26 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
     newLogs.push(` <@${nextTurnUser.id}> 턴!`);
 
     battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
+    
+    // 만약 턴 넘기기인 경우에만 예외
+    if (action === 'pass') {
+      await updateBattleTimer(battle, interaction);
+
+      const view = await battleEmbed({
+        user: battle.user,
+        enemy: battle.enemy,
+        turn: battle.turn,
+        logs: battle.logs,
+        isUserTurn: battle.isUserTurn,
+        activeUserId: nextTurnUser.id,
+      });
+      try {
+        await interaction.reply({ ...view, ephemeral: true });
+      } catch (e) {
+        try { await interaction.editReply({ ...view }); } catch (e2) {}
+      }
+      replied = true; return;
+    }
 
     // 행동 후 타이머 갱신
     await updateBattleTimer(battle, interaction);
