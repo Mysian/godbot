@@ -1,12 +1,15 @@
 // commands/champ-get.js
 const {
   SlashCommandBuilder,
-  EmbedBuilder
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const champions = require("../utils/champion-data");
-const passives = require("../utils/passive-skills"); // 패시브 정보로 교체!
+const passives = require("../utils/passive-skills");
 const {
   getChampionIcon,
   getChampionSplash,
@@ -42,8 +45,23 @@ module.exports = {
       const data = await loadData();
 
       if (data[userId]) {
-        replyContent = { content: `❌ 이미 챔피언을 보유 중입니다: **${data[userId].name}**` };
+        // 이미 챔피언 소유 시 유기 버튼만 활성화!
+        const champ = data[userId];
+        const embed = new EmbedBuilder()
+          .setTitle(`❌ 이미 챔피언을 보유 중입니다!`)
+          .setDescription(`현재 보유 중인 챔피언: **${champ.name} (${champ.level ?? 0}강)**`)
+          .setColor(0xff6464);
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("champion-dispose")
+            .setLabel("🗑️ 챔피언 유기")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+        replyContent = { embeds: [embed], components: [row] };
       } else {
+        // 새 챔피언 지급
         const randomChampion = champions[
           Math.floor(Math.random() * champions.length)
         ];
@@ -61,7 +79,6 @@ module.exports = {
         const splash = await getChampionSplash(randomChampion.name);
         const lore   = getChampionInfo(randomChampion.name);
 
-        // 패시브 정보 출력
         const passiveObj = passives[randomChampion.name];
         let passiveText = '정보 없음';
         if (passiveObj) {
@@ -100,21 +117,76 @@ module.exports = {
           .setFooter({ text: `${interaction.user.username} 님의 챔피언` })
           .setTimestamp();
 
-        replyContent = { embeds: [embed] };
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("champion-dispose")
+            .setLabel("🗑️ 챔피언 유기")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+        replyContent = { embeds: [embed], components: [row] };
       }
     } catch (err) {
       console.error("[챔피언획득] 파일 접근 오류:", err);
       errorMessage = "❌ 오류 발생! 잠시 후 다시 시도해주세요.";
     } finally {
       if (release) try { await release(); } catch {}
-      // 오직 여기서만 editReply 1회 호출!
       if (errorMessage) {
         return interaction.editReply({ content: errorMessage });
       }
       if (replyContent) {
-        return interaction.editReply(replyContent);
+        const msg = await interaction.editReply(replyContent);
+
+        // 버튼 상호작용 핸들러
+        const collector = msg.createMessageComponentCollector({
+          filter: i => i.user.id === userId && i.customId === "champion-dispose",
+          time: 15000,
+          max: 1
+        });
+
+        collector.on("collect", async i => {
+          // 유기 처리
+          let disposeRelease;
+          try {
+            disposeRelease = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+            const data = await loadData();
+            const champ = data[userId];
+            if (!champ) {
+              await i.update({
+                content: "이미 유기된 챔피언입니다.",
+                embeds: [],
+                components: [],
+                ephemeral: true
+              });
+            } else {
+              const name = champ.name;
+              const lvl = champ.level ?? 0;
+              delete data[userId];
+              await saveData(data);
+              await i.update({
+                content: `🗑️ **${name} (${lvl}강)** 챔피언이 유기되었습니다. 다시 /챔피언획득 명령어로 새 챔피언을 얻을 수 있습니다.`,
+                embeds: [],
+                components: [],
+                ephemeral: true
+              });
+            }
+          } catch (e) {
+            await i.update({
+              content: "❌ 유기 처리 중 오류! 다시 시도해주세요.",
+              embeds: [],
+              components: [],
+              ephemeral: true
+            });
+          } finally {
+            if (disposeRelease) try { await disposeRelease(); } catch {}
+          }
+        });
+
+        collector.on("end", async collected => {
+          // 버튼 클릭 없이 종료됐을 때 락 해제 등 별도처리 X (ephemeral이라 15초 지나면 버튼 사라짐)
+        });
+        return;
       }
-      // 예외적으로 아무 응답도 못 만들었으면 그냥 editReply 호출 (응답 보장)
       return interaction.editReply({ content: "❌ 알 수 없는 오류! 잠시 후 다시 시도해주세요." });
     }
   }
