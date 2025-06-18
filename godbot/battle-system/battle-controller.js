@@ -591,12 +591,9 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
         replied = true; return;
       }
     } else if (action === 'pass') {
-      // 패시브(턴 시작) & 이펙트(버프/디버프/쿨타임) 처리!
-      newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onTurnStart', battle));
-      newLogs.push(...battleEngine.applyEffects(user, enemy, context));
-      newLogs.push(`😴 <@${user.id}>이(가) 쉬기를 선택하여 턴을 넘깁니다.`);
+      // 추가효과, 패시브, 피해 전혀 없음. (단순 턴 넘기기)
+      newLogs.push(`😴 <@${user.id}>이(가) 휴식을 취합니다.`);
     }
-
     // 턴 넘김(모든 행위 통일)
     battle.turn += 1;
     battle.isUserTurn = !battle.isUserTurn;
@@ -604,27 +601,18 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
     newLogs.push(` <@${nextTurnUser.id}> 턴!`);
 
     battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
-    
-    // 만약 턴 넘기기인 경우에만 예외
-    if (action === 'pass') {
-      await updateBattleTimer(battle, interaction);
 
-      const view = await battleEmbed({
-        user: battle.user,
-        enemy: battle.enemy,
-        turn: battle.turn,
-        logs: battle.logs,
-        isUserTurn: battle.isUserTurn,
-        activeUserId: nextTurnUser.id,
-      });
-      try {
-        await interaction.reply({ ...view, ephemeral: true });
-      } catch (e) {
-        try { await interaction.editReply({ ...view }); } catch (e2) {}
-      }
-      replied = true; return;
-    }
+    // 타이머, 임베드 갱신은 기존대로
+    await updateBattleTimer(battle, interaction);
+    await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
 
+    replied = true; return;
+  } catch (e) {
+    console.error('[공격/방어/점멸/쉬기 처리 오류]', e);
+    if (!replied) try { await interaction.reply({ content: '❌ 행동 처리 중 오류!', ephemeral: true }); } catch {}
+    replied = true; return;
+  }
+}
     // 행동 후 타이머 갱신
     await updateBattleTimer(battle, interaction);
 
