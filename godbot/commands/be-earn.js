@@ -118,29 +118,8 @@ module.exports = {
       return;
     }
 
-        // 1. 알바 (색찾기 5연속 미니게임)
+            // 1. 알바 (색찾기 5연속 미니게임)
     if (kind === 'alba') {
-      let round = 1;
-      let correct = 0;
-      const MAX_ROUND = 5;
-      const TIME_LIMIT = 60 * 1000; // 60초
-
-      const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
-      const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
-
-      function makeRow() {
-        const base = colorList[Math.floor(Math.random() * colorList.length)];
-        let arr = Array(6).fill(base);
-        let diffIdx = Math.floor(Math.random() * 6);
-        let diff;
-        do {
-          diff = colorList[Math.floor(Math.random() * colorList.length)];
-        } while (diff === base);
-        arr[diffIdx] = diff;
-        return { arr, answer: diffIdx, base, diff };
-      }
-
-      if (kind === 'alba') {
   try {
     let round = 1;
     const MAX_ROUND = 5;
@@ -275,6 +254,7 @@ module.exports = {
     return;
   }
 }
+
 
 
 
