@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const ITEMS = require('../utils/items.js');
@@ -7,6 +7,23 @@ const SKILLS = require('../utils/active-skills.js');
 const bePath = path.join(__dirname, '../data/BE.json');
 const itemsPath = path.join(__dirname, '../data/items.json');
 const skillsPath = path.join(__dirname, '../data/skills.json');
+
+const 강화ITEMS = [
+  {
+    name: '불굴의 영혼',
+    roleId: '1382169247538745404',
+    price: 10000,
+    desc: '챔피언 단일 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]',
+    emoji: '🧿'
+  },
+  {
+    name: '불굴의 영혼 (전설)',
+    roleId: '1382665471605870592',
+    price: 50000,
+    desc: '챔피언 한방 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]',
+    emoji: '🌟'
+  }
+];
 
 function loadJson(p, isArray = false) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, isArray ? "[]" : "{}");
@@ -19,7 +36,7 @@ function saveJson(p, data) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수상점')
-    .setDescription('파랑 정수(BE)로 아이템 또는 스킬을 구매할 수 있는 통합 상점입니다.')
+    .setDescription('파랑 정수(BE)로 아이템·스킬·강화아이템을 구매할 수 있는 통합 상점입니다.')
     .addStringOption(option =>
       option
         .setName('종류')
@@ -28,6 +45,7 @@ module.exports = {
         .addChoices(
           { name: '아이템 상점', value: 'item' },
           { name: '스킬 상점', value: 'skill' },
+          { name: '강화 아이템', value: 'upgrade' }
         )
     ),
 
@@ -209,6 +227,74 @@ module.exports = {
           await i.reply({ content: `✅ [${skill.name}] 스킬을 ${skill.price} BE에 구매 완료! (동일 스킬 중복 보유 불가)`, ephemeral: true });
           return;
         }
+      });
+
+      collector.on('end', async () => {
+        try { await interaction.editReply({ components: [] }); } catch (e) {}
+      });
+      return;
+    }
+
+    // ---- 강화 아이템 상점(역할) ----
+    if (kind === 'upgrade') {
+      const embed = new EmbedBuilder()
+        .setTitle("🪄 강화 아이템 상점 (역할 상품)")
+        .setDescription(
+          강화ITEMS.map((item, i) =>
+            `#${i + 1} | ${item.emoji} **${item.name}** (${item.price} BE)\n${item.desc}\n`
+          ).join("\n")
+        )
+        .setFooter({ text: `고유상품: 1회성 역할 아이템 | 구매시 즉시 지급` });
+
+      const rowBuy = new ActionRowBuilder();
+      강화ITEMS.forEach(item => {
+        rowBuy.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`upgrade_buy_${item.roleId}`)
+            .setLabel(`${item.name} 구매`)
+            .setStyle(ButtonStyle.Primary)
+        );
+      });
+
+      await interaction.reply({ embeds: [embed], components: [rowBuy], ephemeral: true });
+
+      const filter = i => i.user.id === interaction.user.id;
+      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
+
+      collector.on('collect', async i => {
+        // 구매 버튼 클릭시
+        const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
+        if (!btnItem) return;
+
+        // 서버에서 역할 보유 확인
+        const member = await i.guild.members.fetch(i.user.id);
+        if (member.roles.cache.has(btnItem.roleId)) {
+          await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
+          return;
+        }
+
+        const be = loadJson(bePath);
+        const userBe = be[i.user.id]?.amount || 0;
+        if (userBe < btnItem.price) {
+          await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+          return;
+        }
+
+        // 결제 내역
+        be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+        be[i.user.id].amount -= btnItem.price;
+        be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
+        saveJson(bePath, be);
+
+        // 역할 지급(권한 체크)
+        try {
+          await member.roles.add(btnItem.roleId, "강화 아이템 구매");
+        } catch (err) {
+          await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류)`, ephemeral: true });
+          return;
+        }
+
+        await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
       });
 
       collector.on('end', async () => {
