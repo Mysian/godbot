@@ -627,25 +627,26 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
   newLogs.push(...battleEngine.pass(user, enemy, context, []));
 } // 휴식 턴 넘기기
 
-    // 턴 넘김(모든 행위 통일)
-    battle.turn += 1;
-// 턴을 넘기지 않는다! (isUserTurn 그대로)
+    // 사망 체크 후, 턴 넘김 공통 처리
+battle.turn += 1;
+
+if (context.extraTurn) {
   newLogs.push(`🌀 추가 턴 발동! <@${user.id}>의 턴이 한 번 더 이어집니다!`);
-  // 혹시 연속발동 방지 플래그(헤카림 등) 쓸 땐 여기서 user._hecarimExtraTurn = false; 해도 됨
+  // 헤카림 등 연속발동 방지용 변수 초기화는 여기서!
 } else {
-    battle.isUserTurn = !battle.isUserTurn;
-    const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
-    newLogs.push(` <@${nextTurnUser.id}> 턴!`);
+  battle.isUserTurn = !battle.isUserTurn;
+}
+const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+newLogs.push(` <@${nextTurnUser.id}> 턴!`);
 
-    battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
+battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
 
-    // 행동 후 타이머 갱신
-    await updateBattleTimer(battle, interaction);
+// 행동 후 타이머 갱신
+await updateBattleTimer(battle, interaction);
+// 임베드 갱신
+await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
 
-    // 임베드 갱신
-    await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
-
-    replied = true; return;
+replied = true; return;
   } catch (e) {
     console.error('[공격/방어/점멸/쉬기 처리 오류]', e);
     if (!replied) try { await interaction.reply({ content: '❌ 행동 처리 중 오류!', ephemeral: true }); } catch {}
