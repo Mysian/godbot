@@ -24,7 +24,7 @@ module.exports = {
 
     if (!data) {
       await interaction.reply({
-        content: `❌ <@${targetUser.id}>님의 파랑 정수(BE) 데이터가 없습니다.`,
+        content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`,
         ephemeral: false
       });
       return;
@@ -34,12 +34,12 @@ module.exports = {
     const formatAmount = n => Number(n).toLocaleString('ko-KR');
 
     const history = (data.history || []).slice(-5).reverse().map(h =>
-      `${h.type === "earn" ? "🔵" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`
+      `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`
     ).join('\n') || "내역 없음";
 
     const embed = new EmbedBuilder()
-      .setTitle(`💙 ${targetUser.tag} (${targetUser.id})`)
-      .setDescription(`<@${targetUser.id}>님의 파랑 정수(BE) 잔액: **${formatAmount(data.amount)} BE**`)
+      .setTitle(`💙 ${targetUser.tag}`)
+      .setDescription(`<@${targetUser.id}>님의 🔷파랑 정수(BE) 잔액: **${formatAmount(data.amount)} BE**`)
       .addFields(
         { name: "📜 최근 거래 내역", value: history }
       )
