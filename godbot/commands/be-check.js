@@ -25,7 +25,7 @@ module.exports = {
     if (!data) {
       await interaction.reply({
         content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`,
-        ephemeral: false
+        ephemeral: true
       });
       return;
     }
@@ -47,7 +47,7 @@ module.exports = {
 
     await interaction.reply({
       embeds: [embed],
-      ephemeral: false
+      ephemeral: true
     });
   }
 };
