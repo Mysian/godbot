@@ -90,6 +90,6 @@ module.exports = {
       .setFooter({ text: `요청자: ${interaction.user.username}` })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };
