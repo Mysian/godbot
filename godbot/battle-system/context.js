@@ -148,6 +148,18 @@ module.exports = {
         logs.push(`🟩 공격력 ${effect.value}% 증가!`);
         effect.turns--;
       }
+// 닐라 패시브용 - 공격력 % 증가(atkUpPercent)
+else if (effect.type === "atkUpPercent" && effect.turns > 0) {
+  if (user._origAttack == null) user._origAttack = user.stats.attack;
+  user.stats.attack = Math.round(user._origAttack * (1 + (effect.value / 100)));
+  logs.push(`🟩 공격력 ${effect.value}% 증가!`);
+  effect.turns--;
+  if (effect.turns === 0 && user._origAttack != null) {
+    user.stats.attack = user._origAttack;
+    delete user._origAttack;
+    logs.push("🟩 공격력 버프 해제!");
+  }
+}
       // 공격력 % 감소
       else if (effect.type === "atkDownPercent" && effect.turns > 0) {
         user.stats.attack = Math.round(user.stats.attack * (1 - (effect.value / 100)));

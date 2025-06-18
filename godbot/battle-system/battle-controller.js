@@ -498,6 +498,20 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
     const prevLogs = (battle.logs || []).slice(-LOG_LIMIT);
     let newLogs = [];
 
+// ====== 혼란(행동실패 확률) 체크 ======
+    if (user._confused && Math.random() < (user._confused / 100)) {
+      newLogs.push("🌫️ 혼란에 빠져 행동에 실패했습니다!");
+      // 턴만 넘기고 행동 스킵
+      battle.turn += 1;
+      battle.isUserTurn = !battle.isUserTurn;
+      const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
+      newLogs.push(` <@${nextTurnUser.id}> 턴!`);
+      battle.logs = prevLogs.concat(newLogs).slice(-LOG_LIMIT);
+      await updateBattleTimer(battle, interaction);
+      await require('./updateBattleViewWithLogs')(interaction, battle, newLogs, nextTurnUser.id);
+      replied = true; return;
+    }
+
     if (action === 'defend') {
       newLogs.push(...battleEngine.defend(user, enemy, context, []));
       newLogs.push(...battleEngine.resolvePassive(user, enemy, context, 'onDefend', battle));
@@ -526,6 +540,24 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
 
       const deathLog = battleEngine.resolvePassive(enemy, user, context, 'onDeath', battle);
       if (deathLog && deathLog.length) newLogs.push(...deathLog);
+
+      else if (action === 'attack') {
+  newLogs.push(...battleEngine.attack(user, enemy, context, []));
+
+  // 추가 공격 트리거
+  if (context.extraAttack) {
+    const origMultiplier = context.damageMultiplier;
+    context.damageMultiplier = context.extraAttackDamageMultiplier || 1;
+
+    let extraLog = battleEngine.attack(user, enemy, context, []);
+    if (Array.isArray(extraLog)) newLogs.push(...extraLog);
+    else if (extraLog) newLogs.push(extraLog);
+
+    context.damageMultiplier = origMultiplier;
+    context.extraAttack = false;
+    context.extraAttackDamageMultiplier = undefined;
+  }
+}
 
       if (user.hp <= 0 || enemy.hp <= 0 || battle.turn >= 99) {
         battle.finished = true;
@@ -597,6 +629,10 @@ if (action === 'defend' || action === 'dodge' || action === 'attack' || action =
 
     // 턴 넘김(모든 행위 통일)
     battle.turn += 1;
+// 턴을 넘기지 않는다! (isUserTurn 그대로)
+  newLogs.push(`🌀 추가 턴 발동! <@${user.id}>의 턴이 한 번 더 이어집니다!`);
+  // 혹시 연속발동 방지 플래그(헤카림 등) 쓸 땐 여기서 user._hecarimExtraTurn = false; 해도 됨
+} else {
     battle.isUserTurn = !battle.isUserTurn;
     const nextTurnUser = battle.isUserTurn ? battle.user : battle.enemy;
     newLogs.push(` <@${nextTurnUser.id}> 턴!`);
