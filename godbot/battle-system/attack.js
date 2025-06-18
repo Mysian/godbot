@@ -62,6 +62,11 @@ module.exports = function attack(user, enemy, context, logs) {
   let bonusAmp = 1 + penRatio;
   damage = Math.floor(damage * bonusAmp);
 
+// 연속 공격 피해 측정
+if (context && context.damageMultiplier !== undefined) {
+  damage = Math.floor(damage * context.damageMultiplier);
+}
+
   // 3. 패시브
   context.damage = damage;
   let passiveLog = runPassive(user, enemy, context, "onAttack");
