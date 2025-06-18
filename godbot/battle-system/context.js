@@ -7,15 +7,33 @@ module.exports = {
     let atkBuffPct = 0, apBuffPct = 0, maxHpBuffPct = 0, defBuffPct = 0, critUp = 0, lifesteal = 0, damageReduce = 0, penguBuff = 0;
 
     for (let i = myEffects.length - 1; i >= 0; i--) {
-      const effect = myEffects[i];
+  const effect = myEffects[i];
 
-      // 매턴 HP 5% 회복 등(healOverTime)
-      if (effect.type === "healOverTime" && effect.turns > 0) {
-        const value = Math.max(1, Math.floor(effect.value));
-        user.hp = Math.min(user.stats.hp, user.hp + value);
-        logs.push(`💧 매턴 HP 회복! (+${value})`);
-        effect.turns--;
+  // [탈진 - 공격력/주문력 40% 감소, 만료시 복구]
+  if (effect.type === "exhaust" && effect.turns > 0) {
+    logs.push(`🥵 공격력/주문력 40% 감소 상태! (${effect.turns}턴 남음)`);
+    effect.turns--;
+    if (effect.turns === 0) {
+      // 원래 수치 복구
+      if (user._origAttack !== undefined) {
+        user.stats.attack = user._origAttack;
+        delete user._origAttack;
       }
+      if (user._origAp !== undefined) {
+        user.stats.ap = user._origAp;
+        delete user._origAp;
+      }
+      logs.push(`🥵 탈진 해제! 공격력/주문력 정상 복구`);
+    }
+  }
+
+  // 매턴 HP 5% 회복 등(healOverTime)
+  else if (effect.type === "healOverTime" && effect.turns > 0) {
+    const value = Math.max(1, Math.floor(effect.value));
+    user.hp = Math.min(user.stats.hp, user.hp + value);
+    logs.push(`💧 매턴 HP 회복! (+${value})`);
+    effect.turns--;
+  }
       // 주문력 5% 상승(apBuff) - 중첩 지원
       else if (effect.type === "apBuff" && effect.turns > 0) {
         apBuffPct += effect.value / user.stats.ap;
