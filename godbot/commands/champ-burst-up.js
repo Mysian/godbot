@@ -5,11 +5,14 @@ const path = require("path");
 const lockfile = require("proper-lockfile");
 const championList = require("../utils/champion-data");
 const { getChampionKeyByName } = require("../utils/champion-utils");
-const { battles, battleRequests } = require("./champ-battle"); // ★ 추가: 배틀 진행/대기 중 체크
+const { battles, battleRequests } = require("./champ-battle");
+const { getBE, addBE } = require("../be-util"); // ★ BE 연동
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const GREAT_SOUL_ROLE_ID = "1382665471605870592";
+const ENHANCE_BE_COST = 0; // 연속강화 1회당 BE 소모
+function formatNum(n) { return n.toLocaleString("ko-KR"); }
 
 async function loadJSON(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
@@ -18,8 +21,6 @@ async function loadJSON(p) {
 async function saveJSON(p, d) {
   fs.writeFileSync(p, JSON.stringify(d, null, 2));
 }
-
-// 히스토리 기록 함수 - 카운트만큼 누적(성공, 실패)
 async function updateEnhanceHistory(userId, { success = 0, fail = 0, max = null } = {}) {
   let release;
   try {
@@ -67,8 +68,6 @@ module.exports = {
     let immediateReply = null;
     try {
       await interaction.deferReply({ ephemeral: true });
-
-      // [추가] 챔피언 배틀 진행/대기 중이면 강화 불가!
       const userId = interaction.user.id;
       if (battles.has(userId) || battleRequests.has(userId)) {
         return interaction.editReply({
@@ -76,11 +75,9 @@ module.exports = {
           ephemeral: true
         });
       }
-
       release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
       const userMention = `<@${userId}>`;
       const data = await loadJSON(dataPath);
-
       if (!data[userId] || !data[userId].name) {
         immediateReply = { content: `❌ 먼저 /챔피언획득 으로 챔피언을 얻어야 합니다.` };
         return;
@@ -108,21 +105,30 @@ async function startBurstUpgrade(interaction, userId, userMention) {
     release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
     const data = await loadJSON(dataPath);
     const champ = data[userId];
-
     const champKey = getChampionKeyByName(champ.name);
     const champImg = champKey
       ? `https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKey}.png`
       : null;
+    // BE 관련
+    const myBE = getBE(userId);
+
+    // 선택 메뉴 각각의 BE 필요량 계산
+    const burstOptions = [5, 10, 20].map(n => {
+      return {
+        label: `${n}회 강화 (${formatNum(n * ENHANCE_BE_COST)} BE 필요)`,
+        value: String(n),
+        description: `한 번에 ${n}회 연속 강화 (필요 BE: ${formatNum(n * ENHANCE_BE_COST)}개)`,
+        default: false,
+        // 선택 불가: 보유 BE 부족할 경우
+        disabled: myBE < n * ENHANCE_BE_COST,
+      };
+    });
 
     const selectRow = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('burst-enhance-count')
         .setPlaceholder('한 번에 몇 회 강화할까요?')
-        .addOptions(
-          { label: '5회 강화', value: '5', description: '한 번에 5회 연속 강화' },
-          { label: '10회 강화', value: '10', description: '한 번에 10회 연속 강화' },
-          { label: '20회 강화', value: '20', description: '한 번에 20회 연속 강화 (위험!)' }
-        )
+        .addOptions(burstOptions)
     );
     const embed = new EmbedBuilder()
       .setTitle(`💥 한방 강화 - 강화 횟수 선택`)
@@ -133,6 +139,8 @@ async function startBurstUpgrade(interaction, userId, userMention) {
 - 한 번이라도 실패하면 강화 실패! (챔피언 소멸 위험 O)
 - **실패 시 소멸 방지 확률은 고정 10% (즉, 90%로 챔피언 소멸!)**
 - 불굴의 영혼 전설등급이 있다면 해당 아이템이 대신 소멸!
+
+🔷 **내 BE:** ${formatNum(myBE)}개
 
 어떤 도전을 하시겠습니까?`)
       .setColor(0xef5350);
@@ -175,6 +183,11 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
       : null;
     const percent = Math.floor(burstProb * 10000) / 100;
 
+    // 현재 BE
+    const myBE = getBE(userId);
+    const needBE = ENHANCE_BE_COST * count;
+    const afterBE = myBE - needBE;
+
     // ====== [추가] 강화 능력치 미리보기 ======
     // 현재 능력치
     const curStats = { ...champ.stats };
@@ -204,12 +217,15 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
       .join("\n");
 
     const infoEmbed = new EmbedBuilder()
-      .setTitle("🔥 강화 도전 확률 안내")
+      .setTitle("🔥 강화 도전 확률 및 BE 안내")
       .setDescription(
         `**${champ.name} ${champ.level}강 → ${champ.level + count}강(도전 시)**\n\n` +
         `- 한 번에 ${count}회 연속 강화!\n` +
         `- 연속 성공확률: **${percent}%**\n` +
         `- 실패 시 챔피언 소멸 확률: **90%** (소멸 방지 10%)\n\n` +
+        `🔷 **필요 BE:** ${formatNum(needBE)}개\n` +
+        `💰 **내 BE:** ${formatNum(myBE)}개\n` +
+        `💸 **강화 후 BE:** ${myBE >= needBE ? formatNum(afterBE) : "부족"}\n\n` +
         `**[능력치 미리보기]**\n${statPreview}\n\n정말 강화에 도전하시겠습니까?`
       )
       .setColor(0xf5a623);
@@ -219,7 +235,8 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
       new ButtonBuilder()
         .setCustomId(`burst-confirm-${count}`)
         .setLabel("강화 도전한다!")
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(myBE < needBE),
       new ButtonBuilder()
         .setCustomId("burst-cancel")
         .setLabel("취소")
@@ -230,7 +247,7 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
       components: [buttonRow],
       ephemeral: true
     });
-    await setupBurstConfirmCollector(i, userId, userMention, count);
+    await setupBurstConfirmCollector(i, userId, userMention, count, needBE);
   });
   collector.on("end", async (collected, reason) => {
     if (collected.size === 0) {
@@ -246,7 +263,7 @@ async function setupBurstCountCollector(interaction, userId, userMention) {
   });
 }
 
-async function setupBurstConfirmCollector(interaction, userId, userMention, burstCount) {
+async function setupBurstConfirmCollector(interaction, userId, userMention, burstCount, needBE) {
   const filter = i =>
     i.user.id === userId &&
     (i.customId === `burst-confirm-${burstCount}` || i.customId === "burst-cancel");
@@ -264,7 +281,7 @@ async function setupBurstConfirmCollector(interaction, userId, userMention, burs
       });
       return;
     }
-    await handleBurstUpgradeProcess(i, userId, userMention, burstCount);
+    await handleBurstUpgradeProcess(i, userId, userMention, burstCount, needBE);
   });
   collector.on("end", async (collected, reason) => {
     if (collected.size === 0) {
@@ -280,11 +297,23 @@ async function setupBurstConfirmCollector(interaction, userId, userMention, burs
   });
 }
 
-async function handleBurstUpgradeProcess(interaction, userId, userMention, burstCount) {
+async function handleBurstUpgradeProcess(interaction, userId, userMention, burstCount, needBE) {
   let release2;
   let errorMessage = null;
   let resultContent = null;
   try {
+    // BE 차감(연속강화 N회)
+    let myBE = getBE(userId);
+    if (myBE < needBE) {
+      return interaction.editReply({
+        content: `❌ 파랑 정수(BE)가 부족합니다! (필요: ${formatNum(needBE)}개, 보유: ${formatNum(myBE)}개)`,
+        embeds: [],
+        components: [],
+        ephemeral: true
+      });
+    }
+    await addBE(userId, -needBE, `연속강화 ${burstCount}회`);
+
     release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
     let dataNow = await loadJSON(dataPath);
     let champNow = dataNow[userId];
@@ -355,15 +384,10 @@ ${statDesc}
       };
     }
     else {
-      // 중간 실패, 소실 판정
-      // [1] 성공분만큼 레벨/성공횟수 증가
       champNow.level += successCount;
       champNow.success += successCount;
-
-      // [2] 실패 카운트(실패는 1회만!)
       await updateEnhanceHistory(userId, { success: successCount, fail: 1, max: champNow.level });
 
-      // [3] 소실방어(10%) 체크
       const surviveRate = 0.1;
       const survive = Math.random() < surviveRate;
 
@@ -383,7 +407,6 @@ ${statDesc}
           failEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKeyFail}.png`);
         resultContent = { embeds: [failEmbed], components: [], ephemeral: true };
       } else {
-        // 불굴의 영혼 전설등급 보호
         const guild = interaction.guild;
         const member = await guild.members.fetch(userId).catch(() => null);
 
@@ -402,10 +425,7 @@ ${statDesc}
             reviveEmbed.setThumbnail(`https://ddragon.leagueoflegends.com/cdn/15.11.1/img/champion/${champKey}.png`);
           resultContent = { embeds: [reviveEmbed], components: [], ephemeral: true };
         } else {
-          // 챔피언 소멸!
           await updateEnhanceHistory(userId, { max: champNow.level });
-
-          // ✅ 전적 기록까지 같이 삭제
           const recordPath = path.join(__dirname, "../data/champion-records.json");
           let records = {};
           try {
