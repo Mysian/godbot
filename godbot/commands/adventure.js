@@ -141,9 +141,7 @@ module.exports = {
       const userId = interaction.user.id;
       await checkUserChampionDeleted(userId);
 
-      // --- adventure.json에서 완전히 불러오기 ---
       let adv = loadAdventure();
-      // adventure.json 구조 : { [userId]: { stage, hp, reward, clear, inBattle, monster: { name, hp } } }
       if (!adv[userId]) {
         adv[userId] = {
           stage: 1,
@@ -164,8 +162,8 @@ module.exports = {
       const championBase = championList.find(c => c.name === champ.name);
       champ.stats = champ.stats || { ...championBase.stats };
 
-      // --- 스테이지 진입: 몬스터를 새로 뽑을 때만! ---
-      if (!userAdv.monster || userAdv.monsterReset) {
+      // --- 몬스터 생성 및 안전 체크 ---
+      if (!userAdv.monster || userAdv.monsterReset || !userAdv.monster.name || typeof userAdv.monster.hp !== "number") {
         const monsterName = getMonsterByStage(userAdv.stage);
         const monsterStat = getMonsterStats(userAdv.stage, monsterName);
         userAdv.monster = { name: monsterName, hp: monsterStat.hp };
@@ -173,6 +171,7 @@ module.exports = {
       }
       const monsterName = userAdv.monster.name;
       const monsterStats = getMonsterStats(userAdv.stage, monsterName);
+
       userAdv.hp = userAdv.hp === null ? champ.stats.hp : userAdv.hp;
 
       const [monsterImg, sceneImg] = getMonsterImage(monsterName, userAdv.stage);
@@ -201,7 +200,7 @@ module.exports = {
         .setFields(
           { name: "내 챔피언", value: champ.name, inline: true },
           { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
-          { name: "몬스터 HP", value: `${userAdv.monster.hp} / ${monsterStats.hp}`, inline: true }
+          { name: "몬스터 HP", value: `${userAdv.monster && userAdv.monster.hp !== undefined ? userAdv.monster.hp : monsterStats.hp} / ${monsterStats.hp}`, inline: true }
         )
         .setColor(isNamed ? 0xe67e22 : 0x2986cc)
         .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
@@ -210,7 +209,6 @@ module.exports = {
       if (sceneImg) embed.setImage(sceneImg);
       if (descValue) embed.setDescription(descValue);
 
-      // 항상 update/reply 구분(재호출 방지)
       const replyFunc = interaction.replied || interaction.deferred ? interaction.editReply.bind(interaction) : interaction.reply.bind(interaction);
       await replyFunc({ embeds: [embed], components: [row], ephemeral: true });
 
@@ -226,6 +224,16 @@ module.exports = {
           advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
           adv = loadAdventure();
           userAdv = adv[userId];
+
+          // 안전하게 몬스터 객체 체크
+          if (!userAdv.monster || !userAdv.monster.name || typeof userAdv.monster.hp !== "number") {
+            const monsterName = getMonsterByStage(userAdv.stage);
+            const monsterStat = getMonsterStats(userAdv.stage, monsterName);
+            userAdv.monster = { name: monsterName, hp: monsterStat.hp };
+            userAdv.monsterReset = false;
+          }
+          const monsterName = userAdv.monster.name;
+          const monsterStats = getMonsterStats(userAdv.stage, monsterName);
 
           if (i.customId === "adventure-escape") {
             resetUserAdventure(userId, adv);
@@ -270,8 +278,10 @@ module.exports = {
             userAdv.monster.hp -= dmg;
             if (userAdv.monster.hp > 0) {
               let mCrit = Math.random() < monsterStats.crit;
-              let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
-              mdmg = calcCritDamage(mdmg, mCrit);
+              let mdmg = calcCritDamage(
+                calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                mCrit
+              );
               userAdv.hp -= mdmg;
             } else {
               userAdv.monster.hp = 0;
@@ -281,7 +291,6 @@ module.exports = {
               userAdv.inBattle = false;
               userAdv.hp = champ.stats.hp;
               userAdv.clear += 1;
-
               let reward = (userAdv.stage % 10 === 0) ? makeStageReward(userAdv.stage) : 0;
               userAdv.reward += reward;
               adv[userId] = userAdv; saveAdventure(adv);
@@ -332,8 +341,10 @@ module.exports = {
             dodge = Math.random() < 0.10;
             if (!dodge) {
               let mCrit = Math.random() < monsterStats.crit;
-              let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
-              mdmg = calcCritDamage(mdmg, mCrit);
+              let mdmg = calcCritDamage(
+                calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                mCrit
+              );
               userAdv.hp -= mdmg;
             }
             if (userAdv.hp <= 0) {
