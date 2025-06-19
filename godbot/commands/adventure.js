@@ -1,3 +1,4 @@
+// 📁 adventure.js (체력통+피해량 UI 적용)
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -103,6 +104,14 @@ function calcDamage(atk, pen, enemyDef, enemyHp) {
   return base;
 }
 
+// 체력바(유니코드 블록) 생성 함수
+function makeHPBar(cur, max, len = 15, color = 'green') {
+  const rate = Math.max(0, Math.min(1, cur / max));
+  const blocks = Math.round(rate * len);
+  const bar = (color === 'red' ? "🟥" : "🟩").repeat(blocks) + "⬛".repeat(len - blocks);
+  return `\`${bar}\` ${cur} / ${max}`;
+}
+
 // embed + row 만들기 함수
 function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isClear) {
   const [monsterImg, sceneImg] = getMonsterImage(userAdv.monster.name, userAdv.stage);
@@ -116,8 +125,8 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
     .setTitle(`🌌 [스테이지 ${userAdv.stage}] ${userAdv.monster.name} 출현`)
     .setFields(
       { name: "내 챔피언", value: champ.name, inline: true },
-      { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
-      { name: "몬스터 HP", value: `${userAdv.monster.hp} / ${monsterStats.hp}`, inline: true }
+      { name: "내 체력", value: makeHPBar(userAdv.hp, champ.stats.hp, 15, "green"), inline: false },
+      { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 15, "red"), inline: false }
     )
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
     .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
@@ -248,16 +257,18 @@ module.exports = {
             );
             dmg = calcCritDamage(dmg, crit);
             userAdv.monster.hp -= dmg;
-            let resultMsg = crit ? "💥 크리티컬! " : "";
+            let resultMsg = crit ? `💥 크리티컬! ${dmg} 피해를 입혔어!\n` : `내가 ${dmg} 피해를 입혔어!\n`;
 
+            let mdmg = 0, mCrit = false;
             if (userAdv.monster.hp > 0) {
-              let mCrit = Math.random() < monsterStats.crit;
-              let mdmg = calcCritDamage(
+              mCrit = Math.random() < monsterStats.crit;
+              mdmg = calcCritDamage(
                 calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
                 mCrit
               );
               userAdv.hp -= mdmg;
-              if (mCrit) resultMsg += "몬스터 크리티컬!";
+              if (mCrit) resultMsg += `몬스터 크리티컬! `;
+              resultMsg += `몬스터에게 ${mdmg} 피해를 받았어!`;
             } else {
               userAdv.monster.hp = 0;
             }
@@ -313,14 +324,16 @@ module.exports = {
           if (i.customId === "adventure-dodge") {
             let dodge = Math.random() < 0.10;
             let resultMsg = "";
+            let mdmg = 0, mCrit = false;
             if (!dodge) {
-              let mCrit = Math.random() < monsterStats.crit;
-              let mdmg = calcCritDamage(
+              mCrit = Math.random() < monsterStats.crit;
+              mdmg = calcCritDamage(
                 calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
                 mCrit
               );
               userAdv.hp -= mdmg;
-              if (mCrit) resultMsg = "몬스터 크리티컬!";
+              if (mCrit) resultMsg = "몬스터 크리티컬! ";
+              resultMsg += `회피 실패! 몬스터에게 ${mdmg} 피해를 받았어!`;
             } else {
               resultMsg = "✨ 점멸 성공! (공격 회피)";
             }
