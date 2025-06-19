@@ -19,10 +19,7 @@ const dragonList = [
 ];
 const boss50 = "고통의 아타칸";
 const boss100 = "내셔 남작";
-
-// 👇 이미지는 여기에 몬스터명: 이미지URL 형식으로 쭉 적으면 됨!
 const MONSTER_IMAGES = {
-  // 일반 몬스터
   "전사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176708080078950/c903a38d06fa65f8.png?format=webp&quality=lossless",
   "마법사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176707815968898/5b8460849fd61cbf.png?format=webp&quality=lossless",
   "공성 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176707509780562/5128ae658c32179c.png?format=webp&quality=lossless",
@@ -34,7 +31,6 @@ const MONSTER_IMAGES = {
   "푸른 파수꾼": "https://media.discordapp.net/attachments/1385176420132720640/1385176743572279296/daddcc27415794b0.png?format=webp&quality=lossless",
   "붉은 덩굴정령": "https://media.discordapp.net/attachments/1385176420132720640/1385176743312359434/380002f988b1d5ea.png?format=webp&quality=lossless",
   "협곡의 전령": "https://media.discordapp.net/attachments/1385176420132720640/1385176743056510986/0bc2ec1f104562bf.png?format=webp&quality=lossless",
-  // 드래곤
   "바람의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176742657790102/ecf871759ecc50ac.png?format=webp&quality=lossless",
   "대지의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176709824909353/1d81730bb41b4b07.png?format=webp&quality=lossless",
   "화염의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176709296554005/55fe09766b0b1fc5.png?format=webp&quality=lossless",
@@ -42,22 +38,10 @@ const MONSTER_IMAGES = {
   "마법공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176539028652062/aa5f72454cff37ec.png?format=webp&quality=lossless",
   "화학공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176538223476776/e10866e9e5cff78c.png?format=webp&quality=lossless",
   "장로 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176536805675068/6d0d13f9c623cb09.png?format=webp&quality=lossless",
-  // 네임드
   "고통의 아타칸": "https://media.discordapp.net/attachments/1385176420132720640/1385176535908093984/8965fd3ee9998af3.png?format=webp&quality=lossless",
   "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176535081680937/aac00404cf0ce8ef.png?format=webp&quality=lossless",
-
-  // 등장씬 (몬스터+등장)
-  "바람의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176745316978730/34d295bcd86ade45.png?format=webp&quality=lossless",
-  "대지의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176745006596106/3c5ce8c8b66c6954.png?format=webp&quality=lossless",
-  "화염의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176709577576458/29563bc6fbd6a7f8.png?format=webp&quality=lossless",
-  "바다의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176708445110373/bdc4f796fd5dedfe.png?format=webp&quality=lossless",
-  "마법공학 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176538609356860/41f7ff067af56f32.png?format=webp&quality=lossless",
-  "화학공학 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176537602719786/6e375cf5879766ac.png?format=webp&quality=lossless",
-  "장로 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176536440639488/968c59724143fd8a.png?format=webp&quality=lossless",
-  "고통의 아타칸 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176535492989048/df5e905d6dfd2336.png?format=webp&quality=lossless",
-  "내셔 남작 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176539473117304/e3a3a8c0b4769b05.png?format=webp&quality=lossless",
 };
-const ADVENTURE_SCENE_URL = "https://media.discordapp.net/attachments/1385176420132720640/1385176710126895257/00dba14c69f9c02a.png?format=webp&quality=lossless"; // 모험 씬 기본 테마 (없으면 아무 이미지나!)
+const ADVENTURE_SCENE_URL = "https://media.discordapp.net/attachments/1385176420132720640/1385176710126895257/00dba14c69f9c02a.png?format=webp&quality=lossless";
 
 function getMonsterByStage(stage) {
   if (stage % 100 === 0) return boss100;
@@ -66,7 +50,6 @@ function getMonsterByStage(stage) {
   const idx = Math.floor(Math.random() * monsterStageList.length);
   return monsterStageList[idx];
 }
-
 function getMonsterStats(stage, monster) {
   let baseAtk = 8 + Math.floor(stage * 1.8);
   let baseHp = 50 + Math.floor(stage * 18);
@@ -88,20 +71,11 @@ function getMonsterStats(stage, monster) {
     crit: baseCrit
   };
 }
-
-// 👉 몬스터/씬 이미지를 URL로 반환
 function getMonsterImage(monster, stage) {
   let sceneUrl = ADVENTURE_SCENE_URL;
   let monsterUrl = MONSTER_IMAGES[monster] || ADVENTURE_SCENE_URL;
-
-  // 등장씬 (드래곤, 네임드 등)
-  if (dragonList.includes(monster) || [boss50, boss100].includes(monster)) {
-    const appearName = monster + " 등장";
-    sceneUrl = MONSTER_IMAGES[appearName] || ADVENTURE_SCENE_URL;
-  }
   return [monsterUrl, sceneUrl];
 }
-
 function loadUserChampion(userId) {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
   const data = JSON.parse(fs.readFileSync(dataPath, "utf8"));
@@ -121,7 +95,6 @@ function loadAdventureBest() {
 function saveAdventureBest(data) {
   fs.writeFileSync(adventureBestPath, JSON.stringify(data, null, 2));
 }
-// 최고기록 갱신: stage, clear
 function updateBestRecord(userId, curStage, curClear) {
   const best = loadAdventureBest();
   if (!best[userId]) best[userId] = { bestStage: 0, totalClear: 0 };
@@ -131,7 +104,6 @@ function updateBestRecord(userId, curStage, curClear) {
 }
 function resetUserAdventure(userId, advObj) {
   if (advObj && advObj[userId]) {
-    // adventure-best에 최고기록 업데이트
     updateBestRecord(userId, advObj[userId].stage, advObj[userId].clear);
   }
   const adv = loadAdventure();
@@ -164,14 +136,12 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("모험")
     .setDescription("무한 스테이지 몬스터를 상대하며 끝없이 도전!"),
-
   async execute(interaction) {
     try {
       const userId = interaction.user.id;
       await checkUserChampionDeleted(userId);
-
       let adv = loadAdventure();
-      let userAdv = adv[userId] || { stage: 1, hp: null, reward: 0, clear: 0 };
+      let userAdv = adv[userId] || { stage: 1, hp: null, reward: 0, clear: 0, inBattle: false, curMonster: null };
 
       const champ = loadUserChampion(userId);
       if (!champ || !champ.name) {
@@ -180,16 +150,19 @@ module.exports = {
       }
       const championBase = championList.find(c => c.name === champ.name);
       champ.stats = champ.stats || { ...championBase.stats };
-      const passive = passiveSkills[champ.name];
 
-      const stage = userAdv.stage;
-      const monsterName = getMonsterByStage(stage);
-      const monsterStats = getMonsterStats(stage, monsterName);
+      // **몬스터 세팅: 스테이지 입장 시에만 몬스터 고정**
+      if (!userAdv.curMonster || userAdv.stageChanged) {
+        userAdv.curMonster = getMonsterByStage(userAdv.stage);
+        userAdv.stageChanged = false;
+      }
+      const monsterName = userAdv.curMonster;
+      const monsterStats = getMonsterStats(userAdv.stage, monsterName);
+
       userAdv.hp = userAdv.hp === null ? champ.stats.hp : userAdv.hp;
 
-      const [monsterImg, sceneImg] = getMonsterImage(monsterName, stage);
+      const [monsterImg, sceneImg] = getMonsterImage(monsterName, userAdv.stage);
       const isNamed = dragonList.includes(monsterName) || [boss50, boss100].includes(monsterName);
-
       let monsterMsg = "";
       if (monsterName === boss50) monsterMsg = "나의 고통을 느껴라...!";
       if (monsterName === boss100) monsterMsg = "나를 쓰러뜨릴 수 있나?";
@@ -210,7 +183,7 @@ module.exports = {
 
       const descValue = isNamed ? `**${monsterMsg}**` : undefined;
       const embed = new EmbedBuilder()
-        .setTitle(`🌌 [스테이지 ${stage}] ${monsterName} 출현`)
+        .setTitle(`🌌 [스테이지 ${userAdv.stage}] ${monsterName} 출현`)
         .setFields(
           { name: "내 챔피언", value: champ.name, inline: true },
           { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
@@ -223,10 +196,12 @@ module.exports = {
       if (sceneImg) embed.setImage(sceneImg);
       if (descValue) embed.setDescription(descValue);
 
-      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+      // 처음 명령어일 때는 reply, 그 외는 update에서 이 함수가 실행됨
+      const replyFunc = interaction.replied || interaction.deferred ? interaction.editReply.bind(interaction) : interaction.reply.bind(interaction);
+      await replyFunc({ embeds: [embed], components: [row], ephemeral: true });
 
       const filter = i => i.user.id === userId &&
-        ["adventure-start", "adventure-escape", "adventure-attack", "adventure-dodge"].includes(i.customId);
+        ["adventure-start", "adventure-escape", "adventure-attack", "adventure-dodge", "adventure-next-stage"].includes(i.customId);
 
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
@@ -234,138 +209,146 @@ module.exports = {
       collector.on("collect", async i => {
         let advLock;
         try {
-  advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
-  adv = loadAdventure();
-  userAdv = adv[userId] || { stage: 1, hp: champ.stats.hp, reward: 0, clear: 0 };
+          advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+          adv = loadAdventure();
+          userAdv = adv[userId] || { stage: 1, hp: champ.stats.hp, reward: 0, clear: 0, inBattle: false, curMonster: null };
 
-  if (i.customId === "adventure-escape") {
-    resetUserAdventure(userId, adv);
-    return await i.update({
-      content: "🏃‍♂️ 모험에서 도망쳤다! 다음에 다시 도전해줘.",
-      embeds: [],
-      components: [],
-      ephemeral: true
-    });
-  }
+          if (i.customId === "adventure-escape") {
+            resetUserAdventure(userId, adv);
+            return await i.update({
+              content: "🏃‍♂️ 모험에서 도망쳤다! 다음에 다시 도전해줘.",
+              embeds: [],
+              components: [],
+              ephemeral: true
+            });
+          }
 
-  if (i.customId === "adventure-start") {
-    userAdv.inBattle = true;
-    adv[userId] = userAdv; saveAdventure(adv);
-    await module.exports.execute(i);
-    return;
-  }
+          if (i.customId === "adventure-start") {
+            userAdv.inBattle = true;
+            adv[userId] = userAdv; saveAdventure(adv);
+            await module.exports.execute(i);
+            return;
+          }
 
-  if (!userAdv.inBattle) return;
+          if (i.customId === "adventure-next-stage") {
+            userAdv.stageChanged = true;
+            userAdv.inBattle = false;
+            adv[userId] = userAdv; saveAdventure(adv);
+            await module.exports.execute(i);
+            return;
+          }
 
-  let crit = false;
-  let dodge = false;
+          if (!userAdv.inBattle) return;
 
-  // ===== 공격 분기
-  if (i.customId === "adventure-attack") {
-    crit = Math.random() < 0.25;
-    let dmg = calcDamage(
-      champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
-      champ.stats.penetration, monsterStats.defense, monsterStats.hp
-    );
-    dmg = calcCritDamage(dmg, crit);
-    let mhp = monsterStats.hp - dmg;
+          let crit = false;
+          let dodge = false;
 
-    if (mhp > 0) {
-      let mCrit = Math.random() < monsterStats.crit;
-      let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
-      mdmg = calcCritDamage(mdmg, mCrit);
-      userAdv.hp -= mdmg;
-    } else {
-      mhp = 0;
-    }
+          if (i.customId === "adventure-attack") {
+            crit = Math.random() < 0.25;
+            let dmg = calcDamage(
+              champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+              champ.stats.penetration, monsterStats.defense, monsterStats.hp
+            );
+            dmg = calcCritDamage(dmg, crit);
+            let mhp = monsterStats.hp - dmg;
 
-    if (mhp <= 0) {
-      userAdv.stage += 1;
-      userAdv.inBattle = false;
-      userAdv.hp = champ.stats.hp;
-      userAdv.clear += 1;
+            if (mhp > 0) {
+              let mCrit = Math.random() < monsterStats.crit;
+              let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
+              mdmg = calcCritDamage(mdmg, mCrit);
+              userAdv.hp -= mdmg;
+            } else {
+              mhp = 0;
+            }
 
-      let reward = (userAdv.stage % 10 === 1) ? makeStageReward(userAdv.stage - 1) : 0;
-      userAdv.reward += reward;
-      adv[userId] = userAdv; saveAdventure(adv);
+            if (mhp <= 0) {
+              userAdv.stage += 1;
+              userAdv.inBattle = false;
+              userAdv.hp = champ.stats.hp;
+              userAdv.clear += 1;
+              userAdv.stageChanged = true; // 다음 스테이지 몬스터를 새로 뽑아야 함
 
-      if (reward > 0) {
-        await addBE(userId, reward, `[모험] ${userAdv.stage - 1} 스테이지 클리어`);
-      }
-      // ✅ content는 짧게, 안내는 embed로!
-      return await i.update({
-        content: `🎉 ${monsterName} 처치!`,
-        embeds: [
-          new EmbedBuilder().setDescription([
-            reward > 0 ? `파랑정수 +${formatNumber(reward)} 지급!` : "",
-            `스테이지 ${userAdv.stage}로 진행 가능!`
-          ].filter(Boolean).join('\n'))
-        ],
-        components: [],
-        ephemeral: true
+              let reward = (userAdv.stage % 10 === 1) ? makeStageReward(userAdv.stage - 1) : 0;
+              userAdv.reward += reward;
+              adv[userId] = userAdv; saveAdventure(adv);
+
+              if (reward > 0) {
+                await addBE(userId, reward, `[모험] ${userAdv.stage - 1} 스테이지 클리어`);
+              }
+              // '계속하기' 버튼
+              const nextRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId("adventure-next-stage").setLabel("다음 스테이지 계속하기").setStyle(ButtonStyle.Success)
+              );
+              return await i.update({
+                content: `🎉 ${monsterName} 처치!`,
+                embeds: [
+                  new EmbedBuilder().setDescription([
+                    reward > 0 ? `파랑정수 +${formatNumber(reward)} 지급!` : "",
+                    `스테이지 ${userAdv.stage}로 진행 가능!`
+                  ].filter(Boolean).join('\n'))
+                ],
+                components: [nextRow],
+                ephemeral: true
+              });
+            }
+
+            if (userAdv.hp <= 0) {
+              userAdv.hp = 0;
+              userAdv.inBattle = false;
+              if (champ.level > 0) champ.level -= 1;
+              resetUserAdventure(userId, adv);
+              if (fs.existsSync(dataPath)) {
+                let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+                cd[userId].level = champ.level;
+                fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
+              }
+              return await i.update({
+                content: `😵 패배!`,
+                embeds: [
+                  new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`)
+                ],
+                components: [],
+                ephemeral: true
+              });
+            }
+            adv[userId] = userAdv; saveAdventure(adv);
+            await module.exports.execute(i);
+          }
+
+          if (i.customId === "adventure-dodge") {
+            dodge = Math.random() < 0.10;
+            if (!dodge) {
+              let mCrit = Math.random() < monsterStats.crit;
+              let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
+              mdmg = calcCritDamage(mdmg, mCrit);
+              userAdv.hp -= mdmg;
+            }
+            if (userAdv.hp <= 0) {
+              userAdv.hp = 0;
+              userAdv.inBattle = false;
+              if (champ.level > 0) champ.level -= 1;
+              resetUserAdventure(userId, adv);
+              if (fs.existsSync(dataPath)) {
+                let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+                cd[userId].level = champ.level;
+                fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
+              }
+              return await i.update({
+                content: `😵 패배!`,
+                embeds: [
+                  new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`)
+                ],
+                components: [],
+                ephemeral: true
+              });
+            }
+            adv[userId] = userAdv; saveAdventure(adv);
+            await module.exports.execute(i);
+          }
+        } finally {
+          if (advLock) try { await advLock(); } catch {}
+        }
       });
-    }
-
-    if (userAdv.hp <= 0) {
-      userAdv.hp = 0;
-      userAdv.inBattle = false;
-      if (champ.level > 0) champ.level -= 1;
-      resetUserAdventure(userId, adv);
-      if (fs.existsSync(dataPath)) {
-        let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-        cd[userId].level = champ.level;
-        fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
-      }
-      return await i.update({
-        content: `😵 패배!`,
-        embeds: [
-          new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`)
-        ],
-        components: [],
-        ephemeral: true
-      });
-    }
-    adv[userId] = userAdv; saveAdventure(adv);
-    await module.exports.execute(i);
-  }
-
-  // ===== 점멸(회피) 분기
-  if (i.customId === "adventure-dodge") {
-    dodge = Math.random() < 0.10;
-    if (!dodge) {
-      let mCrit = Math.random() < monsterStats.crit;
-      let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
-      mdmg = calcCritDamage(mdmg, mCrit);
-      userAdv.hp -= mdmg;
-    }
-    if (userAdv.hp <= 0) {
-      userAdv.hp = 0;
-      userAdv.inBattle = false;
-      if (champ.level > 0) champ.level -= 1;
-      resetUserAdventure(userId, adv);
-      if (fs.existsSync(dataPath)) {
-        let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-        cd[userId].level = champ.level;
-        fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
-      }
-      return await i.update({
-        content: `😵 패배!`,
-        embeds: [
-          new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`)
-        ],
-        components: [],
-        ephemeral: true
-      });
-    }
-    adv[userId] = userAdv; saveAdventure(adv);
-    await module.exports.execute(i);
-  }
-} finally {
-  if (advLock) try { await advLock(); } catch {}
-}
-
-  });
-
       collector.on("end", async collected => {});
     } catch (err) {
       console.error('[모험 명령 실행 오류]', err);
