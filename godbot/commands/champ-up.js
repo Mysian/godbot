@@ -4,13 +4,16 @@ const path = require("path");
 const lockfile = require("proper-lockfile");
 const championList = require("../utils/champion-data");
 const { getChampionKeyByName } = require("../utils/champion-utils");
-const { battles, battleRequests } = require("./champ-battle"); // 배틀 상태 체크
+const { battles, battleRequests } = require("./champ-battle");
+const { getBE, addBE } = require("../be-util"); // BE 연동!
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const SOUL_ROLE_ID = "1382169247538745404";
 
-const GREAT_SUCCESS_RATE = 0.05; // 대성공 확률 (5%)
+const GREAT_SUCCESS_RATE = 0.05;
+const ENHANCE_BE_COST = 0; // 강화 1회당 소모 BE (원하는 값으로 설정)
+function formatNum(n) { return n.toLocaleString("ko-KR"); }
 
 async function loadJSON(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
@@ -19,31 +22,21 @@ async function loadJSON(p) {
 async function saveJSON(p, d) {
   fs.writeFileSync(p, JSON.stringify(d, null, 2));
 }
-
-// 히스토리 기록 함수
 async function updateEnhanceHistory(userId, { success = false, fail = false, max = null } = {}) {
   let release;
   try {
     release = await lockfile.lock(enhanceHistoryPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
     let hist = await loadJSON(enhanceHistoryPath);
-    if (!hist[userId]) hist[userId] = {
-      total: 0,
-      success: 0,
-      fail: 0,
-      max: 0,
-    };
+    if (!hist[userId]) hist[userId] = { total: 0, success: 0, fail: 0, max: 0 };
     hist[userId].total++;
     if (success) hist[userId].success++;
     if (fail) hist[userId].fail++;
     if (max !== null && max > hist[userId].max) hist[userId].max = max;
     await saveJSON(enhanceHistoryPath, hist);
-  } catch (e) {
-    // 무시(기록 오류)
-  } finally {
+  } catch (e) {} finally {
     if (release) try { await release(); } catch {}
   }
 }
-
 function getSuccessRate(level) {
   if (level < 10) return 0.9;
   if (level < 30) return 0.8;
@@ -69,13 +62,7 @@ function calcStatGain(level, baseAtk, baseAp) {
   let hpGain = (level * 5) + 50;
   let defGain = Math.floor((level / 10) + 1);
   let penGain = level % 2 === 0 ? 1 : 0;
-  let gain = {
-    attack: 0,
-    ap: 0,
-    hp: hpGain,
-    defense: defGain,
-    penetration: penGain
-  };
+  let gain = { attack: 0, ap: 0, hp: hpGain, defense: defGain, penetration: penGain };
   gain[mainStat] = mainGain;
   gain[subStat] = subGain;
   return { gain, mainStat, subStat };
@@ -85,15 +72,12 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("챔피언강화")
     .setDescription("보유한 챔피언을 강화합니다 (최대 999강)"),
-
   async execute(interaction) {
     let release;
     let errorMessage = null;
     let immediateReply = null;
     try {
       await interaction.deferReply({ ephemeral: true });
-
-      // [추가] 배틀 진행/대기 중 차단!
       const userId = interaction.user.id;
       if (battles.has(userId) || battleRequests.has(userId)) {
         return interaction.editReply({
@@ -101,11 +85,8 @@ module.exports = {
           ephemeral: true
         });
       }
-
       release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
-      const userMention = `<@${userId}>`;
       const data = await loadJSON(dataPath);
-
       if (!data[userId] || !data[userId].name) {
         immediateReply = { content: `❌ 먼저 /챔피언획득 으로 챔피언을 얻어야 합니다.` };
         return;
@@ -148,7 +129,6 @@ async function startUpgrade(interaction, userId, userMention) {
     champ.stats = champ.stats || { ...base };
 
     const { gain, mainStat } = calcStatGain(champ.level, champ.stats.attack, champ.stats.ap);
-
     const prevStats = { ...champ.stats };
     const upStats = {
       ...champ.stats,
@@ -158,6 +138,11 @@ async function startUpgrade(interaction, userId, userMention) {
       defense: champ.stats.defense + gain.defense,
       penetration: champ.stats.penetration + gain.penetration,
     };
+
+    // BE 관련 정보
+    const myBE = getBE(userId);
+    const costBE = ENHANCE_BE_COST;
+    const afterBE = myBE - costBE;
 
     const statList = [
       { label: "공격력", key: "attack", emoji: "⚔️" },
@@ -172,15 +157,21 @@ async function startUpgrade(interaction, userId, userMention) {
 
     const embed = new EmbedBuilder()
       .setTitle(`🔧 챔피언 강화 준비`)
-      .setDescription(`**${champ.name} ${champ.level}강** → **${champ.level + 1}강**
+      .setDescription(
+        `**${champ.name} ${champ.level}강** → **${champ.level + 1}강**
 📈 강화 확률: **${percent}%**
 🛡️ 실패 시 소멸 방지 확률(레벨에 따라 증가, 최대 80%): **${survivePercent}%**
+🔷 **필요 BE:** ${formatNum(costBE)}개
+💰 **내 BE:** ${formatNum(myBE)}개
+💸 **강화 후 BE:** ${myBE >= costBE ? formatNum(afterBE) : "부족"}
+
 **스탯 변화 (성공 시):**
 
 ${statDesc}
 
 > **${mainStat === "attack" ? "공격력" : "주문력"}** 중심 챔피언이기 때문에 딜링 기반 스탯의 증가량이 더 큽니다!
-`)
+`
+      )
       .setColor(mainStat === "attack" ? 0xff9800 : 0x673ab7);
 
     if (champImg) embed.setThumbnail(champImg);
@@ -189,7 +180,8 @@ ${statDesc}
       new ButtonBuilder()
         .setCustomId("champion-upgrade-confirm")
         .setLabel("🔥 강화 시도")
-        .setStyle(ButtonStyle.Success),
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(myBE < costBE),
       new ButtonBuilder()
         .setCustomId("champion-upgrade-cancel")
         .setLabel("🛑 강화 중단")
@@ -266,6 +258,18 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
   let errorMessage = null;
   let resultContent = null;
   try {
+    // BE 차감 lock!
+    let myBE = getBE(userId);
+    if (myBE < ENHANCE_BE_COST) {
+      return interaction.editReply({
+        content: `❌ 파랑 정수(BE)가 부족합니다! (필요: ${formatNum(ENHANCE_BE_COST)}개, 보유: ${formatNum(myBE)}개)`,
+        embeds: [],
+        components: [],
+        ephemeral: true
+      });
+    }
+    await addBE(userId, -ENHANCE_BE_COST, "챔피언 강화");
+
     release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
     let dataNow = await loadJSON(dataPath);
     let champNow = dataNow[userId];
@@ -278,23 +282,18 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
     let greatSuccess = false;
     let greatGainNum = 1;
 
-    // 강화 이력에 기록
     await updateEnhanceHistory(userId, { success, fail: !success });
 
     if (success) {
-      // 대성공 확률 체크
       if (Math.random() < GREAT_SUCCESS_RATE) {
         greatSuccess = true;
         greatGainNum = Math.floor(Math.random() * 4) + 2; // 2~5강 랜덤
       }
-
       let beforeLevel = champNow.level;
       let oldStats = { ...champNow.stats };
       champNow.level += greatGainNum;
       if (champNow.level > 999) champNow.level = 999;
       champNow.success += 1;
-
-      // 여러 번 gain 누적
       for (let i = 0; i < greatGainNum; i++) {
         const { gain } = calcStatGain(beforeLevel + i, champNow.stats.attack, champNow.stats.ap);
         champNow.stats.attack += gain.attack;
@@ -303,10 +302,7 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
         champNow.stats.defense += gain.defense;
         champNow.stats.penetration += gain.penetration;
       }
-
       await saveJSON(dataPath, dataNow);
-
-      // 강화 성공 시 최대 강화 기록 갱신
       await updateEnhanceHistory(userId, { max: champNow.level });
 
       let diffStatDesc = [
@@ -385,14 +381,11 @@ async function handleUpgradeProcess(interaction, userId, userMention) {
             ephemeral: true
           };
         } else {
-          // 소멸되면 '최대 강화' 이력 남기고 삭제
           await updateEnhanceHistory(userId, { max: champNow.level });
-
-          // ✅ [여기서 전적 기록도 같이 삭제!]
           const recordPath = path.join(__dirname, "../data/champion-records.json");
           let records = {};
-          try { 
-            if (fs.existsSync(recordPath)) records = JSON.parse(fs.readFileSync(recordPath, "utf8")); 
+          try {
+            if (fs.existsSync(recordPath)) records = JSON.parse(fs.readFileSync(recordPath, "utf8"));
           } catch {}
           delete records[userId];
           try { fs.writeFileSync(recordPath, JSON.stringify(records, null, 2)); } catch {}
