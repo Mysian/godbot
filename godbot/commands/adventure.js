@@ -70,15 +70,12 @@ const MONSTER_IMAGES = {
   "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176535081680937/aac00404cf0ce8ef.png?format=webp&quality=lossless",
 };
 
-// 몬스터별 하단 이미지 적용
 function getMonsterImage(monster, stage) {
-  // 몬스터 스테이지면
   if (monsterStageList.includes(monster) || dragonList.includes(monster) || [boss50, boss100].includes(monster)) {
     let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
-    let monsterUrl = MONSTER_IMAGES[monster] || ADVENTURE_SCENE_URL;
-    return [monsterUrl, sceneUrl];
+    return [null, sceneUrl];
   }
-  return [ADVENTURE_SCENE_URL, ADVENTURE_SCENE_URL];
+  return [null, ADVENTURE_SCENE_URL];
 }
 function getMonsterByStage(stage) {
   if (stage % 100 === 0) return boss100;
@@ -134,8 +131,6 @@ function calcDamage(atk, pen, enemyDef, enemyHp) {
   let base = Math.floor(atk * eff * 0.92 + Math.random() * 6);
   return base;
 }
-
-// 체력바(유니코드 블록) 생성 함수
 function makeHPBar(cur, max, len = 15, color = 'green') {
   const rate = Math.max(0, Math.min(1, cur / max));
   const blocks = Math.round(rate * len);
@@ -143,22 +138,63 @@ function makeHPBar(cur, max, len = 15, color = 'green') {
   return `\`${bar}\` ${cur} / ${max}`;
 }
 
-// [수정] embed + row 만들기 함수 (첫 입장 - 본인 챔피언 이미지, 하단 배경 ADVENTURE_SCENE_URL)
-function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isClear, isFirst = false) {
+// [수정] 첫 입장/패배 안내, 인트로/고지 강화
+function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isClear, isFirst = false, defeat = false) {
   let monsterImg, sceneImg;
   if (isFirst) {
-    // 첫 명령어 창(모험 시작 여부) - 챔피언 이미지 + adventure scene
     monsterImg = champ.image || null;
     sceneImg = ADVENTURE_SCENE_URL;
   } else {
     [monsterImg, sceneImg] = getMonsterImage(userAdv.monster.name, userAdv.stage);
   }
   const isNamed = dragonList.includes(userAdv.monster.name) || [boss50, boss100].includes(userAdv.monster.name);
+
   let monsterMsg = "";
   if (userAdv.monster.name === boss50) monsterMsg = "나의 고통을 느껴라...!";
   if (userAdv.monster.name === boss100) monsterMsg = "나를 쓰러뜨릴 수 있나?";
   if (dragonList.includes(userAdv.monster.name)) monsterMsg = `${userAdv.monster.name}이(가) 강림했다!`;
 
+  // 첫 입장일 때 인트로 멘트/설명 추가
+  if (isFirst) {
+    const embed = new EmbedBuilder()
+      .setTitle(`🌌 [모험 시작]`)
+      .setDescription(
+        `**'${champ.name}'은(는) 소환사의 협곡으로 모험을 떠나기로 마음 먹었다. 그곳에는 어떤 위험이 도사리고 있을까...**\n\n` +
+        "> **- 스테이지를 진행하며 몬스터와 전투를 펼칠 수 있습니다.**\n" +
+        "> **- 스테이지 도전 중 언제든 '다음에'를 눌러 모험을 보류할 수 있습니다.**\n" +
+        "> **- 전투에서 패배(체력 0)시 강화 레벨이 1단계 하락합니다.**\n"
+      )
+      .addFields(
+        { name: "내 챔피언", value: champ.name, inline: true },
+        { name: "현재 강화 레벨", value: `${champ.level || 1} 단계`, inline: true }
+      )
+      .setFooter({ text: "진입 시 스테이지가 시작됩니다." })
+      .setColor(0x3ba55d);
+    if (monsterImg) embed.setThumbnail(monsterImg);
+    if (sceneImg) embed.setImage(sceneImg);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("adventure-start").setLabel("진입한다!").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("adventure-escape").setLabel("가지 않는다").setStyle(ButtonStyle.Secondary)
+    );
+    return { embed, row };
+  }
+
+  // 패배 안내시 고지 강화
+  if (defeat) {
+    const embed = new EmbedBuilder()
+      .setTitle(`😵 패배!`)
+      .setDescription(
+        `전투에서 패배하여 **강화 레벨이 1단계 하락했습니다.**\n` +
+        "※ 강화 레벨이 1 미만으로 떨어지진 않습니다.\n" +
+        "다시 도전해서 명예를 되찾으세요!"
+      )
+      .setColor(0xce2e2e)
+      .setFooter({ text: "도전 종료" });
+    return { embed, row: null };
+  }
+
+  // 일반 전투/스테이지
   const embed = new EmbedBuilder()
     .setTitle(isFirst ? `🌌 무한의 모험을 시작할까요?` : `🌌 [스테이지 ${userAdv.stage}] ${userAdv.monster.name} 출현`)
     .setFields(
@@ -167,18 +203,13 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
       { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 15, "red"), inline: false }
     )
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
-    .setFooter({ text: isFirst ? "준비되면 맞서 싸우세요!" : "토벌 실패 시 강화레벨 감소" });
+    .setFooter({ text: "토벌 실패 시 강화레벨 감소" });
   if (monsterImg) embed.setThumbnail(monsterImg);
   if (sceneImg) embed.setImage(sceneImg);
   if (monsterMsg && !isFirst) embed.setDescription(`**${monsterMsg}**`);
 
   let row;
-  if (isFirst) {
-    row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("adventure-start").setLabel("맞서 싸운다!").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("adventure-escape").setLabel("다음에 상대하기").setStyle(ButtonStyle.Secondary)
-    );
-  } else if (showBattleBtn) {
+  if (showBattleBtn) {
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("adventure-attack").setLabel("공격!").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("adventure-strong").setLabel("강공격 시도").setStyle(ButtonStyle.Danger)
@@ -223,9 +254,8 @@ module.exports = {
       }
       const championBase = championList.find(c => c.name === champ.name);
       champ.stats = champ.stats || { ...championBase.stats };
-      champ.image = championBase.image || null; // champion 데이터에 image 필드가 있어야함
+      champ.image = championBase.image || null;
 
-      // 몬스터 생성
       if (!userAdv.monster || !userAdv.monster.name || typeof userAdv.monster.hp !== "number") {
         const monsterName = getMonsterByStage(userAdv.stage);
         const monsterStat = getMonsterStats(userAdv.stage, monsterName);
@@ -234,25 +264,22 @@ module.exports = {
         userAdv.inBattle = false;
         saveAdventure(adv);
       }
-
       const monsterStats = getMonsterStats(userAdv.stage, userAdv.monster.name);
 
-      // [수정] 첫 실행은 챔피언+adventure 이미지
+      // 첫 실행시 인트로
       const isFirst = !userAdv.inBattle && userAdv.stage === 1 && userAdv.monster && userAdv.hp === champ.stats.hp;
       const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, userAdv.inBattle, false, isFirst);
 
-      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+      await interaction.reply({ embeds: [embed], components: row ? [row] : [], ephemeral: true });
 
-      // 콜렉터
       const filter = i => i.user.id === userId &&
         ["adventure-start", "adventure-escape", "adventure-attack", "adventure-strong", "adventure-next-stage"].includes(i.customId);
 
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
 
-      // [수정] 버튼 누를 때마다 만료시간 연장
       collector.on("collect", async i => {
-        collector.resetTimer(); // 버튼 클릭시 타이머 연장!
+        collector.resetTimer();
         let advLock;
         try {
           advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
@@ -330,9 +357,10 @@ module.exports = {
                   fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
                 }
               }
+              const { embed } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, false, false, true);
               return await i.update({
                 content: `😵 패배!`,
-                embeds: [new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다.`)],
+                embeds: [embed],
                 components: [],
                 ephemeral: true
               });
@@ -447,9 +475,10 @@ module.exports = {
                   fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
                 }
               }
+              const { embed } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, false, false, true);
               return await i.update({
                 content: `😵 패배!`,
-                embeds: [new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다.`)],
+                embeds: [embed],
                 components: [],
                 ephemeral: true
               });
@@ -480,13 +509,11 @@ module.exports = {
             const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, true, false);
             return await i.update({ content: resultMsg, embeds: [embed], components: [row], ephemeral: true });
           }
-
         } finally {
           if (advLock) try { await advLock(); } catch { }
         }
       });
 
-      // 60초 동안 아무 상호작용도 없으면 비활성화
       collector.on("end", async () => {
         try {
           await msg.edit({ components: [] });
