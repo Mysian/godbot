@@ -71,13 +71,13 @@ module.exports = {
       }
 
       let rewardStr = '';
-      if (rewardType === BE_REWARD) rewardStr = `${formatNumber(reward)} BE`;
-      if (rewardType === ARI_REWARD) rewardStr = `${formatNumber(reward)} pt`;
-      if (rewardType === XP_REWARD) rewardStr = `${formatNumber(reward)} xp`;
+      if (rewardType === BE_REWARD) rewardStr = `정수 ${formatNumber(reward)} BE`;
+      if (rewardType === ARI_REWARD) rewardStr = `포인트 ${formatNumber(reward)} pt`;
+      if (rewardType === XP_REWARD) rewardStr = `경험치 ${formatNumber(reward)} xp`;
 
       const embed = new EmbedBuilder()
         .addFields(
-          { name: '문제', value: question, inline: false },
+          { name: '📜 문제', value: question, inline: false },
           ...(hint ? [{ name: '💡 힌트', value: hint, inline: false }] : []),
           { name: '💎 보상', value: rewardStr, inline: false }
         )
