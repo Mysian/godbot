@@ -140,8 +140,21 @@ module.exports = {
     try {
       const userId = interaction.user.id;
       await checkUserChampionDeleted(userId);
+
+      // --- adventure.json에서 완전히 불러오기 ---
       let adv = loadAdventure();
-      let userAdv = adv[userId] || { stage: 1, hp: null, reward: 0, clear: 0, inBattle: false, curMonster: null };
+      // adventure.json 구조 : { [userId]: { stage, hp, reward, clear, inBattle, monster: { name, hp } } }
+      if (!adv[userId]) {
+        adv[userId] = {
+          stage: 1,
+          hp: null,
+          reward: 0,
+          clear: 0,
+          inBattle: false,
+          monster: null
+        };
+      }
+      let userAdv = adv[userId];
 
       const champ = loadUserChampion(userId);
       if (!champ || !champ.name) {
@@ -151,14 +164,15 @@ module.exports = {
       const championBase = championList.find(c => c.name === champ.name);
       champ.stats = champ.stats || { ...championBase.stats };
 
-      // **몬스터 세팅: 스테이지 입장 시에만 몬스터 고정**
-      if (!userAdv.curMonster || userAdv.stageChanged) {
-        userAdv.curMonster = getMonsterByStage(userAdv.stage);
-        userAdv.stageChanged = false;
+      // --- 스테이지 진입: 몬스터를 새로 뽑을 때만! ---
+      if (!userAdv.monster || userAdv.monsterReset) {
+        const monsterName = getMonsterByStage(userAdv.stage);
+        const monsterStat = getMonsterStats(userAdv.stage, monsterName);
+        userAdv.monster = { name: monsterName, hp: monsterStat.hp };
+        userAdv.monsterReset = false;
       }
-      const monsterName = userAdv.curMonster;
+      const monsterName = userAdv.monster.name;
       const monsterStats = getMonsterStats(userAdv.stage, monsterName);
-
       userAdv.hp = userAdv.hp === null ? champ.stats.hp : userAdv.hp;
 
       const [monsterImg, sceneImg] = getMonsterImage(monsterName, userAdv.stage);
@@ -187,7 +201,7 @@ module.exports = {
         .setFields(
           { name: "내 챔피언", value: champ.name, inline: true },
           { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
-          { name: "몬스터 HP", value: `${monsterStats.hp}`, inline: true }
+          { name: "몬스터 HP", value: `${userAdv.monster.hp} / ${monsterStats.hp}`, inline: true }
         )
         .setColor(isNamed ? 0xe67e22 : 0x2986cc)
         .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
@@ -196,7 +210,7 @@ module.exports = {
       if (sceneImg) embed.setImage(sceneImg);
       if (descValue) embed.setDescription(descValue);
 
-      // 처음 명령어일 때는 reply, 그 외는 update에서 이 함수가 실행됨
+      // 항상 update/reply 구분(재호출 방지)
       const replyFunc = interaction.replied || interaction.deferred ? interaction.editReply.bind(interaction) : interaction.reply.bind(interaction);
       await replyFunc({ embeds: [embed], components: [row], ephemeral: true });
 
@@ -211,7 +225,7 @@ module.exports = {
         try {
           advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
           adv = loadAdventure();
-          userAdv = adv[userId] || { stage: 1, hp: champ.stats.hp, reward: 0, clear: 0, inBattle: false, curMonster: null };
+          userAdv = adv[userId];
 
           if (i.customId === "adventure-escape") {
             resetUserAdventure(userId, adv);
@@ -231,8 +245,11 @@ module.exports = {
           }
 
           if (i.customId === "adventure-next-stage") {
-            userAdv.stageChanged = true;
+            userAdv.stage += 1;
             userAdv.inBattle = false;
+            userAdv.hp = champ.stats.hp;
+            userAdv.monster = null;
+            userAdv.monsterReset = true;
             adv[userId] = userAdv; saveAdventure(adv);
             await module.exports.execute(i);
             return;
@@ -247,35 +264,31 @@ module.exports = {
             crit = Math.random() < 0.25;
             let dmg = calcDamage(
               champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
-              champ.stats.penetration, monsterStats.defense, monsterStats.hp
+              champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
             );
             dmg = calcCritDamage(dmg, crit);
-            let mhp = monsterStats.hp - dmg;
-
-            if (mhp > 0) {
+            userAdv.monster.hp -= dmg;
+            if (userAdv.monster.hp > 0) {
               let mCrit = Math.random() < monsterStats.crit;
               let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
               mdmg = calcCritDamage(mdmg, mCrit);
               userAdv.hp -= mdmg;
             } else {
-              mhp = 0;
+              userAdv.monster.hp = 0;
             }
 
-            if (mhp <= 0) {
-              userAdv.stage += 1;
+            if (userAdv.monster.hp <= 0) {
               userAdv.inBattle = false;
               userAdv.hp = champ.stats.hp;
               userAdv.clear += 1;
-              userAdv.stageChanged = true; // 다음 스테이지 몬스터를 새로 뽑아야 함
 
-              let reward = (userAdv.stage % 10 === 1) ? makeStageReward(userAdv.stage - 1) : 0;
+              let reward = (userAdv.stage % 10 === 0) ? makeStageReward(userAdv.stage) : 0;
               userAdv.reward += reward;
               adv[userId] = userAdv; saveAdventure(adv);
 
               if (reward > 0) {
-                await addBE(userId, reward, `[모험] ${userAdv.stage - 1} 스테이지 클리어`);
+                await addBE(userId, reward, `[모험] ${userAdv.stage} 스테이지 클리어`);
               }
-              // '계속하기' 버튼
               const nextRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId("adventure-next-stage").setLabel("다음 스테이지 계속하기").setStyle(ButtonStyle.Success)
               );
@@ -284,7 +297,7 @@ module.exports = {
                 embeds: [
                   new EmbedBuilder().setDescription([
                     reward > 0 ? `파랑정수 +${formatNumber(reward)} 지급!` : "",
-                    `스테이지 ${userAdv.stage}로 진행 가능!`
+                    `스테이지 ${userAdv.stage + 1}로 진행 가능!`
                   ].filter(Boolean).join('\n'))
                 ],
                 components: [nextRow],
