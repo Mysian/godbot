@@ -16,8 +16,10 @@ const {
   getChampionInfo
 } = require("../utils/champion-utils");
 const lockfile = require("proper-lockfile");
+const { getBE, addBE } = require("./be-util");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
+const BE_COST = 0; // 파랑 정수 소모량
 
 async function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
@@ -30,7 +32,7 @@ async function saveData(data) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("챔피언획득")
-    .setDescription("무작위 챔피언 1개를 획득합니다 (1회 제한)"),
+    .setDescription(`🔷정수(BE) ${BE_COST}으로 무작위 챔피언을 획득합니다 (7월 1일부터 100원 발생)`),
 
   async execute(interaction) {
     const userId = interaction.user.id;
@@ -44,8 +46,8 @@ module.exports = {
 
       const data = await loadData();
 
+      // 이미 챔피언 보유 시 유기 버튼만 활성화!
       if (data[userId]) {
-        // 이미 챔피언 소유 시 유기 버튼만 활성화!
         const champ = data[userId];
         const embed = new EmbedBuilder()
           .setTitle(`❌ 이미 챔피언을 보유 중입니다!`)
@@ -61,11 +63,17 @@ module.exports = {
 
         replyContent = { embeds: [embed], components: [row] };
       } else {
-        // 새 챔피언 지급
-        const randomChampion = champions[
-          Math.floor(Math.random() * champions.length)
-        ];
+        // 파랑 정수 잔액 확인 및 차감
+        const beAmount = getBE(userId);
+        if (beAmount < BE_COST) {
+          errorMessage = `❌ 정수(BE)가 부족합니다! (필요: ${BE_COST}, 보유: ${beAmount})`;
+          return;
+        }
+        // 차감
+        addBE(userId, -BE_COST, "챔피언 획득");
 
+        // 무작위 챔피언 지급
+        const randomChampion = champions[Math.floor(Math.random() * champions.length)];
         data[userId] = {
           name: randomChampion.name,
           level: 0,
