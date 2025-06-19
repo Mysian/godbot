@@ -54,11 +54,11 @@ module.exports = {
       }
 
       const embed = new EmbedBuilder()
-        .setTitle('📝 문제 출제')
-        .setDescription(`**문제**\n${question}`)
+        
         .addFields(
-          ...(hint ? [{ name: '💡 힌트', value: hint }] : []),
-          { name: '💎 보상', value: `${formatNumber(reward)} BE` }
+          { name: '문제', value: question, inline: false },
+          ...(hint ? [{ name: '💡 힌트', value: hint, inline: false }] : []),
+          { name: '💎 보상', value: `${formatNumber(reward)} BE`, inline: false }
         )
         .setFooter({ text: `정답을 맞히면 보상이 지급됩니다! (정답 입력: !정답)` });
 
