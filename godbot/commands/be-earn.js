@@ -4,6 +4,7 @@ const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
 const earnCooldownPath = path.join(__dirname, '../data/earn-cooldown.json');
 const lockPath = path.join(__dirname, '../data/earn-lock.json');
+const profilesPath = path.join(__dirname, '../data/profiles.json'); // 추가
 const koreaTZ = 9 * 60 * 60 * 1000; // +09:00
 
 function loadJson(p) {
@@ -52,6 +53,13 @@ function unlock(userId) {
   saveJson(lockPath, data);
 }
 
+// === 프로필 등록 여부 확인 함수 ===
+function hasProfile(userId) {
+  if (!fs.existsSync(profilesPath)) return false;
+  const profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
+  return !!profiles[userId];
+}
+
 // 도박 단계별 실패확률
 const GO_FAIL_RATE = [0.50, 0.55, 0.60, 0.70, 0.80];
 
@@ -74,6 +82,15 @@ module.exports = {
   async execute(interaction) {
     const kind = interaction.options.getString('종류');
     const userId = interaction.user.id;
+
+    // [추가] 프로필 미등록시 차단
+    if (!hasProfile(userId)) {
+      await interaction.reply({
+        content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.",
+        ephemeral: true
+      });
+      return;
+    }
 
     // 0. 출석
     if (kind === 'attendance') {
