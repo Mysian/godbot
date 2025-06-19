@@ -130,7 +130,7 @@ function calcDamage(atk, pen, enemyDef, enemyHp) {
   let base = Math.floor(atk * eff * 0.92 + Math.random() * 6);
   return base;
 }
-function makeHPBar(cur, max, len = 18, color = 'green') {
+function makeHPBar(cur, max, len = 20, color = 'green') {
   const rate = Math.max(0, Math.min(1, cur / max));
   const blocks = Math.round(rate * len);
   const bar = (color === 'red' ? "🟥" : "🟩").repeat(blocks) + "⬛".repeat(len - blocks);
