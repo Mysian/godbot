@@ -162,18 +162,20 @@ module.exports = {
         );
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🌌 [스테이지 ${stage}] ${monsterName} 출현`)
-        .setDescription(isNamed ? `**${monsterMsg}**` : "")
-        .setFields(
-          { name: "내 챔피언", value: champ.name, inline: true },
-          { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
-          { name: "몬스터 HP", value: `${monsterStats.hp}`, inline: true }
-        )
-        .setThumbnail(monsterImg)
-        .setImage(sceneImg)
-        .setColor(isNamed ? 0xe67e22 : 0x2986cc)
-        .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
+      let descValue = isNamed ? `**${monsterMsg}**` : undefined;
+const embed = new EmbedBuilder()
+  .setTitle(`🌌 [스테이지 ${stage}] ${monsterName} 출현`)
+  .setFields(
+    { name: "내 챔피언", value: champ.name, inline: true },
+    { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
+    { name: "몬스터 HP", value: `${monsterStats.hp}`, inline: true }
+  )
+  .setThumbnail(monsterImg)
+  .setImage(sceneImg)
+  .setColor(isNamed ? 0xe67e22 : 0x2986cc)
+  .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
+
+if (descValue) embed.setDescription(descValue);
 
       if (userAdv.inBattle && isNamed) embed.setDescription(`**${monsterMsg}**\n` + (embed.data.description || ""));
 
