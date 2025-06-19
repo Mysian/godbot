@@ -20,34 +20,6 @@ const dragonList = [
 ];
 const boss50 = "고통의 아타칸";
 const boss100 = "내셔 남작";
-
-// 몬스터 등장 하단 이미지 (요청 이미지 모두 반영)
-const MONSTER_SCENE_IMAGES = {
-  "전사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385259194017386546/r2d7x5mx.png?format=webp&quality=lossless&width=1452&height=817",
-  "마법사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385259194017386546/r2d7x5mx.png?format=webp&quality=lossless&width=1452&height=817",
-  "공성 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385259194017386546/r2d7x5mx.png?format=webp&quality=lossless&width=1452&height=817",
-  "슈퍼 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385259194017386546/r2d7x5mx.png?format=webp&quality=lossless&width=1452&height=817",
-  "칼날부리": "https://media.discordapp.net/attachments/1385176420132720640/1385259198010359848/4luxxlq6.png?format=webp&quality=lossless",
-  "어스름 늑대": "https://media.discordapp.net/attachments/1385176420132720640/1385259197440196679/rl2tbwpo.png?format=webp&quality=lossless&width=1452&height=817",
-  "심술 두꺼비": "https://media.discordapp.net/attachments/1385176420132720640/1385259197033091112/a8l1ef8e.png?format=webp&quality=lossless",
-  "고대 돌거북": "https://media.discordapp.net/attachments/1385176420132720640/1385259196504871072/jk88st8q.png?format=webp&quality=lossless&width=1452&height=817",
-  "푸른 파수꾼": "https://media.discordapp.net/attachments/1385176420132720640/1385259195993030767/zri3vgfk.png?format=webp&quality=lossless",
-  "붉은 덩굴정령": "https://media.discordapp.net/attachments/1385176420132720640/1385259195548569630/pkfayxaw.png?format=webp&quality=lossless",
-  "협곡의 전령": "https://media.discordapp.net/attachments/1385176420132720640/1385259194927681577/fjylch7n.png?format=webp&quality=lossless&width=1451&height=817",
-  
-  "바람의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176745316978730/34d295bcd86ade45.png?format=webp&quality=lossless",
-  "대지의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176745006596106/3c5ce8c8b66c6954.png?format=webp&quality=lossless",
-  "화염의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176709577576458/29563bc6fbd6a7f8.png?format=webp&quality=lossless",
-  "바다의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176708445110373/bdc4f796fd5dedfe.png?format=webp&quality=lossless&width=1575&height=788",
-  "마법공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176538609356860/41f7ff067af56f32.png?format=webp&quality=lossless",
-  "화학공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176537602719786/6e375cf5879766ac.png?format=webp&quality=lossless&width=1575&height=788",
-  
-  "장로 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176536440639488/968c59724143fd8a.png?format=webp&quality=lossless",
-  
-  "고통의 아타칸": "https://media.discordapp.net/attachments/1385176420132720640/1385176535492989048/df5e905d6dfd2336.png?format=webp&quality=lossless",
-  "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176539473117304/e3a3a8c0b4769b05.png?format=webp&quality=lossless",
-};
-
 const MONSTER_IMAGES = {
   "전사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176708080078950/c903a38d06fa65f8.png?format=webp&quality=lossless",
   "마법사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176707815968898/5b8460849fd61cbf.png?format=webp&quality=lossless",
@@ -70,20 +42,7 @@ const MONSTER_IMAGES = {
   "고통의 아타칸": "https://media.discordapp.net/attachments/1385176420132720640/1385176535908093984/8965fd3ee9998af3.png?format=webp&quality=lossless",
   "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176535081680937/aac00404cf0ce8ef.png?format=webp&quality=lossless",
 };
-// 몬스터별 하단 이미지 적용
-function getMonsterImage(monster, stage) {
-  let sceneUrl = MONSTER_SCENE_IMAGES[monster];
-  let monsterUrl = MONSTER_IMAGES[monster];
-  return [monsterUrl, sceneUrl];
-}
-
-function getMonsterByStage(stage) {
-  if (stage % 100 === 0) return boss100;
-  if (stage % 50 === 0) return boss50;
-  if (stage % 10 === 0) return dragonList[Math.floor((stage / 10 - 1) % dragonList.length)];
-  const idx = Math.floor(Math.random() * monsterStageList.length);
-  return monsterStageList[idx];
-}
+const ADVENTURE_SCENE_URL = "https://media.discordapp.net/attachments/1385176420132720640/1385176710126895257/00dba14c69f9c02a.png?format=webp&quality=lossless";
 
 function getMonsterByStage(stage) {
   if (stage % 100 === 0) return boss100;
@@ -114,8 +73,8 @@ function getMonsterStats(stage, monster) {
   };
 }
 function getMonsterImage(monster, stage) {
-  let sceneUrl = MONSTER_SCENE_IMAGES;
-  let monsterUrl = MONSTER_IMAGES[monster] || MONSTER_SCENE_IMAGES;
+  let sceneUrl = ADVENTURE_SCENE_URL;
+  let monsterUrl = MONSTER_IMAGES[monster] || ADVENTURE_SCENE_URL;
   return [monsterUrl, sceneUrl];
 }
 function loadUserChampion(userId) {
