@@ -1,4 +1,4 @@
-// 📁 adventure.js (체력통+피해량 UI 적용)
+// 📁 adventure.js (체력통+피해량 UI + 기능/버튼명 개선)
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -129,7 +129,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
       { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 15, "red"), inline: false }
     )
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
-    .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
+    .setFooter({ text: `토벌 실패 시 강화레벨 감소` });
   if (monsterImg) embed.setThumbnail(monsterImg);
   if (sceneImg) embed.setImage(sceneImg);
   if (monsterMsg) embed.setDescription(`**${monsterMsg}**`);
@@ -138,7 +138,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
   if (showBattleBtn) {
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("adventure-attack").setLabel("공격!").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("adventure-dodge").setLabel("점멸(회피)").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("adventure-strong").setLabel("강공격 시도").setStyle(ButtonStyle.Danger)
     );
   } else if (isClear) {
     row = new ActionRowBuilder().addComponents(
@@ -147,7 +147,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
   } else {
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("adventure-start").setLabel("맞서 싸운다!").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("adventure-escape").setLabel("탈주").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("adventure-escape").setLabel("다음에 상대하기").setStyle(ButtonStyle.Secondary)
     );
   }
   return { embed, row };
@@ -200,7 +200,7 @@ module.exports = {
 
       // 콜렉터
       const filter = i => i.user.id === userId &&
-        ["adventure-start", "adventure-escape", "adventure-attack", "adventure-dodge", "adventure-next-stage"].includes(i.customId);
+        ["adventure-start", "adventure-escape", "adventure-attack", "adventure-strong", "adventure-next-stage"].includes(i.customId);
 
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
@@ -216,9 +216,11 @@ module.exports = {
 
           // "임베드 1개"만 계속 갱신: 아래 전부 interaction.update만 사용!!
           if (i.customId === "adventure-escape") {
-            delete adv[userId]; saveAdventure(adv);
+            // '다음에 상대하기' - HP, 진행상황 유지(삭제X), 단순 안내
+            userAdv.inBattle = false;
+            adv[userId] = userAdv; saveAdventure(adv);
             return await i.update({
-              content: "🏃‍♂️ 모험에서 도망쳤다! 다음에 다시 도전해줘.",
+              content: "💤 해당 스테이지는 '다음에' 이어서 계속할 수 있어! 언제든 `/모험` 명령어로 재도전해!",
               embeds: [],
               components: [],
               ephemeral: true
@@ -321,21 +323,80 @@ module.exports = {
             return await i.update({ content: resultMsg, embeds: [embed], components: [row], ephemeral: true });
           }
 
-          if (i.customId === "adventure-dodge") {
-            let dodge = Math.random() < 0.10;
-            let resultMsg = "";
-            let mdmg = 0, mCrit = false;
-            if (!dodge) {
-              mCrit = Math.random() < monsterStats.crit;
-              mdmg = calcCritDamage(
-                calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
-                mCrit
-              );
-              userAdv.hp -= mdmg;
-              if (mCrit) resultMsg = "몬스터 크리티컬! ";
-              resultMsg += `회피 실패! 몬스터에게 ${mdmg} 피해를 받았어!`;
+          // 강공격 시도 (30% 확률로 내 or 몬스터 강공격)
+          if (i.customId === "adventure-strong") {
+            let resultMsg = '';
+            const rand = Math.random();
+            let crit = false, dmg = 0, mdmg = 0, mCrit = false;
+
+            if (rand < 0.3) {
+              // 50:50으로 나/몬스터 2배 강공격
+              if (Math.random() < 0.5) {
+                // 내 강공격
+                crit = Math.random() < 0.25;
+                dmg = calcDamage(
+                  champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+                  champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
+                );
+                dmg = calcCritDamage(dmg, crit) * 2;
+                userAdv.monster.hp -= dmg;
+                resultMsg = `🔥 **강공격 성공!** ${dmg} 피해를 입혔어!${crit ? " (크리티컬!)" : ""}\n`;
+
+                if (userAdv.monster.hp > 0) {
+                  mCrit = Math.random() < monsterStats.crit;
+                  mdmg = calcCritDamage(
+                    calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                    mCrit
+                  );
+                  userAdv.hp -= mdmg;
+                  if (mCrit) resultMsg += `몬스터 크리티컬! `;
+                  resultMsg += `몬스터에게 ${mdmg} 피해를 받았어!`;
+                } else {
+                  userAdv.monster.hp = 0;
+                }
+              } else {
+                // 몬스터 강공격
+                crit = Math.random() < 0.25;
+                dmg = calcDamage(
+                  champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+                  champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
+                );
+                userAdv.monster.hp -= dmg;
+                resultMsg = `내가 ${dmg} 피해를 입혔어!\n`;
+
+                // 몬스터 2배 강공격
+                mCrit = Math.random() < monsterStats.crit;
+                mdmg = calcCritDamage(
+                  calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                  mCrit
+                ) * 2;
+                userAdv.hp -= mdmg;
+                if (mCrit) resultMsg += `몬스터 크리티컬! `;
+                resultMsg += `😱 **몬스터 강공격!** ${mdmg} 피해를 받았어!`;
+              }
             } else {
-              resultMsg = "✨ 점멸 성공! (공격 회피)";
+              // 일반 공격(평타와 동일)
+              crit = Math.random() < 0.25;
+              dmg = calcDamage(
+                champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+                champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
+              );
+              dmg = calcCritDamage(dmg, crit);
+              userAdv.monster.hp -= dmg;
+              resultMsg = crit ? `💥 크리티컬! ${dmg} 피해를 입혔어!\n` : `내가 ${dmg} 피해를 입혔어!\n`;
+
+              if (userAdv.monster.hp > 0) {
+                mCrit = Math.random() < monsterStats.crit;
+                mdmg = calcCritDamage(
+                  calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                  mCrit
+                );
+                userAdv.hp -= mdmg;
+                if (mCrit) resultMsg += `몬스터 크리티컬! `;
+                resultMsg += `몬스터에게 ${mdmg} 피해를 받았어!`;
+              } else {
+                userAdv.monster.hp = 0;
+              }
             }
 
             // 패배 체크
@@ -358,10 +419,34 @@ module.exports = {
               });
             }
 
+            // 몬스터 처치
+            if (userAdv.monster.hp <= 0) {
+              userAdv.inBattle = false;
+              userAdv.hp = champ.stats.hp;
+              userAdv.clear += 1;
+
+              let reward = (userAdv.stage % 10 === 0) ? makeStageReward(userAdv.stage) : 0;
+              userAdv.reward += reward;
+              adv[userId] = userAdv; saveAdventure(adv);
+
+              if (reward > 0) {
+                await addBE(userId, reward, `[모험] ${userAdv.stage} 스테이지 클리어`);
+              }
+              // 계속하기 버튼만 보이게!
+              const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, true);
+              return await i.update({
+                content: `🎉 ${userAdv.monster.name} 처치!`,
+                embeds: [embed],
+                components: [row],
+                ephemeral: true
+              });
+            }
+
             adv[userId] = userAdv; saveAdventure(adv);
             const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, true, false);
             return await i.update({ content: resultMsg, embeds: [embed], components: [row], ephemeral: true });
           }
+
         } finally {
           if (advLock) try { await advLock(); } catch {}
         }
