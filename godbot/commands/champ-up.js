@@ -5,7 +5,7 @@ const lockfile = require("proper-lockfile");
 const championList = require("../utils/champion-data");
 const { getChampionKeyByName } = require("../utils/champion-utils");
 const { battles, battleRequests } = require("./champ-battle");
-const { getBE, addBE } = require("../be-util"); // BE 연동!
+const { getBE, addBE } = require("./be-util"); // BE 연동!
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
