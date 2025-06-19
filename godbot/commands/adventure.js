@@ -73,7 +73,7 @@ const MONSTER_IMAGES = {
 function getMonsterImage(monster, stage) {
   if (monsterStageList.includes(monster) || dragonList.includes(monster) || [boss50, boss100].includes(monster)) {
     let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
-    return [monsterUrl, sceneUrl]; // 
+    return [null, sceneUrl]; // ← monsterImg 항상 null로 리턴됨 (문제)
   }
   return [null, ADVENTURE_SCENE_URL];
 }
