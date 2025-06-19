@@ -234,119 +234,137 @@ module.exports = {
       collector.on("collect", async i => {
         let advLock;
         try {
-          advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
-          adv = loadAdventure();
-          userAdv = adv[userId] || { stage: 1, hp: champ.stats.hp, reward: 0, clear: 0 };
+  advLock = await lockfile.lock(adventurePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+  adv = loadAdventure();
+  userAdv = adv[userId] || { stage: 1, hp: champ.stats.hp, reward: 0, clear: 0 };
 
-          if (i.customId === "adventure-escape") {
-            resetUserAdventure(userId, adv);
-            return await i.update({ content: "🏃‍♂️ 모험에서 도망쳤다! 다음에 다시 도전해줘.", embeds: [], components: [], ephemeral: true });
-          }
-          if (i.customId === "adventure-start") {
-            userAdv.inBattle = true;
-            adv[userId] = userAdv; saveAdventure(adv);
-            await module.exports.execute(i);
-            return;
-          }
-          if (!userAdv.inBattle) return;
-
-          let crit = false;
-          let dodge = false;
-
-          if (i.customId === "adventure-attack") {
-            crit = Math.random() < 0.25;
-            let dmg = calcDamage(champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
-              champ.stats.penetration, monsterStats.defense, monsterStats.hp);
-            dmg = calcCritDamage(dmg, crit);
-            let mhp = monsterStats.hp - dmg;
-
-            if (mhp > 0) {
-  let mCrit = Math.random() < monsterStats.crit;
-  let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
-  mdmg = calcCritDamage(mdmg, mCrit);
-  userAdv.hp -= mdmg;
-} else {
-  mhp = 0;
-}
-if (mhp <= 0) {
-  userAdv.stage += 1;
-  userAdv.inBattle = false;
-  userAdv.hp = champ.stats.hp;
-  userAdv.clear += 1;
-
-  let reward = (userAdv.stage % 10 === 1) ? makeStageReward(userAdv.stage - 1) : 0;
-  userAdv.reward += reward;
-  adv[userId] = userAdv; saveAdventure(adv);
-
-  if (reward > 0) {
-    await addBE(userId, reward, `[모험] ${userAdv.stage - 1} 스테이지 클리어`);
+  if (i.customId === "adventure-escape") {
+    resetUserAdventure(userId, adv);
+    return await i.update({
+      content: "🏃‍♂️ 모험에서 도망쳤다! 다음에 다시 도전해줘.",
+      embeds: [],
+      components: [],
+      ephemeral: true
+    });
   }
 
-  // 수정: content 한줄, 안내는 embed
-  return await i.update({
-    content: `🎉 ${monsterName} 처치!`,
-    embeds: [
-      new EmbedBuilder().setDescription([
-        reward > 0 ? `파랑정수 +${formatNumber(reward)} 지급!` : "",
-        `스테이지 ${userAdv.stage}로 진행 가능!`
-      ].filter(Boolean).join('\n'))
-    ],
-    components: [],
-    ephemeral: true
-  });
-}
-if (userAdv.hp <= 0) {
-  userAdv.hp = 0;
-  userAdv.inBattle = false;
-  if (champ.level > 0) champ.level -= 1;
-  resetUserAdventure(userId, adv);
-  if (fs.existsSync(dataPath)) {
-    let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-    cd[userId].level = champ.level;
-    fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
+  if (i.customId === "adventure-start") {
+    userAdv.inBattle = true;
+    adv[userId] = userAdv; saveAdventure(adv);
+    await module.exports.execute(i);
+    return;
   }
-  // 패배도 똑같이! 
-  return await i.update({
-    content: `😵 패배!`,
-    embeds: [
-      new EmbedBuilder().setDescription(
-        `강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`
-      )
-    ],
-    components: [],
-    ephemeral: true
-  });
-}
-adv[userId] = userAdv; saveAdventure(adv);
-await module.exports.execute(i);
 
+  if (!userAdv.inBattle) return;
 
-          if (i.customId === "adventure-dodge") {
-            dodge = Math.random() < 0.10;
-            if (!dodge) {
-              let mCrit = Math.random() < monsterStats.crit;
-              let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
-              mdmg = calcCritDamage(mdmg, mCrit);
-              userAdv.hp -= mdmg;
-            }
-            if (userAdv.hp <= 0) {
-              userAdv.hp = 0; userAdv.inBattle = false;
-              if (champ.level > 0) champ.level -= 1;
-              resetUserAdventure(userId, adv);
-              if (fs.existsSync(dataPath)) {
-                let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-                cd[userId].level = champ.level;
-                fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
-              }
-              return await i.update({ content: `😵 패배! 강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`, embeds: [], components: [], ephemeral: true });
-            }
-            adv[userId] = userAdv; saveAdventure(adv);
-            await module.exports.execute(i);
-          }
-        } finally {
-          if (advLock) try { await advLock(); } catch {}
-        }
+  let crit = false;
+  let dodge = false;
+
+  // ===== 공격 분기
+  if (i.customId === "adventure-attack") {
+    crit = Math.random() < 0.25;
+    let dmg = calcDamage(
+      champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+      champ.stats.penetration, monsterStats.defense, monsterStats.hp
+    );
+    dmg = calcCritDamage(dmg, crit);
+    let mhp = monsterStats.hp - dmg;
+
+    if (mhp > 0) {
+      let mCrit = Math.random() < monsterStats.crit;
+      let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
+      mdmg = calcCritDamage(mdmg, mCrit);
+      userAdv.hp -= mdmg;
+    } else {
+      mhp = 0;
+    }
+
+    if (mhp <= 0) {
+      userAdv.stage += 1;
+      userAdv.inBattle = false;
+      userAdv.hp = champ.stats.hp;
+      userAdv.clear += 1;
+
+      let reward = (userAdv.stage % 10 === 1) ? makeStageReward(userAdv.stage - 1) : 0;
+      userAdv.reward += reward;
+      adv[userId] = userAdv; saveAdventure(adv);
+
+      if (reward > 0) {
+        await addBE(userId, reward, `[모험] ${userAdv.stage - 1} 스테이지 클리어`);
+      }
+      // ✅ content는 짧게, 안내는 embed로!
+      return await i.update({
+        content: `🎉 ${monsterName} 처치!`,
+        embeds: [
+          new EmbedBuilder().setDescription([
+            reward > 0 ? `파랑정수 +${formatNumber(reward)} 지급!` : "",
+            `스테이지 ${userAdv.stage}로 진행 가능!`
+          ].filter(Boolean).join('\n'))
+        ],
+        components: [],
+        ephemeral: true
       });
+    }
+
+    if (userAdv.hp <= 0) {
+      userAdv.hp = 0;
+      userAdv.inBattle = false;
+      if (champ.level > 0) champ.level -= 1;
+      resetUserAdventure(userId, adv);
+      if (fs.existsSync(dataPath)) {
+        let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+        cd[userId].level = champ.level;
+        fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
+      }
+      return await i.update({
+        content: `😵 패배!`,
+        embeds: [
+          new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`)
+        ],
+        components: [],
+        ephemeral: true
+      });
+    }
+    adv[userId] = userAdv; saveAdventure(adv);
+    await module.exports.execute(i);
+  }
+
+  // ===== 점멸(회피) 분기
+  if (i.customId === "adventure-dodge") {
+    dodge = Math.random() < 0.10;
+    if (!dodge) {
+      let mCrit = Math.random() < monsterStats.crit;
+      let mdmg = calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp);
+      mdmg = calcCritDamage(mdmg, mCrit);
+      userAdv.hp -= mdmg;
+    }
+    if (userAdv.hp <= 0) {
+      userAdv.hp = 0;
+      userAdv.inBattle = false;
+      if (champ.level > 0) champ.level -= 1;
+      resetUserAdventure(userId, adv);
+      if (fs.existsSync(dataPath)) {
+        let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+        cd[userId].level = champ.level;
+        fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
+      }
+      return await i.update({
+        content: `😵 패배!`,
+        embeds: [
+          new EmbedBuilder().setDescription(`강화 단계가 1 하락했습니다. (현재 ${champ.level}강)`)
+        ],
+        components: [],
+        ephemeral: true
+      });
+    }
+    adv[userId] = userAdv; saveAdventure(adv);
+    await module.exports.execute(i);
+  }
+} finally {
+  if (advLock) try { await advLock(); } catch {}
+}
+
+  });
 
       collector.on("end", async collected => {});
     } catch (err) {
