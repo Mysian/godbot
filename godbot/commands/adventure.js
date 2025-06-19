@@ -110,7 +110,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
   let monsterMsg = "";
   if (userAdv.monster.name === boss50) monsterMsg = "나의 고통을 느껴라...!";
   if (userAdv.monster.name === boss100) monsterMsg = "나를 쓰러뜨릴 수 있나?";
-  if (dragonList.includes(userAdv.monster.name)) monsterMsg = `${userAdv.monster.name}이(가) 강림했다!";
+  if (dragonList.includes(userAdv.monster.name)) monsterMsg = `${userAdv.monster.name}이(가) 강림했다!`;
 
   const embed = new EmbedBuilder()
     .setTitle(`🌌 [스테이지 ${userAdv.stage}] ${userAdv.monster.name} 출현`)
