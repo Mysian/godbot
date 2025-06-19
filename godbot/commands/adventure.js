@@ -20,6 +20,45 @@ const dragonList = [
 const boss50 = "고통의 아타칸";
 const boss100 = "내셔 남작";
 
+// 👇 이미지는 여기에 몬스터명: 이미지URL 형식으로 쭉 적으면 됨!
+const MONSTER_IMAGES = {
+  // 일반 몬스터
+  "전사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176708080078950/c903a38d06fa65f8.png?format=webp&quality=lossless",
+  "마법사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176707815968898/5b8460849fd61cbf.png?format=webp&quality=lossless",
+  "공성 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176707509780562/5128ae658c32179c.png?format=webp&quality=lossless",
+  "슈퍼 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385176707048411208/82ace8a93659dfe8.png?format=webp&quality=lossless",
+  "칼날부리": "https://media.discordapp.net/attachments/1385176420132720640/1385176744721649785/645ddab3cea19e54.png?format=webp&quality=lossless",
+  "어스름 늑대": "https://media.discordapp.net/attachments/1385176420132720640/1385176744469729352/dca421188a42c7bd.png?format=webp&quality=lossless",
+  "심술 두꺼비": "https://media.discordapp.net/attachments/1385176420132720640/1385176744230912091/2ef8129dc9b588d1.png?format=webp&quality=lossless",
+  "고대 돌거북": "https://media.discordapp.net/attachments/1385176420132720640/1385176743903625246/9087881cd299f0fa.png?format=webp&quality=lossless",
+  "푸른 파수꾼": "https://media.discordapp.net/attachments/1385176420132720640/1385176743572279296/daddcc27415794b0.png?format=webp&quality=lossless",
+  "붉은 덩굴정령": "https://media.discordapp.net/attachments/1385176420132720640/1385176743312359434/380002f988b1d5ea.png?format=webp&quality=lossless",
+  "협곡의 전령": "https://media.discordapp.net/attachments/1385176420132720640/1385176743056510986/0bc2ec1f104562bf.png?format=webp&quality=lossless",
+  // 드래곤
+  "바람의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176742657790102/ecf871759ecc50ac.png?format=webp&quality=lossless",
+  "대지의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176709824909353/1d81730bb41b4b07.png?format=webp&quality=lossless",
+  "화염의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176709296554005/55fe09766b0b1fc5.png?format=webp&quality=lossless",
+  "바다의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176708960878632/e766e854b8fd146d.png?format=webp&quality=lossless",
+  "마법공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176539028652062/aa5f72454cff37ec.png?format=webp&quality=lossless",
+  "화학공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176538223476776/e10866e9e5cff78c.png?format=webp&quality=lossless",
+  "장로 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176536805675068/6d0d13f9c623cb09.png?format=webp&quality=lossless",
+  // 네임드
+  "고통의 아타칸": "https://media.discordapp.net/attachments/1385176420132720640/1385176535908093984/8965fd3ee9998af3.png?format=webp&quality=lossless",
+  "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176535081680937/aac00404cf0ce8ef.png?format=webp&quality=lossless",
+
+  // 등장씬 (몬스터+등장)
+  "바람의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176745316978730/34d295bcd86ade45.png?format=webp&quality=lossless",
+  "대지의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176745006596106/3c5ce8c8b66c6954.png?format=webp&quality=lossless",
+  "화염의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176709577576458/29563bc6fbd6a7f8.png?format=webp&quality=lossless",
+  "바다의 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176708445110373/bdc4f796fd5dedfe.png?format=webp&quality=lossless",
+  "마법공학 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176538609356860/41f7ff067af56f32.png?format=webp&quality=lossless",
+  "화학공학 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176537602719786/6e375cf5879766ac.png?format=webp&quality=lossless",
+  "장로 드래곤 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176536440639488/968c59724143fd8a.png?format=webp&quality=lossless",
+  "고통의 아타칸 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176535492989048/df5e905d6dfd2336.png?format=webp&quality=lossless",
+  "내셔 남작 등장": "https://media.discordapp.net/attachments/1385176420132720640/1385176539473117304/e3a3a8c0b4769b05.png?format=webp&quality=lossless",
+};
+const ADVENTURE_SCENE_URL = "https://media.discordapp.net/attachments/1385176420132720640/1385176710126895257/00dba14c69f9c02a.png?format=webp&quality=lossless"; // 모험 씬 기본 테마 (없으면 아무 이미지나!)
+
 function getMonsterByStage(stage) {
   if (stage % 100 === 0) return boss100;
   if (stage % 50 === 0) return boss50;
@@ -49,12 +88,20 @@ function getMonsterStats(stage, monster) {
     crit: baseCrit
   };
 }
+
+// 👉 몬스터/씬 이미지를 URL로 반환
 function getMonsterImage(monster, stage) {
+  let sceneUrl = ADVENTURE_SCENE_URL;
+  let monsterUrl = MONSTER_IMAGES[monster] || ADVENTURE_SCENE_URL;
+
+  // 등장씬 (드래곤, 네임드 등)
   if (dragonList.includes(monster) || [boss50, boss100].includes(monster)) {
-    return [`adventure-png/${monster}.png`, `adventure-png/${monster} 등장.png`];
+    const appearName = monster + " 등장";
+    sceneUrl = MONSTER_IMAGES[appearName] || ADVENTURE_SCENE_URL;
   }
-  return [`adventure-png/${monster}.png`, "adventure-png/소환사의 협곡.png"];
+  return [monsterUrl, sceneUrl];
 }
+
 function loadUserChampion(userId) {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
   const data = JSON.parse(fs.readFileSync(dataPath, "utf8"));
@@ -120,7 +167,6 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // ↓↓↓ 아래 부분이 기존 코드 전체! (그대로 넣어도 됨)
       const userId = interaction.user.id;
       await checkUserChampionDeleted(userId);
 
@@ -162,22 +208,20 @@ module.exports = {
         );
       }
 
-      let descValue = isNamed ? `**${monsterMsg}**` : undefined;
-const embed = new EmbedBuilder()
-  .setTitle(`🌌 [스테이지 ${stage}] ${monsterName} 출현`)
-  .setFields(
-    { name: "내 챔피언", value: champ.name, inline: true },
-    { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
-    { name: "몬스터 HP", value: `${monsterStats.hp}`, inline: true }
-  )
-  .setThumbnail(monsterImg)
-  .setImage(sceneImg)
-  .setColor(isNamed ? 0xe67e22 : 0x2986cc)
-  .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
+      const descValue = isNamed ? `**${monsterMsg}**` : undefined;
+      const embed = new EmbedBuilder()
+        .setTitle(`🌌 [스테이지 ${stage}] ${monsterName} 출현`)
+        .setFields(
+          { name: "내 챔피언", value: champ.name, inline: true },
+          { name: "챔피언 HP", value: `${userAdv.hp} / ${champ.stats.hp}`, inline: true },
+          { name: "몬스터 HP", value: `${monsterStats.hp}`, inline: true }
+        )
+        .setColor(isNamed ? 0xe67e22 : 0x2986cc)
+        .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
 
-if (descValue) embed.setDescription(descValue);
-
-      if (userAdv.inBattle && isNamed) embed.setDescription(`**${monsterMsg}**\n` + (embed.data.description || ""));
+      if (monsterImg) embed.setThumbnail(monsterImg);
+      if (sceneImg) embed.setImage(sceneImg);
+      if (descValue) embed.setDescription(descValue);
 
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
@@ -284,7 +328,6 @@ if (descValue) embed.setDescription(descValue);
 
       collector.on("end", async collected => {});
     } catch (err) {
-      // 에러 로그 콘솔에 상세 출력
       console.error('[모험 명령 실행 오류]', err);
       try {
         await interaction.reply({
