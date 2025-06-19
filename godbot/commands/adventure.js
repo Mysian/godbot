@@ -72,9 +72,10 @@ const MONSTER_IMAGES = {
 
 function getMonsterImage(monster, stage) {
   if (monsterStageList.includes(monster) || dragonList.includes(monster) || [boss50, boss100].includes(monster)) {
-    let monsterUrl = MONSTER_IMAGES[monster] || null;
-  let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
-  return [monsterUrl, sceneUrl];
+    let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
+    return [monsterUrl, sceneUrl]; // 
+  }
+  return [null, ADVENTURE_SCENE_URL];
 }
 function getMonsterByStage(stage) {
   if (stage % 100 === 0) return boss100;
