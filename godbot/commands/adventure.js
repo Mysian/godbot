@@ -70,12 +70,11 @@ const MONSTER_IMAGES = {
   "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176535081680937/aac00404cf0ce8ef.png?format=webp&quality=lossless",
 };
 
+// 이미지 배치
 function getMonsterImage(monster, stage) {
-  if (monsterStageList.includes(monster) || dragonList.includes(monster) || [boss50, boss100].includes(monster)) {
-    let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
-    return [null, sceneUrl]; // ← monsterImg 항상 null로 리턴됨 (문제)
-  }
-  return [null, ADVENTURE_SCENE_URL];
+  let monsterUrl = MONSTER_IMAGES[monster] || null;  // ← 작은 이미지(썸네일)
+  let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL; // ← 하단 배경
+  return [monsterUrl, sceneUrl];
 }
 function getMonsterByStage(stage) {
   if (stage % 100 === 0) return boss100;
