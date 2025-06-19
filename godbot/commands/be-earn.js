@@ -341,7 +341,7 @@ module.exports = {
             .setTitle(`🎰 도박 ${stage+1}단계 / 최대 5단계`)
             .setDescription(
               `현재 금액🔷: **${total} BE**\n` +
-              `GO! → ${Math.round(total*minRate)}~${Math.round(total*maxRate)} BE (성공시)\n` +
+              `GO! → ${Math.round(total*minRate)}~${Math.round(total*maxRate)} BE (성공시)\n`
             )
             .setFooter({ text: `GO 성공시 계속 진행, STOP시 그만!` });
           await intr.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(goBtn, stopBtn)], ephemeral: true });
