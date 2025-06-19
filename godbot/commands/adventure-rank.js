@@ -22,32 +22,40 @@ module.exports = {
     const best = loadAdventureBest();
     const adv = loadAdventure();
 
-    // 랭킹 정렬 (내림차순)
-    const sorted = Object.entries(best)
-      .map(([user, dat]) => ({
-        user,
-        stage: dat.bestStage || 0,
-        clear: dat.totalClear || 0
-      }))
-      .sort((a, b) => b.stage - a.stage);
+    // 모든 유저ID 집계 (최고기록+진행중 모두)
+    const userSet = new Set([
+      ...Object.keys(best),
+      ...Object.keys(adv)
+    ]);
+    const allUsers = Array.from(userSet);
 
-    // TOP 20만
+    // 집계
+    const ranking = allUsers.map(user => ({
+      user,
+      stage: best[user]?.bestStage || 0,
+      clear: best[user]?.totalClear || 0,
+      nowStage: adv[user]?.stage || 0
+    }))
+    // 최고 기록 > 현재 스테이지 내림차순
+    .sort((a, b) =>
+      b.stage !== a.stage ? b.stage - a.stage : b.nowStage - a.nowStage
+    );
+
+    // TOP 20
     const medals = ["🥇", "🥈", "🥉"];
-    let desc = sorted.slice(0, 20).map((x, i) => {
+    let desc = ranking.slice(0, 20).map((x, i) => {
       const medal = medals[i] || `#${i + 1}`;
-      // 현재 모험 진행중 단계 (없으면 0)
-      const nowAdv = adv[x.user]?.stage ? adv[x.user].stage : 0;
-      return `${medal} <@${x.user}> — 최고 ${x.stage}스테이지 [현재 ${nowAdv}단계] (클리어 ${x.clear}회)`;
+      return `${medal} <@${x.user}> — 최고 ${x.stage}스테이지 [현재 ${x.nowStage}단계] (클리어 ${x.clear}회)`;
     }).join("\n");
 
     if (!desc) desc = "아직 모험에 참가한 유저가 없습니다.";
 
     // 본인 순위, 내 최고/현재 단계, 상위 몇퍼
-    let myRank = sorted.findIndex(x => x.user === userId) + 1;
-    let myBest = sorted.find(x => x.user === userId)?.stage || 0;
-    let myCur = adv[userId]?.stage || 0;
-    let myPercent = sorted.length
-      ? Math.ceil((1 - (myRank - 1) / sorted.length) * 100)
+    let myRank = ranking.findIndex(x => x.user === userId) + 1;
+    let myBest = ranking.find(x => x.user === userId)?.stage || 0;
+    let myCur = ranking.find(x => x.user === userId)?.nowStage || 0;
+    let myPercent = ranking.length
+      ? Math.ceil((1 - (myRank - 1) / ranking.length) * 100)
       : 0;
 
     let myLine = myRank
