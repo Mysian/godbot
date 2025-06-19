@@ -11,6 +11,7 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const lockfile = require('proper-lockfile'); // 추가!
 const passiveSkills = require('../utils/passive-skills');
 const { battles, battleRequests } = require("./champ-battle"); // ★ 추가
 
@@ -47,17 +48,13 @@ function saveBE(data) {
   fs.writeFileSync(bePath, JSON.stringify(data, null, 2));
 }
 
-// --- 정렬 함수 ---
 function sortMarket(market) {
-  // level 높은 순 → 가격 낮은 순 → 최신순
   return [...market].sort((a, b) => {
     if (b.level !== a.level) return b.level - a.level;
     if (a.price !== b.price) return a.price - b.price;
     return b.timestamp - a.timestamp;
   });
 }
-
-// --- 버튼 2줄(매물관리 추가) ---
 function makeButtons(page, maxPage, inManage = false) {
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -104,8 +101,6 @@ function makeButtons(page, maxPage, inManage = false) {
   );
   return [row1, row2];
 }
-
-// --- 일반/검색/매물관리 임베드 생성 ---
 async function makeMarketEmbed(page, market, interactionUserId, isManage = false) {
   const perPage = 5;
   const start = page * perPage;
@@ -136,8 +131,6 @@ async function makeMarketEmbed(page, market, interactionUserId, isManage = false
   }
   return embed;
 }
-
-// --- 매물관리 회수버튼 ---
 function makeManageButtons(page, maxPage, items) {
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -172,8 +165,6 @@ function makeManageButtons(page, maxPage, items) {
   );
   return [row1, row2];
 }
-
-// --- 챔피언 판매 모달 ---
 function makeSellModal(champName, champLevel) {
   return new ModalBuilder()
     .setCustomId('champ_sell_modal')
@@ -197,8 +188,6 @@ function makeSellModal(champName, champLevel) {
       )
     );
 }
-
-// --- 구매 모달 ---
 function makeBuyModal() {
   return new ModalBuilder()
     .setCustomId('champ_buy_modal')
@@ -213,8 +202,6 @@ function makeBuyModal() {
       )
     );
 }
-
-// --- 검색 모달 ---
 function makeSearchModal() {
   return new ModalBuilder()
     .setCustomId('champ_search_modal')
@@ -235,7 +222,6 @@ module.exports = {
     .setName('챔피언거래소')
     .setDescription('파랑 정수로 챔피언을 사고팔 수 있는 거래소를 엽니다.'),
   async execute(interaction) {
-    // [추가] 배틀 중/대기 중이면 거래소 이용 불가!
     const userId = interaction.user.id;
     if (battles.has(userId) || battleRequests.has(userId)) {
       return interaction.reply({
@@ -256,7 +242,6 @@ module.exports = {
 
     await interaction.reply({ embeds: [embed], components: [row1, row2] });
 
-    // --- collector: 명령어 입력자만, 120초간 ---
     const collector = interaction.channel.createMessageComponentCollector({
       filter: i => i.user.id === interactionUserId,
       time: 120000
@@ -270,7 +255,6 @@ module.exports = {
       if (isManage) {
         // 관리 모드
         if (i.customId === 'champ_market_exit_manage') {
-          // 거래소로 돌아가기
           isManage = false;
           market = sortMarket(loadMarket());
           maxPage = Math.max(0, Math.ceil(market.length / 5) - 1);
@@ -280,43 +264,47 @@ module.exports = {
           return;
         }
         if (i.customId.startsWith('champ_manage_recall_')) {
-          // 매물 회수 시도
-          const idx = parseInt(i.customId.replace('champ_manage_recall_', ''));
-          const allMine = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
-          const item = allMine[managePage * 5 + idx];
-          if (!item) {
-            await i.reply({ content: '해당 매물을 찾을 수 없습니다.', ephemeral: true });
-            return;
-          }
-          // 본인 소유 챔피언이 있으면 불가
-          const users = loadUsers();
-          if (users[interactionUserId]) {
-            await i.reply({ content: '챔피언을 이미 보유 중일 땐 회수할 수 없습니다.', ephemeral: true });
-            return;
-          }
-          // 매물 제거 + 챔피언 소유 복구
-          let all = loadMarket();
-          all = all.filter(m => !(m.timestamp === item.timestamp && m.sellerId === interactionUserId));
-          saveMarket(all);
-          users[interactionUserId] = {
-            name: item.championName,
-            level: item.level,
-            success: item.success ?? 0,
-            stats: item.stats,
-            timestamp: Date.now()
-          };
-          saveUsers(users);
+          // === 매물 회수 락 처리 ===
+          let releaseMarket, releaseUser;
+          try {
+            releaseMarket = await lockfile.lock(marketPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+            releaseUser = await lockfile.lock(userChampPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
 
-          // 매물관리 임베드 갱신
-          manageMarket = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
-          manageMaxPage = Math.max(0, Math.ceil(manageMarket.length / 5) - 1);
-          embed = await makeMarketEmbed(managePage, manageMarket, interactionUserId, true);
-          [row1, row2] = makeManageButtons(managePage, manageMaxPage, manageMarket.slice(managePage * 5, managePage * 5 + 5));
-          await i.update({ embeds: [embed], components: [row1, row2] });
-          await i.followUp({ content: '매물을 성공적으로 회수했습니다!', ephemeral: true });
+            const idx = parseInt(i.customId.replace('champ_manage_recall_', ''));
+            const allMine = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
+            const item = allMine[managePage * 5 + idx];
+            if (!item) {
+              await i.reply({ content: '해당 매물을 찾을 수 없습니다.', ephemeral: true });
+              return;
+            }
+            const users = loadUsers();
+            if (users[interactionUserId]) {
+              await i.reply({ content: '챔피언을 이미 보유 중일 땐 회수할 수 없습니다.', ephemeral: true });
+              return;
+            }
+            let all = loadMarket();
+            all = all.filter(m => !(m.timestamp === item.timestamp && m.sellerId === interactionUserId));
+            saveMarket(all);
+            users[interactionUserId] = {
+              name: item.championName,
+              level: item.level,
+              success: item.success ?? 0,
+              stats: item.stats,
+              timestamp: Date.now()
+            };
+            saveUsers(users);
+            manageMarket = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
+            manageMaxPage = Math.max(0, Math.ceil(manageMarket.length / 5) - 1);
+            embed = await makeMarketEmbed(managePage, manageMarket, interactionUserId, true);
+            [row1, row2] = makeManageButtons(managePage, manageMaxPage, manageMarket.slice(managePage * 5, managePage * 5 + 5));
+            await i.update({ embeds: [embed], components: [row1, row2] });
+            await i.followUp({ content: '매물을 성공적으로 회수했습니다!', ephemeral: true });
+          } finally {
+            if (releaseUser) await releaseUser();
+            if (releaseMarket) await releaseMarket();
+          }
           return;
         }
-        // 관리 모드 페이지 이동/새로고침
         if (i.customId === 'champ_market_prev') managePage--;
         if (i.customId === 'champ_market_next') managePage++;
         if (i.customId === 'champ_market_refresh') { /* 새로고침 */ }
@@ -334,7 +322,6 @@ module.exports = {
       if (i.customId === 'champ_market_refresh') { /* 새로고침 */ }
 
       if (i.customId === 'champ_market_manage') {
-        // 매물 관리 모드 진입
         isManage = true;
         managePage = 0;
         manageMarket = sortMarket(loadMarket().filter(m => m.sellerId === interactionUserId));
@@ -345,17 +332,14 @@ module.exports = {
         return;
       }
 
-      // 검색 버튼
       if (i.customId === 'champ_market_search') {
         await i.showModal(makeSearchModal());
         return;
       }
-      // 구매 버튼
       if (i.customId === 'champ_market_buy') {
         await i.showModal(makeBuyModal());
         return;
       }
-      // 판매 버튼
       if (i.customId === 'champ_market_sell') {
         const users = loadUsers();
         const champ = users[i.user.id];
@@ -363,7 +347,6 @@ module.exports = {
           await i.reply({ content: '현재 보유 중인 챔피언이 없습니다. 챔피언을 먼저 획득하세요!', ephemeral: true });
           return;
         }
-        // ---- 매물 개수 제한 ----
         const marketArr = loadMarket();
         const mySellCount = marketArr.filter(m => m.sellerId === i.user.id).length;
         if (mySellCount >= 5) {
@@ -374,7 +357,6 @@ module.exports = {
         return;
       }
 
-      // 임베드 새로고침
       market = sortMarket(filter
         ? loadMarket().filter(item => item.championName.includes(filter))
         : loadMarket());
@@ -384,12 +366,10 @@ module.exports = {
       await i.update({ embeds: [embed], components: [row1, row2] });
     });
 
-    // 모달 제출 핸들러
+    // ===== 모달 제출 핸들러 =====
     const modalHandler = async modal => {
       if (!modal.isModalSubmit()) return;
       if (modal.user.id !== interactionUserId) return;
-
-      // [추가] 배틀 중/대기 중이면 거래소 모달(검색/구매/판매)도 막음!
       if (battles.has(modal.user.id) || battleRequests.has(modal.user.id)) {
         await modal.reply({
           content: "진행중/대기중인 챔피언 배틀이 있어 거래소를 이용할 수 없습니다!",
@@ -397,8 +377,6 @@ module.exports = {
         });
         return;
       }
-
-      // 검색
       if (modal.customId === 'champ_search_modal') {
         filter = modal.fields.getTextInputValue('name');
         page = 0;
@@ -410,112 +388,121 @@ module.exports = {
         await modal.deferUpdate();
         return;
       }
-
-      // 구매
+      // ====== 구매(락 적용) ======
       if (modal.customId === 'champ_buy_modal') {
-        const itemNum = parseInt(modal.fields.getTextInputValue('itemNum')) - 1;
-        const allMarket = filter
-          ? sortMarket(loadMarket().filter(item => item.championName.includes(filter)))
-          : sortMarket(loadMarket());
+        let releaseBE, releaseUser, releaseMarket;
+        try {
+          releaseBE = await lockfile.lock(bePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+          releaseUser = await lockfile.lock(userChampPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+          releaseMarket = await lockfile.lock(marketPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
 
-        if (!allMarket[itemNum]) {
-          await modal.reply({ content: '해당 번호의 매물이 없습니다.', ephemeral: true });
-          return;
+          const itemNum = parseInt(modal.fields.getTextInputValue('itemNum')) - 1;
+          const allMarket = filter
+            ? sortMarket(loadMarket().filter(item => item.championName.includes(filter)))
+            : sortMarket(loadMarket());
+
+          if (!allMarket[itemNum]) {
+            await modal.reply({ content: '해당 번호의 매물이 없습니다.', ephemeral: true });
+            return;
+          }
+          const item = allMarket[itemNum];
+
+          const users = loadUsers();
+          if (users[modal.user.id]) {
+            await modal.reply({ content: '이미 챔피언을 보유 중이므로, 구매할 수 없습니다.', ephemeral: true });
+            return;
+          }
+          const be = loadBE();
+          const balance = be[modal.user.id]?.amount || 0;
+          if (balance < item.price) {
+            await modal.reply({ content: `파랑 정수가 부족합니다! (보유: ${balance} BE / 필요: ${item.price} BE)`, ephemeral: true });
+            return;
+          }
+          be[modal.user.id] = be[modal.user.id] || { amount: 0, history: [] };
+          be[modal.user.id].amount -= item.price;
+          be[modal.user.id].history.push({
+            type: 'spend',
+            amount: item.price,
+            reason: `챔피언 구매: ${item.championName}`,
+            timestamp: Date.now()
+          });
+          saveBE(be);
+
+          users[modal.user.id] = {
+            name: item.championName,
+            level: item.level,
+            success: item.success ?? 0,
+            stats: item.stats,
+            timestamp: Date.now()
+          };
+          saveUsers(users);
+
+          let marketArr = loadMarket();
+          const idx = marketArr.findIndex(m => m.timestamp === item.timestamp && m.sellerId === item.sellerId);
+          let sellerId = item.sellerId;
+          if (idx !== -1) {
+            marketArr.splice(idx, 1);
+            saveMarket(marketArr);
+          }
+
+          await modal.reply({
+            content: `<@${modal.user.id}> 께서 ${item.championName} 챔피언을 ${item.price} BE에 구매하였습니다. [판매자: <@${sellerId}>]`,
+            ephemeral: false
+          });
+        } finally {
+          if (releaseMarket) await releaseMarket();
+          if (releaseUser) await releaseUser();
+          if (releaseBE) await releaseBE();
         }
-        const item = allMarket[itemNum];
-
-        // 이미 챔피언 소유 중인지 확인
-        const users = loadUsers();
-        if (users[modal.user.id]) {
-          await modal.reply({ content: '이미 챔피언을 보유 중이므로, 구매할 수 없습니다.', ephemeral: true });
-          return;
-        }
-        // 파랑 정수 잔액 체크
-        const be = loadBE();
-        const balance = be[modal.user.id]?.amount || 0;
-        if (balance < item.price) {
-          await modal.reply({ content: `파랑 정수가 부족합니다! (보유: ${balance} BE / 필요: ${item.price} BE)`, ephemeral: true });
-          return;
-        }
-        // 구매 처리
-        be[modal.user.id] = be[modal.user.id] || { amount: 0, history: [] };
-        be[modal.user.id].amount -= item.price;
-        be[modal.user.id].history.push({
-          type: 'spend',
-          amount: item.price,
-          reason: `챔피언 구매: ${item.championName}`,
-          timestamp: Date.now()
-        });
-        saveBE(be);
-
-        // 챔피언 등록
-        users[modal.user.id] = {
-          name: item.championName,
-          level: item.level,
-          success: item.success ?? 0,
-          stats: item.stats,
-          timestamp: Date.now()
-        };
-        saveUsers(users);
-
-        // 매물 삭제
-        let marketArr = loadMarket();
-        const idx = marketArr.findIndex(m => m.timestamp === item.timestamp && m.sellerId === item.sellerId);
-        let sellerId = item.sellerId;
-        if (idx !== -1) {
-          marketArr.splice(idx, 1);
-          saveMarket(marketArr);
-        }
-
-        // 구매 멘트: @구매자께서 OO 챔피언을 n BE에 구매하였습니다. [판매자: @판매자]
-        await modal.reply({
-          content: `<@${modal.user.id}> 께서 ${item.championName} 챔피언을 ${item.price} BE에 구매하였습니다. [판매자: <@${sellerId}>]`,
-          ephemeral: false
-        });
         return;
       }
-
-      // 판매
+      // ====== 판매(락 적용) ======
       if (modal.customId === 'champ_sell_modal') {
-        const price = parseInt(modal.fields.getTextInputValue('price'));
-        if (isNaN(price) || price <= 0) {
-          await modal.reply({ content: '가격은 1 이상 숫자여야 합니다.', ephemeral: true });
-          return;
-        }
-        const users = loadUsers();
-        const champ = users[modal.user.id];
-        if (!champ) {
-          await modal.reply({ content: '판매할 챔피언 정보가 없습니다.', ephemeral: true });
-          return;
-        }
-        // 매물 최대 5개 제한
-        const marketArr = loadMarket();
-        const mySellCount = marketArr.filter(m => m.sellerId === modal.user.id).length;
-        if (mySellCount >= 5) {
-          await modal.reply({ content: '한 사람당 최대 5개의 매물만 등록할 수 있습니다.\n매물을 회수하거나 팔린 뒤에 추가 등록이 가능합니다.', ephemeral: true });
-          return;
-        }
-        // champion-market.json에 매물 추가
-        marketArr.push({
-          championName: champ.name,
-          level: champ.level,
-          success: champ.success ?? 0,
-          stats: champ.stats,
-          price,
-          sellerId: modal.user.id,
-          sellerTag: modal.user.tag,
-          timestamp: Date.now()
-        });
-        saveMarket(marketArr);
+        let releaseMarket, releaseUser;
+        try {
+          releaseMarket = await lockfile.lock(marketPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+          releaseUser = await lockfile.lock(userChampPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
 
-        // 유저에서 챔피언 정보 삭제
-        delete users[modal.user.id];
-        saveUsers(users);
+          const price = parseInt(modal.fields.getTextInputValue('price'));
+          if (isNaN(price) || price <= 0) {
+            await modal.reply({ content: '가격은 1 이상 숫자여야 합니다.', ephemeral: true });
+            return;
+          }
+          const users = loadUsers();
+          const champ = users[modal.user.id];
+          if (!champ) {
+            await modal.reply({ content: '판매할 챔피언 정보가 없습니다.', ephemeral: true });
+            return;
+          }
+          const marketArr = loadMarket();
+          const mySellCount = marketArr.filter(m => m.sellerId === modal.user.id).length;
+          if (mySellCount >= 5) {
+            await modal.reply({ content: '한 사람당 최대 5개의 매물만 등록할 수 있습니다.\n매물을 회수하거나 팔린 뒤에 추가 등록이 가능합니다.', ephemeral: true });
+            return;
+          }
+          marketArr.push({
+            championName: champ.name,
+            level: champ.level,
+            success: champ.success ?? 0,
+            stats: champ.stats,
+            price,
+            sellerId: modal.user.id,
+            sellerTag: modal.user.tag,
+            timestamp: Date.now()
+          });
+          saveMarket(marketArr);
 
-        await modal.reply({
-          content: `챔피언 ${champ.name}이(가) ${price} BE에 거래소에 등록되었습니다!`,
-          ephemeral: true
-        });
+          delete users[modal.user.id];
+          saveUsers(users);
+
+          await modal.reply({
+            content: `챔피언 ${champ.name}이(가) ${price} BE에 거래소에 등록되었습니다!`,
+            ephemeral: true
+          });
+        } finally {
+          if (releaseUser) await releaseUser();
+          if (releaseMarket) await releaseMarket();
+        }
         return;
       }
     };
