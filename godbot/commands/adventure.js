@@ -266,9 +266,8 @@ module.exports = {
       }
       const monsterStats = getMonsterStats(userAdv.stage, userAdv.monster.name);
 
-      // 첫 실행시 인트로
-      const isFirst = !userAdv.inBattle && userAdv.stage === 1 && userAdv.monster && userAdv.hp === champ.stats.hp;
-      const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, userAdv.inBattle, false, isFirst);
+      // 인트로
+      const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, false, true);
 
       await interaction.reply({ embeds: [embed], components: row ? [row] : [], ephemeral: true });
 
