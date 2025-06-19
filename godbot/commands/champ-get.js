@@ -21,6 +21,10 @@ const { getBE, addBE } = require("./be-util");
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const BE_COST = 0; // 파랑 정수 소모량
 
+function formatNumber(num) {
+  return num.toLocaleString("ko-KR");
+}
+
 async function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
   return JSON.parse(fs.readFileSync(dataPath));
@@ -32,7 +36,7 @@ async function saveData(data) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("챔피언획득")
-    .setDescription(`🔷정수(BE) ${BE_COST}으로 무작위 챔피언을 획득합니다 (7월 1일부터 100원 발생)`),
+    .setDescription(`정수(BE) ${BE_COST.toLocaleString()}개로 무작위 챔피언을 획득합니다 (7월 1일부터 비용 발생)`),
 
   async execute(interaction) {
     const userId = interaction.user.id;
@@ -62,18 +66,126 @@ module.exports = {
         );
 
         replyContent = { embeds: [embed], components: [row] };
-      } else {
-        // 파랑 정수 잔액 확인 및 차감
-        const beAmount = getBE(userId);
-        if (beAmount < BE_COST) {
-          errorMessage = `❌ 정수(BE)가 부족합니다! (필요: ${BE_COST}, 보유: ${beAmount})`;
+        await interaction.editReply(replyContent);
+
+        // 이하 유기 버튼 로직 그대로
+        const msg = await interaction.fetchReply();
+        const collector = msg.createMessageComponentCollector({
+          filter: i => i.user.id === userId && i.customId === "champion-dispose",
+          time: 15000,
+          max: 1
+        });
+
+        collector.on("collect", async i => {
+          // 유기 처리
+          let disposeRelease;
+          try {
+            disposeRelease = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+            const data = await loadData();
+            const champ = data[userId];
+            if (!champ) {
+              await i.update({
+                content: "이미 유기된 챔피언입니다.",
+                embeds: [],
+                components: [],
+                ephemeral: true
+              });
+            } else {
+              const name = champ.name;
+              const lvl = champ.level ?? 0;
+              delete data[userId];
+              await saveData(data);
+              await i.update({
+                content: `🗑️ **${name} (${lvl}강)** 챔피언이 유기되었습니다. 다시 /챔피언획득 명령어로 새 챔피언을 얻을 수 있습니다.`,
+                embeds: [],
+                components: [],
+                ephemeral: true
+              });
+            }
+          } catch (e) {
+            await i.update({
+              content: "❌ 유기 처리 중 오류! 다시 시도해주세요.",
+              embeds: [],
+              components: [],
+              ephemeral: true
+            });
+          } finally {
+            if (disposeRelease) try { await disposeRelease(); } catch {}
+          }
+        });
+        return;
+      }
+
+      // ========== 챔피언 획득 전 확인창 ==========
+
+      const beAmount = getBE(userId);
+      if (beAmount < BE_COST) {
+        errorMessage = `❌ 파랑 정수(BE)가 부족합니다!\n(필요: ${formatNumber(BE_COST)}, 보유: ${formatNumber(beAmount)})`;
+        return interaction.editReply({ content: errorMessage });
+      }
+      const beAfter = beAmount - BE_COST;
+
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle("챔피언 획득 시도")
+        .setDescription([
+          `파랑 정수 **${formatNumber(BE_COST)}개**로 챔피언을 획득합니다.`,
+          `현재 내 BE: **${formatNumber(beAmount)}개**`,
+          `획득 시 잔액: **${formatNumber(beAfter)}개**`,
+          `\n아래 버튼을 눌러 챔피언을 뽑을지 결정하세요!`
+        ].join('\n'))
+        .setColor(0x4185f4);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("champion-get-confirm")
+          .setLabel(`챔피언 획득!`)
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("champion-get-cancel")
+          .setLabel(`취소`)
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.editReply({ embeds: [confirmEmbed], components: [row] });
+
+      // 버튼 상호작용 대기
+      const msg = await interaction.fetchReply();
+      const collector = msg.createMessageComponentCollector({
+        filter: i => i.user.id === userId &&
+          ["champion-get-confirm", "champion-get-cancel"].includes(i.customId),
+        time: 15000,
+        max: 1
+      });
+
+      collector.on("collect", async i => {
+        if (i.customId === "champion-get-cancel") {
+          await i.update({
+            content: "챔피언 획득이 취소되었습니다.",
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
           return;
         }
-        // 차감
+
+        // ========== 실제 BE 차감 및 챔피언 지급 ==========
+
+        // 재확인(동시 클릭 등 대비)
+        const beNow = getBE(userId);
+        if (beNow < BE_COST) {
+          await i.update({
+            content: `❌ 파랑 정수(BE)가 부족합니다!\n(필요: ${formatNumber(BE_COST)}, 보유: ${formatNumber(beNow)})`,
+            embeds: [],
+            components: [],
+            ephemeral: true
+          });
+          return;
+        }
+
         addBE(userId, -BE_COST, "챔피언 획득");
 
-        // 무작위 챔피언 지급
         const randomChampion = champions[Math.floor(Math.random() * champions.length)];
+        const data = await loadData();
         data[userId] = {
           name: randomChampion.name,
           level: 0,
@@ -132,35 +244,24 @@ module.exports = {
             .setStyle(ButtonStyle.Danger)
         );
 
-        replyContent = { embeds: [embed], components: [row] };
-      }
-    } catch (err) {
-      console.error("[챔피언획득] 파일 접근 오류:", err);
-      errorMessage = "❌ 오류 발생! 잠시 후 다시 시도해주세요.";
-    } finally {
-      if (release) try { await release(); } catch {}
-      if (errorMessage) {
-        return interaction.editReply({ content: errorMessage });
-      }
-      if (replyContent) {
-        const msg = await interaction.editReply(replyContent);
+        await i.update({ embeds: [embed], components: [row], ephemeral: true });
 
-        // 버튼 상호작용 핸들러
-        const collector = msg.createMessageComponentCollector({
-          filter: i => i.user.id === userId && i.customId === "champion-dispose",
+        // 유기 버튼(기존 로직과 동일)
+        const msg2 = await i.fetchReply();
+        const collector2 = msg2.createMessageComponentCollector({
+          filter: x => x.user.id === userId && x.customId === "champion-dispose",
           time: 15000,
           max: 1
         });
 
-        collector.on("collect", async i => {
-          // 유기 처리
+        collector2.on("collect", async i2 => {
           let disposeRelease;
           try {
             disposeRelease = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
             const data = await loadData();
             const champ = data[userId];
             if (!champ) {
-              await i.update({
+              await i2.update({
                 content: "이미 유기된 챔피언입니다.",
                 embeds: [],
                 components: [],
@@ -171,7 +272,7 @@ module.exports = {
               const lvl = champ.level ?? 0;
               delete data[userId];
               await saveData(data);
-              await i.update({
+              await i2.update({
                 content: `🗑️ **${name} (${lvl}강)** 챔피언이 유기되었습니다. 다시 /챔피언획득 명령어로 새 챔피언을 얻을 수 있습니다.`,
                 embeds: [],
                 components: [],
@@ -179,7 +280,7 @@ module.exports = {
               });
             }
           } catch (e) {
-            await i.update({
+            await i2.update({
               content: "❌ 유기 처리 중 오류! 다시 시도해주세요.",
               embeds: [],
               components: [],
@@ -189,13 +290,17 @@ module.exports = {
             if (disposeRelease) try { await disposeRelease(); } catch {}
           }
         });
+      });
 
-        collector.on("end", async collected => {
-          // 버튼 클릭 없이 종료됐을 때 락 해제 등 별도처리 X (ephemeral이라 15초 지나면 버튼 사라짐)
-        });
-        return;
-      }
-      return interaction.editReply({ content: "❌ 알 수 없는 오류! 잠시 후 다시 시도해주세요." });
+      collector.on("end", collected => { /* 버튼 만료 시 아무 처리 X */ });
+
+    } catch (err) {
+      console.error("[챔피언획득] 파일 접근 오류:", err);
+      errorMessage = "❌ 오류 발생! 잠시 후 다시 시도해주세요.";
+      if (release) try { await release(); } catch {}
+      return interaction.editReply({ content: errorMessage });
+    } finally {
+      if (release) try { await release(); } catch {}
     }
   }
 };
