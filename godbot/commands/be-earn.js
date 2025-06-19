@@ -342,7 +342,6 @@ module.exports = {
             .setDescription(
               `현재 금액🔷: **${total} BE**\n` +
               `GO! → ${Math.round(total*minRate)}~${Math.round(total*maxRate)} BE (성공시)\n` +
-              `실패확률: ${(GO_FAIL_RATE[stage]*100).toFixed(0)}%`
             )
             .setFooter({ text: `GO 성공시 계속 진행, STOP시 그만!` });
           await intr.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(goBtn, stopBtn)], ephemeral: true });
