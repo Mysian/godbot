@@ -72,8 +72,8 @@ const MONSTER_IMAGES = {
 };
 // 몬스터별 하단 이미지 적용
 function getMonsterImage(monster, stage) {
-  let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
-  let monsterUrl = MONSTER_IMAGES[monster] || ADVENTURE_SCENE_URL;
+  let sceneUrl = MONSTER_SCENE_IMAGES[monster];
+  let monsterUrl = MONSTER_IMAGES[monster];
   return [monsterUrl, sceneUrl];
 }
 
@@ -114,8 +114,8 @@ function getMonsterStats(stage, monster) {
   };
 }
 function getMonsterImage(monster, stage) {
-  let sceneUrl = ADVENTURE_SCENE_URL;
-  let monsterUrl = MONSTER_IMAGES[monster] || ADVENTURE_SCENE_URL;
+  let sceneUrl = MONSTER_SCENE_IMAGES;
+  let monsterUrl = MONSTER_IMAGES[monster] || MONSTER_SCENE_IMAGES;
   return [monsterUrl, sceneUrl];
 }
 function loadUserChampion(userId) {
