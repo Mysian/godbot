@@ -5,7 +5,7 @@ const lockfile = require("proper-lockfile");
 const { getBE, addBE } = require("./be-util");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
-const adventurePath = path.join(__dirname, "../data/adventure.json");
+const adventurePath = path.join(__dirname, "../data/adventure.json");  
 const adventureBestPath = path.join(__dirname, "../data/adventure-best.json");
 const championList = require("../utils/champion-data");
 const passiveSkills = require("../utils/passive-skills");
@@ -130,7 +130,7 @@ function calcDamage(atk, pen, enemyDef, enemyHp) {
   let base = Math.floor(atk * eff * 0.92 + Math.random() * 6);
   return base;
 }
-function makeHPBar(cur, max, len = 15, color = 'green') {
+function makeHPBar(cur, max, len = 18, color = 'green') {
   const rate = Math.max(0, Math.min(1, cur / max));
   const blocks = Math.round(rate * len);
   const bar = (color === 'red' ? "🟥" : "🟩").repeat(blocks) + "⬛".repeat(len - blocks);
@@ -198,9 +198,11 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
     .setTitle(isFirst ? `🌌 무한의 모험을 시작할까요?` : `🌌 [스테이지 ${userAdv.stage}] ${userAdv.monster.name} 출현`)
     .setFields(
       { name: "내 챔피언", value: champ.name, inline: true },
-      { name: "내 체력", value: makeHPBar(userAdv.hp, champ.stats.hp, 15, "green"), inline: false },
-      { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 15, "red"), inline: false }
-    )
+  { name: "내 체력", value: makeHPBar(userAdv.hp, champ.stats.hp, 18, "green"), inline: false },
+  { name: "\u200B", value: `**${userAdv.hp} / ${champ.stats.hp}**`, inline: false },
+  { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 18, "red"), inline: false },
+  { name: "\u200B", value: `**${userAdv.monster.hp} / ${monsterStats.hp}**`, inline: false },
+)
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
     .setFooter({ text: "토벌 실패 시 강화레벨 감소" });
   if (monsterImg) embed.setThumbnail(monsterImg);
