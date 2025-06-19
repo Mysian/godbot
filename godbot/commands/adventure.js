@@ -129,7 +129,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
       { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 15, "red"), inline: false }
     )
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
-    .setFooter({ text: `공격은 가끔 크리티컬! 점멸은 매우 낮은 확률로 회피 (운빨)` });
+    .setFooter({ text: `토벌 실패 시 강화레벨 감소` });
   if (monsterImg) embed.setThumbnail(monsterImg);
   if (sceneImg) embed.setImage(sceneImg);
   if (monsterMsg) embed.setDescription(`**${monsterMsg}**`);
