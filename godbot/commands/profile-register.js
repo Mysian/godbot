@@ -10,14 +10,21 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const lockfile = require('proper-lockfile'); // 추가
+
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 
-function readProfiles() {
+async function readProfiles() {
   if (!fs.existsSync(profilesPath)) return {};
-  return JSON.parse(fs.readFileSync(profilesPath));
+  const release = await lockfile.lock(profilesPath, { retries: 3 });
+  const data = JSON.parse(fs.readFileSync(profilesPath));
+  await release();
+  return data;
 }
-function saveProfiles(data) {
+async function saveProfiles(data) {
+  const release = await lockfile.lock(profilesPath, { retries: 3 });
   fs.writeFileSync(profilesPath, JSON.stringify(data, null, 2));
+  await release();
 }
 
 module.exports = {
@@ -26,7 +33,7 @@ module.exports = {
     .setDescription('프로필 정보를 등록합니다.'),
   async execute(interaction) {
     const userId = interaction.user.id;
-    const profiles = readProfiles();
+    const profiles = await readProfiles();
     if (profiles[userId]) {
       return interaction.reply({ content: '이미 프로필이 등록되어 있습니다. `/프로필수정`을 사용해주세요!', ephemeral: true });
     }
@@ -73,7 +80,7 @@ module.exports = {
     collector.on('collect', async i => {
       if (i.customId === 'submitProfile') {
         profiles[userId] = profile;
-        saveProfiles(profiles);
+        await saveProfiles(profiles);
         await i.update({ content: '✅ 프로필 등록이 완료되었습니다!', embeds: [], components: [], ephemeral: true });
         collector.stop();
         return;
@@ -219,7 +226,6 @@ module.exports = {
           profile.bnetNick = modalSubmit.fields.getTextInputValue('bnetNickInput');
         await modalSubmit.reply({ content: '저장 완료! 다른 항목도 입력하려면 버튼을 계속 눌러주세요.', ephemeral: true });
       } catch (err) {
-        // 모달 대기 timeout 등
         await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
       }
     });
