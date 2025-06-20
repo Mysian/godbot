@@ -5,7 +5,7 @@ const lockfile = require("proper-lockfile");
 const { getBE, addBE } = require("./be-util");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
-const adventurePath = path.join(__dirname, "../data/adventure.json");  
+const adventurePath = path.join(__dirname, "../data/adventure.json");
 const adventureBestPath = path.join(__dirname, "../data/adventure-best.json");
 const championList = require("../utils/champion-data");
 const passiveSkills = require("../utils/passive-skills");
@@ -20,7 +20,7 @@ const dragonList = [
 const boss50 = "고통의 아타칸";
 const boss100 = "내셔 남작";
 
-// 몬스터 등장 하단 이미지 (요청 이미지 모두 반영)
+// 몬스터 이미지
 const MONSTER_SCENE_IMAGES = {
   "전사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385259194017386546/r2d7x5mx.png?format=webp&quality=lossless&width=1452&height=817",
   "마법사 미니언": "https://media.discordapp.net/attachments/1385176420132720640/1385259194017386546/r2d7x5mx.png?format=webp&quality=lossless&width=1452&height=817",
@@ -33,7 +33,6 @@ const MONSTER_SCENE_IMAGES = {
   "푸른 파수꾼": "https://media.discordapp.net/attachments/1385176420132720640/1385259195993030767/zri3vgfk.png?format=webp&quality=lossless",
   "붉은 덩굴정령": "https://media.discordapp.net/attachments/1385176420132720640/1385259195548569630/pkfayxaw.png?format=webp&quality=lossless",
   "협곡의 전령": "https://media.discordapp.net/attachments/1385176420132720640/1385259194927681577/fjylch7n.png?format=webp&quality=lossless&width=1451&height=817",
-
   "바람의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176745316978730/34d295bcd86ade45.png?format=webp&quality=lossless",
   "대지의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176745006596106/3c5ce8c8b66c6954.png?format=webp&quality=lossless",
   "화염의 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176709577576458/29563bc6fbd6a7f8.png?format=webp&quality=lossless",
@@ -41,7 +40,6 @@ const MONSTER_SCENE_IMAGES = {
   "마법공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176538609356860/41f7ff067af56f32.png?format=webp&quality=lossless",
   "화학공학 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176537602719786/6e375cf5879766ac.png?format=webp&quality=lossless&width=1575&height=788",
   "장로 드래곤": "https://media.discordapp.net/attachments/1385176420132720640/1385176536440639488/968c59724143fd8a.png?format=webp&quality=lossless",
-
   "고통의 아타칸": "https://media.discordapp.net/attachments/1385176420132720640/1385176535492989048/df5e905d6dfd2336.png?format=webp&quality=lossless",
   "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176539473117304/e3a3a8c0b4769b05.png?format=webp&quality=lossless",
 };
@@ -70,10 +68,29 @@ const MONSTER_IMAGES = {
   "내셔 남작": "https://media.discordapp.net/attachments/1385176420132720640/1385176535081680937/aac00404cf0ce8ef.png?format=webp&quality=lossless",
 };
 
-// 이미지 배치
+// adventure-best.json 관리 함수
+function loadAdventureBest() {
+  if (!fs.existsSync(adventureBestPath)) fs.writeFileSync(adventureBestPath, "{}");
+  return JSON.parse(fs.readFileSync(adventureBestPath, "utf8"));
+}
+function saveAdventureBest(data) {
+  fs.writeFileSync(adventureBestPath, JSON.stringify(data, null, 2));
+}
+function updateAdventureBest(userId, stage) {
+  let best = loadAdventureBest();
+  if (!best[userId]) best[userId] = { bestStage: 0, totalClear: 0 };
+  // 최고 기록 갱신
+  if (stage > (best[userId].bestStage || 0)) {
+    best[userId].bestStage = stage;
+  }
+  // 누적 도전 횟수 증가 (실패, 성공 상관없이 스테이지 진입하면 1회 증가)
+  best[userId].totalClear += 1;
+  saveAdventureBest(best);
+}
+
 function getMonsterImage(monster, stage) {
-  let monsterUrl = MONSTER_IMAGES[monster] || null;  // ← 작은 이미지(썸네일)
-  let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL; // ← 하단 배경
+  let monsterUrl = MONSTER_IMAGES[monster] || null;
+  let sceneUrl = MONSTER_SCENE_IMAGES[monster] || ADVENTURE_SCENE_URL;
   return [monsterUrl, sceneUrl];
 }
 function getMonsterByStage(stage) {
@@ -113,24 +130,8 @@ function loadAdventure() {
   if (!fs.existsSync(adventurePath)) fs.writeFileSync(adventurePath, "{}");
   return JSON.parse(fs.readFileSync(adventurePath, "utf8"));
 }
-function loadAdventureBest() {
-  if (!fs.existsSync(adventureBestPath)) fs.writeFileSync(adventureBestPath, "{}");
-  return JSON.parse(fs.readFileSync(adventureBestPath, "utf8"));
-}
-function saveAdventureBest(data) {
-  fs.writeFileSync(adventureBestPath, JSON.stringify(data, null, 2));
-}
-// 기록 갱신 함수
-function updateAdventureBest(userId, stage) {
-  let best = loadAdventureBest();
-  if (!best[userId]) best[userId] = { bestStage: 0, totalClear: 0 };
-  // 최고 기록 반영
-  if (stage > (best[userId].bestStage || 0)) {
-    best[userId].bestStage = stage;
-  }
-  // 누적 도전 횟수 증가
-  best[userId].totalClear += 1;
-  saveAdventureBest(best);
+function saveAdventure(data) {
+  fs.writeFileSync(adventurePath, JSON.stringify(data, null, 2));
 }
 function makeStageReward(stage) {
   return Math.floor(25 + stage * 0.7);
@@ -146,14 +147,13 @@ function calcDamage(atk, pen, enemyDef, enemyHp) {
   let base = Math.floor(atk * eff * 0.92 + Math.random() * 6);
   return base;
 }
-function makeHPBar(cur, max, len = 20, color = 'green') {
+function makeHPBar(cur, max, len = 18, color = 'green') {
   const rate = Math.max(0, Math.min(1, cur / max));
   const blocks = Math.round(rate * len);
   const bar = (color === 'red' ? "🟥" : "🟩").repeat(blocks) + "⬛".repeat(len - blocks);
-  return `\`${bar}\` ${cur} / ${max}`;
+  return `\`${bar}\``;
 }
 
-// [수정] 첫 입장/패배 안내, 인트로/고지 강화
 function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isClear, isFirst = false, defeat = false) {
   let monsterImg, sceneImg;
   if (isFirst) {
@@ -169,7 +169,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
   if (userAdv.monster.name === boss100) monsterMsg = "나를 쓰러뜨릴 수 있나?";
   if (dragonList.includes(userAdv.monster.name)) monsterMsg = `${userAdv.monster.name}이(가) 강림했다!`;
 
-  // 첫 입장일 때 인트로 멘트/설명 추가
+  // 첫 입장 인트로
   if (isFirst) {
     const embed = new EmbedBuilder()
       .setTitle(`🌌 [모험 시작]`)
@@ -195,7 +195,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
     return { embed, row };
   }
 
-  // 패배 안내시 고지 강화
+  // 패배 안내
   if (defeat) {
     const embed = new EmbedBuilder()
       .setTitle(`😵 패배!`)
@@ -209,16 +209,16 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
     return { embed, row: null };
   }
 
-  // 일반 전투/스테이지
+  // 전투/스테이지 임베드
   const embed = new EmbedBuilder()
     .setTitle(isFirst ? `🌌 무한의 모험을 시작할까요?` : `🌌 [스테이지 ${userAdv.stage}] ${userAdv.monster.name} 출현`)
     .setFields(
       { name: "내 챔피언", value: champ.name, inline: true },
-  { name: "내 체력", value: makeHPBar(userAdv.hp, champ.stats.hp, 18, "green"), inline: false },
-  { name: "\u200B", value: `**${userAdv.hp} / ${champ.stats.hp}**`, inline: false },
-  { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 18, "red"), inline: false },
-  { name: "\u200B", value: `**${userAdv.monster.hp} / ${monsterStats.hp}**`, inline: false },
-)
+      { name: "내 체력", value: makeHPBar(userAdv.hp, champ.stats.hp, 18, "green"), inline: false },
+      { name: "\u200B", value: `**${userAdv.hp} / ${champ.stats.hp}**`, inline: false },
+      { name: "몬스터 체력", value: makeHPBar(userAdv.monster.hp, monsterStats.hp, 18, "red"), inline: false },
+      { name: "\u200B", value: `**${userAdv.monster.hp} / ${monsterStats.hp}**`, inline: false },
+    )
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
     .setFooter({ text: "토벌 실패 시 강화레벨 감소" });
   if (monsterImg) embed.setThumbnail(monsterImg);
@@ -273,6 +273,7 @@ module.exports = {
       champ.stats = champ.stats || { ...championBase.stats };
       champ.image = championBase.image || null;
 
+      // 몬스터 생성
       if (!userAdv.monster || !userAdv.monster.name || typeof userAdv.monster.hp !== "number") {
         const monsterName = getMonsterByStage(userAdv.stage);
         const monsterStat = getMonsterStats(userAdv.stage, monsterName);
@@ -285,7 +286,6 @@ module.exports = {
 
       // 인트로
       const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, false, true);
-
       await interaction.reply({ embeds: [embed], components: row ? [row] : [], ephemeral: true });
 
       const filter = i => i.user.id === userId &&
@@ -318,6 +318,9 @@ module.exports = {
           if (i.customId === "adventure-start") {
             userAdv.inBattle = true;
             userAdv.hp = champ.stats.hp;
+            // 스테이지 진입시 누적 기록 갱신 (실패든 성공이든 한번만 증가)
+            updateAdventureBest(userId, userAdv.stage);
+
             adv[userId] = userAdv; saveAdventure(adv);
 
             const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, true, false);
@@ -337,95 +340,64 @@ module.exports = {
           }
           if (!userAdv.inBattle) return;
 
-          if (i.customId === "adventure-attack") {
-            let crit = Math.random() < 0.25;
-            let dmg = calcDamage(
-              champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
-              champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
-            );
-            dmg = calcCritDamage(dmg, crit);
-            userAdv.monster.hp -= dmg;
-            let resultMsg = crit ? `💥 크리티컬! ${dmg} 피해를 입혔어!\n` : `내가 ${dmg} 피해를 입혔어!\n`;
-
-            let mdmg = 0, mCrit = false;
-            if (userAdv.monster.hp > 0) {
-              mCrit = Math.random() < monsterStats.crit;
-              mdmg = calcCritDamage(
-                calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
-                mCrit
-              );
-              userAdv.hp -= mdmg;
-              if (mCrit) resultMsg += `몬스터 크리티컬! `;
-              resultMsg += `몬스터에게 ${mdmg} 피해를 받았어!`;
-            } else {
-              userAdv.monster.hp = 0;
-            }
-
-            // 패배 체크
-            if (userAdv.hp <= 0) {
-            updateAdventureBest(userId, userAdv.stage); // 기록 갱신!
-              userAdv.hp = 0;
-              userAdv.inBattle = false;
-              delete adv[userId]; saveAdventure(adv);
-              if (fs.existsSync(dataPath)) {
-                let cd = JSON.parse(fs.readFileSync(dataPath, "utf8"));
-                if (cd[userId]) {
-                  cd[userId].level = Math.max((cd[userId].level || 1) - 1, 1);
-                  fs.writeFileSync(dataPath, JSON.stringify(cd, null, 2));
-                }
-              }
-              const { embed } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, false, false, true);
-              return await i.update({
-                content: `😵 패배!`,
-                embeds: [embed],
-                components: [],
-                ephemeral: true
-              });
-            }
-
-            // 몬스터 처치
-            if (userAdv.monster.hp <= 0) {
-              userAdv.inBattle = false;
-              userAdv.hp = champ.stats.hp;
-              userAdv.clear += 1;
-
-              let reward = (userAdv.stage % 10 === 0) ? makeStageReward(userAdv.stage) : 0;
-              userAdv.reward += reward;
-              adv[userId] = userAdv; saveAdventure(adv);
-
-              if (reward > 0) {
-                await addBE(userId, reward, `[모험] ${userAdv.stage} 스테이지 클리어`);
-              }
-              const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, false, true);
-              return await i.update({
-                content: `🎉 ${userAdv.monster.name} 처치!`,
-                embeds: [embed],
-                components: [row],
-                ephemeral: true
-              });
-            }
-
-            adv[userId] = userAdv; saveAdventure(adv);
-            const { embed, row } = makeAdventureEmbedRow(userAdv, champ, monsterStats, true, false);
-            return await i.update({ content: resultMsg, embeds: [embed], components: [row], ephemeral: true });
-          }
-
-          // 강공격 시도
-          if (i.customId === "adventure-strong") {
+          if (i.customId === "adventure-attack" || i.customId === "adventure-strong") {
+            // 공격 또는 강공격 로직
+            let isStrong = i.customId === "adventure-strong";
             let resultMsg = '';
-            const rand = Math.random();
             let crit = false, dmg = 0, mdmg = 0, mCrit = false;
 
-            if (rand < 0.3) {
-              if (Math.random() < 0.5) {
+            if (isStrong) {
+              const rand = Math.random();
+              if (rand < 0.3) {
+                if (Math.random() < 0.5) {
+                  crit = Math.random() < 0.25;
+                  dmg = calcDamage(
+                    champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+                    champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
+                  );
+                  dmg = calcCritDamage(dmg, crit) * 2;
+                  userAdv.monster.hp -= dmg;
+                  resultMsg = `🔥 **강공격 성공!** ${dmg} 피해를 입혔어!${crit ? " (크리티컬!)" : ""}\n`;
+
+                  if (userAdv.monster.hp > 0) {
+                    mCrit = Math.random() < monsterStats.crit;
+                    mdmg = calcCritDamage(
+                      calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                      mCrit
+                    );
+                    userAdv.hp -= mdmg;
+                    if (mCrit) resultMsg += `몬스터 크리티컬! `;
+                    resultMsg += `몬스터에게 ${mdmg} 피해를 받았어!`;
+                  } else {
+                    userAdv.monster.hp = 0;
+                  }
+                } else {
+                  crit = Math.random() < 0.25;
+                  dmg = calcDamage(
+                    champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
+                    champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
+                  );
+                  userAdv.monster.hp -= dmg;
+                  resultMsg = `내가 ${dmg} 피해를 입혔어!\n`;
+
+                  mCrit = Math.random() < monsterStats.crit;
+                  mdmg = calcCritDamage(
+                    calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
+                    mCrit
+                  ) * 2;
+                  userAdv.hp -= mdmg;
+                  if (mCrit) resultMsg += `몬스터 크리티컬! `;
+                  resultMsg += `😱 **몬스터 강공격!** ${mdmg} 피해를 받았어!`;
+                }
+              } else {
                 crit = Math.random() < 0.25;
                 dmg = calcDamage(
                   champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
                   champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
                 );
-                dmg = calcCritDamage(dmg, crit) * 2;
+                dmg = calcCritDamage(dmg, crit);
                 userAdv.monster.hp -= dmg;
-                resultMsg = `🔥 **강공격 성공!** ${dmg} 피해를 입혔어!${crit ? " (크리티컬!)" : ""}\n`;
+                resultMsg = crit ? `💥 크리티컬! ${dmg} 피해를 입혔어!\n` : `내가 ${dmg} 피해를 입혔어!\n`;
 
                 if (userAdv.monster.hp > 0) {
                   mCrit = Math.random() < monsterStats.crit;
@@ -439,23 +411,6 @@ module.exports = {
                 } else {
                   userAdv.monster.hp = 0;
                 }
-              } else {
-                crit = Math.random() < 0.25;
-                dmg = calcDamage(
-                  champ.stats.attack >= champ.stats.ap ? champ.stats.attack : champ.stats.ap,
-                  champ.stats.penetration, monsterStats.defense, userAdv.monster.hp
-                );
-                userAdv.monster.hp -= dmg;
-                resultMsg = `내가 ${dmg} 피해를 입혔어!\n`;
-
-                mCrit = Math.random() < monsterStats.crit;
-                mdmg = calcCritDamage(
-                  calcDamage(monsterStats.attack, monsterStats.penetration, champ.stats.defense, userAdv.hp),
-                  mCrit
-                ) * 2;
-                userAdv.hp -= mdmg;
-                if (mCrit) resultMsg += `몬스터 크리티컬! `;
-                resultMsg += `😱 **몬스터 강공격!** ${mdmg} 피해를 받았어!`;
               }
             } else {
               crit = Math.random() < 0.25;
@@ -481,8 +436,8 @@ module.exports = {
               }
             }
 
+            // 패배 체크
             if (userAdv.hp <= 0) {
-            updateAdventureBest(userId, userAdv.stage); // 기록 갱신!
               userAdv.hp = 0;
               userAdv.inBattle = false;
               delete adv[userId]; saveAdventure(adv);
@@ -502,8 +457,8 @@ module.exports = {
               });
             }
 
+            // 몬스터 처치
             if (userAdv.monster.hp <= 0) {
-            updateAdventureBest(userId, userAdv.stage); // 기록 갱신!
               userAdv.inBattle = false;
               userAdv.hp = champ.stats.hp;
               userAdv.clear += 1;
