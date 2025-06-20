@@ -65,6 +65,7 @@ module.exports = {
       if (selectedReason && selectedAnon && !modalShown) {
         modalShown = true;
         collector.stop();
+
         // 모달 생성
         const modal = new ModalBuilder()
           .setCustomId('신고_모달')
@@ -92,7 +93,7 @@ module.exports = {
           new ActionRowBuilder().addComponents(dateInput),
           new ActionRowBuilder().addComponents(detailInput)
         );
-        // 여기서 editReply 하지 않고 바로 showModal!
+        // 반드시 "i.showModal(modal)"
         await i.showModal(modal);
       }
     });
@@ -103,12 +104,13 @@ module.exports = {
       }
     });
 
-    // 모달 입력받는 리스너도 5분 타임 제한
+    // 모달 입력은 interactionCreate 이벤트에서 받기 (최대 5분)
     const modalTimeout = setTimeout(() => {
       interaction.editReply({ content: '❗️시간이 초과되어 신고가 취소되었습니다.', components: [], ephemeral: true }).catch(() => {});
     }, 300_000);
 
-    interaction.client.on('interactionCreate', async modalInter => {
+    // interaction.client.on이 아니라 once(한 번만)
+    interaction.client.once('interactionCreate', async modalInter => {
       if (modalInter.type !== InteractionType.ModalSubmit) return;
       if (modalInter.customId !== '신고_모달') return;
       clearTimeout(modalTimeout);
@@ -142,7 +144,7 @@ module.exports = {
           { name: '• 사건 발생 일시', value: eventDate, inline: true },
           { name: '• 신고 대상', value: `\`${targetNick}\``, inline: true },
           { name: '• 신고자', value: reporter, inline: true },
-          { name: '\u200B', value: '\u200B', inline: false }, // 구분용 빈줄
+          { name: '\u200B', value: '\u200B', inline: false },
           { name: '• 신고 내용', value: reportDetail, inline: false }
         )
         .setFooter({ text: `신고 접수일시: ${new Date().toLocaleString()}` })
