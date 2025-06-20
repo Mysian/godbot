@@ -1,66 +1,101 @@
 // commands/dm.js
-const { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+
+const THREAD_PARENT_CHANNEL_ID = '1380874052855529605';
+const ANON_NICK = '까리한 디스코드';
+
+// Map<userId, threadId> : "기존 DM 이어서 진행" 구현용 (간단 key-value)
+const relayMap = new Map();
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('dm')
-    .setDescription('특정 유저에게 DM(쪽지)를 보냅니다.')
+    .setName('디엠')
+    .setDescription('익명 임시 DM 스레드를 생성/이어서 릴레이합니다.')
     .addUserOption(opt =>
       opt.setName('유저')
-        .setDescription('DM을 보낼 유저')
+        .setDescription('익명 대화할 유저')
         .setRequired(true)
     )
     .addStringOption(opt =>
       opt.setName('이어서')
         .setDescription('기존 DM 이어서 진행')
         .addChoices(
-          { name: '예(기존 대화 이어서)', value: 'yes' },
-          { name: '아니오(새로 시작)', value: 'no' }
+          { name: '예', value: 'yes' },
+          { name: '아니오', value: 'no' }
         )
         .setRequired(false)
     ),
-
   async execute(interaction) {
     const user = interaction.options.getUser('유저');
-    const threadOption = interaction.options.getString('이어서') || 'no';
+    const useExisting = (interaction.options.getString('이어서') || 'no') === 'yes';
+    const parentChannel = await interaction.guild.channels.fetch(THREAD_PARENT_CHANNEL_ID);
 
-    // 모달로 메시지 입력받기
-    const modal = new ModalBuilder()
-      .setCustomId('dm_메시지')
-      .setTitle('DM(쪽지) 전송');
-    const messageInput = new TextInputBuilder()
-      .setCustomId('dm_message')
-      .setLabel('보낼 메시지를 입력하세요.')
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true)
-      .setPlaceholder('내용을 입력하세요.');
+    if (!parentChannel || parentChannel.type !== ChannelType.GuildText) {
+      return interaction.reply({ content: '❗️지정된 채널을 찾을 수 없거나 텍스트채널이 아닙니다.', ephemeral: true });
+    }
 
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(messageInput)
-    );
+    let thread;
+    if (useExisting && relayMap.has(user.id)) {
+      // 기존 스레드 찾기
+      const threadId = relayMap.get(user.id);
+      thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+      if (!thread) relayMap.delete(user.id); // 없으면 다시 생성
+    }
+    if (!thread) {
+      // 새 스레드 생성
+      const threadName = `익명DM-${user.username}-${Date.now().toString().slice(-5)}`;
+      thread = await parentChannel.threads.create({
+        name: threadName,
+        autoArchiveDuration: 1440, // 24시간
+        reason: '익명 임시 DM 스레드',
+        invitable: false,
+      });
+      relayMap.set(user.id, thread.id);
 
-    await interaction.showModal(modal);
+      // 안내
+      await thread.send({
+        content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
+      });
+    }
 
-    // 모달 응답 대기
-    const filter = m => m.user.id === interaction.user.id && m.customId === 'dm_메시지';
-    interaction.client.once('interactionCreate', async modalInter => {
-      if (!filter(modalInter)) return;
-      const message = modalInter.fields.getTextInputValue('dm_message');
+    // 대상 유저 초대 (운영진/명령자 X, 오직 봇만)
+    // 실제로 유저는 스레드에 직접 접근 불가.  
+    // 메시지는 봇이 DM/스레드로 릴레이
 
-      try {
-        // 기존 DM 이어서 옵션(실제 구현에서는 thread 등 관리 가능, 여기선 DM만 단순 처리)
-        // "yes"든 "no"든 그냥 DM으로 전송 (추후 고도화 가능)
-        await user.send(`[${interaction.user.displayName || interaction.user.username}님의 DM]\n${message}`);
+    await interaction.reply({
+      content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 <@${user.id}>님은 **봇에게 DM**을 보내면 이 스레드로 익명 메시지가 릴레이되고,\n운영진(명령어 입력자)은 이 스레드에 메시지 작성시 해당 유저에게 익명 DM이 전송됩니다.*`,
+      ephemeral: true,
+    });
+  },
+  // relay handler 등록(메인 봇파일에서 아래 함수 실행 필요)
+  relayRegister(client) {
+    // 유저 → 봇 DM → 스레드 릴레이
+    client.on('messageCreate', async msg => {
+      // 유저가 봇 DM에 쓴 메시지
+      if (!msg.guild && !msg.author.bot) {
+        const threadId = relayMap.get(msg.author.id);
+        if (!threadId) return;
+        const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+        if (!guild) return;
+        const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+        if (!parentChannel) return;
+        const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+        if (!thread) return;
+        await thread.send({ content: `**[${ANON_NICK}]**\n${msg.content}` });
+      }
+    });
 
-        await modalInter.reply({
-          content: `✅ <@${user.id}>님에게 DM을 전송했습니다.`,
-          ephemeral: true
-        });
-      } catch (err) {
-        await modalInter.reply({
-          content: `❗ <@${user.id}>님에게 DM을 보낼 수 없습니다.\n(서버 차단 또는 DM 차단/설정 제한 등)`,
-          ephemeral: true
-        });
+    // 스레드 → 유저 DM 릴레이 (운영진/명령자만, 봇/웹훅 제외)
+    client.on('messageCreate', async msg => {
+      if (msg.channel.type !== ChannelType.PublicThread) return;
+      if (msg.author.bot) return;
+      // relayMap에서 대상 유저 찾기
+      for (const [userId, threadId] of relayMap.entries()) {
+        if (threadId === msg.channel.id) {
+          const user = await client.users.fetch(userId).catch(() => null);
+          if (!user) return;
+          await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+        }
       }
     });
   }
