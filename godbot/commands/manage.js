@@ -87,8 +87,8 @@ if (option === "status") {
 
   // 종합 상태
   let total = "🟢 안정적";
-  if (memState === "🔴" || cpuState === "🔴" || upState === "🔴") total = "🔴 불안정";
-  else if (memState === "🟡" || cpuState === "🟡" || upState === "🟡") total = "🟡 주의";
+if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
+else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
   // 안내 메시지
   let comment = "";
