@@ -57,7 +57,6 @@ module.exports = {
     }
 
     // === [2] 확인/수정 ===
-    // 기존 코드와 동일하게 파일 선택/수정/저장
     const files = fs.readdirSync(dataDir).filter(f => f.endsWith('.json'));
     if (!files.length) {
       return interaction.reply({ content: 'data 폴더에 .json 파일이 없습니다.', ephemeral: true });
@@ -78,11 +77,33 @@ module.exports = {
       ephemeral: true,
     });
 
-    // 이후 파일 선택/수정은 기존 방식과 동일
+    // Collector에서만 interactionCreate 리스너 등록/해제 구조
+    const filter = i => i.user.id === interaction.user.id;
     const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => i.user.id === interaction.user.id,
+      filter,
       time: 90000,
     });
+
+    // 모달 제출 핸들러 정의 (collector 내에서만 등록)
+    const modalHandler = async modalInteraction => {
+      if (!modalInteraction.isModalSubmit()) return;
+      if (!modalInteraction.customId.startsWith('modal_')) return;
+      if (modalInteraction.user.id !== interaction.user.id) return;
+
+      const fileName = modalInteraction.customId.slice(6);
+      const filePath = path.join(dataDir, fileName);
+      const content = modalInteraction.fields.getTextInputValue('json_edit_content');
+      try {
+        JSON.parse(content);
+        fs.writeFileSync(filePath, content, 'utf8');
+        await modalInteraction.reply({ content: `✅ ${fileName} 저장 완료!`, ephemeral: true });
+      } catch {
+        await modalInteraction.reply({ content: '❌ 유효하지 않은 JSON 데이터입니다. 저장 실패.', ephemeral: true });
+      }
+    };
+
+    // 이벤트 리스너 등록
+    interaction.client.on('interactionCreate', modalHandler);
 
     collector.on('collect', async i => {
       if (i.customId === 'jsonfile_select') {
@@ -134,22 +155,9 @@ module.exports = {
       }
     });
 
-    // 모달 제출 처리(실제 파일 저장)
-    interaction.client.on('interactionCreate', async modalInteraction => {
-      if (!modalInteraction.isModalSubmit()) return;
-      if (!modalInteraction.customId.startsWith('modal_')) return;
-      if (modalInteraction.user.id !== interaction.user.id) return;
-
-      const fileName = modalInteraction.customId.slice(6);
-      const filePath = path.join(dataDir, fileName);
-      const content = modalInteraction.fields.getTextInputValue('json_edit_content');
-      try {
-        JSON.parse(content);
-        fs.writeFileSync(filePath, content, 'utf8');
-        await modalInteraction.reply({ content: `✅ ${fileName} 저장 완료!`, ephemeral: true });
-      } catch {
-        await modalInteraction.reply({ content: '❌ 유효하지 않은 JSON 데이터입니다. 저장 실패.', ephemeral: true });
-      }
+    collector.on('end', () => {
+      // collector 끝나면 핸들러 제거(메모리 누수, 다중 리스너 방지)
+      interaction.client.removeListener('interactionCreate', modalHandler);
     });
   }
 };
