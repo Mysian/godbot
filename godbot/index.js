@@ -252,7 +252,7 @@ setInterval(async () => {
           const member = await info.channel.guild.members.fetch(userId);
           name = member.displayName || member.user.username || userId;
         } catch (e) {}
-        channel.send(`-# ⏳ ${name} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
+        channel.send(`-# ⏳ ${member.displayName} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
       }
     }
   }
