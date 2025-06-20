@@ -61,7 +61,7 @@ module.exports = {
             name: `\` ${i+1} \`  🏷️ **${s.title}**   |   📅 **${fmt(s.date)}**   |   ⏰ **${s.time || "미정"}**`,
             value:
               `📝 _${s.content}_\n` +
-              `👥 참여 인원: ${s.members && s.members.length ? s.members.map(id=>`<@${id}>`).join(", ") : "없음"}\n` +
+              `👥 참여 인원: ${s.members && s.members.trim() ? s.members : "없음"}\n` +
               `👤 등록자: <@${s.userId}>`,
             inline: false,
           });
@@ -116,43 +116,24 @@ module.exports = {
 
       // 일정 등록
       if (btn.customId === "schedule-add") {
-        // 참여 인원 선택 (자기자신/봇 제외, 최대 10명)
-        const members = await interaction.guild.members.fetch();
-        const options = members.filter(m=>!m.user.bot && m.id !== interaction.user.id).map(m=>({
-          label: m.displayName, value: m.id
-        })).slice(0, 25);
-        const selectRow = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("schedule-members")
-            .setPlaceholder("참여 인원을 선택하세요 (최대 10명, 안 해도 됨)")
-            .setMinValues(0)
-            .setMaxValues(Math.min(10, options.length))
-            .addOptions(options)
-        );
-        await btn.update({ content: "참여 인원을 선택해 주세요. (안 골라도 됨)", embeds: [], components: [selectRow], ephemeral: true });
-        const select = await interaction.channel.awaitMessageComponent({
-          filter: i => i.user.id === interaction.user.id && i.customId === "schedule-members",
-          time: 60_000,
-          componentType: ComponentType.StringSelect,
-        }).catch(() => null);
-        if (!select) continue;
-
-        // 모달: 제목, 날짜, 시간(선택), 내용, 비번
+        // 모달: 제목, 날짜, 시간(선택), 참여 인원(자유입력), 내용, 비번
         const modal = new ModalBuilder().setCustomId("schedule-add-modal").setTitle("일정 등록");
         const titleInput = new TextInputBuilder().setCustomId("title").setLabel("일정 제목").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(32);
         const dateInput = new TextInputBuilder().setCustomId("date").setLabel("일정 날짜 (예: 2024-12-31, 무기한이면 '무기한' 입력)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(16);
         const timeInput = new TextInputBuilder().setCustomId("time").setLabel("일정 시간 (예: 15:00, 미입력시 '미정')").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(8);
+        const membersInput = new TextInputBuilder().setCustomId("members").setLabel("참여 인원 (예: 철수,영희/없으면 생략)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(60);
         const contentInput = new TextInputBuilder().setCustomId("content").setLabel("일정 내용").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
         const pwInput = new TextInputBuilder().setCustomId("pw").setLabel("비밀번호(숫자 4자리)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(4).setMinLength(4);
         modal.addComponents(
           new ActionRowBuilder().addComponents(titleInput),
           new ActionRowBuilder().addComponents(dateInput),
           new ActionRowBuilder().addComponents(timeInput),
+          new ActionRowBuilder().addComponents(membersInput),
           new ActionRowBuilder().addComponents(contentInput),
           new ActionRowBuilder().addComponents(pwInput)
         );
-        await select.showModal(modal);
-        const modalSubmit = await select.awaitModalSubmit({
+        await btn.showModal(modal);
+        const modalSubmit = await btn.awaitModalSubmit({
           filter: i => i.user.id === interaction.user.id,
           time: 60_000
         }).catch(() => null);
@@ -163,8 +144,8 @@ module.exports = {
           title: modalSubmit.fields.getTextInputValue("title"),
           date: (d => (d === "무기한" ? null : d))(modalSubmit.fields.getTextInputValue("date")),
           time: modalSubmit.fields.getTextInputValue("time") || "미정",
+          members: modalSubmit.fields.getTextInputValue("members") || "",
           content: modalSubmit.fields.getTextInputValue("content"),
-          members: select.values,
           pw: modalSubmit.fields.getTextInputValue("pw"),
           userId: interaction.user.id,
           created: Date.now()
@@ -178,7 +159,7 @@ module.exports = {
             name: `🏷️ **${modalSubmit.fields.getTextInputValue("title")}**   |   📅 **${fmt(modalSubmit.fields.getTextInputValue("date"))}**   |   ⏰ **${modalSubmit.fields.getTextInputValue("time") || "미정"}**`,
             value:
               `📝 _${modalSubmit.fields.getTextInputValue("content")}_\n` +
-              `👥 참여 인원: ${select.values.length ? select.values.map(id=>`<@${id}>`).join(", ") : "없음"}\n` +
+              `👥 참여 인원: ${modalSubmit.fields.getTextInputValue("members").trim() || "없음"}\n` +
               `👤 등록자: <@${interaction.user.id}>`,
             inline: false,
           });
@@ -213,22 +194,7 @@ module.exports = {
         const idx = Number(select.values[0]);
         const target = scheduleSelf[idx];
 
-        // 참여 인원 수정 선택
-        const members = await interaction.guild.members.fetch();
-        const options = members.filter(m=>!m.user.bot && m.id !== interaction.user.id).map(m=>({
-          label: m.displayName, value: m.id
-        })).slice(0, 25);
-        const memberRow = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("schedule-members-edit")
-            .setPlaceholder("참여 인원을 선택하세요 (최대 10명, 안 해도 됨)")
-            .setMinValues(0)
-            .setMaxValues(Math.min(10, options.length))
-            .addOptions(options)
-            .setDefaultValues(target.members || [])
-        );
-
-        // 비밀번호 입력받기
+        // 비밀번호 입력
         const pwModal = new ModalBuilder().setCustomId("schedule-pw-modal").setTitle("비밀번호 인증");
         const pwInput = new TextInputBuilder().setCustomId("pw").setLabel("비밀번호(숫자 4자리)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(4).setMinLength(4);
         pwModal.addComponents(new ActionRowBuilder().addComponents(pwInput));
@@ -246,28 +212,22 @@ module.exports = {
 
         // 수정
         if (btn.customId === "schedule-edit") {
-          await modalSubmit.reply({ content: "수정할 참여 인원을 선택해 주세요.", embeds: [], components: [memberRow], ephemeral: true });
-          const select2 = await interaction.channel.awaitMessageComponent({
-            filter: i => i.user.id === interaction.user.id && i.customId === "schedule-members-edit",
-            time: 60_000,
-            componentType: ComponentType.StringSelect,
-          }).catch(() => null);
-          if (!select2) continue;
-
-          // 모달: 제목, 날짜, 시간(선택), 내용
+          // 모달: 제목, 날짜, 시간(선택), 참여 인원(자유입력), 내용
           const modal = new ModalBuilder().setCustomId("schedule-edit-modal").setTitle("일정 수정");
           const titleInput = new TextInputBuilder().setCustomId("title").setLabel("일정 제목").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(32).setValue(target.title);
           const dateInput = new TextInputBuilder().setCustomId("date").setLabel("일정 날짜 (예: 2024-12-31, 무기한이면 '무기한' 입력)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(16).setValue(target.date || "무기한");
           const timeInput = new TextInputBuilder().setCustomId("time").setLabel("일정 시간 (예: 15:00, 미입력시 '미정')").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(8).setValue(target.time || "");
+          const membersInput = new TextInputBuilder().setCustomId("members").setLabel("참여 인원 (예: 철수,영희/없으면 생략)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(60).setValue(target.members || "");
           const contentInput = new TextInputBuilder().setCustomId("content").setLabel("일정 내용").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200).setValue(target.content);
           modal.addComponents(
             new ActionRowBuilder().addComponents(titleInput),
             new ActionRowBuilder().addComponents(dateInput),
             new ActionRowBuilder().addComponents(timeInput),
+            new ActionRowBuilder().addComponents(membersInput),
             new ActionRowBuilder().addComponents(contentInput)
           );
-          await select2.showModal(modal);
-          const editSubmit = await select2.awaitModalSubmit({
+          await modalSubmit.showModal(modal);
+          const editSubmit = await modalSubmit.awaitModalSubmit({
             filter: i => i.user.id === interaction.user.id,
             time: 60_000
           }).catch(() => null);
@@ -278,8 +238,8 @@ module.exports = {
             scheduleAll[realIdx].title = editSubmit.fields.getTextInputValue("title");
             scheduleAll[realIdx].date = (d => (d === "무기한" ? null : d))(editSubmit.fields.getTextInputValue("date"));
             scheduleAll[realIdx].time = editSubmit.fields.getTextInputValue("time") || "미정";
+            scheduleAll[realIdx].members = editSubmit.fields.getTextInputValue("members") || "";
             scheduleAll[realIdx].content = editSubmit.fields.getTextInputValue("content");
-            scheduleAll[realIdx].members = select2.values;
             await saveSchedule(scheduleAll);
           }
           const doneEmbed = new EmbedBuilder()
@@ -289,7 +249,7 @@ module.exports = {
               name: `🏷️ **${editSubmit.fields.getTextInputValue("title")}**   |   📅 **${fmt(editSubmit.fields.getTextInputValue("date"))}**   |   ⏰ **${editSubmit.fields.getTextInputValue("time") || "미정"}**`,
               value:
                 `📝 _${editSubmit.fields.getTextInputValue("content")}_\n` +
-                `👥 참여 인원: ${select2.values.length ? select2.values.map(id=>`<@${id}>`).join(", ") : "없음"}\n` +
+                `👥 참여 인원: ${editSubmit.fields.getTextInputValue("members").trim() || "없음"}\n` +
                 `👤 등록자: <@${interaction.user.id}>`,
               inline: false,
             });
