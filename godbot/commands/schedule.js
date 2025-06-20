@@ -2,7 +2,7 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, ComponentType } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const lockfile = require("proper-lockfile"); // 락파일 라이브러리 필요: npm i proper-lockfile
+const lockfile = require("proper-lockfile");
 const schedulePath = path.join(__dirname, "../schedule.json");
 
 function loadSchedule() {
@@ -21,8 +21,19 @@ async function saveSchedule(schedule) {
 function purgeOldSchedule(schedule) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  // 무기한(null) 일정은 남기고, 날짜 있는 일정만 오늘 기준으로 지난 일정 삭제
   return schedule.filter(s => !s.date || new Date(s.date) >= today);
+}
+
+// 보기 좋게 날짜 포맷
+function fmt(date) {
+  if (!date) return "무기한";
+  try {
+    const d = new Date(date);
+    if (isNaN(d)) return date;
+    return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,"0")}-${d.getDate().toString().padStart(2,"0")}`;
+  } catch {
+    return date;
+  }
 }
 
 module.exports = {
@@ -31,34 +42,45 @@ module.exports = {
     .setDescription("일정 관리 기능 (검색/등록/수정/취소/새로고침)"),
 
   async execute(interaction) {
-    // 일정 불러오기 + 지난 일정 제거
     let schedule = purgeOldSchedule(loadSchedule());
     await saveSchedule(schedule);
 
-    async function sendScheduleMenu(editInteraction = interaction) {
-      // 최신순 정렬 + 최대 10개만 표시
-      let desc = "등록된 일정이 없습니다.";
-      if (schedule.length > 0) {
-        schedule = schedule.sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31")).slice(0, 10);
-        desc = schedule.map((s, idx) => {
-          return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n등록자: <@${s.userId}>\n`;
-        }).join("\n");
-      }
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("schedule-refresh").setLabel("새로고침").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("schedule-search").setLabel("일정 검색").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("schedule-add").setLabel("일정 등록").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("schedule-edit").setLabel("일정 수정").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("schedule-delete").setLabel("일정 취소").setStyle(ButtonStyle.Danger)
-      );
-
+    // --------- Embed 만들기 (보기 좋게) ----------
+    function makeScheduleEmbed(scheduleArr, title = "📆 일정 관리") {
       const embed = new EmbedBuilder()
-        .setTitle("📆 일정 관리")
-        .setDescription(desc)
+        .setTitle(title)
         .setColor(0x5865f2)
         .setFooter({ text: "아래 버튼으로 기능을 선택하세요." });
 
+      if (!scheduleArr.length) {
+        embed.setDescription("등록된 일정이 없습니다.");
+      } else {
+        scheduleArr = scheduleArr
+          .sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31"))
+          .slice(0, 10);
+        for (let i = 0; i < scheduleArr.length; i++) {
+          const s = scheduleArr[i];
+          embed.addFields({
+            name: `\` ${i+1} \`  🏷️ **${s.title}**   |   📅 **${fmt(s.date)}**`,
+            value: `📝 _${s.content}_\n👤 등록자: <@${s.userId}>`,
+            inline: false,
+          });
+        }
+      }
+      return embed;
+    }
+
+    // --------- 버튼 ---------
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("schedule-refresh").setLabel("새로고침").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("schedule-search").setLabel("일정 검색").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("schedule-add").setLabel("일정 등록").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("schedule-edit").setLabel("일정 수정").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("schedule-delete").setLabel("일정 취소").setStyle(ButtonStyle.Danger)
+    );
+
+    async function sendScheduleMenu(editInteraction = interaction) {
+      const embed = makeScheduleEmbed(schedule);
       if (editInteraction.replied || editInteraction.deferred) {
         await editInteraction.editReply({ embeds: [embed], components: [row], ephemeral: true });
       } else {
@@ -68,7 +90,7 @@ module.exports = {
 
     await sendScheduleMenu();
 
-    // 버튼 핸들러 루프(최대 60초 동안 반복)
+    // --------- 버튼 핸들러 루프 ---------
     while (true) {
       const btn = await interaction.channel.awaitMessageComponent({
         filter: i => i.user.id === interaction.user.id,
@@ -85,29 +107,16 @@ module.exports = {
         continue;
       }
 
-      // 일정 검색
+      // 일정 검색 (동일하게 embed 사용)
       if (btn.customId === "schedule-search") {
         let scheduleAll = purgeOldSchedule(loadSchedule());
         await saveSchedule(scheduleAll);
-
-        let desc = "등록된 일정이 없습니다.";
-        if (scheduleAll.length > 0) {
-          desc = scheduleAll
-            .sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31"))
-            .slice(0, 10)
-            .map((s, idx) =>
-              `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n등록자: <@${s.userId}>\n`
-            ).join("\n");
-        }
-        const listEmbed = new EmbedBuilder()
-          .setTitle("📅 일정 목록")
-          .setDescription(desc)
-          .setColor(0x57f287);
+        const listEmbed = makeScheduleEmbed(scheduleAll, "📅 일정 목록");
         await btn.update({ embeds: [listEmbed], components: [row], ephemeral: true });
         continue;
       }
 
-      // 일정 등록 (모달만)
+      // 일정 등록
       if (btn.customId === "schedule-add") {
         const modal = new ModalBuilder().setCustomId("schedule-add-modal").setTitle("일정 등록");
         const titleInput = new TextInputBuilder().setCustomId("title").setLabel("일정 제목").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(32);
@@ -127,7 +136,6 @@ module.exports = {
         }).catch(() => null);
         if (!modalSubmit) continue;
 
-        // 등록
         schedule = purgeOldSchedule(loadSchedule());
         schedule.push({
           title: modalSubmit.fields.getTextInputValue("title"),
@@ -138,14 +146,15 @@ module.exports = {
           created: Date.now()
         });
         await saveSchedule(schedule);
+
         const doneEmbed = new EmbedBuilder()
           .setTitle("✅ 일정 등록 완료")
-          .setDescription(
-            `**${modalSubmit.fields.getTextInputValue("title")}**\n` +
-            `📅 ${modalSubmit.fields.getTextInputValue("date")}\n` +
-            `📝 ${modalSubmit.fields.getTextInputValue("content")}\n` +
-            `등록자: <@${interaction.user.id}>`
-          );
+          .setColor(0x57f287)
+          .addFields({
+            name: `🏷️ **${modalSubmit.fields.getTextInputValue("title")}**   |   📅 **${fmt(modalSubmit.fields.getTextInputValue("date"))}**`,
+            value: `📝 _${modalSubmit.fields.getTextInputValue("content")}_\n👤 등록자: <@${interaction.user.id}>`,
+            inline: false,
+          });
         await modalSubmit.reply({ embeds: [doneEmbed], ephemeral: true });
         schedule = purgeOldSchedule(loadSchedule());
         await sendScheduleMenu();
@@ -165,7 +174,7 @@ module.exports = {
             .setPlaceholder("수정/취소할 일정을 선택하세요")
             .setMinValues(1)
             .setMaxValues(1)
-            .addOptions(scheduleSelf.map((s, i) => ({ label: `${s.title} (${s.date||"무기한"})`, value: String(i) })))
+            .addOptions(scheduleSelf.map((s, i) => ({ label: `${s.title} (${fmt(s.date)})`, value: String(i) })))
         );
         await btn.update({ content: "수정/취소할 일정을 선택하세요.", embeds: [], components: [selectRow], ephemeral: true });
         const select = await interaction.channel.awaitMessageComponent({
@@ -220,12 +229,12 @@ module.exports = {
           }
           const doneEmbed = new EmbedBuilder()
             .setTitle("✏️ 일정 수정 완료")
-            .setDescription(
-              `**${editSubmit.fields.getTextInputValue("title")}**\n` +
-              `📅 ${editSubmit.fields.getTextInputValue("date")}\n` +
-              `📝 ${editSubmit.fields.getTextInputValue("content")}\n` +
-              `등록자: <@${interaction.user.id}>`
-            );
+            .setColor(0xfee75c)
+            .addFields({
+              name: `🏷️ **${editSubmit.fields.getTextInputValue("title")}**   |   📅 **${fmt(editSubmit.fields.getTextInputValue("date"))}**`,
+              value: `📝 _${editSubmit.fields.getTextInputValue("content")}_\n👤 등록자: <@${interaction.user.id}>`,
+              inline: false,
+            });
           await editSubmit.reply({ embeds: [doneEmbed], ephemeral: true });
           schedule = purgeOldSchedule(loadSchedule());
           await saveSchedule(schedule);
