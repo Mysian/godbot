@@ -15,12 +15,10 @@ const client = new Client({
   ],
 });
 
-// ✅ 명령어 로그를 남길 채널 ID로 수정!
 const LOG_CHANNEL_ID = "1382168527015776287";
 
 module.exports.client = client;
 
-// ✅ 명령어 등록 (하위 폴더까지 포함)
 client.commands = new Collection();
 
 function getAllCommandFiles(dirPath) {
