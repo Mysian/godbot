@@ -5,6 +5,7 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 
 const dataDir = path.join(__dirname, '../data');
+const PAGE_SIZE = 1900; // 한 embed에서 보여줄 최대 JSON 길이
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -77,7 +78,6 @@ module.exports = {
       ephemeral: true,
     });
 
-    // Collector에서만 interactionCreate 리스너 등록/해제 구조
     const filter = i => i.user.id === interaction.user.id;
     const collector = interaction.channel.createMessageComponentCollector({
       filter,
@@ -102,7 +102,6 @@ module.exports = {
       }
     };
 
-    // 이벤트 리스너 등록
     interaction.client.on('interactionCreate', modalHandler);
 
     collector.on('collect', async i => {
@@ -117,19 +116,97 @@ module.exports = {
         } catch {
           pretty = text;
         }
-        const embed = new EmbedBuilder()
-          .setTitle(`📦 ${fileName}`)
-          .setDescription('아래 JSON 내용을 수정하려면 [수정] 버튼을 눌러주세요.')
-          .addFields({ name: '내용', value: `\`\`\`json\n${pretty.slice(0, 1900)}\n\`\`\`` });
 
-        const editBtn = new ButtonBuilder()
-          .setCustomId(`edit_${fileName}`)
-          .setLabel('수정')
-          .setStyle(ButtonStyle.Primary);
+        // 페이지네이션을 위해 쪼개기
+        const totalPages = Math.ceil(pretty.length / PAGE_SIZE);
+        let page = 0;
+
+        const getEmbed = (pageIdx) => {
+          return new EmbedBuilder()
+            .setTitle(`📦 ${fileName} (페이지 ${pageIdx + 1}/${totalPages})`)
+            .setDescription('아래 JSON 내용을 수정하려면 [수정] 버튼을 눌러주세요.')
+            .addFields({
+              name: '내용',
+              value: `\`\`\`json\n${pretty.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE)}\n\`\`\``
+            });
+        };
+
+        // 이전/다음/수정 버튼
+        const getRow = (pageIdx) => {
+          const prevBtn = new ButtonBuilder()
+            .setCustomId(`prev_${fileName}`)
+            .setLabel('◀ 이전')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIdx === 0);
+
+          const nextBtn = new ButtonBuilder()
+            .setCustomId(`next_${fileName}`)
+            .setLabel('다음 ▶')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIdx >= totalPages - 1);
+
+          const editBtn = new ButtonBuilder()
+            .setCustomId(`edit_${fileName}`)
+            .setLabel('수정')
+            .setStyle(ButtonStyle.Primary);
+
+          return new ActionRowBuilder().addComponents(prevBtn, nextBtn, editBtn);
+        };
 
         await i.update({
-          embeds: [embed],
-          components: [new ActionRowBuilder().addComponents(editBtn)],
+          embeds: [getEmbed(page)],
+          components: [getRow(page)]
+        });
+
+        // 페이지네이션용 collector (이전에 생성된 collector와 중첩 방지)
+        const pageCollector = i.channel.createMessageComponentCollector({
+          filter: btn => btn.user.id === i.user.id,
+          time: 180000 // 3분
+        });
+
+        pageCollector.on('collect', async btnI => {
+          if (btnI.customId === `prev_${fileName}` && page > 0) {
+            page--;
+            await btnI.update({
+              embeds: [getEmbed(page)],
+              components: [getRow(page)]
+            });
+          }
+          if (btnI.customId === `next_${fileName}` && page < totalPages - 1) {
+            page++;
+            await btnI.update({
+              embeds: [getEmbed(page)],
+              components: [getRow(page)]
+            });
+          }
+          if (btnI.customId === `edit_${fileName}`) {
+            let editText = pretty;
+            if (pretty.length > PAGE_SIZE * 3) {
+              // 너무 크면 전체 다 보여주지 않고 처음 세 페이지만 합쳐서 보여줌
+              editText = pretty.slice(0, PAGE_SIZE * 3);
+            }
+            const modal = new ModalBuilder()
+              .setCustomId(`modal_${fileName}`)
+              .setTitle(`${fileName} 수정`)
+              .addComponents(
+                new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId('json_edit_content')
+                    .setLabel('JSON 데이터 (전체 복붙/수정)')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setValue(editText)
+                    .setRequired(true)
+                )
+              );
+            await btnI.showModal(modal);
+          }
+        });
+
+        pageCollector.on('end', () => {
+          // 만료시 버튼 비활성화
+          i.editReply({
+            components: []
+          }).catch(() => { });
         });
       }
 
@@ -137,7 +214,7 @@ module.exports = {
         const fileName = i.customId.slice(5);
         const filePath = path.join(dataDir, fileName);
         let text = fs.readFileSync(filePath, 'utf8');
-        if (text.length > 1900) text = text.slice(0, 1900);
+        if (text.length > PAGE_SIZE * 3) text = text.slice(0, PAGE_SIZE * 3);
         const modal = new ModalBuilder()
           .setCustomId(`modal_${fileName}`)
           .setTitle(`${fileName} 수정`)
@@ -156,7 +233,6 @@ module.exports = {
     });
 
     collector.on('end', () => {
-      // collector 끝나면 핸들러 제거(메모리 누수, 다중 리스너 방지)
       interaction.client.removeListener('interactionCreate', modalHandler);
     });
   }
