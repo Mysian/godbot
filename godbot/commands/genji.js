@@ -366,6 +366,7 @@ module.exports = {
               user.inBattle = false;
               user.clear += 1;
               user.reward += makeStageReward(user.stage);
+              user.stage += 1;
               let { embed, row } = makeGenjiEmbedRow(user, user.enemy, false, true, false, false, true);
               // 스테이지/레벨업 버튼 표시
               return await i.update({
