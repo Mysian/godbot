@@ -1,5 +1,5 @@
 // commands/report.js
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -21,7 +21,6 @@ module.exports = {
     .setDescription('유저를 신고합니다.'),
 
   async execute(interaction) {
-    // 1. 드롭다운(신고 사유), 익명 여부(예/아니오) select
     const reasonRow = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('신고_사유')
@@ -44,17 +43,15 @@ module.exports = {
       ephemeral: true,
     });
 
-    // 2. 사유, 익명 선택 받고 모달로 상세 입력받기
+    let selectedReason = null;
+    let selectedAnon = null;
+    let modalShown = false;
+
     const filter = i =>
       i.user.id === interaction.user.id &&
       (i.customId === '신고_사유' || i.customId === '신고_익명');
 
-    let selectedReason = null;
-    let selectedAnon = null;
-
     const collector = interaction.channel.createMessageComponentCollector({ filter, time: 300_000 }); // 5분
-
-    let modalShown = false;
 
     collector.on('collect', async i => {
       if (i.customId === '신고_사유') {
@@ -65,7 +62,6 @@ module.exports = {
         selectedAnon = i.values[0];
         await i.deferUpdate();
       }
-      // 둘 다 선택했으면 모달 오픈
       if (selectedReason && selectedAnon && !modalShown) {
         modalShown = true;
         collector.stop();
@@ -73,35 +69,31 @@ module.exports = {
         const modal = new ModalBuilder()
           .setCustomId('신고_모달')
           .setTitle('🚨 유저 신고');
-        // 신고 대상 유저 닉네임
         const userInput = new TextInputBuilder()
           .setCustomId('신고_대상')
           .setLabel('신고 대상 유저 닉네임 (필수)')
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setPlaceholder('디스코드 닉네임/별명');
-        // 발생 일시(선택)
         const dateInput = new TextInputBuilder()
           .setCustomId('신고_일시')
           .setLabel('사건 발생 일시 (선택)')
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
           .setPlaceholder('ex: 2024-07-01 15:00 또는 오늘 저녁');
-        // 신고 내용(필수)
         const detailInput = new TextInputBuilder()
           .setCustomId('신고_내용')
           .setLabel('신고 내용을 작성해주세요. (필수)')
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
           .setPlaceholder('상세히 적어주세요.');
-        // 모달 빌드
         modal.addComponents(
           new ActionRowBuilder().addComponents(userInput),
           new ActionRowBuilder().addComponents(dateInput),
           new ActionRowBuilder().addComponents(detailInput)
         );
-        await interaction.editReply({ content: '입력창이 열렸습니다. 신고 내용을 작성해주세요.', components: [], ephemeral: true });
-        await interaction.showModal(modal);
+        // 여기서 editReply 하지 않고 바로 showModal!
+        await i.showModal(modal);
       }
     });
 
@@ -116,7 +108,7 @@ module.exports = {
       interaction.editReply({ content: '❗️시간이 초과되어 신고가 취소되었습니다.', components: [], ephemeral: true }).catch(() => {});
     }, 300_000);
 
-    interaction.client.once('interactionCreate', async modalInter => {
+    interaction.client.on('interactionCreate', async modalInter => {
       if (modalInter.type !== InteractionType.ModalSubmit) return;
       if (modalInter.customId !== '신고_모달') return;
       clearTimeout(modalTimeout);
