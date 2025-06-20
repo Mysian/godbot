@@ -3,6 +3,7 @@ const path = require("path");
 const express = require("express");
 const { Client, Collection, GatewayIntentBits, Events, ActivityType } = require("discord.js");
 require("dotenv").config();
+const activity = require("./utils/activity-tracker");
 
 const client = new Client({
   intents: [
@@ -201,6 +202,63 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 });
+
+// === 메시지 누적 ===
+client.on("messageCreate", msg => {
+  if (msg.guild && !msg.author.bot) {
+    activity.addMessage(msg.author.id, msg.channel);
+  }
+});
+
+// === 음성 누적 + 1시간 알림 ===
+const voiceStartMap = new Map();
+client.on("voiceStateUpdate", (oldState, newState) => {
+  // 입장
+  if (!oldState.channel && newState.channel && !newState.member.user.bot) {
+    if (activity.isTracked(newState.channel, "voice")) {
+      voiceStartMap.set(newState.id, { channel: newState.channel, time: Date.now(), notifiedHour: 0 });
+    }
+  }
+  // 퇴장/이동
+  if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
+    const info = voiceStartMap.get(oldState.id);
+    if (info && activity.isTracked(oldState.channel, "voice")) {
+      const sec = Math.floor((Date.now() - info.time) / 1000);
+      activity.addVoice(oldState.id, sec, oldState.channel);
+      voiceStartMap.delete(oldState.id);
+    }
+    if (newState.channel && !newState.member.user.bot) {
+      if (activity.isTracked(newState.channel, "voice")) {
+        voiceStartMap.set(newState.id, { channel: newState.channel, time: Date.now(), notifiedHour: 0 });
+      }
+    }
+  }
+});
+
+// === 1시간마다 알림 ===
+setInterval(async () => {
+  const now = Date.now();
+  for (const [userId, info] of voiceStartMap.entries()) {
+    const elapsedSec = Math.floor((now - info.time) / 1000);
+    const elapsedHour = Math.floor(elapsedSec / 3600);
+    if (elapsedHour > 0 && elapsedHour > (info.notifiedHour || 0)) {
+      info.notifiedHour = elapsedHour;
+      const channel = info.channel.guild.channels.cache.find(
+        c => c.id === info.channel.id && c.isTextBased && c.viewable
+      );
+      if (channel) {
+        let name = userId;
+        try {
+          const member = await info.channel.guild.members.fetch(userId);
+          name = member.displayName || member.user.username || userId;
+        } catch (e) {}
+        channel.send(`-# ⏳ ${name} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
+      }
+    }
+  }
+}, 60 * 1000);
+
+
 
  // 유저 활동기록 체크 코드
 const activityPath = path.join(__dirname, "activity.json");

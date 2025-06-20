@@ -37,7 +37,7 @@ function fmt(date) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("일정")
-    .setDescription("일정 관리 기능 (검색/등록/수정/취소/새로고침/공유)"),
+    .setDescription("일정 관리 기능 (등록/수정/취소/새로고침/공유)"),
 
   async execute(interaction) {
     let schedule = purgeOldSchedule(loadSchedule());
@@ -71,10 +71,9 @@ module.exports = {
       return embed;
     }
 
-    // 버튼 5개 + 일정 공유 1개(두 번째 줄)
+    // 버튼 4개 + 일정 공유 1개(두 번째 줄)
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("schedule-refresh").setLabel("새로고침").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("schedule-search").setLabel("일정 검색").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("schedule-add").setLabel("일정 등록").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId("schedule-edit").setLabel("일정 수정").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("schedule-delete").setLabel("일정 취소").setStyle(ButtonStyle.Danger)
@@ -107,15 +106,6 @@ module.exports = {
         schedule = purgeOldSchedule(loadSchedule());
         await saveSchedule(schedule);
         await sendScheduleMenu(btn);
-        continue;
-      }
-
-      // 일정 검색
-      if (btn.customId === "schedule-search") {
-        let scheduleAll = purgeOldSchedule(loadSchedule());
-        await saveSchedule(scheduleAll);
-        const listEmbed = makeScheduleEmbed(scheduleAll, "📅 일정 목록");
-        await btn.update({ embeds: [listEmbed], components: [row1, row2], ephemeral: true });
         continue;
       }
 
@@ -271,57 +261,57 @@ module.exports = {
       }
 
       // 일정 공유
-if (btn.customId === "schedule-share") {
-  // 최신 10개 일정 중에서 선택
-  if (!schedule.length) {
-    await btn.reply({ content: "공유할 일정이 없습니다.", ephemeral: true });
-    continue;
-  }
-  const options = schedule
-    .sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31"))
-    .slice(0, 10)
-    .map((s, i) => ({
-      label: `${s.title} (${fmt(s.date)})`,
-      value: String(i)
-    }));
-  const selectRow = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId("schedule-share-select")
-      .setPlaceholder("공유할 일정을 선택하세요")
-      .setMinValues(1)
-      .setMaxValues(1)
-      .addOptions(options)
-  );
-  await btn.reply({ content: "공유할 일정을 선택하세요.", components: [selectRow], ephemeral: true });
+      if (btn.customId === "schedule-share") {
+        // 최신 10개 일정 중에서 선택
+        if (!schedule.length) {
+          await btn.reply({ content: "공유할 일정이 없습니다.", ephemeral: true });
+          continue;
+        }
+        const options = schedule
+          .sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31"))
+          .slice(0, 10)
+          .map((s, i) => ({
+            label: `${s.title} (${fmt(s.date)})`,
+            value: String(i)
+          }));
+        const selectRow = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("schedule-share-select")
+            .setPlaceholder("공유할 일정을 선택하세요")
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(options)
+        );
+        await btn.reply({ content: "공유할 일정을 선택하세요.", components: [selectRow], ephemeral: true });
 
-  const select = await interaction.channel.awaitMessageComponent({
-    filter: i => i.user.id === interaction.user.id && i.customId === "schedule-share-select",
-    time: 60_000,
-    componentType: ComponentType.StringSelect,
-  }).catch(() => null);
-  if (!select) continue;
+        const select = await interaction.channel.awaitMessageComponent({
+          filter: i => i.user.id === interaction.user.id && i.customId === "schedule-share-select",
+          time: 60_000,
+          componentType: ComponentType.StringSelect,
+        }).catch(() => null);
+        if (!select) continue;
 
-  const idx = Number(select.values[0]);
-  const s = schedule
-    .sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31"))
-    .slice(0, 10)[idx];
+        const idx = Number(select.values[0]);
+        const s = schedule
+          .sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31"))
+          .slice(0, 10)[idx];
 
-  const embed = new EmbedBuilder()
-    .setTitle(`📢 공유된 일정`)
-    .setColor(0x4287f5)
-    .addFields({
-      name: `🏷️ **${s.title}**   |   📅 **${fmt(s.date)}**   |   ⏰ **${s.time || "미정"}**`,
-      value:
-        `📝 _${s.content}_\n` +
-        `👤 등록자: <@${s.userId}>`,
-      inline: false,
-    })
-    .setFooter({ text: `${interaction.user.displayName}님이 공유함` });
+        const embed = new EmbedBuilder()
+          .setTitle(`📢 공유된 일정`)
+          .setColor(0x4287f5)
+          .addFields({
+            name: `🏷️ **${s.title}**   |   📅 **${fmt(s.date)}**   |   ⏰ **${s.time || "미정"}**`,
+            value:
+              `📝 _${s.content}_\n` +
+              `👤 등록자: <@${s.userId}>`,
+            inline: false,
+          })
+          .setFooter({ text: `${interaction.user.displayName}님이 공유함` });
 
-  await interaction.channel.send({ embeds: [embed] });
-  await select.reply({ content: "일정이 채팅방에 공유되었습니다.", ephemeral: true });
-  continue;
-}
+        await interaction.channel.send({ embeds: [embed] });
+        await select.reply({ content: "일정이 채팅방에 공유되었습니다.", ephemeral: true });
+        continue;
+      }
     }
   }
 };
