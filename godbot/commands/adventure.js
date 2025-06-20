@@ -165,9 +165,9 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
   const isNamed = dragonList.includes(userAdv.monster.name) || [boss50, boss100].includes(userAdv.monster.name);
 
   let monsterMsg = "";
-  if (userAdv.monster.name === boss50) monsterMsg = "나의 고통을 느껴라...!";
-  if (userAdv.monster.name === boss100) monsterMsg = "나를 쓰러뜨릴 수 있나?";
-  if (dragonList.includes(userAdv.monster.name)) monsterMsg = `${userAdv.monster.name}이(가) 강림했다!`;
+  if (userAdv.monster.name === boss50) monsterMsg = "아타칸이 당신의 공포를 들이마시며 끔찍한 힘을 얻습니다.";
+  if (userAdv.monster.name === boss100) monsterMsg = "궤를 달리하는 자가 등장합니다, 협곡 전체가 강렬하게 요동칩니다.";
+  if (dragonList.includes(userAdv.monster.name)) monsterMsg = `${userAdv.monster.name}이(가) 강림했습니다!`;
 
   // 첫 입장 인트로
   if (isFirst) {
@@ -220,7 +220,7 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
       { name: "\u200B", value: `**${userAdv.monster.hp} / ${monsterStats.hp}**`, inline: false },
     )
     .setColor(isNamed ? 0xe67e22 : 0x2986cc)
-    .setFooter({ text: "토벌 실패 시 강화레벨 감소" });
+    .setFooter({ text: "토벌 실패 시 강화레벨 -1 감소" });
   if (monsterImg) embed.setThumbnail(monsterImg);
   if (sceneImg) embed.setImage(sceneImg);
   if (monsterMsg && !isFirst) embed.setDescription(`**${monsterMsg}**`);
@@ -228,12 +228,12 @@ function makeAdventureEmbedRow(userAdv, champ, monsterStats, showBattleBtn, isCl
   let row;
   if (showBattleBtn) {
     row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("adventure-attack").setLabel("공격!").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("adventure-strong").setLabel("강공격 시도").setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId("adventure-attack").setLabel("공격!!").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("adventure-strong").setLabel("강공격(2배 피해 입거나 입히거나)").setStyle(ButtonStyle.Danger)
     );
   } else if (isClear) {
     row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("adventure-next-stage").setLabel("다음 스테이지 계속하기").setStyle(ButtonStyle.Success)
+      new ButtonBuilder().setCustomId("adventure-next-stage").setLabel("더 깊숙히 모험하기").setStyle(ButtonStyle.Success)
     );
   } else {
     row = new ActionRowBuilder().addComponents(
