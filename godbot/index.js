@@ -418,6 +418,9 @@ setInterval(async () => {
 
 client.login(process.env.DISCORD_TOKEN);
 
+const dmRelay = require('./commands/dm.js');
+dmRelay.relayRegister(client);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
