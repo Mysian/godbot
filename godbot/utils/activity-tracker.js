@@ -5,7 +5,7 @@ const dataPath = path.join(__dirname, "../activity-data.json");
 // 필터 (아래 ID만 넣으면됨)
 const includedCategoryIds = []; // 이 카테고리만 집계
 const includedChannelIds = [];
-const excludedCategoryIds = []; // 이 카테고리 제외
+const excludedCategoryIds = [1318529703480397954, 1318445879455125514, 1204329649530998794]; // 이 카테고리 제외
 const excludedChannelIds = [];
 function isTracked(channel, type = "all") {
   if (!channel) return false;
