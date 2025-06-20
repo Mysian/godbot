@@ -10,7 +10,7 @@ function loadData() {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("겐지랭크")
+    .setName("겐지키우기순위")
     .setDescription("겐지키우기 게임에서 각 유저별 최고 기록을 보여줍니다."),
   async execute(interaction) {
     const userId = interaction.user.id;
