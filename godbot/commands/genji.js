@@ -190,7 +190,8 @@ function makeGenjiEmbedRow(user, enemy, showBattleBtn, isClear, isFirst = false,
       new ButtonBuilder().setCustomId("stat-hp").setLabel("체력 +15").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("stat-attack").setLabel("공격력 +5").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId("stat-defense").setLabel("방어력 +3").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("stat-crit").setLabel("크리티컬 +2%").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("stat-crit").setLabel("크리티컬 +2%").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("genji-info").setLabel("설명").setStyle(ButtonStyle.Secondary)
     );
     return { embed, row };
   }
@@ -212,7 +213,8 @@ function makeGenjiEmbedRow(user, enemy, showBattleBtn, isClear, isFirst = false,
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("genji-attack").setLabel("공격!").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("genji-shuriken").setLabel("수리검").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("genji-dash").setLabel("질풍참(확률)").setStyle(ButtonStyle.Success)
+      new ButtonBuilder().setCustomId("genji-dash").setLabel("질풍참(확률)").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("genji-info").setLabel("설명").setStyle(ButtonStyle.Secondary)
     );
   } else if (isClear) {
     row = new ActionRowBuilder().addComponents(
@@ -263,7 +265,7 @@ module.exports = {
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
       const filter = i => i.user.id === userId &&
-        ["genji-start", "genji-escape", "genji-attack", "genji-shuriken", "genji-dash", "genji-next-stage", "stat-hp", "stat-attack", "stat-defense", "stat-crit"].includes(i.customId);
+        ["genji-start", "genji-escape", "genji-attack", "genji-shuriken", "genji-dash", "genji-info", "genji-next-stage", "stat-hp", "stat-attack", "stat-defense", "stat-crit"].includes(i.customId);
 
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter, time: 90000 });
@@ -332,6 +334,23 @@ module.exports = {
                 log += `❌ 질풍참 실패! 역공으로 ${enemyDmg} 피해를 입었다!`;
               }
             }
+              //설명 버튼
+            if (i.customId === "genji-info") {
+  const infoEmbed = new EmbedBuilder()
+    .setTitle("📝 겐지 스킬 설명")
+    .setDescription(
+      "**[공격]**\n"
+      + "검으로 기본 공격. 적 방어력을 감안해 피해. 치명타 발생 시 약 1.4~1.7배 피해 (내 치명타 확률).\n\n"
+      + "**[수리검]**\n"
+      + "공격력의 60% + 랜덤, 방어력 거의 무시, 치명타 발생 확률 +15%.\n\n"
+      + "**[질풍참]**\n"
+      + "성공 확률 35%. 성공 시 즉사, 실패 시 적 반격 피해 (상대 공격력의 1.25배)."
+    )
+    .setColor(0x5cc1fa);
+
+  return await i.reply({ embeds: [infoEmbed], ephemeral: true });
+}
+
 
             // 적 반격 (적 살아있으면)
             if (user.enemy.hp > 0 && i.customId !== "genji-dash") {
