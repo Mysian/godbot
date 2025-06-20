@@ -55,7 +55,7 @@ module.exports = {
     let myBest = ranking.find(x => x.user === userId)?.stage || 0;
     let myCur = ranking.find(x => x.user === userId)?.nowStage || 0;
     let myPercent = ranking.length
-      ? Math.ceil((1 - (myRank - 1) / ranking.length) * 100)
+      ? Math.ceil(myRank / ranking.length * 100)
       : 0;
 
     let myLine = myRank
