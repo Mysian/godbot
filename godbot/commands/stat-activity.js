@@ -1,8 +1,11 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
-const { createCanvas } = require("canvas");
+const { createCanvas, registerFont } = require("canvas");
+const path = require("path");
 const activity = require("../utils/activity-tracker");
 
-// 표 카드 크기/컬러 설정
+// 한글 폰트 등록 (stat-activity.js가 commands 폴더에 있다면 ../fonts)
+registerFont(path.join(__dirname, "../fonts/NotoSansKR-Regular.ttf"), { family: "NotoSansKR" });
+
 const WIDTH = 620;
 const HEIGHT = 390;
 
@@ -10,27 +13,26 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-// 이미지 카드 그리기
 function drawStatCard(ctx, stats, guildName) {
   ctx.fillStyle = "#23272A";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
   // 타이틀/로고
-  ctx.font = "bold 26px sans-serif";
+  ctx.font = "bold 26px NotoSansKR";
   ctx.fillStyle = "#ffe36b";
   ctx.fillText(`🌟 ${guildName} 🌟`, 32, 44);
 
-  ctx.font = "bold 16px sans-serif";
+  ctx.font = "bold 16px NotoSansKR";
   ctx.fillStyle = "#aaa";
   ctx.fillText("🏆 Server Top Statistics", 35, 70);
 
   // 채팅 타이틀
-  ctx.font = "bold 20px sans-serif";
+  ctx.font = "bold 20px NotoSansKR";
   ctx.fillStyle = "#f7c873";
   ctx.fillText("💬 Top Messages", 38, 104);
 
   // 채팅 랭킹 표
-  ctx.font = "bold 17px sans-serif";
+  ctx.font = "bold 17px NotoSansKR";
   stats.messages.slice(0, 5).forEach((d, i) => {
     ctx.fillStyle = "#ffe36b";
     ctx.fillText(`${i+1}`, 38, 140 + i*33);
@@ -38,19 +40,19 @@ function drawStatCard(ctx, stats, guildName) {
     ctx.fillStyle = "#fff";
     ctx.fillText(`${d.name}`, 68, 140 + i*33);
 
-    ctx.font = "bold 17px monospace";
+    ctx.font = "bold 17px NotoSansKR";
     ctx.fillStyle = "#66ccff";
     ctx.fillText(formatNumber(d.value), 218, 140 + i*33);
-    ctx.font = "bold 17px sans-serif";
+    ctx.font = "bold 17px NotoSansKR";
   });
 
   // 음성 타이틀
-  ctx.font = "bold 20px sans-serif";
+  ctx.font = "bold 20px NotoSansKR";
   ctx.fillStyle = "#91e3a3";
   ctx.fillText("🔊 Top Voice Hours", 38, 255);
 
   // 음성 랭킹 표
-  ctx.font = "bold 17px sans-serif";
+  ctx.font = "bold 17px NotoSansKR";
   stats.voice.slice(0, 5).forEach((d, i) => {
     ctx.fillStyle = "#ffe36b";
     ctx.fillText(`${i+1}`, 38, 290 + i*33);
@@ -58,17 +60,17 @@ function drawStatCard(ctx, stats, guildName) {
     ctx.fillStyle = "#fff";
     ctx.fillText(`${d.name}`, 68, 290 + i*33);
 
-    ctx.font = "bold 17px monospace";
+    ctx.font = "bold 17px NotoSansKR";
     ctx.fillStyle = "#71ebbd";
     ctx.fillText(`${d.value} h`, 218, 290 + i*33);
-    ctx.font = "bold 17px sans-serif";
+    ctx.font = "bold 17px NotoSansKR";
   });
 
   // 푸터
-  ctx.font = "bold 13px sans-serif";
+  ctx.font = "bold 13px NotoSansKR";
   ctx.fillStyle = "#999";
   ctx.fillText("기간: 최근 90일 누적", 36, HEIGHT - 28);
-  ctx.font = "12px sans-serif";
+  ctx.font = "12px NotoSansKR";
   ctx.fillStyle = "#888";
   ctx.fillText("Powered by KKARI Bot", WIDTH - 160, HEIGHT - 15);
 }
