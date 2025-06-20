@@ -113,8 +113,24 @@ function loadAdventure() {
   if (!fs.existsSync(adventurePath)) fs.writeFileSync(adventurePath, "{}");
   return JSON.parse(fs.readFileSync(adventurePath, "utf8"));
 }
-function saveAdventure(data) {
-  fs.writeFileSync(adventurePath, JSON.stringify(data, null, 2));
+function loadAdventureBest() {
+  if (!fs.existsSync(adventureBestPath)) fs.writeFileSync(adventureBestPath, "{}");
+  return JSON.parse(fs.readFileSync(adventureBestPath, "utf8"));
+}
+function saveAdventureBest(data) {
+  fs.writeFileSync(adventureBestPath, JSON.stringify(data, null, 2));
+}
+// 기록 갱신 함수
+function updateAdventureBest(userId, stage) {
+  let best = loadAdventureBest();
+  if (!best[userId]) best[userId] = { bestStage: 0, totalClear: 0 };
+  // 최고 기록 반영
+  if (stage > (best[userId].bestStage || 0)) {
+    best[userId].bestStage = stage;
+  }
+  // 누적 도전 횟수 증가
+  best[userId].totalClear += 1;
+  saveAdventureBest(best);
 }
 function makeStageReward(stage) {
   return Math.floor(25 + stage * 0.7);
@@ -347,6 +363,7 @@ module.exports = {
 
             // 패배 체크
             if (userAdv.hp <= 0) {
+            updateAdventureBest(userId, userAdv.stage); // 기록 갱신!
               userAdv.hp = 0;
               userAdv.inBattle = false;
               delete adv[userId]; saveAdventure(adv);
@@ -465,6 +482,7 @@ module.exports = {
             }
 
             if (userAdv.hp <= 0) {
+            updateAdventureBest(userId, userAdv.stage); // 기록 갱신!
               userAdv.hp = 0;
               userAdv.inBattle = false;
               delete adv[userId]; saveAdventure(adv);
@@ -485,6 +503,7 @@ module.exports = {
             }
 
             if (userAdv.monster.hp <= 0) {
+            updateAdventureBest(userId, userAdv.stage); // 기록 갱신!
               userAdv.inBattle = false;
               userAdv.hp = champ.stats.hp;
               userAdv.clear += 1;
