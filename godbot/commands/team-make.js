@@ -54,17 +54,17 @@ module.exports = {
 
     const leader1Input = new TextInputBuilder()
       .setCustomId("leader1")
-      .setLabel("1팀 조장 (닉네임 직접입력, 미입력시 없음)")
+      .setLabel("1팀 조장 (닉네임 또는 디코 닉, 미입력시 없음)")
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
-      .setMaxLength(20);
+      .setMaxLength(32);
 
     const leader2Input = new TextInputBuilder()
       .setCustomId("leader2")
-      .setLabel("2팀 조장 (닉네임 직접입력, 미입력시 없음)")
+      .setLabel("2팀 조장 (닉네임 또는 디코 닉, 미입력시 없음)")
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
-      .setMaxLength(20);
+      .setMaxLength(32);
 
     const ruleInput = new TextInputBuilder()
       .setCustomId("rule")
@@ -93,33 +93,67 @@ module.exports = {
     // 5. 입력값 정리
     const team1Name = modalSubmit.fields.getTextInputValue("team1name")?.trim() || "팀1";
     const team2Name = modalSubmit.fields.getTextInputValue("team2name")?.trim() || "팀2";
-    const leader1 = modalSubmit.fields.getTextInputValue("leader1")?.trim() || null;
-    const leader2 = modalSubmit.fields.getTextInputValue("leader2")?.trim() || null;
+    const leader1 = modalSubmit.fields.getTextInputValue("leader1")?.trim();
+    const leader2 = modalSubmit.fields.getTextInputValue("leader2")?.trim();
     const rule = modalSubmit.fields.getTextInputValue("rule")?.trim() || "까리 피플, 파뤼 피플";
 
-    // 6. 랜덤 2팀 분배
-    memberArr = memberArr.sort(() => Math.random() - 0.5);
-    const mid = Math.ceil(memberArr.length / 2);
-    let team1 = memberArr.slice(0, mid);
-    let team2 = memberArr.slice(mid);
+    // 6. 조장 입력값이 있으면, 해당 닉네임(디코 닉/유저)과 정확히 일치하는 사람만 그 팀에 고정
+    let team1LeaderMember = leader1
+      ? memberArr.find(m => m.displayName === leader1 || m.user.username === leader1)
+      : null;
+    let team2LeaderMember = leader2
+      ? memberArr.find(m => m.displayName === leader2 || m.user.username === leader2)
+      : null;
 
-    // 7. 조장(닉네임) 추가
-    if (leader1) team1 = [{ displayName: leader1, id: null }, ...team1];
-    if (leader2) team2 = [{ displayName: leader2, id: null }, ...team2];
+    // 조장 예외 처리 (없거나, 예외멤버에 포함, 중복일 경우 오류)
+    if (leader1 && !team1LeaderMember)
+      return await modalSubmit.reply({ content: `팀1 조장 닉네임 [${leader1}]과 일치하는 유저가 음성채널에 없습니다.`, ephemeral: true });
+    if (leader2 && !team2LeaderMember)
+      return await modalSubmit.reply({ content: `팀2 조장 닉네임 [${leader2}]과 일치하는 유저가 음성채널에 없습니다.`, ephemeral: true });
+    if (team1LeaderMember && team2LeaderMember && team1LeaderMember.id === team2LeaderMember.id)
+      return await modalSubmit.reply({ content: "조장은 서로 다른 사람이어야 합니다.", ephemeral: true });
+
+    // 7. 랜덤 팀 분배(조장 제외)
+    let team1 = [], team2 = [];
+    let rest = [...memberArr];
+    if (team1LeaderMember) {
+      team1.push(team1LeaderMember);
+      rest = rest.filter(m => m.id !== team1LeaderMember.id);
+    }
+    if (team2LeaderMember) {
+      team2.push(team2LeaderMember);
+      rest = rest.filter(m => m.id !== team2LeaderMember.id);
+    }
+    // 나머지 랜덤 분배
+    rest = rest.sort(() => Math.random() - 0.5);
+    let mid = Math.ceil(rest.length / 2);
+    team1.push(...rest.slice(0, mid));
+    team2.push(...rest.slice(mid));
 
     // 8. 출력
+    const pretty = m =>
+      m.id ? `<@${m.id}>` : (m.displayName || m.user?.username || "닉네임없음");
+    const boldLeader = (leader, arr) =>
+      leader
+        ? arr.map((m, i) =>
+            (m.displayName === leader || m.user?.username === leader)
+              ? `👑 ${pretty(m)}`
+              : pretty(m)
+          )
+        : arr.map(pretty);
+
     const embed = new EmbedBuilder()
       .setTitle("🎲 랜덤 팀 배정 결과")
       .setColor(0x8e44ad)
       .addFields(
         {
           name: `🟦 ${team1Name}`,
-          value: team1.map(m => m.id ? `<@${m.id}>` : `👑 ${m.displayName}`).join("\n") || "(없음)",
+          value: boldLeader(leader1, team1).join("\n") || "(없음)",
           inline: true
         },
         {
           name: `🟥 ${team2Name}`,
-          value: team2.map(m => m.id ? `<@${m.id}>` : `👑 ${m.displayName}`).join("\n") || "(없음)",
+          value: boldLeader(leader2, team2).join("\n") || "(없음)",
           inline: true
         },
         {
