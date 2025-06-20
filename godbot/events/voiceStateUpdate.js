@@ -5,7 +5,7 @@ const path = require('path');
 
 // 음성채널ID: 텍스트채널ID 형태로 매핑
 const voiceChannelToTextChannel = {
-  '음성채널ID1': '텍스트채널ID1',
+  '1222085152600096778': '텍스트채널ID1',
   '음성채널ID2': '텍스트채널ID2',
   // ... 추가
 };
