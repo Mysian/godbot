@@ -204,6 +204,19 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
+ // 유저 활동기록 체크 코드
+const activityPath = path.join(__dirname, "activity.json");
+
+client.on("messageCreate", (message) => {
+  if (!message.guild || message.author.bot) return;
+  let activity = {};
+  if (fs.existsSync(activityPath)) {
+    activity = JSON.parse(fs.readFileSync(activityPath));
+  }
+  activity[message.author.id] = Date.now();
+  fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2));
+});
+
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
