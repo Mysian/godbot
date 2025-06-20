@@ -208,7 +208,7 @@ function makeGenjiEmbedRow(user, enemy, showBattleBtn, isClear, isFirst = false,
     .setFooter({ text: "선택지에 따라 전황이 바뀔 수 있음!" });
   if (heroImages["겐지"]) embed.setThumbnail(heroImages["겐지"]);
   if (enemy.image) embed.setImage(enemy.image);
-  let row;
+   let row;
   if (showBattleBtn) {
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("genji-attack").setLabel("공격!").setStyle(ButtonStyle.Primary),
@@ -239,10 +239,7 @@ module.exports = {
       let data = loadData();
       let user = getUserData(userId);
 
-      // 새로 시작/중간 진행 여부 체크
-      let isFirst = !user.inBattle || !user.enemy;
-
-      // 현재 적 세팅
+      // 적 초기 세팅
       if (!user.enemy || user.enemy.stage !== user.stage) {
         const enemyName = randomHero(user.stage);
         const enemyStats = getHeroStats(user.stage, enemyName);
@@ -265,7 +262,7 @@ module.exports = {
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
       const filter = i => i.user.id === userId &&
-        ["genji-start", "genji-escape", "genji-attack", "genji-shuriken", "genji-dash", "genji-info", "genji-next-stage", "stat-hp", "stat-attack", "stat-defense", "stat-crit"].includes(i.customId);
+        ["genji-start", "genji-escape", "genji-attack", "genji-shuriken", "genji-dash", "genji-next-stage", "stat-hp", "stat-attack", "stat-defense", "stat-crit", "genji-info"].includes(i.customId);
 
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({ filter, time: 90000 });
@@ -279,11 +276,12 @@ module.exports = {
           user = data[userId];
           if (!user) user = getUserData(userId);
 
-          // 포기시
+          // 포기
           if (i.customId === "genji-escape") {
             user.inBattle = false;
             user.stage = 1;
             user.hp = baseStats.hp;
+            user.stat = { ...baseStats }; // 완전 초기화
             saveUserData(userId, user);
             return await i.update({
               content: "포기...! `/겐지키우기`로 다시 도전해!",
@@ -299,6 +297,22 @@ module.exports = {
             saveUserData(userId, user);
             let { embed, row } = makeGenjiEmbedRow(user, user.enemy, true, false);
             return await i.update({ embeds: [embed], components: [row], ephemeral: true });
+          }
+          // 설명
+          if (i.customId === "genji-info") {
+            const infoEmbed = new EmbedBuilder()
+              .setTitle("📝 겐지 스킬 설명")
+              .setDescription(
+                "**[공격]**\n"
+                + "기본 공격. 공격력과 적 방어력에 따라 피해. 치명타(약 1.4~1.7배)는 내 치명타 확률만큼 발생.\n\n"
+                + "**[수리검]**\n"
+                + "공격력의 60% + 랜덤, 방어력 거의 무시, 치명타 확률 +15%.\n\n"
+                + "**[질풍참]**\n"
+                + "성공 확률 35%. 성공 시 적 즉사, 실패 시 적 반격 피해(공격력의 1.25배)."
+              )
+              .setColor(0x5cc1fa);
+            await i.reply({ embeds: [infoEmbed], ephemeral: true }); // **ephemeral로 안내**
+            return; // 끝! 상호작용 종료(다른 버튼 안 먹음)
           }
           // 전투
           if (["genji-attack", "genji-shuriken", "genji-dash"].includes(i.customId)) {
@@ -334,24 +348,7 @@ module.exports = {
                 log += `❌ 질풍참 실패! 역공으로 ${enemyDmg} 피해를 입었다!`;
               }
             }
-              //설명 버튼
-            if (i.customId === "genji-info") {
-  const infoEmbed = new EmbedBuilder()
-    .setTitle("📝 겐지 스킬 설명")
-    .setDescription(
-      "**[공격]**\n"
-      + "검으로 기본 공격. 적 방어력을 감안해 피해. 치명타 발생 시 약 1.4~1.7배 피해 (내 치명타 확률).\n\n"
-      + "**[수리검]**\n"
-      + "공격력의 60% + 랜덤, 방어력 거의 무시, 치명타 발생 확률 +15%.\n\n"
-      + "**[질풍참]**\n"
-      + "성공 확률 35%. 성공 시 즉사, 실패 시 적 반격 피해 (상대 공격력의 1.25배)."
-    )
-    .setColor(0x5cc1fa);
-
-  return await i.reply({ embeds: [infoEmbed], ephemeral: true });
-}
-
-
+              
             // 적 반격 (적 살아있으면)
             if (user.enemy.hp > 0 && i.customId !== "genji-dash") {
               enemyCrit = Math.random() < user.enemy.crit;
