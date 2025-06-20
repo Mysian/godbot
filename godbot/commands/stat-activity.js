@@ -23,29 +23,49 @@ module.exports = {
     const user = interaction.options.getUser("유저");
 
     let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
+
+    // 전체 멤버 캐싱해서 닉네임 매칭
+    const members = await interaction.guild.members.fetch();
+    stats = stats.map(s => ({
+      ...s,
+      username: members.get(s.userId)?.displayName || members.get(s.userId)?.user?.username || s.userId
+    }));
+
     // 정렬
     if (filterType === "message") stats.sort((a, b) => b.message - a.message);
     else if (filterType === "voice") stats.sort((a, b) => b.voice - a.voice);
     else stats.sort((a, b) => (b.message + b.voice) - (a.message + a.voice));
 
+    // 표로 변환
+    function makeTable(stats, page, pageSize) {
+      let rows = [
+        "순위 | 닉네임         | 채팅   | 음성(시간)",
+        "--------------------------------------"
+      ];
+      for (let i = page * pageSize; i < Math.min(stats.length, (page + 1) * pageSize); i++) {
+        const s = stats[i];
+        const msgStr = s.message.toLocaleString().padStart(6, " ");
+        const voiceStr = (s.voice / 3600).toFixed(1).padStart(8, " ");
+        let name = s.username || s.userId;
+        if (name.length > 10) name = name.slice(0, 10) + "...";
+        rows.push(`${String(i + 1).padEnd(4)}| ${name.padEnd(12)}|${msgStr}|${voiceStr}`);
+      }
+      return "```" + rows.join("\n") + "```";
+    }
+
     // 페이징 (TOP100)
     let page = 0;
     const pageSize = 15;
     const totalPages = Math.ceil(Math.min(100, stats.length) / pageSize);
+
     function makeEmbed(page) {
-      let list = "";
-      for (let i = page * pageSize; i < Math.min(stats.length, (page + 1) * pageSize); i++) {
-        const s = stats[i];
-        const msgStr = s.message.toLocaleString();
-        const voiceStr = (s.voice / 3600).toFixed(1);
-        list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개, 🔊 ${voiceStr}시간\n`;
-      }
       const embed = new EmbedBuilder()
         .setTitle(`📊 활동 랭킹 [${filterType === "message" ? "채팅" : filterType === "voice" ? "음성" : "종합"}]`)
-        .setDescription(list.length ? list : "해당 조건에 데이터 없음")
+        .setDescription(stats.length ? makeTable(stats, page, pageSize) : "해당 조건에 데이터 없음")
         .setFooter({ text: `기간: ${from || "전체"} ~ ${to || "전체"} | ${page + 1}/${totalPages}페이지` });
       return embed;
     }
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle(ButtonStyle.Secondary)
