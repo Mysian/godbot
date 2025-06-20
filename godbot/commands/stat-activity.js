@@ -1,129 +1,67 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
-const { createCanvas, registerFont } = require("canvas");
-const path = require("path");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
 const activity = require("../utils/activity-tracker");
 
-// 한글 폰트 등록 (stat-activity.js가 commands 폴더에 있다면 ../fonts)
-registerFont(path.join(__dirname, "../fonts/NotoSansKR-Regular.ttf"), { family: "NotoSansKR" });
-
-const WIDTH = 620;
-const HEIGHT = 390;
-
-function formatNumber(n) {
-  return n.toLocaleString();
-}
-
-function drawStatCard(ctx, stats, guildName) {
-  ctx.fillStyle = "#23272A";
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-  // 타이틀/로고
-  ctx.font = "bold 26px NotoSansKR";
-  ctx.fillStyle = "#ffe36b";
-  ctx.fillText(`🌟 ${guildName} 🌟`, 32, 44);
-
-  ctx.font = "bold 16px NotoSansKR";
-  ctx.fillStyle = "#aaa";
-  ctx.fillText("🏆 Server Top Statistics", 35, 70);
-
-  // 채팅 타이틀
-  ctx.font = "bold 20px NotoSansKR";
-  ctx.fillStyle = "#f7c873";
-  ctx.fillText("💬 Top Messages", 38, 104);
-
-  // 채팅 랭킹 표
-  ctx.font = "bold 17px NotoSansKR";
-  stats.messages.slice(0, 5).forEach((d, i) => {
-    ctx.fillStyle = "#ffe36b";
-    ctx.fillText(`${i+1}`, 38, 140 + i*33);
-
-    ctx.fillStyle = "#fff";
-    ctx.fillText(`${d.name}`, 68, 140 + i*33);
-
-    ctx.font = "bold 17px NotoSansKR";
-    ctx.fillStyle = "#66ccff";
-    ctx.fillText(formatNumber(d.value), 218, 140 + i*33);
-    ctx.font = "bold 17px NotoSansKR";
-  });
-
-  // 음성 타이틀
-  ctx.font = "bold 20px NotoSansKR";
-  ctx.fillStyle = "#91e3a3";
-  ctx.fillText("🔊 Top Voice Hours", 38, 255);
-
-  // 음성 랭킹 표
-  ctx.font = "bold 17px NotoSansKR";
-  stats.voice.slice(0, 5).forEach((d, i) => {
-    ctx.fillStyle = "#ffe36b";
-    ctx.fillText(`${i+1}`, 38, 290 + i*33);
-
-    ctx.fillStyle = "#fff";
-    ctx.fillText(`${d.name}`, 68, 290 + i*33);
-
-    ctx.font = "bold 17px NotoSansKR";
-    ctx.fillStyle = "#71ebbd";
-    ctx.fillText(`${d.value} h`, 218, 290 + i*33);
-    ctx.font = "bold 17px NotoSansKR";
-  });
-
-  // 푸터
-  ctx.font = "bold 13px NotoSansKR";
-  ctx.fillStyle = "#999";
-  ctx.fillText("기간: 최근 90일 누적", 36, HEIGHT - 28);
-  ctx.font = "12px NotoSansKR";
-  ctx.fillStyle = "#888";
-  ctx.fillText("Powered by KKARI Bot", WIDTH - 160, HEIGHT - 15);
-}
-
+// 조회 명령어
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("이용현황")
-    .setDescription("서버의 채팅/음성 TOP 순위를 이미지 카드로 출력"),
+    .setDescription("특정 기간, 필터, 유저별 활동량 및 TOP100 순위")
+    .addStringOption(opt => opt.setName("시작일").setDescription("YYYY-MM-DD").setRequired(false))
+    .addStringOption(opt => opt.setName("종료일").setDescription("YYYY-MM-DD").setRequired(false))
+    .addStringOption(opt => opt.setName("필터").setDescription("종류 (종합|채팅|음성)").addChoices(
+      { name: "종합", value: "all" },
+      { name: "채팅", value: "message" },
+      { name: "음성", value: "voice" }
+    ).setRequired(false))
+    .addUserOption(opt => opt.setName("유저").setDescription("특정 유저만 조회").setRequired(false)),
 
   async execute(interaction) {
-    await interaction.deferReply();
+    // 옵션 파싱
+    const from = interaction.options.getString("시작일") || null;
+    const to = interaction.options.getString("종료일") || null;
+    const filterType = interaction.options.getString("필터") || "all";
+    const user = interaction.options.getUser("유저");
 
-    // 통계 데이터 불러오기
-    let statsRaw = activity.getStats({ from: null, to: null, filterType: "all" });
+    let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
+    // 정렬
+    if (filterType === "message") stats.sort((a, b) => b.message - a.message);
+    else if (filterType === "voice") stats.sort((a, b) => b.voice - a.voice);
+    else stats.sort((a, b) => (b.message + b.voice) - (a.message + a.voice));
 
-    // 서버 전체 멤버 닉네임 가져오기
-    const members = await interaction.guild.members.fetch();
-    // 메시지 TOP
-    let messageRank = statsRaw
-      .filter(s => s.message > 0)
-      .sort((a, b) => b.message - a.message)
-      .slice(0, 5)
-      .map(s => ({
-        name: members.get(s.userId)?.displayName || members.get(s.userId)?.user?.username || s.userId,
-        value: s.message
-      }));
+    // 페이징 (TOP100)
+    let page = 0;
+    const pageSize = 15;
+    const totalPages = Math.ceil(Math.min(100, stats.length) / pageSize);
+    function makeEmbed(page) {
+      let list = "";
+      for (let i = page * pageSize; i < Math.min(stats.length, (page + 1) * pageSize); i++) {
+        const s = stats[i];
+        const msgStr = s.message.toLocaleString();
+        const voiceStr = (s.voice / 3600).toFixed(1);
+        list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개, 🔊 ${voiceStr}시간\n`;
+      }
+      const embed = new EmbedBuilder()
+        .setTitle(`📊 활동 랭킹 [${filterType === "message" ? "채팅" : filterType === "voice" ? "음성" : "종합"}]`)
+        .setDescription(list.length ? list : "해당 조건에 데이터 없음")
+        .setFooter({ text: `기간: ${from || "전체"} ~ ${to || "전체"} | ${page + 1}/${totalPages}페이지` });
+      return embed;
+    }
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle(ButtonStyle.Secondary)
+    );
+    await interaction.reply({ embeds: [makeEmbed(page)], components: [row], ephemeral: true });
 
-    // 음성 TOP (시간 단위)
-    let voiceRank = statsRaw
-      .filter(s => s.voice > 0)
-      .sort((a, b) => b.voice - a.voice)
-      .slice(0, 5)
-      .map(s => ({
-        name: members.get(s.userId)?.displayName || members.get(s.userId)?.user?.username || s.userId,
-        value: (s.voice / 3600).toFixed(1)
-      }));
-
-    // 최소 데이터 채우기(없으면 빈칸)
-    while (messageRank.length < 5) messageRank.push({ name: "-", value: 0 });
-    while (voiceRank.length < 5) voiceRank.push({ name: "-", value: 0 });
-
-    // 캔버스 생성
-    const canvas = createCanvas(WIDTH, HEIGHT);
-    const ctx = canvas.getContext("2d");
-    drawStatCard(ctx, { messages: messageRank, voice: voiceRank }, interaction.guild.name);
-
-    // 이미지 버퍼
-    const buffer = canvas.toBuffer("image/png");
-    const attachment = new AttachmentBuilder(buffer, { name: "server-stat.png" });
-
-    await interaction.editReply({
-      content: "💎 서버 활동 TOP 랭킹",
-      files: [attachment]
+    if (totalPages <= 1) return;
+    const collector = interaction.channel.createMessageComponentCollector({
+      filter: i => i.user.id === interaction.user.id,
+      componentType: ComponentType.Button,
+      time: 2 * 60 * 1000
+    });
+    collector.on("collect", async i => {
+      if (i.customId === "prev" && page > 0) page--;
+      if (i.customId === "next" && page < totalPages - 1) page++;
+      await i.update({ embeds: [makeEmbed(page)], components: [row], ephemeral: true });
     });
   }
 };
