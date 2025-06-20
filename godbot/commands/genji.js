@@ -348,34 +348,37 @@ module.exports = {
 
             // 패배
             if (user.hp <= 0) {
-              user.inBattle = false;
-              user.stage = 1;
-              user.hp = baseStats.hp;
-              saveUserData(userId, user);
-              let { embed } = makeGenjiEmbedRow(user, user.enemy, false, false, false, true);
-              return await i.update({
-                content: `😵 겐지 패배!`,
-                embeds: [embed],
-                components: [],
-                ephemeral: true
-              });
-            }
+  user.inBattle = false;
+  user.stage = 1;
+  user.hp = baseStats.hp;
+  user.stat = { ...baseStats };   // 스탯 초기화!
+  saveUserData(userId, user);
+  let { embed } = makeGenjiEmbedRow(user, user.enemy, false, false, false, true);
+  return await i.update({
+    content: `😵 겐지 패배!`,
+    embeds: [embed],
+    components: [],
+    ephemeral: true
+  });
+}
 
-            // 적 처치
-            if (user.enemy.hp <= 0) {
-              user.inBattle = false;
-              user.clear += 1;
-              user.reward += makeStageReward(user.stage);
-              user.stage += 1;
-              let { embed, row } = makeGenjiEmbedRow(user, user.enemy, false, true, false, false, true);
-              // 스테이지/레벨업 버튼 표시
-              return await i.update({
-                content: `🎉 ${user.enemy.name} 격파!\n${log}`,
-                embeds: [embed],
-                components: [row],
-                ephemeral: true
-              });
-            }
+            // === 적 처치 ===
+if (user.enemy.hp <= 0) {
+  user.inBattle = false;
+  user.clear += 1;
+  user.reward += makeStageReward(user.stage);
+  user.stage += 1;
+  user.levelup = true;     
+  saveUserData(userId, user);
+  let { embed, row } = makeGenjiEmbedRow(user, user.enemy, false, true, false, false, true);
+  return await i.update({
+    content: `🎉 ${user.enemy.name} 격파!\n${log}`,
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
+}
+
 
             saveUserData(userId, user);
             let { embed, row } = makeGenjiEmbedRow(user, user.enemy, true, false);
@@ -398,33 +401,33 @@ module.exports = {
               ephemeral: true
             });
           }
-          // 능력치 성장 선택
-          if (["stat-hp", "stat-attack", "stat-defense", "stat-crit"].includes(i.customId)) {
-            if (i.customId === "stat-hp") user.stat.hp += 15;
-            if (i.customId === "stat-attack") user.stat.attack += 5;
-            if (i.customId === "stat-defense") user.stat.defense += 3;
-            if (i.customId === "stat-crit") user.stat.crit += 0.02;
-            user.inBattle = false;
-            saveUserData(userId, user);
-            // 다음 적 세팅
-            const enemyName = randomHero(user.stage);
-            const enemyStats = getHeroStats(user.stage, enemyName);
-            user.enemy = {
-              name: enemyStats.name,
-              hp: enemyStats.hp,
-              hpmax: enemyStats.hp,
-              attack: enemyStats.attack,
-              defense: enemyStats.defense,
-              crit: enemyStats.crit,
-              image: enemyStats.image,
-              stage: user.stage,
-            };
-            user.hp = user.stat.hp;
-            user.inBattle = true;
-            saveUserData(userId, user);
-            let { embed, row } = makeGenjiEmbedRow(user, user.enemy, true, false);
-            return await i.update({ embeds: [embed], components: [row], ephemeral: true });
-          }
+         // === 능력치 성장 선택 ===
+if (["stat-hp", "stat-attack", "stat-defense", "stat-crit"].includes(i.customId)) {
+  if (i.customId === "stat-hp") user.stat.hp += 15;
+  if (i.customId === "stat-attack") user.stat.attack += 5;
+  if (i.customId === "stat-defense") user.stat.defense += 3;
+  if (i.customId === "stat-crit") user.stat.crit += 0.02;
+  user.inBattle = false;
+  user.levelup = false;
+  // ***다음 적 생성!***
+  const enemyName = randomHero(user.stage);
+  const enemyStats = getHeroStats(user.stage, enemyName);
+  user.enemy = {
+    name: enemyStats.name,
+    hp: enemyStats.hp,
+    hpmax: enemyStats.hp,
+    attack: enemyStats.attack,
+    defense: enemyStats.defense,
+    crit: enemyStats.crit,
+    image: enemyStats.image,
+    stage: user.stage,
+  };
+  user.hp = user.stat.hp;
+  user.inBattle = true;
+  saveUserData(userId, user);
+  let { embed, row } = makeGenjiEmbedRow(user, user.enemy, true, false);
+  return await i.update({ embeds: [embed], components: [row], ephemeral: true });
+}
         } finally {
           if (lock) try { await lock(); } catch { }
         }
