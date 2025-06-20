@@ -56,45 +56,68 @@ module.exports = {
       : {};
 
     // ============ 서버 상태 확인 ============
-    if (option === "status") {
-      // 메모리, CPU, Uptime, 플랫폼 등 정보
-      const memory = process.memoryUsage();
-      const rssMB = (memory.rss / 1024 / 1024).toFixed(2);
-      const heapMB = (memory.heapUsed / 1024 / 1024).toFixed(2);
+    // ... 기존 require 등 생략
 
-      // 평균 로드(Unix) or 0(Windows)
-      const load = os.loadavg()[0].toFixed(2);
+if (option === "status") {
+  const memory = process.memoryUsage();
+  const rssMB = (memory.rss / 1024 / 1024);
+  const heapMB = (memory.heapUsed / 1024 / 1024);
 
-      // Uptime (초 → h:m:s)
-      function formatUptime(sec) {
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = sec % 60;
-        return `${h}시간 ${m}분 ${s}초`;
-      }
-      const uptime = formatUptime(Math.floor(process.uptime()));
+  const load = os.loadavg()[0]; // 1분 평균
+  const uptimeSec = Math.floor(process.uptime());
+  const uptime = (() => {
+    const h = Math.floor(uptimeSec / 3600);
+    const m = Math.floor((uptimeSec % 3600) / 60);
+    const s = uptimeSec % 60;
+    return `${h}시간 ${m}분 ${s}초`;
+  })();
 
-      // Railway 환경 변수 등(있을 때만)
-      let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
-      if (process.env.RAILWAY_STATIC_URL) {
-        hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
-      }
+  // 상태 평가
+  let memState = "🟢";
+  if (rssMB > 1024) memState = "🔴";
+  else if (rssMB > 500) memState = "🟡";
 
-      const embed = new EmbedBuilder()
-        .setTitle("🤖 서버 상태")
-        .setColor(0x0099ff)
-        .addFields(
-          { name: "메모리 사용량", value: `RSS: \`${rssMB}MB\`\nheapUsed: \`${heapMB}MB\``, inline: true },
-          { name: "CPU 부하율", value: `1분 평균: \`${load}\``, inline: true },
-          { name: "실행시간(Uptime)", value: uptime, inline: true },
-          { name: "호스트정보", value: hostInfo, inline: false },
-          { name: "Node 버전", value: process.version, inline: true }
-        )
-        .setTimestamp();
+  let cpuState = "🟢";
+  if (load > 3) cpuState = "🔴";
+  else if (load > 1.5) cpuState = "🟡";
 
-      await interaction.editReply({ embeds: [embed], ephemeral: true });
-      return;
-    }
+  let upState = "🟢";
+  if (uptimeSec < 3600) upState = "🔴";
+  else if (uptimeSec < 86400) upState = "🟡";
+
+  // 종합 상태
+  let total = "🟢 안정적";
+  if (memState === "🔴" || cpuState === "🔴" || upState === "🔴") total = "🔴 불안정";
+  else if (memState === "🟡" || cpuState === "🟡" || upState === "🟡") total = "🟡 주의";
+
+  // 안내 메시지
+  let comment = "";
+  if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
+  else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
+  else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
+
+  let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
+  if (process.env.RAILWAY_STATIC_URL) {
+    hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${total} | 서버 상태 진단`)
+    .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
+    .setDescription(comment)
+    .addFields(
+      { name: `메모리 사용량 ${memState}`, value: `RSS: \`${rssMB.toFixed(2)}MB\`\nheapUsed: \`${heapMB.toFixed(2)}MB\``, inline: true },
+      { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: \`${load.toFixed(2)}\``, inline: true },
+      { name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
+      { name: "호스트정보", value: hostInfo, inline: false },
+      { name: "Node 버전", value: process.version, inline: true }
+    )
+    .setTimestamp();
+
+  await interaction.editReply({ embeds: [embed], ephemeral: true });
+  return;
+}
+
 
     // ============ 저장파일 관리 (manage-json 통합) ============
     if (option === "json") {
