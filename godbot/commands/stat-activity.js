@@ -19,7 +19,6 @@ module.exports = {
     let filterType = "all";
     const user = interaction.options.getUser("유저");
 
-    // 날짜 계산
     function getDateRange(period) {
       if (period === 'all') return { from: null, to: null };
       const now = new Date();
@@ -35,7 +34,17 @@ module.exports = {
       return "🏅 종합";
     }
 
-    // 실제 데이터 조회 함수
+    // 시간 포맷: n시간 n분
+    function formatHourMinute(sec) {
+      const totalMinutes = Math.round(sec / 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      let str = '';
+      if (hours > 0) str += `${hours}시간`;
+      if (minutes > 0 || hours === 0) str += `${minutes}분`;
+      return str;
+    }
+
     function getStatsEmbed(page, period, filterType, user) {
       const { from, to } = getDateRange(period);
       let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
@@ -48,9 +57,17 @@ module.exports = {
       let list = "";
       for (let i = page * pageSize; i < Math.min(stats.length, (page + 1) * pageSize); i++) {
         const s = stats[i];
-        const msgStr = s.message.toLocaleString();
-        const voiceStr = (s.voice / 3600).toFixed(1);
-        list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개, 🔊 ${voiceStr}시간\n`;
+        if (filterType === "message") {
+          const msgStr = s.message.toLocaleString();
+          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개\n`;
+        } else if (filterType === "voice") {
+          const voiceStr = formatHourMinute(s.voice);
+          list += `**${i + 1}위** <@${s.userId}> — 🔊 ${voiceStr}\n`;
+        } else {
+          const msgStr = s.message.toLocaleString();
+          const voiceStr = formatHourMinute(s.voice);
+          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개, 🔊 ${voiceStr}\n`;
+        }
       }
       const periodLabel = PERIODS.find(p => p.value === period)?.label || "전체";
       const embed = new EmbedBuilder()
@@ -61,7 +78,6 @@ module.exports = {
     }
 
     let page = 0;
-    // 필터 버튼 row
     function getFilterRow(selected) {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -81,7 +97,6 @@ module.exports = {
           .setLabel("음성"),
       );
     }
-    // 기간 선택 드롭다운 row
     function getPeriodRow(selected) {
       return new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -95,7 +110,6 @@ module.exports = {
           })))
       );
     }
-    // 페이지네이션 row
     function getPageRow() {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle(ButtonStyle.Secondary),
@@ -116,8 +130,9 @@ module.exports = {
     });
 
     const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => i.user.id === interaction.user.id,
-      componentType: ComponentType.Button || ComponentType.StringSelect,
+      filter: i => i.user.id === interaction.user.id &&
+        (i.isButton() ||
+          (i.isStringSelectMenu && i.isStringSelectMenu())),
       time: 2 * 60 * 1000,
     });
 
@@ -138,7 +153,7 @@ module.exports = {
           page = 0;
           updateEmbed = true;
         }
-      } else if (i.isStringSelectMenu()) {
+      } else if (i.isStringSelectMenu && i.isStringSelectMenu()) {
         if (i.customId === "select_period") {
           period = i.values[0];
           page = 0;
