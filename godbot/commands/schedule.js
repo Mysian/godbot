@@ -25,7 +25,7 @@ module.exports = {
     if (schedule.length > 0) {
       schedule = schedule.sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31")).slice(0, 10);
       desc = schedule.map((s, idx) => {
-        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n👥 ${s.members?.length ? s.members.map(m=>`<@${m}>`).join(", ") : "-"}\n등록자: <@${s.userId}>\n`;
+        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n등록자: <@${s.userId}>\n`;
       }).join("\n");
     }
 
@@ -60,7 +60,7 @@ module.exports = {
         return btn.update({ content: "저장된 일정이 없습니다.", embeds: [], components: [] });
       schedule = schedule.sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31")).slice(0, 10);
       const desc = schedule.map((s, idx) => {
-        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n👥 ${s.members?.length ? s.members.map(m=>`<@${m}>`).join(", ") : "-"}\n등록자: <@${s.userId}>\n`;
+        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n등록자: <@${s.userId}>\n`;
       }).join("\n");
       const listEmbed = new EmbedBuilder()
         .setTitle("📅 다가오는 일정 목록")
@@ -69,30 +69,8 @@ module.exports = {
       return btn.update({ embeds: [listEmbed], components: [] });
     }
 
-    // 일정 등록
+    // 일정 등록 (인원선택 없음, 모달만)
     if (btn.customId === "schedule-add") {
-      // 멤버 선택 (서버 인원 25명까지 제한)
-      const members = await interaction.guild.members.fetch();
-      const options = members.filter(m=>!m.user.bot).map(m=>({
-        label: m.displayName, value: m.id
-      })).slice(0, 25);
-      const selectRow = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("schedule-members")
-          .setPlaceholder("일정 관련 인원을 선택하세요 (최대 5명)")
-          .setMinValues(0)
-          .setMaxValues(Math.min(5, options.length))
-          .addOptions(options)
-      );
-      await btn.update({ content: "일정 관련 인원을 먼저 선택해 주세요.", embeds: [], components: [selectRow] });
-      const select = await interaction.channel.awaitMessageComponent({
-        filter: i => i.user.id === interaction.user.id && i.customId === "schedule-members",
-        time: 30_000,
-        componentType: ComponentType.StringSelect,
-      }).catch(() => null);
-      if (!select) return;
-
-      // 모달로 일정 정보 입력받기
       const modal = new ModalBuilder().setCustomId("schedule-add-modal").setTitle("일정 등록");
       const titleInput = new TextInputBuilder().setCustomId("title").setLabel("일정 제목").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(32);
       const dateInput = new TextInputBuilder().setCustomId("date").setLabel("일정 날짜 (예: 2024-12-31, 무기한이면 '무기한' 입력)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(16);
@@ -104,8 +82,8 @@ module.exports = {
         new ActionRowBuilder().addComponents(contentInput),
         new ActionRowBuilder().addComponents(pwInput)
       );
-      await select.showModal(modal);
-      const modalSubmit = await select.awaitModalSubmit({
+      await btn.showModal(modal);
+      const modalSubmit = await btn.awaitModalSubmit({
         filter: i => i.user.id === interaction.user.id,
         time: 60_000
       }).catch(() => null);
@@ -117,7 +95,6 @@ module.exports = {
         title: modalSubmit.fields.getTextInputValue("title"),
         date: (d => (d === "무기한" ? null : d))(modalSubmit.fields.getTextInputValue("date")),
         content: modalSubmit.fields.getTextInputValue("content"),
-        members: select.values,
         pw: modalSubmit.fields.getTextInputValue("pw"),
         userId: interaction.user.id,
         created: Date.now()
@@ -125,7 +102,7 @@ module.exports = {
       saveSchedule(schedule);
       const doneEmbed = new EmbedBuilder()
         .setTitle("✅ 일정 등록 완료")
-        .setDescription(`**${modalSubmit.fields.getTextInputValue("title")}**\n📅 ${modalSubmit.fields.getTextInputValue("date")}\n📝 ${modalSubmit.fields.getTextInputValue("content")}\n👥 ${select.values.length ? select.values.map(id=>`<@${id}>`).join(", ") : "-"}\n등록자: <@${interaction.user.id}>`);
+        .setDescription(`**${modalSubmit.fields.getTextInputValue("title")}**\n📅 ${modalSubmit.fields.getTextInputValue("date")}\n📝 ${modalSubmit.fields.getTextInputValue("content")}\n등록자: <@${interaction.user.id}>`);
       return modalSubmit.reply({ embeds: [doneEmbed], ephemeral: true });
     }
 
