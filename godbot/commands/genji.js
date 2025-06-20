@@ -200,10 +200,12 @@ function makeGenjiEmbedRow(user, enemy, showBattleBtn, isClear, isFirst = false,
     .setTitle(`⚔️ [스테이지 ${user.stage}] ${enemy.name} 등장!`)
     .addFields(
       { name: "내 체력", value: makeHPBar(user.hp, user.stat.hp, 18, "green"), inline: false },
-      { name: "\u200B", value: `**${user.hp} / ${user.stat.hp}**`, inline: false },
-      { name: `${enemy.name} 체력`, value: makeHPBar(enemy.hp, enemy.hpmax, 18, "red"), inline: false },
-      { name: "\u200B", value: `**${enemy.hp} / ${enemy.hpmax}**`, inline: false },
-    )
+    { name: "\u200B", value: `**${user.hp} / ${user.stat.hp}**`, inline: false },
+    { name: "내 스탯", value: `공격력: ${user.stat.attack}\n방어력: ${user.stat.defense}\n크리: ${(user.stat.crit*100).toFixed(1)}%`, inline: true },
+    { name: `${enemy.name} 체력`, value: makeHPBar(enemy.hp, enemy.hpmax, 18, "red"), inline: false },
+    { name: "\u200B", value: `**${enemy.hp} / ${enemy.hpmax}**`, inline: false },
+    { name: `${enemy.name} 스탯`, value: `공격력: ${enemy.attack}\n방어력: ${enemy.defense}\n크리: ${(enemy.crit*100).toFixed(1)}%`, inline: true }
+  )
     .setColor(0x2986cc)
     .setFooter({ text: "선택지에 따라 전황이 바뀔 수 있음!" });
   if (heroImages["겐지"]) embed.setThumbnail(heroImages["겐지"]);
