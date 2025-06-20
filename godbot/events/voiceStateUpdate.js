@@ -64,7 +64,7 @@ module.exports = {
       if (textChannelId) {
         const textChannel = newState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          textChannel.send(`✅ **${member.displayName}** 님이 입장했습니다.`);
+          textChannel.send(`-# 🟢 **${member.displayName}** 님이 입장했습니다.`);
         }
       }
     }
@@ -74,7 +74,7 @@ module.exports = {
       if (textChannelId) {
         const textChannel = oldState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          textChannel.send(`❌ **${member.displayName}** 님이 퇴장했습니다.`);
+          textChannel.send(`-# 🔴 **${member.displayName}** 님이 퇴장했습니다.`);
         }
       }
     }
@@ -85,7 +85,7 @@ module.exports = {
       if (textChannelIdLeave) {
         const textChannel = oldState.guild.channels.cache.get(textChannelIdLeave);
         if (textChannel) {
-          textChannel.send(`❌ **${member.displayName}** 님이 퇴장했습니다.`);
+          textChannel.send(`-# 🔴 **${member.displayName}** 님이 퇴장했습니다.`);
         }
       }
       // 입장
@@ -93,7 +93,7 @@ module.exports = {
       if (textChannelIdJoin) {
         const textChannel = newState.guild.channels.cache.get(textChannelIdJoin);
         if (textChannel) {
-          textChannel.send(`✅ **${member.displayName}** 님이 입장했습니다.`);
+          textChannel.send(`-# 🟢 **${member.displayName}** 님이 입장했습니다.`);
         }
       }
     }
