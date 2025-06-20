@@ -14,11 +14,11 @@ const {
 const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip");
+const os = require("os");
 
 const EXCLUDE_ROLE_ID = "1371476512024559756";
 const NEWBIE_ROLE_ID = "1295701019430227988";
 const PAGE_SIZE = 1900;
-
 const dataDir = path.join(__dirname, "../data");
 
 module.exports = {
@@ -34,7 +34,8 @@ module.exports = {
           { name: "장기 미이용 유저 추방", value: "inactive" },
           { name: "비활동 신규유저 추방", value: "newbie" },
           { name: "유저 정보 조회", value: "user" },
-          { name: "저장파일관리", value: "json" }
+          { name: "저장파일관리", value: "json" },
+          { name: "서버상태", value: "status" }
         )
     )
     .addUserOption((option) =>
@@ -54,9 +55,49 @@ module.exports = {
       ? JSON.parse(fs.readFileSync(activityPath))
       : {};
 
-    // ===== 저장파일관리 (기존 manage-json.js 통합) =====
+    // ============ 서버 상태 확인 ============
+    if (option === "status") {
+      // 메모리, CPU, Uptime, 플랫폼 등 정보
+      const memory = process.memoryUsage();
+      const rssMB = (memory.rss / 1024 / 1024).toFixed(2);
+      const heapMB = (memory.heapUsed / 1024 / 1024).toFixed(2);
+
+      // 평균 로드(Unix) or 0(Windows)
+      const load = os.loadavg()[0].toFixed(2);
+
+      // Uptime (초 → h:m:s)
+      function formatUptime(sec) {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        return `${h}시간 ${m}분 ${s}초`;
+      }
+      const uptime = formatUptime(Math.floor(process.uptime()));
+
+      // Railway 환경 변수 등(있을 때만)
+      let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
+      if (process.env.RAILWAY_STATIC_URL) {
+        hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("🤖 서버 상태")
+        .setColor(0x0099ff)
+        .addFields(
+          { name: "메모리 사용량", value: `RSS: \`${rssMB}MB\`\nheapUsed: \`${heapMB}MB\``, inline: true },
+          { name: "CPU 부하율", value: `1분 평균: \`${load}\``, inline: true },
+          { name: "실행시간(Uptime)", value: uptime, inline: true },
+          { name: "호스트정보", value: hostInfo, inline: false },
+          { name: "Node 버전", value: process.version, inline: true }
+        )
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    // ============ 저장파일 관리 (manage-json 통합) ============
     if (option === "json") {
-      // 1. 파일 다운로드
       const files = fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"));
       if (!files.length)
         return interaction.editReply({
@@ -64,7 +105,6 @@ module.exports = {
           ephemeral: true,
         });
 
-      // 선택창 띄움
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("jsonfile_select")
         .setPlaceholder("관리할 JSON 파일을 선택하세요!")
@@ -90,7 +130,6 @@ module.exports = {
         time: 90000,
       });
 
-      // 모달 핸들러
       const modalHandler = async (modalInteraction) => {
         if (!modalInteraction.isModalSubmit()) return;
         if (!modalInteraction.customId.startsWith("modal_")) return;
@@ -121,7 +160,6 @@ module.exports = {
         if (i.customId === "jsonfile_select") {
           const fileName = i.values[0];
 
-          // [모든 파일 다운로드] 선택
           if (fileName === "__DOWNLOAD_ALL__") {
             const zip = new AdmZip();
             for (const file of files) {
@@ -154,7 +192,6 @@ module.exports = {
             return;
           }
 
-          // [개별 파일 조회/수정]
           const filePath = path.join(dataDir, fileName);
           let text = fs.readFileSync(filePath, "utf8");
           let pretty = "";
