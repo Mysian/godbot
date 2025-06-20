@@ -18,21 +18,34 @@ module.exports = {
     .setDescription("일정 관리 기능 (검색/등록/수정/취소)"),
 
   async execute(interaction) {
-    // 1. 버튼 선택 임베드 보여주기
+    // 일정 불러오기
+    let schedule = loadSchedule();
+    // 최신순 정렬 + 최대 10개만 표시
+    let desc = "등록된 일정이 없습니다.";
+    if (schedule.length > 0) {
+      schedule = schedule.sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31")).slice(0, 10);
+      desc = schedule.map((s, idx) => {
+        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n등록자: <@${s.userId}>\n`;
+      }).join("\n");
+    }
+
+    // 버튼
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("schedule-search").setLabel("일정 검색").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("schedule-add").setLabel("일정 등록").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId("schedule-edit").setLabel("일정 수정").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("schedule-delete").setLabel("일정 취소").setStyle(ButtonStyle.Danger)
     );
+
     const embed = new EmbedBuilder()
       .setTitle("📆 일정 관리")
-      .setDescription("아래 버튼을 눌러 원하는 기능을 선택하세요.")
-      .setColor(0x5865f2);
+      .setDescription(desc)
+      .setColor(0x5865f2)
+      .setFooter({ text: "아래 버튼으로 기능을 선택하세요." });
 
     await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
-    // 2. 버튼 클릭 핸들러
+    // 버튼 클릭 핸들러
     const btn = await interaction.channel.awaitMessageComponent({
       filter: i => i.user.id === interaction.user.id,
       time: 30_000,
@@ -45,10 +58,9 @@ module.exports = {
       let schedule = loadSchedule();
       if (schedule.length === 0)
         return btn.update({ content: "저장된 일정이 없습니다.", embeds: [], components: [] });
-      // 최신순 정렬 + 최대 10개만 표시
       schedule = schedule.sort((a, b) => new Date(a.date || "9999-12-31") - new Date(b.date || "9999-12-31")).slice(0, 10);
       const desc = schedule.map((s, idx) => {
-        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n👥 ${s.members?.length ? s.members.map(m=>`<@${m}>`).join(", ") : "-"}\n등록자: <@${s.userId}>\n`;
+        return `**${idx+1}. ${s.title}**\n📅 ${s.date || "무기한"}\n📝 ${s.content}\n등록자: <@${s.userId}>\n`;
       }).join("\n");
       const listEmbed = new EmbedBuilder()
         .setTitle("📅 다가오는 일정 목록")
@@ -57,30 +69,8 @@ module.exports = {
       return btn.update({ embeds: [listEmbed], components: [] });
     }
 
-    // 일정 등록
+    // 일정 등록 (인원선택 없음, 모달만)
     if (btn.customId === "schedule-add") {
-      // 멤버 선택 (서버 인원 25명까지 제한)
-      const members = await interaction.guild.members.fetch();
-      const options = members.filter(m=>!m.user.bot).map(m=>({
-        label: m.displayName, value: m.id
-      })).slice(0, 25);
-      const selectRow = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("schedule-members")
-          .setPlaceholder("일정 관련 인원을 선택하세요 (최대 5명)")
-          .setMinValues(0)
-          .setMaxValues(Math.min(5, options.length))
-          .addOptions(options)
-      );
-      await btn.update({ content: "일정 관련 인원을 먼저 선택해 주세요.", embeds: [], components: [selectRow] });
-      const select = await interaction.channel.awaitMessageComponent({
-        filter: i => i.user.id === interaction.user.id && i.customId === "schedule-members",
-        time: 30_000,
-        componentType: ComponentType.StringSelect,
-      }).catch(() => null);
-      if (!select) return;
-
-      // 모달로 일정 정보 입력받기
       const modal = new ModalBuilder().setCustomId("schedule-add-modal").setTitle("일정 등록");
       const titleInput = new TextInputBuilder().setCustomId("title").setLabel("일정 제목").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(32);
       const dateInput = new TextInputBuilder().setCustomId("date").setLabel("일정 날짜 (예: 2024-12-31, 무기한이면 '무기한' 입력)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(16);
@@ -92,8 +82,8 @@ module.exports = {
         new ActionRowBuilder().addComponents(contentInput),
         new ActionRowBuilder().addComponents(pwInput)
       );
-      await select.showModal(modal);
-      const modalSubmit = await select.awaitModalSubmit({
+      await btn.showModal(modal);
+      const modalSubmit = await btn.awaitModalSubmit({
         filter: i => i.user.id === interaction.user.id,
         time: 60_000
       }).catch(() => null);
@@ -105,7 +95,6 @@ module.exports = {
         title: modalSubmit.fields.getTextInputValue("title"),
         date: (d => (d === "무기한" ? null : d))(modalSubmit.fields.getTextInputValue("date")),
         content: modalSubmit.fields.getTextInputValue("content"),
-        members: select.values,
         pw: modalSubmit.fields.getTextInputValue("pw"),
         userId: interaction.user.id,
         created: Date.now()
@@ -113,11 +102,11 @@ module.exports = {
       saveSchedule(schedule);
       const doneEmbed = new EmbedBuilder()
         .setTitle("✅ 일정 등록 완료")
-        .setDescription(`**${modalSubmit.fields.getTextInputValue("title")}**\n📅 ${modalSubmit.fields.getTextInputValue("date")}\n📝 ${modalSubmit.fields.getTextInputValue("content")}\n👥 ${select.values.length ? select.values.map(id=>`<@${id}>`).join(", ") : "-"}\n등록자: <@${interaction.user.id}>`);
+        .setDescription(`**${modalSubmit.fields.getTextInputValue("title")}**\n📅 ${modalSubmit.fields.getTextInputValue("date")}\n📝 ${modalSubmit.fields.getTextInputValue("content")}\n등록자: <@${interaction.user.id}>`);
       return modalSubmit.reply({ embeds: [doneEmbed], ephemeral: true });
     }
 
-    // 일정 수정 or 취소(삭제) - 공통: 일단 제목 리스트에서 선택 -> 비밀번호 입력
+    // 일정 수정 or 취소(삭제)
     if (btn.customId === "schedule-edit" || btn.customId === "schedule-delete") {
       let schedule = loadSchedule();
       // 본인이 등록한 일정만 선택 가능
@@ -156,7 +145,6 @@ module.exports = {
 
       // 수정
       if (btn.customId === "schedule-edit") {
-        // 수정 모달
         const modal = new ModalBuilder().setCustomId("schedule-edit-modal").setTitle("일정 수정");
         const titleInput = new TextInputBuilder().setCustomId("title").setLabel("일정 제목").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(32).setValue(target.title);
         const dateInput = new TextInputBuilder().setCustomId("date").setLabel("일정 날짜 (예: 2024-12-31, 무기한이면 '무기한' 입력)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(16).setValue(target.date || "무기한");
@@ -172,9 +160,7 @@ module.exports = {
           time: 60_000
         }).catch(() => null);
         if (!editSubmit) return;
-        // 정보 갱신
         const scheduleAll = loadSchedule();
-        // index 오프셋 반영(본인 일정만 필터했던 idx라 전체에서 찾아야 함)
         const realIdx = scheduleAll.findIndex(s => s.userId === interaction.user.id && s.created === target.created);
         if (realIdx !== -1) {
           scheduleAll[realIdx].title = editSubmit.fields.getTextInputValue("title");
@@ -186,9 +172,7 @@ module.exports = {
           .setTitle("✏️ 일정 수정 완료")
           .setDescription(`**${editSubmit.fields.getTextInputValue("title")}**\n📅 ${editSubmit.fields.getTextInputValue("date")}\n📝 ${editSubmit.fields.getTextInputValue("content")}\n등록자: <@${interaction.user.id}>`);
         return editSubmit.reply({ embeds: [doneEmbed], ephemeral: true });
-      }
-      // 삭제
-      else {
+      } else {
         const scheduleAll = loadSchedule();
         const realIdx = scheduleAll.findIndex(s => s.userId === interaction.user.id && s.created === target.created);
         if (realIdx !== -1) {
