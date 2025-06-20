@@ -3,7 +3,7 @@ const path = require("path");
 const dataPath = path.join(__dirname, "../activity-data.json");
 
 // 필터 (아래 ID만 넣으면됨)
-const includedCategoryIds = [1207980297854124032]; // 이 카테고리만 집계
+const includedCategoryIds = []; // 이 카테고리만 집계
 const includedChannelIds = [];
 const excludedCategoryIds = []; // 이 카테고리 제외
 const excludedChannelIds = [];
