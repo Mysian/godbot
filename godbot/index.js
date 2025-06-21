@@ -181,26 +181,6 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 4. 모달 제출 처리(비밀번호설정 등)
-  if (interaction.isModalSubmit()) {
-    for (const cmd of client.commands.values()) {
-      if (typeof cmd.modalSubmit === "function") {
-        try {
-          await cmd.modalSubmit(interaction);
-        } catch (err) {
-          // 오류 뱉고 reply 없을 시 reply
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❌ 모달 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
-          }
-        }
-      }
-    }
-    return;
-  }
-});
-
-  
   // 3. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
