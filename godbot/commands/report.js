@@ -1,21 +1,10 @@
 // commands/report.js
-const { 
-  SlashCommandBuilder, 
-  EmbedBuilder, 
-  ActionRowBuilder, 
-  StringSelectMenuBuilder, 
-  ModalBuilder, 
-  TextInputBuilder, 
-  TextInputStyle 
-} = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const relationship = require('../utils/relationship.js');
 
 const configPath = path.join(__dirname, '..', 'logchannel.json');
-const LOG_CHANNEL_ID = "1382168527015776287"; // 로그 채널 ID(수동 세팅시 사용)
 
-// 신고 사유 옵션
 const REASONS = [
   { label: '욕설', value: '욕설' },
   { label: '비매너', value: '비매너' },
@@ -23,8 +12,8 @@ const REASONS = [
   { label: '불쾌감 조성', value: '불쾌감 조성' },
   { label: '고의적 트롤', value: '고의적 트롤' },
   { label: '사생활 침해', value: '사생활 침해' },
-  { label: '노쇼 및 파토', value: '노쇼 및 파토' },
-  { label: '무시 및 인신공격', value: '무시 및 인신공격' },
+  { label: '사생활 침해', value: '노쇼 및 파토' },
+  { label: '사생활 침해', value: '무시 및 인신공격' },
   { label: '해킹', value: '해킹' },
   { label: '기타', value: '기타' }
 ];
@@ -32,156 +21,128 @@ const REASONS = [
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('신고')
-    .setDescription('유저를 서버에 신고합니다.'),
+    .setDescription('유저를 신고합니다.'),
 
   async execute(interaction) {
-    // 1. 신고 사유 선택
+    // 1. 신고 사유 드롭다운
     const selectRow = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
-        .setCustomId('report_reason')
+        .setCustomId('신고_사유')
         .setPlaceholder('신고 사유를 선택하세요')
         .addOptions(REASONS)
     );
 
     await interaction.reply({
-      content: '신고할 사유를 선택하세요. (민원/문의는 `/민원`)',
+      content: '신고할 사유를 선택하세요. (민원 및 문의는 /민원)',
       components: [selectRow],
-      ephemeral: true
+      ephemeral: true,
     });
 
-    try {
-      const reasonSelect = await interaction.channel.awaitMessageComponent({
-        filter: i => i.user.id === interaction.user.id && i.customId === 'report_reason',
-        time: 300_000
-      });
-      const selectedReason = reasonSelect.values[0];
+    // 5분 대기
+    const filter = i =>
+      i.user.id === interaction.user.id &&
+      i.customId === '신고_사유';
 
-      // 2. 신고 모달
-      const modal = new ModalBuilder()
-        .setCustomId('report_modal')
-        .setTitle('🚨 유저 신고');
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('target_nick')
-            .setLabel('신고 대상 닉네임 (필수)')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setPlaceholder('디스코드 닉네임/별명')
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('event_time')
-            .setLabel('사건 발생 일시 (선택)')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setPlaceholder('ex: 2025-07-01 15:00, 오늘 저녁 등')
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('detail')
-            .setLabel('신고 내용 (필수)')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true)
-            .setPlaceholder('구체적으로 작성해주세요.')
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('anonymous')
-            .setLabel('익명 신고? (예/공란=아니오)')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false)
-            .setPlaceholder('예/아니오')
-        )
-      );
-      await reasonSelect.showModal(modal);
+    interaction.channel.awaitMessageComponent({ filter, time: 300_000 })
+      .then(async i => {
+        const selectedReason = i.values[0];
 
-      // 3. 모달 제출 대기
-      const modalSubmit = await reasonSelect.awaitModalSubmit({
-        filter: m => m.user.id === interaction.user.id && m.customId === 'report_modal',
-        time: 300_000
-      });
+        // 모달 생성
+        const modal = new ModalBuilder()
+          .setCustomId('신고_모달')
+          .setTitle('🚨 유저 신고');
+        const userInput = new TextInputBuilder()
+          .setCustomId('신고_대상')
+          .setLabel('신고 대상 유저 닉네임 (필수)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setPlaceholder('디스코드 닉네임/별명');
+        const dateInput = new TextInputBuilder()
+          .setCustomId('신고_일시')
+          .setLabel('사건 발생 일시 (선택)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setPlaceholder('ex: 2024-07-01 15:00 또는 오늘 저녁');
+        const detailInput = new TextInputBuilder()
+          .setCustomId('신고_내용')
+          .setLabel('신고 내용을 작성해주세요. (필수)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setPlaceholder('상세히 적어주세요.');
+        const anonInput = new TextInputBuilder()
+          .setCustomId('신고_익명')
+          .setLabel('익명으로 보내시겠습니까? (예/공란=아니오)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setPlaceholder('예/아니오');
 
-      // 로그채널 fetch
-      let channelId = LOG_CHANNEL_ID;
-      if (fs.existsSync(configPath)) {
-        try {
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(userInput),
+          new ActionRowBuilder().addComponents(dateInput),
+          new ActionRowBuilder().addComponents(detailInput),
+          new ActionRowBuilder().addComponents(anonInput)
+        );
+        await i.showModal(modal);
+
+        // 모달 5분 타임아웃
+        const modalFilter = m => m.user.id === interaction.user.id && m.customId === '신고_모달';
+        i.client.once('interactionCreate', async modalInter => {
+          if (!modalFilter(modalInter)) return;
+          if (!fs.existsSync(configPath)) {
+            return modalInter.reply({ content: '❗ 로그 채널이 아직 등록되지 않았습니다. `/로그채널등록` 명령어를 먼저 사용해주세요.', ephemeral: true });
+          }
           const config = JSON.parse(fs.readFileSync(configPath));
-          if (config.channelId) channelId = config.channelId;
-        } catch { /* 무시 */ }
-      }
-      let logChannel;
-      try {
-        logChannel = await modalSubmit.guild.channels.fetch(channelId);
-      } catch {
-        return modalSubmit.reply({ content: '❗ 로그 채널을 찾을 수 없습니다.', ephemeral: true });
-      }
-      if (!logChannel) {
-        return modalSubmit.reply({ content: '❗ 로그 채널을 찾을 수 없습니다.', ephemeral: true });
-      }
+          const logChannel = await modalInter.guild.channels.fetch(config.channelId);
+          if (!logChannel) {
+            return modalInter.reply({ content: '❗ 로그 채널을 찾을 수 없습니다.', ephemeral: true });
+          }
+          const targetNick = modalInter.fields.getTextInputValue('신고_대상').trim();
+          const eventDate = modalInter.fields.getTextInputValue('신고_일시') || '미입력';
+          const reportDetail = modalInter.fields.getTextInputValue('신고_내용');
+          const anonRaw = modalInter.fields.getTextInputValue('신고_익명').trim();
+          const isAnon = anonRaw === '예';
 
-      // 대상 유저 찾기
-      const targetNick = modalSubmit.fields.getTextInputValue('target_nick').trim();
-      const eventDate = modalSubmit.fields.getTextInputValue('event_time') || '미입력';
-      const detail = modalSubmit.fields.getTextInputValue('detail');
-      const anonRaw = modalSubmit.fields.getTextInputValue('anonymous')?.trim();
-      const isAnon = anonRaw === '예';
+          // 👑 신고 대상 서버 내 실존 유저만 가능!
+          const members = await modalInter.guild.members.fetch();
+          // displayName(서버별명) 혹은 user.username(디스코드 이름) 일치
+          const matches = members.filter(m => !m.user.bot && (m.displayName === targetNick || m.user.username === targetNick));
+          if (matches.size === 0) {
+            return modalInter.reply({ content: '❗️해당 닉네임/별명의 유저를 찾을 수 없습니다. (정확히 입력해 주세요)', ephemeral: true });
+          }
+          if (matches.size > 1) {
+            return modalInter.reply({ content: '❗️여러 유저가 일치합니다. (닉네임/별명 정확히 입력)', ephemeral: true });
+          }
+          const targetMember = matches.first();
+          const targetId = targetMember.user.id;
 
-      // 서버 멤버 중 닉네임/별명/디스코드 이름 매칭
-      const members = await modalSubmit.guild.members.fetch();
-      const matches = members.filter(m => 
-        !m.user.bot && (
-          m.displayName === targetNick || 
-          m.user.username === targetNick
-        )
-      );
-      if (matches.size === 0) {
-        return modalSubmit.reply({ content: '❗️해당 닉네임/별명의 유저를 찾을 수 없습니다. (정확히 입력해 주세요)', ephemeral: true });
-      }
-      if (matches.size > 1) {
-        let multiList = matches.map(m => `• ${m.displayName} / ${m.user.tag}`).join('\n');
-        return modalSubmit.reply({ content: `❗️여러 유저가 일치합니다. (정확히 입력)\n${multiList}`, ephemeral: true });
-      }
-      const targetMember = matches.first();
-      const targetId = targetMember.user.id;
+          const reporter = isAnon
+            ? '익명'
+            : `<@${modalInter.user.id}> (${modalInter.user.tag})`;
+          const embed = new EmbedBuilder()
+            .setTitle('🚨 유저 신고 접수')
+            .setColor(0xff3333)
+            .addFields(
+              { name: '• 신고 사유', value: `\`${selectedReason}\``, inline: true },
+              { name: '• 익명 여부', value: isAnon ? '예 (익명)' : '아니오 (신고자 공개)', inline: true },
+              { name: '• 사건 발생 일시', value: eventDate, inline: true },
+              { name: '• 신고 대상', value: `\`${targetMember.displayName}\` (<@${targetId}>)`, inline: true },
+              { name: '• 신고자', value: reporter, inline: true },
+              { name: '\u200B', value: '\u200B', inline: false },
+              { name: '• 신고 내용', value: reportDetail, inline: false }
+            )
+            .setFooter({ text: `신고 접수일시: ${new Date().toLocaleString()}` })
+            .setTimestamp();
 
-      // 익명/실명
-      const reporter = isAnon ? '익명' : `<@${modalSubmit.user.id}> (${modalSubmit.user.tag})`;
+          await logChannel.send({ embeds: [embed] });
 
-      // 임베드 생성
-      const embed = new EmbedBuilder()
-        .setTitle('🚨 유저 신고 접수')
-        .setColor(0xff3333)
-        .addFields(
-          { name: '• 신고 사유', value: `\`${selectedReason}\``, inline: true },
-          { name: '• 익명 여부', value: isAnon ? '예 (익명)' : '아니오 (신고자 공개)', inline: true },
-          { name: '• 사건 발생 일시', value: eventDate, inline: true },
-          { name: '• 신고 대상', value: `\`${targetMember.displayName}\` (<@${targetId}>)`, inline: true },
-          { name: '• 신고자', value: reporter, inline: true },
-          { name: '\u200B', value: '\u200B', inline: false },
-          { name: '• 신고 내용', value: detail, inline: false }
-        )
-        .setFooter({ text: `신고 접수일시: ${new Date().toLocaleString()}` })
-        .setTimestamp();
-
-      await logChannel.send({ embeds: [embed] });
-
-      // 관계도: 신고자 → 대상, -5점 (단방향)
-      try {
-        relationship.addScore(modalSubmit.user.id, targetId, -5);
-      } catch { /* 무시 */ }
-
-      await modalSubmit.reply({
-        content: `✅ 신고가 정상적으로 접수되었습니다.`,
-        ephemeral: true
+          await modalInter.reply({
+            content: `✅ 신고가 정상적으로 접수되었습니다.`,
+            ephemeral: true
+          });
+        });
+      })
+      .catch(async () => {
+        await interaction.editReply({ content: '❗️시간이 초과되어 신고가 취소되었습니다.', components: [], ephemeral: true }).catch(() => {});
       });
-
-    } catch (e) {
-      await interaction.editReply({ 
-        content: '❗️시간이 초과되어 신고가 취소되었습니다.', 
-        components: [], 
-        ephemeral: true 
-      }).catch(() => {});
-    }
   }
 };
