@@ -31,12 +31,12 @@ module.exports = {
         .setDescription("실행할 관리 기능을 선택하세요.")
         .setRequired(true)
         .addChoices(
-          { name: "장기 미이용 유저 추방", value: "inactive" },
-          { name: "비활동 신규유저 추방", value: "newbie" },
+          { name: "서버상태", value: "status" },
           { name: "유저 정보 조회", value: "user" },
           { name: "저장파일 백업", value: "json_backup" },
-          { name: "서버상태", value: "status" },
-          { name: "스팸의심 계정 추방", value: "spam_kick" }
+          { name: "스팸의심 계정 추방", value: "spam_kick" },
+          { name: "비활동 신규유저 추방", value: "newbie" },
+          { name: "장기 미이용 유저 추방", value: "inactive" },
         )
     )
     .addUserOption((option) =>
@@ -51,7 +51,7 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
     const option = interaction.options.getString("옵션");
     const guild = interaction.guild;
-    const activityStats = activityTracker.getStats({}); // { userId, message, voice }
+    const activityStats = activityTracker.getStats({});
 
     // ====== 서버상태 ======
     if (option === "status") {
@@ -168,23 +168,22 @@ module.exports = {
         const stat = activityStats.find((x) => x.userId === member.id);
 
         if (option === "inactive") {
-          // 90일간 메시지, 음성 모두 0인 유저
           let isInactive = true;
           if (stat) {
             let lastActive = null;
-            // activity-data.json 내 가장 마지막 날짜가 기준임
-            const userData = require("../activity-data.json")[member.id];
-            if (userData) {
-              lastActive = Object.keys(userData)
-                .sort()
-                .reverse()[0];
-            }
-            if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
-            else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
+            try {
+              const userData = require("../../activity-data.json")[member.id];
+              if (userData) {
+                lastActive = Object.keys(userData)
+                  .sort()
+                  .reverse()[0];
+              }
+              if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
+              else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
+            } catch { }
           }
           if (isInactive) 추방대상.push(member);
         } else if (option === "newbie") {
-          // 7일 넘게 가입 + 신규 역할 + 활동기록 없음
           const joinedAt = member.joinedAt;
           const isNewbie = member.roles.cache.has(NEWBIE_ROLE_ID);
           const daysPassed = (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -242,15 +241,21 @@ module.exports = {
             embeds: [],
             components: [],
           });
+
+          let success = 0, failed = [];
           for (const member of 추방대상) {
             try {
               await member.kick("자동 추방: 활동 없음");
+              await new Promise(res => setTimeout(res, 350)); // 0.35초 딜레이
+              success++;
             } catch (err) {
-              console.error(`❗ ${member.user.tag} 추방 실패: ${err}`);
+              failed.push(`${member.user.tag}(${member.id})`);
             }
           }
           await interaction.followUp({
-            content: `✅ ${추방대상.length}명의 유저를 추방했습니다.`,
+            content:
+              `✅ ${success}명 추방 완료` +
+              (failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""),
             ephemeral: true,
           });
         } else {
@@ -291,7 +296,6 @@ module.exports = {
         const noRole = roles.filter(r => r.id !== guild.id).size === 0;
 
         if (noRole || hasSpamRole || onlyNewbie || onlySpam) {
-          // 여러 역할 없는 유저 중 조건에 맞는 경우만 추방대상
           추방대상.push(member);
         }
       }
@@ -341,15 +345,21 @@ module.exports = {
             embeds: [],
             components: [],
           });
+
+          let success = 0, failed = [];
           for (const member of 추방대상) {
             try {
               await member.kick("스팸/비정상 계정 자동 추방");
+              await new Promise(res => setTimeout(res, 350));
+              success++;
             } catch (err) {
-              console.error(`❗ ${member.user.tag} 추방 실패: ${err}`);
+              failed.push(`${member.user.tag}(${member.id})`);
             }
           }
           await interaction.followUp({
-            content: `✅ ${추방대상.length}명의 스팸의심 계정을 추방했습니다.`,
+            content:
+              `✅ ${success}명 추방 완료` +
+              (failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""),
             ephemeral: true,
           });
         } else {
@@ -390,7 +400,7 @@ module.exports = {
       const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
       let lastActiveStr = "기록 없음";
       try {
-        const userData = require("../activity-data.json")[target.id];
+        const userData = require("../../activity-data.json")[target.id];
         if (userData) {
           const lastActive = Object.keys(userData).sort().reverse()[0];
           if (lastActive) {
