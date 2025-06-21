@@ -1,10 +1,10 @@
 // commands/dm.js
 const { SlashCommandBuilder, ChannelType } = require('discord.js');
 
+const GUILD_ID = '785841387396005948';
 const THREAD_PARENT_CHANNEL_ID = '1380874052855529605';
 const ANON_NICK = '까리한 디스코드';
 
-// Map<userId, threadId> : "기존 DM 이어서 진행" 구현용 (간단 key-value)
 const relayMap = new Map();
 
 module.exports = {
@@ -28,7 +28,13 @@ module.exports = {
   async execute(interaction) {
     const user = interaction.options.getUser('유저');
     const useExisting = (interaction.options.getString('이어서') || 'no') === 'yes';
-    const parentChannel = await interaction.guild.channels.fetch(THREAD_PARENT_CHANNEL_ID);
+
+    const guild = interaction.client.guilds.cache.get(GUILD_ID);
+    if (!guild) {
+      return interaction.reply({ content: '❗️봇이 있는 서버를 찾을 수 없습니다.', ephemeral: true });
+    }
+
+    const parentChannel = await guild.channels.fetch(THREAD_PARENT_CHANNEL_ID).catch(() => null);
 
     if (!parentChannel || parentChannel.type !== ChannelType.GuildText) {
       return interaction.reply({ content: '❗️지정된 채널을 찾을 수 없거나 텍스트채널이 아닙니다.', ephemeral: true });
@@ -64,34 +70,41 @@ module.exports = {
     });
   },
 
-  // relay handler 등록(메인 봇파일에서 아래 함수 실행 필요)
   relayRegister(client) {
-    // 유저가 봇 DM에 쓴 메시지 → 스레드로 릴레이
+    // DM → 스레드 릴레이
     client.on('messageCreate', async msg => {
       if (!msg.guild && !msg.author.bot) {
-        const threadId = relayMap.get(msg.author.id);
-        if (!threadId) return;
-        const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-        if (!guild) return;
-        const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-        if (!parentChannel) return;
-        const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-        if (!thread) return;
-        await thread.send({
-          content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}`
-        });
+        try {
+          const threadId = relayMap.get(msg.author.id);
+          if (!threadId) return;
+          const guild = client.guilds.cache.get(GUILD_ID);
+          if (!guild) return;
+          const parentChannel = await guild.channels.fetch(THREAD_PARENT_CHANNEL_ID).catch(() => null);
+          if (!parentChannel) return;
+          const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+          if (!thread) return;
+          await thread.send({
+            content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}`
+          });
+        } catch (err) {
+          console.error('[DM 릴레이 오류]', err);
+        }
       }
     });
 
-    // 운영진이 스레드에 메시지 작성 → 대상 유저 DM 릴레이
+    // 스레드 → 유저 DM 릴레이 (운영진이 스레드에 채팅 시)
     client.on('messageCreate', async msg => {
       if (msg.channel.type !== ChannelType.PublicThread) return;
       if (msg.author.bot) return;
       for (const [userId, threadId] of relayMap.entries()) {
         if (threadId === msg.channel.id) {
-          const user = await client.users.fetch(userId).catch(() => null);
-          if (!user) return;
-          await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+          try {
+            const user = await client.users.fetch(userId).catch(() => null);
+            if (!user) return;
+            await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+          } catch (err) {
+            console.error('[스레드→DM 릴레이 오류]', err);
+          }
         }
       }
     });
