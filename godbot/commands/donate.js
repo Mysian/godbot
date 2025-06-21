@@ -1,8 +1,10 @@
 // commands/donate.js
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
+// 채널 ID 하드코딩
 const DONATION_LOG_CHANNEL = '1385860310753087549';      // 후원금 정보(비공개)
 const DONATION_THANKS_CHANNEL = '1264514955269640252';    // 상품 후원 공개
+
 const DONATE_ACCOUNT = '지역농협 3521075112463 이*민';
 
 module.exports = {
@@ -11,10 +13,10 @@ module.exports = {
     .setDescription('소중한 후원을 해주세요!'),
   async execute(interaction) {
     try {
-      // 첫 페이지: 후원 방식 선택
+      // 1차: 옵션 선택
       const embed = new EmbedBuilder()
-        .setTitle('💖 후원해주셔서 정말 감사합니다!')
-        .setDescription('아래에서 후원 방법을 선택해주세요.\n\n- **후원금**: 계좌로 바로 입금 가능\n- **상품**: 물품 등 다양한 형태의 후원')
+        .setTitle('💖 후원해주셔서 감사합니다!')
+        .setDescription('어떤 방식으로 후원하시겠어요?\n\n**정말 감사한 마음을 담아, 모든 후원은 신중하게 관리됩니다.**')
         .setColor(0xf9bb52);
 
       const row = new ActionRowBuilder().addComponents(
@@ -31,21 +33,27 @@ module.exports = {
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
       // 버튼 대기
-      const btnInt = await interaction.channel.awaitMessageComponent({
-        filter: i => i.user.id === interaction.user.id && ['donate_money', 'donate_item'].includes(i.customId),
-        time: 120_000
-      }).catch(() => null);
-      if (!btnInt) return;
+      const filter = btn => btn.user.id === interaction.user.id && ['donate_money', 'donate_item'].includes(btn.customId);
+      let btnInt;
+      try {
+        btnInt = await interaction.channel.awaitMessageComponent({ filter, time: 120_000 });
+      } catch {
+        try {
+          await interaction.editReply({ content: '⏰ 시간이 초과되었습니다. 다시 시도해주세요.', embeds: [], components: [], ephemeral: true });
+        } catch {}
+        return;
+      }
 
       // ============ 후원금 ===============
       if (btnInt.customId === 'donate_money') {
+        // 계좌 안내
         const moneyEmbed = new EmbedBuilder()
-          .setTitle('💸 후원금 계좌 안내')
+          .setTitle('💸 후원금 계좌')
           .setDescription([
-            `**후원계좌** : \`${DONATE_ACCOUNT}\``,
+            `후원계좌: \`${DONATE_ACCOUNT}\``,
             '',
             '입금 후 아래 버튼으로 입금 사실을 알려주세요.',
-            '정말 소중한 마음, 감사합니다!'
+            '진심으로 감사드립니다!'
           ].join('\n'))
           .setColor(0x4caf50);
 
@@ -63,76 +71,98 @@ module.exports = {
         await btnInt.update({ embeds: [moneyEmbed], components: [moneyRow], ephemeral: true });
 
         // 버튼 대기 (입금/나중에)
-        const moneyBtn = await interaction.channel.awaitMessageComponent({
-          filter: i => i.user.id === interaction.user.id && ['donate_money_done', 'donate_money_later'].includes(i.customId),
-          time: 120_000
-        }).catch(() => null);
-        if (!moneyBtn) return;
+        let moneyBtn;
+        try {
+          moneyBtn = await interaction.channel.awaitMessageComponent({
+            filter: i => i.user.id === interaction.user.id && ['donate_money_done', 'donate_money_later'].includes(i.customId),
+            time: 120_000
+          });
+        } catch {
+          try {
+            await interaction.editReply({ content: '⏰ 시간이 초과되었습니다. 다시 시도해주세요.', embeds: [], components: [], ephemeral: true });
+          } catch {}
+          return;
+        }
 
         if (moneyBtn.customId === 'donate_money_later') {
-          await moneyBtn.update({ content: '언제든 후원해주시면 정말 감사하겠습니다!', embeds: [], components: [], ephemeral: true }).catch(() => {});
+          try {
+            await moneyBtn.update({ content: '언제든 후원해주시면 정말 감사하겠습니다!', embeds: [], components: [], ephemeral: true });
+          } catch {}
           return;
         }
 
         // 모달 - 입금 정보 입력
         const modal = new ModalBuilder()
           .setCustomId('donate_money_modal')
-          .setTitle('💸 후원금 정보 입력')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_amount')
-                .setLabel('입금 금액 (원)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예: 10000')
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_name')
-                .setLabel('입금자 성함')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예: 김영갓,박까리')
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_purpose')
-                .setLabel('후원금이 쓰였으면 하는 곳/목적 (선택)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예: 장비 구매, 커뮤니티 운영 등')
-                .setRequired(false)
-            )
-          );
+          .setTitle('💸 후원금 정보 입력');
+
+        const amountInput = new TextInputBuilder()
+          .setCustomId('donate_amount')
+          .setLabel('입금 금액 (원)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예: 10000')
+          .setRequired(true);
+
+        const nameInput = new TextInputBuilder()
+          .setCustomId('donate_name')
+          .setLabel('입금자 성함')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예: 이영민 / 익명 가능')
+          .setRequired(true);
+
+        const purposeInput = new TextInputBuilder()
+          .setCustomId('donate_purpose')
+          .setLabel('후원금이 쓰였으면 하는 곳/목적 (선택)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예: 장비 구매, 커뮤니티 운영 등')
+          .setRequired(false);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(amountInput),
+          new ActionRowBuilder().addComponents(nameInput),
+          new ActionRowBuilder().addComponents(purposeInput)
+        );
 
         try {
           await moneyBtn.showModal(modal);
-        } catch { return; }
+        } catch {
+          try {
+            await interaction.editReply({ content: '❌ 모달 처리 중 오류가 발생했습니다.', embeds: [], components: [], ephemeral: true });
+          } catch {}
+          return;
+        }
 
-        const submitted = await moneyBtn.awaitModalSubmit({
-          filter: m => m.user.id === interaction.user.id && m.customId === 'donate_money_modal',
-          time: 180_000
-        }).catch(() => null);
+        // 모달 결과 대기
+        let submitted;
+        try {
+          submitted = await moneyBtn.awaitModalSubmit({
+            filter: m => m.user.id === interaction.user.id && m.customId === 'donate_money_modal',
+            time: 180_000
+          });
+        } catch {
+          // 모달 타임아웃 시 추가 응답 X (이미 응답된 상태거나, 타임아웃 안내는 생략)
+          return;
+        }
         if (!submitted) return;
 
         const amount = submitted.fields.getTextInputValue('donate_amount');
         const inName = submitted.fields.getTextInputValue('donate_name');
         const purpose = submitted.fields.getTextInputValue('donate_purpose') || '미입력';
 
-        // 후원 감사 인사 (본인)
-        await submitted.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('💖 진심으로 감사드립니다!')
-              .setDescription('소중한 후원금, 감사히 잘 사용하겠습니다.\n감사의 마음을 담아, 후원 내역은 안전하게 기록됩니다.')
-              .setColor(0xf9bb52)
-          ],
-          ephemeral: true
-        }).catch(() => {});
+        // 후원금 감사 메시지 (공개 X, 비공개)
+        const thanksEmbed = new EmbedBuilder()
+          .setTitle('💖 감사합니다!')
+          .setDescription('정말 소중한 후원금, 감사히 잘 사용하겠습니다.')
+          .setColor(0xf9bb52);
 
-        // 비공개 로그 채널에 상세 전송
         try {
-          const logChannel = await submitted.guild.channels.fetch(DONATION_LOG_CHANNEL).catch(() => null);
+          await submitted.reply({ embeds: [thanksEmbed], ephemeral: true });
+        } catch {}
+
+        // 비공개 후원 로그 채널로 상세 내용 전송
+        try {
+          const guild = submitted.guild;
+          const logChannel = await guild.channels.fetch(DONATION_LOG_CHANNEL).catch(() => null);
           if (logChannel) {
             await logChannel.send({
               embeds: [
@@ -151,18 +181,14 @@ module.exports = {
           }
         } catch {}
 
-        // 공개 감사 메시지 (입금자/금액/목적 등은 공개되지 않음)
+        // 공개 감사 메시지(공개채널, 비공개채널 분리)  
         try {
+          const thanksPublic = new EmbedBuilder()
+            .setDescription(`**${interaction.member.displayName}**님께서 소중한 후원금을 주셨습니다. 감사합니다!`)
+            .setColor(0xf9bb52);
+
           const thanksChannel = await submitted.guild.channels.fetch(DONATION_THANKS_CHANNEL).catch(() => null);
-          if (thanksChannel) {
-            await thanksChannel.send({
-              embeds: [
-                new EmbedBuilder()
-                  .setDescription(`**${interaction.member.displayName}**님께서 소중한 후원금을 주셨습니다. 감사합니다!`)
-                  .setColor(0xf9bb52)
-              ]
-            });
-          }
+          if (thanksChannel) await thanksChannel.send({ embeds: [thanksPublic] });
         } catch {}
 
         return;
@@ -170,49 +196,63 @@ module.exports = {
 
       // ============ 상품 후원 ================
       if (btnInt.customId === 'donate_item') {
+        // 모달 띄우기
         const modal = new ModalBuilder()
           .setCustomId('donate_item_modal')
-          .setTitle('🎁 상품 후원 신청')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('item')
-                .setLabel('후원하는 상품 (필수)')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('reason')
-                .setLabel('후원하는 이유 (필수)')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('situation')
-                .setLabel('상품이 소비되었으면 하는 상황/대상 (선택)')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(false)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('anonymous')
-                .setLabel('익명 후원 여부 (예/아니오/공란=비익명)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예 / 아니오 / 공란')
-                .setRequired(false)
-            )
-          );
+          .setTitle('🎁 상품 후원 신청');
+
+        const itemInput = new TextInputBuilder()
+          .setCustomId('item')
+          .setLabel('후원하는 상품 (필수)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const reasonInput = new TextInputBuilder()
+          .setCustomId('reason')
+          .setLabel('후원하는 이유 (필수)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true);
+
+        const situationInput = new TextInputBuilder()
+          .setCustomId('situation')
+          .setLabel('상품이 소비되었으면 하는 상황/대상 (선택)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false);
+
+        const anonInput = new TextInputBuilder()
+          .setCustomId('anonymous')
+          .setLabel('익명 후원 여부 ("예" 입력시 익명)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예 / 아니오 / 공란')
+          .setRequired(false);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(itemInput),
+          new ActionRowBuilder().addComponents(reasonInput),
+          new ActionRowBuilder().addComponents(situationInput),
+          new ActionRowBuilder().addComponents(anonInput)
+        );
 
         try {
           await btnInt.showModal(modal);
-        } catch { return; }
+        } catch {
+          try {
+            await interaction.editReply({ content: '❌ 모달 처리 중 오류가 발생했습니다.', embeds: [], components: [], ephemeral: true });
+          } catch {}
+          return;
+        }
 
-        const submitted = await btnInt.awaitModalSubmit({
-          filter: m => m.user.id === interaction.user.id && m.customId === 'donate_item_modal',
-          time: 180_000
-        }).catch(() => null);
+        // 모달 결과 대기
+        let submitted;
+        try {
+          submitted = await btnInt.awaitModalSubmit({
+            filter: m => m.user.id === interaction.user.id && m.customId === 'donate_item_modal',
+            time: 180_000
+          });
+        } catch {
+          // 모달 타임아웃 시 추가 응답 X (이미 응답된 상태거나, 타임아웃 안내는 생략)
+          return;
+        }
         if (!submitted) return;
 
         const item = submitted.fields.getTextInputValue('item');
@@ -223,42 +263,41 @@ module.exports = {
         let displayName = interaction.member.displayName;
         if (anonymous && anonymous.toLowerCase() === '예') displayName = '익명';
 
-        // 안내 메시지 (상품 링크/사진 전달 안내)
-        const dmMsg = [
-          '정말 소중한 후원, 진심으로 감사드립니다!',
-          '후원 상품의 링크, 이미지, 사진 등은 **영갓**에게 DM 혹은 따로 전달해주세요.',
-          '감사한 후원, 꼭 책임지고 관리하겠습니다.'
-        ].join('\n');
+        // 안내 메시지
+        const dmMsg = `후원 상품의 링크, 이미지, 사진 등은 **영갓**에게 DM 혹은 따로 전달해주세요!\n감사한 후원, 꼭 책임지고 관리하겠습니다.`;
 
-        // 공개 감사 인사(상품명 포함, 익명 가능)
+        // 감사 인사(공개 채널)
         try {
+          const thanksEmbed = new EmbedBuilder()
+            .setTitle('🎁 상품 후원 접수')
+            .setDescription([
+              `**${displayName}**님께서 (${new Date().toLocaleDateString()})`,
+              `\`${item}\` 상품을 후원하셨습니다. 감사합니다!`
+            ].join('\n'))
+            .setColor(0xf9bb52);
+
           const thanksChannel = await submitted.guild.channels.fetch(DONATION_THANKS_CHANNEL).catch(() => null);
-          if (thanksChannel) {
-            await thanksChannel.send({
-              embeds: [
-                new EmbedBuilder()
-                  .setTitle('🎁 상품 후원 접수')
-                  .setDescription([
-                    `**${displayName}**님께서 (${new Date().toLocaleDateString()})`,
-                    `\`${item}\` 상품을 후원하셨습니다. 감사합니다!`
-                  ].join('\n'))
-                  .setColor(0xf9bb52)
-              ]
-            });
-          }
+          if (thanksChannel) await thanksChannel.send({ embeds: [thanksEmbed] });
         } catch {}
 
-        // 본인 DM 안내
-        await submitted.reply({
-          content: dmMsg,
-          ephemeral: true
-        }).catch(() => {});
+        // DM 안내
+        try {
+          await submitted.reply({
+            content: [
+              `정말 소중한 후원, 진심으로 감사드립니다!`,
+              dmMsg
+            ].join('\n\n'),
+            ephemeral: true
+          });
+        } catch {}
       }
 
     } catch (err) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: '❌ 명령어 실행 중 오류가 발생했습니다.', ephemeral: true }).catch(() => {});
-      }
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: '❌ 명령어 실행 중 오류가 발생했습니다.', ephemeral: true });
+        }
+      } catch {}
     }
   }
 };
