@@ -19,7 +19,7 @@ const PAGE_SIZE = 1900;
 const dataDir = path.join(__dirname, "../data");
 
 // activity-tracker.js 연동
-const activityTracker = require("../activity-tracker.js");
+const activityTracker = require("../utils/activity-tracker.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
