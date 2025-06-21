@@ -254,29 +254,6 @@ client.on("voiceStateUpdate", (oldState, newState) => {
   }
 });
 
-// === 1시간마다 알림 ===
-setInterval(async () => {
-  const now = Date.now();
-  for (const [userId, info] of voiceStartMap.entries()) {
-    const elapsedSec = Math.floor((now - info.time) / 1000);
-    const elapsedHour = Math.floor(elapsedSec / 3600);
-    if (elapsedHour > 0 && elapsedHour > (info.notifiedHour || 0)) {
-      info.notifiedHour = elapsedHour;
-      const channel = info.channel.guild.channels.cache.find(
-        c => c.id === info.channel.id && c.isTextBased && c.viewable
-      );
-      if (channel) {
-        let name = userId;
-        try {
-          const member = await info.channel.guild.members.fetch(userId);
-          name = member.displayName || member.user.username || userId;
-        } catch (e) {}
-        channel.send(`-# ⏳ ${name} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
-      }
-    }
-  }
-}, 60 * 1000);
-
 // ✅ 음성채널 동접 관계도 자동상승
 setInterval(() => {
   for (const [guildId, guild] of client.guilds.cache) {
