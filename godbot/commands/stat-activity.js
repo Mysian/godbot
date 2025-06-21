@@ -9,6 +9,9 @@ const PERIODS = [
   { label: '90일', value: '90', description: '최근 90일', },
 ];
 
+const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
+const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("이용현황")
@@ -45,9 +48,27 @@ module.exports = {
       return str;
     }
 
-    function getStatsEmbed(page, period, filterType, user) {
+    // ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+    // 함수 자체를 async로!
+    async function getStatsEmbed(page, period, filterType, user) {
       const { from, to } = getDateRange(period);
       let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
+
+      // 1. 유저ID 필터
+      stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
+
+      // 2. 역할ID 필터 (필요시)
+      if (EXCLUDED_ROLE_IDS.length && interaction.guild) {
+        // 필요한 멤버 정보만 가져오기
+        const userIds = stats.map(s => s.userId);
+        const guildMembers = await interaction.guild.members.fetch({ user: userIds, force: true });
+        stats = stats.filter(s => {
+          const member = guildMembers.get(s.userId);
+          if (!member) return true;
+          return !member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id));
+        });
+      }
+
       if (filterType === "message") stats.sort((a, b) => b.message - a.message);
       else if (filterType === "voice") stats.sort((a, b) => b.voice - a.voice);
       else stats.sort((a, b) => (b.message + b.voice) - (a.message + a.voice));
@@ -117,7 +138,8 @@ module.exports = {
       );
     }
 
-    const { embed, totalPages } = getStatsEmbed(page, period, filterType, user);
+    // ⬇️ getStatsEmbed 호출부 변경
+    const { embed, totalPages } = await getStatsEmbed(page, period, filterType, user);
 
     await interaction.reply({
       embeds: [embed],
@@ -161,7 +183,7 @@ module.exports = {
         }
       }
       if (updateEmbed) {
-        const { embed: newEmbed, totalPages: newTotal } = getStatsEmbed(page, period, filterType, user);
+        const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(page, period, filterType, user);
         await i.update({
           embeds: [newEmbed],
           components: [
