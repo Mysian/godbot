@@ -30,8 +30,6 @@ module.exports = {
     .setDescription("관리용 비밀번호를 설정/변경합니다."),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
-
     const currentPw = loadAdminPw();
 
     if (!currentPw) {
@@ -50,7 +48,6 @@ module.exports = {
               .setRequired(true)
           )
         );
-      await interaction.editReply({ content: "비밀번호를 설정해 주세요.", ephemeral: true });
       await interaction.showModal(modal);
       return;
     } else {
@@ -78,7 +75,6 @@ module.exports = {
               .setRequired(true)
           )
         );
-      await interaction.editReply({ content: "비밀번호 변경을 진행해 주세요.", ephemeral: true });
       await interaction.showModal(modal);
       return;
     }
