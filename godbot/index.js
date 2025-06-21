@@ -125,14 +125,18 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 // ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // 0. 모달 제출 처리(비밀번호설정, 관리 등)
+  // 0. 모달 제출 처리
   if (interaction.isModalSubmit()) {
     let modalHandled = false;
     for (const cmd of client.commands.values()) {
       if (typeof cmd.modalSubmit === "function") {
         try {
-          await cmd.modalSubmit(interaction);
-          modalHandled = true;
+          // warn_modal_로 시작하는 모달만 처리
+          if (interaction.customId.startsWith("warn_modal_")) {
+            await cmd.modalSubmit(interaction);
+            modalHandled = true;
+            break;
+          }
         } catch (err) {
           console.error(err);
           if (!interaction.replied && !interaction.deferred) {
