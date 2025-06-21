@@ -158,18 +158,6 @@ function decayRelationships(decayAmount = 0.3) {
   }
   if (changed) saveData(data);
 }
-function onReport(userA, userB) {
-  /* 강퇴/잠수투표 등은 하락 없음! */
-}
-function onStrongNegative(userA, userB) {
-  addScore(userA, userB, -6);
-}
-function onMute(userA, userB) {
-  addScore(userA, userB, -2);
-}
-function onPositive(userA, userB, value = 1) {
-  addScore(userA, userB, value);
-}
 
 module.exports = {
   getScore, setScore, addScore, getRelation, getRelationshipLevel,
