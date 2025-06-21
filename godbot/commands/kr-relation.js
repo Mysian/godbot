@@ -1,6 +1,10 @@
 // commands/relation.js
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const relationship = require('../utils/relationship.js');
+const member1 = await interaction.guild.members.fetch(user1).catch(() => null);
+const member2 = await interaction.guild.members.fetch(user2).catch(() => null);
+const name1 = member1 ? `**${member1.displayName}**` : `<Unknown>`;
+const name2 = member2 ? `**${member2.displayName}**` : `<Unknown>`;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -28,9 +32,9 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setTitle('유저 간 관계도')
       .addFields(
-        { name: `<@${user1}> → <@${user2}>`, value: `관계: ${rel1}\n점수: ${score1}`, inline: true },
-        { name: `<@${user2}> → <@${user1}>`, value: `관계: ${rel2}\n점수: ${score2}`, inline: true }
-      )
+  { name: `${name1} → ${name2}`, value: `관계: ${rel1}\n점수: ${score1}`, inline: true },
+  { name: `${name2} → ${name1}`, value: `관계: ${rel2}\n점수: ${score2}`, inline: true }
+)
       .setColor(0x00bfff);
 
     return interaction.reply({ embeds: [embed], ephemeral: true });
