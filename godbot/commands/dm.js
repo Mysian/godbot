@@ -14,7 +14,6 @@ function loadRelayMap() {
 function saveRelayMap(map) {
   fs.writeFileSync(RELAY_PATH, JSON.stringify(Object.fromEntries(map), null, 2));
 }
-const relayMap = loadRelayMap();
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -43,6 +42,7 @@ module.exports = {
       return interaction.reply({ content: '❗️지정된 채널을 찾을 수 없거나 텍스트채널이 아닙니다.', ephemeral: true });
     }
 
+    let relayMap = loadRelayMap();
     let thread;
     if (useExisting && relayMap.has(user.id)) {
       const threadId = relayMap.get(user.id);
@@ -77,58 +77,64 @@ module.exports = {
     client.on('messageCreate', async msg => {
       // 유저가 봇 DM에 쓴 메시지
       if (!msg.guild && !msg.author.bot) {
-        let relayMap = loadRelayMap();
-        let threadId = relayMap.get(msg.author.id);
+        try {
+          let relayMap = loadRelayMap();
+          let threadId = relayMap.get(msg.author.id);
 
-        // threadId 없거나 실제 스레드가 사라진 경우 → 새로 생성
-        let thread = null;
-        let needSave = false;
-        if (threadId) {
-          const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-          if (guild) {
-            const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-            if (parentChannel) {
-              thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+          let thread = null;
+          if (threadId) {
+            const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+            if (guild) {
+              const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+              if (parentChannel) {
+                thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+              }
             }
           }
-        }
 
-        // 기존 thread가 없으면 무조건 새로 생성
-        if (!thread) {
-          const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-          if (!guild) return;
-          const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-          if (!parentChannel) return;
-          const user = msg.author;
-          const threadName = `익명DM-${user.username}-${Date.now().toString().slice(-5)}`;
-          thread = await parentChannel.threads.create({
-            name: threadName,
-            autoArchiveDuration: 1440,
-            reason: '익명 임시 DM 스레드',
-            invitable: false,
-          });
-          relayMap.set(user.id, thread.id);
-          saveRelayMap(relayMap);
-          await thread.send({
-            content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
-          });
-        }
+          // 기존 thread가 없으면 새로 생성
+          if (!thread) {
+            const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+            if (!guild) return;
+            const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+            if (!parentChannel) return;
+            const user = msg.author;
+            const threadName = `익명DM-${user.username}-${Date.now().toString().slice(-5)}`;
+            thread = await parentChannel.threads.create({
+              name: threadName,
+              autoArchiveDuration: 1440,
+              reason: '익명 임시 DM 스레드',
+              invitable: false,
+            });
+            relayMap.set(user.id, thread.id);
+            saveRelayMap(relayMap);
+            await thread.send({
+              content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
+            });
+          }
 
-        // 스레드에 메시지 릴레이
-        await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
+          // 최종 메시지 릴레이
+          await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
+        } catch (e) {
+          console.error('[익명DM 릴레이 오류]', e);
+        }
       }
     });
 
     client.on('messageCreate', async msg => {
       if (msg.channel.type !== ChannelType.PublicThread) return;
       if (msg.author.bot) return;
-      const relayMap = loadRelayMap();
-      for (const [userId, threadId] of relayMap.entries()) {
-        if (threadId === msg.channel.id) {
-          const user = await client.users.fetch(userId).catch(() => null);
-          if (!user) return;
-          await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+      try {
+        const relayMap = loadRelayMap();
+        for (const [userId, threadId] of relayMap.entries()) {
+          if (threadId === msg.channel.id) {
+            const user = await client.users.fetch(userId).catch(() => null);
+            if (!user) return;
+            await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+          }
         }
+      } catch (e) {
+        console.error('[익명DM 역릴레이 오류]', e);
       }
     });
   }
