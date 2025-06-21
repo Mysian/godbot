@@ -11,6 +11,7 @@ const REASONS = [
   { label: '탈주', value: '탈주' },
   { label: '불쾌감 조성', value: '불쾌감 조성' },
   { label: '고의적 트롤', value: '고의적 트롤' },
+  { label: '사생활 침해', value: '사생활 침해' },
   { label: '해킹', value: '해킹' },
   { label: '기타', value: '기타' }
 ];
