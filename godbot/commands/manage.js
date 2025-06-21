@@ -19,7 +19,23 @@ const os = require("os");
 const EXCLUDE_ROLE_ID = "1371476512024559756";
 const NEWBIE_ROLE_ID = "1295701019430227988";
 const PAGE_SIZE = 1900;
-const dataDir = path.join(__dirname, "../data");
+
+function findAllJsonFiles(dir, arr = [], root = dir) {
+  const skipFolders = ['node_modules', '.git', '.next', 'tmp', 'temp'];
+  if (!fs.existsSync(dir)) return arr;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    const relPath = path.relative(root, fullPath);
+    if (skipFolders.some((skip) => file === skip)) continue;
+    if (fs.statSync(fullPath).isDirectory()) {
+      findAllJsonFiles(fullPath, arr, root);
+    } else if (file.endsWith('.json')) {
+      arr.push({ abs: fullPath, rel: relPath });
+    }
+  }
+  return arr;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -55,76 +71,71 @@ module.exports = {
       ? JSON.parse(fs.readFileSync(activityPath))
       : {};
 
-    // ============ 서버 상태 확인 ============
-    // ... 기존 require 등 생략
+    // ======= 서버 상태 =======
+    if (option === "status") {
+      const memory = process.memoryUsage();
+      const rssMB = (memory.rss / 1024 / 1024);
+      const heapMB = (memory.heapUsed / 1024 / 1024);
 
-if (option === "status") {
-  const memory = process.memoryUsage();
-  const rssMB = (memory.rss / 1024 / 1024);
-  const heapMB = (memory.heapUsed / 1024 / 1024);
+      const load = os.loadavg()[0]; // 1분 평균
+      const uptimeSec = Math.floor(process.uptime());
+      const uptime = (() => {
+        const h = Math.floor(uptimeSec / 3600);
+        const m = Math.floor((uptimeSec % 3600) / 60);
+        const s = uptimeSec % 60;
+        return `${h}시간 ${m}분 ${s}초`;
+      })();
 
-  const load = os.loadavg()[0]; // 1분 평균
-  const uptimeSec = Math.floor(process.uptime());
-  const uptime = (() => {
-    const h = Math.floor(uptimeSec / 3600);
-    const m = Math.floor((uptimeSec % 3600) / 60);
-    const s = uptimeSec % 60;
-    return `${h}시간 ${m}분 ${s}초`;
-  })();
+      let memState = "🟢";
+      if (rssMB > 1024) memState = "🔴";
+      else if (rssMB > 500) memState = "🟡";
 
-  // 상태 평가
-  let memState = "🟢";
-  if (rssMB > 1024) memState = "🔴";
-  else if (rssMB > 500) memState = "🟡";
+      let cpuState = "🟢";
+      if (load > 3) cpuState = "🔴";
+      else if (load > 1.5) cpuState = "🟡";
 
-  let cpuState = "🟢";
-  if (load > 3) cpuState = "🔴";
-  else if (load > 1.5) cpuState = "🟡";
+      let upState = "🟢";
+      if (uptimeSec < 3600) upState = "🔴";
+      else if (uptimeSec < 86400) upState = "🟡";
 
-  let upState = "🟢";
-  if (uptimeSec < 3600) upState = "🔴";
-  else if (uptimeSec < 86400) upState = "🟡";
+      let total = "🟢 안정적";
+      if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
+      else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
-  // 종합 상태
-  let total = "🟢 안정적";
-if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
-else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
+      let comment = "";
+      if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
+      else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
+      else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
 
-  // 안내 메시지
-  let comment = "";
-  if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
-  else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
-  else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
+      let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
+      if (process.env.RAILWAY_STATIC_URL) {
+        hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
+      }
 
-  let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
-  if (process.env.RAILWAY_STATIC_URL) {
-    hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
-  }
+      const embed = new EmbedBuilder()
+        .setTitle(`${total} | 서버 상태 진단`)
+        .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
+        .setDescription(comment)
+        .addFields(
+          { name: `메모리 사용량 ${memState}`, value: `RSS: \`${rssMB.toFixed(2)}MB\`\nheapUsed: \`${heapMB.toFixed(2)}MB\``, inline: true },
+          { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: \`${load.toFixed(2)}\``, inline: true },
+          { name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
+          { name: "호스트정보", value: hostInfo, inline: false },
+          { name: "Node 버전", value: process.version, inline: true }
+        )
+        .setTimestamp();
 
-  const embed = new EmbedBuilder()
-    .setTitle(`${total} | 서버 상태 진단`)
-    .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
-    .setDescription(comment)
-    .addFields(
-      { name: `메모리 사용량 ${memState}`, value: `RSS: \`${rssMB.toFixed(2)}MB\`\nheapUsed: \`${heapMB.toFixed(2)}MB\``, inline: true },
-      { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: \`${load.toFixed(2)}\``, inline: true },
-      { name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
-      { name: "호스트정보", value: hostInfo, inline: false },
-      { name: "Node 버전", value: process.version, inline: true }
-    )
-    .setTimestamp();
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return;
+    }
 
-  await interaction.editReply({ embeds: [embed], ephemeral: true });
-  return;
-}
-
-
-    // ============ 저장파일 관리 (manage-json 통합) ============
+    // ======= 저장파일 관리 =======
     if (option === "json") {
-      const files = fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"));
+      const rootDir = path.resolve(__dirname, "..");
+      const files = findAllJsonFiles(rootDir);
       if (!files.length)
         return interaction.editReply({
-          content: "data 폴더에 .json 파일이 없습니다.",
+          content: "서버 전체에 .json 파일이 없습니다.",
           ephemeral: true,
         });
 
@@ -132,9 +143,9 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
         .setCustomId("jsonfile_select")
         .setPlaceholder("관리할 JSON 파일을 선택하세요!")
         .addOptions([
-          ...files.map((f) => ({
-            label: f,
-            value: f,
+          ...files.map((f, i) => ({
+            label: f.rel.length > 90 ? '...' + f.rel.slice(-90) : f.rel,
+            value: f.rel,
           })),
           { label: "모든 파일 다운로드 (ZIP)", value: "__DOWNLOAD_ALL__" },
         ]);
@@ -158,16 +169,22 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
         if (!modalInteraction.customId.startsWith("modal_")) return;
         if (modalInteraction.user.id !== interaction.user.id) return;
 
-        const fileName = modalInteraction.customId.slice(6);
-        const filePath = path.join(dataDir, fileName);
-        const content = modalInteraction.fields.getTextInputValue(
-          "json_edit_content"
-        );
+        const relPath = modalInteraction.customId.slice(6);
+        const fileInfo = files.find(f => f.rel === relPath);
+        if (!fileInfo) {
+          await modalInteraction.reply({
+            content: "❌ 파일을 찾을 수 없습니다.",
+            ephemeral: true,
+          });
+          return;
+        }
+        const filePath = fileInfo.abs;
+        const content = modalInteraction.fields.getTextInputValue("json_edit_content");
         try {
           JSON.parse(content);
           fs.writeFileSync(filePath, content, "utf8");
           await modalInteraction.reply({
-            content: `✅ ${fileName} 저장 완료!`,
+            content: `✅ ${relPath} 저장 완료!`,
             ephemeral: true,
           });
         } catch {
@@ -181,12 +198,12 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
       collector.on("collect", async (i) => {
         if (i.customId === "jsonfile_select") {
-          const fileName = i.values[0];
+          const relPath = i.values[0];
 
-          if (fileName === "__DOWNLOAD_ALL__") {
+          if (relPath === "__DOWNLOAD_ALL__") {
             const zip = new AdmZip();
             for (const file of files) {
-              zip.addLocalFile(path.join(dataDir, file), "", file);
+              zip.addLocalFile(file.abs, path.dirname(file.rel), path.basename(file.rel));
             }
             const now = new Date();
             const dateStr =
@@ -198,7 +215,7 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
               now.getMinutes().toString().padStart(2, "0") +
               now.getSeconds().toString().padStart(2, "0");
             const filename = `${dateStr}.zip`;
-            const tmpPath = path.join(__dirname, `../data/${filename}`);
+            const tmpPath = path.join(__dirname, `../${filename}`);
             zip.writeZip(tmpPath);
 
             const attachment = new AttachmentBuilder(tmpPath, { name: filename });
@@ -215,7 +232,15 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
             return;
           }
 
-          const filePath = path.join(dataDir, fileName);
+          const fileInfo = files.find(f => f.rel === relPath);
+          if (!fileInfo) {
+            await i.reply({
+              content: "❌ 파일을 찾을 수 없습니다.",
+              ephemeral: true,
+            });
+            return;
+          }
+          const filePath = fileInfo.abs;
           let text = fs.readFileSync(filePath, "utf8");
           let pretty = "";
           try {
@@ -230,7 +255,7 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
           const getEmbed = (pageIdx) => {
             return new EmbedBuilder()
-              .setTitle(`📦 ${fileName} (페이지 ${pageIdx + 1}/${totalPages})`)
+              .setTitle(`📦 ${relPath} (페이지 ${pageIdx + 1}/${totalPages})`)
               .setDescription(
                 "아래 JSON 내용을 수정하려면 [수정] 버튼을 눌러주세요."
               )
@@ -245,19 +270,19 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
           const getRow = (pageIdx) => {
             const prevBtn = new ButtonBuilder()
-              .setCustomId(`prev_${fileName}`)
+              .setCustomId(`prev_${relPath}`)
               .setLabel("◀ 이전")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(pageIdx === 0);
 
             const nextBtn = new ButtonBuilder()
-              .setCustomId(`next_${fileName}`)
+              .setCustomId(`next_${relPath}`)
               .setLabel("다음 ▶")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(pageIdx >= totalPages - 1);
 
             const editBtn = new ButtonBuilder()
-              .setCustomId(`edit_${fileName}`)
+              .setCustomId(`edit_${relPath}`)
               .setLabel("수정")
               .setStyle(ButtonStyle.Primary);
 
@@ -279,7 +304,7 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
           });
 
           pageCollector.on("collect", async (btnI) => {
-            if (btnI.customId === `prev_${fileName}` && page > 0) {
+            if (btnI.customId === `prev_${relPath}` && page > 0) {
               page--;
               await btnI.update({
                 embeds: [getEmbed(page)],
@@ -287,7 +312,7 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
               });
             }
             if (
-              btnI.customId === `next_${fileName}` &&
+              btnI.customId === `next_${relPath}` &&
               page < totalPages - 1
             ) {
               page++;
@@ -296,14 +321,14 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
                 components: [getRow(page)],
               });
             }
-            if (btnI.customId === `edit_${fileName}`) {
+            if (btnI.customId === `edit_${relPath}`) {
               let editText = pretty;
               if (pretty.length > PAGE_SIZE * 3) {
                 editText = pretty.slice(0, PAGE_SIZE * 3);
               }
               const modal = new ModalBuilder()
-                .setCustomId(`modal_${fileName}`)
-                .setTitle(`${fileName} 수정`)
+                .setCustomId(`modal_${relPath}`)
+                .setTitle(`${relPath} 수정`)
                 .addComponents(
                   new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
@@ -325,13 +350,15 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
           });
         }
         if (i.customId.startsWith("edit_")) {
-          const fileName = i.customId.slice(5);
-          const filePath = path.join(dataDir, fileName);
+          const relPath = i.customId.slice(5);
+          const fileInfo = files.find(f => f.rel === relPath);
+          if (!fileInfo) return;
+          const filePath = fileInfo.abs;
           let text = fs.readFileSync(filePath, "utf8");
           if (text.length > PAGE_SIZE * 3) text = text.slice(0, PAGE_SIZE * 3);
           const modal = new ModalBuilder()
-            .setCustomId(`modal_${fileName}`)
-            .setTitle(`${fileName} 수정`)
+            .setCustomId(`modal_${relPath}`)
+            .setTitle(`${relPath} 수정`)
             .addComponents(
               new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
@@ -351,6 +378,7 @@ else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
       });
       return;
     }
+
     // ===== 기존 관리 =====
     if (option === "inactive" || option === "newbie") {
       const 기준날짜 = new Date(
