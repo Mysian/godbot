@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const relationship = require('../utils/relationship.js'); // 👑 관계도 시스템 연동
 
 const configPath = path.join(__dirname, '..', 'logchannel.json');
 
@@ -134,6 +135,9 @@ module.exports = {
             .setTimestamp();
 
           await logChannel.send({ embeds: [embed] });
+
+          // 👑 관계도: 신고자 → 대상, -0.5 (단방향)
+          relationship.addScore(modalInter.user.id, targetId, -5);
 
           await modalInter.reply({
             content: `✅ 신고가 정상적으로 접수되었습니다.`,
