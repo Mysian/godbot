@@ -11,7 +11,7 @@ const EXEMPT_ROLE_IDS = [
 ];
 
 function formatTimeAgo(date) {
-  if (!date) return '정보 없음';
+  if (!date) return '기록 없음';
   const now = Date.now();
   const diff = now - date.getTime();
   if (diff < 0) return '방금 전';
@@ -31,20 +31,43 @@ function getMostRecentDate(obj) {
   return latest;
 }
 
-// 유저들의 mostRecentDate도 같이
 async function fetchLongInactive(guild) {
-  const stats = getStats({ from: null, to: null });
+  const activityData = fs.existsSync(__dirname + '/../activity-data.json') ?
+    JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
   const now = new Date();
+  const allMembers = await guild.members.fetch();
   let arr = [];
-  for (const stat of stats) {
-    try {
-      const member = await guild.members.fetch(stat.userId).catch(() => null);
-      if (!member) continue;
-      if (EXEMPT_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
-      const lastDate = getMostRecentDate(require('../activity-data.json')[stat.userId]);
-      if (!lastDate) continue;
-      const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-      if (diffDays < LONG_INACTIVE_DAYS) continue;
+  for (const member of allMembers.values()) {
+    // 예외 역할 있는 유저 스킵
+    if (EXEMPT_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
+    // 봇 제외
+    if (member.user.bot) continue;
+    const userData = activityData[member.id];
+    if (!userData) {
+      // 기록조차 없는 유저 (즉, 활동 '0')
+      arr.push({
+        id: member.id,
+        tag: `<@${member.id}>`,
+        user: member.user,
+        nickname: member.displayName,
+        lastActive: null,
+      });
+      continue;
+    }
+    // 기록 있는 경우: 최근 활동일 구해서 90일 넘었으면 추가
+    const lastDate = getMostRecentDate(userData);
+    if (!lastDate) {
+      arr.push({
+        id: member.id,
+        tag: `<@${member.id}>`,
+        user: member.user,
+        nickname: member.displayName,
+        lastActive: null,
+      });
+      continue;
+    }
+    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+    if (diffDays >= LONG_INACTIVE_DAYS) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
@@ -52,35 +75,36 @@ async function fetchLongInactive(guild) {
         nickname: member.displayName,
         lastActive: lastDate,
       });
-    } catch { }
+    }
   }
   return arr;
 }
 
 async function fetchInactiveNewbies(guild) {
-  const stats = getStats({ from: null, to: null });
+  const activityData = fs.existsSync(__dirname + '/../activity-data.json') ?
+    JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
   const now = new Date();
+  const allMembers = await guild.members.fetch();
   let arr = [];
-  for (const stat of stats) {
-    try {
-      const member = await guild.members.fetch(stat.userId).catch(() => null);
-      if (!member) continue;
-      if (!member.roles.cache.has(NEWBIE_ROLE_ID)) continue;
-      const joined = member.joinedAt;
-      if (!joined || (now - joined) / (1000 * 60 * 60 * 24) < NEWBIE_DAYS) continue; // 7일 미만 제외
-      const lastDate = getMostRecentDate(require('../activity-data.json')[stat.userId]);
-      if (!lastDate) continue;
-      const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-      if (diffDays < NEWBIE_DAYS) continue;
+  for (const member of allMembers.values()) {
+    // 1. 신규 역할이 없으면 패스
+    if (!member.roles.cache.has(NEWBIE_ROLE_ID)) continue;
+    // 2. 7일 미만 가입자는 제외
+    if (!member.joinedAt || (now - member.joinedAt) / (1000 * 60 * 60 * 24) < NEWBIE_DAYS) continue;
+    // 3. 활동 기록이 없음 or 최근 7일간 활동 없음
+    const userData = activityData[member.id];
+    let lastDate = null;
+    if (userData) lastDate = getMostRecentDate(userData);
+    if (!lastDate || (now - lastDate) / (1000 * 60 * 60 * 24) >= NEWBIE_DAYS) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
         user: member.user,
         nickname: member.displayName,
-        joined: joined,
+        joined: member.joinedAt,
         lastActive: lastDate,
       });
-    } catch { }
+    }
   }
   return arr;
 }
