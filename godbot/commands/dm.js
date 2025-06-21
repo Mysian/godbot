@@ -1,13 +1,11 @@
 // commands/dm.js
-const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType } = require('discord.js');
 
 const THREAD_PARENT_CHANNEL_ID = '1380874052855529605';
 const ANON_NICK = '까리한 디스코드';
 
-// Map<userId, threadId> : "기존 DM 이어서 진행" 구현용 (간단 key-value)
-const relayMap = new Map();
-
-module.exports = {
+// relayMap은 index.js에서 import해서 같이 씀!
+module.exports = (relayMap) => ({
   data: new SlashCommandBuilder()
     .setName('디엠')
     .setDescription('익명 임시 DM 스레드를 생성/이어서 릴레이합니다.')
@@ -58,46 +56,9 @@ module.exports = {
       });
     }
 
-    // 대상 유저 초대 (운영진/명령자 X, 오직 봇만)
-    // 실제로 유저는 스레드에 직접 접근 불가.  
-    // 메시지는 봇이 DM/스레드로 릴레이
-
     await interaction.reply({
       content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 <@${user.id}>님은 **봇에게 DM**을 보내면 이 스레드로 익명 메시지가 릴레이되고,\n운영진(명령어 입력자)은 이 스레드에 메시지 작성시 해당 유저에게 익명 DM이 전송됩니다.*`,
       ephemeral: true,
     });
-  },
-  // relay handler 등록(메인 봇파일에서 아래 함수 실행 필요)
-  relayRegister(client) {
-    client.on('messageCreate', async msg => {
-  // 유저가 봇 DM에 쓴 메시지
-  if (!msg.guild && !msg.author.bot) {
-    const threadId = relayMap.get(msg.author.id);
-    if (!threadId) return;
-    const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-    if (!guild) return;
-    const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-    if (!parentChannel) return;
-    const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-    if (!thread) return;
-
-    // **닉네임/멘션/태그 모두 표기**
-    await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
   }
 });
-
-    // 스레드 → 유저 DM 릴레이 (운영진/명령자만, 봇/웹훅 제외)
-    client.on('messageCreate', async msg => {
-      if (msg.channel.type !== ChannelType.PublicThread) return;
-      if (msg.author.bot) return;
-      // relayMap에서 대상 유저 찾기
-      for (const [userId, threadId] of relayMap.entries()) {
-        if (threadId === msg.channel.id) {
-          const user = await client.users.fetch(userId).catch(() => null);
-          if (!user) return;
-          await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
-        }
-      }
-    });
-  }
-};
