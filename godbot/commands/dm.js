@@ -1,14 +1,11 @@
-// commands/dm.js
 const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 const THREAD_PARENT_CHANNEL_ID = '1380874052855529605';
 const ANON_NICK = '까리한 디스코드';
-
 const RELAY_PATH = path.join(__dirname, '../data/relayMap.json');
 
-// relayMap을 파일에서 로드 & 세이브
 function loadRelayMap() {
   if (!fs.existsSync(RELAY_PATH)) fs.writeFileSync(RELAY_PATH, '{}');
   const raw = fs.readFileSync(RELAY_PATH, 'utf8');
@@ -17,8 +14,6 @@ function loadRelayMap() {
 function saveRelayMap(map) {
   fs.writeFileSync(RELAY_PATH, JSON.stringify(Object.fromEntries(map), null, 2));
 }
-
-// Map<userId, threadId>
 const relayMap = loadRelayMap();
 
 module.exports = {
@@ -50,13 +45,11 @@ module.exports = {
 
     let thread;
     if (useExisting && relayMap.has(user.id)) {
-      // 기존 스레드 찾기
       const threadId = relayMap.get(user.id);
       thread = await parentChannel.threads.fetch(threadId).catch(() => null);
       if (!thread) relayMap.delete(user.id);
     }
     if (!thread) {
-      // 새 스레드 생성
       const threadName = `익명DM-${user.username}-${Date.now().toString().slice(-5)}`;
       thread = await parentChannel.threads.create({
         name: threadName,
@@ -71,7 +64,7 @@ module.exports = {
         content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
       });
     } else {
-      saveRelayMap(relayMap); // 혹시나 업데이트
+      saveRelayMap(relayMap);
     }
 
     await interaction.reply({
@@ -84,15 +77,44 @@ module.exports = {
     client.on('messageCreate', async msg => {
       // 유저가 봇 DM에 쓴 메시지
       if (!msg.guild && !msg.author.bot) {
-        const relayMap = loadRelayMap();
-        const threadId = relayMap.get(msg.author.id);
-        if (!threadId) return;
-        const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-        if (!guild) return;
-        const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-        if (!parentChannel) return;
-        const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-        if (!thread) return;
+        let relayMap = loadRelayMap();
+        let threadId = relayMap.get(msg.author.id);
+
+        // threadId 없거나 실제 스레드가 사라진 경우 → 새로 생성
+        let thread = null;
+        let needSave = false;
+        if (threadId) {
+          const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+          if (guild) {
+            const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+            if (parentChannel) {
+              thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+            }
+          }
+        }
+
+        // 기존 thread가 없으면 무조건 새로 생성
+        if (!thread) {
+          const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+          if (!guild) return;
+          const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+          if (!parentChannel) return;
+          const user = msg.author;
+          const threadName = `익명DM-${user.username}-${Date.now().toString().slice(-5)}`;
+          thread = await parentChannel.threads.create({
+            name: threadName,
+            autoArchiveDuration: 1440,
+            reason: '익명 임시 DM 스레드',
+            invitable: false,
+          });
+          relayMap.set(user.id, thread.id);
+          saveRelayMap(relayMap);
+          await thread.send({
+            content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
+          });
+        }
+
+        // 스레드에 메시지 릴레이
         await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
       }
     });
