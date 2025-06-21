@@ -2,10 +2,9 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('관리자도움말')
+        .setName('스탭도움말')
         .setDescription('서버 관리진 전용 도움말을 확인합니다.'),
     async execute(interaction) {
-        // 임베드 페이지들 정의
         const pages = [
             new EmbedBuilder()
                 .setTitle('👑 잘 부탁드립니다. 스탭 여러분을 위한 메뉴얼입니다.')
@@ -19,7 +18,6 @@ module.exports = {
                     + `- 스탭 여러분은 statbot을 통한 통계 현황이 집계되지 않습니다.\n\n`
                     + `## <@&1201856430580432906>  <:Staff_Badge:1276703660436492409>\n`
                     + '`유저들과 가장 친숙한 관리직`\n'
-                    + '> 현재 스탭 : <@1324685105528307765> <@456226577798135808> <@308999309947437076>\n'
                     + '- 세부적인 업무 내용 및 가이드/메뉴얼은 하단 스크롤로 확인.\n'
                     + '\n[주요 업무]\n'
                     + '- 신규 유저 승인 및 케어\n'
@@ -84,8 +82,8 @@ module.exports = {
         ];
 
         let currentPage = 0;
+        let collector = null;
 
-        // 페이지네이션 버튼
         const getRow = () => new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -100,32 +98,39 @@ module.exports = {
                     .setDisabled(currentPage === pages.length - 1)
             );
 
-        // 임베드 전송 (명령어 입력자만 보이게)
+        // 콜렉터 생성 함수 (매번 2분으로 갱신)
+        const createCollector = async () => {
+            if (collector) collector.stop('renew');
+            collector = interaction.channel.createMessageComponentCollector({
+                filter: i => i.user.id === interaction.user.id && i.message.interaction.id === interaction.id,
+                time: 120 * 1000,
+            });
+
+            collector.on('collect', async i => {
+                if (i.customId === 'prev' && currentPage > 0) {
+                    currentPage--;
+                } else if (i.customId === 'next' && currentPage < pages.length - 1) {
+                    currentPage++;
+                }
+                await i.update({ embeds: [pages[currentPage]], components: [getRow()] });
+                createCollector(); // 버튼 누르면 콜렉터 갱신 (2분 연장)
+            });
+
+            collector.on('end', async (_, reason) => {
+                if (reason !== 'renew') {
+                    try {
+                        await interaction.editReply({ components: [] });
+                    } catch { }
+                }
+            });
+        };
+
         await interaction.reply({
             embeds: [pages[currentPage]],
             components: [getRow()],
             ephemeral: true
         });
 
-        // 콜렉터
-        const collector = interaction.channel.createMessageComponentCollector({
-            filter: i => i.user.id === interaction.user.id && i.message.interaction.id === interaction.id,
-            time: 60 * 1000,
-        });
-
-        collector.on('collect', async i => {
-            if (i.customId === 'prev' && currentPage > 0) {
-                currentPage--;
-            } else if (i.customId === 'next' && currentPage < pages.length - 1) {
-                currentPage++;
-            }
-            await i.update({ embeds: [pages[currentPage]], components: [getRow()] });
-        });
-
-        collector.on('end', async () => {
-            try {
-                await interaction.editReply({ components: [] });
-            } catch { }
-        });
+        createCollector();
     },
 };
