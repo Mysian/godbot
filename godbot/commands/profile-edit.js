@@ -10,7 +10,7 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const lockfile = require('proper-lockfile'); // 추가
+const lockfile = require('proper-lockfile');
 
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 
@@ -45,7 +45,6 @@ module.exports = {
       .setDescription('수정할 정보를 버튼을 통해 변경할 수 있습니다.\n변경할 항목만 골라서 수정하세요.')
       .setColor(0x00bb77);
 
-    // 버튼 분리(5개 초과 시 ActionRow 분할)
     const buttons1 = [
       new ButtonBuilder().setCustomId('statusMsg').setLabel('상태 메시지').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('favGames').setLabel('선호 게임(3개)').setStyle(ButtonStyle.Secondary),
@@ -76,7 +75,7 @@ module.exports = {
         collector.stop();
         return;
       }
-      // 버튼별 모달 처리
+
       let modal = null;
       if (i.customId === 'statusMsg') {
         modal = new ModalBuilder()
@@ -190,20 +189,22 @@ module.exports = {
             )
           );
       }
-      // 안전 처리: 모달 없는 경우는 무시
+
       if (!modal) {
         await i.reply({ content: '잘못된 버튼입니다.', ephemeral: true });
         return;
       }
+
+      await i.deferUpdate(); // 💡 중요: 응답 처리
+
       try {
         await i.showModal(modal);
-        const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
+        const modalSubmit = await i.awaitModalSubmit({ time: 120_000, filter: (m) => m.user.id === userId });
 
         if (modalSubmit.customId === 'modalStatusMsg')
           profile.statusMsg = modalSubmit.fields.getTextInputValue('statusMsgInput');
-        if (modalSubmit.customId === 'modalFavGames') {
+        if (modalSubmit.customId === 'modalFavGames')
           profile.favGames = modalSubmit.fields.getTextInputValue('favGamesInput').split(',').map(s => s.trim()).slice(0, 3);
-        }
         if (modalSubmit.customId === 'modalOwTier')
           profile.owTier = modalSubmit.fields.getTextInputValue('owTierInput');
         if (modalSubmit.customId === 'modalLolTier')
@@ -214,6 +215,7 @@ module.exports = {
           profile.lolNick = modalSubmit.fields.getTextInputValue('lolNickInput');
         if (modalSubmit.customId === 'modalBnetNick')
           profile.bnetNick = modalSubmit.fields.getTextInputValue('bnetNickInput');
+
         await modalSubmit.reply({ content: '수정 완료! 다른 항목도 계속 수정하려면 버튼을 눌러주세요.', ephemeral: true });
       } catch (err) {
         await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
