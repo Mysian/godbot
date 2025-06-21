@@ -99,19 +99,19 @@ module.exports = {
       else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
       else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
 
-      let hostInfo = 플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()};
+      let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
       if (process.env.RAILWAY_STATIC_URL) {
-        hostInfo += \nRailway URL: ${process.env.RAILWAY_STATIC_URL};
+        hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
       }
 
       const embed = new EmbedBuilder()
-        .setTitle(${total} | 서버 상태 진단)
+        .setTitle(`${total} | 서버 상태 진단`)
         .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
         .setDescription(comment)
         .addFields(
-          { name: 메모리 사용량 ${memState}, value: RSS: \${rssMB.toFixed(2)}MB\\nheapUsed: \${heapMB.toFixed(2)}MB\`, inline: true },
-          { name: CPU 부하율 ${cpuState}, value: 1분 평균: \${load.toFixed(2)}\`, inline: true },
-          { name: 실행시간(Uptime) ${upState}, value: uptime, inline: true },
+          { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
+{ name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)}`, inline: true },
+{ name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
           { name: "호스트정보", value: hostInfo, inline: false },
           { name: "Node 버전", value: process.version, inline: true }
         )
@@ -166,12 +166,12 @@ module.exports = {
       const descList = [];
       let totalLength = 0;
       for (const m of 추방대상) {
-        const line = • <@${m.id}> (${m.user.tag});
+        const line = `• <@${m.id}> (${m.user.tag})`;
         if (totalLength + line.length + 1 < 4000) {
           descList.push(line);
           totalLength += line.length + 1;
         } else {
-          descList.push(외 ${추방대상.length - descList.length}명...);
+          descList.push(`외 ${추방대상.length - descList.length}명...`);
           break;
         }
       }
@@ -216,13 +216,12 @@ module.exports = {
               await new Promise(res => setTimeout(res, 350));
               success++;
             } catch (err) {
-              failed.push(${member.user.tag}(${member.id}));
+              failed.push(`${member.user.tag}(${member.id})`);
             }
           }
           await interaction.followUp({
             content:
-              ✅ ${success}명 추방 완료 +
-              (failed.length ? \n❌ 실패: ${failed.join(", ")} : ""),
+  `✅ ${success}명 추방 완료${failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""}`,
             ephemeral: true,
           });
         } else {
@@ -292,13 +291,13 @@ module.exports = {
         let friendsText = topFriends.length
           ? topFriends.map(
               (x, i) =>
-                #${i + 1} <@${x.userId}> (${x.relation})
+                `#${i + 1} <@${x.userId}> (${x.relation})`
             ).join("\n")
           : "없음";
         let enemiesText = enemiesArr.length
           ? enemiesArr.map(
               (x, i) =>
-                #${i + 1} <@${x.userId}> (${x.relation})
+                `#${i + 1} <@${x.userId}> (${x.relation})`
             ).join("\n")
           : "없음";
 
@@ -306,11 +305,11 @@ module.exports = {
         let timeoutExpireStr = "";
         if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
           timeoutActive = true;
-          timeoutExpireStr = <t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>;
+          timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
         }
 
         const embed = new EmbedBuilder()
-          .setTitle(유저 정보: ${target.tag})
+          .setTitle(`유저 정보: ${target.tag}`)
           .setThumbnail(target.displayAvatarURL())
           .addFields(
             { name: "유저 ID", value: target.id, inline: false },
@@ -321,7 +320,7 @@ module.exports = {
             { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
             { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
             ...(timeoutActive
-              ? [{ name: "⏱️ 타임아웃", value: **활성화 중**\n만료: ${timeoutExpireStr}, inline: false }]
+              ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
               : [])
           )
           .setColor(0x00bfff);
@@ -381,7 +380,7 @@ module.exports = {
             try {
               await interaction.guild.members.edit(targetUserId, { nick: msg.content });
               await interaction.followUp({
-                content: ✅ 별명이 **${msg.content}**(으)로 변경되었습니다.,
+                content: `✅ 별명이 **${msg.content}**(으)로 변경되었습니다.`,
                 ephemeral: true,
               });
             } catch (err) {
@@ -428,7 +427,7 @@ module.exports = {
               reason: "관리 명령어로 타임아웃 해제"
             });
             await interaction.followUp({
-              content: ✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.,
+              content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`,
               ephemeral: true,
             });
           } catch (err) {
@@ -479,13 +478,13 @@ module.exports = {
         now.getHours().toString().padStart(2, "0") +
         now.getMinutes().toString().padStart(2, "0") +
         now.getSeconds().toString().padStart(2, "0");
-      const filename = ${dateStr}.zip;
-      const tmpPath = path.join(__dirname, ../data/${filename});
+      const filename = `${dateStr}.zip`;
+      const tmpPath = path.join(__dirname, `../data/${filename}`);
       zip.writeZip(tmpPath);
 
       const attachment = new AttachmentBuilder(tmpPath, { name: filename });
       await interaction.reply({
-        content: 모든 .json 파일을 압축했습니다. (${filename}),
+        content: `모든 .json 파일을 압축했습니다. (${filename})`,
         files: [attachment],
         ephemeral: true,
       });
@@ -508,7 +507,7 @@ module.exports = {
             reason: "관리 명령어로 타임아웃 (1일)"
           });
           await interaction.reply({
-            content: ✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.,
+            content: `✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.`,
             ephemeral: true,
           });
         } catch (err) {
@@ -521,7 +520,7 @@ module.exports = {
         try {
           await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
           await interaction.reply({
-            content: ✅ <@${targetUserId}>님을 서버에서 추방했습니다.,
+            content: `✅ <@${targetUserId}>님을 서버에서 추방했습니다.`,
             ephemeral: true,
           });
         } catch (err) {
