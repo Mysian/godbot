@@ -1,4 +1,3 @@
-// utils/relationship.js
 const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../data/relationship-data.json");
@@ -23,7 +22,6 @@ const STAGE_BARRIER = [
 let data = {};
 let lastInteraction = {};
 
-// ✅ 최초 로딩
 (function init() {
   try {
     if (fs.existsSync(dataPath)) {
@@ -88,7 +86,8 @@ function setInternal(userA, userB, obj) {
 
 function getScore(userA, userB) {
   const { stage, remain } = getInternal(userA, userB);
-  return stage - 6 + (remain || 0) / (STAGE_BARRIER[stage] || 1);
+  const barrier = STAGE_BARRIER[stage] || 1;
+  return stage - 6 + (remain / barrier);
 }
 
 function setScore(userA, userB, val) {
@@ -110,7 +109,7 @@ function addScore(userA, userB, diff) {
         left = 0;
       } else {
         stage += 1;
-        left -= needed - remain;
+        left -= needed;
         remain = 0;
       }
     }
@@ -152,7 +151,7 @@ function decayRelationships(decayAmount = 0.5, thresholdMs = 1000 * 60 * 60 * 24
       if (userA === userB) continue;
       const last = lastInteraction?.[userA]?.[userB] || 0;
       if (now - last >= thresholdMs) {
-        addScore(userA, userB, -decayAmount * (STAGE_BARRIER[getInternal(userA, userB).stage] || 20));
+        addScore(userA, userB, -decayAmount);
       }
     }
   }
@@ -175,28 +174,31 @@ function getTopRelations(userId, n = 3) {
     }));
 }
 
-// ✅ 우정도 보정된 실제 상승 로직
+function getAllScores() {
+  const results = [];
+  for (const userA in data) {
+    for (const userB in data[userA]) {
+      if (userA === userB) continue;
+      const score = getScore(userA, userB);
+      results.push({ userA, userB, score });
+    }
+  }
+  return results;
+}
+
 function onPositive(userA, userB, value = 1) {
-  const { stage } = getInternal(userA, userB);
-  const barrier = STAGE_BARRIER[stage] || 20;
-  const actual = value * barrier;
-  addScore(userA, userB, actual);
+  addScore(userA, userB, value);
   recordInteraction(userA, userB);
 }
+
 function onStrongNegative(userA, userB) {
-  const { stage } = getInternal(userA, userB);
-  const barrier = STAGE_BARRIER[stage] || 20;
-  const actual = -6 * barrier;
-  addScore(userA, userB, actual);
-  recordInteraction(userA, userB);
+  addScore(userA, userB, -6);
 }
+
 function onMute(userA, userB) {
-  const { stage } = getInternal(userA, userB);
-  const barrier = STAGE_BARRIER[stage] || 20;
-  const actual = -2 * barrier;
-  addScore(userA, userB, actual);
-  recordInteraction(userA, userB);
+  addScore(userA, userB, -2);
 }
+
 function onReport(userA, userB) {}
 
 module.exports = {
@@ -208,4 +210,5 @@ module.exports = {
   decayRelationships,
   recordInteraction,
   loadLastInteraction: () => lastInteraction,
+  getAllScores,
 };
