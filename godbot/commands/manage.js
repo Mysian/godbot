@@ -75,7 +75,7 @@ module.exports = {
         const h = Math.floor(uptimeSec / 3600);
         const m = Math.floor((uptimeSec % 3600) / 60);
         const s = uptimeSec % 60;
-        return ${h}시간 ${m}분 ${s}초;
+        return `${h}시간 ${m}분 ${s}초`;
       })();
 
       let memState = "🟢";
