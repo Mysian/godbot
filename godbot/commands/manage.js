@@ -43,8 +43,8 @@ module.exports = {
         .setDescription("실행할 관리 기능을 선택하세요.")
         .setRequired(true)
         .addChoices(
-          { name: "서버상태", value: "status" },
           { name: "유저 관리", value: "user" },
+          { name: "서버상태", value: "status" },
           { name: "저장파일 백업", value: "json_backup" },
           { name: "스팸의심 계정 추방", value: "spam_kick" }
         )

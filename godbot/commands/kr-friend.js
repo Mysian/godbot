@@ -17,7 +17,7 @@ module.exports = {
       return interaction.reply({ content: '자기 자신과의 관계는 항상 "무관심"입니다.', ephemeral: true });
     }
 
-    const score = relationship.getScore(me, target);
+    const score = relationship.getScore(me, target).toFixed(2);
     const rel = relationship.getRelation(me, target);
 
     const embed = new EmbedBuilder()
@@ -25,7 +25,7 @@ module.exports = {
       .addFields(
         { name: '대상', value: `<@${target}>`, inline: true },
         { name: '관계', value: rel, inline: true },
-        { name: '호감도 점수', value: String(score), inline: true }
+        { name: '호감도 점수', value: score, inline: true }
       )
       .setColor(0x43e743);
 

@@ -34,7 +34,7 @@ module.exports = {
     );
 
     await interaction.reply({
-      content: '신고할 사유를 선택하세요.',
+      content: '신고할 사유를 선택하세요. (민원 및 문의는 /민원)',
       components: [selectRow],
       ephemeral: true,
     });
