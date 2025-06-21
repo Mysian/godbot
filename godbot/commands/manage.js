@@ -315,8 +315,8 @@ module.exports = {
             { name: "유저 ID", value: target.id, inline: false },
             { name: "서버 입장일", value: joinedAtStr, inline: false },
             { name: "마지막 활동일", value: lastActiveStr, inline: false },
-            { name: "메시지 수", value: ${stat.message || 0}, inline: true },
-            { name: "음성 이용(초)", value: ${stat.voice || 0}, inline: true },
+            { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
+            { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
             { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
             { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
             ...(timeoutActive
