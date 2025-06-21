@@ -250,104 +250,108 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
 
       async function showUserInfo(targetUserId, userInteraction) {
-        const target = await guild.members.fetch(targetUserId).then(m=>m.user).catch(()=>null);
-        const member = await guild.members.fetch(targetUserId).catch(() => null);
-        if (!member || !target) {
-          await userInteraction.editReply
-            ? userInteraction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다." })
-            : userInteraction.update({ content: "❌ 해당 유저를 찾을 수 없습니다.", embeds: [], components: [] });
-          return;
+  const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
+  const member = await guild.members.fetch(targetUserId).catch(() => null);
+  if (!member || !target) {
+    const errorReply = { content: "❌ 해당 유저를 찾을 수 없습니다." };
+    userInteraction.editReply
+      ? await userInteraction.editReply(errorReply)
+      : await userInteraction.update({ ...errorReply, embeds: [], components: [] });
+    return;
+  }
+
+  const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+
+  let lastActiveStr = "기록 없음";
+  try {
+    const rawPath = path.join(__dirname, "../../activity-data.json");
+    if (fs.existsSync(rawPath)) {
+      const activityData = JSON.parse(fs.readFileSync(rawPath, "utf8"));
+      const userData = activityData[target.id];
+      if (userData) {
+        const timestamps = Object.keys(userData).filter(ts => !isNaN(Date.parse(ts)));
+        const lastActive = timestamps.sort().reverse()[0];
+        if (lastActive) {
+          lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
         }
-
-        const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
-        let lastActiveStr = "기록 없음";
-        try {
-          const userData = require("../../activity-data.json")[target.id];
-          if (userData) {
-            const lastActive = Object.keys(userData).sort().reverse()[0];
-            if (lastActive) {
-              lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-            }
-          }
-        } catch { }
-
-        const joinedAt = member.joinedAt;
-        const joinedAtStr = joinedAt
-          ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
-          : "기록 없음";
-
-        const topFriends = relationship.getTopRelations(target.id, 3);
-        const relData = relationship.loadData()[target.id] || {};
-        const enemiesArr = Object.entries(relData)
-          .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
-          .slice(0, 3)
-          .map(([id, val]) => ({
-            userId: id,
-            stage: val.stage,
-            remain: val.remain,
-            relation: relationship.getRelationshipLevel(val.stage - 6),
-          }));
-
-        let friendsText = topFriends.length
-          ? topFriends.map(
-              (x, i) =>
-                `#${i + 1} <@${x.userId}> (${x.relation})`
-            ).join("\n")
-          : "없음";
-        let enemiesText = enemiesArr.length
-          ? enemiesArr.map(
-              (x, i) =>
-                `#${i + 1} <@${x.userId}> (${x.relation})`
-            ).join("\n")
-          : "없음";
-
-        let timeoutActive = false;
-        let timeoutExpireStr = "";
-        if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
-          timeoutActive = true;
-          timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
-        }
-
-        const embed = new EmbedBuilder()
-          .setTitle(`유저 정보: ${target.tag}`)
-          .setThumbnail(target.displayAvatarURL())
-          .addFields(
-            { name: "유저 ID", value: target.id, inline: false },
-            { name: "서버 입장일", value: joinedAtStr, inline: false },
-            { name: "마지막 활동일", value: lastActiveStr, inline: false },
-            { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
-            { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
-            { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
-            { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
-            ...(timeoutActive
-              ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
-              : [])
-          )
-          .setColor(0x00bfff);
-
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("nickname_change")
-            .setLabel("별명 변경")
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
-            .setCustomId(timeoutActive ? "timeout_release" : "timeout")
-            .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
-            .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
-          new ButtonBuilder()
-            .setCustomId("kick")
-            .setLabel("추방")
-            .setStyle(ButtonStyle.Danger),
-          new ButtonBuilder()
-            .setCustomId("refresh_userinfo")
-            .setLabel("🔄 새로고침")
-            .setStyle(ButtonStyle.Secondary)
-        );
-
-        if (userInteraction.editReply)
-          await userInteraction.editReply({ embeds: [embed], components: [row] });
-        else userInteraction.update({ embeds: [embed], components: [row], content: "" });
       }
+    }
+  } catch (err) {
+    console.error("📛 마지막 활동일 가져오는 중 오류:", err);
+  }
+
+  const joinedAt = member.joinedAt;
+  const joinedAtStr = joinedAt
+    ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+    : "기록 없음";
+
+  const topFriends = relationship.getTopRelations(target.id, 3);
+  const relData = relationship.loadData()[target.id] || {};
+  const enemiesArr = Object.entries(relData)
+    .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
+    .slice(0, 3)
+    .map(([id, val]) => ({
+      userId: id,
+      stage: val.stage,
+      remain: val.remain,
+      relation: relationship.getRelationshipLevel(val.stage - 6),
+    }));
+
+  let friendsText = topFriends.length
+    ? topFriends.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
+    : "없음";
+  let enemiesText = enemiesArr.length
+    ? enemiesArr.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
+    : "없음";
+
+  let timeoutActive = false;
+  let timeoutExpireStr = "";
+  if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
+    timeoutActive = true;
+    timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(`유저 정보: ${target.tag}`)
+    .setThumbnail(target.displayAvatarURL())
+    .addFields(
+      { name: "유저 ID", value: target.id, inline: false },
+      { name: "서버 입장일", value: joinedAtStr, inline: false },
+      { name: "마지막 활동일", value: lastActiveStr, inline: false },
+      { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
+      { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
+      { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
+      { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
+      ...(timeoutActive
+        ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
+        : [])
+    )
+    .setColor(0x00bfff);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("nickname_change")
+      .setLabel("별명 변경")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(timeoutActive ? "timeout_release" : "timeout")
+      .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
+      .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("kick")
+      .setLabel("추방")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("refresh_userinfo")
+      .setLabel("🔄 새로고침")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  if (userInteraction.editReply)
+    await userInteraction.editReply({ embeds: [embed], components: [row] });
+  else
+    await userInteraction.update({ embeds: [embed], components: [row], content: "" });
+}
 
       const target =
         interaction.options.getUser("대상유저") || interaction.user;
