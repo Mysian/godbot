@@ -5,37 +5,13 @@ const {
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  AttachmentBuilder,
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const AdmZip = require("adm-zip");
 const os = require("os");
 
 const EXCLUDE_ROLE_ID = "1371476512024559756";
 const NEWBIE_ROLE_ID = "1295701019430227988";
-const PAGE_SIZE = 1900;
-
-function findAllJsonFiles(dir, arr = [], root = dir) {
-  const skipFolders = ['node_modules', '.git', '.next', 'tmp', 'temp'];
-  if (!fs.existsSync(dir)) return arr;
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const fullPath = path.join(dir, file);
-    const relPath = path.relative(root, fullPath);
-    if (skipFolders.some((skip) => file === skip)) continue;
-    if (fs.statSync(fullPath).isDirectory()) {
-      findAllJsonFiles(fullPath, arr, root);
-    } else if (file.endsWith('.json')) {
-      arr.push({ abs: fullPath, rel: relPath });
-    }
-  }
-  return arr;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -50,7 +26,6 @@ module.exports = {
           { name: "장기 미이용 유저 추방", value: "inactive" },
           { name: "비활동 신규유저 추방", value: "newbie" },
           { name: "유저 정보 조회", value: "user" },
-          { name: "저장파일관리", value: "json" },
           { name: "서버상태", value: "status" }
         )
     )
@@ -77,7 +52,7 @@ module.exports = {
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
 
-      const load = os.loadavg()[0]; // 1분 평균
+      const load = os.loadavg()[0];
       const uptimeSec = Math.floor(process.uptime());
       const uptime = (() => {
         const h = Math.floor(uptimeSec / 3600);
@@ -126,256 +101,6 @@ module.exports = {
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed], ephemeral: true });
-      return;
-    }
-
-    // ======= 저장파일 관리 =======
-    if (option === "json") {
-      const rootDir = path.resolve(__dirname, "..");
-      const files = findAllJsonFiles(rootDir);
-      if (!files.length)
-        return interaction.editReply({
-          content: "서버 전체에 .json 파일이 없습니다.",
-          ephemeral: true,
-        });
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("jsonfile_select")
-        .setPlaceholder("관리할 JSON 파일을 선택하세요!")
-        .addOptions([
-          ...files.map((f, i) => ({
-            label: f.rel.length > 90 ? '...' + f.rel.slice(-90) : f.rel,
-            value: f.rel,
-          })),
-          { label: "모든 파일 다운로드 (ZIP)", value: "__DOWNLOAD_ALL__" },
-        ]);
-
-      const row = new ActionRowBuilder().addComponents(selectMenu);
-
-      await interaction.editReply({
-        content: "관리할 .json 파일을 선택하세요.",
-        components: [row],
-        ephemeral: true,
-      });
-
-      const filter = (i) => i.user.id === interaction.user.id;
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter,
-        time: 90000,
-      });
-
-      const modalHandler = async (modalInteraction) => {
-        if (!modalInteraction.isModalSubmit()) return;
-        if (!modalInteraction.customId.startsWith("modal_")) return;
-        if (modalInteraction.user.id !== interaction.user.id) return;
-
-        const relPath = modalInteraction.customId.slice(6);
-        const fileInfo = files.find(f => f.rel === relPath);
-        if (!fileInfo) {
-          await modalInteraction.reply({
-            content: "❌ 파일을 찾을 수 없습니다.",
-            ephemeral: true,
-          });
-          return;
-        }
-        const filePath = fileInfo.abs;
-        const content = modalInteraction.fields.getTextInputValue("json_edit_content");
-        try {
-          JSON.parse(content);
-          fs.writeFileSync(filePath, content, "utf8");
-          await modalInteraction.reply({
-            content: `✅ ${relPath} 저장 완료!`,
-            ephemeral: true,
-          });
-        } catch {
-          await modalInteraction.reply({
-            content: "❌ 유효하지 않은 JSON 데이터입니다. 저장 실패.",
-            ephemeral: true,
-          });
-        }
-      };
-      interaction.client.on("interactionCreate", modalHandler);
-
-      collector.on("collect", async (i) => {
-        if (i.customId === "jsonfile_select") {
-          const relPath = i.values[0];
-
-          if (relPath === "__DOWNLOAD_ALL__") {
-            const zip = new AdmZip();
-            for (const file of files) {
-              zip.addLocalFile(file.abs, path.dirname(file.rel), path.basename(file.rel));
-            }
-            const now = new Date();
-            const dateStr =
-              now.getFullYear().toString() +
-              (now.getMonth() + 1).toString().padStart(2, "0") +
-              now.getDate().toString().padStart(2, "0") +
-              "_" +
-              now.getHours().toString().padStart(2, "0") +
-              now.getMinutes().toString().padStart(2, "0") +
-              now.getSeconds().toString().padStart(2, "0");
-            const filename = `${dateStr}.zip`;
-            const tmpPath = path.join(__dirname, `../${filename}`);
-            zip.writeZip(tmpPath);
-
-            const attachment = new AttachmentBuilder(tmpPath, { name: filename });
-            await i.reply({
-              content: `모든 .json 파일을 압축했습니다. (${filename})`,
-              files: [attachment],
-              ephemeral: true,
-            });
-
-            setTimeout(() => {
-              if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-            }, 60 * 1000);
-
-            return;
-          }
-
-          const fileInfo = files.find(f => f.rel === relPath);
-          if (!fileInfo) {
-            await i.reply({
-              content: "❌ 파일을 찾을 수 없습니다.",
-              ephemeral: true,
-            });
-            return;
-          }
-          const filePath = fileInfo.abs;
-          let text = fs.readFileSync(filePath, "utf8");
-          let pretty = "";
-          try {
-            const parsed = JSON.parse(text);
-            pretty = JSON.stringify(parsed, null, 2);
-          } catch {
-            pretty = text;
-          }
-
-          const totalPages = Math.ceil(pretty.length / PAGE_SIZE);
-          let page = 0;
-
-          const getEmbed = (pageIdx) => {
-            return new EmbedBuilder()
-              .setTitle(`📦 ${relPath} (페이지 ${pageIdx + 1}/${totalPages})`)
-              .setDescription(
-                "아래 JSON 내용을 수정하려면 [수정] 버튼을 눌러주세요."
-              )
-              .addFields({
-                name: "내용",
-                value:
-                  "```json\n" +
-                  pretty.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE) +
-                  "\n```",
-              });
-          };
-
-          const getRow = (pageIdx) => {
-            const prevBtn = new ButtonBuilder()
-              .setCustomId(`prev_${relPath}`)
-              .setLabel("◀ 이전")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(pageIdx === 0);
-
-            const nextBtn = new ButtonBuilder()
-              .setCustomId(`next_${relPath}`)
-              .setLabel("다음 ▶")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(pageIdx >= totalPages - 1);
-
-            const editBtn = new ButtonBuilder()
-              .setCustomId(`edit_${relPath}`)
-              .setLabel("수정")
-              .setStyle(ButtonStyle.Primary);
-
-            return new ActionRowBuilder().addComponents(
-              prevBtn,
-              nextBtn,
-              editBtn
-            );
-          };
-
-          await i.update({
-            embeds: [getEmbed(page)],
-            components: [getRow(page)],
-          });
-
-          const pageCollector = i.channel.createMessageComponentCollector({
-            filter: (btn) => btn.user.id === i.user.id,
-            time: 180000,
-          });
-
-          pageCollector.on("collect", async (btnI) => {
-            if (btnI.customId === `prev_${relPath}` && page > 0) {
-              page--;
-              await btnI.update({
-                embeds: [getEmbed(page)],
-                components: [getRow(page)],
-              });
-            }
-            if (
-              btnI.customId === `next_${relPath}` &&
-              page < totalPages - 1
-            ) {
-              page++;
-              await btnI.update({
-                embeds: [getEmbed(page)],
-                components: [getRow(page)],
-              });
-            }
-            if (btnI.customId === `edit_${relPath}`) {
-              let editText = pretty;
-              if (pretty.length > PAGE_SIZE * 3) {
-                editText = pretty.slice(0, PAGE_SIZE * 3);
-              }
-              const modal = new ModalBuilder()
-                .setCustomId(`modal_${relPath}`)
-                .setTitle(`${relPath} 수정`)
-                .addComponents(
-                  new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                      .setCustomId("json_edit_content")
-                      .setLabel("JSON 데이터 (전체 복붙/수정)")
-                      .setStyle(TextInputStyle.Paragraph)
-                      .setValue(editText)
-                      .setRequired(true)
-                  )
-                );
-              await btnI.showModal(modal);
-            }
-          });
-
-          pageCollector.on("end", () => {
-            i.editReply({
-              components: [],
-            }).catch(() => {});
-          });
-        }
-        if (i.customId.startsWith("edit_")) {
-          const relPath = i.customId.slice(5);
-          const fileInfo = files.find(f => f.rel === relPath);
-          if (!fileInfo) return;
-          const filePath = fileInfo.abs;
-          let text = fs.readFileSync(filePath, "utf8");
-          if (text.length > PAGE_SIZE * 3) text = text.slice(0, PAGE_SIZE * 3);
-          const modal = new ModalBuilder()
-            .setCustomId(`modal_${relPath}`)
-            .setTitle(`${relPath} 수정`)
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("json_edit_content")
-                  .setLabel("JSON 데이터 (전체 복붙/수정)")
-                  .setStyle(TextInputStyle.Paragraph)
-                  .setValue(text)
-                  .setRequired(true)
-              )
-            );
-          await i.showModal(modal);
-        }
-      });
-
-      collector.on("end", () => {
-        interaction.client.removeListener("interactionCreate", modalHandler);
-      });
       return;
     }
 
