@@ -1,3 +1,4 @@
+// utils/relationship.js
 const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../data/relationship-data.json");
@@ -19,55 +20,52 @@ const STAGE_BARRIER = [
   40, 20, 20, 40, 20, 20, 60
 ];
 
-// ✅ 관계도 데이터 안전 로딩
-function loadData() {
-  if (!fs.existsSync(dataPath)) return {};
-  const content = fs.readFileSync(dataPath, "utf-8").trim();
-  if (!content) return {};
+let data = {};
+let lastInteraction = {};
+
+// ✅ 최초 로딩
+(function init() {
   try {
-    return JSON.parse(content);
+    if (fs.existsSync(dataPath)) {
+      const raw = fs.readFileSync(dataPath, "utf-8").trim();
+      if (raw) data = JSON.parse(raw);
+    }
   } catch (e) {
-    console.error(`[관계도 JSON 오류] 파일이 깨졌습니다:`, e);
+    console.error("[관계도 JSON 오류]", e);
     try {
       fs.renameSync(dataPath, dataPath + ".bak_" + Date.now());
     } catch {}
-    return {};
+    data = {};
   }
-}
 
-// ✅ 마지막 교류 기록 안전 로딩
-function loadLastInteraction() {
-  if (!fs.existsSync(LAST_INTERACTION_PATH)) return {};
-  const raw = fs.readFileSync(LAST_INTERACTION_PATH, "utf-8").trim();
-  if (!raw) return {};
   try {
-    return JSON.parse(raw);
+    if (fs.existsSync(LAST_INTERACTION_PATH)) {
+      const raw = fs.readFileSync(LAST_INTERACTION_PATH, "utf-8").trim();
+      if (raw) lastInteraction = JSON.parse(raw);
+    }
   } catch (e) {
-    console.error("[관계도 마지막 교류 기록 파일 오류]", e);
+    console.error("[마지막 교류 JSON 오류]", e);
     try {
       fs.renameSync(LAST_INTERACTION_PATH, LAST_INTERACTION_PATH + ".bak_" + Date.now());
     } catch {}
-    return {};
+    lastInteraction = {};
+  }
+})();
+
+function saveData() {
+  try {
+    fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("❌ 관계도 저장 실패", e);
   }
 }
 
-// ✅ 관계도 파일 저장 큐
-let writeQueue = [];
-let writing = false;
-
-function saveData(data) {
-  writeQueue.push(JSON.stringify(data, null, 2));
-  processQueue();
-}
-function processQueue() {
-  if (writing) return;
-  if (writeQueue.length === 0) return;
-  writing = true;
-  const json = writeQueue.shift();
-  fs.writeFile(dataPath, json, (err) => {
-    writing = false;
-    if (writeQueue.length > 0) processQueue();
-  });
+function saveLastInteraction() {
+  try {
+    fs.writeFileSync(LAST_INTERACTION_PATH, JSON.stringify(lastInteraction, null, 2));
+  } catch (e) {
+    console.error("❌ 마지막 교류 저장 실패", e);
+  }
 }
 
 function getRelationshipLevel(score) {
@@ -77,17 +75,15 @@ function getRelationshipLevel(score) {
 
 function getInternal(userA, userB) {
   if (userA === userB) return { stage: 6, remain: 0 };
-  const data = loadData();
   return data[userA]?.[userB] ?? { stage: 6, remain: 0 };
 }
 
 function setInternal(userA, userB, obj) {
   if (userA === userB) return;
-  const data = loadData();
   if (!data[userA]) data[userA] = {};
   const stage = Math.max(0, Math.min(20, obj.stage));
   data[userA][userB] = { stage, remain: obj.remain };
-  saveData(data);
+  saveData();
 }
 
 function getScore(userA, userB) {
@@ -139,28 +135,22 @@ function addScore(userA, userB, diff) {
   setInternal(userA, userB, { stage, remain });
 }
 
-// ✅ 마지막 교류 기록 저장
 function recordInteraction(userA, userB) {
   if (userA === userB) return;
-  const log = loadLastInteraction();
   const now = Date.now();
-  if (!log[userA]) log[userA] = {};
-  if (!log[userB]) log[userB] = {};
-  log[userA][userB] = now;
-  log[userB][userA] = now;
-  fs.writeFileSync(LAST_INTERACTION_PATH, JSON.stringify(log, null, 2));
+  if (!lastInteraction[userA]) lastInteraction[userA] = {};
+  if (!lastInteraction[userB]) lastInteraction[userB] = {};
+  lastInteraction[userA][userB] = now;
+  lastInteraction[userB][userA] = now;
+  saveLastInteraction();
 }
 
-// ✅ 자동 차감: 3일 이상 교류 없을 시
 function decayRelationships(decayAmount = 0.5, thresholdMs = 1000 * 60 * 60 * 24 * 3) {
   const now = Date.now();
-  const data = loadData();
-  const log = loadLastInteraction();
-
   for (const userA in data) {
     for (const userB in data[userA]) {
       if (userA === userB) continue;
-      const last = log?.[userA]?.[userB] || 0;
+      const last = lastInteraction?.[userA]?.[userB] || 0;
       if (now - last >= thresholdMs) {
         addScore(userA, userB, -decayAmount);
       }
@@ -173,8 +163,8 @@ function getRelation(userA, userB) {
 }
 
 function getTopRelations(userId, n = 3) {
-  const data = loadData()[userId] || {};
-  return Object.entries(data)
+  const entries = data[userId] || {};
+  return Object.entries(entries)
     .sort((a, b) => (b[1].stage - a[1].stage) || (b[1].remain - a[1].remain))
     .slice(0, n)
     .map(([id, val]) => ({
@@ -185,24 +175,25 @@ function getTopRelations(userId, n = 3) {
     }));
 }
 
-function onReport(userA, userB) {}
+function onPositive(userA, userB, value = 1) {
+  addScore(userA, userB, value);
+  recordInteraction(userA, userB);
+}
 function onStrongNegative(userA, userB) {
   addScore(userA, userB, -6);
 }
 function onMute(userA, userB) {
   addScore(userA, userB, -2);
 }
-function onPositive(userA, userB, value = 1) {
-  addScore(userA, userB, value);
-  recordInteraction(userA, userB);
-}
+function onReport(userA, userB) {}
 
 module.exports = {
   getScore, setScore, addScore, getRelation, getRelationshipLevel,
   getTopRelations,
   onMute, onReport, onStrongNegative, onPositive,
-  loadData, saveData,
+  loadData: () => data,
+  saveData,
   decayRelationships,
   recordInteraction,
-  loadLastInteraction,
+  loadLastInteraction: () => lastInteraction,
 };
