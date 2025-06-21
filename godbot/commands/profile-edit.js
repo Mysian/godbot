@@ -10,7 +10,7 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const lockfile = require('proper-lockfile');
+const lockfile = require('proper-lockfile'); // 추가
 
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 
@@ -195,16 +195,15 @@ module.exports = {
         return;
       }
 
-      await i.deferUpdate(); // 💡 중요: 응답 처리
-
       try {
         await i.showModal(modal);
-        const modalSubmit = await i.awaitModalSubmit({ time: 120_000, filter: (m) => m.user.id === userId });
+        const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
 
         if (modalSubmit.customId === 'modalStatusMsg')
           profile.statusMsg = modalSubmit.fields.getTextInputValue('statusMsgInput');
-        if (modalSubmit.customId === 'modalFavGames')
+        if (modalSubmit.customId === 'modalFavGames') {
           profile.favGames = modalSubmit.fields.getTextInputValue('favGamesInput').split(',').map(s => s.trim()).slice(0, 3);
+        }
         if (modalSubmit.customId === 'modalOwTier')
           profile.owTier = modalSubmit.fields.getTextInputValue('owTierInput');
         if (modalSubmit.customId === 'modalLolTier')
@@ -215,7 +214,6 @@ module.exports = {
           profile.lolNick = modalSubmit.fields.getTextInputValue('lolNickInput');
         if (modalSubmit.customId === 'modalBnetNick')
           profile.bnetNick = modalSubmit.fields.getTextInputValue('bnetNickInput');
-
         await modalSubmit.reply({ content: '수정 완료! 다른 항목도 계속 수정하려면 버튼을 눌러주세요.', ephemeral: true });
       } catch (err) {
         await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
