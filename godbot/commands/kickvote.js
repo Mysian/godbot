@@ -174,7 +174,7 @@ module.exports = {
             await errorLog.send({
               embeds: [
                 new EmbedBuilder()
-                  .setTitle("❗ [강퇴투표 - 채널 이동 실패]")
+                  .setTitle("❗ <#${voiceChannel.id}> 에서 <@${target.id}> 님 [강퇴투표 - 채널 이동 실패]")
                   .setDescription(`\`\`\`${err.stack?.slice(0, 1900)}\`\`\``)
                   .setColor(0xff0000),
               ],
@@ -189,7 +189,10 @@ module.exports = {
           .setColor(0xffaa00);
 
         await interaction.followUp({ embeds: [failEmbed] });
-        // 로그 채널로 전송하지 않음
+
+        if (resultLogChannel?.isTextBased()) {
+          await resultLogChannel.send({ embeds: [failEmbed] });
+        }
       }
     });
   },
