@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -74,67 +74,42 @@ module.exports = {
   },
 
   relayRegister(client) {
+    // DM → 스레드 릴레이 (파일에서 매번 최신 relayMap 불러오기!)
     client.on('messageCreate', async msg => {
-      // 유저가 봇 DM에 쓴 메시지
       if (!msg.guild && !msg.author.bot) {
-        try {
-          let relayMap = loadRelayMap();
-          let threadId = relayMap.get(msg.author.id);
-
-          let thread = null;
-          if (threadId) {
-            const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-            if (guild) {
-              const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-              if (parentChannel) {
-                thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-              }
-            }
-          }
-
-          // 기존 thread가 없으면 새로 생성
-          if (!thread) {
-            const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-            if (!guild) return;
-            const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-            if (!parentChannel) return;
-            const user = msg.author;
-            const threadName = `익명DM-${user.username}-${Date.now().toString().slice(-5)}`;
-            thread = await parentChannel.threads.create({
-              name: threadName,
-              autoArchiveDuration: 1440,
-              reason: '익명 임시 DM 스레드',
-              invitable: false,
-            });
-            relayMap.set(user.id, thread.id);
-            saveRelayMap(relayMap);
-            await thread.send({
-              content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
-            });
-          }
-
-          // 최종 메시지 릴레이
-          await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
-        } catch (e) {
-          console.error('[익명DM 릴레이 오류]', e);
+        console.log('[익명DM-DM] DM도착:', msg.author.id, msg.content);
+        const relayMap = loadRelayMap(); // 매번 최신상태로!
+        const threadId = relayMap.get(msg.author.id);
+        console.log('[익명DM-DM] relayMap:', relayMap);
+        if (!threadId) {
+          console.log('[익명DM-DM] relayMap에 해당 유저가 없음');
+          return;
         }
+        const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+        if (!guild) return;
+        const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+        if (!parentChannel) return;
+        const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+        if (!thread) {
+          console.log('[익명DM-DM] 스레드를 못찾음');
+          return;
+        }
+        await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
+        console.log('[익명DM-DM] 메시지 스레드 전송 완료');
       }
     });
 
+    // 스레드 → DM 릴레이 (운영진 → 유저)
     client.on('messageCreate', async msg => {
       if (msg.channel.type !== ChannelType.PublicThread) return;
       if (msg.author.bot) return;
-      try {
-        const relayMap = loadRelayMap();
-        for (const [userId, threadId] of relayMap.entries()) {
-          if (threadId === msg.channel.id) {
-            const user = await client.users.fetch(userId).catch(() => null);
-            if (!user) return;
-            await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
-          }
+      const relayMap = loadRelayMap();
+      for (const [userId, threadId] of relayMap.entries()) {
+        if (threadId === msg.channel.id) {
+          const user = await client.users.fetch(userId).catch(() => null);
+          if (!user) return;
+          await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
         }
-      } catch (e) {
-        console.error('[익명DM 역릴레이 오류]', e);
       }
     });
   }
