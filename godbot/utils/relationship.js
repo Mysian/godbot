@@ -13,13 +13,12 @@ const RELATIONSHIP_LEVELS = [
   "단짝"
 ];
 
-// barrier는 그대로
 const STAGE_BARRIER = [
   40,40,20,20,20,20,20,20,20,40,20,20,40,20,20,40,20,20,60,
 ];
 
 function getRelationshipLevel(score) {
-  const idx = Math.max(0, Math.min(20, score + 6));
+  const idx = Math.max(0, Math.min(20, Math.round(score) + 6));
   return RELATIONSHIP_LEVELS[idx];
 }
 
@@ -28,16 +27,14 @@ function loadData() {
   return JSON.parse(fs.readFileSync(dataPath));
 }
 
-// ==== [락파일 기반 큐/직렬 저장] ====
+// 락파일 기반 직렬 저장
 let writeQueue = [];
 let writing = false;
 
 function saveData(data) {
-  // 저장 요청을 큐에 넣음
   writeQueue.push(JSON.stringify(data, null, 2));
   processQueue();
 }
-
 function processQueue() {
   if (writing) return;
   if (writeQueue.length === 0) return;
@@ -45,10 +42,7 @@ function processQueue() {
   const json = writeQueue.shift();
   fs.writeFile(dataPath, json, (err) => {
     writing = false;
-    // 만약 큐가 또 쌓여 있으면 바로 다음 저장 실행
-    if (writeQueue.length > 0) {
-      processQueue();
-    }
+    if (writeQueue.length > 0) processQueue();
   });
 }
 
@@ -67,16 +61,16 @@ function setInternal(userA, userB, obj) {
   saveData(data);
 }
 function getScore(userA, userB) {
-  return getInternal(userA, userB).stage - 6;
+  return getInternal(userA, userB).stage - 6 + (getInternal(userA, userB).remain || 0) / (STAGE_BARRIER[getInternal(userA, userB).stage] || 1);
 }
 function setScore(userA, userB, val) {
-  setInternal(userA, userB, { stage: val + 6, remain: 0 });
+  setInternal(userA, userB, { stage: Math.floor(val) + 6, remain: 0 });
 }
 function addScore(userA, userB, diff) {
   if (userA === userB) return;
   let { stage, remain } = getInternal(userA, userB);
-
   if (diff === 0) return;
+
   if (diff > 0) {
     let left = diff;
     while (left > 0 && stage < 20) {
@@ -87,30 +81,32 @@ function addScore(userA, userB, diff) {
         left = 0;
       } else {
         stage += 1;
+        left -= needed - remain;
         remain = 0;
-        left -= needed;
       }
     }
+    if (stage >= 20) remain = 0;
   } else {
     let left = -diff;
     while (left > 0 && stage > 0) {
       const barrier = STAGE_BARRIER[stage - 1];
-      const needed = barrier - remain;
+      const needed = remain;
       if (left < needed) {
-        remain += left;
+        remain -= left;
         left = 0;
       } else {
         stage -= 1;
-        remain = 0;
         left -= needed;
+        remain = barrier;
       }
     }
+    if (stage <= 0) remain = 0;
   }
   setInternal(userA, userB, { stage, remain });
 }
 
 function getRelation(userA, userB) {
-  return getRelationshipLevel(getInternal(userA, userB).stage - 6);
+  return getRelationshipLevel(getScore(userA, userB));
 }
 function getTopRelations(userId, n = 3) {
   const data = loadData()[userId] || {};
@@ -125,7 +121,7 @@ function getTopRelations(userId, n = 3) {
     }));
   return arr;
 }
-function decayRelationships(decayAmount = 1) {
+function decayRelationships(decayAmount = 0.3) {
   const data = loadData();
   let changed = false;
   for (const userA in data) {
@@ -135,14 +131,13 @@ function decayRelationships(decayAmount = 1) {
         let left = decayAmount;
         while (left > 0 && stage > 6) {
           const barrier = STAGE_BARRIER[stage - 1];
-          const needed = barrier - remain;
-          if (left < needed) {
-            remain += left;
-            left = 0;
-          } else {
+          if (remain < left) {
+            left -= remain;
             stage -= 1;
-            remain = 0;
-            left -= needed;
+            remain = barrier;
+          } else {
+            remain -= left;
+            left = 0;
           }
         }
         data[userA][userB] = { stage, remain };
@@ -153,7 +148,7 @@ function decayRelationships(decayAmount = 1) {
   if (changed) saveData(data);
 }
 function onReport(userA, userB) {
-  addScore(userA, userB, -4);
+  /* 강퇴/잠수투표 등은 하락 없음! */
 }
 function onStrongNegative(userA, userB) {
   addScore(userA, userB, -6);
@@ -161,8 +156,8 @@ function onStrongNegative(userA, userB) {
 function onMute(userA, userB) {
   addScore(userA, userB, -2);
 }
-function onPositive(userA, userB) {
-  addScore(userA, userB, 1);
+function onPositive(userA, userB, value = 1) {
+  addScore(userA, userB, value);
 }
 
 module.exports = {
