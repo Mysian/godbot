@@ -24,8 +24,19 @@ function getRelationshipLevel(score) {
 
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
-  return JSON.parse(fs.readFileSync(dataPath));
+  const content = fs.readFileSync(dataPath, "utf-8").trim();
+  if (!content) return {};
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    console.error(`[관계도 JSON 오류] 파일이 깨졌습니다:`, e);
+    try {
+      fs.renameSync(dataPath, dataPath + ".bak_" + Date.now());
+    } catch {}
+    return {};
+  }
 }
+
 
 // 락파일 기반 직렬 저장
 let writeQueue = [];
