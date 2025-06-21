@@ -1,5 +1,5 @@
 // commands/report.js
-const { SlashCommandBuilder, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const relationship = require('../utils/relationship.js'); // 👑 관계도 시스템 연동
@@ -56,24 +56,20 @@ module.exports = {
       .setPlaceholder('예/아니오');
 
     modal.addComponents(
-      // 신고 사유
-      new (require('discord.js')).ActionRowBuilder().addComponents(reasonInput),
-      // 대상 닉네임
-      new (require('discord.js')).ActionRowBuilder().addComponents(userInput),
-      // 일시
-      new (require('discord.js')).ActionRowBuilder().addComponents(dateInput),
-      // 신고 내용
-      new (require('discord.js')).ActionRowBuilder().addComponents(detailInput),
-      // 익명
-      new (require('discord.js')).ActionRowBuilder().addComponents(anonInput)
+      new ActionRowBuilder().addComponents(reasonInput),
+      new ActionRowBuilder().addComponents(userInput),
+      new ActionRowBuilder().addComponents(dateInput),
+      new ActionRowBuilder().addComponents(detailInput),
+      new ActionRowBuilder().addComponents(anonInput)
     );
 
     await interaction.showModal(modal);
 
-    // 모달 처리 대기
-    const filter = i => i.user.id === interaction.user.id && i.customId === '신고_모달';
-    interaction.client.once('interactionCreate', async modalInter => {
-      if (!filter(modalInter)) return;
+    try {
+      const modalInter = await interaction.awaitModalSubmit({
+        filter: i => i.user.id === interaction.user.id && i.customId === '신고_모달',
+        time: 300_000 // 5분
+      });
 
       if (!fs.existsSync(configPath)) {
         return modalInter.reply({ content: '❗ 로그 채널이 아직 등록되지 않았습니다. /로그채널등록 명령어를 먼저 사용해주세요.', ephemeral: true });
@@ -134,6 +130,8 @@ module.exports = {
         content: '✅ 신고가 정상적으로 접수되었습니다.',
         ephemeral: true
       });
-    });
+    } catch (err) {
+      await interaction.followUp({ content: '❗️시간이 초과되어 신고가 취소되었습니다.', ephemeral: true }).catch(() => {});
+    }
   }
 };
