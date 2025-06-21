@@ -1,202 +1,536 @@
 const {
   SlashCommandBuilder,
-  PermissionFlagsBits,
-  StringSelectMenuBuilder,
   ActionRowBuilder,
+  EmbedBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  EmbedBuilder,
-  ComponentType
+  AttachmentBuilder
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
-const dataPath = path.join(__dirname, "../data/warnings.json");
+const AdmZip = require("adm-zip");
+const os = require("os");
 
-function loadWarnings() {
-  if (!fs.existsSync(dataPath)) return {};
-  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
+const EXCLUDE_ROLE_ID = "1371476512024559756";
+const SPAM_ROLE_ID = "1205052922296016906";
+const PAGE_SIZE = 1900;
+const dataDir = path.join(__dirname, "../data");
+const adminpwPath = path.join(dataDir, "adminpw.json");
+
+function loadAdminPw() {
+  if (!fs.existsSync(adminpwPath)) return null;
+  try {
+    const { pw } = JSON.parse(fs.readFileSync(adminpwPath, "utf8"));
+    return pw;
+  } catch {
+    return null;
+  }
 }
 
-function saveWarnings(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-}
-
-const ruleMap = {
-  "A-1-가": "비속어 별명 금지",
-  "A-1-나": "호명이 불가한 별명 금지",
-  "A-1-다": "불쾌감을 유발하는 별명 금지",
-  "A-2-가": "타 디스코드 서버 링크 금지",
-  "A-2-나": "우울계/지뢰계 글 금지",
-  "A-2-다": "타인 비방 금지",
-  "A-2-라": "선정적/불쾌 요소 금지",
-  "A-2-마": "친목/우결/컨셉 글 지양",
-  "A-2-바": "정치적, 성향자, 과한 개인 어필 지양",
-  "A-3-가": "선정적이고 폭력적인 사진 금지",
-  "A-3-나": "불쾌감을 유발하는 사진 금지",
-  "A-3-다": "타인의 사진으로 본인 행세 금지",
-  "B-1-가": "분란, 갈등, 다툼을 유발하는 채팅 금지",
-  "B-1-나": "과도한 태그(맨션) 행위 금지",
-  "B-1-다": "동의되지 않은 타인에게 반말 금지",
-  "B-1-라": "동의되지 않은 타인에게 욕설 금지",
-  "B-1-마": "불쾌감을 유발하는 이모지/스티커 금지",
-  "B-1-바": "불쾌감을 유발하는 이미지/동영상 금지",
-  "B-1-사": "선정적인 이모지/스티커 금지",
-  "B-1-아": "선정적인 이미지/동영상 금지",
-  "B-1-자": "도배하는 채팅(텍스트, 이모지, 스티커 등) 금지",
-  "B-1-차": "과한 컨셉의 채팅 지양",
-  "B-1-카": "과한 부정적 채팅 지양",
-  "B-1-타": "특정 게임을 비하하는 채팅 지양",
-  "B-2-가": "특정성이 성립되는 욕설 금지",
-  "B-2-나": "실력 비하 및 무시하는 발언 금지",
-  "B-2-다": "공용 음성채널에서 수면 및 장시간 잠수 금지",
-  "B-2-라": "불필요한 잡음 및 소음을 지속하는 행위 금지",
-  "B-2-마": "지속적으로 듣기만 하는 행위(듣보) 금지",
-  "B-2-바": "과도한 음성 변조 사용 금지",
-  "B-2-사": "진행중인 대화 및 게임 브리핑과 관련 없는 이야기로 혼란 야기 금지",
-  "B-2-아": "필요 이상의 부정적 발언 지양",
-  "B-2-자": "특정 게임을 비하하는 대화 지양",
-  "C-1-가": "서버 유저를 개인적으로 취하는 행위 금지",
-  "C-1-나": "스팸, 홍보, 광고 행위 금지",
-  "C-1-다": "남미새 / 여미새 행위 금지",
-  "C-1-라": "각 채널을 이용 목적에 맞지 않게 사용 금지",
-  "C-1-마": "게임 태그를 장착하지 않는 행위 금지",
-  "C-1-바": "게임과 관련한 소통이 일절 없는 경우를 지양",
-  "C-1-사": "고의적으로 게임을 망치는 행위 금지",
-  "C-2-가": "미성년자의 활동 금지",
-  "C-2-나": "성별 조작(넷카마) 행위 금지",
-  "C-2-다": "불쾌감을 유발하는 과한 컨셉 행위 금지",
-  "C-2-라": "허위 신고 및 거짓 민원 금지",
-  "C-3-가": "특정 유저간의 소통을 막는 행위 금지",
-  "C-3-나": "'즐겜러' 태그 유저 비난 및 폄하 금지",
-  "C-3-다": "이성 유저하고만 소통하는 행위 금지",
-  "C-3-라": "특정 유저를 저격하는 행위 금지",
-  "C-4-가": "거절 및 부정 의사를 밝힌 유저에게 집착 및 문제 야기 금지",
-  "C-4-나": "특정인을 무시하거나 비하하는 분위기 조성 금지",
-  "C-4-다": "모집방에서 유저를 모집한 뒤 잠수 및 노쇼 금지",
-  "C-4-라": "사실 위조 및 허언(거짓말) 금지",
-  "C-4-마": "타 유저의 개인정보 강요하는 행위 금지",
-  "C-4-바": "게임과 연관 없이 과한 개인정보 노출하는 행위 금지",
-  "C-4-사": "타인의 개인정보를 제3자에게 노출하는 행위 금지",
-  "D-1-가": "민원센터를 통하지 않는 민원 및 제보를 지양",
-  "D-1-나": "서버 내 악질적 유저 및 행태를 묵인하는 행위 금지",
-  "D-1-다": "허위 제보와 불명확한 신고 금지",
-  "D-2-가": "'뒷서버' 생성 및 유저 탈취 행위 금지",
-  "D-2-나": "서버 시스템의 결함 및 빈틈 악용 금지",
-  "D-2-다": "서버 시스템에 해를 가하는 행위 금지",
-  "D-2-라": "개인의 의견을 서버 공식 입장처럼 발언 금지",
-  "D-2-마": "관리진 내부 사안의 발설 금지"
-};
+const activityTracker = require("../utils/activity-tracker.js");
+const relationship = require("../utils/relationship.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("경고")
-    .setDescription("유저에게 서버 규칙에 따른 경고를 부여합니다.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
-    .addUserOption(opt =>
-      opt.setName("유저").setDescription("경고를 줄 유저").setRequired(true)
+    .setName("관리")
+    .setDescription("서버 관리 명령어입니다.")
+    .addStringOption((option) =>
+      option
+        .setName("옵션")
+        .setDescription("실행할 관리 기능을 선택하세요.")
+        .setRequired(true)
+        .addChoices(
+          { name: "유저 관리", value: "user" },
+          { name: "서버상태", value: "status" },
+          { name: "저장파일 백업", value: "json_backup" },
+          { name: "스팸의심 계정 추방", value: "spam_kick" }
+        )
+    )
+    .addUserOption((option) =>
+      option
+        .setName("대상유저")
+        .setDescription("정보를 조회할 유저")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
-    const target = interaction.options.getUser("유저");
+    const option = interaction.options.getString("옵션");
+    const guild = interaction.guild;
+    const activityStats = activityTracker.getStats({});
 
-    const select = new StringSelectMenuBuilder()
-      .setCustomId("warn_rule")
-      .setPlaceholder("경고 사유를 선택하세요")
-      .addOptions(
-        Object.entries(ruleMap).map(([code, desc]) => ({
-          label: `[${code}]`,
-          description: desc.slice(0, 50),
-          value: `${code}_${target.id}`
-        }))
-      );
+    // ====== 서버상태 ======
+    if (option === "status") {
+      await interaction.deferReply({ ephemeral: true });
 
-    const row = new ActionRowBuilder().addComponents(select);
+      const memory = process.memoryUsage();
+      const rssMB = (memory.rss / 1024 / 1024);
+      const heapMB = (memory.heapUsed / 1024 / 1024);
 
-    await interaction.reply({
-      content: `💡 <@${target.id}> 유저에게 적용할 **경고 사유**를 선택하세요.`,
-      components: [row],
-      ephemeral: true
-    });
+      const load = os.loadavg()[0];
+      const uptimeSec = Math.floor(process.uptime());
+      const uptime = (() => {
+        const h = Math.floor(uptimeSec / 3600);
+        const m = Math.floor((uptimeSec % 3600) / 60);
+        const s = uptimeSec % 60;
+        return ${h}시간 ${m}분 ${s}초;
+      })();
 
-    const collector = interaction.channel.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
-      time: 60000,
-      max: 1
-    });
+      let memState = "🟢";
+      if (rssMB > 1024) memState = "🔴";
+      else if (rssMB > 500) memState = "🟡";
 
-    collector.on("collect", async sel => {
-      if (sel.user.id !== interaction.user.id) {
-        return sel.reply({ content: "이 선택은 명령어 실행자만 가능합니다.", ephemeral: true });
+      let cpuState = "🟢";
+      if (load > 3) cpuState = "🔴";
+      else if (load > 1.5) cpuState = "🟡";
+
+      let upState = "🟢";
+      if (uptimeSec < 3600) upState = "🔴";
+      else if (uptimeSec < 86400) upState = "🟡";
+
+      let total = "🟢 안정적";
+      if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
+      else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
+
+      let comment = "";
+      if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
+      else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
+      else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
+
+      let hostInfo = 플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()};
+      if (process.env.RAILWAY_STATIC_URL) {
+        hostInfo += \nRailway URL: ${process.env.RAILWAY_STATIC_URL};
       }
 
-      const [code, uid] = sel.values[0].split("_");
-      const reasonText = ruleMap[code];
+      const embed = new EmbedBuilder()
+        .setTitle(${total} | 서버 상태 진단)
+        .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
+        .setDescription(comment)
+        .addFields(
+          { name: 메모리 사용량 ${memState}, value: RSS: \${rssMB.toFixed(2)}MB\\nheapUsed: \${heapMB.toFixed(2)}MB\`, inline: true },
+          { name: CPU 부하율 ${cpuState}, value: 1분 평균: \${load.toFixed(2)}\`, inline: true },
+          { name: 실행시간(Uptime) ${upState}, value: uptime, inline: true },
+          { name: "호스트정보", value: hostInfo, inline: false },
+          { name: "Node 버전", value: process.version, inline: true }
+        )
+        .setTimestamp();
 
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    // ====== 저장파일 백업 ======
+    if (option === "json_backup") {
       const modal = new ModalBuilder()
-        .setCustomId(`warn_modal_${uid}_${code}`)
-        .setTitle("경고 상세 사유 입력");
+        .setCustomId("adminpw_json_backup")
+        .setTitle("관리 비밀번호 입력")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("pw")
+              .setLabel("비밀번호 4자리")
+              .setStyle(TextInputStyle.Short)
+              .setMinLength(4)
+              .setMaxLength(4)
+              .setRequired(true)
+          )
+        );
+      await interaction.showModal(modal);
+      return;
+    }
 
-      const input = new TextInputBuilder()
-        .setCustomId("detail")
-        .setLabel("해당 위반에 대한 구체적인 설명")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
-        .setValue(reasonText);
+      // ====== 스팸의심 계정 추방 ======
+    if (option === "spam_kick") {
+      await interaction.deferReply({ ephemeral: true });
+      const members = await guild.members.fetch();
+      const 추방대상 = [];
 
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-      await sel.showModal(modal);
-    });
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
+        const roles = member.roles.cache;
+        const hasSpamRole = roles.has(SPAM_ROLE_ID);
+        const onlyNewbie =
+          roles.size === 1 && roles.has("1295701019430227988");
+        const onlySpam =
+          roles.size === 1 && roles.has(SPAM_ROLE_ID);
+        const noRole = roles.filter(r => r.id !== guild.id).size === 0;
+
+        if (noRole || hasSpamRole || onlyNewbie || onlySpam) {
+          추방대상.push(member);
+        }
+      }
+
+      const descList = [];
+      let totalLength = 0;
+      for (const m of 추방대상) {
+        const line = • <@${m.id}> (${m.user.tag});
+        if (totalLength + line.length + 1 < 4000) {
+          descList.push(line);
+          totalLength += line.length + 1;
+        } else {
+          descList.push(외 ${추방대상.length - descList.length}명...);
+          break;
+        }
+      }
+
+      const preview = new EmbedBuilder()
+        .setTitle("[스팸의심 계정] 추방 대상 미리보기")
+        .setDescription(
+          추방대상.length ? descList.join("\n") : "✅ 추방 대상자가 없습니다."
+        )
+        .setColor(0xee4444);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("confirm_spam_kick")
+          .setLabel("✅ 예")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId("cancel_spam_kick")
+          .setLabel("❌ 아니오")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.editReply({ embeds: [preview], components: [row] });
+
+      const collector = interaction.channel.createMessageComponentCollector({
+        filter: (i) => i.user.id === interaction.user.id,
+        time: 20000,
+      });
+
+      collector.on("collect", async (i) => {
+        if (i.customId === "confirm_spam_kick") {
+          await i.update({
+            content: "⏳ 스팸의심 계정 추방 진행 중...",
+            embeds: [],
+            components: [],
+          });
+
+          let success = 0, failed = [];
+          for (const member of 추방대상) {
+            try {
+              await member.kick("스팸/비정상 계정 자동 추방");
+              await new Promise(res => setTimeout(res, 350));
+              success++;
+            } catch (err) {
+              failed.push(${member.user.tag}(${member.id}));
+            }
+          }
+          await interaction.followUp({
+            content:
+              ✅ ${success}명 추방 완료 +
+              (failed.length ? \n❌ 실패: ${failed.join(", ")} : ""),
+            ephemeral: true,
+          });
+        } else {
+          await i.update({
+            content: "❌ 추방이 취소되었습니다.",
+            embeds: [],
+            components: [],
+          });
+        }
+      });
+
+      collector.on("end", async (collected) => {
+        if (collected.size === 0) {
+          await interaction.editReply({
+            content: "⏰ 시간이 초과되어 추방이 취소되었습니다.",
+            embeds: [],
+            components: [],
+          });
+        }
+      });
+      return;
+    }
+
+    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
+    if (option === "user") {
+      await interaction.deferReply({ ephemeral: true });
+
+      async function showUserInfo(targetUserId, userInteraction) {
+        const target = await guild.members.fetch(targetUserId).then(m=>m.user).catch(()=>null);
+        const member = await guild.members.fetch(targetUserId).catch(() => null);
+        if (!member || !target) {
+          await userInteraction.editReply
+            ? userInteraction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다." })
+            : userInteraction.update({ content: "❌ 해당 유저를 찾을 수 없습니다.", embeds: [], components: [] });
+          return;
+        }
+
+        const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+        let lastActiveStr = "기록 없음";
+        try {
+          const userData = require("../../activity-data.json")[target.id];
+          if (userData) {
+            const lastActive = Object.keys(userData).sort().reverse()[0];
+            if (lastActive) {
+              lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+            }
+          }
+        } catch { }
+
+        const joinedAt = member.joinedAt;
+        const joinedAtStr = joinedAt
+          ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+          : "기록 없음";
+
+        const topFriends = relationship.getTopRelations(target.id, 3);
+        const relData = relationship.loadData()[target.id] || {};
+        const enemiesArr = Object.entries(relData)
+          .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
+          .slice(0, 3)
+          .map(([id, val]) => ({
+            userId: id,
+            stage: val.stage,
+            remain: val.remain,
+            relation: relationship.getRelationshipLevel(val.stage - 6),
+          }));
+
+        let friendsText = topFriends.length
+          ? topFriends.map(
+              (x, i) =>
+                #${i + 1} <@${x.userId}> (${x.relation})
+            ).join("\n")
+          : "없음";
+        let enemiesText = enemiesArr.length
+          ? enemiesArr.map(
+              (x, i) =>
+                #${i + 1} <@${x.userId}> (${x.relation})
+            ).join("\n")
+          : "없음";
+
+        let timeoutActive = false;
+        let timeoutExpireStr = "";
+        if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
+          timeoutActive = true;
+          timeoutExpireStr = <t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>;
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(유저 정보: ${target.tag})
+          .setThumbnail(target.displayAvatarURL())
+          .addFields(
+            { name: "유저 ID", value: target.id, inline: false },
+            { name: "서버 입장일", value: joinedAtStr, inline: false },
+            { name: "마지막 활동일", value: lastActiveStr, inline: false },
+            { name: "메시지 수", value: ${stat.message || 0}, inline: true },
+            { name: "음성 이용(초)", value: ${stat.voice || 0}, inline: true },
+            { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
+            { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
+            ...(timeoutActive
+              ? [{ name: "⏱️ 타임아웃", value: **활성화 중**\n만료: ${timeoutExpireStr}, inline: false }]
+              : [])
+          )
+          .setColor(0x00bfff);
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("nickname_change")
+            .setLabel("별명 변경")
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId(timeoutActive ? "timeout_release" : "timeout")
+            .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
+            .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId("kick")
+            .setLabel("추방")
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId("refresh_userinfo")
+            .setLabel("🔄 새로고침")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        if (userInteraction.editReply)
+          await userInteraction.editReply({ embeds: [embed], components: [row] });
+        else userInteraction.update({ embeds: [embed], components: [row], content: "" });
+      }
+
+      const target =
+        interaction.options.getUser("대상유저") || interaction.user;
+      await showUserInfo(target.id, interaction);
+
+      const collector = interaction.channel.createMessageComponentCollector({
+        filter: (i) => i.user.id === interaction.user.id,
+        time: 60 * 1000,
+      });
+
+      collector.on("collect", async (i) => {
+        const targetUserId = target.id;
+
+        if (i.customId === "refresh_userinfo") {
+          await showUserInfo(targetUserId, i);
+        } else if (i.customId === "nickname_change") {
+          await i.update({
+            content: "✏️ 새로운 별명을 입력해주세요.",
+            embeds: [],
+            components: [],
+          });
+
+          const msgCollector = interaction.channel.createMessageCollector({
+            filter: (m) => m.author.id === interaction.user.id,
+            time: 20000,
+            max: 1,
+          });
+
+          msgCollector.on("collect", async (msg) => {
+            try {
+              await interaction.guild.members.edit(targetUserId, { nick: msg.content });
+              await interaction.followUp({
+                content: ✅ 별명이 **${msg.content}**(으)로 변경되었습니다.,
+                ephemeral: true,
+              });
+            } catch (err) {
+              await interaction.followUp({
+                content: "❌ 별명 변경 실패 (권한 문제일 수 있음)",
+                ephemeral: true,
+              });
+            }
+          });
+
+          msgCollector.on("end", (collected) => {
+            if (collected.size === 0) {
+              interaction.followUp({
+                content: "⏰ 시간이 초과되어 별명 변경이 취소되었습니다.",
+                ephemeral: true,
+              });
+            }
+          });
+        } else if (i.customId === "timeout" || i.customId === "kick") {
+          const modal = new ModalBuilder()
+            .setCustomId(adminpw_user_${i.customId}_${targetUserId})
+            .setTitle("관리 비밀번호 입력")
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("pw")
+                  .setLabel("비밀번호 4자리")
+                  .setStyle(TextInputStyle.Short)
+                  .setMinLength(4)
+                  .setMaxLength(4)
+                  .setRequired(true)
+              )
+            );
+          await i.showModal(modal);
+        } else if (i.customId === "timeout_release") {
+          await i.update({
+            content: "⏳ 타임아웃 해제 중...",
+            embeds: [],
+            components: [],
+          });
+          try {
+            await interaction.guild.members.edit(targetUserId, {
+              communicationDisabledUntil: null,
+              reason: "관리 명령어로 타임아웃 해제"
+            });
+            await interaction.followUp({
+              content: ✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.,
+              ephemeral: true,
+            });
+          } catch (err) {
+            await interaction.followUp({
+              content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)",
+              ephemeral: true,
+            });
+          }
+        }
+      });
+
+      collector.on("end", (collected) => {});
+      return;
+    }
   },
 
   async modalSubmit(interaction) {
-    const [_, userId, code] = interaction.customId.split("_");
-    const detail = interaction.fields.getTextInputValue("detail");
-
-    const warnings = loadWarnings();
-    if (!warnings[userId]) warnings[userId] = [];
-    warnings[userId].push({
-      code,
-      detail,
-      date: new Date().toISOString(),
-      mod: interaction.user.id
-    });
-
-    const count = warnings[userId].length;
-    saveWarnings(warnings);
-
-    const member = await interaction.guild.members.fetch(userId).catch(() => null);
-    if (member) {
-      let duration = 0;
-      if (count === 1) duration = 1000 * 60 * 60 * 24;
-      else if (count === 2) duration = 1000 * 60 * 60 * 24 * 7;
-      else if (count >= 3) {
-        await member.kick(`누적 경고 3회 (${code})`);
-      }
-      if (duration > 0) {
-        await member.timeout(duration, `경고 누적 (${code})`);
-      }
+    const pw = interaction.fields.getTextInputValue("pw");
+    const savedPw = loadAdminPw();
+    if (!savedPw || pw !== savedPw) {
+      await interaction.reply({ content: "❌ 비밀번호가 일치하지 않습니다.", ephemeral: true });
+      return;
     }
 
-    try {
-      await interaction.client.users.send(userId, {
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🚫 경고 알림")
-            .setDescription(`서버 규칙 **${code}** 위반으로 경고가 부여되었습니다.`)
-            .addFields(
-              { name: "📌 사유", value: detail },
-              { name: "📅 일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>` },
-              { name: "📎 경고 누적", value: `${count}회` }
-            )
-            .setColor("Red")
-        ]
-      });
-    } catch (e) {}
+    // 저장파일 백업
+    if (interaction.customId === "adminpw_json_backup") {
+      const files = fs.existsSync(dataDir)
+        ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
+        : [];
+      if (!files.length) {
+        await interaction.reply({
+          content: "data 폴더에 .json 파일이 없습니다.",
+          ephemeral: true,
+        });
+        return;
+      }
 
-    await interaction.reply({
-      content: `✅ <@${userId}> 유저에게 경고가 부여되었습니다. (총 ${count}회)`,
-      ephemeral: true
-    });
+      const zip = new AdmZip();
+      for (const file of files) {
+        zip.addLocalFile(path.join(dataDir, file), "", file);
+      }
+      const now = new Date();
+      const dateStr =
+        now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, "0") +
+        now.getDate().toString().padStart(2, "0") +
+        "_" +
+        now.getHours().toString().padStart(2, "0") +
+        now.getMinutes().toString().padStart(2, "0") +
+        now.getSeconds().toString().padStart(2, "0");
+      const filename = ${dateStr}.zip;
+      const tmpPath = path.join(__dirname, ../data/${filename});
+      zip.writeZip(tmpPath);
+
+      const attachment = new AttachmentBuilder(tmpPath, { name: filename });
+      await interaction.reply({
+        content: 모든 .json 파일을 압축했습니다. (${filename}),
+        files: [attachment],
+        ephemeral: true,
+      });
+
+      setTimeout(() => {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      }, 60 * 1000);
+      return;
+    }
+
+    // 유저관리 - 타임아웃/추방
+    if (interaction.customId.startsWith("adminpw_user_")) {
+      const arr = interaction.customId.split("_");
+      const action = arr[2];
+      const targetUserId = arr.slice(3).join("_");
+      if (action === "timeout") {
+        try {
+          await interaction.guild.members.edit(targetUserId, {
+            communicationDisabledUntil: Date.now() + 24 * 60 * 60 * 1000,
+            reason: "관리 명령어로 타임아웃 (1일)"
+          });
+          await interaction.reply({
+            content: ✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.,
+            ephemeral: true,
+          });
+        } catch (err) {
+          await interaction.reply({
+            content: "❌ 타임아웃 실패 (권한 문제일 수 있음)",
+            ephemeral: true,
+          });
+        }
+      } else if (action === "kick") {
+        try {
+          await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
+          await interaction.reply({
+            content: ✅ <@${targetUserId}>님을 서버에서 추방했습니다.,
+            ephemeral: true,
+          });
+        } catch (err) {
+          await interaction.reply({
+            content: "❌ 추방 실패 (권한 문제일 수 있음)",
+            ephemeral: true,
+          });
+        }
+      }
+    }
   }
 };
