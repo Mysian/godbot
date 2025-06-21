@@ -19,6 +19,7 @@ const client = new Client({
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
+
 module.exports.client = client;
 
 client.commands = new Collection();
@@ -121,11 +122,12 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// ✅ InteractionCreate 리스너(모달 제출 포함)
+// ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // 0. 공지하기 모달 제출 처리만 예외
+  // 0. 공지하기 모달 제출 처리
   if (interaction.isModalSubmit()) {
+    // 공지하기 모달용 핸들러
     if (
       interaction.customId.startsWith("set_channel_modal") ||
       interaction.customId.startsWith("add_tip_modal") ||
