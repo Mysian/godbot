@@ -27,10 +27,10 @@ module.exports = {
           { name: "🚚 /이동 [음성채널명]", value: "입력한 음성채널로 이동 (연결된 상태여야 함)", inline: true },
           { name: "\u200B", value: "------", inline: false },
           // 추가: 관계/우정 명령어 안내
-          { name: "💞 /우정 [유저]", value: "특정 유저를 생각하는 자신의 관계 확인", inline: true },
-          { name: "🔗 /관계 [유저1] [유저2]", value: "두 유저 간의 관계 확인", inline: true },
-          { name: "👍 /좋아요 [유저]", value: "특정 유저와의 호감도를 조금 올리기 (24시간 쿨타임)", inline: true },
-          { name: "👎 /싫어요 [유저]", value: "특정 유저와의 호감도를 조금 내리기 (24시간 쿨타임)", inline: true }
+          { name: "🔊 /이용현황", value: "기간별 음성채널/일반채팅 이용 현황 확인", inline: true },
+          { name: "💞 /우정 [유저]", value: "자신이 특정 유저를 대하는 관계 확인", inline: true },
+          { name: "👍 /좋아요 [유저]", value: "특정 유저와 우정 올리기", inline: true },
+          { name: "👎 /싫어요 [유저]", value: "특정 유저와 우정 내리기", inline: true }
         )
         .setFooter({ text: "서버: 까리한 디스코드" })
         .setColor(0x00bfff)
