@@ -69,21 +69,22 @@ module.exports = {
   },
   // relay handler 등록(메인 봇파일에서 아래 함수 실행 필요)
   relayRegister(client) {
-    // 유저 → 봇 DM → 스레드 릴레이
     client.on('messageCreate', async msg => {
-      // 유저가 봇 DM에 쓴 메시지
-      if (!msg.guild && !msg.author.bot) {
-        const threadId = relayMap.get(msg.author.id);
-        if (!threadId) return;
-        const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
-        if (!guild) return;
-        const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
-        if (!parentChannel) return;
-        const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-        if (!thread) return;
-        await thread.send({ content: `**[${ANON_NICK}]**\n${msg.content}` });
-      }
-    });
+  // 유저가 봇 DM에 쓴 메시지
+  if (!msg.guild && !msg.author.bot) {
+    const threadId = relayMap.get(msg.author.id);
+    if (!threadId) return;
+    const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
+    if (!guild) return;
+    const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+    if (!parentChannel) return;
+    const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+    if (!thread) return;
+
+    // **닉네임/멘션/태그 모두 표기**
+    await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
+  }
+});
 
     // 스레드 → 유저 DM 릴레이 (운영진/명령자만, 봇/웹훅 제외)
     client.on('messageCreate', async msg => {
