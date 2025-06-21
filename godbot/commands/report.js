@@ -5,10 +5,6 @@ const path = require('path');
 const relationship = require('../utils/relationship.js'); // 👑 관계도 시스템 연동
 
 const configPath = path.join(__dirname, '..', 'logchannel.json');
-const REASONS = [
-  '욕설', '비매너', '탈주', '불쾌감 조성', '고의적 트롤', '사생활 침해',
-  '노쇼 및 파토', '무시 및 인신공격', '해킹', '기타'
-];
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,7 +21,7 @@ module.exports = {
       .setLabel('신고 사유 (필수)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
-      .setPlaceholder('예: 욕설, 비매너, 트롤 등 (목록: 욕설, 비매너, 탈주, 불쾌감 조성, 고의적 트롤, 사생활 침해, 노쇼 및 파토, 무시 및 인신공격, 해킹, 기타)');
+      .setPlaceholder('예: 욕설, 비매너, 트롤 등 (자유롭게 작성 가능)');
 
     const userInput = new TextInputBuilder()
       .setCustomId('신고_대상')
@@ -81,9 +77,6 @@ module.exports = {
       }
 
       const selectedReason = modalInter.fields.getTextInputValue('신고_사유').trim();
-      if (!REASONS.includes(selectedReason)) {
-        return modalInter.reply({ content: '❗️신고 사유를 정확하게 입력해 주세요. (목록에서 복사 권장)', ephemeral: true });
-      }
 
       const targetNick = modalInter.fields.getTextInputValue('신고_대상').trim();
       const eventDate = modalInter.fields.getTextInputValue('신고_일시') || '미입력';
