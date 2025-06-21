@@ -37,7 +37,6 @@ function loadData() {
   }
 }
 
-
 // 락파일 기반 직렬 저장
 let writeQueue = [];
 let writing = false;
@@ -132,36 +131,26 @@ function getTopRelations(userId, n = 3) {
     }));
   return arr;
 }
-function decayRelationships(decayAmount = 0.3) {
-  const data = loadData();
-  let changed = false;
-  for (const userA in data) {
-    for (const userB in data[userA]) {
-      if (data[userA][userB].stage > 6) {
-        let { stage, remain } = data[userA][userB];
-        let left = decayAmount;
-        while (left > 0 && stage > 6) {
-          const barrier = STAGE_BARRIER[stage - 1];
-          if (remain < left) {
-            left -= remain;
-            stage -= 1;
-            remain = barrier;
-          } else {
-            remain -= left;
-            left = 0;
-          }
-        }
-        data[userA][userB] = { stage, remain };
-        changed = true;
-      }
-    }
-  }
-  if (changed) saveData(data);
+
+// ✅ 자동 감소 제거됨
+// function decayRelationships(...) { ... } 삭제됨
+
+function onReport(userA, userB) {
+  // 강퇴/잠수투표 등은 하락 없음
+}
+function onStrongNegative(userA, userB) {
+  addScore(userA, userB, -6);
+}
+function onMute(userA, userB) {
+  addScore(userA, userB, -2);
+}
+function onPositive(userA, userB, value = 1) {
+  addScore(userA, userB, value);
 }
 
 module.exports = {
   getScore, setScore, addScore, getRelation, getRelationshipLevel,
-  getTopRelations, decayRelationships,
+  getTopRelations,
   onMute, onReport, onStrongNegative, onPositive,
   loadData, saveData
 };
