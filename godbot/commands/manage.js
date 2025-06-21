@@ -60,13 +60,14 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
     const option = interaction.options.getString("옵션");
     const guild = interaction.guild;
     const activityStats = activityTracker.getStats({});
 
     // ====== 서버상태 ======
     if (option === "status") {
+      await interaction.deferReply({ ephemeral: true });
+
       const memory = process.memoryUsage();
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
@@ -125,7 +126,7 @@ module.exports = {
 
     // ====== 저장파일 백업 ======
     if (option === "json_backup") {
-      // 압축/전송 전 비밀번호 모달부터!
+      // deferReply/editReply 사용 금지!
       const modal = new ModalBuilder()
         .setCustomId("adminpw_json_backup")
         .setTitle("관리 비밀번호 입력")
@@ -140,13 +141,13 @@ module.exports = {
               .setRequired(true)
           )
         );
-      await interaction.editReply({ content: "잠시만 기다려주세요.", embeds: [], components: [] });
       await interaction.showModal(modal);
       return;
     }
 
     // ====== 장기 미이용/비활동 신규유저 추방 ======
     if (option === "inactive" || option === "newbie") {
+      // deferReply/editReply 사용 금지!
       const modal = new ModalBuilder()
         .setCustomId(`adminpw_kick_${option}`)
         .setTitle("관리 비밀번호 입력")
@@ -161,13 +162,13 @@ module.exports = {
               .setRequired(true)
           )
         );
-      await interaction.editReply({ content: "잠시만 기다려주세요.", embeds: [], components: [] });
       await interaction.showModal(modal);
       return;
     }
 
     // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
+      await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
       const 추방대상 = [];
 
@@ -270,8 +271,10 @@ module.exports = {
       return;
     }
 
-    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
+      // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
     if (option === "user") {
+      await interaction.deferReply({ ephemeral: true });
+
       async function showUserInfo(targetUserId, userInteraction) {
         const target = await guild.members.fetch(targetUserId).then(m=>m.user).catch(()=>null);
         const member = await guild.members.fetch(targetUserId).catch(() => null);
