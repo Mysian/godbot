@@ -12,7 +12,6 @@ const path = require('path');
 
 const configPath = path.join(__dirname, '..', 'logchannel.json');
 
-// 민원 사유 옵션
 const REASONS = [
   { label: '문의', value: '문의' },
   { label: '건의', value: '건의' },
@@ -27,6 +26,11 @@ module.exports = {
     .setDescription('운영진에게 민원을 보냅니다.'),
 
   async execute(interaction) {
+    // 채널 타입 검사 (DM 방지)
+    if (!interaction.guild || !interaction.channel) {
+      return await interaction.reply({ content: "서버 텍스트 채널에서만 사용 가능합니다.", ephemeral: true });
+    }
+
     // 1. 민원 사유 드롭다운
     const selectRow = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -41,11 +45,11 @@ module.exports = {
       ephemeral: true,
     });
 
-    // 드롭다운 선택 대기
     try {
-      const selectInteraction = await interaction.awaitMessageComponent({ 
-        filter: i => i.user.id === interaction.user.id && i.customId === '민원_사유', 
-        time: 300_000 
+      // 💡 selectMenu를 'interaction'에서 받는다!
+      const selectInteraction = await interaction.awaitMessageComponent({
+        filter: i => i.user.id === interaction.user.id && i.customId === '민원_사유',
+        time: 300_000,
       });
 
       const selectedReason = selectInteraction.values[0];
@@ -73,10 +77,10 @@ module.exports = {
       );
       await selectInteraction.showModal(modal);
 
-      // 모달 입력 대기
-      const modalInteraction = await selectInteraction.awaitModalSubmit({ 
+      // 💡 모달 응답을 'selectInteraction'에서 대기
+      const modalInteraction = await selectInteraction.awaitModalSubmit({
         filter: m => m.user.id === interaction.user.id && m.customId === '민원_모달',
-        time: 300_000 
+        time: 300_000,
       });
 
       if (!fs.existsSync(configPath)) {
@@ -110,7 +114,12 @@ module.exports = {
       });
 
     } catch (err) {
-      await interaction.editReply({ content: '❗️시간이 초과되어 민원이 취소되었습니다.', components: [], ephemeral: true }).catch(() => {});
+      // 💡 selectInteraction.editReply 시도, interaction.editReply Fallback
+      try {
+        await interaction.editReply({ content: '❗️시간이 초과되어 민원이 취소되었습니다.', components: [], ephemeral: true });
+      } catch {
+        // 무시
+      }
     }
   }
 };
