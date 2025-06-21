@@ -12,7 +12,13 @@ module.exports = {
     embeds.push(
       new EmbedBuilder()
         .setTitle("📚 도움말 (1/3)")
-        .setDescription("서버 이용 안내 및 신고/문의/운영진, 주요 생활 명령어")
+        .setDescription([
+          "**💖 `/후원` : 이 서버와 커뮤니티에 후원하고 싶다면 언제든 사용!**",
+          " 후원금/상품 모두 가능하며, 자세한 절차는 명령어 입력 후 안내됩니다.",
+          " (후원은 감사한 마음으로 관리되며, 후원금은 별도의 로그 채널에 안전하게 기록됩니다.)",
+          "",
+          "서버 이용 안내 및 신고/문의/운영진, 주요 생활 명령어"
+        ].join('\n'))
         .addFields(
           { name: "ℹ️ /서버안내", value: "서버 첫인사 & 주요정보 안내", inline: true },
           { name: "📜 /서버규칙", value: "서버 전체 규칙 확인", inline: true },
