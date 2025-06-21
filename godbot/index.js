@@ -4,6 +4,7 @@ const express = require("express");
 const { Client, Collection, GatewayIntentBits, Events, ActivityType } = require("discord.js");
 require("dotenv").config();
 const activity = require("./utils/activity-tracker");
+const relationship = require("./utils/relationship.js");
 
 const client = new Client({
   intents: [
@@ -13,6 +14,7 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessageReactions,
   ],
 });
 
@@ -260,6 +262,71 @@ setInterval(async () => {
   }
 }, 60 * 1000);
 
+
+// ✅ 음성채널 동접 관계도 자동상승(하루 1회, barrier 크게 세팅되어야만 효과)
+setInterval(() => {
+  for (const [guildId, guild] of client.guilds.cache) {
+    const voiceStates = guild.voiceStates.cache;
+    const channelMap = {};
+    for (const vs of voiceStates.values()) {
+      if (!vs.channelId || vs.member.user.bot) continue;
+      if (!channelMap[vs.channelId]) channelMap[vs.channelId] = [];
+      channelMap[vs.channelId].push(vs.member.id);
+    }
+    for (const ids of Object.values(channelMap)) {
+      if (ids.length < 2) continue;
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          relationship.onPositive(ids[i], ids[j]);
+          relationship.onPositive(ids[j], ids[i]);
+        }
+      }
+    }
+  }
+}, 24 * 60 * 60 * 1000); // 하루 1회
+
+// ✅ 관계도 자동하락(무관심까지 하루 1씩)
+setInterval(() => {
+  relationship.decayRelationships(1);
+}, 24 * 60 * 60 * 1000); // 하루 1회
+
+// ✅ 답글 상호작용 시 관계도 상승
+client.on("messageCreate", async msg => {
+  if (!msg.guild || msg.author.bot) return;
+  // 답글이면 원글-답글 상호 onPositive
+  if (msg.reference && msg.reference.messageId) {
+    try {
+      const repliedMsg = await msg.channel.messages.fetch(msg.reference.messageId).catch(() => null);
+      if (repliedMsg && repliedMsg.author && !repliedMsg.author.bot && repliedMsg.author.id !== msg.author.id) {
+        relationship.onPositive(msg.author.id, repliedMsg.author.id);
+        relationship.onPositive(repliedMsg.author.id, msg.author.id);
+      }
+    } catch {}
+  }
+});
+
+// ✅ 멘션 시 관계도 상승
+client.on("messageCreate", msg => {
+  if (!msg.guild || msg.author.bot) return;
+  if (msg.mentions && msg.mentions.users) {
+    msg.mentions.users.forEach(user => {
+      if (!user.bot && user.id !== msg.author.id) {
+        relationship.onPositive(msg.author.id, user.id);
+        relationship.onPositive(user.id, msg.author.id);
+      }
+    });
+  }
+});
+
+// ✅ 이모지 리액션 시 관계도 상승
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (!reaction.message.guild || user.bot) return;
+  const author = reaction.message.author;
+  if (author && !author.bot && author.id !== user.id) {
+    relationship.onPositive(user.id, author.id);
+    relationship.onPositive(author.id, user.id);
+  }
+});
 
 
  // 유저 활동기록 체크 코드
