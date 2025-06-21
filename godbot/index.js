@@ -181,6 +181,17 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
+  // 4. 모달 제출 처리(비밀번호설정 등)
+  if (interaction.isModalSubmit()) {
+    for (const cmd of client.commands.values()) {
+      if (cmd.modalSubmit) {
+        try { await cmd.modalSubmit(interaction); } catch (e) {}
+      }
+    }
+    return;
+  }
+
+  
   // 3. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
