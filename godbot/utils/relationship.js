@@ -152,7 +152,7 @@ function decayRelationships(decayAmount = 0.5, thresholdMs = 1000 * 60 * 60 * 24
       if (userA === userB) continue;
       const last = lastInteraction?.[userA]?.[userB] || 0;
       if (now - last >= thresholdMs) {
-        addScore(userA, userB, -decayAmount);
+        addScore(userA, userB, -decayAmount * (STAGE_BARRIER[getInternal(userA, userB).stage] || 20));
       }
     }
   }
@@ -175,15 +175,27 @@ function getTopRelations(userId, n = 3) {
     }));
 }
 
+// ✅ 우정도 보정된 실제 상승 로직
 function onPositive(userA, userB, value = 1) {
-  addScore(userA, userB, value);
+  const { stage } = getInternal(userA, userB);
+  const barrier = STAGE_BARRIER[stage] || 20;
+  const actual = value * barrier;
+  addScore(userA, userB, actual);
   recordInteraction(userA, userB);
 }
 function onStrongNegative(userA, userB) {
-  addScore(userA, userB, -6);
+  const { stage } = getInternal(userA, userB);
+  const barrier = STAGE_BARRIER[stage] || 20;
+  const actual = -6 * barrier;
+  addScore(userA, userB, actual);
+  recordInteraction(userA, userB);
 }
 function onMute(userA, userB) {
-  addScore(userA, userB, -2);
+  const { stage } = getInternal(userA, userB);
+  const barrier = STAGE_BARRIER[stage] || 20;
+  const actual = -2 * barrier;
+  addScore(userA, userB, actual);
+  recordInteraction(userA, userB);
 }
 function onReport(userA, userB) {}
 
