@@ -8,7 +8,7 @@ module.exports = {
   async execute(interaction) {
     const embeds = [];
 
-    // ---- 1페이지: 서버 이용 안내/규칙/신고/민원/스탭/주요 생활 명령어 ----
+    // ---- 1페이지: 서버 이용 안내/규칙/신고/민원/스탭/주요 생활 명령어 + 관계 명령어 ----
     embeds.push(
       new EmbedBuilder()
         .setTitle("📚 도움말 (1/3)")
@@ -24,7 +24,13 @@ module.exports = {
           { name: "📢 /모집", value: "모집방에 글 게시", inline: true },
           { name: "📅 /일정", value: "일정 조회/공유/관리", inline: true },
           { name: "👥 /팀짜기", value: "음성채널 유저 랜덤 두 팀 나누기", inline: true },
-          { name: "🚚 /이동 [음성채널명]", value: "입력한 음성채널로 이동 (연결된 상태여야 함)", inline: true }
+          { name: "🚚 /이동 [음성채널명]", value: "입력한 음성채널로 이동 (연결된 상태여야 함)", inline: true },
+          { name: "\u200B", value: "------", inline: false },
+          // 추가: 관계/우정 명령어 안내
+          { name: "💞 /우정 [유저]", value: "특정 유저를 생각하는 자신의 관계 확인", inline: true },
+          { name: "🔗 /관계 [유저1] [유저2]", value: "두 유저 간의 관계 확인", inline: true },
+          { name: "👍 /좋아요 [유저]", value: "특정 유저와의 호감도를 조금 올리기 (24시간 쿨타임)", inline: true },
+          { name: "👎 /싫어요 [유저]", value: "특정 유저와의 호감도를 조금 내리기 (24시간 쿨타임)", inline: true }
         )
         .setFooter({ text: "서버: 까리한 디스코드" })
         .setColor(0x00bfff)
