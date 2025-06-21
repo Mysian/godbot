@@ -401,7 +401,7 @@ module.exports = {
           });
         } else if (i.customId === "timeout" || i.customId === "kick") {
           const modal = new ModalBuilder()
-            .setCustomId(adminpw_user_${i.customId}_${targetUserId})
+            .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
             .setTitle("관리 비밀번호 입력")
             .addComponents(
               new ActionRowBuilder().addComponents(
