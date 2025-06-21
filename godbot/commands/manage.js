@@ -1,11 +1,14 @@
 const {
   SlashCommandBuilder,
-  PermissionFlagsBits,
   ActionRowBuilder,
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   AttachmentBuilder,
+  InteractionType
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -17,9 +20,20 @@ const NEWBIE_ROLE_ID = "1295701019430227988";
 const SPAM_ROLE_ID = "1205052922296016906";
 const PAGE_SIZE = 1900;
 const dataDir = path.join(__dirname, "../data");
+const adminpwPath = path.join(dataDir, "adminpw.json");
 
-// 비밀번호 설정 (보안 필요시 process.env.ADMIN_PASSWORD 등으로 대체)
-const ADMIN_PASSWORD = "4130";
+function loadAdminPw() {
+  if (!fs.existsSync(adminpwPath)) return null;
+  try {
+    const { pw } = JSON.parse(fs.readFileSync(adminpwPath, "utf8"));
+    return pw;
+  } catch {
+    return null;
+  }
+}
+function saveAdminPw(newPw) {
+  fs.writeFileSync(adminpwPath, JSON.stringify({ pw: newPw }));
+}
 
 const activityTracker = require("../utils/activity-tracker.js");
 const relationship = require("../utils/relationship.js");
@@ -39,8 +53,7 @@ module.exports = {
           { name: "저장파일 백업", value: "json_backup" },
           { name: "스팸의심 계정 추방", value: "spam_kick" },
           { name: "비활동 신규유저 추방", value: "newbie" },
-          { name: "장기 미이용 유저 추방", value: "inactive" },
-          { name: "관리 비밀번호", value: "admin_pw" }
+          { name: "장기 미이용 유저 추방", value: "inactive" }
         )
     )
     .addUserOption((option) =>
@@ -48,27 +61,17 @@ module.exports = {
         .setName("대상유저")
         .setDescription("정보를 조회할 유저")
         .setRequired(false)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("비밀번호")
-        .setDescription("관리 비밀번호 4자리 입력")
-        .setRequired(false)
     ),
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
     const option = interaction.options.getString("옵션");
-    const pw = interaction.options.getString("비밀번호") || "";
     const guild = interaction.guild;
     const activityStats = activityTracker.getStats({});
 
     // ====== 서버상태 ======
     if (option === "status") {
-      // ... (생략: 원본과 동일)
-      // (서버상태 코드는 기존 그대로 유지)
-      // ...
-      // (아래 원본 코드 붙여넣기)
+      // ... (원본 그대로)
       const memory = process.memoryUsage();
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
@@ -127,7 +130,6 @@ module.exports = {
 
     // ====== 저장파일 백업 ======
     if (option === "json_backup") {
-      // ... (원본과 동일)
       const files = fs.existsSync(dataDir)
         ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
         : [];
@@ -170,139 +172,29 @@ module.exports = {
 
     // ====== 장기 미이용/비활동 신규유저 추방 ======
     if (option === "inactive" || option === "newbie") {
-      // 비밀번호 필요
-      if (pw !== ADMIN_PASSWORD) {
-        await interaction.editReply({ content: "❌ 4자리 관리 비밀번호가 필요합니다.", ephemeral: true });
-        return;
-      }
-      // ... 이하 원본 로직 그대로
-      const 기준날짜 = new Date(
-        Date.now() - (option === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
-      );
-      const members = await guild.members.fetch();
-      const 추방대상 = [];
-
-      for (const member of members.values()) {
-        if (member.user.bot) continue;
-        if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
-
-        const stat = activityStats.find((x) => x.userId === member.id);
-
-        if (option === "inactive") {
-          let isInactive = true;
-          if (stat) {
-            let lastActive = null;
-            try {
-              const userData = require("../../activity-data.json")[member.id];
-              if (userData) {
-                lastActive = Object.keys(userData)
-                  .sort()
-                  .reverse()[0];
-              }
-              if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
-              else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
-            } catch { }
-          }
-          if (isInactive) 추방대상.push(member);
-        } else if (option === "newbie") {
-          const joinedAt = member.joinedAt;
-          const isNewbie = member.roles.cache.has(NEWBIE_ROLE_ID);
-          const daysPassed = (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24);
-          const isInactive = !stat || ((stat.message || 0) === 0 && (stat.voice || 0) === 0);
-          if (isNewbie && isInactive && daysPassed >= 7) {
-            추방대상.push(member);
-          }
-        }
-      }
-
-      const descList = [];
-      let totalLength = 0;
-      for (const m of 추방대상) {
-        const line = `• <@${m.id}> (${m.user.tag})`;
-        if (totalLength + line.length + 1 < 4000) {
-          descList.push(line);
-          totalLength += line.length + 1;
-        } else {
-          descList.push(`외 ${추방대상.length - descList.length}명...`);
-          break;
-        }
-      }
-
-      const preview = new EmbedBuilder()
-        .setTitle(
-          `[${option === "inactive" ? "장기 미이용" : "비활동 신규유저"}] 추방 대상 미리보기`
-        )
-        .setDescription(
-          추방대상.length ? descList.join("\n") : "✅ 추방 대상자가 없습니다."
-        )
-        .setColor(0xffcc00);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("confirm_kick")
-          .setLabel("✅ 예")
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId("cancel_kick")
-          .setLabel("❌ 아니오")
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      await interaction.editReply({ embeds: [preview], components: [row] });
-
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id,
-        time: 15000,
-      });
-
-      collector.on("collect", async (i) => {
-        if (i.customId === "confirm_kick") {
-          await i.update({
-            content: "⏳ 추방을 진행 중입니다...",
-            embeds: [],
-            components: [],
-          });
-
-          let success = 0, failed = [];
-          for (const member of 추방대상) {
-            try {
-              await member.kick("자동 추방: 활동 없음");
-              await new Promise(res => setTimeout(res, 350));
-              success++;
-            } catch (err) {
-              failed.push(`${member.user.tag}(${member.id})`);
-            }
-          }
-          await interaction.followUp({
-            content:
-              `✅ ${success}명 추방 완료` +
-              (failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""),
-            ephemeral: true,
-          });
-        } else {
-          await i.update({
-            content: "❌ 추방이 취소되었습니다.",
-            embeds: [],
-            components: [],
-          });
-        }
-      });
-
-      collector.on("end", async (collected) => {
-        if (collected.size === 0) {
-          await interaction.editReply({
-            content: "⏰ 시간이 초과되어 추방이 취소되었습니다.",
-            embeds: [],
-            components: [],
-          });
-        }
-      });
+      // --- 비밀번호 모달 호출
+      const modal = new ModalBuilder()
+        .setCustomId(`adminpw_kick_${option}`)
+        .setTitle("관리 비밀번호 입력")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("pw")
+              .setLabel("비밀번호 4자리")
+              .setStyle(TextInputStyle.Short)
+              .setMinLength(4)
+              .setMaxLength(4)
+              .setRequired(true)
+          )
+        );
+      await interaction.editReply({ content: "잠시만 기다려주세요.", embeds: [], components: [] });
+      await interaction.showModal(modal);
       return;
     }
 
     // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
-      // (원본과 동일, 비밀번호 X)
+      // (비번 X)
       const members = await guild.members.fetch();
       const 추방대상 = [];
 
@@ -558,64 +450,22 @@ module.exports = {
             }
           });
         } else if (i.customId === "timeout" || i.customId === "kick") {
-          // 타임아웃 또는 추방 시 비밀번호 확인
-          await i.update({
-            content: "🔒 4자리 관리 비밀번호를 입력해주세요.",
-            embeds: [],
-            components: [],
-          });
-
-          const msgCollector = interaction.channel.createMessageCollector({
-            filter: (m) => m.author.id === interaction.user.id,
-            time: 20000,
-            max: 1,
-          });
-
-          msgCollector.on("collect", async (msg) => {
-            if (msg.content === ADMIN_PASSWORD) {
-              if (i.customId === "timeout") {
-                try {
-                  await interaction.guild.members.edit(targetUserId, {
-                    communicationDisabledUntil: Date.now() + 24 * 60 * 60 * 1000,
-                    reason: "관리 명령어로 타임아웃 (1일)"
-                  });
-                  await interaction.followUp({
-                    content: `✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.`,
-                    ephemeral: true,
-                  });
-                } catch (err) {
-                  await interaction.followUp({
-                    content: "❌ 타임아웃 실패 (권한 문제일 수 있음)",
-                    ephemeral: true,
-                  });
-                }
-              } else if (i.customId === "kick") {
-                try {
-                  await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
-                  await interaction.followUp({
-                    content: `✅ <@${targetUserId}>님을 서버에서 추방했습니다.`,
-                    ephemeral: true,
-                  });
-                } catch (err) {
-                  await interaction.followUp({
-                    content: "❌ 추방 실패 (권한 문제일 수 있음)",
-                    ephemeral: true,
-                  });
-                }
-              }
-            } else {
-              await interaction.followUp({ content: "❌ 비밀번호가 일치하지 않습니다.", ephemeral: true });
-            }
-          });
-
-          msgCollector.on("end", (collected) => {
-            if (collected.size === 0) {
-              interaction.followUp({
-                content: "⏰ 시간이 초과되어 작업이 취소되었습니다.",
-                ephemeral: true,
-              });
-            }
-          });
+          // 버튼 누르면 모달로 비밀번호 입력
+          const modal = new ModalBuilder()
+            .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
+            .setTitle("관리 비밀번호 입력")
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("pw")
+                  .setLabel("비밀번호 4자리")
+                  .setStyle(TextInputStyle.Short)
+                  .setMinLength(4)
+                  .setMaxLength(4)
+                  .setRequired(true)
+              )
+            );
+          await i.showModal(modal);
         } else if (i.customId === "timeout_release") {
           await i.update({
             content: "⏳ 타임아웃 해제 중...",
@@ -643,14 +493,111 @@ module.exports = {
       collector.on("end", (collected) => {});
       return;
     }
+  },
 
-    // ====== 관리 비밀번호 옵션 안내 ======
-    if (option === "admin_pw") {
-      await interaction.editReply({
-        content: "관리자용 비밀번호는 서버 보호와 특정 기능 사용에 필요합니다. (4자리 숫자)",
-        ephemeral: true,
-      });
+  async modalSubmit(interaction) {
+    // 비밀번호 확인 모달 핸들러
+    // customId: adminpw_user_timeout_유저ID / adminpw_user_kick_유저ID
+    //           adminpw_kick_inactive / adminpw_kick_newbie
+    const pw = interaction.fields.getTextInputValue("pw");
+    const savedPw = loadAdminPw();
+    if (!savedPw || pw !== savedPw) {
+      await interaction.reply({ content: "❌ 비밀번호가 일치하지 않습니다.", ephemeral: true });
       return;
     }
-  },
+    if (interaction.customId.startsWith("adminpw_user_")) {
+      const arr = interaction.customId.split("_");
+      const action = arr[2];
+      const targetUserId = arr.slice(3).join("_");
+      if (action === "timeout") {
+        try {
+          await interaction.guild.members.edit(targetUserId, {
+            communicationDisabledUntil: Date.now() + 24 * 60 * 60 * 1000,
+            reason: "관리 명령어로 타임아웃 (1일)"
+          });
+          await interaction.reply({
+            content: `✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          await interaction.reply({
+            content: "❌ 타임아웃 실패 (권한 문제일 수 있음)",
+            ephemeral: true,
+          });
+        }
+      } else if (action === "kick") {
+        try {
+          await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
+          await interaction.reply({
+            content: `✅ <@${targetUserId}>님을 서버에서 추방했습니다.`,
+            ephemeral: true,
+          });
+        } catch (err) {
+          await interaction.reply({
+            content: "❌ 추방 실패 (권한 문제일 수 있음)",
+            ephemeral: true,
+          });
+        }
+      }
+    } else if (interaction.customId.startsWith("adminpw_kick_")) {
+      const type = interaction.customId.replace("adminpw_kick_", "");
+      // type: inactive or newbie
+      const 기준날짜 = new Date(
+        Date.now() - (type === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
+      );
+      const guild = interaction.guild;
+      const activityStats = activityTracker.getStats({});
+      const members = await guild.members.fetch();
+      const 추방대상 = [];
+
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
+        const stat = activityStats.find((x) => x.userId === member.id);
+
+        if (type === "inactive") {
+          let isInactive = true;
+          if (stat) {
+            let lastActive = null;
+            try {
+              const userData = require("../../activity-data.json")[member.id];
+              if (userData) {
+                lastActive = Object.keys(userData)
+                  .sort()
+                  .reverse()[0];
+              }
+              if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
+              else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
+            } catch { }
+          }
+          if (isInactive) 추방대상.push(member);
+        } else if (type === "newbie") {
+          const joinedAt = member.joinedAt;
+          const isNewbie = member.roles.cache.has(NEWBIE_ROLE_ID);
+          const daysPassed = (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24);
+          const isInactive = !stat || ((stat.message || 0) === 0 && (stat.voice || 0) === 0);
+          if (isNewbie && isInactive && daysPassed >= 7) {
+            추방대상.push(member);
+          }
+        }
+      }
+
+      let success = 0, failed = [];
+      for (const member of 추방대상) {
+        try {
+          await member.kick("자동 추방: 활동 없음");
+          await new Promise(res => setTimeout(res, 350));
+          success++;
+        } catch (err) {
+          failed.push(`${member.user.tag}(${member.id})`);
+        }
+      }
+      await interaction.reply({
+        content:
+          `✅ ${success}명 추방 완료` +
+          (failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""),
+        ephemeral: true,
+      });
+    }
+  }
 };
