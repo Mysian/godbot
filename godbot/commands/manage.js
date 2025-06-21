@@ -7,8 +7,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  AttachmentBuilder,
-  InteractionType
+  AttachmentBuilder
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -30,9 +29,6 @@ function loadAdminPw() {
   } catch {
     return null;
   }
-}
-function saveAdminPw(newPw) {
-  fs.writeFileSync(adminpwPath, JSON.stringify({ pw: newPw }));
 }
 
 const activityTracker = require("../utils/activity-tracker.js");
@@ -71,7 +67,6 @@ module.exports = {
 
     // ====== 서버상태 ======
     if (option === "status") {
-      // ... (원본 그대로)
       const memory = process.memoryUsage();
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
@@ -130,49 +125,28 @@ module.exports = {
 
     // ====== 저장파일 백업 ======
     if (option === "json_backup") {
-      const files = fs.existsSync(dataDir)
-        ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
-        : [];
-      if (!files.length)
-        return interaction.editReply({
-          content: "data 폴더에 .json 파일이 없습니다.",
-          ephemeral: true,
-        });
-
-      const zip = new AdmZip();
-      for (const file of files) {
-        zip.addLocalFile(path.join(dataDir, file), "", file);
-      }
-      const now = new Date();
-      const dateStr =
-        now.getFullYear().toString() +
-        (now.getMonth() + 1).toString().padStart(2, "0") +
-        now.getDate().toString().padStart(2, "0") +
-        "_" +
-        now.getHours().toString().padStart(2, "0") +
-        now.getMinutes().toString().padStart(2, "0") +
-        now.getSeconds().toString().padStart(2, "0");
-      const filename = `${dateStr}.zip`;
-      const tmpPath = path.join(__dirname, `../data/${filename}`);
-      zip.writeZip(tmpPath);
-
-      const attachment = new AttachmentBuilder(tmpPath, { name: filename });
-      await interaction.editReply({
-        content: `모든 .json 파일을 압축했습니다. (${filename})`,
-        files: [attachment],
-        ephemeral: true,
-      });
-
-      setTimeout(() => {
-        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-      }, 60 * 1000);
-
+      // 압축/전송 전 비밀번호 모달부터!
+      const modal = new ModalBuilder()
+        .setCustomId("adminpw_json_backup")
+        .setTitle("관리 비밀번호 입력")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("pw")
+              .setLabel("비밀번호 4자리")
+              .setStyle(TextInputStyle.Short)
+              .setMinLength(4)
+              .setMaxLength(4)
+              .setRequired(true)
+          )
+        );
+      await interaction.editReply({ content: "잠시만 기다려주세요.", embeds: [], components: [] });
+      await interaction.showModal(modal);
       return;
     }
 
     // ====== 장기 미이용/비활동 신규유저 추방 ======
     if (option === "inactive" || option === "newbie") {
-      // --- 비밀번호 모달 호출
       const modal = new ModalBuilder()
         .setCustomId(`adminpw_kick_${option}`)
         .setTitle("관리 비밀번호 입력")
@@ -194,7 +168,6 @@ module.exports = {
 
     // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
-      // (비번 X)
       const members = await guild.members.fetch();
       const 추방대상 = [];
 
@@ -450,7 +423,6 @@ module.exports = {
             }
           });
         } else if (i.customId === "timeout" || i.customId === "kick") {
-          // 버튼 누르면 모달로 비밀번호 입력
           const modal = new ModalBuilder()
             .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
             .setTitle("관리 비밀번호 입력")
@@ -496,15 +468,57 @@ module.exports = {
   },
 
   async modalSubmit(interaction) {
-    // 비밀번호 확인 모달 핸들러
-    // customId: adminpw_user_timeout_유저ID / adminpw_user_kick_유저ID
-    //           adminpw_kick_inactive / adminpw_kick_newbie
     const pw = interaction.fields.getTextInputValue("pw");
     const savedPw = loadAdminPw();
     if (!savedPw || pw !== savedPw) {
       await interaction.reply({ content: "❌ 비밀번호가 일치하지 않습니다.", ephemeral: true });
       return;
     }
+
+    // 저장파일 백업
+    if (interaction.customId === "adminpw_json_backup") {
+      const files = fs.existsSync(dataDir)
+        ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
+        : [];
+      if (!files.length) {
+        await interaction.reply({
+          content: "data 폴더에 .json 파일이 없습니다.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const zip = new AdmZip();
+      for (const file of files) {
+        zip.addLocalFile(path.join(dataDir, file), "", file);
+      }
+      const now = new Date();
+      const dateStr =
+        now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, "0") +
+        now.getDate().toString().padStart(2, "0") +
+        "_" +
+        now.getHours().toString().padStart(2, "0") +
+        now.getMinutes().toString().padStart(2, "0") +
+        now.getSeconds().toString().padStart(2, "0");
+      const filename = `${dateStr}.zip`;
+      const tmpPath = path.join(__dirname, `../data/${filename}`);
+      zip.writeZip(tmpPath);
+
+      const attachment = new AttachmentBuilder(tmpPath, { name: filename });
+      await interaction.reply({
+        content: `모든 .json 파일을 압축했습니다. (${filename})`,
+        files: [attachment],
+        ephemeral: true,
+      });
+
+      setTimeout(() => {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      }, 60 * 1000);
+      return;
+    }
+
+    // 유저관리 - 타임아웃/추방
     if (interaction.customId.startsWith("adminpw_user_")) {
       const arr = interaction.customId.split("_");
       const action = arr[2];
@@ -541,7 +555,6 @@ module.exports = {
       }
     } else if (interaction.customId.startsWith("adminpw_kick_")) {
       const type = interaction.customId.replace("adminpw_kick_", "");
-      // type: inactive or newbie
       const 기준날짜 = new Date(
         Date.now() - (type === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
       );
