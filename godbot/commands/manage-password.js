@@ -3,8 +3,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ActionRowBuilder,
-  InteractionType,
+  ActionRowBuilder
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
