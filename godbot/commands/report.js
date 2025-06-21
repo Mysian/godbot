@@ -2,7 +2,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const relationship = require('../utils/relationship.js'); // 👑 관계도 시스템 연동
 
 const configPath = path.join(__dirname, '..', 'logchannel.json');
 
