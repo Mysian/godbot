@@ -189,10 +189,7 @@ module.exports = {
           .setColor(0xffaa00);
 
         await interaction.followUp({ embeds: [failEmbed] });
-
-        if (resultLogChannel?.isTextBased()) {
-          await resultLogChannel.send({ embeds: [failEmbed] });
-        }
+        // 로그 채널로 전송하지 않음
       }
     });
   },
