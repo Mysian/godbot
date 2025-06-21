@@ -10,7 +10,7 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const lockfile = require('proper-lockfile');
+const lockfile = require('proper-lockfile'); // 추가
 
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 
@@ -21,7 +21,6 @@ async function readProfiles() {
   await release();
   return data;
 }
-
 async function saveProfiles(data) {
   const release = await lockfile.lock(profilesPath, { retries: 3 });
   fs.writeFileSync(profilesPath, JSON.stringify(data, null, 2));
@@ -45,6 +44,7 @@ module.exports = {
       .setColor(0x0099ff)
       .setFooter({ text: '최초 등록 완료 전까지는 프로필이 저장되지 않습니다.' });
 
+    // 버튼 나누기 (한 줄에 5개까지 제한)
     const buttons1 = [
       new ButtonBuilder().setCustomId('statusMsg').setLabel('상태 메시지').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('favGames').setLabel('선호 게임(3개)').setStyle(ButtonStyle.Secondary),
@@ -85,7 +85,7 @@ module.exports = {
         collector.stop();
         return;
       }
-
+      // 버튼별 모달 처리
       let modal = null;
       if (i.customId === 'statusMsg') {
         modal = new ModalBuilder()
@@ -198,21 +198,22 @@ module.exports = {
           );
       }
 
+      // 안전 처리: 모달 없는 경우는 무시
       if (!modal) {
         await i.reply({ content: '잘못된 버튼입니다.', ephemeral: true });
         return;
       }
 
-      await i.deferUpdate();
-
       try {
         await i.showModal(modal);
-        const modalSubmit = await i.awaitModalSubmit({ time: 120_000, filter: (m) => m.user.id === userId });
+        // 모달 제출 대기 (개별 interaction 기반으로 awaitModalSubmit)
+        const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
 
         if (modalSubmit.customId === 'modalStatusMsg')
           profile.statusMsg = modalSubmit.fields.getTextInputValue('statusMsgInput');
-        if (modalSubmit.customId === 'modalFavGames')
+        if (modalSubmit.customId === 'modalFavGames') {
           profile.favGames = modalSubmit.fields.getTextInputValue('favGamesInput').split(',').map(s => s.trim()).slice(0, 3);
+        }
         if (modalSubmit.customId === 'modalOwTier')
           profile.owTier = modalSubmit.fields.getTextInputValue('owTierInput');
         if (modalSubmit.customId === 'modalLolTier')
@@ -223,7 +224,6 @@ module.exports = {
           profile.lolNick = modalSubmit.fields.getTextInputValue('lolNickInput');
         if (modalSubmit.customId === 'modalBnetNick')
           profile.bnetNick = modalSubmit.fields.getTextInputValue('bnetNickInput');
-
         await modalSubmit.reply({ content: '저장 완료! 다른 항목도 입력하려면 버튼을 계속 눌러주세요.', ephemeral: true });
       } catch (err) {
         await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
