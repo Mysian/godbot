@@ -21,7 +21,7 @@ const dataDir = path.join(__dirname, "../data");
 // activity-tracker.js 연동
 const activityTracker = require("../utils/activity-tracker.js");
 // 관계 데이터
-const relationship = require("../relationship.js");
+const relationship = require("../utils/relationship.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
