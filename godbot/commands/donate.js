@@ -107,7 +107,7 @@ module.exports = {
           .setCustomId('donate_name')
           .setLabel('입금자 성함')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('예: 이영민 / 익명 가능')
+          .setPlaceholder('예: 김영갓, 박까리')
           .setRequired(true);
 
         const purposeInput = new TextInputBuilder()
