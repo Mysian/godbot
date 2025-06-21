@@ -99,7 +99,7 @@ module.exports = {
       else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
       else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
 
-      let hostInfo = 플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()};
+      let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
       if (process.env.RAILWAY_STATIC_URL) {
         hostInfo += \nRailway URL: ${process.env.RAILWAY_STATIC_URL};
       }
