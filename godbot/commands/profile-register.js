@@ -203,11 +203,11 @@ module.exports = {
         return;
       }
 
-      await i.deferUpdate(); // 🔧 추가된 부분
+      await i.deferUpdate();
 
       try {
         await i.showModal(modal);
-        const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
+        const modalSubmit = await i.awaitModalSubmit({ time: 120_000, filter: (m) => m.user.id === userId });
 
         if (modalSubmit.customId === 'modalStatusMsg')
           profile.statusMsg = modalSubmit.fields.getTextInputValue('statusMsgInput');
