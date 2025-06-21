@@ -126,7 +126,6 @@ module.exports = {
 
     // ====== 저장파일 백업 ======
     if (option === "json_backup") {
-      // deferReply/editReply 사용 금지!
       const modal = new ModalBuilder()
         .setCustomId("adminpw_json_backup")
         .setTitle("관리 비밀번호 입력")
@@ -145,28 +144,84 @@ module.exports = {
       return;
     }
 
-    // ====== 장기 미이용/비활동 신규유저 추방 ======
+    // ====== 비활동 신규유저/장기 미이용 유저 추방 - 명단 미리보기+확인/취소 버튼 ======
     if (option === "inactive" || option === "newbie") {
-      // deferReply/editReply 사용 금지!
-      const modal = new ModalBuilder()
-        .setCustomId(`adminpw_kick_${option}`)
-        .setTitle("관리 비밀번호 입력")
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("pw")
-              .setLabel("비밀번호 4자리")
-              .setStyle(TextInputStyle.Short)
-              .setMinLength(4)
-              .setMaxLength(4)
-              .setRequired(true)
-          )
-        );
-      await interaction.showModal(modal);
+      const 기준날짜 = new Date(
+        Date.now() - (option === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
+      );
+      const members = await guild.members.fetch();
+      const 추방대상 = [];
+
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
+
+        const stat = activityStats.find((x) => x.userId === member.id);
+        if (option === "inactive") {
+          let isInactive = true;
+          if (stat) {
+            let lastActive = null;
+            try {
+              const userData = require("../../activity-data.json")[member.id];
+              if (userData) {
+                lastActive = Object.keys(userData)
+                  .sort()
+                  .reverse()[0];
+              }
+              if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
+              else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
+            } catch { }
+          }
+          if (isInactive) 추방대상.push(member);
+        } else if (option === "newbie") {
+          const joinedAt = member.joinedAt;
+          const isNewbie = member.roles.cache.has(NEWBIE_ROLE_ID);
+          const daysPassed = (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24);
+          const isInactive = !stat || ((stat.message || 0) === 0 && (stat.voice || 0) === 0);
+          if (isNewbie && isInactive && daysPassed >= 7) {
+            추방대상.push(member);
+          }
+        }
+      }
+
+      const descList = [];
+      let totalLength = 0;
+      for (const m of 추방대상) {
+        const line = `• <@${m.id}> (${m.user.tag})`;
+        if (totalLength + line.length + 1 < 4000) {
+          descList.push(line);
+          totalLength += line.length + 1;
+        } else {
+          descList.push(`외 ${추방대상.length - descList.length}명...`);
+          break;
+        }
+      }
+
+      const preview = new EmbedBuilder()
+        .setTitle(
+          `[${option === "inactive" ? "장기 미이용" : "비활동 신규유저"}] 추방 대상 미리보기`
+        )
+        .setDescription(
+          추방대상.length ? descList.join("\n") : "✅ 추방 대상자가 없습니다."
+        )
+        .setColor(0xffcc00);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`confirm_kick_${option}`)
+          .setLabel("✅ 예")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(`cancel_kick_${option}`)
+          .setLabel("❌ 아니오")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.reply({ embeds: [preview], components: [row], ephemeral: true });
       return;
     }
 
-    // ====== 스팸의심 계정 추방 ======
+  // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
       await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
