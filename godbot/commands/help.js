@@ -28,7 +28,6 @@ module.exports = {
           { name: "\u200B", value: "------", inline: false },
           // 추가: 관계/우정 명령어 안내
           { name: "💞 /우정 [유저]", value: "특정 유저를 생각하는 자신의 관계 확인", inline: true },
-          { name: "🔗 /관계 [유저1] [유저2]", value: "두 유저 간의 관계 확인", inline: true },
           { name: "👍 /좋아요 [유저]", value: "특정 유저와의 호감도를 조금 올리기 (24시간 쿨타임)", inline: true },
           { name: "👎 /싫어요 [유저]", value: "특정 유저와의 호감도를 조금 내리기 (24시간 쿨타임)", inline: true }
         )
