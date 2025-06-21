@@ -29,7 +29,7 @@ module.exports = {
     );
 
     await interaction.reply({
-      content: '민원의 종류를 선택하세요.',
+      content: '민원의 종류를 선택하세요. (신고 및 제재요청: /신고)',
       components: [selectRow],
       ephemeral: true,
     });
