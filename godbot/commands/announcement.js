@@ -40,19 +40,28 @@ function startTimer(guildId, channelId, interval, tips) {
   timers.set(guildId, setInterval(sendTip, interval));
 }
 
+function stopTimer(guildId) {
+  if (timers.has(guildId)) {
+    clearInterval(timers.get(guildId));
+    timers.delete(guildId);
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('공지하기')
     .setDescription('공지 관련 명령어')
     .addStringOption(option =>
       option.setName('옵션')
-        .setDescription('공지채널 설정/공지 글 추가/공지 리스트/공지 주기 선택')
+        .setDescription('공지채널 설정/공지 글 추가/공지 리스트/공지 주기 선택/공지기능 켜기/끄기')
         .setRequired(true)
         .addChoices(
           { name: '공지채널 설정', value: 'set_channel' },
           { name: '공지 글 추가', value: 'add_tip' },
           { name: '공지 리스트', value: 'list_tips' },
-          { name: '공지 주기 선택', value: 'set_interval' }
+          { name: '공지 주기 선택', value: 'set_interval' },
+          { name: '공지기능 켜기', value: 'enable' },
+          { name: '공지기능 끄기', value: 'disable' }
         )
     )
     .addStringOption(option =>
@@ -66,7 +75,7 @@ module.exports = {
     const input = interaction.options.getString('입력');
     const guildId = interaction.guild.id;
     const data = loadData();
-    if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [] };
+    if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [], enabled: false };
 
     if (option === 'set_channel') {
       if (!input) return interaction.reply({ content: '채널 ID를 입력해주세요.', ephemeral: true });
@@ -92,14 +101,30 @@ module.exports = {
       if (!INTERVALS[input]) {
         return interaction.reply({ content: '공지 주기를 "1시간", "3시간", "6시간", "12시간", "24시간" 중 하나로 입력해주세요.', ephemeral: true });
       }
-      const { channelId, tips } = data[guildId];
+      const { channelId, tips, enabled } = data[guildId];
       if (!channelId || tips.length === 0) {
         return interaction.reply({ content: '공지 채널 또는 공지 글이 먼저 등록되어야 합니다.', ephemeral: true });
       }
       data[guildId].interval = input;
       saveData(data);
-      startTimer(guildId, channelId, INTERVALS[input], tips);
-      return interaction.reply({ content: `${input} 간격으로 공지가 자동 전송됩니다.`, ephemeral: true });
+      if (enabled) startTimer(guildId, channelId, INTERVALS[input], tips);
+      return interaction.reply({ content: `${input} 간격으로 공지가 전송되도록 설정되었습니다.`, ephemeral: true });
+
+    } else if (option === 'enable') {
+      const { channelId, tips, interval } = data[guildId];
+      if (!channelId || !interval || tips.length === 0) {
+        return interaction.reply({ content: '공지 채널, 주기, 공지 글이 모두 등록되어야 합니다.', ephemeral: true });
+      }
+      data[guildId].enabled = true;
+      saveData(data);
+      startTimer(guildId, channelId, INTERVALS[interval], tips);
+      return interaction.reply({ content: '공지 기능이 켜졌습니다.', ephemeral: true });
+
+    } else if (option === 'disable') {
+      data[guildId].enabled = false;
+      saveData(data);
+      stopTimer(guildId);
+      return interaction.reply({ content: '공지 기능이 꺼졌습니다.', ephemeral: true });
     }
   }
 };
