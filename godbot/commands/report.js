@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const relationship = require('../utils/relationship.js'); // 👑 관계도 시스템 연동
 
 const configPath = path.join(__dirname, '..', 'logchannel.json');
 
@@ -94,11 +95,25 @@ module.exports = {
           if (!logChannel) {
             return modalInter.reply({ content: '❗ 로그 채널을 찾을 수 없습니다.', ephemeral: true });
           }
-          const targetNick = modalInter.fields.getTextInputValue('신고_대상');
+          const targetNick = modalInter.fields.getTextInputValue('신고_대상').trim();
           const eventDate = modalInter.fields.getTextInputValue('신고_일시') || '미입력';
           const reportDetail = modalInter.fields.getTextInputValue('신고_내용');
           const anonRaw = modalInter.fields.getTextInputValue('신고_익명').trim();
           const isAnon = anonRaw === '예';
+
+          // 👑 신고 대상 서버 내 실존 유저만 가능!
+          const members = await modalInter.guild.members.fetch();
+          // displayName(서버별명) 혹은 user.username(디스코드 이름) 일치
+          const matches = members.filter(m => !m.user.bot && (m.displayName === targetNick || m.user.username === targetNick));
+          if (matches.size === 0) {
+            return modalInter.reply({ content: '❗️해당 닉네임/별명의 유저를 찾을 수 없습니다. (정확히 입력해 주세요)', ephemeral: true });
+          }
+          if (matches.size > 1) {
+            return modalInter.reply({ content: '❗️여러 유저가 일치합니다. (닉네임/별명 정확히 입력)', ephemeral: true });
+          }
+          const targetMember = matches.first();
+          const targetId = targetMember.user.id;
+
           const reporter = isAnon
             ? '익명'
             : `<@${modalInter.user.id}> (${modalInter.user.tag})`;
@@ -109,7 +124,7 @@ module.exports = {
               { name: '• 신고 사유', value: `\`${selectedReason}\``, inline: true },
               { name: '• 익명 여부', value: isAnon ? '예 (익명)' : '아니오 (신고자 공개)', inline: true },
               { name: '• 사건 발생 일시', value: eventDate, inline: true },
-              { name: '• 신고 대상', value: `\`${targetNick}\``, inline: true },
+              { name: '• 신고 대상', value: `\`${targetMember.displayName}\` (<@${targetId}>)`, inline: true },
               { name: '• 신고자', value: reporter, inline: true },
               { name: '\u200B', value: '\u200B', inline: false },
               { name: '• 신고 내용', value: reportDetail, inline: false }
@@ -118,6 +133,9 @@ module.exports = {
             .setTimestamp();
 
           await logChannel.send({ embeds: [embed] });
+
+          // 👑 관계도: 신고자 → 대상, -0.5 (단방향)
+          relationship.addScore(modalInter.user.id, targetId, -5);
 
           await modalInter.reply({
             content: `✅ 신고가 정상적으로 접수되었습니다.`,

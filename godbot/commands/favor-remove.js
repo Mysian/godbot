@@ -4,6 +4,7 @@ const path = require('path');
 const favorPath = path.join(__dirname, '../data/favor.json');
 const cooldownPath = path.join(__dirname, '../data/favor-cooldown.json');
 const bePath = path.join(__dirname, '../data/BE.json');
+const relationship = require('../utils/relationship.js'); // 👈 관계도 유틸 추가
 
 // 유틸
 function readJson(p) { if (!fs.existsSync(p)) return {}; return JSON.parse(fs.readFileSync(p)); }
@@ -46,6 +47,9 @@ module.exports = {
     cooldown[cdKey] = now;
     saveJson(favorPath, favor);
     saveJson(cooldownPath, cooldown);
+
+    // 👑 관계도 시스템: 단방향 -0.3(적대까지 내려감)
+    relationship.addScore(giver, receiver, -0.3);
 
     // 파랑 정수 1~2개 랜덤 지급
     const amount = Math.floor(Math.random() * 2) + 1;
