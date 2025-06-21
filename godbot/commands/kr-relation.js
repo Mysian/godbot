@@ -19,15 +19,14 @@ module.exports = {
       return interaction.reply({ content: '동일인 간의 관계는 항상 "무관심"입니다.', ephemeral: true });
     }
 
-    // 닉네임 가져오기
     const member1 = await interaction.guild.members.fetch(user1).catch(() => null);
     const member2 = await interaction.guild.members.fetch(user2).catch(() => null);
     const name1 = member1 ? `**${member1.displayName}**` : `<Unknown>`;
     const name2 = member2 ? `**${member2.displayName}**` : `<Unknown>`;
 
-    const score1 = relationship.getScore(user1, user2);
+    const score1 = relationship.getScore(user1, user2).toFixed(2);
     const rel1 = relationship.getRelation(user1, user2);
-    const score2 = relationship.getScore(user2, user1);
+    const score2 = relationship.getScore(user2, user1).toFixed(2);
     const rel2 = relationship.getRelation(user2, user1);
 
     const embed = new EmbedBuilder()
