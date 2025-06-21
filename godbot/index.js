@@ -299,11 +299,6 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
-// ✅ 관계도 자동하락
-setInterval(() => {
-  relationship.decayRelationships(0.3);
-}, 24 * 60 * 60 * 1000);
-
 // ✅ 답글 상호작용 시 관계도 상승
 client.on("messageCreate", async msg => {
   if (!msg.guild || msg.author.bot) return;
