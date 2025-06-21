@@ -277,17 +277,17 @@ setInterval(() => {
       if (ids.length < 2) continue;
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
-          relationship.onPositive(ids[i], ids[j]);
-          relationship.onPositive(ids[j], ids[i]);
+          relationship.onPositive(ids[i], ids[j], 0.1);
+          relationship.onPositive(ids[j], ids[i], 0.1);
         }
       }
     }
   }
-}, 24 * 60 * 60 * 1000); // 하루 1회
+}, 10 * 60 * 1000); // 10분마다
 
 // ✅ 관계도 자동하락(무관심까지 하루 1씩)
 setInterval(() => {
-  relationship.decayRelationships(1);
+  relationship.decayRelationships(0.3);
 }, 24 * 60 * 60 * 1000); // 하루 1회
 
 // ✅ 답글 상호작용 시 관계도 상승
@@ -298,8 +298,8 @@ client.on("messageCreate", async msg => {
     try {
       const repliedMsg = await msg.channel.messages.fetch(msg.reference.messageId).catch(() => null);
       if (repliedMsg && repliedMsg.author && !repliedMsg.author.bot && repliedMsg.author.id !== msg.author.id) {
-        relationship.onPositive(msg.author.id, repliedMsg.author.id);
-        relationship.onPositive(repliedMsg.author.id, msg.author.id);
+        relationship.onPositive(msg.author.id, repliedMsg.author.id, 0.2);
+        relationship.onPositive(repliedMsg.author.id, msg.author.id, 0.2);
       }
     } catch {}
   }
@@ -311,8 +311,8 @@ client.on("messageCreate", msg => {
   if (msg.mentions && msg.mentions.users) {
     msg.mentions.users.forEach(user => {
       if (!user.bot && user.id !== msg.author.id) {
-        relationship.onPositive(msg.author.id, user.id);
-        relationship.onPositive(user.id, msg.author.id);
+        relationship.onPositive(msg.author.id, user.id, 0.3);
+        relationship.onPositive(user.id, msg.author.id, 0.3);
       }
     });
   }
@@ -323,8 +323,8 @@ client.on("messageReactionAdd", async (reaction, user) => {
   if (!reaction.message.guild || user.bot) return;
   const author = reaction.message.author;
   if (author && !author.bot && author.id !== user.id) {
-    relationship.onPositive(user.id, author.id);
-    relationship.onPositive(author.id, user.id);
+    relationship.onPositive(user.id, author.id, 0.1);
+    relationship.onPositive(author.id, user.id, 0.1);
   }
 });
 
