@@ -68,7 +68,6 @@ if (fs.existsSync(eventsPath)) {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
-  // 활동 상태 메시지 배열
   const activityMessages = [
     "/챔피언획득으로 롤 챔피언을 키워보세요!",
     "/도움말 을 통해 까리한 기능들을 확인해보세요!",
@@ -76,7 +75,6 @@ client.once(Events.ClientReady, async () => {
   ];
   let activityIndex = 0;
 
-  // 주기적으로 활동 상태 변경
   setInterval(() => {
     client.user.setPresence({
       status: "online",
@@ -88,7 +86,7 @@ client.once(Events.ClientReady, async () => {
       ],
     });
     activityIndex = (activityIndex + 1) % activityMessages.length;
-  }, 20000); // 20초마다 변경
+  }, 20000);
 
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (logChannel && logChannel.isTextBased()) {
@@ -105,7 +103,6 @@ async function sendCommandLog(interaction) {
     const cmdName = interaction.commandName;
     const time = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 
-    // 옵션값 로깅
     let extra = "";
     if (interaction.options && interaction.options.data) {
       extra = interaction.options.data.map(opt =>
@@ -125,10 +122,32 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// ✅ 챔피언배틀 통합 명령어/버튼 처리(중복X!)
+// ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // 1. 챔피언배틀 명령어는 여기서만!
+  // 0. 모달 제출 처리(비밀번호설정, 관리 등)
+  if (interaction.isModalSubmit()) {
+    let modalHandled = false;
+    for (const cmd of client.commands.values()) {
+      if (typeof cmd.modalSubmit === "function") {
+        try {
+          await cmd.modalSubmit(interaction);
+          modalHandled = true;
+        } catch (err) {
+          console.error(err);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "❌ 모달 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+          }
+        }
+      }
+    }
+    if (!modalHandled && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 모달 처리 가능한 명령어가 없습니다.", ephemeral: true }).catch(()=>{});
+    }
+    return;
+  }
+
+  // 1. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);
     try {
@@ -147,23 +166,23 @@ client.on(Events.InteractionCreate, async interaction => {
         }).catch(() => {});
       }
     }
-    return; // 아래 코드 실행X
+    return;
   }
 
-  // 2. 챔피언배틀 버튼만 여기서!
+  // 2. 챔피언배틀 버튼
   if (
-  interaction.isButton() && interaction.customId && (
-    interaction.customId.startsWith('accept_battle_') ||
-    interaction.customId.startsWith('decline_battle_') ||
-    [
-      'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
-    ].includes(interaction.customId) ||
-    interaction.customId.startsWith('useitem_') ||
-    interaction.customId.startsWith('useskill_')
-  )
-) {
-  try {
-    await champBattle.handleButton(interaction);
+    interaction.isButton() && interaction.customId && (
+      interaction.customId.startsWith('accept_battle_') ||
+      interaction.customId.startsWith('decline_battle_') ||
+      [
+        'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
+      ].includes(interaction.customId) ||
+      interaction.customId.startsWith('useitem_') ||
+      interaction.customId.startsWith('useskill_')
+    )
+  ) {
+    try {
+      await champBattle.handleButton(interaction);
     } catch (error) {
       console.error(error);
       if (interaction.deferred || interaction.replied) {
@@ -215,13 +234,11 @@ client.on("messageCreate", msg => {
 // === 음성 누적 + 1시간 알림 ===
 const voiceStartMap = new Map();
 client.on("voiceStateUpdate", (oldState, newState) => {
-  // 입장
   if (!oldState.channel && newState.channel && !newState.member.user.bot) {
     if (activity.isTracked(newState.channel, "voice")) {
       voiceStartMap.set(newState.id, { channel: newState.channel, time: Date.now(), notifiedHour: 0 });
     }
   }
-  // 퇴장/이동
   if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
     const info = voiceStartMap.get(oldState.id);
     if (info && activity.isTracked(oldState.channel, "voice")) {
@@ -253,17 +270,14 @@ setInterval(async () => {
         try {
           const member = await info.channel.guild.members.fetch(userId);
           name = member.displayName || member.user.username || userId;
-        } catch (e) {
-          // 멤버를 못찾으면 그냥 userId로
-        }
-        channel.send(`-# ⏳ ${member.displayName} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
+        } catch (e) {}
+        channel.send(`-# ⏳ ${name} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
       }
     }
   }
 }, 60 * 1000);
 
-
-// ✅ 음성채널 동접 관계도 자동상승(하루 1회, barrier 크게 세팅되어야만 효과)
+// ✅ 음성채널 동접 관계도 자동상승
 setInterval(() => {
   for (const [guildId, guild] of client.guilds.cache) {
     const voiceStates = guild.voiceStates.cache;
@@ -283,17 +297,16 @@ setInterval(() => {
       }
     }
   }
-}, 10 * 60 * 1000); // 10분마다
+}, 10 * 60 * 1000);
 
-// ✅ 관계도 자동하락(무관심까지 하루 1씩)
+// ✅ 관계도 자동하락
 setInterval(() => {
   relationship.decayRelationships(0.3);
-}, 24 * 60 * 60 * 1000); // 하루 1회
+}, 24 * 60 * 60 * 1000);
 
 // ✅ 답글 상호작용 시 관계도 상승
 client.on("messageCreate", async msg => {
   if (!msg.guild || msg.author.bot) return;
-  // 답글이면 원글-답글 상호 onPositive
   if (msg.reference && msg.reference.messageId) {
     try {
       const repliedMsg = await msg.channel.messages.fetch(msg.reference.messageId).catch(() => null);
@@ -328,8 +341,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
   }
 });
 
-
- // 유저 활동기록 체크 코드
+// 유저 활동기록 체크 코드
 const activityPath = path.join(__dirname, "activity.json");
 
 client.on("messageCreate", (message) => {
@@ -451,7 +463,6 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// ✅ 예외 핸들링/자동 재접속/Express 서버는 그대로
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
   try {
