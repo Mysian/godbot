@@ -19,23 +19,7 @@ const os = require("os");
 const EXCLUDE_ROLE_ID = "1371476512024559756";
 const NEWBIE_ROLE_ID = "1295701019430227988";
 const PAGE_SIZE = 1900;
-
-function findAllJsonFiles(dir, arr = [], root = dir) {
-  const skipFolders = ['node_modules', '.git', '.next', 'tmp', 'temp'];
-  if (!fs.existsSync(dir)) return arr;
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const fullPath = path.join(dir, file);
-    const relPath = path.relative(root, fullPath);
-    if (skipFolders.some((skip) => file === skip)) continue;
-    if (fs.statSync(fullPath).isDirectory()) {
-      findAllJsonFiles(fullPath, arr, root);
-    } else if (file.endsWith('.json')) {
-      arr.push({ abs: fullPath, rel: relPath });
-    }
-  }
-  return arr;
-}
+const dataDir = path.join(__dirname, "../data");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -50,7 +34,8 @@ module.exports = {
           { name: "장기 미이용 유저 추방", value: "inactive" },
           { name: "비활동 신규유저 추방", value: "newbie" },
           { name: "유저 정보 조회", value: "user" },
-          { name: "저장파일관리", value: "json" },
+          { name: "저장파일 수정", value: "json_edit" },
+          { name: "저장파일 백업", value: "json_backup" },
           { name: "서버상태", value: "status" }
         )
     )
@@ -71,13 +56,13 @@ module.exports = {
       ? JSON.parse(fs.readFileSync(activityPath))
       : {};
 
-    // ======= 서버 상태 =======
+    // ====== 서버상태 ======
     if (option === "status") {
       const memory = process.memoryUsage();
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
 
-      const load = os.loadavg()[0]; // 1분 평균
+      const load = os.loadavg()[0];
       const uptimeSec = Math.floor(process.uptime());
       const uptime = (() => {
         const h = Math.floor(uptimeSec / 3600);
@@ -129,31 +114,26 @@ module.exports = {
       return;
     }
 
-    // ======= 저장파일 관리 =======
-    if (option === "json") {
-      const rootDir = path.resolve(__dirname, "..");
-      const files = findAllJsonFiles(rootDir);
+    // ====== 저장파일 수정 ======
+    if (option === "json_edit") {
+      const files = fs.existsSync(dataDir)
+        ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
+        : [];
       if (!files.length)
         return interaction.editReply({
-          content: "서버 전체에 .json 파일이 없습니다.",
+          content: "data 폴더에 .json 파일이 없습니다.",
           ephemeral: true,
         });
 
       const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("jsonfile_select")
-        .setPlaceholder("관리할 JSON 파일을 선택하세요!")
-        .addOptions([
-          ...files.map((f, i) => ({
-            label: f.rel.length > 90 ? '...' + f.rel.slice(-90) : f.rel,
-            value: f.rel,
-          })),
-          { label: "모든 파일 다운로드 (ZIP)", value: "__DOWNLOAD_ALL__" },
-        ]);
+        .setCustomId("jsonfile_edit_select")
+        .setPlaceholder("수정할 JSON 파일을 선택하세요!")
+        .addOptions([...files.map((f) => ({ label: f, value: f }))]);
 
       const row = new ActionRowBuilder().addComponents(selectMenu);
 
       await interaction.editReply({
-        content: "관리할 .json 파일을 선택하세요.",
+        content: "수정할 .json 파일을 선택하세요.",
         components: [row],
         ephemeral: true,
       });
@@ -166,25 +146,17 @@ module.exports = {
 
       const modalHandler = async (modalInteraction) => {
         if (!modalInteraction.isModalSubmit()) return;
-        if (!modalInteraction.customId.startsWith("modal_")) return;
+        if (!modalInteraction.customId.startsWith("modal_edit_")) return;
         if (modalInteraction.user.id !== interaction.user.id) return;
 
-        const relPath = modalInteraction.customId.slice(6);
-        const fileInfo = files.find(f => f.rel === relPath);
-        if (!fileInfo) {
-          await modalInteraction.reply({
-            content: "❌ 파일을 찾을 수 없습니다.",
-            ephemeral: true,
-          });
-          return;
-        }
-        const filePath = fileInfo.abs;
+        const fileName = modalInteraction.customId.slice("modal_edit_".length);
+        const filePath = path.join(dataDir, fileName);
         const content = modalInteraction.fields.getTextInputValue("json_edit_content");
         try {
           JSON.parse(content);
           fs.writeFileSync(filePath, content, "utf8");
           await modalInteraction.reply({
-            content: `✅ ${relPath} 저장 완료!`,
+            content: `✅ ${fileName} 저장 완료!`,
             ephemeral: true,
           });
         } catch {
@@ -197,50 +169,9 @@ module.exports = {
       interaction.client.on("interactionCreate", modalHandler);
 
       collector.on("collect", async (i) => {
-        if (i.customId === "jsonfile_select") {
-          const relPath = i.values[0];
-
-          if (relPath === "__DOWNLOAD_ALL__") {
-            const zip = new AdmZip();
-            for (const file of files) {
-              zip.addLocalFile(file.abs, path.dirname(file.rel), path.basename(file.rel));
-            }
-            const now = new Date();
-            const dateStr =
-              now.getFullYear().toString() +
-              (now.getMonth() + 1).toString().padStart(2, "0") +
-              now.getDate().toString().padStart(2, "0") +
-              "_" +
-              now.getHours().toString().padStart(2, "0") +
-              now.getMinutes().toString().padStart(2, "0") +
-              now.getSeconds().toString().padStart(2, "0");
-            const filename = `${dateStr}.zip`;
-            const tmpPath = path.join(__dirname, `../${filename}`);
-            zip.writeZip(tmpPath);
-
-            const attachment = new AttachmentBuilder(tmpPath, { name: filename });
-            await i.reply({
-              content: `모든 .json 파일을 압축했습니다. (${filename})`,
-              files: [attachment],
-              ephemeral: true,
-            });
-
-            setTimeout(() => {
-              if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-            }, 60 * 1000);
-
-            return;
-          }
-
-          const fileInfo = files.find(f => f.rel === relPath);
-          if (!fileInfo) {
-            await i.reply({
-              content: "❌ 파일을 찾을 수 없습니다.",
-              ephemeral: true,
-            });
-            return;
-          }
-          const filePath = fileInfo.abs;
+        if (i.customId === "jsonfile_edit_select") {
+          const fileName = i.values[0];
+          const filePath = path.join(dataDir, fileName);
           let text = fs.readFileSync(filePath, "utf8");
           let pretty = "";
           try {
@@ -255,7 +186,7 @@ module.exports = {
 
           const getEmbed = (pageIdx) => {
             return new EmbedBuilder()
-              .setTitle(`📦 ${relPath} (페이지 ${pageIdx + 1}/${totalPages})`)
+              .setTitle(`📦 ${fileName} (페이지 ${pageIdx + 1}/${totalPages})`)
               .setDescription(
                 "아래 JSON 내용을 수정하려면 [수정] 버튼을 눌러주세요."
               )
@@ -270,19 +201,19 @@ module.exports = {
 
           const getRow = (pageIdx) => {
             const prevBtn = new ButtonBuilder()
-              .setCustomId(`prev_${relPath}`)
+              .setCustomId(`prev_${fileName}`)
               .setLabel("◀ 이전")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(pageIdx === 0);
 
             const nextBtn = new ButtonBuilder()
-              .setCustomId(`next_${relPath}`)
+              .setCustomId(`next_${fileName}`)
               .setLabel("다음 ▶")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(pageIdx >= totalPages - 1);
 
             const editBtn = new ButtonBuilder()
-              .setCustomId(`edit_${relPath}`)
+              .setCustomId(`edit_${fileName}`)
               .setLabel("수정")
               .setStyle(ButtonStyle.Primary);
 
@@ -304,7 +235,7 @@ module.exports = {
           });
 
           pageCollector.on("collect", async (btnI) => {
-            if (btnI.customId === `prev_${relPath}` && page > 0) {
+            if (btnI.customId === `prev_${fileName}` && page > 0) {
               page--;
               await btnI.update({
                 embeds: [getEmbed(page)],
@@ -312,7 +243,7 @@ module.exports = {
               });
             }
             if (
-              btnI.customId === `next_${relPath}` &&
+              btnI.customId === `next_${fileName}` &&
               page < totalPages - 1
             ) {
               page++;
@@ -321,14 +252,14 @@ module.exports = {
                 components: [getRow(page)],
               });
             }
-            if (btnI.customId === `edit_${relPath}`) {
+            if (btnI.customId === `edit_${fileName}`) {
               let editText = pretty;
               if (pretty.length > PAGE_SIZE * 3) {
                 editText = pretty.slice(0, PAGE_SIZE * 3);
               }
               const modal = new ModalBuilder()
-                .setCustomId(`modal_${relPath}`)
-                .setTitle(`${relPath} 수정`)
+                .setCustomId(`modal_edit_${fileName}`)
+                .setTitle(`${fileName} 수정`)
                 .addComponents(
                   new ActionRowBuilder().addComponents(
                     new TextInputBuilder()
@@ -350,15 +281,13 @@ module.exports = {
           });
         }
         if (i.customId.startsWith("edit_")) {
-          const relPath = i.customId.slice(5);
-          const fileInfo = files.find(f => f.rel === relPath);
-          if (!fileInfo) return;
-          const filePath = fileInfo.abs;
+          const fileName = i.customId.slice(5);
+          const filePath = path.join(dataDir, fileName);
           let text = fs.readFileSync(filePath, "utf8");
           if (text.length > PAGE_SIZE * 3) text = text.slice(0, PAGE_SIZE * 3);
           const modal = new ModalBuilder()
-            .setCustomId(`modal_${relPath}`)
-            .setTitle(`${relPath} 수정`)
+            .setCustomId(`modal_edit_${fileName}`)
+            .setTitle(`${fileName} 수정`)
             .addComponents(
               new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
@@ -379,7 +308,49 @@ module.exports = {
       return;
     }
 
-    // ===== 기존 관리 =====
+    // ====== 저장파일 백업 ======
+    if (option === "json_backup") {
+      const files = fs.existsSync(dataDir)
+        ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
+        : [];
+      if (!files.length)
+        return interaction.editReply({
+          content: "data 폴더에 .json 파일이 없습니다.",
+          ephemeral: true,
+        });
+
+      const zip = new AdmZip();
+      for (const file of files) {
+        zip.addLocalFile(path.join(dataDir, file), "", file);
+      }
+      const now = new Date();
+      const dateStr =
+        now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, "0") +
+        now.getDate().toString().padStart(2, "0") +
+        "_" +
+        now.getHours().toString().padStart(2, "0") +
+        now.getMinutes().toString().padStart(2, "0") +
+        now.getSeconds().toString().padStart(2, "0");
+      const filename = `${dateStr}.zip`;
+      const tmpPath = path.join(__dirname, `../data/${filename}`);
+      zip.writeZip(tmpPath);
+
+      const attachment = new AttachmentBuilder(tmpPath, { name: filename });
+      await interaction.editReply({
+        content: `모든 .json 파일을 압축했습니다. (${filename})`,
+        files: [attachment],
+        ephemeral: true,
+      });
+
+      setTimeout(() => {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      }, 60 * 1000);
+
+      return;
+    }
+
+    // ====== 기존 관리 ======
     if (option === "inactive" || option === "newbie") {
       const 기준날짜 = new Date(
         Date.now() - (option === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
