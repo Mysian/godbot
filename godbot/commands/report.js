@@ -13,8 +13,8 @@ const REASONS = [
   { label: '불쾌감 조성', value: '불쾌감 조성' },
   { label: '고의적 트롤', value: '고의적 트롤' },
   { label: '사생활 침해', value: '사생활 침해' },
-  { label: '사생활 침해', value: '노쇼 및 파토' },
-  { label: '사생활 침해', value: '무시 및 인신공격' },
+  { label: '노쇼 및 파토', value: '노쇼 및 파토' },
+  { label: '무시 및 인신공격', value: '무시 및 인신공격' },
   { label: '해킹', value: '해킹' },
   { label: '기타', value: '기타' }
 ];
