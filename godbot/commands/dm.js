@@ -68,31 +68,53 @@ module.exports = {
       content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 <@${user.id}>님은 **봇에게 DM**을 보내면 이 스레드로 익명 메시지가 릴레이되고,\n운영진(명령어 입력자)은 이 스레드에 메시지 작성시 해당 유저에게 익명 DM이 전송됩니다.*`,
       ephemeral: true,
     });
+
+    // 디버그
+    console.log('[DEBUG] relayMap set:', user.id, thread.id);
   },
 
   relayRegister(client) {
-    // DM → 스레드 릴레이
+    // 유저가 봇 DM에 쓴 메시지 → 스레드로 릴레이
     client.on('messageCreate', async msg => {
       if (!msg.guild && !msg.author.bot) {
-        try {
-          const threadId = relayMap.get(msg.author.id);
-          if (!threadId) return;
-          const guild = client.guilds.cache.get(GUILD_ID);
-          if (!guild) return;
-          const parentChannel = await guild.channels.fetch(THREAD_PARENT_CHANNEL_ID).catch(() => null);
-          if (!parentChannel) return;
-          const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-          if (!thread) return;
-          await thread.send({
-            content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}`
-          });
-        } catch (err) {
-          console.error('[DM 릴레이 오류]', err);
+        console.log('[DEBUG] 유저가 봇 DM에 메시지 보냄:', msg.author.tag, msg.content);
+
+        const threadId = relayMap.get(msg.author.id);
+        console.log('[DEBUG] relayMap에 등록된 threadId:', threadId);
+
+        if (!threadId) {
+          console.log('[DEBUG] threadId 없음 - /디엠 명령어 실행 필요');
+          return;
         }
+        const guild = client.guilds.cache.get(GUILD_ID);
+        if (!guild) {
+          console.log('[DEBUG] guild 못찾음');
+          return;
+        }
+        const parentChannel = await guild.channels.fetch(THREAD_PARENT_CHANNEL_ID).catch(e => {
+          console.log('[DEBUG] parentChannel 못찾음', e);
+          return null;
+        });
+        if (!parentChannel) {
+          console.log('[DEBUG] parentChannel null');
+          return;
+        }
+        const thread = await parentChannel.threads.fetch(threadId).catch(e => {
+          console.log('[DEBUG] thread 못찾음', e);
+          return null;
+        });
+        if (!thread) {
+          console.log('[DEBUG] thread null');
+          return;
+        }
+        await thread.send({
+          content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}`
+        });
+        console.log('[DEBUG] 스레드에 정상 전송 완료!');
       }
     });
 
-    // 스레드 → 유저 DM 릴레이 (운영진이 스레드에 채팅 시)
+    // 운영진이 스레드에 메시지 작성 → 대상 유저 DM 릴레이
     client.on('messageCreate', async msg => {
       if (msg.channel.type !== ChannelType.PublicThread) return;
       if (msg.author.bot) return;
@@ -102,6 +124,7 @@ module.exports = {
             const user = await client.users.fetch(userId).catch(() => null);
             if (!user) return;
             await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+            console.log(`[DEBUG] 운영진 스레드→유저 DM 릴레이: ${user.tag} 에게 ${msg.content}`);
           } catch (err) {
             console.error('[스레드→DM 릴레이 오류]', err);
           }
