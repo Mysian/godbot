@@ -17,6 +17,8 @@ const STAGE_BARRIER = [
   40,40,20,20,20,20,20,20,20,40,20,20,40,20,20,40,20,20,60,
 ];
 
+const LAST_INTERACTION_PATH = path.join(__dirname, "../data/relationship-last.json");
+
 function getRelationshipLevel(score) {
   const idx = Math.max(0, Math.min(20, Math.round(score) + 6));
   return RELATIONSHIP_LEVELS[idx];
@@ -37,7 +39,6 @@ function loadData() {
   }
 }
 
-// 락파일 기반 직렬 저장
 let writeQueue = [];
 let writing = false;
 
@@ -56,7 +57,6 @@ function processQueue() {
   });
 }
 
-// 무관심(0) 기준: 정보가 없으면 stage=6, remain=0 리턴
 function getInternal(userA, userB) {
   if (userA === userB) return { stage: 6, remain: 0 };
   const data = loadData();
@@ -115,6 +115,47 @@ function addScore(userA, userB, diff) {
   setInternal(userA, userB, { stage, remain });
 }
 
+// ✅ 마지막 교류 시점 기록용
+function recordInteraction(userA, userB) {
+  if (userA === userB) return;
+  let log = {};
+  if (fs.existsSync(LAST_INTERACTION_PATH)) {
+    try {
+      log = JSON.parse(fs.readFileSync(LAST_INTERACTION_PATH));
+    } catch {}
+  }
+  const now = Date.now();
+  if (!log[userA]) log[userA] = {};
+  if (!log[userB]) log[userB] = {};
+  log[userA][userB] = now;
+  log[userB][userA] = now;
+  fs.writeFileSync(LAST_INTERACTION_PATH, JSON.stringify(log, null, 2));
+}
+
+// ✅ 자동 감소: 3일 이상 교류 없으면 -0.5
+function decayRelationships(decayAmount = 0.5, thresholdMs = 1000 * 60 * 60 * 24 * 3) {
+  const now = Date.now();
+  const data = loadData();
+  let log = {};
+  try {
+    if (fs.existsSync(LAST_INTERACTION_PATH)) {
+      log = JSON.parse(fs.readFileSync(LAST_INTERACTION_PATH));
+    }
+  } catch {
+    log = {};
+  }
+
+  for (const userA in data) {
+    for (const userB in data[userA]) {
+      if (userA === userB) continue;
+      const last = log?.[userA]?.[userB] || 0;
+      if (now - last >= thresholdMs) {
+        addScore(userA, userB, -decayAmount);
+      }
+    }
+  }
+}
+
 function getRelation(userA, userB) {
   return getRelationshipLevel(getScore(userA, userB));
 }
@@ -132,12 +173,7 @@ function getTopRelations(userId, n = 3) {
   return arr;
 }
 
-// ✅ 자동 감소 제거됨
-// function decayRelationships(...) { ... } 삭제됨
-
-function onReport(userA, userB) {
-  // 강퇴/잠수투표 등은 하락 없음
-}
+function onReport(userA, userB) {}
 function onStrongNegative(userA, userB) {
   addScore(userA, userB, -6);
 }
@@ -146,11 +182,14 @@ function onMute(userA, userB) {
 }
 function onPositive(userA, userB, value = 1) {
   addScore(userA, userB, value);
+  recordInteraction(userA, userB);
 }
 
 module.exports = {
   getScore, setScore, addScore, getRelation, getRelationshipLevel,
   getTopRelations,
   onMute, onReport, onStrongNegative, onPositive,
-  loadData, saveData
+  loadData, saveData,
+  decayRelationships,
+  recordInteraction,
 };

@@ -299,6 +299,11 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
+// 
+setInterval(() => {
+  relationship.decayRelationships(0.5); // 3일 이상 교류 없으면 자동 차감
+}, 1000 * 60 * 60 * 24);
+
 // ✅ 답글 상호작용 시 관계도 상승
 client.on("messageCreate", async msg => {
   if (!msg.guild || msg.author.bot) return;
