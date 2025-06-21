@@ -20,6 +20,8 @@ const dataDir = path.join(__dirname, "../data");
 
 // activity-tracker.js 연동
 const activityTracker = require("../utils/activity-tracker.js");
+// 관계 데이터
+const relationship = require("../relationship.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,7 +34,7 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: "서버상태", value: "status" },
-          { name: "유저 정보 조회", value: "user" },
+          { name: "유저 관리", value: "user" }, // 옵션명 변경
           { name: "저장파일 백업", value: "json_backup" },
           { name: "스팸의심 계정 추방", value: "spam_kick" },
           { name: "비활동 신규유저 추방", value: "newbie" },
@@ -383,73 +385,131 @@ module.exports = {
       return;
     }
 
-    // ====== 유저 정보 조회 ======
+    // ====== 유저 관리 (유저 정보 조회) ======
     if (option === "user") {
-      const target =
-        interaction.options.getUser("대상유저") || interaction.user;
-      const member = await guild.members.fetch(target.id).catch(() => null);
+      // 버튼에서 새로고침 등 이벤트일 경우, customId 체크로 분기
+      async function showUserInfo(targetUserId, userInteraction) {
+        const target = await guild.members.fetch(targetUserId).then(m=>m.user).catch(()=>null);
+        const member = await guild.members.fetch(targetUserId).catch(() => null);
+        if (!member || !target) {
+          await userInteraction.editReply
+            ? userInteraction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다." })
+            : userInteraction.update({ content: "❌ 해당 유저를 찾을 수 없습니다.", embeds: [], components: [] });
+          return;
+        }
 
-      if (!member) {
-        await interaction.editReply({
-          content: "❌ 해당 유저를 찾을 수 없습니다.",
-        });
-        return;
+        // 활동 기록 불러오기
+        const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+        let lastActiveStr = "기록 없음";
+        try {
+          const userData = require("../../activity-data.json")[target.id];
+          if (userData) {
+            const lastActive = Object.keys(userData).sort().reverse()[0];
+            if (lastActive) {
+              lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+            }
+          }
+        } catch { }
+
+        const joinedAt = member.joinedAt;
+        const joinedAtStr = joinedAt
+          ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+          : "기록 없음";
+
+        // 관계도 표시
+        // 가장 친한 유저 3명
+        const topFriends = relationship.getTopRelations(target.id, 3);
+        // 가장 적대(점수 낮은 순)
+        const relData = relationship.loadData()[target.id] || {};
+        const enemiesArr = Object.entries(relData)
+          .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
+          .slice(0, 3)
+          .map(([id, val]) => ({
+            userId: id,
+            stage: val.stage,
+            remain: val.remain,
+            relation: relationship.getRelationshipLevel(val.stage - 6),
+          }));
+
+        let friendsText = topFriends.length
+          ? topFriends.map(
+              (x, i) =>
+                `#${i + 1} <@${x.userId}> (${x.relation})`
+            ).join("\n")
+          : "없음";
+        let enemiesText = enemiesArr.length
+          ? enemiesArr.map(
+              (x, i) =>
+                `#${i + 1} <@${x.userId}> (${x.relation})`
+            ).join("\n")
+          : "없음";
+
+        // 타임아웃 상태 확인
+        let timeoutActive = false;
+        let timeoutExpireStr = "";
+        if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
+          timeoutActive = true;
+          timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`유저 정보: ${target.tag}`)
+          .setThumbnail(target.displayAvatarURL())
+          .addFields(
+            { name: "유저 ID", value: target.id, inline: false },
+            { name: "서버 입장일", value: joinedAtStr, inline: false },
+            { name: "마지막 활동일", value: lastActiveStr, inline: false },
+            { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
+            { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
+            { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
+            { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
+            ...(timeoutActive
+              ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
+              : [])
+          )
+          .setColor(0x00bfff);
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("nickname_change")
+            .setLabel("별명 변경")
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId(timeoutActive ? "timeout_release" : "timeout")
+            .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
+            .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId("kick")
+            .setLabel("추방")
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId("refresh_userinfo")
+            .setLabel("🔄 새로고침")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        if (userInteraction.editReply)
+          await userInteraction.editReply({ embeds: [embed], components: [row] });
+        else userInteraction.update({ embeds: [embed], components: [row], content: "" });
       }
 
-      // 활동 기록 불러오기
-      const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
-      let lastActiveStr = "기록 없음";
-      try {
-        const userData = require("../../activity-data.json")[target.id];
-        if (userData) {
-          const lastActive = Object.keys(userData).sort().reverse()[0];
-          if (lastActive) {
-            lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-          }
-        }
-      } catch { }
+      // 최초 실행 or 새로고침 버튼
+      const target =
+        interaction.options.getUser("대상유저") || interaction.user;
+      await showUserInfo(target.id, interaction);
 
-      const joinedAt = member.joinedAt;
-      const joinedAtStr = joinedAt
-        ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
-        : "기록 없음";
-
-      const embed = new EmbedBuilder()
-        .setTitle(`유저 정보: ${target.tag}`)
-        .setThumbnail(target.displayAvatarURL())
-        .addFields(
-          { name: "유저 ID", value: target.id, inline: false },
-          { name: "서버 입장일", value: joinedAtStr, inline: false },
-          { name: "마지막 활동일", value: lastActiveStr, inline: false },
-          { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
-          { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true }
-        )
-        .setColor(0x00bfff);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("nickname_change")
-          .setLabel("별명 변경")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId("timeout")
-          .setLabel("타임아웃 (1시간)")
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId("kick")
-          .setLabel("추방")
-          .setStyle(ButtonStyle.Danger)
-      );
-
-      await interaction.editReply({ embeds: [embed], components: [row] });
-
+      // 버튼 인터랙션 핸들러
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id,
-        time: 20000,
+        time: 60 * 1000,
       });
 
       collector.on("collect", async (i) => {
-        if (i.customId === "nickname_change") {
+        const targetUserId = target.id;
+
+        if (i.customId === "refresh_userinfo") {
+          await showUserInfo(targetUserId, i);
+        } else if (i.customId === "nickname_change") {
           await i.update({
             content: "✏️ 새로운 별명을 입력해주세요.",
             embeds: [],
@@ -464,7 +524,7 @@ module.exports = {
 
           msgCollector.on("collect", async (msg) => {
             try {
-              await member.setNickname(msg.content);
+              await interaction.guild.members.edit(targetUserId, { nick: msg.content });
               await interaction.followUp({
                 content: `✅ 별명이 **${msg.content}**(으)로 변경되었습니다.`,
                 ephemeral: true,
@@ -487,19 +547,43 @@ module.exports = {
           });
         } else if (i.customId === "timeout") {
           await i.update({
-            content: "⏳ 타임아웃(1시간) 적용 중...",
+            content: "⏳ 타임아웃(1일) 적용 중...",
             embeds: [],
             components: [],
           });
           try {
-            await member.timeout(60 * 60 * 1000, "관리 명령어로 타임아웃");
+            await interaction.guild.members.edit(targetUserId, {
+              communicationDisabledUntil: Date.now() + 24 * 60 * 60 * 1000,
+              reason: "관리 명령어로 타임아웃 (1일)"
+            });
             await interaction.followUp({
-              content: `✅ <@${member.id}>님에게 1시간 타임아웃을 적용했습니다.`,
+              content: `✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.`,
               ephemeral: true,
             });
           } catch (err) {
             await interaction.followUp({
               content: "❌ 타임아웃 실패 (권한 문제일 수 있음)",
+              ephemeral: true,
+            });
+          }
+        } else if (i.customId === "timeout_release") {
+          await i.update({
+            content: "⏳ 타임아웃 해제 중...",
+            embeds: [],
+            components: [],
+          });
+          try {
+            await interaction.guild.members.edit(targetUserId, {
+              communicationDisabledUntil: null,
+              reason: "관리 명령어로 타임아웃 해제"
+            });
+            await interaction.followUp({
+              content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`,
+              ephemeral: true,
+            });
+          } catch (err) {
+            await interaction.followUp({
+              content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)",
               ephemeral: true,
             });
           }
@@ -510,9 +594,9 @@ module.exports = {
             components: [],
           });
           try {
-            await member.kick("관리 명령어로 추방");
+            await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
             await interaction.followUp({
-              content: `✅ <@${member.id}>님을 서버에서 추방했습니다.`,
+              content: `✅ <@${targetUserId}>님을 서버에서 추방했습니다.`,
               ephemeral: true,
             });
           } catch (err) {
