@@ -30,7 +30,6 @@ function loadData() {
     return JSON.parse(content);
   } catch (e) {
     console.error(`[관계도 JSON 오류] 파일이 깨졌습니다:`, e);
-    // 파일을 자동 백업하고 초기화
     try {
       fs.renameSync(dataPath, dataPath + ".bak_" + Date.now());
     } catch {}
