@@ -1,3 +1,4 @@
+// utils/relationship.js
 const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../data/relationship-data.json");
@@ -22,6 +23,7 @@ const STAGE_BARRIER = [
 let data = {};
 let lastInteraction = {};
 
+// ✅ 최초 로딩
 (function init() {
   try {
     if (fs.existsSync(dataPath)) {
@@ -87,7 +89,7 @@ function setInternal(userA, userB, obj) {
 function getScore(userA, userB) {
   const { stage, remain } = getInternal(userA, userB);
   const barrier = STAGE_BARRIER[stage] || 1;
-  return stage - 6 + (remain / barrier);
+  return parseFloat((stage - 6 + (remain / barrier)).toFixed(4));
 }
 
 function setScore(userA, userB, val) {
@@ -164,13 +166,12 @@ function getRelation(userA, userB) {
 function getTopRelations(userId, n = 3) {
   const entries = data[userId] || {};
   return Object.entries(entries)
-    .sort((a, b) => (b[1].stage - a[1].stage) || (b[1].remain - a[1].remain))
+    .sort((a, b) => (getScore(userId, b[0]) - getScore(userId, a[0])))
     .slice(0, n)
-    .map(([id, val]) => ({
+    .map(([id]) => ({
       userId: id,
-      stage: val.stage,
-      remain: val.remain,
-      relation: getRelationshipLevel(val.stage - 6)
+      score: getScore(userId, id),
+      relation: getRelationshipLevel(getScore(userId, id))
     }));
 }
 
@@ -210,5 +211,5 @@ module.exports = {
   decayRelationships,
   recordInteraction,
   loadLastInteraction: () => lastInteraction,
-  getAllScores,
+  getAllScores
 };
