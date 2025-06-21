@@ -15,7 +15,6 @@ const AdmZip = require("adm-zip");
 const os = require("os");
 
 const EXCLUDE_ROLE_ID = "1371476512024559756";
-const NEWBIE_ROLE_ID = "1295701019430227988";
 const SPAM_ROLE_ID = "1205052922296016906";
 const PAGE_SIZE = 1900;
 const dataDir = path.join(__dirname, "../data");
@@ -47,9 +46,7 @@ module.exports = {
           { name: "서버상태", value: "status" },
           { name: "유저 관리", value: "user" },
           { name: "저장파일 백업", value: "json_backup" },
-          { name: "스팸의심 계정 추방", value: "spam_kick" },
-          { name: "비활동 신규유저 추방", value: "newbie" },
-          { name: "장기 미이용 유저 추방", value: "inactive" }
+          { name: "스팸의심 계정 추방", value: "spam_kick" }
         )
     )
     .addUserOption((option) =>
@@ -144,84 +141,7 @@ module.exports = {
       return;
     }
 
-    // ====== 비활동 신규유저/장기 미이용 유저 추방 - 명단 미리보기+확인/취소 버튼 ======
-    if (option === "inactive" || option === "newbie") {
-      const 기준날짜 = new Date(
-        Date.now() - (option === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
-      );
-      const members = await guild.members.fetch();
-      const 추방대상 = [];
-
-      for (const member of members.values()) {
-        if (member.user.bot) continue;
-        if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
-
-        const stat = activityStats.find((x) => x.userId === member.id);
-        if (option === "inactive") {
-          let isInactive = true;
-          if (stat) {
-            let lastActive = null;
-            try {
-              const userData = require("../../activity-data.json")[member.id];
-              if (userData) {
-                lastActive = Object.keys(userData)
-                  .sort()
-                  .reverse()[0];
-              }
-              if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
-              else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
-            } catch { }
-          }
-          if (isInactive) 추방대상.push(member);
-        } else if (option === "newbie") {
-          const joinedAt = member.joinedAt;
-          const isNewbie = member.roles.cache.has(NEWBIE_ROLE_ID);
-          const daysPassed = (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24);
-          const isInactive = !stat || ((stat.message || 0) === 0 && (stat.voice || 0) === 0);
-          if (isNewbie && isInactive && daysPassed >= 7) {
-            추방대상.push(member);
-          }
-        }
-      }
-
-      const descList = [];
-      let totalLength = 0;
-      for (const m of 추방대상) {
-        const line = `• <@${m.id}> (${m.user.tag})`;
-        if (totalLength + line.length + 1 < 4000) {
-          descList.push(line);
-          totalLength += line.length + 1;
-        } else {
-          descList.push(`외 ${추방대상.length - descList.length}명...`);
-          break;
-        }
-      }
-
-      const preview = new EmbedBuilder()
-        .setTitle(
-          `[${option === "inactive" ? "장기 미이용" : "비활동 신규유저"}] 추방 대상 미리보기`
-        )
-        .setDescription(
-          추방대상.length ? descList.join("\n") : "✅ 추방 대상자가 없습니다."
-        )
-        .setColor(0xffcc00);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`confirm_kick_${option}`)
-          .setLabel("✅ 예")
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId(`cancel_kick_${option}`)
-          .setLabel("❌ 아니오")
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      await interaction.reply({ embeds: [preview], components: [row], ephemeral: true });
-      return;
-    }
-
-  // ====== 스팸의심 계정 추방 ======
+      // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
       await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
@@ -233,7 +153,7 @@ module.exports = {
         const roles = member.roles.cache;
         const hasSpamRole = roles.has(SPAM_ROLE_ID);
         const onlyNewbie =
-          roles.size === 1 && roles.has(NEWBIE_ROLE_ID);
+          roles.size === 1 && roles.has("1295701019430227988");
         const onlySpam =
           roles.size === 1 && roles.has(SPAM_ROLE_ID);
         const noRole = roles.filter(r => r.id !== guild.id).size === 0;
@@ -326,7 +246,7 @@ module.exports = {
       return;
     }
 
-      // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
+    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
     if (option === "user") {
       await interaction.deferReply({ ephemeral: true });
 
@@ -611,64 +531,6 @@ module.exports = {
           });
         }
       }
-    } else if (interaction.customId.startsWith("adminpw_kick_")) {
-      const type = interaction.customId.replace("adminpw_kick_", "");
-      const 기준날짜 = new Date(
-        Date.now() - (type === "inactive" ? 90 : 7) * 24 * 60 * 60 * 1000
-      );
-      const guild = interaction.guild;
-      const activityStats = activityTracker.getStats({});
-      const members = await guild.members.fetch();
-      const 추방대상 = [];
-
-      for (const member of members.values()) {
-        if (member.user.bot) continue;
-        if (member.roles.cache.has(EXCLUDE_ROLE_ID)) continue;
-        const stat = activityStats.find((x) => x.userId === member.id);
-
-        if (type === "inactive") {
-          let isInactive = true;
-          if (stat) {
-            let lastActive = null;
-            try {
-              const userData = require("../../activity-data.json")[member.id];
-              if (userData) {
-                lastActive = Object.keys(userData)
-                  .sort()
-                  .reverse()[0];
-              }
-              if (lastActive && new Date(lastActive) >= 기준날짜) isInactive = false;
-              else if ((stat.message || 0) > 0 || (stat.voice || 0) > 0) isInactive = false;
-            } catch { }
-          }
-          if (isInactive) 추방대상.push(member);
-        } else if (type === "newbie") {
-          const joinedAt = member.joinedAt;
-          const isNewbie = member.roles.cache.has(NEWBIE_ROLE_ID);
-          const daysPassed = (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24);
-          const isInactive = !stat || ((stat.message || 0) === 0 && (stat.voice || 0) === 0);
-          if (isNewbie && isInactive && daysPassed >= 7) {
-            추방대상.push(member);
-          }
-        }
-      }
-
-      let success = 0, failed = [];
-      for (const member of 추방대상) {
-        try {
-          await member.kick("자동 추방: 활동 없음");
-          await new Promise(res => setTimeout(res, 350));
-          success++;
-        } catch (err) {
-          failed.push(`${member.user.tag}(${member.id})`);
-        }
-      }
-      await interaction.reply({
-        content:
-          `✅ ${success}명 추방 완료` +
-          (failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""),
-        ephemeral: true,
-      });
     }
   }
 };
