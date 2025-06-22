@@ -68,7 +68,7 @@ module.exports = {
     }
 
     await interaction.reply({
-      content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 <@${user.id}>님은 **봇에게 DM**을 보내도 답장이 오지 않는 단방향성 디엠입니다.`,
+      content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 스레드에서 보내는 모든 메시지는 <@${user.id}> 님에게 모두 [까리한 디스코드]라는 익명으로 전송됩니다.`,
       ephemeral: true,
     });
   },
@@ -77,10 +77,9 @@ module.exports = {
     // DM → 스레드 릴레이 (파일에서 매번 최신 relayMap 불러오기!)
     client.on('messageCreate', async msg => {
       if (!msg.guild && !msg.author.bot) {
-        console.log('[익명DM-DM] DM도착:', msg.author.id, msg.content);
+        console.log('[익명DM-DM] DM도착:', msg.author.id, msg.content, msg.attachments?.size);
         const relayMap = loadRelayMap(); // 매번 최신상태로!
         const threadId = relayMap.get(msg.author.id);
-        console.log('[익명DM-DM] relayMap:', relayMap);
         if (!threadId) {
           console.log('[익명DM-DM] relayMap에 해당 유저가 없음');
           return;
@@ -94,8 +93,18 @@ module.exports = {
           console.log('[익명DM-DM] 스레드를 못찾음');
           return;
         }
-        await thread.send({ content: `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content}` });
-        console.log('[익명DM-DM] 메시지 스레드 전송 완료');
+
+        // 첨부파일(이미지, 동영상 등) url 추출
+        let files = [];
+        if (msg.attachments && msg.attachments.size > 0) {
+          files = Array.from(msg.attachments.values()).map(a => a.url);
+        }
+
+        const contentMsg =
+          `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content ? msg.content : ''}`;
+
+        await thread.send({ content: contentMsg, files: files.length > 0 ? files : undefined });
+        console.log('[익명DM-DM] 메시지+첨부파일 스레드 전송 완료');
       }
     });
 
@@ -108,7 +117,16 @@ module.exports = {
         if (threadId === msg.channel.id) {
           const user = await client.users.fetch(userId).catch(() => null);
           if (!user) return;
-          await user.send(`**[${ANON_NICK}]**\n${msg.content}`);
+
+          // 첨부파일(이미지, 동영상 등) url 추출
+          let files = [];
+          if (msg.attachments && msg.attachments.size > 0) {
+            files = Array.from(msg.attachments.values()).map(a => a.url);
+          }
+          const contentMsg =
+            `**[${ANON_NICK}]**\n${msg.content ? msg.content : ''}`;
+
+          await user.send({ content: contentMsg, files: files.length > 0 ? files : undefined });
         }
       }
     });
