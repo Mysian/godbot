@@ -258,6 +258,7 @@ module.exports = {
     if (h) return `${h}시간 ${m}분 ${s}초`;
     if (m) return `${m}분 ${s}초`;
     return `${s}초`;
+        }
         const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
         const member = await guild.members.fetch(targetUserId).catch(() => null);
         if (!member || !target) {
