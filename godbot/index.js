@@ -19,7 +19,6 @@ const client = new Client({
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
-
 module.exports.client = client;
 
 client.commands = new Collection();
@@ -40,7 +39,6 @@ function getAllCommandFiles(dirPath) {
 
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = getAllCommandFiles(commandsPath);
-
 for (const file of commandFiles) {
   const command = require(file);
   if ("data" in command && "execute" in command) {
@@ -125,6 +123,20 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 // ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
+  // 0. 신고 모달 처리
+  if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
+    const report = require('./commands/report.js');
+    try {
+      await report.modal(interaction);
+    } catch (err) {
+      console.error(err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ 신고 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+      }
+    }
+    return;
+  }
+
   // 0. 공지하기 모달 제출 처리
   if (interaction.isModalSubmit()) {
     // 공지하기 모달용 핸들러
