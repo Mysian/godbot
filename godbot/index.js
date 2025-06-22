@@ -125,10 +125,12 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 // ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // ✅ 신고 모달 직접 처리
+  // 1. 신고 모달 (신고_모달)
   if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
     const report = require('./commands/report.js');
-    try { await report.modal(interaction); } catch (err) {
+    try {
+      await report.modal(interaction);
+    } catch (err) {
       console.error(err);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: "❌ 신고 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
@@ -136,10 +138,13 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     return;
   }
-  // ✅ 민원 모달 직접 처리
+
+  // 2. 민원 모달 (민원_모달)
   if (interaction.isModalSubmit() && interaction.customId === "민원_모달") {
     const complaint = require('./commands/complaint.js');
-    try { await complaint.modal(interaction); } catch (err) {
+    try {
+      await complaint.modal(interaction);
+    } catch (err) {
       console.error(err);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
@@ -148,9 +153,9 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // ✅ 공지, 경고, 기타 모달 (기존대로 처리)
+  // 3. 공지/경고 전용 커스텀ID만 처리 (startsWith로 정확히)
   if (interaction.isModalSubmit()) {
-    // 공지하기 모달용 핸들러
+    // 공지 모달만 처리
     if (
       interaction.customId.startsWith("set_channel_modal") ||
       interaction.customId.startsWith("add_tip_modal") ||
@@ -171,7 +176,7 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
-    // 경고 등 나머지 모달은 for문 순회
+    // warn_modal_로 시작하는 모달만 for문에서 처리
     let modalHandled = false;
     for (const cmd of client.commands.values()) {
       if (typeof cmd.modalSubmit === "function") {
@@ -182,6 +187,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
       }
     }
+    // warn_modal_ 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
     if (!modalHandled && !interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: "❌ 모달 처리 가능한 명령어가 없습니다.", ephemeral: true }).catch(()=>{});
     }
