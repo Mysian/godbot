@@ -15,7 +15,9 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.DirectMessages, 
   ],
+  partials: ["CHANNEL"], 
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
