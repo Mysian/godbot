@@ -54,6 +54,62 @@ function stopTimer(guildId) {
   }
 }
 
+const PAGE_SIZE = 5;
+
+async function showTipsPage(interaction, data, guildId, page) {
+  const tips = data[guildId].tips;
+  const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
+  if (page < 1) page = 1;
+  if (page > maxPage) page = maxPage;
+
+  const start = (page - 1) * PAGE_SIZE;
+  const pageTips = tips.slice(start, start + PAGE_SIZE);
+
+  let msg = `현재 등록된 공지 (${tips.length}개) [${page}/${maxPage}]:\n`;
+  pageTips.forEach((tip, i) => {
+    msg += `\n${start + i + 1}. ${tip}`;
+  });
+
+  const rows = [];
+  for (let i = 0; i < pageTips.length; i++) {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`edit_tip_${start + i}_page_${page}`)
+          .setLabel('수정')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`delete_tip_${start + i}_page_${page}`)
+          .setLabel('삭제')
+          .setStyle(ButtonStyle.Danger)
+      )
+    );
+  }
+
+  // 페이지 이동 버튼
+  const navRow = new ActionRowBuilder();
+  navRow.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`prev_page_${page}`)
+      .setLabel('⬅ 이전')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page <= 1),
+    new ButtonBuilder()
+      .setCustomId(`next_page_${page}`)
+      .setLabel('다음 ➡')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page >= maxPage)
+  );
+  rows.push(navRow);
+
+  // 처음만 reply, 이후는 update
+  if (interaction.replied || interaction.deferred) {
+    await interaction.editReply({ content: msg, components: rows, ephemeral: true });
+  } else {
+    await interaction.reply({ content: msg, components: rows, ephemeral: true });
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('공지하기')
@@ -133,44 +189,32 @@ module.exports = {
       return;
     }
 
-    // 공지 글 리스트 (수정/삭제)
+    // 공지 글 리스트 (수정/삭제/페이지 이동)
     if (option === 'list_tips') {
       if (data[guildId].tips.length === 0) return interaction.reply({ content: '등록된 공지가 없습니다.', ephemeral: true });
-      const rows = [];
-      for (let i = 0; i < data[guildId].tips.length; i++) {
-        const tip = data[guildId].tips[i];
-        rows.push(
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`edit_tip_${i}`)
-              .setLabel('수정')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId(`delete_tip_${i}`)
-              .setLabel('삭제')
-              .setStyle(ButtonStyle.Danger)
-          )
-        );
-      }
-      let msg = `현재 등록된 공지 (${data[guildId].tips.length}개):\n`;
-      data[guildId].tips.forEach((tip, i) => {
-        msg += `\n${i + 1}. ${tip}`;
-      });
-      await interaction.reply({ content: msg, ephemeral: true, components: rows });
+      await showTipsPage(interaction, data, guildId, 1);
 
       // 버튼 핸들러
       const filter = btnInt => btnInt.user.id === interaction.user.id;
-      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60_000 });
+      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 120_000 });
 
       collector.on('collect', async btnInt => {
-        const matchEdit = btnInt.customId.match(/^edit_tip_(\d+)$/);
-        const matchDel = btnInt.customId.match(/^delete_tip_(\d+)$/);
+        // 페이지 이동
+        if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
+          let curPage = parseInt(btnInt.customId.split('_').pop());
+          let newPage = btnInt.customId.startsWith('prev') ? curPage - 1 : curPage + 1;
+          await showTipsPage(btnInt, data, guildId, newPage);
+          return;
+        }
+        // 수정/삭제
+        const editMatch = btnInt.customId.match(/^edit_tip_(\d+)_page_(\d+)$/);
+        const delMatch = btnInt.customId.match(/^delete_tip_(\d+)_page_(\d+)$/);
 
-        // 수정 모달
-        if (matchEdit) {
-          const idx = Number(matchEdit[1]);
+        if (editMatch) {
+          const idx = Number(editMatch[1]);
+          const page = Number(editMatch[2]);
           const modal = new ModalBuilder()
-            .setCustomId(`edit_tip_modal_${idx}`)
+            .setCustomId(`edit_tip_modal_${idx}_page_${page}`)
             .setTitle('공지 글 수정')
             .addComponents(
               new ActionRowBuilder().addComponents(
@@ -184,16 +228,14 @@ module.exports = {
             );
           await btnInt.showModal(modal);
         }
-
-        // 삭제 처리
-        if (matchDel) {
-          const idx = Number(matchDel[1]);
+        if (delMatch) {
+          const idx = Number(delMatch[1]);
+          const page = Number(delMatch[2]);
           data[guildId].tips.splice(idx, 1);
           saveData(data);
-          await btnInt.update({ content: `공지 ${idx+1}번이 삭제되었습니다.`, components: [], ephemeral: true });
+          await showTipsPage(btnInt, data, guildId, page);
         }
       });
-
       return;
     }
 
@@ -254,12 +296,16 @@ module.exports = {
       return interaction.reply({ content: `${interval} 간격으로 공지가 전송되도록 설정되었습니다.`, ephemeral: true });
     }
 
-    // 공지 글 수정
+    // 공지 글 수정 (페이지 정보 포함)
     if (interaction.customId.startsWith('edit_tip_modal_')) {
-      const idx = Number(interaction.customId.replace('edit_tip_modal_', ''));
+      const match = interaction.customId.match(/^edit_tip_modal_(\d+)(?:_page_(\d+))?$/);
+      const idx = Number(match[1]);
+      const page = match[2] ? Number(match[2]) : 1;
       const newContent = interaction.fields.getTextInputValue('edit_tip_input');
       data[guildId].tips[idx] = newContent;
       saveData(data);
+
+      // showTipsPage를 직접 쓸 수 없으므로, 간단한 메시지로 대체(필요시 직접 갱신해도 됨)
       return interaction.reply({ content: `공지 ${idx+1}번이 수정되었습니다.`, ephemeral: true });
     }
   }
