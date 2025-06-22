@@ -110,8 +110,8 @@ module.exports = {
         .setDescription(comment)
         .addFields(
           { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
-{ name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)}`, inline: true },
-{ name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
+          { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)}`, inline: true },
+          { name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
           { name: "호스트정보", value: hostInfo, inline: false },
           { name: "Node 버전", value: process.version, inline: true }
         )
@@ -141,7 +141,7 @@ module.exports = {
       return;
     }
 
-      // ====== 스팸의심 계정 추방 ======
+    // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
       await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
@@ -221,7 +221,7 @@ module.exports = {
           }
           await interaction.followUp({
             content:
-  `✅ ${success}명 추방 완료${failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""}`,
+              `✅ ${success}명 추방 완료${failed.length ? `\n❌ 실패: ${failed.join(", ")}` : ""}`,
             ephemeral: true,
           });
         } else {
@@ -245,113 +245,113 @@ module.exports = {
       return;
     }
 
-    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
+    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방/닉변) ======
     if (option === "user") {
       await interaction.deferReply({ ephemeral: true });
 
       async function showUserInfo(targetUserId, userInteraction) {
-  const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
-  const member = await guild.members.fetch(targetUserId).catch(() => null);
-  if (!member || !target) {
-    const errorReply = { content: "❌ 해당 유저를 찾을 수 없습니다." };
-    userInteraction.editReply
-      ? await userInteraction.editReply(errorReply)
-      : await userInteraction.update({ ...errorReply, embeds: [], components: [] });
-    return;
-  }
-
-  const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
-
-  let lastActiveStr = "기록 없음";
-  try {
-    const rawPath = path.join(__dirname, "../../activity-data.json");
-    if (fs.existsSync(rawPath)) {
-      const activityData = JSON.parse(fs.readFileSync(rawPath, "utf8"));
-      const userData = activityData[target.id];
-      if (userData) {
-        const timestamps = Object.keys(userData).filter(ts => !isNaN(Date.parse(ts)));
-        const lastActive = timestamps.sort().reverse()[0];
-        if (lastActive) {
-          lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+        const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
+        const member = await guild.members.fetch(targetUserId).catch(() => null);
+        if (!member || !target) {
+          const errorReply = { content: "❌ 해당 유저를 찾을 수 없습니다." };
+          userInteraction.editReply
+            ? await userInteraction.editReply(errorReply)
+            : await userInteraction.update({ ...errorReply, embeds: [], components: [] });
+          return;
         }
+
+        const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+
+        let lastActiveStr = "기록 없음";
+        try {
+          const rawPath = path.join(__dirname, "../../activity-data.json");
+          if (fs.existsSync(rawPath)) {
+            const activityData = JSON.parse(fs.readFileSync(rawPath, "utf8"));
+            const userData = activityData[target.id];
+            if (userData) {
+              const timestamps = Object.keys(userData).filter(ts => !isNaN(Date.parse(ts)));
+              const lastActive = timestamps.sort().reverse()[0];
+              if (lastActive) {
+                lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+              }
+            }
+          }
+        } catch (err) {
+          console.error("📛 마지막 활동일 가져오는 중 오류:", err);
+        }
+
+        const joinedAt = member.joinedAt;
+        const joinedAtStr = joinedAt
+          ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+          : "기록 없음";
+
+        const topFriends = relationship.getTopRelations(target.id, 3);
+        const relData = relationship.loadData()[target.id] || {};
+        const enemiesArr = Object.entries(relData)
+          .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
+          .slice(0, 3)
+          .map(([id, val]) => ({
+            userId: id,
+            stage: val.stage,
+            remain: val.remain,
+            relation: relationship.getRelationshipLevel(val.stage - 6),
+          }));
+
+        let friendsText = topFriends.length
+          ? topFriends.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
+          : "없음";
+        let enemiesText = enemiesArr.length
+          ? enemiesArr.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
+          : "없음";
+
+        let timeoutActive = false;
+        let timeoutExpireStr = "";
+        if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
+          timeoutActive = true;
+          timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`유저 정보: ${target.tag}`)
+          .setThumbnail(target.displayAvatarURL())
+          .addFields(
+            { name: "유저 ID", value: target.id, inline: false },
+            { name: "서버 입장일", value: joinedAtStr, inline: false },
+            { name: "마지막 활동일", value: lastActiveStr, inline: false },
+            { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
+            { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
+            { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
+            { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
+            ...(timeoutActive
+              ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
+              : [])
+          )
+          .setColor(0x00bfff);
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("nickname_change")
+            .setLabel("별명 변경")
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId(timeoutActive ? "timeout_release" : "timeout")
+            .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
+            .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId("kick")
+            .setLabel("추방")
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId("refresh_userinfo")
+            .setLabel("🔄 새로고침")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        if (userInteraction.editReply)
+          await userInteraction.editReply({ embeds: [embed], components: [row] });
+        else
+          await userInteraction.update({ embeds: [embed], components: [row], content: "" });
       }
-    }
-  } catch (err) {
-    console.error("📛 마지막 활동일 가져오는 중 오류:", err);
-  }
-
-  const joinedAt = member.joinedAt;
-  const joinedAtStr = joinedAt
-    ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
-    : "기록 없음";
-
-  const topFriends = relationship.getTopRelations(target.id, 3);
-  const relData = relationship.loadData()[target.id] || {};
-  const enemiesArr = Object.entries(relData)
-    .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
-    .slice(0, 3)
-    .map(([id, val]) => ({
-      userId: id,
-      stage: val.stage,
-      remain: val.remain,
-      relation: relationship.getRelationshipLevel(val.stage - 6),
-    }));
-
-  let friendsText = topFriends.length
-    ? topFriends.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
-    : "없음";
-  let enemiesText = enemiesArr.length
-    ? enemiesArr.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
-    : "없음";
-
-  let timeoutActive = false;
-  let timeoutExpireStr = "";
-  if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
-    timeoutActive = true;
-    timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
-  }
-
-  const embed = new EmbedBuilder()
-    .setTitle(`유저 정보: ${target.tag}`)
-    .setThumbnail(target.displayAvatarURL())
-    .addFields(
-      { name: "유저 ID", value: target.id, inline: false },
-      { name: "서버 입장일", value: joinedAtStr, inline: false },
-      { name: "마지막 활동일", value: lastActiveStr, inline: false },
-      { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
-      { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
-      { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
-      { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
-      ...(timeoutActive
-        ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
-        : [])
-    )
-    .setColor(0x00bfff);
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("nickname_change")
-      .setLabel("별명 변경")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(timeoutActive ? "timeout_release" : "timeout")
-      .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
-      .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("kick")
-      .setLabel("추방")
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId("refresh_userinfo")
-      .setLabel("🔄 새로고침")
-      .setStyle(ButtonStyle.Secondary)
-  );
-
-  if (userInteraction.editReply)
-    await userInteraction.editReply({ embeds: [embed], components: [row] });
-  else
-    await userInteraction.update({ embeds: [embed], components: [row], content: "" });
-}
 
       const target =
         interaction.options.getUser("대상유저") || interaction.user;
@@ -368,41 +368,22 @@ module.exports = {
         if (i.customId === "refresh_userinfo") {
           await showUserInfo(targetUserId, i);
         } else if (i.customId === "nickname_change") {
-          await i.update({
-            content: "✏️ 새로운 별명을 입력해주세요.",
-            embeds: [],
-            components: [],
-          });
-
-          const msgCollector = interaction.channel.createMessageCollector({
-            filter: (m) => m.author.id === interaction.user.id,
-            time: 20000,
-            max: 1,
-          });
-
-          msgCollector.on("collect", async (msg) => {
-            try {
-              await interaction.guild.members.edit(targetUserId, { nick: msg.content });
-              await interaction.followUp({
-                content: `✅ 별명이 **${msg.content}**(으)로 변경되었습니다.`,
-                ephemeral: true,
-              });
-            } catch (err) {
-              await interaction.followUp({
-                content: "❌ 별명 변경 실패 (권한 문제일 수 있음)",
-                ephemeral: true,
-              });
-            }
-          });
-
-          msgCollector.on("end", (collected) => {
-            if (collected.size === 0) {
-              interaction.followUp({
-                content: "⏰ 시간이 초과되어 별명 변경이 취소되었습니다.",
-                ephemeral: true,
-              });
-            }
-          });
+          // 닉네임 변경을 모달로 처리!
+          const modal = new ModalBuilder()
+            .setCustomId(`nickname_change_modal_${targetUserId}`)
+            .setTitle("별명 변경")
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("nickname_input")
+                  .setLabel("새로운 별명")
+                  .setStyle(TextInputStyle.Short)
+                  .setMinLength(1)
+                  .setMaxLength(32)
+                  .setRequired(true)
+              )
+            );
+          await i.showModal(modal);
         } else if (i.customId === "timeout" || i.customId === "kick") {
           const modal = new ModalBuilder()
             .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
@@ -449,6 +430,25 @@ module.exports = {
   },
 
   async modalSubmit(interaction) {
+    // 닉네임 변경 모달 처리
+    if (interaction.customId.startsWith("nickname_change_modal_")) {
+      const targetUserId = interaction.customId.split("nickname_change_modal_")[1];
+      const newNick = interaction.fields.getTextInputValue("nickname_input");
+      try {
+        await interaction.guild.members.edit(targetUserId, { nick: newNick });
+        await interaction.reply({
+          content: `✅ 별명이 **${newNick}**(으)로 변경되었습니다.`,
+          ephemeral: true,
+        });
+      } catch (err) {
+        await interaction.reply({
+          content: "❌ 별명 변경 실패 (권한 문제일 수 있음)",
+          ephemeral: true,
+        });
+      }
+      return;
+    }
+
     const pw = interaction.fields.getTextInputValue("pw");
     const savedPw = loadAdminPw();
     if (!savedPw || pw !== savedPw) {
