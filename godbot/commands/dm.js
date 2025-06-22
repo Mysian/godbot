@@ -68,7 +68,7 @@ module.exports = {
     }
 
     await interaction.reply({
-      content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 <@${user.id}>님은 **봇에게 DM**을 보내도 답장이 오지 않는 단방향성 디엠입니다.`,
+      content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 스레드에서 보내는 모든 메시지는 <@${user.id}> 님에게 모두 [까리한 디스코드]라는 익명으로 전송됩니다.`,
       ephemeral: true,
     });
   },
