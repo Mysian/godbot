@@ -17,7 +17,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.DirectMessages,
   ],
-  partials: ["CHANNEL", "MESSAGE", "REACTION"], 
+  partials: ["CHANNEL", "MESSAGE", "REACTION"],
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
@@ -122,71 +122,62 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// ✅ InteractionCreate 리스너(모달 제출 처리 포함)
+// ✅ InteractionCreate 리스너(통합 모달 제출 처리)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // 0. 신고 모달 처리
-  if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
-    const report = require('./commands/report.js');
-    try {
-      await report.modal(interaction);
-    } catch (err) {
-      console.error(err);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❌ 신고 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
-      }
-    }
-    return;
-  }
-  // 0. 민원 모달 처리
-  if (interaction.isModalSubmit() && interaction.customId === "민원_모달") {
-  const complaint = require('./commands/complaint.js');
-  try {
-    await complaint.modal(interaction);
-  } catch (err) {
-    console.error(err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
-    }
-  }
-  return;
-}
-
-  // 0. 공지하기 모달 제출 처리
+  // --- 모달 처리 통합 (1번/2번 방식 둘 다 지원) ---
   if (interaction.isModalSubmit()) {
-    // 공지하기 모달용 핸들러
-    if (
-      interaction.customId.startsWith("set_channel_modal") ||
-      interaction.customId.startsWith("add_tip_modal") ||
-      interaction.customId.startsWith("set_interval_modal") ||
-      interaction.customId.startsWith("edit_tip_modal_")
-    ) {
-      const command = client.commands.get("공지하기");
-      if (command && typeof command.modal === "function") {
-        try {
+    let handled = false;
+    // 1. customId 패턴 분기 (2번식)
+    try {
+      if (interaction.customId === "신고_모달") {
+        await require('./commands/report.js').modal(interaction); handled = true;
+      }
+      else if (interaction.customId === "민원_모달") {
+        await require('./commands/complaint.js').modal(interaction); handled = true;
+      }
+      else if (
+        interaction.customId.startsWith("set_channel_modal") ||
+        interaction.customId.startsWith("add_tip_modal") ||
+        interaction.customId.startsWith("set_interval_modal") ||
+        interaction.customId.startsWith("edit_tip_modal_")
+      ) {
+        const command = client.commands.get("공지하기");
+        if (command && typeof command.modal === "function") {
           await command.modal(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❌ 모달 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+          handled = true;
+        }
+      }
+      else if (interaction.customId.startsWith("warn_modal_")) {
+        // 모든 명령어 modalSubmit 중 warn_modal_만
+        for (const cmd of client.commands.values()) {
+          if (typeof cmd.modalSubmit === "function") {
+            await cmd.modalSubmit(interaction);
+            handled = true;
+            break;
           }
         }
-        return;
       }
+    } catch (err) {
+      console.error(err);
     }
 
-    // 기존 warn_modal_ 처리 유지
-    let modalHandled = false;
-    for (const cmd of client.commands.values()) {
-      if (typeof cmd.modalSubmit === "function") {
-        if (interaction.customId.startsWith("warn_modal_")) {
-          await cmd.modalSubmit(interaction);
-          modalHandled = true;
-          break;
+    // 2. 모든 명령어 modal/modalSubmit/execute 순회 (1번식)
+    if (!handled) {
+      for (const cmd of client.commands.values()) {
+        if (typeof cmd.modalSubmit === "function") {
+          try { await cmd.modalSubmit(interaction); handled = true; break; } catch (e) {}
+        }
+        if (typeof cmd.modal === "function") {
+          try { await cmd.modal(interaction); handled = true; break; } catch (e) {}
+        }
+        if (typeof cmd.execute === "function") {
+          try { await cmd.execute(interaction); handled = true; break; } catch (e) {}
         }
       }
     }
-    if (!modalHandled && !interaction.replied && !interaction.deferred) {
+
+    if (!handled && !interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: "❌ 모달 처리 가능한 명령어가 없습니다.", ephemeral: true }).catch(()=>{});
     }
     return;
