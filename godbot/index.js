@@ -189,7 +189,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     // warn_modal_ 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
     if (!modalHandled && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ 모달 처리 가능한 명령어가 없습니다.", ephemeral: true }).catch(()=>{});
+      await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
     }
     return;
   }
@@ -258,12 +258,12 @@ client.on(Events.InteractionCreate, async interaction => {
       console.error(error);
       if (interaction.deferred || interaction.replied) {
         await interaction.followUp({
-          content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+          content: "⏳ 해당 명령어가 만료되었습니다.",
           ephemeral: true
         }).catch(() => {});
       } else {
         await interaction.reply({
-          content: "❌ 명령어 실행 중 오류가 발생했습니다.",
+          content: "⏳ 해당 명령어가 만료되었습니다.",
           ephemeral: true
         }).catch(() => {});
       }
