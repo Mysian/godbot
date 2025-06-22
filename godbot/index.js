@@ -169,7 +169,7 @@ client.on(Events.InteractionCreate, async interaction => {
         } catch (err) {
           console.error(err);
           if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❌ 모달 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
           }
         }
         return;
