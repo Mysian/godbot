@@ -136,6 +136,19 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     return;
   }
+  // 0. 민원 모달 처리
+  if (interaction.isModalSubmit() && interaction.customId === "민원_모달") {
+  const complaint = require('./commands/complaint.js');
+  try {
+    await complaint.modal(interaction);
+  } catch (err) {
+    console.error(err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+    }
+  }
+  return;
+}
 
   // 0. 공지하기 모달 제출 처리
   if (interaction.isModalSubmit()) {
