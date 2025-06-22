@@ -176,6 +176,21 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
+    // 별명변경/타임아웃/추방 처리
+    if (interaction.isCommand() || interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (command) await command.execute(interaction);
+  }
+
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith("nickname_change_modal_") || interaction.customId.startsWith("adminpw_user_") || interaction.customId === "adminpw_json_backup") {
+      const command = client.commands.get("관리");
+      if (command && command.modalSubmit) {
+        await command.modalSubmit(interaction);
+      }
+    }
+  }
+
     // warn_modal_로 시작하는 모달만 for문에서 처리
     let modalHandled = false;
     for (const cmd of client.commands.values()) {
