@@ -1,14 +1,35 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType, StringSelectMenuBuilder } = require('discord.js');
 const { getStats } = require('../utils/activity-tracker');
 const fs = require('fs');
+const path = require('path');
 
 const LONG_INACTIVE_DAYS = 90;
 const NEWBIE_ROLE_ID = '1295701019430227988';
 const NEWBIE_DAYS = 7;
 const PAGE_SIZE = 30;
-const EXEMPT_ROLE_IDS = [
-  '1371476512024559756'
+const EXEMPT_ROLE_IDS = ['1371476512024559756'];
+
+const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
+const PERIODS = [
+  { label: '1일', value: '1' },
+  { label: '7일', value: '7' },
+  { label: '14일', value: '14' },
+  { label: '30일', value: '30' },
+  { label: '60일', value: '60' },
+  { label: '90일', value: '90' }
 ];
+
+function readWarnHistory() {
+  if (!fs.existsSync(WARN_HISTORY_PATH)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(WARN_HISTORY_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+function saveWarnHistory(obj) {
+  fs.writeFileSync(WARN_HISTORY_PATH, JSON.stringify(obj, null, 2));
+}
 
 function formatTimeAgo(date) {
   if (!date) return '기록 없음';
@@ -31,7 +52,7 @@ function getMostRecentDate(obj) {
   return latest;
 }
 
-async function fetchLongInactive(guild) {
+async function fetchLongInactive(guild, days, warnedObj) {
   const activityData = fs.existsSync(__dirname + '/../activity-data.json') ?
     JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
   const now = new Date();
@@ -48,6 +69,7 @@ async function fetchLongInactive(guild) {
         user: member.user,
         nickname: member.displayName,
         lastActive: null,
+        warned: !!warnedObj[member.id]
       });
       continue;
     }
@@ -59,24 +81,26 @@ async function fetchLongInactive(guild) {
         user: member.user,
         nickname: member.displayName,
         lastActive: null,
+        warned: !!warnedObj[member.id]
       });
       continue;
     }
     const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-    if (diffDays >= LONG_INACTIVE_DAYS) {
+    if (diffDays >= days) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
         user: member.user,
         nickname: member.displayName,
         lastActive: lastDate,
+        warned: !!warnedObj[member.id]
       });
     }
   }
   return arr;
 }
 
-async function fetchInactiveNewbies(guild) {
+async function fetchInactiveNewbies(guild, days, warnedObj) {
   const activityData = fs.existsSync(__dirname + '/../activity-data.json') ?
     JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
   const now = new Date();
@@ -84,11 +108,11 @@ async function fetchInactiveNewbies(guild) {
   let arr = [];
   for (const member of allMembers.values()) {
     if (!member.roles.cache.has(NEWBIE_ROLE_ID)) continue;
-    if (!member.joinedAt || (now - member.joinedAt) / (1000 * 60 * 60 * 24) < NEWBIE_DAYS) continue;
+    if (!member.joinedAt || (now - member.joinedAt) / (1000 * 60 * 60 * 24) < days) continue;
     const userData = activityData[member.id];
     let lastDate = null;
     if (userData) lastDate = getMostRecentDate(userData);
-    if (!lastDate || (now - lastDate) / (1000 * 60 * 60 * 24) >= NEWBIE_DAYS) {
+    if (!lastDate || (now - lastDate) / (1000 * 60 * 60 * 24) >= days) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
@@ -96,22 +120,23 @@ async function fetchInactiveNewbies(guild) {
         nickname: member.displayName,
         joined: member.joinedAt,
         lastActive: lastDate,
+        warned: !!warnedObj[member.id]
       });
     }
   }
   return arr;
 }
 
-function getEmbeds(list, page, title) {
+function getEmbeds(list, page, title, days) {
   const embeds = [];
   const totalPages = Math.ceil(list.length / PAGE_SIZE) || 1;
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, list.length);
   const users = list.slice(start, end);
   const embed = new EmbedBuilder()
-    .setTitle(`${title} (총 ${list.length}명)`)
+    .setTitle(`${title} (총 ${list.length}명) [비활동 기준 ${days}일]`)
     .setDescription(users.length === 0 ? '해당되는 유저가 없습니다.' : users.map((u, i) =>
-      `${start + i + 1}. ${u.tag} | \`${u.id}\` | ${u.nickname} | ${formatTimeAgo(u.lastActive)}`
+      `${start + i + 1}. ${u.tag} | \`${u.id}\` | ${u.nickname} | ${formatTimeAgo(u.lastActive)}${u.warned ? " ⚠️경고DM발송됨" : ""}`
     ).join('\n'))
     .setFooter({ text: `${page + 1} / ${totalPages}` })
     .setColor('#ffab00');
@@ -138,15 +163,39 @@ module.exports = {
     const option = interaction.options.getString('필수옵션');
     let userList = [];
     let title = '';
-    if (option === 'long') {
-      title = '장기 미접속 유저';
-      userList = await fetchLongInactive(guild);
-    } else {
-      title = '비활동 신규 유저';
-      userList = await fetchInactiveNewbies(guild);
-    }
+    let defaultDays = option === 'long' ? LONG_INACTIVE_DAYS : NEWBIE_DAYS;
+    let selectedDays = defaultDays;
+
+    let warnedObj = readWarnHistory();
+
+    // 셀렉트 메뉴(스크롤) 추가
+    const makePeriodRow = (disabled = false) =>
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('period')
+          .setPlaceholder(`비활동 기간(일) 선택`)
+          .setDisabled(disabled)
+          .addOptions(PERIODS.map(p => ({
+            label: p.label,
+            value: p.value,
+            default: String(selectedDays) === p.value
+          })))
+      );
+
+    const getUserList = async () => {
+      warnedObj = readWarnHistory();
+      if (option === 'long') {
+        title = '장기 미접속 유저';
+        return await fetchLongInactive(guild, selectedDays, warnedObj);
+      } else {
+        title = '비활동 신규 유저';
+        return await fetchInactiveNewbies(guild, selectedDays, warnedObj);
+      }
+    };
+
+    userList = await getUserList();
     let page = 0;
-    let embeds = getEmbeds(userList, page, title);
+    let embeds = getEmbeds(userList, page, title, selectedDays);
 
     const makeRow = (disabled = false) => new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
@@ -157,13 +206,24 @@ module.exports = {
     );
 
     let lastInteraction = Date.now();
-    const msg = await interaction.editReply({ embeds, components: [makeRow()], ephemeral: true });
+    const msg = await interaction.editReply({
+      embeds,
+      components: [makeRow(), makePeriodRow()],
+      ephemeral: true
+    });
 
     const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+
     const collector = msg.createMessageComponentCollector({
       filter,
       time: 120000,
-      componentType: ComponentType.Button,
+      componentType: ComponentType.Button
+    });
+
+    const selectCollector = msg.createMessageComponentCollector({
+      filter: i => i.user.id === interaction.user.id && i.message.id === msg.id && i.componentType === ComponentType.StringSelect,
+      time: 120000,
+      componentType: ComponentType.StringSelect
     });
 
     collector.on('collect', async i => {
@@ -171,15 +231,14 @@ module.exports = {
         lastInteraction = Date.now();
         if (i.customId === 'prev') {
           page = Math.max(page - 1, 0);
-          await i.update({ embeds: getEmbeds(userList, page, title), components: [makeRow()], ephemeral: true });
+          await i.update({ embeds: getEmbeds(userList, page, title, selectedDays), components: [makeRow(), makePeriodRow()], ephemeral: true });
         } else if (i.customId === 'next') {
           page = Math.min(page + 1, Math.ceil(userList.length / PAGE_SIZE) - 1);
-          await i.update({ embeds: getEmbeds(userList, page, title), components: [makeRow()], ephemeral: true });
+          await i.update({ embeds: getEmbeds(userList, page, title, selectedDays), components: [makeRow(), makePeriodRow()], ephemeral: true });
         } else if (i.customId === 'refresh') {
-          if (option === 'long') userList = await fetchLongInactive(guild);
-          else userList = await fetchInactiveNewbies(guild);
-          embeds = getEmbeds(userList, page, title);
-          await i.update({ embeds, components: [makeRow()], ephemeral: true });
+          userList = await getUserList();
+          embeds = getEmbeds(userList, page, title, selectedDays);
+          await i.update({ embeds, components: [makeRow(), makePeriodRow()], ephemeral: true });
         } else if (i.customId === 'kick') {
           await i.deferUpdate();
           let kicked = 0;
@@ -194,27 +253,50 @@ module.exports = {
         } else if (i.customId === 'warn') {
           await i.deferUpdate();
           let warned = 0;
+          warnedObj = readWarnHistory();
           for (const u of userList) {
+            if (warnedObj[u.id]) continue; // 이미 경고DM 발송된 유저는 건너뜀
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
-              if (m) await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`).catch(() => null);
-              warned++;
+              if (m) {
+                await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`).catch(() => null);
+                warnedObj[u.id] = { ts: Date.now() };
+                warned++;
+              }
             } catch { }
           }
+          saveWarnHistory(warnedObj);
+          userList = await getUserList();
+          embeds = getEmbeds(userList, page, title, selectedDays);
           await interaction.followUp({ content: `${warned}명에게 DM 발송 완료!`, ephemeral: true });
+          await msg.edit({ embeds, components: [makeRow(), makePeriodRow()] });
         }
         collector.resetTimer();
-      } catch (err) {
-        // Unknown Message 등 에러는 무시
-      }
+      } catch (err) { }
+    });
+
+    selectCollector.on('collect', async i => {
+      try {
+        const value = i.values[0];
+        selectedDays = parseInt(value, 10);
+        userList = await getUserList();
+        page = 0;
+        embeds = getEmbeds(userList, page, title, selectedDays);
+        await i.update({ embeds, components: [makeRow(), makePeriodRow()], ephemeral: true });
+        collector.resetTimer();
+        selectCollector.resetTimer();
+      } catch (err) { }
     });
 
     collector.on('end', async () => {
       try {
-        await msg.edit({ components: [makeRow(true)] });
-      } catch (err) {
-        // 이미 삭제/만료된 메시지라면 무시
-      }
+        await msg.edit({ components: [makeRow(true), makePeriodRow(true)] });
+      } catch { }
     });
-  },
+    selectCollector.on('end', async () => {
+      try {
+        await msg.edit({ components: [makeRow(true), makePeriodRow(true)] });
+      } catch { }
+    });
+  }
 };
