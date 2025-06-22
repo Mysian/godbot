@@ -125,12 +125,10 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 // ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // 0. 신고 모달 처리
+  // ✅ 신고 모달 직접 처리
   if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
     const report = require('./commands/report.js');
-    try {
-      await report.modal(interaction);
-    } catch (err) {
+    try { await report.modal(interaction); } catch (err) {
       console.error(err);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: "❌ 신고 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
@@ -138,21 +136,19 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     return;
   }
-  // 0. 민원 모달 처리
+  // ✅ 민원 모달 직접 처리
   if (interaction.isModalSubmit() && interaction.customId === "민원_모달") {
-  const complaint = require('./commands/complaint.js');
-  try {
-    await complaint.modal(interaction);
-  } catch (err) {
-    console.error(err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+    const complaint = require('./commands/complaint.js');
+    try { await complaint.modal(interaction); } catch (err) {
+      console.error(err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+      }
     }
+    return;
   }
-  return;
-}
 
-  // 0. 공지하기 모달 제출 처리
+  // ✅ 공지, 경고, 기타 모달 (기존대로 처리)
   if (interaction.isModalSubmit()) {
     // 공지하기 모달용 핸들러
     if (
@@ -175,7 +171,7 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
-    // 기존 warn_modal_ 처리 유지
+    // 경고 등 나머지 모달은 for문 순회
     let modalHandled = false;
     for (const cmd of client.commands.values()) {
       if (typeof cmd.modalSubmit === "function") {
