@@ -43,46 +43,40 @@ module.exports = {
     );
 
     await interaction.showModal(modal);
+  },
 
-    try {
-      const modalInter = await interaction.awaitModalSubmit({
-        filter: i => i.user.id === interaction.user.id && i.customId === '민원_모달',
-        time: 300_000 // 5분
-      });
-
-      if (!fs.existsSync(configPath)) {
-        return modalInter.reply({ content: '❗ 로그 채널이 아직 등록되지 않았습니다. `/로그채널등록` 명령어를 먼저 사용해주세요.', ephemeral: true });
-      }
-      const config = JSON.parse(fs.readFileSync(configPath));
-      const logChannel = await modalInter.guild.channels.fetch(config.channelId);
-      if (!logChannel) {
-        return modalInter.reply({ content: '❗ 로그 채널을 찾을 수 없습니다.', ephemeral: true });
-      }
-      const selectedReason = modalInter.fields.getTextInputValue('민원_종류').trim();
-      const eventDate = modalInter.fields.getTextInputValue('민원_일시') || '미입력';
-      const complaintDetail = modalInter.fields.getTextInputValue('민원_내용');
-
-      const embed = new EmbedBuilder()
-        .setTitle('📮 민원 접수')
-        .setColor(0x3ba1ff)
-        .addFields(
-          { name: '• 민원 종류', value: `${selectedReason}`, inline: true },
-          { name: '• 관련 일시', value: eventDate, inline: true },
-          { name: '• 작성자', value: `<@${modalInter.user.id}> (${modalInter.user.tag})`, inline: true },
-          { name: '\u200B', value: '\u200B', inline: false },
-          { name: '• 민원 내용', value: complaintDetail, inline: false }
-        )
-        .setFooter({ text: `접수일시: ${new Date().toLocaleString()}` })
-        .setTimestamp();
-
-      await logChannel.send({ embeds: [embed] });
-
-      await modalInter.reply({
-        content: `✅ 민원이 정상적으로 접수되었습니다.`,
-        ephemeral: true
-      });
-    } catch (err) {
-      await interaction.followUp({ content: '❗️시간이 초과되어 민원이 취소되었습니다.', ephemeral: true }).catch(() => {});
+  // 모달 제출 처리
+  modal: async function(interaction) {
+    if (!fs.existsSync(configPath)) {
+      return interaction.reply({ content: '❗ 로그 채널이 아직 등록되지 않았습니다. `/로그채널등록` 명령어를 먼저 사용해주세요.', ephemeral: true });
     }
+    const config = JSON.parse(fs.readFileSync(configPath));
+    const logChannel = await interaction.guild.channels.fetch(config.channelId);
+    if (!logChannel) {
+      return interaction.reply({ content: '❗ 로그 채널을 찾을 수 없습니다.', ephemeral: true });
+    }
+    const selectedReason = interaction.fields.getTextInputValue('민원_종류').trim();
+    const eventDate = interaction.fields.getTextInputValue('민원_일시') || '미입력';
+    const complaintDetail = interaction.fields.getTextInputValue('민원_내용');
+
+    const embed = new EmbedBuilder()
+      .setTitle('📮 민원 접수')
+      .setColor(0x3ba1ff)
+      .addFields(
+        { name: '• 민원 종류', value: `${selectedReason}`, inline: true },
+        { name: '• 관련 일시', value: eventDate, inline: true },
+        { name: '• 작성자', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+        { name: '\u200B', value: '\u200B', inline: false },
+        { name: '• 민원 내용', value: complaintDetail, inline: false }
+      )
+      .setFooter({ text: `접수일시: ${new Date().toLocaleString()}` })
+      .setTimestamp();
+
+    await logChannel.send({ embeds: [embed] });
+
+    await interaction.reply({
+      content: `✅ 민원이 정상적으로 접수되었습니다.`,
+      ephemeral: true
+    });
   }
 };
