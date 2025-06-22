@@ -194,18 +194,6 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 관리 별명 변경
-  if (interaction.isModalSubmit()) {
-    // 관리 명령어의 모달 처리
-    if (interaction.customId.startsWith("nickname_change_modal_") ||
-        interaction.customId.startsWith("adminpw_")) {
-      const command = client.commands.get("관리");
-      if (command && command.modalSubmit) {
-        await command.modalSubmit(interaction);
-      }
-    }
-  }
-  
   // 1. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);

@@ -250,6 +250,14 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
 
       async function showUserInfo(targetUserId, userInteraction) {
+        function formatSeconds(sec) {
+    sec = Math.floor(sec || 0);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h) return `${h}시간 ${m}분 ${s}초`;
+    if (m) return `${m}분 ${s}초`;
+    return `${s}초`;
         const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
         const member = await guild.members.fetch(targetUserId).catch(() => null);
         if (!member || !target) {
@@ -319,7 +327,7 @@ module.exports = {
             { name: "서버 입장일", value: joinedAtStr, inline: false },
             { name: "마지막 활동일", value: lastActiveStr, inline: false },
             { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
-            { name: "음성 이용(초)", value: `${stat.voice || 0}`, inline: true },
+            { name: "음성 이용 시간", value: formatSeconds(stat.voice), inline: true },
             { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
             { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
             ...(timeoutActive
