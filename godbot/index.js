@@ -15,11 +15,12 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.DirectMessages,
   ],
+  partials: ["CHANNEL", "MESSAGE", "REACTION"], 
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
-
 module.exports.client = client;
 
 client.commands = new Collection();
@@ -40,7 +41,6 @@ function getAllCommandFiles(dirPath) {
 
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = getAllCommandFiles(commandsPath);
-
 for (const file of commandFiles) {
   const command = require(file);
   if ("data" in command && "execute" in command) {
@@ -68,7 +68,6 @@ if (fs.existsSync(eventsPath)) {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
-  // 활동 상태 메시지 배열
   const activityMessages = [
     "/챔피언획득으로 롤 챔피언을 키워보세요!",
     "/도움말 을 통해 까리한 기능들을 확인해보세요!",
@@ -76,7 +75,6 @@ client.once(Events.ClientReady, async () => {
   ];
   let activityIndex = 0;
 
-  // 주기적으로 활동 상태 변경
   setInterval(() => {
     client.user.setPresence({
       status: "online",
@@ -88,7 +86,7 @@ client.once(Events.ClientReady, async () => {
       ],
     });
     activityIndex = (activityIndex + 1) % activityMessages.length;
-  }, 20000); // 20초마다 변경
+  }, 20000);
 
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (logChannel && logChannel.isTextBased()) {
@@ -105,7 +103,6 @@ async function sendCommandLog(interaction) {
     const cmdName = interaction.commandName;
     const time = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 
-    // 옵션값 로깅
     let extra = "";
     if (interaction.options && interaction.options.data) {
       extra = interaction.options.data.map(opt =>
@@ -125,10 +122,77 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// ✅ 챔피언배틀 통합 명령어/버튼 처리(중복X!)
+// ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const champBattle = require('./commands/champ-battle');
 client.on(Events.InteractionCreate, async interaction => {
-  // 1. 챔피언배틀 명령어는 여기서만!
+  // 0. 신고 모달 처리
+  if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
+    const report = require('./commands/report.js');
+    try {
+      await report.modal(interaction);
+    } catch (err) {
+      console.error(err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ 신고 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+      }
+    }
+    return;
+  }
+  // 0. 민원 모달 처리
+  if (interaction.isModalSubmit() && interaction.customId === "민원_모달") {
+  const complaint = require('./commands/complaint.js');
+  try {
+    await complaint.modal(interaction);
+  } catch (err) {
+    console.error(err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+    }
+  }
+  return;
+}
+
+  // 0. 공지하기 모달 제출 처리
+  if (interaction.isModalSubmit()) {
+    // 공지하기 모달용 핸들러
+    if (
+      interaction.customId.startsWith("set_channel_modal") ||
+      interaction.customId.startsWith("add_tip_modal") ||
+      interaction.customId.startsWith("set_interval_modal") ||
+      interaction.customId.startsWith("edit_tip_modal_")
+    ) {
+      const command = client.commands.get("공지하기");
+      if (command && typeof command.modal === "function") {
+        try {
+          await command.modal(interaction);
+        } catch (err) {
+          console.error(err);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "❌ 모달 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+          }
+        }
+        return;
+      }
+    }
+
+    // 기존 warn_modal_ 처리 유지
+    let modalHandled = false;
+    for (const cmd of client.commands.values()) {
+      if (typeof cmd.modalSubmit === "function") {
+        if (interaction.customId.startsWith("warn_modal_")) {
+          await cmd.modalSubmit(interaction);
+          modalHandled = true;
+          break;
+        }
+      }
+    }
+    if (!modalHandled && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 모달 처리 가능한 명령어가 없습니다.", ephemeral: true }).catch(()=>{});
+    }
+    return;
+  }
+
+  // 1. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);
     try {
@@ -147,23 +211,23 @@ client.on(Events.InteractionCreate, async interaction => {
         }).catch(() => {});
       }
     }
-    return; // 아래 코드 실행X
+    return;
   }
 
-  // 2. 챔피언배틀 버튼만 여기서!
+  // 2. 챔피언배틀 버튼
   if (
-  interaction.isButton() && interaction.customId && (
-    interaction.customId.startsWith('accept_battle_') ||
-    interaction.customId.startsWith('decline_battle_') ||
-    [
-      'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
-    ].includes(interaction.customId) ||
-    interaction.customId.startsWith('useitem_') ||
-    interaction.customId.startsWith('useskill_')
-  )
-) {
-  try {
-    await champBattle.handleButton(interaction);
+    interaction.isButton() && interaction.customId && (
+      interaction.customId.startsWith('accept_battle_') ||
+      interaction.customId.startsWith('decline_battle_') ||
+      [
+        'attack', 'defend', 'dodge', 'item', 'skill', 'escape', 'pass'
+      ].includes(interaction.customId) ||
+      interaction.customId.startsWith('useitem_') ||
+      interaction.customId.startsWith('useskill_')
+    )
+  ) {
+    try {
+      await champBattle.handleButton(interaction);
     } catch (error) {
       console.error(error);
       if (interaction.deferred || interaction.replied) {
@@ -206,7 +270,10 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // === 메시지 누적 ===
-client.on("messageCreate", msg => {
+client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (msg.guild && !msg.author.bot) {
     activity.addMessage(msg.author.id, msg.channel);
   }
@@ -215,13 +282,11 @@ client.on("messageCreate", msg => {
 // === 음성 누적 + 1시간 알림 ===
 const voiceStartMap = new Map();
 client.on("voiceStateUpdate", (oldState, newState) => {
-  // 입장
   if (!oldState.channel && newState.channel && !newState.member.user.bot) {
     if (activity.isTracked(newState.channel, "voice")) {
       voiceStartMap.set(newState.id, { channel: newState.channel, time: Date.now(), notifiedHour: 0 });
     }
   }
-  // 퇴장/이동
   if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
     const info = voiceStartMap.get(oldState.id);
     if (info && activity.isTracked(oldState.channel, "voice")) {
@@ -237,33 +302,7 @@ client.on("voiceStateUpdate", (oldState, newState) => {
   }
 });
 
-// === 1시간마다 알림 ===
-setInterval(async () => {
-  const now = Date.now();
-  for (const [userId, info] of voiceStartMap.entries()) {
-    const elapsedSec = Math.floor((now - info.time) / 1000);
-    const elapsedHour = Math.floor(elapsedSec / 3600);
-    if (elapsedHour > 0 && elapsedHour > (info.notifiedHour || 0)) {
-      info.notifiedHour = elapsedHour;
-      const channel = info.channel.guild.channels.cache.find(
-        c => c.id === info.channel.id && c.isTextBased && c.viewable
-      );
-      if (channel) {
-        let name = userId;
-        try {
-          const member = await info.channel.guild.members.fetch(userId);
-          name = member.displayName || member.user.username || userId;
-        } catch (e) {
-          // 멤버를 못찾으면 그냥 userId로
-        }
-        channel.send(`-# ⏳ ${member.displayName} 님, 음성채널을 이용한지 ${elapsedHour}시간 경과하였습니다.`);
-      }
-    }
-  }
-}, 60 * 1000);
-
-
-// ✅ 음성채널 동접 관계도 자동상승(하루 1회, barrier 크게 세팅되어야만 효과)
+// ✅ 음성채널 동접 관계도 자동상승
 setInterval(() => {
   for (const [guildId, guild] of client.guilds.cache) {
     const voiceStates = guild.voiceStates.cache;
@@ -283,17 +322,19 @@ setInterval(() => {
       }
     }
   }
-}, 10 * 60 * 1000); // 10분마다
+}, 10 * 60 * 300);
 
-// ✅ 관계도 자동하락(무관심까지 하루 1씩)
+// 
 setInterval(() => {
-  relationship.decayRelationships(0.3);
-}, 24 * 60 * 60 * 1000); // 하루 1회
+  relationship.decayRelationships(0.5); // 3일 이상 교류 없으면 자동 차감
+}, 1000 * 60 * 60 * 24);
 
 // ✅ 답글 상호작용 시 관계도 상승
 client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (!msg.guild || msg.author.bot) return;
-  // 답글이면 원글-답글 상호 onPositive
   if (msg.reference && msg.reference.messageId) {
     try {
       const repliedMsg = await msg.channel.messages.fetch(msg.reference.messageId).catch(() => null);
@@ -306,7 +347,10 @@ client.on("messageCreate", async msg => {
 });
 
 // ✅ 멘션 시 관계도 상승
-client.on("messageCreate", msg => {
+client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (!msg.guild || msg.author.bot) return;
   if (msg.mentions && msg.mentions.users) {
     msg.mentions.users.forEach(user => {
@@ -320,6 +364,9 @@ client.on("messageCreate", msg => {
 
 // ✅ 이모지 리액션 시 관계도 상승
 client.on("messageReactionAdd", async (reaction, user) => {
+  if (reaction.partial) {
+    try { reaction = await reaction.fetch(); } catch { return; }
+  }
   if (!reaction.message.guild || user.bot) return;
   const author = reaction.message.author;
   if (author && !author.bot && author.id !== user.id) {
@@ -328,11 +375,13 @@ client.on("messageReactionAdd", async (reaction, user) => {
   }
 });
 
-
- // 유저 활동기록 체크 코드
+// 유저 활동기록 체크 코드
 const activityPath = path.join(__dirname, "activity.json");
 
-client.on("messageCreate", (message) => {
+client.on("messageCreate", async message => {
+  if (message.partial) {
+    try { message = await message.fetch(); } catch { return; }
+  }
   if (!message.guild || message.author.bot) return;
   let activity = {};
   if (fs.existsSync(activityPath)) {
@@ -345,7 +394,10 @@ client.on("messageCreate", (message) => {
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
-client.on("messageCreate", async (message) => {
+client.on("messageCreate", async message => {
+  if (message.partial) {
+    try { message = await message.fetch(); } catch { return; }
+  }
   if (message.author.bot) return;
   const channelId = message.channel.id;
   const game = rouletteGames.get(channelId);
@@ -435,7 +487,10 @@ function addBE(userId, amount, reason = "") {
   saveBE(be);
 }
 
-client.on("messageCreate", async (msg) => {
+client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (msg.author.bot) return;
   if (!msg.guild || !msg.channel || !msg.content) return;
   if (
@@ -451,7 +506,6 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// ✅ 예외 핸들링/자동 재접속/Express 서버는 그대로
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
   try {
