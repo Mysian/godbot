@@ -15,7 +15,9 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.DirectMessages,
   ],
+  partials: ["CHANNEL", "MESSAGE", "REACTION"], 
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
@@ -268,7 +270,10 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // === 메시지 누적 ===
-client.on("messageCreate", msg => {
+client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (msg.guild && !msg.author.bot) {
     activity.addMessage(msg.author.id, msg.channel);
   }
@@ -326,6 +331,9 @@ setInterval(() => {
 
 // ✅ 답글 상호작용 시 관계도 상승
 client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (!msg.guild || msg.author.bot) return;
   if (msg.reference && msg.reference.messageId) {
     try {
@@ -339,7 +347,10 @@ client.on("messageCreate", async msg => {
 });
 
 // ✅ 멘션 시 관계도 상승
-client.on("messageCreate", msg => {
+client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (!msg.guild || msg.author.bot) return;
   if (msg.mentions && msg.mentions.users) {
     msg.mentions.users.forEach(user => {
@@ -353,6 +364,9 @@ client.on("messageCreate", msg => {
 
 // ✅ 이모지 리액션 시 관계도 상승
 client.on("messageReactionAdd", async (reaction, user) => {
+  if (reaction.partial) {
+    try { reaction = await reaction.fetch(); } catch { return; }
+  }
   if (!reaction.message.guild || user.bot) return;
   const author = reaction.message.author;
   if (author && !author.bot && author.id !== user.id) {
@@ -364,7 +378,10 @@ client.on("messageReactionAdd", async (reaction, user) => {
 // 유저 활동기록 체크 코드
 const activityPath = path.join(__dirname, "activity.json");
 
-client.on("messageCreate", (message) => {
+client.on("messageCreate", async message => {
+  if (message.partial) {
+    try { message = await message.fetch(); } catch { return; }
+  }
   if (!message.guild || message.author.bot) return;
   let activity = {};
   if (fs.existsSync(activityPath)) {
@@ -377,7 +394,10 @@ client.on("messageCreate", (message) => {
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
-client.on("messageCreate", async (message) => {
+client.on("messageCreate", async message => {
+  if (message.partial) {
+    try { message = await message.fetch(); } catch { return; }
+  }
   if (message.author.bot) return;
   const channelId = message.channel.id;
   const game = rouletteGames.get(channelId);
@@ -467,7 +487,10 @@ function addBE(userId, amount, reason = "") {
   saveBE(be);
 }
 
-client.on("messageCreate", async (msg) => {
+client.on("messageCreate", async msg => {
+  if (msg.partial) {
+    try { msg = await msg.fetch(); } catch { return; }
+  }
   if (msg.author.bot) return;
   if (!msg.guild || !msg.channel || !msg.content) return;
   if (
