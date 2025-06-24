@@ -56,6 +56,7 @@ function stopTimer(guildId) {
 
 const PAGE_SIZE = 5;
 
+// 한 줄에 버튼 여러개 넣어서 컴포넌트 개수 제한 회피
 async function showTipsPage(interaction, data, guildId, page) {
   const tips = data[guildId].tips;
   const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
@@ -70,23 +71,24 @@ async function showTipsPage(interaction, data, guildId, page) {
     msg += `\n${start + i + 1}. ${tip}`;
   });
 
+  // 버튼 구성 (한줄에 두개, 최대 5줄)
   const rows = [];
   for (let i = 0; i < pageTips.length; i++) {
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`edit_tip_${start + i}_page_${page}`)
-          .setLabel('수정')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(`delete_tip_${start + i}_page_${page}`)
-          .setLabel('삭제')
-          .setStyle(ButtonStyle.Danger)
-      )
+    const actionRow = new ActionRowBuilder();
+    actionRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`edit_tip_${start + i}_page_${page}`)
+        .setLabel('수정')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`delete_tip_${start + i}_page_${page}`)
+        .setLabel('삭제')
+        .setStyle(ButtonStyle.Danger)
     );
+    rows.push(actionRow);
   }
 
-  // 페이지 이동 버튼
+  // 페이지 이동 버튼 (한 줄)
   const navRow = new ActionRowBuilder();
   navRow.addComponents(
     new ButtonBuilder()
@@ -102,7 +104,6 @@ async function showTipsPage(interaction, data, guildId, page) {
   );
   rows.push(navRow);
 
-  // 처음만 reply, 이후는 update
   if (interaction.replied || interaction.deferred) {
     await interaction.editReply({ content: msg, components: rows, ephemeral: true });
   } else {
@@ -134,7 +135,6 @@ module.exports = {
     const data = loadData();
     if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [], enabled: false };
 
-    // 공지채널 설정 모달
     if (option === 'set_channel') {
       const modal = new ModalBuilder()
         .setCustomId('set_channel_modal')
@@ -153,7 +153,6 @@ module.exports = {
       return;
     }
 
-    // 공지 글 추가 모달
     if (option === 'add_tip') {
       const modal = new ModalBuilder()
         .setCustomId('add_tip_modal')
@@ -171,7 +170,6 @@ module.exports = {
       return;
     }
 
-    // 공지 주기 선택 모달
     if (option === 'set_interval') {
       const modal = new ModalBuilder()
         .setCustomId('set_interval_modal')
@@ -189,24 +187,20 @@ module.exports = {
       return;
     }
 
-    // 공지 글 리스트 (수정/삭제/페이지 이동)
     if (option === 'list_tips') {
       if (data[guildId].tips.length === 0) return interaction.reply({ content: '등록된 공지가 없습니다.', ephemeral: true });
       await showTipsPage(interaction, data, guildId, 1);
 
-      // 버튼 핸들러
       const filter = btnInt => btnInt.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 120_000 });
 
       collector.on('collect', async btnInt => {
-        // 페이지 이동
         if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
           let curPage = parseInt(btnInt.customId.split('_').pop());
           let newPage = btnInt.customId.startsWith('prev') ? curPage - 1 : curPage + 1;
           await showTipsPage(btnInt, data, guildId, newPage);
           return;
         }
-        // 수정/삭제
         const editMatch = btnInt.customId.match(/^edit_tip_(\d+)_page_(\d+)$/);
         const delMatch = btnInt.customId.match(/^delete_tip_(\d+)_page_(\d+)$/);
 
@@ -239,7 +233,6 @@ module.exports = {
       return;
     }
 
-    // 공지 기능 켜기/끄기 기존대로(모달 필요없음)
     if (option === 'enable') {
       const { channelId, tips, interval } = data[guildId];
       if (!channelId || !interval || tips.length === 0) {
@@ -258,13 +251,11 @@ module.exports = {
     }
   },
 
-  // 모달 제출 핸들러
   async modal(interaction) {
     const guildId = interaction.guild.id;
     const data = loadData();
     if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [], enabled: false };
 
-    // 공지채널 설정
     if (interaction.customId === 'set_channel_modal') {
       const channelId = interaction.fields.getTextInputValue('channel_id_input');
       data[guildId].channelId = channelId;
@@ -272,7 +263,6 @@ module.exports = {
       return interaction.reply({ content: `공지 채널이 <#${channelId}> 로 설정되었습니다.`, ephemeral: true });
     }
 
-    // 공지 글 추가
     if (interaction.customId === 'add_tip_modal') {
       const tip = interaction.fields.getTextInputValue('tip_content_input');
       data[guildId].tips.push(tip);
@@ -280,7 +270,6 @@ module.exports = {
       return interaction.reply({ content: '공지 내용이 추가되었습니다.', ephemeral: true });
     }
 
-    // 공지 주기 선택
     if (interaction.customId === 'set_interval_modal') {
       const interval = interaction.fields.getTextInputValue('interval_input');
       if (!INTERVALS[interval]) {
@@ -296,7 +285,6 @@ module.exports = {
       return interaction.reply({ content: `${interval} 간격으로 공지가 전송되도록 설정되었습니다.`, ephemeral: true });
     }
 
-    // 공지 글 수정 (페이지 정보 포함)
     if (interaction.customId.startsWith('edit_tip_modal_')) {
       const match = interaction.customId.match(/^edit_tip_modal_(\d+)(?:_page_(\d+))?$/);
       const idx = Number(match[1]);
@@ -304,8 +292,6 @@ module.exports = {
       const newContent = interaction.fields.getTextInputValue('edit_tip_input');
       data[guildId].tips[idx] = newContent;
       saveData(data);
-
-      // showTipsPage를 직접 쓸 수 없으므로, 간단한 메시지로 대체(필요시 직접 갱신해도 됨)
       return interaction.reply({ content: `공지 ${idx+1}번이 수정되었습니다.`, ephemeral: true });
     }
   }
