@@ -57,27 +57,25 @@ function stopTimer(guildId) {
 
 const PAGE_SIZE = 5;
 
-async function showTipsPage(interaction, data, guildId, page) {
-  const tips = data[guildId].tips;
+function makeTipsEmbed(tips, page) {
   const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
-  if (page < 1) page = 1;
-  if (page > maxPage) page = maxPage;
-
   const start = (page - 1) * PAGE_SIZE;
   const pageTips = tips.slice(start, start + PAGE_SIZE);
-
-  // 임베드
   const embed = new EmbedBuilder()
     .setTitle(`등록된 공지 (${tips.length}개) [${page}/${maxPage}]`)
     .setDescription('아래는 등록된 공지글 목록입니다.')
     .setColor(0x6e36f5);
-
   pageTips.forEach((tip, i) => {
     embed.addFields({ name: `${start + i + 1}번`, value: tip.length > 1024 ? tip.slice(0,1020)+'...' : tip });
   });
+  return embed;
+}
 
-  // 버튼: 공지별 수정/삭제
-  const buttonRows = [];
+function makeComponents(tips, page) {
+  const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
+  const start = (page - 1) * PAGE_SIZE;
+  const pageTips = tips.slice(start, start + PAGE_SIZE);
+  const rows = [];
   for (let i = 0; i < pageTips.length; i++) {
     const row = new ActionRowBuilder();
     row.addComponents(
@@ -90,10 +88,8 @@ async function showTipsPage(interaction, data, guildId, page) {
         .setLabel('삭제')
         .setStyle(ButtonStyle.Danger)
     );
-    buttonRows.push(row);
+    rows.push(row);
   }
-
-  // 페이지 이동
   const navRow = new ActionRowBuilder();
   navRow.addComponents(
     new ButtonBuilder()
@@ -107,14 +103,8 @@ async function showTipsPage(interaction, data, guildId, page) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= maxPage)
   );
-
-  buttonRows.push(navRow);
-
-  if (interaction.replied || interaction.deferred) {
-    await interaction.editReply({ embeds: [embed], components: buttonRows, ephemeral: true });
-  } else {
-    await interaction.reply({ embeds: [embed], components: buttonRows, ephemeral: true });
-  }
+  rows.push(navRow);
+  return rows;
 }
 
 module.exports = {
@@ -195,9 +185,14 @@ module.exports = {
 
     if (option === 'list_tips') {
       if (data[guildId].tips.length === 0) return interaction.reply({ content: '등록된 공지가 없습니다.', ephemeral: true });
-      await showTipsPage(interaction, data, guildId, 1);
+      const page = 1;
+      await interaction.reply({
+        embeds: [makeTipsEmbed(data[guildId].tips, page)],
+        components: makeComponents(data[guildId].tips, page),
+        ephemeral: true
+      });
 
-      // Collector로 버튼 처리
+      // collector (버튼 기능 처리)
       const filter = btnInt => btnInt.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 120_000 });
 
@@ -206,7 +201,11 @@ module.exports = {
         if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
           let curPage = parseInt(btnInt.customId.split('_').pop());
           let newPage = btnInt.customId.startsWith('prev') ? curPage - 1 : curPage + 1;
-          await showTipsPage(btnInt, data, guildId, newPage);
+          await btnInt.update({
+            embeds: [makeTipsEmbed(data[guildId].tips, newPage)],
+            components: makeComponents(data[guildId].tips, newPage),
+            ephemeral: true
+          });
           return;
         }
         // 수정/삭제
@@ -236,7 +235,14 @@ module.exports = {
           const page = Number(delMatch[2]);
           data[guildId].tips.splice(idx, 1);
           saveData(data);
-          await showTipsPage(btnInt, data, guildId, page);
+          // 페이지 범위 벗어나면 앞으로 이동
+          const maxPage = Math.max(1, Math.ceil(data[guildId].tips.length / PAGE_SIZE));
+          const realPage = Math.min(page, maxPage);
+          await btnInt.update({
+            embeds: [makeTipsEmbed(data[guildId].tips, realPage)],
+            components: makeComponents(data[guildId].tips, realPage),
+            ephemeral: true
+          });
         }
       });
       return;
