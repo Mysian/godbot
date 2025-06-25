@@ -528,6 +528,9 @@ client.on("messageCreate", async msg => {
   }
 });
 
+// 중복 처리 방지
+require("./utils/activity-stats");
+
 process.on("uncaughtException", async (err) => {
   console.error("❌ uncaughtException:", err);
   try {
