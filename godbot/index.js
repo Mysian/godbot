@@ -408,13 +408,6 @@ client.on("messageCreate", async message => {
   fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2));
 });
 
-// 공지하기
-const { startNoticeCron } = require('./commands/notice.js');
-client.once(Events.ClientReady, () => {
-  const data = require('fs').existsSync('./data/announcements.json') ? require('./data/announcements.json') : undefined;
-  if (data) startNoticeCron(client, data);
-});
-
 
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
