@@ -558,6 +558,10 @@ setInterval(async () => {
 
 client.login(process.env.DISCORD_TOKEN);
 
+// 3시간마다 랜덤 포인트
+const { setup: setupFastGive } = require('./commands/be-fastgive.js');
+setupFastGive(client);
+
 const dmRelay = require('./commands/dm.js');
 dmRelay.relayRegister(client);
 
