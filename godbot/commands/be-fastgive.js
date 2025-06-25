@@ -7,7 +7,7 @@ const { addBE } = require('./be-util.js');
 const CHANNEL_ID = '1381193562330370048';
 
 // 키워드 풀(고정 + 부스터 닉네임은 런타임에 추가)
-let keywordPool = ['!정수', '!까리', '!갓봇', '!영갓업', '!영갓', '!라멘'];
+let keywordPool = ['!정수', '!까리', '!갓봇', '!영갓업'];
 
 // 각 지급 라운드별 키워드와 지급여부 저장
 let currentRound = {};
@@ -17,7 +17,7 @@ async function refreshKeywordPool(guild) {
   let boosters = guild.members.cache.filter(m => m.premiumSince);
   let boosterKeywords = boosters.map(m => '!' + m.displayName.replace(/\s/g, ''));
   keywordPool = [
-    '!정수', '!까리', '!갓봇', '!영갓업', '!영갓',
+    '!정수', '!까리', '!갓봇', '!영갓업',
     ...boosterKeywords
   ];
 }
