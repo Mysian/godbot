@@ -296,6 +296,11 @@ client.on("messageCreate", async msg => {
   }
 });
 
+// 3시간마다 랜덤 포인트
+const { setup: setupFastGive } = require('./commands/be-fastgive.js');
+setupFastGive(client);
+
+
 // === 음성 누적 + 1시간 알림 ===
 const voiceStartMap = new Map();
 client.on("voiceStateUpdate", (oldState, newState) => {
@@ -407,7 +412,6 @@ client.on("messageCreate", async message => {
   activity[message.author.id] = Date.now();
   fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2));
 });
-
 
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
@@ -558,10 +562,6 @@ setInterval(async () => {
 }, 1000 * 60 * 1800);
 
 client.login(process.env.DISCORD_TOKEN);
-
-// 3시간마다 랜덤 포인트
-const { setup: setupFastGive } = require('./commands/be-fastgive.js');
-setupFastGive(client);
 
 const dmRelay = require('./commands/dm.js');
 dmRelay.relayRegister(client);
