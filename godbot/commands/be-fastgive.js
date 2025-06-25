@@ -17,7 +17,7 @@ async function refreshKeywordPool(guild) {
   let boosters = guild.members.cache.filter(m => m.premiumSince);
   let boosterKeywords = boosters.map(m => '!' + m.displayName.replace(/\s/g, ''));
   keywordPool = [
-    '!정수', '!까리', '!갓봇', '!영갓업', '!영갓', '!라멘',
+    '!정수', '!까리', '!갓봇', '!영갓업', '!영갓',
     ...boosterKeywords
   ];
 }
