@@ -408,6 +408,7 @@ client.on("messageCreate", async message => {
   fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2));
 });
 
+
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
