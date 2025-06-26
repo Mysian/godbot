@@ -18,7 +18,7 @@ module.exports = async (client) => {
       if (!logChannel || logChannel.type !== ChannelType.GuildText) return;
 
       // 3. 유저별 스레드 찾기(없으면 생성)
-      const threadName = `[상품후원] ${msg.author.username} (${msg.author.id})`;
+      const threadName = `[상품후원] ${msg.author.id}`;
       let thread = logChannel.threads.cache.find(
         t => t.name === threadName && !t.archived
       );
