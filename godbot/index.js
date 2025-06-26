@@ -123,8 +123,9 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 }
 
 // ✅ InteractionCreate 리스너(모달 제출 처리 포함)
-const champBattle = require('./commands/champ-battle');
 const warnCmd = client.commands.get("경고");
+const champBattle = require('./commands/champ-battle');
+
 client.on(Events.InteractionCreate, async interaction => {
   // 1. 신고 모달 (신고_모달)
   if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
@@ -195,51 +196,42 @@ client.on(Events.InteractionCreate, async interaction => {
     // warn
     // 경고 카테고리/세부사유 SelectMenu 처리
 if (interaction.isStringSelectMenu()) {
-  if (
-    interaction.customId.startsWith("warn_category_") ||
-    interaction.customId.startsWith("warn_reason_")
-  ) {
-    const warnCmd = client.commands.get("경고");
-    if (warnCmd && typeof warnCmd.handleSelect === "function") {
+    if (
+      interaction.customId.startsWith("warn_category_") ||
+      interaction.customId.startsWith("warn_reason_")
+    ) {
+      if (warnCmd && typeof warnCmd.handleSelect === "function") {
+        try {
+          await warnCmd.handleSelect(interaction);
+        } catch (err) {
+          console.error(err);
+          try {
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.update({ content: "❣️ 처리되었습니다.", components: [] });
+            }
+          } catch (e) {}
+        }
+      }
+      return;
+    }
+  }
+
+  // 경고 상세사유 입력 모달 처리
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("warn_modal_")) {
+    if (warnCmd && typeof warnCmd.handleModal === "function") {
       try {
-        await warnCmd.handleSelect(interaction);
-        // handleSelect 내부에서 반드시 update 또는 showModal 호출!
+        await warnCmd.handleModal(interaction);
       } catch (err) {
         console.error(err);
         try {
           if (!interaction.replied && !interaction.deferred) {
-            // SelectMenu는 update만 허용! reply하면 오류뜸
-            await interaction.update({ content: "❣️ 처리되었습니다.", components: [] });
+            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true });
           }
-        } catch (e) {
-          // 혹시 그래도 오류 뜨면 무시
-        }
+        } catch (e) {}
       }
     }
     return;
   }
-}
-
-// 경고 상세사유 입력 모달 처리
-if (interaction.isModalSubmit() && interaction.customId.startsWith("warn_modal_")) {
-  const warnCmd = client.commands.get("경고");
-  if (warnCmd && typeof warnCmd.handleModal === "function") {
-    try {
-      await warnCmd.handleModal(interaction);
-      // handleModal 내부에서 반드시 reply 호출!
-    } catch (err) {
-      console.error(err);
-      try {
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true });
-        }
-      } catch (e) {
-        // 그래도 오류나면 무시
-      }
-    }
-  }
-  return;
-}
 
     // 챔피언 지급 모달
   if (interaction.isModalSubmit() && interaction.customId.startsWith("give-modal-")) {
