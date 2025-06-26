@@ -1,13 +1,28 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
 const champions = require("../utils/champion-data");
 const { getChampionIcon, getChampionSplash, getChampionInfo } = require("../utils/champion-utils");
 
+// calcStatGain 복붙 (champ-up.js 기준)
+function calcStatGain(level, baseAtk, baseAp) {
+  let mainStat = baseAtk >= baseAp ? 'attack' : 'ap';
+  let subStat = baseAtk >= baseAp ? 'ap' : 'attack';
+  let mainGain = Math.floor((level / 5) + 2) * 1.5;
+  let subGain = Math.floor((level / 7) + 1);
+  let hpGain = (level * 5) + 50;
+  let defGain = Math.floor((level / 10) + 1);
+  let penGain = level % 2 === 0 ? 1 : 0;
+  let gain = { attack: 0, ap: 0, hp: hpGain, defense: defGain, penetration: penGain };
+  gain[mainStat] = mainGain;
+  gain[subStat] = subGain;
+  return { gain, mainStat, subStat };
+}
+
 const dataPath = path.join(__dirname, "../data/champion-users.json");
-// 관리자 권한 체크: 필요하면 여기서 역할 ID로 제한 가능
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
+const PAGE_SIZE = 6;
 
 async function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
@@ -16,8 +31,6 @@ async function loadData() {
 async function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
-
-const PAGE_SIZE = 6; // 한 페이지에 보여줄 챔피언 개수
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -30,7 +43,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // 관리자 권한 체크 (메인/일반스탭)
     const guild = interaction.guild;
     const member = await guild.members.fetch(interaction.user.id);
     if (!member.roles.cache.hasAny(...ADMIN_ROLE_IDS)) {
@@ -40,8 +52,6 @@ module.exports = {
     const targetUser = interaction.options.getUser("유저");
     const targetId = targetUser.id;
     let release;
-
-    // 첫 페이지 표시
     let page = 0;
     const pageMax = Math.ceil(champions.length / PAGE_SIZE);
 
@@ -65,7 +75,6 @@ module.exports = {
         });
       }
 
-      // 버튼을 5개씩 ActionRowBuilder에 나눠 담는다!
       const buttonRows = [];
       for (let i = 0; i < champs.length; i += 5) {
         const row = new ActionRowBuilder();
@@ -80,7 +89,6 @@ module.exports = {
         buttonRows.push(row);
       }
 
-      // 페이지 이동 버튼
       const navButtons = new ActionRowBuilder();
       navButtons.addComponents(
         new ButtonBuilder()
@@ -94,8 +102,6 @@ module.exports = {
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(page === pageMax - 1)
       );
-
-      // 버튼 행 반환 (챔피언 지급 버튼 여러 줄 + 네비게이션 1줄)
       return { embed, buttonRows, navButtons };
     }
 
@@ -147,37 +153,23 @@ module.exports = {
             collector.stop();
             return;
           }
-          // 지급 처리
-          const champ = champions.find(c => c.name === champName);
-          data[targetId] = {
-            name: champ.name,
-            level: 0,
-            success: 0,
-            stats: { ...champ.stats },
-            timestamp: Date.now()
-          };
-          await saveData(data);
-
-          const icon   = await getChampionIcon(champ.name);
-          const splash = await getChampionSplash(champ.name);
-          const lore   = getChampionInfo(champ.name);
-
-          const resultEmbed = new EmbedBuilder()
-            .setTitle(`🎁 챔피언 지급 완료!`)
-            .setDescription(`<@${targetId}> 님에게 **${champ.name}** 챔피언이 지급되었습니다!`)
-            .addFields(
-              { name: "설명", value: lore }
-            )
-            .setThumbnail(icon)
-            .setImage(splash)
-            .setColor(0x4caf50)
-            .setTimestamp();
-
-          await i.update({
-            embeds: [resultEmbed],
-            components: [],
-            ephemeral: false
-          });
+          // **강화 레벨 입력 모달**
+          const modal = new ModalBuilder()
+            .setCustomId(`give-modal-${champName}-${targetId}`)
+            .setTitle("강화 레벨 입력 (0~999)")
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("level")
+                  .setLabel("지급할 강화 레벨 (0~999)")
+                  .setStyle(TextInputStyle.Short)
+                  .setPlaceholder("예: 0")
+                  .setMinLength(1)
+                  .setMaxLength(3)
+                  .setRequired(true)
+              )
+            );
+          await i.showModal(modal);
           collector.stop();
         } catch (err) {
           if (release) try { await release(); } catch {}
@@ -187,15 +179,94 @@ module.exports = {
             components: [],
             ephemeral: true
           });
-        } finally {
-          if (release) try { await release(); } catch {}
         }
       }
     });
 
     collector.on("end", () => {
-      // 60초 지나면 버튼 비활성화
       interaction.editReply({ components: [] }).catch(() => {});
+    });
+
+    // 모달 응답 핸들러 (interactionCreate 이벤트에 반드시 이 부분이 연결되어야 함)
+    interaction.client.on("interactionCreate", async modalInt => {
+      if (
+        !modalInt.isModalSubmit() ||
+        !modalInt.customId.startsWith("give-modal-") ||
+        modalInt.user.id !== interaction.user.id
+      )
+        return;
+      const parts = modalInt.customId.split("-");
+      const champName = parts.slice(2, parts.length - 1).join("-"); // champName에는 -가 있을 수 있음
+      const tId = parts[parts.length - 1];
+      if (tId !== targetId) return; // 보안
+
+      let data, release2;
+      try {
+        const levelInput = modalInt.fields.getTextInputValue("level").replace(/[^0-9]/g, "");
+        let level = parseInt(levelInput, 10);
+        if (isNaN(level) || level < 0) level = 0;
+        if (level > 999) level = 999;
+
+        release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+        data = await loadData();
+        if (data[targetId]) {
+          await modalInt.reply({
+            content: `❌ <@${targetId}> 님은 이미 챔피언 **${data[targetId].name}**을(를) 보유 중입니다!`,
+            ephemeral: true
+          });
+          return;
+        }
+        const champ = champions.find(c => c.name === champName);
+        // **스탯계산**
+        let stats = { ...champ.stats };
+        if (level > 0) {
+          let { gain } = calcStatGain(level, stats.attack, stats.ap);
+          stats.attack += gain.attack;
+          stats.ap += gain.ap;
+          stats.hp += gain.hp;
+          stats.defense += gain.defense;
+          stats.penetration += gain.penetration;
+        }
+        data[targetId] = {
+          name: champ.name,
+          level,
+          success: 0,
+          stats,
+          timestamp: Date.now()
+        };
+        await saveData(data);
+
+        const icon   = await getChampionIcon(champ.name);
+        const splash = await getChampionSplash(champ.name);
+        const lore   = getChampionInfo(champ.name);
+
+        const resultEmbed = new EmbedBuilder()
+          .setTitle(`🎁 챔피언 지급 완료!`)
+          .setDescription(
+            `<@${targetId}> 님에게 **${champ.name}** 챔피언이 지급되었습니다!\n강화 레벨: **${level}강**`
+          )
+          .addFields(
+            { name: "설명", value: lore }
+          )
+          .setThumbnail(icon)
+          .setImage(splash)
+          .setColor(0x4caf50)
+          .setTimestamp();
+
+        await modalInt.reply({
+          embeds: [resultEmbed],
+          components: [],
+          ephemeral: false
+        });
+      } catch (err) {
+        if (release2) try { await release2(); } catch {}
+        await modalInt.reply({
+          content: "❌ 지급 도중 오류가 발생했습니다. 다시 시도해 주세요.",
+          ephemeral: true
+        });
+      } finally {
+        if (release2) try { await release2(); } catch {}
+      }
     });
   }
 };
