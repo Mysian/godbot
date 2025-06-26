@@ -188,71 +188,70 @@ module.exports = {
 
   // 모달 제출 처리
   async handleModal(interaction) {
-    if (!interaction.customId.startsWith("warn_modal_")) return;
-    const arr = interaction.customId.split("_");
-    const userId = arr[2];
-    const code = arr.slice(3).join("_");
-    const detail = interaction.fields.getTextInputValue("detail_input") || "-";
+  if (!interaction.customId.startsWith("warn_modal_")) return;
+  const arr = interaction.customId.split("_");
+  const userId = arr[2];
+  const code = arr.slice(3).join("_");
+  const detail = interaction.fields.getTextInputValue("detail_input") || "-";
 
-    // 경고 기록
-    const selectedReason = categories
-  .flatMap(c => c.reasons)
-  .find(r => r.value === code);
+  // 경고 기록
+  const selectedReason = categories
+    .flatMap(c => c.reasons)
+    .find(r => r.value === code);
+  const desc = selectedReason ? selectedReason.label : "";
 
-// 경고 기록
-const warnings = loadWarnings();
-if (!warnings[userId]) warnings[userId] = [];
-warnings[userId].push({
-  code,
-  desc: selectedReason ? selectedReason.label : "",  // ← 코드 설명까지 저장!
-  detail,
-  date: new Date().toISOString(),
-  mod: interaction.user.id
-});
-saveWarnings(warnings);
+  const warnings = loadWarnings();
+  if (!warnings[userId]) warnings[userId] = [];
+  warnings[userId].push({
+    code,
+    desc,
+    detail,
+    date: new Date().toISOString(),
+    mod: interaction.user.id
+  });
+  saveWarnings(warnings);
 
-    // 경고 횟수에 따른 타임아웃/추방
-    const guild = interaction.guild;
-    const member = await guild.members.fetch(userId).catch(() => null);
-    const count = warnings[userId].length;
-    if (member) {
-  let duration = 0;
-  if (count === 1) duration = 1000 * 60 * 60 * 24;          // 1회: 1일 타임아웃
-  else if (count === 2) duration = 1000 * 60 * 60 * 24 * 7; // 2회: 7일 타임아웃
-  else if (count >= 3) {
-    await member.ban({ reason: `누적 경고 3회 (${code})` }); // 3회: 서버 차단(ban)!
+  // 경고 횟수에 따른 타임아웃/추방
+  const guild = interaction.guild;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  const count = warnings[userId].length;
+  if (member) {
+    let duration = 0;
+    if (count === 1) duration = 1000 * 60 * 60 * 24;
+    else if (count === 2) duration = 1000 * 60 * 60 * 24 * 7;
+    else if (count >= 3) {
+      await member.ban({ reason: `누적 경고 3회 (${code})` });
+    }
+    if (duration > 0) {
+      await member.timeout(duration, `경고 누적 (${code})`);
+    }
   }
-  if (duration > 0) {
-    await member.timeout(duration, `경고 누적 (${code})`);
-  }
+
+  // DM 전송
+  try {
+    const user = await interaction.client.users.fetch(userId);
+    await user.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🚫 경고 알림")
+          .setDescription(
+            `[${code}${desc ? `: ${desc}` : ""}] 항목 위반으로 경고가 부여되었습니다.\n\n` +
+            "⚠️ 경고 3회 누적 시 삼진아웃(서버 차단) 처리됩니다."
+          )
+          .addFields(
+            { name: "📌 사유", value: detail },
+            { name: "📅 일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>` },
+            { name: "📎 경고 누적", value: `${count}회` }
+          )
+          .setColor("Red")
+      ]
+    });
+  } catch (e) {}
+
+  await interaction.reply({
+    content: `✅ <@${userId}> 유저에게 경고를 부여했습니다. (총 ${count}회)\n사유코드: **${code}**\n상세사유: ${detail}`,
+    ephemeral: true
+  });
 }
 
-    // DM 전송
-    try {
-  const user = await interaction.client.users.fetch(userId);
-  await user.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("🚫 경고 알림")
-        .setDescription(
-          `[${code}${desc ? `: ${desc}` : ""}] 항목 위반으로 경고가 부여되었습니다.\n\n` +
-          "⚠️ 경고 3회 누적 시 삼진아웃(서버 차단) 처리됩니다."
-        )
-        .addFields(
-          { name: "📌 사유", value: detail },
-          { name: "📅 일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>` },
-          { name: "📎 경고 누적", value: `${count}회` }
-        )
-        .setColor("Red")
-    ]
-  });
-} catch (e) {}
-
-
-
-    await interaction.reply({
-      content: `✅ <@${userId}> 유저에게 경고를 부여했습니다. (총 ${count}회)\n사유코드: **${code}**\n상세사유: ${detail}`,
-      ephemeral: true
-    });
-  }
 };
