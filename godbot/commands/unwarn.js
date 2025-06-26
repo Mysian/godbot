@@ -20,7 +20,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("경고취소")
     .setDescription("특정 유저에게 부여된 최근 경고를 철회합니다.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
     .addUserOption(opt =>
       opt.setName("유저").setDescription("경고를 취소할 유저").setRequired(true)
     ),
