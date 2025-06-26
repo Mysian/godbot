@@ -311,10 +311,10 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
     // 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
-    if (!modalHandled && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-    }
-    return;
+    if (!interaction.replied && !interaction.deferred) {
+  await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(()=>{});
+}
+return;
   }
     
   // 3. 그 외 명령어/버튼(로그 및 명령어 실행)
