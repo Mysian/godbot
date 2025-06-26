@@ -209,45 +209,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 3. 공지/경고 전용 커스텀ID만 처리 (startsWith로 정확히)
-  if (interaction.isModalSubmit()) {
-    // 공지 모달만 처리
-    if (
-      interaction.customId.startsWith("set_channel_modal") ||
-      interaction.customId.startsWith("add_tip_modal") ||
-      interaction.customId.startsWith("set_interval_modal") ||
-      interaction.customId.startsWith("edit_tip_modal_")
-    ) {
-      const command = client.commands.get("공지하기");
-      if (command && typeof command.modal === "function") {
-        try {
-          await command.modal(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-          }
-        }
-        return;
-      }
-    }
-
-    // 별명변경/타임아웃/추방 처리
-    if (interaction.isCommand() || interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction);
-  }
-
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId.startsWith("nickname_change_modal_") || interaction.customId.startsWith("adminpw_user_") || interaction.customId === "adminpw_json_backup") {
-      const command = client.commands.get("관리");
-      if (command && command.modalSubmit) {
-        await command.modalSubmit(interaction);
-      }
-    }
-  }
-
-    // 챔피언 지급 모달
+  // 챔피언 지급 모달
   if (interaction.isModalSubmit() && interaction.customId.startsWith("give-modal-")) {
   const command = client.commands.get("챔피언지급");
   if (command && typeof command.modalSubmit === "function") {
@@ -308,6 +270,44 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
     return;
+  }
+
+  // 3. 공지/경고 전용 커스텀ID만 처리 (startsWith로 정확히)
+  if (interaction.isModalSubmit()) {
+    // 공지 모달만 처리
+    if (
+      interaction.customId.startsWith("set_channel_modal") ||
+      interaction.customId.startsWith("add_tip_modal") ||
+      interaction.customId.startsWith("set_interval_modal") ||
+      interaction.customId.startsWith("edit_tip_modal_")
+    ) {
+      const command = client.commands.get("공지하기");
+      if (command && typeof command.modal === "function") {
+        try {
+          await command.modal(interaction);
+        } catch (err) {
+          console.error(err);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
+          }
+        }
+        return;
+      }
+    }
+
+    // 별명변경/타임아웃/추방 처리
+    if (interaction.isCommand() || interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (command) await command.execute(interaction);
+  }
+
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith("nickname_change_modal_") || interaction.customId.startsWith("adminpw_user_") || interaction.customId === "adminpw_json_backup") {
+      const command = client.commands.get("관리");
+      if (command && command.modalSubmit) {
+        await command.modalSubmit(interaction);
+      }
+    }
   }
 
     // 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
