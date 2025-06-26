@@ -57,8 +57,7 @@ module.exports = {
           name: `${i + 1}. [${w.code}${w.desc ? `: ${extractReasonDesc(w.desc)}` : ""}]`,
           value:
             `• 사유: ${w.detail}\n` +
-            `• 일시: <t:${Math.floor(new Date(w.date).getTime() / 1000)}:f>\n` +
-            `• 담당 관리자: ${adminMap[w.mod] ? `@${adminMap[w.mod]}` : `<@${w.mod}>`}`
+            `• 일시: <t:${Math.floor(new Date(w.date).getTime() / 1000)}:f>`
         }))
       );
 
