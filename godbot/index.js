@@ -124,6 +124,7 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 
 // ✅ InteractionCreate 리스너(모달 제출 처리 포함)
 const warnCmd = client.commands.get("경고");
+const unwarnCmd = client.commands.get("경고취소");
 const champBattle = require('./commands/champ-battle');
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -163,6 +164,18 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.reply({ content: "❣️ 처리 중 오류", ephemeral: true });
           }
         } catch {}
+      }
+    }
+    return;
+  }
+
+   // 경고취소 모달
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("unwarn_modal_")) {
+    if (unwarnCmd && typeof unwarnCmd.handleModal === "function") {
+      try {
+        await unwarnCmd.handleModal(interaction);
+      } catch (e) {
+        // 예외 무시
       }
     }
     return;
