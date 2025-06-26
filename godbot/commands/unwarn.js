@@ -25,48 +25,51 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const target = interaction.options.getUser("유저");
-    const warnings = loadWarnings();
+  const target = interaction.options.getUser("유저");
+  const warnings = loadWarnings();
 
-    if (!warnings[target.id] || warnings[target.id].length === 0) {
-      return interaction.reply({
-        content: `❌ <@${target.id}> 유저는 현재 경고 기록이 없습니다.`,
-        ephemeral: true
-      });
-    }
-
-    const removed = warnings[target.id].pop();
-    saveWarnings(warnings);
-
-   // 타임아웃 해제
-const member = await interaction.guild.members.fetch(userId).catch(() => null);
-if (member && member.isCommunicationDisabled()) {
-  try {
-    await member.timeout(null, "경고 취소에 따른 타임아웃 해제");
-  } catch (e) {}
-}
-
-// 만약 차단(ban) 상태라면 해제
-const bans = await interaction.guild.bans.fetch();
-const banned = bans.get(userId);
-if (banned) {
-  try {
-    await interaction.guild.bans.remove(userId, "경고 취소에 따른 차단 해제");
-  } catch (e) {}
-}
-
-
-    const embed = new EmbedBuilder()
-      .setTitle("🔄 경고 취소 처리됨")
-      .setDescription(`<@${target.id}> 유저의 가장 최근 경고 1건이 취소되었습니다.`)
-      .addFields(
-        { name: "🚫 취소된 경고 사유", value: `[${removed.code}] ${removed.detail}` },
-        { name: "📅 부여일", value: `<t:${Math.floor(new Date(removed.date).getTime() / 1000)}:f>` },
-        { name: "📎 담당자", value: `<@${removed.mod}>` }
-      )
-      .setColor("Green");
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+  if (!warnings[target.id] || warnings[target.id].length === 0) {
+    return interaction.reply({
+      content: `❌ <@${target.id}> 유저는 현재 경고 기록이 없습니다.`,
+      ephemeral: true
+    });
   }
+
+  // === userId 선언!
+  const userId = target.id;
+
+  const removed = warnings[userId].pop();
+  saveWarnings(warnings);
+
+  // 타임아웃 해제
+  const member = await interaction.guild.members.fetch(userId).catch(() => null);
+  if (member && member.isCommunicationDisabled()) {
+    try {
+      await member.timeout(null, "경고 취소에 따른 타임아웃 해제");
+    } catch (e) {}
+  }
+
+  // 만약 차단(ban) 상태라면 해제
+  const bans = await interaction.guild.bans.fetch();
+  const banned = bans.get(userId);
+  if (banned) {
+    try {
+      await interaction.guild.bans.remove(userId, "경고 취소에 따른 차단 해제");
+    } catch (e) {}
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("🔄 경고 취소 처리됨")
+    .setDescription(`<@${userId}> 유저의 가장 최근 경고 1건이 취소되었습니다.`)
+    .addFields(
+      { name: "🚫 취소된 경고 사유", value: `[${removed.code}] ${removed.detail}` },
+      { name: "📅 부여일", value: `<t:${Math.floor(new Date(removed.date).getTime() / 1000)}:f>` },
+      { name: "📎 담당자", value: `<@${removed.mod}>` }
+    )
+    .setColor("Green");
+
+  await interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
 };
 
