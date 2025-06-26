@@ -202,14 +202,8 @@ client.on(Events.InteractionCreate, async interaction => {
         }
       }
     }
-    // warn_modal_ 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
-    if (!modalHandled && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-    }
-    return;
-  }
 
-  // 챔피언 지급 모달
+    // 챔피언 지급 모달
   if (interaction.isModalSubmit() && interaction.customId.startsWith("give-modal-")) {
   const command = client.commands.get("챔피언지급");
   if (command && typeof command.modalSubmit === "function") {
@@ -272,6 +266,13 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
+    // 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
+    if (!modalHandled && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
+    }
+    return;
+  }
+    
   // 3. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
