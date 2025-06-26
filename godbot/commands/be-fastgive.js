@@ -37,7 +37,7 @@ async function startGiveaway(client) {
   // 라운드 초기화
   currentRound[CHANNEL_ID] = { keyword, rewarded: false, reward };
 
-  await channel.send(`가장 빠르게 ${keyword} 를 입력한 유저에게 ${reward.toLocaleString()} 랜덤 정수 지급!`);
+  await channel.send(`가장 빠르게 ${keyword} 를 입력한 유저에게 랜덤 정수가 지급됩니다!`);
 }
 
 // 메시지 리스너 (가장 먼저 입력한 사람만 지급)
