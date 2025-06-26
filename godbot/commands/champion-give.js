@@ -23,9 +23,6 @@ const dataPath = path.join(__dirname, "../data/champion-users.json");
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const PAGE_SIZE = 6;
 
-// 지급 요청 임시 저장 (key: 관리자 userId)
-const pendingGiveMap = new Map();
-
 async function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
   return JSON.parse(fs.readFileSync(dataPath));
@@ -43,7 +40,6 @@ module.exports = {
         .setDescription("챔피언을 지급할 유저")
         .setRequired(true)
     ),
-
   async execute(interaction) {
     const guild = interaction.guild;
     const member = await guild.members.fetch(interaction.user.id);
@@ -53,7 +49,6 @@ module.exports = {
 
     const targetUser = interaction.options.getUser("유저");
     const targetId = targetUser.id;
-    const adminId = interaction.user.id;
     let release;
     let page = 0;
     const pageMax = Math.ceil(champions.length / PAGE_SIZE);
@@ -84,7 +79,7 @@ module.exports = {
         for (const champ of champs.slice(i, i + 5)) {
           row.addComponents(
             new ButtonBuilder()
-              .setCustomId(`give-${champ.name}`)
+              .setCustomId(`give-${champ.name}-${targetId}`)
               .setLabel(`${champ.name} 지급`)
               .setStyle(ButtonStyle.Primary)
           );
@@ -141,26 +136,29 @@ module.exports = {
         return;
       }
       if (i.customId.startsWith("give-")) {
-        const champName = i.customId.replace("give-", "");
+        // 커스텀ID에 챔피언명/타겟ID encode
+        // give-챔피언명-타겟ID
+        const [, ...rest] = i.customId.split("-");
+        const champName = rest.slice(0, rest.length - 1).join("-");
+        const giveId = rest[rest.length - 1];
         let data;
+        let isError = false;
         try {
           release = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
           data = await loadData();
-          if (data[targetId]) {
+          if (data[giveId]) {
+            isError = true;
             await i.update({
-              content: `❌ <@${targetId}> 님은 이미 챔피언 **${data[targetId].name}**을(를) 보유 중입니다!`,
+              content: `❌ <@${giveId}> 님은 이미 챔피언 **${data[giveId].name}**을(를) 보유 중입니다!`,
               embeds: [],
               components: [],
               ephemeral: true
             });
-            collector.stop();
             return;
           }
-          // 지급 요청 정보 임시 저장 (관리자 userId 기준)
-          pendingGiveMap.set(adminId, { champName, targetId });
-          // 강화 레벨 입력 모달
+          // collector.stop() 호출 없이, 여기서 바로 모달!
           const modal = new ModalBuilder()
-            .setCustomId(`give-modal`)
+            .setCustomId(`give-modal-${champName}-${giveId}`)
             .setTitle("강화 레벨 입력 (0~999)")
             .addComponents(
               new ActionRowBuilder().addComponents(
@@ -175,8 +173,8 @@ module.exports = {
               )
             );
           await i.showModal(modal);
-          collector.stop();
         } catch (err) {
+          isError = true;
           if (release) try { await release(); } catch {}
           await i.update({
             content: "❌ 지급 도중 오류가 발생했습니다. 다시 시도해 주세요.",
@@ -186,6 +184,7 @@ module.exports = {
           });
         } finally {
           if (release) try { await release(); } catch {}
+          if (!isError) collector.stop(); // 단 한 번만
         }
       }
     });
@@ -195,15 +194,13 @@ module.exports = {
     });
   },
 
-  // 모달 submit: 이제 userId(관리자) 기준으로 pendingGiveMap에서 champ/target 읽어서 처리
   async modalSubmit(interaction) {
-    const adminId = interaction.user.id;
-    const pending = pendingGiveMap.get(adminId);
-    if (!pending) {
-      await interaction.reply({ content: "❌ 지급 요청 정보가 만료되었습니다. 처음부터 다시 시도해주세요.", ephemeral: true });
-      return;
-    }
-    const { champName, targetId } = pending;
+    // 커스텀ID: give-modal-챔프명-타겟ID
+    if (!interaction.customId.startsWith("give-modal-")) return;
+    const parts = interaction.customId.split("-");
+    // ex) give-modal-챔피언이름(여러개-붙을수있음)-유저ID
+    const giveId = parts[parts.length - 1];
+    const champName = parts.slice(2, parts.length - 1).join("-");
     let data, release2;
     try {
       const levelInput = interaction.fields.getTextInputValue("level").replace(/[^0-9]/g, "");
@@ -213,16 +210,21 @@ module.exports = {
 
       release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
       data = await loadData();
-      if (data[targetId]) {
+      if (data[giveId]) {
         await interaction.reply({
-          content: `❌ <@${targetId}> 님은 이미 챔피언 **${data[targetId].name}**을(를) 보유 중입니다!`,
+          content: `❌ <@${giveId}> 님은 이미 챔피언 **${data[giveId].name}**을(를) 보유 중입니다!`,
           ephemeral: true
         });
-        pendingGiveMap.delete(adminId);
         return;
       }
       const champ = champions.find(c => c.name === champName);
-      // 스탯계산
+      if (!champ) {
+        await interaction.reply({
+          content: "❌ 잘못된 챔피언입니다.",
+          ephemeral: true
+        });
+        return;
+      }
       let stats = { ...champ.stats };
       if (level > 0) {
         let { gain } = calcStatGain(level, stats.attack, stats.ap);
@@ -232,7 +234,7 @@ module.exports = {
         stats.defense += gain.defense;
         stats.penetration += gain.penetration;
       }
-      data[targetId] = {
+      data[giveId] = {
         name: champ.name,
         level,
         success: 0,
@@ -248,7 +250,7 @@ module.exports = {
       const resultEmbed = new EmbedBuilder()
         .setTitle(`🎁 챔피언 지급 완료!`)
         .setDescription(
-          `<@${targetId}> 님에게 **${champ.name}** 챔피언이 지급되었습니다!\n강화 레벨: **${level}강**`
+          `<@${giveId}> 님에게 **${champ.name}** 챔피언이 지급되었습니다!\n강화 레벨: **${level}강**`
         )
         .addFields(
           { name: "설명", value: lore }
@@ -271,7 +273,6 @@ module.exports = {
       });
     } finally {
       if (release2) try { await release2(); } catch {}
-      pendingGiveMap.delete(adminId);
     }
   }
 };
