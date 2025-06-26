@@ -127,6 +127,47 @@ const warnCmd = client.commands.get("경고");
 const champBattle = require('./commands/champ-battle');
 
 client.on(Events.InteractionCreate, async interaction => {
+
+  // 1. 경고 카테고리/세부사유 SelectMenu warn
+  if (
+    interaction.isStringSelectMenu() &&
+    (interaction.customId.startsWith("warn_category_") || interaction.customId.startsWith("warn_reason_"))
+  ) {
+    if (warnCmd && typeof warnCmd.handleSelect === "function") {
+      try {
+        await warnCmd.handleSelect(interaction);
+      } catch (err) {
+        console.error(err);
+        try {
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.update({ content: "❣️ 처리 중 오류", components: [] });
+          }
+        } catch {}
+      }
+    }
+    return;
+  }
+
+  // 2. 경고 상세사유 입력 모달
+  if (
+    interaction.isModalSubmit() &&
+    interaction.customId.startsWith("warn_modal_")
+  ) {
+    if (warnCmd && typeof warnCmd.handleModal === "function") {
+      try {
+        await warnCmd.handleModal(interaction);
+      } catch (err) {
+        console.error(err);
+        try {
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "❣️ 처리 중 오류", ephemeral: true });
+          }
+        } catch {}
+      }
+    }
+    return;
+  }
+  
   // 1. 신고 모달 (신고_모달)
   if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
     const report = require('./commands/report.js');
@@ -191,46 +232,6 @@ client.on(Events.InteractionCreate, async interaction => {
         await command.modalSubmit(interaction);
       }
     }
-  }
-
-    // warn
-    // 경고 카테고리/세부사유 SelectMenu 처리
-if (interaction.isStringSelectMenu()) {
-    if (
-      interaction.customId.startsWith("warn_category_") ||
-      interaction.customId.startsWith("warn_reason_")
-    ) {
-      if (warnCmd && typeof warnCmd.handleSelect === "function") {
-        try {
-          await warnCmd.handleSelect(interaction);
-        } catch (err) {
-          console.error(err);
-          try {
-            if (!interaction.replied && !interaction.deferred) {
-              await interaction.update({ content: "❣️ 처리되었습니다.", components: [] });
-            }
-          } catch (e) {}
-        }
-      }
-      return;
-    }
-  }
-
-  // 경고 상세사유 입력 모달 처리
-  if (interaction.isModalSubmit() && interaction.customId.startsWith("warn_modal_")) {
-    if (warnCmd && typeof warnCmd.handleModal === "function") {
-      try {
-        await warnCmd.handleModal(interaction);
-      } catch (err) {
-        console.error(err);
-        try {
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true });
-          }
-        } catch (e) {}
-      }
-    }
-    return;
   }
 
     // 챔피언 지급 모달
