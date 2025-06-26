@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const lockfile = require('proper-lockfile');
 const ITEMS = require('../utils/items.js');
 const SKILLS = require('../utils/active-skills.js');
 
@@ -25,14 +26,24 @@ const 강화ITEMS = [
   }
 ];
 
-function loadJson(p, isArray = false) {
+// 파일 읽기/쓰기 proper-lockfile 래핑
+async function loadJson(p, isArray = false) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, isArray ? "[]" : "{}");
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  const release = await lockfile.lock(p, { retries: 3 });
+  const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+  await release();
+  return data;
 }
-function saveJson(p, data) {
+async function saveJson(p, data) {
+  const release = await lockfile.lock(p, { retries: 3 });
   fs.writeFileSync(p, JSON.stringify(data, null, 2));
+  await release();
 }
 
+// 중복 구매 방지용 메모리 플래그
+const userBuying = {};
+
+// 통파일 export
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수상점')
@@ -50,6 +61,9 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // 바로 deferReply로 중복 응답 방지
+    await interaction.deferReply({ ephemeral: true });
+
     const kind = interaction.options.getString('종류');
 
     // ---- 아이템 상점 ----
@@ -87,7 +101,7 @@ module.exports = {
       };
 
       const { embed, rows } = getEmbedAndRows(page);
-      await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+      await interaction.editReply({ embeds: [embed], components: rows });
 
       const filter = i => i.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
@@ -105,35 +119,47 @@ module.exports = {
         }
 
         if (i.customId.startsWith("item_buy_")) {
-          const itemName = i.customId.replace("item_buy_", "");
-          const item = ITEM_LIST.find(x => x.name === itemName);
-          if (!item) {
-            await i.reply({ content: "해당 아이템을 찾을 수 없습니다.", ephemeral: true });
+          // 중복 방지: 구매 중 플래그
+          if (userBuying[i.user.id]) {
+            await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
             return;
           }
-          const items = loadJson(itemsPath);
-          items[i.user.id] = items[i.user.id] || {};
-          const myItem = items[i.user.id][item.name] || { count: 0, desc: item.desc };
-          if (myItem.count >= 99) {
-            await i.reply({ content: `최대 99개까지만 소지할 수 있습니다. (보유: ${myItem.count})`, ephemeral: true });
-            return;
-          }
-          const be = loadJson(bePath);
-          const userBe = be[i.user.id]?.amount || 0;
-          if (userBe < item.price) {
-            await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
-            return;
-          }
-          be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-          be[i.user.id].amount -= item.price;
-          be[i.user.id].history.push({ type: "spend", amount: item.price, reason: `${item.name} 구매`, timestamp: Date.now() });
-          saveJson(bePath, be);
+          userBuying[i.user.id] = true;
 
-          myItem.count += 1;
-          items[i.user.id][item.name] = myItem;
-          saveJson(itemsPath, items);
+          try {
+            const itemName = i.customId.replace("item_buy_", "");
+            const item = ITEM_LIST.find(x => x.name === itemName);
+            if (!item) {
+              await i.reply({ content: "해당 아이템을 찾을 수 없습니다.", ephemeral: true });
+              return;
+            }
 
-          await i.reply({ content: `✅ [${item.name}]을(를) ${item.price} BE에 구매 완료! (최대 99개까지 소지 가능)`, ephemeral: true });
+            const items = await loadJson(itemsPath);
+            items[i.user.id] = items[i.user.id] || {};
+            const myItem = items[i.user.id][item.name] || { count: 0, desc: item.desc };
+            if (myItem.count >= 99) {
+              await i.reply({ content: `최대 99개까지만 소지할 수 있습니다. (보유: ${myItem.count})`, ephemeral: true });
+              return;
+            }
+            const be = await loadJson(bePath);
+            const userBe = be[i.user.id]?.amount || 0;
+            if (userBe < item.price) {
+              await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+              return;
+            }
+            be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+            be[i.user.id].amount -= item.price;
+            be[i.user.id].history.push({ type: "spend", amount: item.price, reason: `${item.name} 구매`, timestamp: Date.now() });
+            await saveJson(bePath, be);
+
+            myItem.count += 1;
+            items[i.user.id][item.name] = myItem;
+            await saveJson(itemsPath, items);
+
+            await i.reply({ content: `✅ [${item.name}]을(를) ${item.price} BE에 구매 완료! (최대 99개까지 소지 가능)`, ephemeral: true });
+          } finally {
+            userBuying[i.user.id] = false;
+          }
           return;
         }
       });
@@ -179,7 +205,7 @@ module.exports = {
       };
 
       const { embed, rows } = getEmbedAndRows(page);
-      await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+      await interaction.editReply({ embeds: [embed], components: rows });
 
       const filter = i => i.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
@@ -197,34 +223,44 @@ module.exports = {
         }
 
         if (i.customId.startsWith("skill_buy_")) {
-          const skillName = i.customId.replace("skill_buy_", "");
-          const skill = SKILL_LIST.find(x => x.name === skillName);
-          if (!skill) {
-            await i.reply({ content: "해당 스킬을 찾을 수 없습니다.", ephemeral: true });
+          if (userBuying[i.user.id]) {
+            await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
             return;
           }
-          const skills = loadJson(skillsPath);
-          const mySkills = skills[i.user.id] || {};
-          if (mySkills[skill.name]) {
-            await i.reply({ content: `이미 [${skill.name}] 스킬을 소유하고 있습니다! (스킬은 1개만 소유 가능)`, ephemeral: true });
-            return;
-          }
-          const be = loadJson(bePath);
-          const userBe = be[i.user.id]?.amount || 0;
-          if (userBe < skill.price) {
-            await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
-            return;
-          }
-          be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-          be[i.user.id].amount -= skill.price;
-          be[i.user.id].history.push({ type: "spend", amount: skill.price, reason: `${skill.name} 스킬 구매`, timestamp: Date.now() });
-          saveJson(bePath, be);
+          userBuying[i.user.id] = true;
 
-          skills[i.user.id] = skills[i.user.id] || {};
-          skills[i.user.id][skill.name] = { desc: skill.desc };
-          saveJson(skillsPath, skills);
+          try {
+            const skillName = i.customId.replace("skill_buy_", "");
+            const skill = SKILL_LIST.find(x => x.name === skillName);
+            if (!skill) {
+              await i.reply({ content: "해당 스킬을 찾을 수 없습니다.", ephemeral: true });
+              return;
+            }
+            const skills = await loadJson(skillsPath);
+            const mySkills = skills[i.user.id] || {};
+            if (mySkills[skill.name]) {
+              await i.reply({ content: `이미 [${skill.name}] 스킬을 소유하고 있습니다! (스킬은 1개만 소유 가능)`, ephemeral: true });
+              return;
+            }
+            const be = await loadJson(bePath);
+            const userBe = be[i.user.id]?.amount || 0;
+            if (userBe < skill.price) {
+              await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+              return;
+            }
+            be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+            be[i.user.id].amount -= skill.price;
+            be[i.user.id].history.push({ type: "spend", amount: skill.price, reason: `${skill.name} 스킬 구매`, timestamp: Date.now() });
+            await saveJson(bePath, be);
 
-          await i.reply({ content: `✅ [${skill.name}] 스킬을 ${skill.price} BE에 구매 완료! (동일 스킬 중복 보유 불가)`, ephemeral: true });
+            skills[i.user.id] = skills[i.user.id] || {};
+            skills[i.user.id][skill.name] = { desc: skill.desc };
+            await saveJson(skillsPath, skills);
+
+            await i.reply({ content: `✅ [${skill.name}] 스킬을 ${skill.price} BE에 구매 완료! (동일 스킬 중복 보유 불가)`, ephemeral: true });
+          } finally {
+            userBuying[i.user.id] = false;
+          }
           return;
         }
       });
@@ -256,45 +292,56 @@ module.exports = {
         );
       });
 
-      await interaction.reply({ embeds: [embed], components: [rowBuy], ephemeral: true });
+      await interaction.editReply({ embeds: [embed], components: [rowBuy] });
 
       const filter = i => i.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
 
       collector.on('collect', async i => {
-        // 구매 버튼 클릭시
-        const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
-        if (!btnItem) return;
-
-        // 서버에서 역할 보유 확인
-        const member = await i.guild.members.fetch(i.user.id);
-        if (member.roles.cache.has(btnItem.roleId)) {
-          await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
+        // 중복 방지: 구매 중 플래그
+        if (userBuying[i.user.id]) {
+          await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
           return;
         }
+        userBuying[i.user.id] = true;
 
-        const be = loadJson(bePath);
-        const userBe = be[i.user.id]?.amount || 0;
-        if (userBe < btnItem.price) {
-          await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
-          return;
-        }
-
-        // 결제 내역
-        be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-        be[i.user.id].amount -= btnItem.price;
-        be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
-        saveJson(bePath, be);
-
-        // 역할 지급(권한 체크)
         try {
-          await member.roles.add(btnItem.roleId, "강화 아이템 구매");
-        } catch (err) {
-          await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류)`, ephemeral: true });
-          return;
-        }
+          // 구매 버튼 클릭시
+          const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
+          if (!btnItem) return;
 
-        await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
+          // 서버에서 역할 보유 확인
+          const member = await i.guild.members.fetch(i.user.id);
+          if (member.roles.cache.has(btnItem.roleId)) {
+            await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
+            return;
+          }
+
+          const be = await loadJson(bePath);
+          const userBe = be[i.user.id]?.amount || 0;
+          if (userBe < btnItem.price) {
+            await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+            return;
+          }
+
+          // 결제 내역
+          be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+          be[i.user.id].amount -= btnItem.price;
+          be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
+          await saveJson(bePath, be);
+
+          // 역할 지급(권한 체크)
+          try {
+            await member.roles.add(btnItem.roleId, "강화 아이템 구매");
+          } catch (err) {
+            await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류)`, ephemeral: true });
+            return;
+          }
+
+          await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
+        } finally {
+          userBuying[i.user.id] = false;
+        }
       });
 
       collector.on('end', async () => {
