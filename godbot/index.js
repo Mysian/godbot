@@ -124,6 +124,8 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 
 // === InteractionCreate 리스너 ===
 const champBattle = require('./commands/champ-battle');
+const warnCmd = client.commands.get("경고");
+
 client.on(Events.InteractionCreate, async interaction => {
   // 1. 신고 모달 (신고_모달)
   if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
@@ -153,91 +155,99 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 3. 공지/관리/경고/챔피언지급 모달 (customId로 구분)
-  if (interaction.isModalSubmit()) {
-    // 공지 모달
-    if (
-      interaction.customId.startsWith("set_channel_modal") ||
-      interaction.customId.startsWith("add_tip_modal") ||
-      interaction.customId.startsWith("set_interval_modal") ||
-      interaction.customId.startsWith("edit_tip_modal_")
-    ) {
-      const command = client.commands.get("공지하기");
-      if (command && typeof command.modal === "function") {
-        try {
-          await command.modal(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-          }
-        }
-        return;
-      }
-    }
-
-    // 관리/별명변경/백업 모달
-    if (
-      interaction.customId.startsWith("nickname_change_modal_") ||
-      interaction.customId.startsWith("adminpw_user_") ||
-      interaction.customId === "adminpw_json_backup"
-    ) {
-      const command = client.commands.get("관리");
-      if (command && typeof command.modalSubmit === "function") {
-        try {
-          await command.modalSubmit(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-          }
-        }
-        return;
-      }
-    }
-
-    // warn_modal_ 모달
-    if (interaction.customId.startsWith("warn_modal_")) {
-      for (const cmd of client.commands.values()) {
-        if (typeof cmd.modalSubmit === "function") {
-          try {
-            await cmd.modalSubmit(interaction);
-          } catch (err) {
-            console.error(err);
-            if (!interaction.replied && !interaction.deferred) {
-              await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-            }
-          }
-          break;
+  // 3. 공지 모달
+  if (interaction.isModalSubmit() && (
+    interaction.customId.startsWith("set_channel_modal") ||
+    interaction.customId.startsWith("add_tip_modal") ||
+    interaction.customId.startsWith("set_interval_modal") ||
+    interaction.customId.startsWith("edit_tip_modal_")
+  )) {
+    const command = client.commands.get("공지하기");
+    if (command && typeof command.modal === "function") {
+      try {
+        await command.modal(interaction);
+      } catch (err) {
+        console.error(err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
         }
       }
-      return;
-    }
-
-    // 챔피언 지급 모달
-    if (interaction.customId.startsWith("give-modal-")) {
-      const command = client.commands.get("챔피언지급");
-      if (command && typeof command.modalSubmit === "function") {
-        try {
-          await command.modalSubmit(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-          }
-        }
-      }
-      return;
-    }
-
-    // 그 외 모달
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
     }
     return;
   }
 
-  // 4. 챔피언배틀 명령어(특별 처리)
+  // 4. 관리/별명변경/백업 모달
+  if (interaction.isModalSubmit() && (
+    interaction.customId.startsWith("nickname_change_modal_") ||
+    interaction.customId.startsWith("adminpw_user_") ||
+    interaction.customId === "adminpw_json_backup"
+  )) {
+    const command = client.commands.get("관리");
+    if (command && typeof command.modalSubmit === "function") {
+      try {
+        await command.modalSubmit(interaction);
+      } catch (err) {
+        console.error(err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
+        }
+      }
+    }
+    return;
+  }
+
+  // 5. 경고 시스템: SelectMenu(카테고리/사유) 및 모달 처리
+  // (경고 SelectMenu - 카테고리/세부사유)
+  if (interaction.isStringSelectMenu()) {
+    if (
+      interaction.customId.startsWith("warn_category_") ||
+      interaction.customId.startsWith("warn_reason_")
+    ) {
+      if (warnCmd && typeof warnCmd.handleSelect === "function") {
+        try {
+          await warnCmd.handleSelect(interaction);
+        } catch (err) {
+          console.error(err);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
+          }
+        }
+      }
+      return;
+    }
+  }
+  // (경고 상세사유 모달)
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("warn_modal_")) {
+    if (warnCmd && typeof warnCmd.handleModal === "function") {
+      try {
+        await warnCmd.handleModal(interaction);
+      } catch (err) {
+        console.error(err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
+        }
+      }
+    }
+    return;
+  }
+
+  // 6. 챔피언지급 모달
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("give-modal-")) {
+    const command = client.commands.get("챔피언지급");
+    if (command && typeof command.modalSubmit === "function") {
+      try {
+        await command.modalSubmit(interaction);
+      } catch (err) {
+        console.error(err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
+        }
+      }
+    }
+    return;
+  }
+
+  // 7. 챔피언배틀 명령어(특별 처리)
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);
     try {
@@ -259,7 +269,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 5. 챔피언배틀 버튼
+  // 8. 챔피언배틀 버튼
   if (
     interaction.isButton() && interaction.customId && (
       interaction.customId.startsWith('accept_battle_') ||
@@ -290,7 +300,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 6. 그 외 명령어/버튼 (공용 처리)
+  // 9. 그 외 명령어/버튼 (공용 처리)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
     const command = client.commands.get(interaction.commandName);
@@ -314,11 +324,12 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 7. 기타 아무것도 해당 안 될 때
+  // 10. 기타 아무것도 해당 안 될 때
   if (!interaction.replied && !interaction.deferred) {
     await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
   }
 });
+
 
 // === 메시지 누적 ===
 client.on("messageCreate", async msg => {
