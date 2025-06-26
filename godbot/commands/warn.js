@@ -235,7 +235,7 @@ saveWarnings(warnings);
       new EmbedBuilder()
         .setTitle("🚫 경고 알림")
         .setDescription(
-          `서버 규칙 **${code}** 위반으로 경고가 부여되었습니다.\n\n` +
+          `[${code}${desc ? `: ${desc}` : ""}] 항목 위반으로 경고가 부여되었습니다.\n\n` +
           "⚠️ 경고 3회 누적 시 삼진아웃(서버 차단) 처리됩니다."
         )
         .addFields(
@@ -247,6 +247,7 @@ saveWarnings(warnings);
     ]
   });
 } catch (e) {}
+
 
 
     await interaction.reply({
