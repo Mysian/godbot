@@ -32,8 +32,11 @@ module.exports = {
         .setDescription(`총 ${userWarnings.length}회의 경고 기록이 있습니다.`)
         .addFields(
           ...userWarnings.map((w, i) => ({
-            name: `${i + 1}. [${w.code}]`,
-            value: `• 사유: ${w.detail}\n• 일시: <t:${Math.floor(new Date(w.date).getTime() / 1000)}:f>\n• 담당 관리자: <@${w.mod}>`
+            name: `${i + 1}. [${w.code}${w.desc ? `: ${w.desc}` : ""}]`,
+            value:
+              `• 사유: ${w.detail}\n` +
+              `• 일시: <t:${Math.floor(new Date(w.date).getTime() / 1000)}:f>\n` +
+              `• 담당 관리자: <@${638742607861645372}>`
           }))
         );
 
