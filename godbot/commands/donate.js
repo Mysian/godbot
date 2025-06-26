@@ -288,7 +288,7 @@ module.exports = {
           const logChannel = await guild.channels.fetch(DONATION_LOG_CHANNEL).catch(() => null);
           if (logChannel && logChannel.type === ChannelType.GuildText) {
             // 스레드 이름 유저ID 기준으로 생성
-            const threadName = `[상품후원] ${interaction.member.displayName} (${interaction.user.id})`;
+            const threadName = `[상품후원] ${interaction.user.id}`;
             const thread = await logChannel.threads.create({
               name: threadName,
               autoArchiveDuration: 1440, // 24시간 유지
