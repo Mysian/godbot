@@ -118,7 +118,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("경고")
     .setDescription("유저에게 서버 규칙에 따른 경고를 부여합니다.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
     .addUserOption(opt => opt.setName("유저").setDescription("경고를 줄 유저").setRequired(true)),
 
   async execute(interaction) {
