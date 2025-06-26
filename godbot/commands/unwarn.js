@@ -6,6 +6,8 @@ const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../data/warnings.json");
 
+const LOG_CHANNEL_ID = "1380874052855529605"; // 관리진 공유 채널ID
+
 function loadWarnings() {
   if (!fs.existsSync(dataPath)) return {};
   return JSON.parse(fs.readFileSync(dataPath, "utf8"));
@@ -71,6 +73,27 @@ module.exports = {
             .setColor("Green")
         ]
       });
+    } catch (e) {}
+
+    // === 관리 채널 로그 Embed 전송 ===
+    try {
+      const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+      if (logChannel) {
+        await logChannel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("🔄 경고 취소 처리 로그")
+              .setDescription(`<@${userId}> (${userId})의 가장 최근 경고 1건이 취소됨`)
+              .addFields(
+                { name: "취소된 사유", value: `[${removed.code}] ${removed.detail}` },
+                { name: "부여일", value: `<t:${Math.floor(new Date(removed.date).getTime() / 1000)}:f>` },
+                { name: "처리자", value: `<@${removed.mod}>` },
+                { name: "처리 일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>` }
+              )
+              .setColor("Green")
+          ]
+        });
+      }
     } catch (e) {}
 
     // 관리자 안내
