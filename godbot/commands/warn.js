@@ -13,6 +13,8 @@ const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../data/warnings.json");
 
+const LOG_CHANNEL_ID = "1380874052855529605"; // 관리진 공유 채널ID
+
 // ---- 경고 사유 데이터 ----
 const categories = [
   {
@@ -247,6 +249,29 @@ module.exports = {
       ]
     });
   } catch (e) {}
+
+ // === 관리 채널 로그 Embed 전송 ===
+    try {
+      const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+      if (logChannel) {
+        await logChannel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("🚫 경고 부여 처리 로그")
+              .setDescription(`<@${userId}> (${userId})에게 경고가 부여됨`)
+              .addFields(
+                { name: "코드", value: code, inline: true },
+                { name: "설명", value: desc, inline: true },
+                { name: "상세사유", value: detail },
+                { name: "처리자", value: `<@${interaction.user.id}>` },
+                { name: "누적경고", value: `${count}회`, inline: true },
+                { name: "일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true }
+              )
+              .setColor("Red")
+          ]
+        });
+      }
+    } catch (e) {}
 
   await interaction.reply({
     content: `✅ <@${userId}> 유저에게 경고를 부여했습니다. (총 ${count}회)\n사유코드: **${code}**\n상세사유: ${detail}`,
