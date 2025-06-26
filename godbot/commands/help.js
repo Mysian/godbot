@@ -34,9 +34,9 @@ module.exports = {
           { name: "\u200B", value: "------", inline: false },
           // 추가: 관계/우정 명령어 안내
           { name: "🔊 /이용현황", value: "기간별 음성채널/일반채팅 이용 현황 확인", inline: true },
-          { name: "💞 /우정 [유저]", value: "자신이 특정 유저를 대하는 관계 확인", inline: true },
           { name: "👍 /좋아요 [유저]", value: "특정 유저와 우정 올리기", inline: true },
           { name: "👎 /싫어요 [유저]", value: "특정 유저와 우정 내리기", inline: true },
+          { name: "💞 /우정 [유저]", value: "자신이 특정 유저를 대하는 관계 확인", inline: true },
           { name: "🚫 /경고확인", value: "자신의 경고 이력 조회", inline: true }
         )
         .setFooter({ text: "서버: 까리한 디스코드" })
