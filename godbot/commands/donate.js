@@ -11,9 +11,16 @@ const {
   ChannelType
 } = require('discord.js');
 
-const DONATION_LOG_CHANNEL = '1385860310753087549';      // 후원금 정보(비공개, +상품 후원 관리)
-const DONATION_THANKS_CHANNEL = '1264514955269640252';    // 상품 후원 공개
+const DONATION_LOG_CHANNEL = '1385860310753087549';
+const DONATION_THANKS_CHANNEL = '1264514955269640252';
 const DONATE_ACCOUNT = '지역농협 3521075112463 이*민';
+
+function getKSTDateString() {
+  return new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
+}
+function getKSTDateTimeString() {
+  return new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -161,15 +168,31 @@ module.exports = {
           .setColor(0xf9bb52);
 
         try {
-          await submitted.reply({ embeds: [thanksEmbed], ephemeral: true });
+          if (!submitted.replied && !submitted.deferred) {
+            await submitted.reply({ embeds: [thanksEmbed], ephemeral: true });
+          } else {
+            await submitted.editReply({ embeds: [thanksEmbed], ephemeral: true });
+          }
         } catch {}
 
-        // 비공개 후원 로그 채널로 상세 내용 전송
+        // 비공개 후원 로그 채널로 상세 내용 전송 (스레드 통일)
         try {
           const guild = submitted.guild;
           const logChannel = await guild.channels.fetch(DONATION_LOG_CHANNEL).catch(() => null);
           if (logChannel) {
-            await logChannel.send({
+            const threadName = `[상품후원] ${interaction.user.id}`;
+            let thread = logChannel.threads.cache.find(
+              t => t.name === threadName && !t.archived
+            );
+            if (!thread) {
+              thread = await logChannel.threads.create({
+                name: threadName,
+                autoArchiveDuration: 1440,
+                reason: '후원금 내역 정리'
+              });
+            }
+            await thread.send({
+              content: `<@${interaction.user.id}> 정말 소중한 후원금, 감사히 잘 사용하겠습니다!`,
               embeds: [
                 new EmbedBuilder()
                   .setTitle('💸 후원금 정보')
@@ -180,7 +203,7 @@ module.exports = {
                     { name: '원하는 사용처', value: purpose, inline: true },
                     { name: '디스코드 유저', value: `<@${interaction.user.id}> (${interaction.user.tag})` }
                   )
-                  .setFooter({ text: `후원일시: ${new Date().toLocaleString()}` })
+                  .setFooter({ text: `후원일시: ${getKSTDateTimeString()}` })
               ]
             });
           }
@@ -282,21 +305,25 @@ module.exports = {
           // DM이 차단된 경우 무시
         }
 
-        // 2. 비공개 로그 채널에 스레드 생성/후원 접수 등록
+        // 2. 비공개 로그 채널에 스레드 생성/후원 접수 등록 (스레드명 통일)
         try {
           const guild = submitted.guild;
           const logChannel = await guild.channels.fetch(DONATION_LOG_CHANNEL).catch(() => null);
           if (logChannel && logChannel.type === ChannelType.GuildText) {
-            // 스레드 이름 유저ID 기준으로 생성
             const threadName = `[상품후원] ${interaction.user.id}`;
-            const thread = await logChannel.threads.create({
-              name: threadName,
-              autoArchiveDuration: 1440, // 24시간 유지
-              reason: '상품 후원 내역 정리'
-            });
+            let thread = logChannel.threads.cache.find(
+              t => t.name === threadName && !t.archived
+            );
+            if (!thread) {
+              thread = await logChannel.threads.create({
+                name: threadName,
+                autoArchiveDuration: 1440,
+                reason: '상품 후원 내역 정리'
+              });
+            }
 
             await thread.send({
-              content: `<@${interaction.user.id}> 상품 후원 접수 내역`,
+              content: `<@${interaction.user.id}> 정말 소중한 상품 후원, 감사히 잘 사용하겠습니다!`,
               embeds: [
                 new EmbedBuilder()
                   .setTitle('🎁 상품 후원 접수')
@@ -306,7 +333,7 @@ module.exports = {
                     { name: '후원 이유', value: reason, inline: false },
                     { name: '소비 희망 상황/대상', value: situation, inline: false }
                   )
-                  .setFooter({ text: `접수일시: ${new Date().toLocaleString()}` })
+                  .setFooter({ text: `접수일시: ${getKSTDateTimeString()}` })
                   .setColor(0x6cc3c1)
               ]
             });
@@ -318,7 +345,7 @@ module.exports = {
           const thanksEmbed = new EmbedBuilder()
             .setTitle('🎁 상품 후원 접수')
             .setDescription([
-              `**${displayName}**님께서 (${new Date().toLocaleDateString()})`,
+              `**${displayName}**님께서 (${getKSTDateString()})`,
               `\`${item}\` 상품을 후원하셨습니다. 감사합니다!`
             ].join('\n'))
             .setColor(0xf9bb52);
