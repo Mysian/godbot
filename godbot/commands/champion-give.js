@@ -5,7 +5,6 @@ const lockfile = require("proper-lockfile");
 const champions = require("../utils/champion-data");
 const { getChampionIcon, getChampionSplash, getChampionInfo } = require("../utils/champion-utils");
 
-// champ-up.js에서 복붙한 강화 스탯 계산 함수
 function calcStatGain(level, baseAtk, baseAp) {
   let mainStat = baseAtk >= baseAp ? 'attack' : 'ap';
   let subStat = baseAtk >= baseAp ? 'ap' : 'attack';
@@ -23,6 +22,9 @@ function calcStatGain(level, baseAtk, baseAp) {
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const PAGE_SIZE = 6;
+
+// 지급 요청 임시 저장 (key: 관리자 userId)
+const pendingGiveMap = new Map();
 
 async function loadData() {
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, "{}");
@@ -51,6 +53,7 @@ module.exports = {
 
     const targetUser = interaction.options.getUser("유저");
     const targetId = targetUser.id;
+    const adminId = interaction.user.id;
     let release;
     let page = 0;
     const pageMax = Math.ceil(champions.length / PAGE_SIZE);
@@ -153,9 +156,11 @@ module.exports = {
             collector.stop();
             return;
           }
+          // 지급 요청 정보 임시 저장 (관리자 userId 기준)
+          pendingGiveMap.set(adminId, { champName, targetId });
           // 강화 레벨 입력 모달
           const modal = new ModalBuilder()
-            .setCustomId(`give-modal-${champName}-${targetId}`)
+            .setCustomId(`give-modal`)
             .setTitle("강화 레벨 입력 (0~999)")
             .addComponents(
               new ActionRowBuilder().addComponents(
@@ -179,6 +184,8 @@ module.exports = {
             components: [],
             ephemeral: true
           });
+        } finally {
+          if (release) try { await release(); } catch {}
         }
       }
     });
@@ -188,12 +195,15 @@ module.exports = {
     });
   },
 
-  // 여기! 모달 submit 로직만 분리!
+  // 모달 submit: 이제 userId(관리자) 기준으로 pendingGiveMap에서 champ/target 읽어서 처리
   async modalSubmit(interaction) {
-    const parts = interaction.customId.split("-");
-    const champName = parts.slice(2, parts.length - 1).join("-"); // champName에는 -가 있을 수 있음
-    const targetId = parts[parts.length - 1];
-
+    const adminId = interaction.user.id;
+    const pending = pendingGiveMap.get(adminId);
+    if (!pending) {
+      await interaction.reply({ content: "❌ 지급 요청 정보가 만료되었습니다. 처음부터 다시 시도해주세요.", ephemeral: true });
+      return;
+    }
+    const { champName, targetId } = pending;
     let data, release2;
     try {
       const levelInput = interaction.fields.getTextInputValue("level").replace(/[^0-9]/g, "");
@@ -208,6 +218,7 @@ module.exports = {
           content: `❌ <@${targetId}> 님은 이미 챔피언 **${data[targetId].name}**을(를) 보유 중입니다!`,
           ephemeral: true
         });
+        pendingGiveMap.delete(adminId);
         return;
       }
       const champ = champions.find(c => c.name === champName);
@@ -260,6 +271,7 @@ module.exports = {
       });
     } finally {
       if (release2) try { await release2(); } catch {}
+      pendingGiveMap.delete(adminId);
     }
   }
 };
