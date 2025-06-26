@@ -624,6 +624,9 @@ client.login(process.env.DISCORD_TOKEN);
 const dmRelay = require('./commands/dm.js');
 dmRelay.relayRegister(client);
 
+// 후원 이미지 받기 지원
+require("./utils/donate-dm-listener.js")(client);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
