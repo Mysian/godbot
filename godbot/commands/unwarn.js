@@ -38,13 +38,23 @@ module.exports = {
     const removed = warnings[target.id].pop();
     saveWarnings(warnings);
 
-    // 타임아웃 해제 로직
-    const member = await interaction.guild.members.fetch(target.id).catch(() => null);
-    if (member && member.isCommunicationDisabled()) {
-      try {
-        await member.timeout(null, "경고 취소에 따른 타임아웃 해제");
-      } catch (e) {}
-    }
+   // 타임아웃 해제
+const member = await interaction.guild.members.fetch(userId).catch(() => null);
+if (member && member.isCommunicationDisabled()) {
+  try {
+    await member.timeout(null, "경고 취소에 따른 타임아웃 해제");
+  } catch (e) {}
+}
+
+// 만약 차단(ban) 상태라면 해제
+const bans = await interaction.guild.bans.fetch();
+const banned = bans.get(userId);
+if (banned) {
+  try {
+    await interaction.guild.bans.remove(userId, "경고 취소에 따른 차단 해제");
+  } catch (e) {}
+}
+
 
     const embed = new EmbedBuilder()
       .setTitle("🔄 경고 취소 처리됨")
