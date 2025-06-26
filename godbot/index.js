@@ -209,6 +209,16 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
+  // 챔피언 지급 모달
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("give-modal-")) {
+  const command = client.commands.get("챔피언지급");
+  if (command && typeof command.modalSubmit === "function") {
+    await command.modalSubmit(interaction);
+  }
+  return;
+}
+
+
   // 1. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);
