@@ -19,7 +19,7 @@ function saveWarnings(data) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("경고취소")
-    .setDescription("특정 유저에게 부여된 가장 최근의 경고 1건을 삭제합니다.")
+    .setDescription("특정 유저에게 부여된 최근 경고를 철회합니다.")
     .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
     .addUserOption(opt =>
       opt.setName("유저").setDescription("경고를 취소할 유저").setRequired(true)
@@ -39,6 +39,14 @@ module.exports = {
     const removed = warnings[target.id].pop();
     saveWarnings(warnings);
 
+    // 타임아웃 해제 로직
+    const member = await interaction.guild.members.fetch(target.id).catch(() => null);
+    if (member && member.isCommunicationDisabled()) {
+      try {
+        await member.timeout(null, "경고 취소에 따른 타임아웃 해제");
+      } catch (e) {}
+    }
+
     const embed = new EmbedBuilder()
       .setTitle("🔄 경고 취소 처리됨")
       .setDescription(`<@${target.id}> 유저의 가장 최근 경고 1건이 취소되었습니다.`)
@@ -52,3 +60,4 @@ module.exports = {
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };
+

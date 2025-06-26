@@ -196,15 +196,21 @@ module.exports = {
     const detail = interaction.fields.getTextInputValue("detail_input") || "-";
 
     // 경고 기록
-    const warnings = loadWarnings();
-    if (!warnings[userId]) warnings[userId] = [];
-    warnings[userId].push({
-      code,
-      detail,
-      date: new Date().toISOString(),
-      mod: interaction.user.id
-    });
-    saveWarnings(warnings);
+    const selectedReason = categories
+  .flatMap(c => c.reasons)
+  .find(r => r.value === code);
+
+// 경고 기록
+const warnings = loadWarnings();
+if (!warnings[userId]) warnings[userId] = [];
+warnings[userId].push({
+  code,
+  desc: selectedReason ? selectedReason.label : "",  // ← 코드 설명까지 저장!
+  detail,
+  date: new Date().toISOString(),
+  mod: interaction.user.id
+});
+saveWarnings(warnings);
 
     // 경고 횟수에 따른 타임아웃/추방
     const guild = interaction.guild;
