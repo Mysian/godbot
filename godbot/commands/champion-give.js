@@ -5,7 +5,7 @@ const lockfile = require("proper-lockfile");
 const champions = require("../utils/champion-data");
 const { getChampionIcon, getChampionSplash, getChampionInfo } = require("../utils/champion-utils");
 
-// calcStatGain 복붙 (champ-up.js 기준)
+// champ-up.js에서 복붙한 강화 스탯 계산 함수
 function calcStatGain(level, baseAtk, baseAp) {
   let mainStat = baseAtk >= baseAp ? 'attack' : 'ap';
   let subStat = baseAtk >= baseAp ? 'ap' : 'attack';
@@ -153,7 +153,7 @@ module.exports = {
             collector.stop();
             return;
           }
-          // **강화 레벨 입력 모달**
+          // 강화 레벨 입력 모달
           const modal = new ModalBuilder()
             .setCustomId(`give-modal-${champName}-${targetId}`)
             .setTitle("강화 레벨 입력 (0~999)")
@@ -186,87 +186,80 @@ module.exports = {
     collector.on("end", () => {
       interaction.editReply({ components: [] }).catch(() => {});
     });
+  },
 
-    // 모달 응답 핸들러 (interactionCreate 이벤트에 반드시 이 부분이 연결되어야 함)
-    interaction.client.on("interactionCreate", async modalInt => {
-      if (
-        !modalInt.isModalSubmit() ||
-        !modalInt.customId.startsWith("give-modal-") ||
-        modalInt.user.id !== interaction.user.id
-      )
-        return;
-      const parts = modalInt.customId.split("-");
-      const champName = parts.slice(2, parts.length - 1).join("-"); // champName에는 -가 있을 수 있음
-      const tId = parts[parts.length - 1];
-      if (tId !== targetId) return; // 보안
+  // 여기! 모달 submit 로직만 분리!
+  async modalSubmit(interaction) {
+    const parts = interaction.customId.split("-");
+    const champName = parts.slice(2, parts.length - 1).join("-"); // champName에는 -가 있을 수 있음
+    const targetId = parts[parts.length - 1];
 
-      let data, release2;
-      try {
-        const levelInput = modalInt.fields.getTextInputValue("level").replace(/[^0-9]/g, "");
-        let level = parseInt(levelInput, 10);
-        if (isNaN(level) || level < 0) level = 0;
-        if (level > 999) level = 999;
+    let data, release2;
+    try {
+      const levelInput = interaction.fields.getTextInputValue("level").replace(/[^0-9]/g, "");
+      let level = parseInt(levelInput, 10);
+      if (isNaN(level) || level < 0) level = 0;
+      if (level > 999) level = 999;
 
-        release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
-        data = await loadData();
-        if (data[targetId]) {
-          await modalInt.reply({
-            content: `❌ <@${targetId}> 님은 이미 챔피언 **${data[targetId].name}**을(를) 보유 중입니다!`,
-            ephemeral: true
-          });
-          return;
-        }
-        const champ = champions.find(c => c.name === champName);
-        // **스탯계산**
-        let stats = { ...champ.stats };
-        if (level > 0) {
-          let { gain } = calcStatGain(level, stats.attack, stats.ap);
-          stats.attack += gain.attack;
-          stats.ap += gain.ap;
-          stats.hp += gain.hp;
-          stats.defense += gain.defense;
-          stats.penetration += gain.penetration;
-        }
-        data[targetId] = {
-          name: champ.name,
-          level,
-          success: 0,
-          stats,
-          timestamp: Date.now()
-        };
-        await saveData(data);
-
-        const icon   = await getChampionIcon(champ.name);
-        const splash = await getChampionSplash(champ.name);
-        const lore   = getChampionInfo(champ.name);
-
-        const resultEmbed = new EmbedBuilder()
-          .setTitle(`🎁 챔피언 지급 완료!`)
-          .setDescription(
-            `<@${targetId}> 님에게 **${champ.name}** 챔피언이 지급되었습니다!\n강화 레벨: **${level}강**`
-          )
-          .addFields(
-            { name: "설명", value: lore }
-          )
-          .setThumbnail(icon)
-          .setImage(splash)
-          .setColor(0x4caf50)
-          .setTimestamp();
-
-        await modalInt.reply({
-          embeds: [resultEmbed],
-          components: [],
-          ephemeral: false
-        });
-      } catch (err) {
-        if (release2) try { await release2(); } catch {}
-        await modalInt.reply({
-          content: "❌ 지급 도중 오류가 발생했습니다. 다시 시도해 주세요.",
+      release2 = await lockfile.lock(dataPath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
+      data = await loadData();
+      if (data[targetId]) {
+        await interaction.reply({
+          content: `❌ <@${targetId}> 님은 이미 챔피언 **${data[targetId].name}**을(를) 보유 중입니다!`,
           ephemeral: true
         });
-      } finally {
-        if (release2) try { await release2(); } catch {}
+        return;
       }
-    });
+      const champ = champions.find(c => c.name === champName);
+      // 스탯계산
+      let stats = { ...champ.stats };
+      if (level > 0) {
+        let { gain } = calcStatGain(level, stats.attack, stats.ap);
+        stats.attack += gain.attack;
+        stats.ap += gain.ap;
+        stats.hp += gain.hp;
+        stats.defense += gain.defense;
+        stats.penetration += gain.penetration;
+      }
+      data[targetId] = {
+        name: champ.name,
+        level,
+        success: 0,
+        stats,
+        timestamp: Date.now()
+      };
+      await saveData(data);
+
+      const icon   = await getChampionIcon(champ.name);
+      const splash = await getChampionSplash(champ.name);
+      const lore   = getChampionInfo(champ.name);
+
+      const resultEmbed = new EmbedBuilder()
+        .setTitle(`🎁 챔피언 지급 완료!`)
+        .setDescription(
+          `<@${targetId}> 님에게 **${champ.name}** 챔피언이 지급되었습니다!\n강화 레벨: **${level}강**`
+        )
+        .addFields(
+          { name: "설명", value: lore }
+        )
+        .setThumbnail(icon)
+        .setImage(splash)
+        .setColor(0x4caf50)
+        .setTimestamp();
+
+      await interaction.reply({
+        embeds: [resultEmbed],
+        components: [],
+        ephemeral: false
+      });
+    } catch (err) {
+      if (release2) try { await release2(); } catch {}
+      await interaction.reply({
+        content: "❌ 지급 도중 오류가 발생했습니다. 다시 시도해 주세요.",
+        ephemeral: true
+      });
+    } finally {
+      if (release2) try { await release2(); } catch {}
+    }
   }
 };
