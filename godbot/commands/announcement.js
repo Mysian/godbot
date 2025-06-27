@@ -28,49 +28,52 @@ function getRandomEmoji() {
 
 const timers = new Map();
 
+function nextScheduleTime(intervalMs) {
+  // intervalMs: ms단위 (예: 2시간 == 7200000)
+  // 현재 시간을 기준으로 정시에 맞춰서 계산 (KST 기준)
+  const now = new Date();
+  const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const base = new Date(kstNow);
+  base.setUTCHours(0,0,0,0); // 한국시간 00:00 기준
+
+  let elapsed = kstNow - base;
+  let next = Math.ceil(elapsed / intervalMs) * intervalMs;
+  let nextTime = new Date(base.getTime() + next);
+  // 다시 UTC로 환산
+  return new Date(nextTime.getTime() - 9 * 60 * 60 * 1000);
+}
+
 function startTimer(guildId, channelId, interval, tips) {
   if (timers.has(guildId)) clearInterval(timers.get(guildId));
+
+  // 다음 스케줄까지 남은 ms
+  let now = Date.now();
+  let nextTime = nextScheduleTime(interval).getTime();
+  if (nextTime <= now) nextTime += interval;
+  let firstWait = nextTime - now;
+
   const sendTip = async () => {
     const tip = tips[Math.floor(Math.random() * tips.length)];
     const emoji = getRandomEmoji();
     const channel = await global.client.channels.fetch(channelId).catch(() => null);
     if (channel) channel.send(`-# ${emoji}: ${tip}`);
   };
-  sendTip();
-  timers.set(guildId, setInterval(sendTip, interval));
+
+  // 첫 발송은 정시에 맞춰!
+  const timeout = setTimeout(() => {
+    sendTip();
+    timers.set(guildId, setInterval(sendTip, interval));
+  }, firstWait);
+
+  timers.set(guildId, timeout);
 }
 
 function stopTimer(guildId) {
   if (timers.has(guildId)) {
     clearInterval(timers.get(guildId));
+    clearTimeout(timers.get(guildId));
     timers.delete(guildId);
   }
-}
-
-// 시간(분) 파싱
-function parseInterval(text) {
-  if (!text) return null;
-  // "30분" or "120분"
-  const minMatch = text.match(/^(\d+)\s*분$/);
-  if (minMatch) {
-    const mins = Number(minMatch[1]);
-    if (isNaN(mins) || mins < 1) return null;
-    return mins * 60000;
-  }
-  // "2시간" 등은 예전 지원, "120분" 권장
-  const hourMatch = text.match(/^(\d+)\s*시간$/);
-  if (hourMatch) {
-    const hours = Number(hourMatch[1]);
-    if (isNaN(hours) || hours < 1) return null;
-    return hours * 3600000;
-  }
-  // 숫자만 썼으면 분 단위로 간주
-  if (/^\d+$/.test(text)) {
-    const mins = Number(text);
-    if (isNaN(mins) || mins < 1) return null;
-    return mins * 60000;
-  }
-  return null;
 }
 
 const PAGE_SIZE = 5;
@@ -89,7 +92,6 @@ async function showTipsPage(interaction, data, guildId, page) {
     msg += `\n#${start + i + 1} ${tip}`;
   });
 
-  // 버튼: 이전, 다음, 수정, 삭제
   const navRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`prev_page_${page}`)
@@ -118,13 +120,24 @@ async function showTipsPage(interaction, data, guildId, page) {
   }
 }
 
+function intervalToText(ms) {
+  const hour = 60 * 60 * 1000;
+  const min = 60 * 1000;
+  if (!ms) return '-';
+  if (ms % hour === 0) return `${ms/hour}시간`;
+  if (ms % min === 0) return `${Math.floor(ms/min)}분`;
+  // 2시간 30분 케이스만 따로
+  if (ms === 2.5 * hour) return `2시간 30분`;
+  return `${(ms/60000).toFixed(0)}분`;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('공지하기')
     .setDescription('공지 관련 명령어')
     .addStringOption(option =>
       option.setName('옵션')
-        .setDescription('공지채널 설정/공지 글 추가/공지 리스트/공지 주기 선택/공지기능 켜기/끄기')
+        .setDescription('공지채널 설정/공지 글 추가/공지 리스트/공지 주기 선택/공지기능 켜기/끄기/공지 상태')
         .setRequired(true)
         .addChoices(
           { name: '공지채널 설정', value: 'set_channel' },
@@ -132,7 +145,8 @@ module.exports = {
           { name: '공지 리스트', value: 'list_tips' },
           { name: '공지 주기 선택', value: 'set_interval' },
           { name: '공지기능 켜기', value: 'enable' },
-          { name: '공지기능 끄기', value: 'disable' }
+          { name: '공지기능 끄기', value: 'disable' },
+          { name: '공지 상태', value: 'status' }
         )
     ),
 
@@ -179,22 +193,40 @@ module.exports = {
       return;
     }
 
-    // 공지 주기 선택 모달 (분 단위)
+    // 공지 주기 프리셋 선택 (6가지)
     if (option === 'set_interval') {
-      const modal = new ModalBuilder()
-        .setCustomId('set_interval_modal')
-        .setTitle('공지 주기 선택')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('interval_input')
-              .setLabel('"30분", "120분" 등 분 단위로 입력 (1~10080분)')
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true)
-              .setPlaceholder('예: 30분, 120분')
-          )
-        );
-      await interaction.showModal(modal);
+      // 시간 프리셋 버튼
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_2h30m').setLabel('2시간 30분').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
+      );
+      await interaction.reply({ content: "공지 주기를 선택하세요 (정시 기준, 한국시간):", components: [row], ephemeral: true });
+
+      // 버튼 핸들러
+      const filter = btnInt => btnInt.user.id === interaction.user.id;
+      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60_000 });
+
+      collector.on('collect', async btnInt => {
+        let ms = 0;
+        switch(btnInt.customId) {
+          case 'interval_1h': ms = 60*60*1000; break;
+          case 'interval_2h': ms = 2*60*60*1000; break;
+          case 'interval_2h30m': ms = 2.5*60*60*1000; break;
+          case 'interval_3h': ms = 3*60*60*1000; break;
+          case 'interval_6h': ms = 6*60*60*1000; break;
+          case 'interval_12h': ms = 12*60*60*1000; break;
+        }
+        data[guildId].interval = ms;
+        saveData(data);
+        if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
+          startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
+        }
+        await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: true });
+      });
       return;
     }
 
@@ -208,7 +240,6 @@ module.exports = {
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 120_000 });
 
       collector.on('collect', async btnInt => {
-        // 페이지 이동
         if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
           let curPage = parseInt(btnInt.customId.split('_').pop());
           let newPage = btnInt.customId.startsWith('prev') ? curPage - 1 : curPage + 1;
@@ -216,7 +247,6 @@ module.exports = {
           return;
         }
 
-        // 공지 수정
         if (btnInt.customId.startsWith('edit_tip_modal_page_')) {
           const modal = new ModalBuilder()
             .setCustomId(`edit_tip_number_modal_page`)
@@ -235,7 +265,6 @@ module.exports = {
           return;
         }
 
-        // 공지 삭제
         if (btnInt.customId.startsWith('delete_tip_modal_page_')) {
           const modal = new ModalBuilder()
             .setCustomId(`delete_tip_number_modal_page`)
@@ -257,7 +286,24 @@ module.exports = {
       return;
     }
 
-    // 공지 기능 켜기/끄기 기존대로(모달 필요없음)
+    // 공지 상태
+    if (option === 'status') {
+      const { channelId, interval, tips, enabled } = data[guildId];
+      let status = `**공지 상태**\n`;
+      status += `상태: ${enabled ? '켜짐 🟢' : '꺼짐 🔴'}\n`;
+      status += `공지 채널: ${channelId ? `<#${channelId}> (${channelId})` : '-'}\n`;
+      status += `공지 주기: ${intervalToText(interval)}\n`;
+      status += `등록된 공지: ${tips.length}개\n`;
+      if (enabled && channelId && interval && tips.length > 0) {
+        const nextT = nextScheduleTime(interval);
+        nextT.setHours(nextT.getHours() + 9); // KST 표시
+        status += `다음 공지 예정: ${nextT.toISOString().replace('T', ' ').slice(0, 16)} (KST)\n`;
+      }
+      await interaction.reply({ content: status, ephemeral: true });
+      return;
+    }
+
+    // 공지 기능 켜기/끄기
     if (option === 'enable') {
       const { channelId, tips, interval } = data[guildId];
       if (!channelId || !interval || tips.length === 0) {
@@ -267,7 +313,6 @@ module.exports = {
       saveData(data);
       startTimer(guildId, channelId, interval, tips);
       return interaction.reply({ content: '공지 기능이 켜졌습니다.', ephemeral: true });
-
     } else if (option === 'disable') {
       data[guildId].enabled = false;
       saveData(data);
@@ -296,21 +341,6 @@ module.exports = {
       data[guildId].tips.push(tip);
       saveData(data);
       return interaction.reply({ content: '공지 내용이 추가되었습니다.', ephemeral: true });
-    }
-
-    // 공지 주기 선택 (분 단위 자유 입력)
-    if (interaction.customId === 'set_interval_modal') {
-      const intervalText = interaction.fields.getTextInputValue('interval_input').replace(/\s/g, "");
-      const interval = parseInterval(intervalText);
-      if (!interval || interval < 60000 || interval > 10080 * 60000) {
-        return interaction.reply({ content: '공지 주기는 1분 ~ 10080분(7일) 사이로 "30분" 또는 "120분" 등으로 입력해주세요.', ephemeral: true });
-      }
-      data[guildId].interval = interval;
-      saveData(data);
-      if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
-        startTimer(guildId, data[guildId].channelId, interval, data[guildId].tips);
-      }
-      return interaction.reply({ content: `공지 주기가 ${Math.floor(interval/60000)}분으로 설정되었습니다.`, ephemeral: true });
     }
 
     // 공지 수정 번호 입력 모달
@@ -354,7 +384,7 @@ module.exports = {
       if (isNaN(idx) || idx < 0 || idx >= data[guildId].tips.length) {
         return interaction.reply({ content: '잘못된 번호입니다.', ephemeral: true });
       }
-      const del = data[guildId].tips.splice(idx, 1);
+      data[guildId].tips.splice(idx, 1);
       saveData(data);
       return interaction.reply({ content: `공지 #${idx+1}번이 삭제되었습니다.`, ephemeral: true });
     }
