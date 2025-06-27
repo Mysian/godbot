@@ -36,7 +36,7 @@ module.exports = {
     const medals = ["🥇", "🥈", "🥉"];
     let desc = ranking.slice(0, 20).map((x, i) => {
       const medal = medals[i] || `#${i + 1}`;
-      return `${medal} <@${x.user}> — 최고 ${x.stage}스테이지 (클리어 ${x.clear}회, 누적 보상 ${x.reward})`;
+      return `${medal} <@${x.user}> — 현재: ${x.stage} 단계, (최고 클리어: ${x.clear} 단계)`;
     }).join("\n");
 
     if (!desc) desc = "아직 겐지키우기 게임에 참가한 유저가 없습니다.";
