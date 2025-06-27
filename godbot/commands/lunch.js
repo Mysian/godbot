@@ -1,7 +1,5 @@
 // commands/lunch.js
 const { SlashCommandBuilder } = require("discord.js");
-const fs = require("fs");
-const path = require("path");
 
 const lunchList = [
   "김치찌개","된장찌개","비빔밥","불고기","제육볶음","순두부찌개","돈까스","냉면","칼국수","쫄면",
@@ -45,27 +43,7 @@ const lunchList = [
 "스테이크샐러드볼", "에그치킨샐러드볼", "훈제연어샐러드볼", "치킨텐더샐러드볼", "단호박샐러드볼", "닭가슴살샐러드볼", "불고기샐러드볼", "포케샐러드볼", "크림치즈샐러드볼", "햄치즈샐러드볼",
 "불닭샐러드볼", "카프레제샐러드", "시저샐러드", "리코타치즈샐러드", "유자드레싱샐러드", "발사믹샐러드", "마늘드레싱샐러드", "크림드레싱샐러드", "콩불덮밥", "쌈밥정식",
 "고등어구이정식", "삼치구이정식", "코다리조림정식", "닭강정덮밥", "치킨난반덮밥", "닭다리살불고기덮밥", "수제돈까스덮밥", "매운돈까스덮밥", "갈릭돈까스덮밥", "사케동"
-  
 ];
-
-const dataPath = path.join(__dirname, "../data/lunch-logs.json");
-
-function loadData() {
-  if (!fs.existsSync(dataPath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(dataPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
-function saveData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-}
-function getTodayStr() {
-  const now = new Date();
-  now.setHours(now.getHours() + 9); // KST
-  return now.toISOString().slice(0, 10);
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -73,25 +51,10 @@ module.exports = {
     .setDescription("점심 메뉴를 추천해드립니다."),
 
   async execute(interaction) {
-  const userId = interaction.user.id;
-  const today = getTodayStr();
-  const data = loadData();
-
-  if (!data[today]) data[today] = {};
-  if (!data[today][userId]) data[today][userId] = 0;
-
-  if (data[today][userId] >= 3) {
-    await interaction.reply({ content: "오늘은 이미 점심메뉴 추천을 3번 모두 받으셨습니다! 내일 다시 이용해 주세요 😊", ephemeral: true });
-    return;
-  }
-
-  data[today][userId] += 1;
-  saveData(data);
-
-  const food = lunchList[Math.floor(Math.random() * lunchList.length)];
-  await interaction.reply({
-    content: `🍱 오늘 점심은 **${food}** 어때요? (오늘 남은 추천: ${3 - data[today][userId]}회)`,
-    ephemeral: true
-  });
+    const food = lunchList[Math.floor(Math.random() * lunchList.length)];
+    await interaction.reply({
+      content: `🍱 오늘 점심은 **${food}** 어때요?`,
+      ephemeral: true
+    });
   }
 };

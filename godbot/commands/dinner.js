@@ -1,10 +1,7 @@
 // commands/dinner.js
 const { SlashCommandBuilder } = require("discord.js");
-const fs = require("fs");
-const path = require("path");
 
 const dinnerList = [
-  
   "삼겹살","곱창","막창","소갈비","LA갈비","스테이크","치킨","피자","파스타","초밥",
   "샤브샤브","감자탕","닭갈비","찜닭","해물탕","해물찜","전골","불고기","쭈꾸미볶음",
   "오삼불고기","보쌈","족발","비빔냉면","물냉면","치즈돈까스","연어스테이크","연어샐러드",
@@ -47,50 +44,15 @@ const dinnerList = [
   
 ];
 
-const dataPath = path.join(__dirname, "../data/dinner-logs.json");
-
-function loadData() {
-  if (!fs.existsSync(dataPath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(dataPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
-function saveData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-}
-
-function getTodayStr() {
-  const now = new Date();
-  now.setHours(now.getHours() + 9); // KST
-  return now.toISOString().slice(0, 10);
-}
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("저메추")
     .setDescription("저녁 메뉴를 추천해드립니다."),
 
   async execute(interaction) {
-    const userId = interaction.user.id;
-    const today = getTodayStr();
-    const data = loadData();
-
-    if (!data[today]) data[today] = {};
-    if (!data[today][userId]) data[today][userId] = 0;
-
-    if (data[today][userId] >= 3) {
-      await interaction.reply({ content: "오늘은 이미 저녁메뉴 추천을 3번 모두 받으셨습니다! 내일 다시 이용해 주세요 😊", ephemeral: true });
-      return;
-    }
-
-    data[today][userId] += 1;
-    saveData(data);
-
     const food = dinnerList[Math.floor(Math.random() * dinnerList.length)];
     await interaction.reply({
-      content: `🍽️ 오늘 저녁은 **${food}** 어때요? (오늘 남은 추천: ${3 - data[today][userId]}회)`,
+      content: `🍽️ 오늘 저녁은 **${food}** 어때요?`,
       ephemeral: true
     });
   }
