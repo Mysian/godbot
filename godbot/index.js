@@ -19,6 +19,7 @@ const client = new Client({
   ],
   partials: ["CHANNEL", "MESSAGE", "REACTION"],
 });
+global.client = client; 
 
 const LOG_CHANNEL_ID = "1382168527015776287";
 module.exports.client = client;
