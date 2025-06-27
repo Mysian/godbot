@@ -1,7 +1,5 @@
 // commands/lunch.js
 const { SlashCommandBuilder } = require("discord.js");
-const fs = require("fs");
-const path = require("path");
 
 const lunchList = [
   "김치찌개","된장찌개","비빔밥","불고기","제육볶음","순두부찌개","돈까스","냉면","칼국수","쫄면",
@@ -73,25 +71,10 @@ module.exports = {
     .setDescription("점심 메뉴를 추천해드립니다."),
 
   async execute(interaction) {
-  const userId = interaction.user.id;
-  const today = getTodayStr();
-  const data = loadData();
-
-  if (!data[today]) data[today] = {};
-  if (!data[today][userId]) data[today][userId] = 0;
-
-  if (data[today][userId] >= 3) {
-    await interaction.reply({ content: "오늘은 이미 점심메뉴 추천을 3번 모두 받으셨습니다! 내일 다시 이용해 주세요 😊", ephemeral: true });
-    return;
-  }
-
-  data[today][userId] += 1;
-  saveData(data);
-
-  const food = lunchList[Math.floor(Math.random() * lunchList.length)];
-  await interaction.reply({
-    content: `🍱 오늘 점심은 **${food}** 어때요? (오늘 남은 추천: ${3 - data[today][userId]}회)`,
-    ephemeral: true
-  });
+    const food = lunchList[Math.floor(Math.random() * lunchList.length)];
+    await interaction.reply({
+      content: `🍱 오늘 점심은 **${food}** 어때요?`,
+      ephemeral: true
+    });
   }
 };
