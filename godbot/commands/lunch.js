@@ -43,27 +43,7 @@ const lunchList = [
 "스테이크샐러드볼", "에그치킨샐러드볼", "훈제연어샐러드볼", "치킨텐더샐러드볼", "단호박샐러드볼", "닭가슴살샐러드볼", "불고기샐러드볼", "포케샐러드볼", "크림치즈샐러드볼", "햄치즈샐러드볼",
 "불닭샐러드볼", "카프레제샐러드", "시저샐러드", "리코타치즈샐러드", "유자드레싱샐러드", "발사믹샐러드", "마늘드레싱샐러드", "크림드레싱샐러드", "콩불덮밥", "쌈밥정식",
 "고등어구이정식", "삼치구이정식", "코다리조림정식", "닭강정덮밥", "치킨난반덮밥", "닭다리살불고기덮밥", "수제돈까스덮밥", "매운돈까스덮밥", "갈릭돈까스덮밥", "사케동"
-  
 ];
-
-const dataPath = path.join(__dirname, "../data/lunch-logs.json");
-
-function loadData() {
-  if (!fs.existsSync(dataPath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(dataPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
-function saveData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-}
-function getTodayStr() {
-  const now = new Date();
-  now.setHours(now.getHours() + 9); // KST
-  return now.toISOString().slice(0, 10);
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
