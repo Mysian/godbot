@@ -27,7 +27,7 @@ module.exports = {
         .setName('예외유저')
         .setDescription('이동하지 않을 예외 유저 (선택사항)')
         .setRequired(false),
-    )
+    ),
 
   async execute(interaction) {
     const sourceChannel = interaction.options.getChannel('대상채널');
