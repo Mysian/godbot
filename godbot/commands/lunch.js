@@ -93,5 +93,5 @@ module.exports = {
     content: `🍱 오늘 점심은 **${food}** 어때요? (오늘 남은 추천: ${3 - data[today][userId]}회)`,
     ephemeral: true
   });
-},
-
+  }
+};
