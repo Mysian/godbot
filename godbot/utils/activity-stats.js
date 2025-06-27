@@ -65,7 +65,7 @@ function getWeekRangeKST() {
   };
 }
 
-// 매일 오전 9시 (KST)
+// 매일 오전 9시 (한국시간)
 cron.schedule('0 9 * * *', async () => {
   const channel = await client.channels.fetch(TARGET_CHANNEL_ID).catch(()=>null);
   if (!channel) return;
@@ -93,9 +93,9 @@ cron.schedule('0 9 * * *', async () => {
     content += `어제 채팅 기록이 없습니다.`;
   }
   await channel.send(content);
-});
+}, { timezone: "Asia/Seoul" });
 
-// 매주 월요일 오후 9시 (KST)
+// 매주 월요일 오후 9시 (한국시간)
 cron.schedule('0 21 * * 1', async () => {
   const channel = await client.channels.fetch(TARGET_CHANNEL_ID).catch(()=>null);
   if (!channel) return;
@@ -130,6 +130,6 @@ cron.schedule('0 21 * * 1', async () => {
   } else content += ' 데이터 없음\n';
 
   await channel.send(content.trim());
-});
+}, { timezone: "Asia/Seoul" });
 
 module.exports = {};
