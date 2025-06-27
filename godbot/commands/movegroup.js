@@ -28,7 +28,6 @@ module.exports = {
         .setDescription('이동하지 않을 예외 유저 (선택사항)')
         .setRequired(false),
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers),
 
   async execute(interaction) {
     const sourceChannel = interaction.options.getChannel('대상채널');
