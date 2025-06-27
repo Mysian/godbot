@@ -588,6 +588,10 @@ dmRelay.relayRegister(client);
 // 후원 이미지 받기 지원
 require("./utils/donate-dm-listener.js")(client);
 
+// 60분 혼자 있는 경우 잠수방 이전
+require("./utils/auto-afk-move")(client);
+
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
