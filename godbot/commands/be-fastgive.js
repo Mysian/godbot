@@ -32,7 +32,7 @@ async function startGiveaway(client) {
 
   // 키워드 무작위 추출
   const keyword = keywordPool[Math.floor(Math.random() * keywordPool.length)];
-  const reward = Math.floor(Math.random() * (50000 - 10000 + 1)) + 10000;
+  const reward = Math.floor(Math.random() * (30000 - 10000 + 1)) + 10000;
 
   // 라운드 초기화
   currentRound[CHANNEL_ID] = { keyword, rewarded: false, reward };
