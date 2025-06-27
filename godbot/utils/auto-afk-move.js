@@ -53,7 +53,7 @@ module.exports = function setupAutoAfkMove(client) {
         channel.members.find(m => m.id === voiceState.id)
       ) {
         try {
-          await channel.send(`'${nickname}'님은 공용 음성채널에 혼자 55분째 계십니다. 5분 뒤 잠수방으로 자동 이동됩니다.`);
+          await channel.send(`-# '${nickname}'님, 공용 음성채널에 현재 55분째 계십니다. 5분 뒤 잠수방으로 자동 이동됩니다.`);
         } catch {}
       }
     }, 55 * 60 * 1000);
@@ -75,7 +75,7 @@ module.exports = function setupAutoAfkMove(client) {
       if (afkChannel && afkChannel.isVoiceBased()) {
         const textChannel = findLinkedTextChannel(afkChannel, client);
         if (textChannel) {
-          await textChannel.send(`'${nickname}'님은 1시간 동안 혼자 있어서 잠수방으로 이동되었습니다.`);
+          await textChannel.send(`-# '${nickname}'님, 60분간 공용 음성채널에 혼자 계셔서 잠수방으로 이동되었습니다.`);
         }
       }
     } catch {}
