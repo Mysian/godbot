@@ -20,9 +20,7 @@ module.exports = function setupAutoAfkMove(client) {
     }
     // 채널이 바뀌거나 퇴장
     if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
-      // 타이머 해제
       clearTimers(oldState.id);
-      // 이동한 새 채널이 적용대상인 경우 새로 체크
       if (newState.channel && !newState.member.user.bot && isAllowed(newState.channel)) {
         watchSolo(newState);
       }
@@ -43,53 +41,48 @@ module.exports = function setupAutoAfkMove(client) {
     if (!channel) return;
     if (channel.members.filter(m => !m.user.bot).size !== 1) return;
 
-    // 유저 닉네임 확보 (서버 닉 우선)
     let nickname = voiceState.member.nickname || voiceState.member.user.username;
 
-    // 55분 뒤 알림, 60분 뒤 이동
+    // 110분 뒤 알림, 120분 뒤 이동 (2시간)
     const warnTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
         channel.members.find(m => m.id === voiceState.id)
       ) {
         try {
-          await channel.send(`-# '${nickname}'님, 공용 음성채널에 현재 55분째 계십니다. 5분 뒤 잠수방으로 자동 이동됩니다.`);
+          await channel.send(`-# '${nickname}'님, 공용 음성채널에 현재 110분째 계십니다. 10분 뒤 잠수방으로 자동 이동됩니다.`);
         } catch {}
       }
-    }, 55 * 60 * 1000);
+    }, 110 * 60 * 1000);
 
     const moveTimer = setTimeout(async () => {
-  if (
-    channel.members.filter(m => !m.user.bot).size === 1 &&
-    channel.members.find(m => m.id === voiceState.id)
-  ) {
-    // === 여기서 한 번 더 체크 ===
-    if (channel.id === AFK_CHANNEL_ID) {
-      clearTimers(voiceState.id);
-      return; // 잠수방에 있으면 이동·안내 안 함
-    }
-    try {
-      await voiceState.setChannel(AFK_CHANNEL_ID, "1시간 혼자 있어서 잠수방 이동");
-      // (이하 동일)
-      const afkChannel = await client.channels.fetch(AFK_CHANNEL_ID).catch(()=>null);
-      if (afkChannel && afkChannel.isVoiceBased()) {
-        const textChannel = findLinkedTextChannel(afkChannel, client);
-        if (textChannel) {
-          await textChannel.send(`-# '${nickname}'님, 60분간 공용 음성채널에 혼자 계셔서 잠수방으로 이동되었습니다.`);
+      if (
+        channel.members.filter(m => !m.user.bot).size === 1 &&
+        channel.members.find(m => m.id === voiceState.id)
+      ) {
+        if (channel.id === AFK_CHANNEL_ID) {
+          clearTimers(voiceState.id);
+          return;
         }
+        try {
+          await voiceState.setChannel(AFK_CHANNEL_ID, "2시간 혼자 있어서 잠수방 이동");
+          const afkChannel = await client.channels.fetch(AFK_CHANNEL_ID).catch(()=>null);
+          if (afkChannel && afkChannel.isVoiceBased()) {
+            const textChannel = findLinkedTextChannel(afkChannel, client);
+            if (textChannel) {
+              await textChannel.send(`-# '${nickname}'님, 120분간 공용 음성채널에 혼자 계셔서 잠수방으로 이동되었습니다.`);
+            }
+          }
+        } catch {}
       }
-    } catch {}
-  }
-  clearTimers(voiceState.id);
-}, 60 * 60 * 1000);
+      clearTimers(voiceState.id);
+    }, 120 * 60 * 1000);
 
     clearTimers(voiceState.id);
     soloTimers.set(voiceState.id, { warn: warnTimer, move: moveTimer });
   }
 
-  // (선택) 음성채널과 연동된 텍스트 채널 찾기 (없으면 무시)
   function findLinkedTextChannel(voiceChannel, client) {
-    // 같은 카테고리에서 '일반' 또는 '채팅' 등이 포함된 텍스트채널 우선 반환 (필요에 따라 수정)
     if (!voiceChannel.parentId) return null;
     const guild = client.guilds.cache.get(voiceChannel.guild.id);
     if (!guild) return null;
