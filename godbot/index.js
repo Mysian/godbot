@@ -17,7 +17,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.DirectMessages,
   ],
-  partials: ["CHANNEL", "MESSAGE", "REACTION"], 
+  partials: ["CHANNEL", "MESSAGE", "REACTION"],
 });
 
 const LOG_CHANNEL_ID = "1382168527015776287";
@@ -122,13 +122,64 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
   } catch (e) { /* 무시 */ }
 }
 
-// ✅ InteractionCreate 리스너(모달 제출 처리 포함)
+// === 모달 커스텀ID 핸들러 등록 (한 곳에서)
+const modalHandlers = new Map([
+  ["set_channel_modal", async (interaction) => {
+    const cmd = client.commands.get("공지하기");
+    if (cmd?.modal) return cmd.modal(interaction);
+  }],
+  ["add_tip_modal", async (interaction) => {
+    const cmd = client.commands.get("공지하기");
+    if (cmd?.modal) return cmd.modal(interaction);
+  }],
+  ["set_interval_modal", async (interaction) => {
+    const cmd = client.commands.get("공지하기");
+    if (cmd?.modal) return cmd.modal(interaction);
+  }],
+  ["edit_tip_modal_", async (interaction) => {
+    const cmd = client.commands.get("공지하기");
+    if (cmd?.modal) return cmd.modal(interaction);
+  }],
+  ["warn_modal_", async (interaction) => {
+    const cmd = client.commands.get("경고");
+    if (cmd?.handleModal) return cmd.handleModal(interaction);
+  }],
+  ["unwarn_modal_", async (interaction) => {
+    const cmd = client.commands.get("경고취소");
+    if (cmd?.handleModal) return cmd.handleModal(interaction);
+  }],
+  ["신고_모달", async (interaction) => {
+    const report = require('./commands/report.js');
+    if (report?.modal) return report.modal(interaction);
+  }],
+  ["민원_모달", async (interaction) => {
+    const complaint = require('./commands/complaint.js');
+    if (complaint?.modal) return complaint.modal(interaction);
+  }],
+  ["give-modal-", async (interaction) => {
+    const cmd = client.commands.get("챔피언지급");
+    if (cmd?.modalSubmit) return cmd.modalSubmit(interaction);
+  }],
+  ["nickname_change_modal_", async (interaction) => {
+    const cmd = client.commands.get("관리");
+    if (cmd?.modalSubmit) return cmd.modalSubmit(interaction);
+  }],
+  ["adminpw_user_", async (interaction) => {
+    const cmd = client.commands.get("관리");
+    if (cmd?.modalSubmit) return cmd.modalSubmit(interaction);
+  }],
+  ["adminpw_json_backup", async (interaction) => {
+    const cmd = client.commands.get("관리");
+    if (cmd?.modalSubmit) return cmd.modalSubmit(interaction);
+  }],
+  // 필요하면 추가로 더 여기에 등록
+]);
+
 const warnCmd = client.commands.get("경고");
 const unwarnCmd = client.commands.get("경고취소");
 const champBattle = require('./commands/champ-battle');
 
 client.on(Events.InteractionCreate, async interaction => {
-
   // 1. 경고 카테고리/세부사유 SelectMenu warn
   if (
     interaction.isStringSelectMenu() &&
@@ -149,77 +200,32 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 2. 경고 상세사유 입력 모달
-  if (
-    interaction.isModalSubmit() &&
-    interaction.customId.startsWith("warn_modal_")
-  ) {
-    if (warnCmd && typeof warnCmd.handleModal === "function") {
-      try {
-        await warnCmd.handleModal(interaction);
-      } catch (err) {
-        console.error(err);
+  // 2. 모달 통합 처리 (여기만 바뀜!)
+  if (interaction.isModalSubmit()) {
+    let handled = false;
+    for (const [key, handler] of modalHandlers.entries()) {
+      if (interaction.customId.startsWith(key)) {
         try {
+          await handler(interaction);
+        } catch (err) {
+          console.error(err);
           if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리 중 오류", ephemeral: true });
+            await interaction.reply({ content: "❣️ 처리 중 오류", ephemeral: true }).catch(() => {});
           }
-        } catch {}
+        }
+        handled = true;
+        break;
       }
     }
-    return;
-  }
-
-   // 경고취소 모달
-  if (interaction.isModalSubmit() && interaction.customId.startsWith("unwarn_modal_")) {
-    if (unwarnCmd && typeof unwarnCmd.handleModal === "function") {
-      try {
-        await unwarnCmd.handleModal(interaction);
-      } catch (e) {
-        // 예외 무시
-      }
-    }
-    return;
-  }
-  
-  // 1. 신고 모달 (신고_모달)
-  if (interaction.isModalSubmit() && interaction.customId === "신고_모달") {
-    const report = require('./commands/report.js');
-    try {
-      await report.modal(interaction);
-    } catch (err) {
-      console.error(err);
+    if (!handled) {
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❌ 신고 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
+        await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
       }
     }
     return;
   }
 
-  // 2. 민원 모달 (민원_모달)
-  if (interaction.isModalSubmit() && interaction.customId === "민원_모달") {
-    const complaint = require('./commands/complaint.js');
-    try {
-      await complaint.modal(interaction);
-    } catch (err) {
-      console.error(err);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❌ 민원 처리 중 오류가 발생했습니다.", ephemeral: true }).catch(()=>{});
-      }
-    }
-    return;
-  }
-
-  // 챔피언 지급 모달
-  if (interaction.isModalSubmit() && interaction.customId.startsWith("give-modal-")) {
-  const command = client.commands.get("챔피언지급");
-  if (command && typeof command.modalSubmit === "function") {
-    await command.modalSubmit(interaction);
-  }
-  return;
-}
-
-
-  // 1. 챔피언배틀 명령어
+  // 3. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);
     try {
@@ -241,7 +247,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 2. 챔피언배틀 버튼
+  // 4. 챔피언배틀 버튼
   if (
     interaction.isButton() && interaction.customId && (
       interaction.customId.startsWith('accept_battle_') ||
@@ -272,52 +278,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  // 3. 공지/경고 전용 커스텀ID만 처리 (startsWith로 정확히)
-  if (interaction.isModalSubmit()) {
-    // 공지 모달만 처리
-    if (
-      interaction.customId.startsWith("set_channel_modal") ||
-      interaction.customId.startsWith("add_tip_modal") ||
-      interaction.customId.startsWith("set_interval_modal") ||
-      interaction.customId.startsWith("edit_tip_modal_")
-    ) {
-      const command = client.commands.get("공지하기");
-      if (command && typeof command.modal === "function") {
-        try {
-          await command.modal(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리되었습니다.", ephemeral: true }).catch(()=>{});
-          }
-        }
-        return;
-      }
-    }
-
-    // 별명변경/타임아웃/추방 처리
-    if (interaction.isCommand() || interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction);
-  }
-
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId.startsWith("nickname_change_modal_") || interaction.customId.startsWith("adminpw_user_") || interaction.customId === "adminpw_json_backup") {
-      const command = client.commands.get("관리");
-      if (command && command.modalSubmit) {
-        await command.modalSubmit(interaction);
-      }
-    }
-  }
-
-    // 커스텀ID도 아니고, 공지/신고/민원도 아니면 => 아무것도 안함
-    if (!interaction.replied && !interaction.deferred) {
-  await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(()=>{});
-}
-return;
-  }
-    
-  // 3. 그 외 명령어/버튼(로그 및 명령어 실행)
+  // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
     const command = client.commands.get(interaction.commandName);
@@ -401,7 +362,6 @@ setInterval(() => {
   }
 }, 10 * 60 * 300);
 
-// 
 setInterval(() => {
   relationship.decayRelationships(0.5); // 3일 이상 교류 없으면 자동 차감
 }, 1000 * 60 * 60 * 24);
