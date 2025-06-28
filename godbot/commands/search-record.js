@@ -33,15 +33,10 @@ module.exports = {
     const game = interaction.options.getString("게임");
     let nickname = interaction.options.getString("닉네임").trim();
 
-    // 태그(예: #KR1) 분리
-    let tag = "";
-    if (nickname.includes("#")) {
-      [nickname, tag] = nickname.split("#");
-      nickname = nickname.trim();
-      tag = tag.trim();
-    }
+    // op.gg 규칙: 닉네임#태그 형식 그대로 붙여서 encode해서 검색해야 함
+    // 예: op.gg/summoners/kr/닉네임-태그
+    // 발로란트/옵치2: /profile/닉네임-태그
 
-    // 각 게임별 OP.GG URL & 티어/레벨 추출 로직
     let url = "";
     let result = "";
     let opggData = null;
@@ -49,30 +44,25 @@ module.exports = {
     try {
       switch (game) {
         case "lol":
-          url = `https://www.op.gg/summoners/kr/${encodeURIComponent(nickname)}`;
-          // 롤은 공식 API 없음, op.gg html 파싱 (예시, 자세한건 puppeteer 등 필요)
-          opggData = await fetchLoLTier(nickname);
+          // 닉네임#태그 혹은 닉네임만 입력 가능, op.gg에서는 붙여서 -로
+          url = `https://www.op.gg/summoners/kr/${encodeURIComponent(nickname.replace("#", "-"))}`;
+          opggData = await fetchLoLTier(nickname.replace("#", "-"));
           result = opggData ? `**${opggData.tier}** ${opggData.lp || ""}` : "랭크 정보를 불러올 수 없습니다.";
           break;
 
         case "tft":
           url = `https://tft.op.gg/summoner/userName=${encodeURIComponent(nickname)}`;
-          // 롤체도 마찬가지, 간략 링크만 제공
           result = "";
           break;
 
         case "valorant":
-          if (!tag) return interaction.editReply("발로란트는 닉네임#태그 형식으로 입력해주세요 (예: 닉네임#KR1)");
-          url = `https://valorant.op.gg/profile/riot/${encodeURIComponent(nickname)}-${encodeURIComponent(tag)}`;
-          opggData = await fetchValorantTier(nickname, tag);
-          result = opggData ? `**${opggData.tier}**` : "랭크 정보를 불러올 수 없습니다.";
+          url = `https://valorant.op.gg/profile/riot/${encodeURIComponent(nickname.replace("#", "-"))}`;
+          opggData = await fetchValorantTier(nickname.replace("#", "-"));
+          result = opggData ? `**${opggData.tier}**` : "";
           break;
 
         case "overwatch2":
-          url = `https://overwatch.op.gg/profile/${encodeURIComponent(nickname)}`;
-          // 옵치는 닉네임#태그 없으면 에러
-          if (!tag) return interaction.editReply("옵치2는 닉네임#태그 형식으로 입력해주세요 (예: 닉네임#1234)");
-          url = `https://overwatch.op.gg/profile/${encodeURIComponent(nickname)}-${encodeURIComponent(tag)}`;
+          url = `https://overwatch.op.gg/profile/${encodeURIComponent(nickname.replace("#", "-"))}`;
           result = "";
           break;
 
@@ -92,7 +82,7 @@ module.exports = {
 
       const embed = {
         color: 0x5865f2,
-        title: `${nickname}${tag ? "#" + tag : ""} 전적검색 (${GAME_TYPES.find(g => g.value === game).name})`,
+        title: `${nickname} 전적검색 (${GAME_TYPES.find(g => g.value === game).name})`,
         url,
         description: `[op.gg에서 상세 정보 확인하기](${url})\n${result ? `\n${result}` : ""}`,
         footer: { text: "전적 정보는 op.gg 정책에 따라 일부 제한될 수 있음" }
@@ -108,11 +98,10 @@ module.exports = {
 };
 
 // 롤 티어 간단 파싱 (HTML 크롤링, axios+정규식, puppeteer 쓰면 더 정확)
-async function fetchLoLTier(nickname) {
+async function fetchLoLTier(nicknameDash) {
   try {
-    const res = await axios.get(`https://www.op.gg/summoners/kr/${encodeURIComponent(nickname)}`);
+    const res = await axios.get(`https://www.op.gg/summoners/kr/${encodeURIComponent(nicknameDash)}`);
     const html = res.data;
-    // 티어 예시 추출 (2024년 기준, op.gg 구조 자주 바뀜!)
     const tierMatch = html.match(/<div class="tier">(.*?)<\/div>/);
     const lpMatch = html.match(/<div class="lp">(.*?)<\/div>/);
     return {
@@ -124,12 +113,7 @@ async function fetchLoLTier(nickname) {
   }
 }
 
-// 발로란트 티어 파싱 (op.gg는 일부 API 제공, 여기선 없는 경우 링크만)
-async function fetchValorantTier(nickname, tag) {
-  try {
-    // op.gg 비공식 API, 실제로는 크롤링 필요 (여기선 링크만 제공)
-    return null;
-  } catch {
-    return null;
-  }
+// 발로란트 티어 파싱 (링크만 제공, API 없음)
+async function fetchValorantTier(nicknameDash) {
+  return null;
 }
