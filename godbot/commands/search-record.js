@@ -56,18 +56,18 @@ module.exports = {
           break;
 
         case "valorant":
-          url = `https://valorant.op.gg/profile/riot/${encodeURIComponent(nickname.replace("#", "-"))}`;
+          url = `https://op.gg/ko/valorant/profile/${encodeURIComponent(nickname.replace("#", "-"))}`;
           opggData = await fetchValorantTier(nickname.replace("#", "-"));
           result = opggData ? `**${opggData.tier}**` : "";
           break;
 
         case "overwatch2":
-          url = `https://overwatch.op.gg/profile/${encodeURIComponent(nickname.replace("#", "-"))}`;
+          url = `https://op.gg/ko/overwatch/search?playerName=${encodeURIComponent(nickname.replace("#", "-"))}`;
           result = "";
           break;
 
         case "pubg":
-          url = `https://pubg.op.gg/user/${encodeURIComponent(nickname)}`;
+          url = `https://op.gg/ko/pubg/user/${encodeURIComponent(nickname)}`;
           result = "";
           break;
 
