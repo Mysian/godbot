@@ -7,7 +7,6 @@ const {
   ComponentType 
 } = require("discord.js");
 
-// 간단한 이미지 URL 검증 (jpg/png/gif/webp/svg)
 function isImageUrl(url) {
   return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
 }
@@ -83,7 +82,6 @@ module.exports = {
     if (closeHour < 1) closeHour = 1;
     if (closeHour > 24) closeHour = 24;
 
-    // @here, @everyone 방지
     if (mentionRole && (mentionRole.name === "@everyone" || mentionRole.name === "@here")) {
       return await interaction.reply({
         content: "❌ @everyone, @here 역할은 태그할 수 없습니다. 게임 역할만 선택해 주세요.",
@@ -91,25 +89,12 @@ module.exports = {
       });
     }
 
-    // 모집자 id 저장 (참여의사 태그용)
     const recruiterId = interaction.user.id;
-
-    // 마감 시간 계산용
     const startedAt = Date.now();
     const closeMs = closeHour * 60 * 60 * 1000;
     const closeAt = startedAt + closeMs;
+    const closeTimestamp = Math.floor(closeAt / 1000);
 
-    // 남은 시간 포맷 함수
-    function getRemainStr(ms) {
-      if (ms <= 0) return "마감됨";
-      const totalSec = Math.floor(ms / 1000);
-      const h = Math.floor(totalSec / 3600);
-      const m = Math.floor((totalSec % 3600) / 60);
-      if (h === 0 && m === 0) return "마감 임박!";
-      return `${h > 0 ? `${h}시간` : ""}${m > 0 ? ` ${m}분` : ""}`.trim();
-    }
-
-    // 임베드 생성
     const embed = new EmbedBuilder()
       .setTitle("📢 모집 글")
       .setDescription(content)
@@ -119,12 +104,11 @@ module.exports = {
           ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }]
           : []),
         { name: "모집자", value: `<@${recruiterId}>`, inline: true },
-        { name: "마감까지", value: getRemainStr(closeAt - Date.now()), inline: true },
+        { name: "마감까지", value: `<t:${closeTimestamp}:R>`, inline: true }, // ex: "1시간 후"
       )
       .setColor(0x57c3ff)
       .setTimestamp();
 
-    // 이미지 URL 있으면 하단에 이미지 삽입
     if (imageUrl && isImageUrl(imageUrl)) {
       embed.setImage(imageUrl);
     }
@@ -140,7 +124,6 @@ module.exports = {
       });
     }
 
-    // 버튼 생성 (음성채널 있을 때만 2개)
     let row = null;
     let msgOptions = { embeds: [embed] };
 
@@ -159,39 +142,18 @@ module.exports = {
     }
     if (mentionRole) msgOptions.content = `${mentionRole}`;
 
-    // 모집글 전송
     const msg = await 모집채널.send(msgOptions);
 
-    // 실시간 남은 시간 갱신 타이머
-    let intervalTimer = null;
-    if (voiceId) {
-      intervalTimer = setInterval(async () => {
-        const now = Date.now();
-        const remain = closeAt - now;
-        // 이미 마감됐으면 "마감됨"으로, 아니면 갱신
-        const fields = embed.data.fields.map(f => 
-          f.name === "마감까지" ? { name: "마감까지", value: getRemainStr(remain), inline: true } : f
-        );
-        embed.setFields(fields);
-        try {
-          await msg.edit({ embeds: [embed] });
-        } catch (e) {}
-        if (remain <= 0) {
-          clearInterval(intervalTimer);
-        }
-      }, 60 * 1000); // 1분마다 갱신
-    }
-
-    // 버튼 유지 시간 (closeHour시간) 후 비활성화
+    // 마감시간 이후 버튼 비활성화
     if (voiceId) {
       setTimeout(async () => {
-        if (intervalTimer) clearInterval(intervalTimer);
-        // 마지막으로 "마감됨"으로 갱신
-        const fields = embed.data.fields.map(f => 
-          f.name === "마감까지" ? { name: "마감까지", value: "마감됨", inline: true } : f
-        );
-        embed.setFields(fields);
         try {
+          const fields = embed.data.fields.map(f =>
+            f.name === "마감까지"
+              ? { name: "마감까지", value: "마감됨", inline: true }
+              : f
+          );
+          embed.setFields(fields);
           const disabledRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId(`disabled1`)
@@ -209,7 +171,6 @@ module.exports = {
       }, closeMs);
     }
 
-    // 버튼 처리 핸들러
     if (voiceId) {
       const collector = msg.createMessageComponentCollector({ 
         componentType: ComponentType.Button, 
@@ -237,7 +198,6 @@ module.exports = {
           }
           if (btnInt.customId.startsWith('joinintent_')) {
             await btnInt.deferReply({ ephemeral: true });
-            // 명령어 유저(모집자)와 참여 의사 밝힌 유저를 동시에 태그해서 알림
             try {
               const channel = await btnInt.guild.channels.fetch(voiceId);
               if (channel && channel.isTextBased()) {
@@ -254,10 +214,11 @@ module.exports = {
       });
 
       collector.on('end', async () => {
-        if (intervalTimer) clearInterval(intervalTimer);
-        // 마지막으로 "마감됨"으로 갱신
-        const fields = embed.data.fields.map(f => 
-          f.name === "마감까지" ? { name: "마감까지", value: "마감됨", inline: true } : f
+        // 마감 "마감됨"으로 갱신
+        const fields = embed.data.fields.map(f =>
+          f.name === "마감까지"
+            ? { name: "마감까지", value: "마감됨", inline: true }
+            : f
         );
         embed.setFields(fields);
         try {
