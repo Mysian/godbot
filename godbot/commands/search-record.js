@@ -51,7 +51,7 @@ module.exports = {
           break;
 
         case "tft":
-          url = `https://op.gg/ko/tft/summoners/kr/${encodeURIComponent(nickname)}`;
+          url = `https://op.gg/ko/tft/summoners/kr/${encodeURIComponent(nickname.replace("#", "-"))}`;
           result = "";
           break;
 
