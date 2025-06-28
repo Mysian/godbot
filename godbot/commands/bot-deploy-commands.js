@@ -1,7 +1,6 @@
 // commands/bot-deploy-commands.js
 const { SlashCommandBuilder } = require("discord.js");
 const { exec } = require("child_process");
-const path = require("path");
 
 const MAIN_STAFF_ROLE_ID = "786128824365482025";
 
@@ -21,22 +20,23 @@ module.exports = {
       return interaction.reply({ content: "❌ 이 명령어는 메인스탭(관리진)만 사용할 수 있습니다.", ephemeral: true });
     }
 
-    // 3초 제한 대비, 미리 응답 (defer)
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({
+      content: "⏳ 서버에서 node deploy-commands.js를 실행 중입니다...",
+      ephemeral: true
+    });
 
-    // deploy-commands.js 실행 경로 보장
-    const deployScriptPath = path.join(__dirname, "../deploy-commands.js");
-
-    exec(`node "${deployScriptPath}"`, { cwd: process.cwd(), timeout: 30_000 }, async (err, stdout, stderr) => {
+    exec("node deploy-commands.js", (err, stdout, stderr) => {
       if (err) {
-        await interaction.editReply({
-          content: `❌ 오류 발생:\n\`\`\`\n${stderr || err.message}\n\`\`\``,
-        }).catch(() => {});
+        interaction.followUp({
+          content: ❌ 오류 발생: \\\${stderr || err.message}\\\`,
+          ephemeral: true
+        });
         return;
       }
-      await interaction.editReply({
-        content: `✅ 명령어 업데이트 결과:\n\`\`\`\n${stdout || "업데이트 완료!"}\n\`\`\``
-      }).catch(() => {});
+      interaction.followUp({
+        content: ✅ 명령어 업데이트 결과:\n\\\${stdout || "업데이트 완료!"}\\\`,
+        ephemeral: true
+      });
     });
   }
 };
