@@ -43,7 +43,6 @@ async function saveJson(p, data) {
 // 중복 구매 방지용 메모리 플래그
 const userBuying = {};
 
-// 통파일 export
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수상점')
@@ -61,7 +60,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // 바로 deferReply로 중복 응답 방지
+    // 반드시 처음에 한 번만!
     await interaction.deferReply({ ephemeral: true });
 
     const kind = interaction.options.getString('종류');
@@ -298,7 +297,6 @@ module.exports = {
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
 
       collector.on('collect', async i => {
-        // 중복 방지: 구매 중 플래그
         if (userBuying[i.user.id]) {
           await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
           return;
@@ -306,11 +304,9 @@ module.exports = {
         userBuying[i.user.id] = true;
 
         try {
-          // 구매 버튼 클릭시
           const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
           if (!btnItem) return;
 
-          // 서버에서 역할 보유 확인
           const member = await i.guild.members.fetch(i.user.id);
           if (member.roles.cache.has(btnItem.roleId)) {
             await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
@@ -324,13 +320,11 @@ module.exports = {
             return;
           }
 
-          // 결제 내역
           be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
           be[i.user.id].amount -= btnItem.price;
           be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
           await saveJson(bePath, be);
 
-          // 역할 지급(권한 체크)
           try {
             await member.roles.add(btnItem.roleId, "강화 아이템 구매");
           } catch (err) {
