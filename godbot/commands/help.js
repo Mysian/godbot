@@ -45,26 +45,29 @@ module.exports = {
     );
 
     // ---- 2페이지: 서버 유틸/프로필/정수/호감도 ----
-    embeds.push(
-      new EmbedBuilder()
-        .setTitle("📚 도움말 (2/3)")
-        .setDescription("서버 생활에 도움되는 유틸 & 정보 명령어")
-        .addFields(
-          { name: "📝 /프로필등록", value: "서버에 나만의 프로필 등록", inline: true },
-          { name: "👤 /프로필 [유저명]", value: "자신 또는 다른 유저의 프로필 조회", inline: true },
-          { name: "🏆 /호감도순위", value: "유저별 호감도 랭킹 확인", inline: true },
-          { name: "❤️ /호감도지급 [유저]", value: "다른 유저에게 호감도 지급 (대상마다 하루 1회)", inline: true },
-          { name: "💔 /호감도차감 [유저]", value: "다른 유저의 호감도 차감 (대상마다 하루 1회)", inline: true },
-          { name: "💼 /인벤토리", value: "내 정수 아이템(소모품/스킬/강화) 확인", inline: true },
-          { name: "🛒 /정수상점", value: "파랑 정수(BE)로 아이템 구매", inline: true },
-          { name: "💸 /정수송금 [유저] [금액]", value: "유저에게 정수 송금 (수수료 10%)", inline: true },
-          { name: "🔝 /정수순위", value: "정수 보유 랭킹 TOP 확인", inline: true },
-          { name: "🔍 /정수조회 [유저]", value: "정수/가계부 내역 조회", inline: true }
-        )
-        .setFooter({ text: "서버: 까리한 디스코드" })
-        .setColor(0x00bfff)
-        .setTimestamp()
-    );
+embeds.push(
+  new EmbedBuilder()
+    .setTitle("📚 도움말 (2/3)")
+    .setDescription("서버 생활에 도움되는 유틸 & 정보 명령어")
+    .addFields(
+      { name: "📝 /프로필등록", value: "서버에 나만의 프로필 등록", inline: true },
+      { name: "👤 /프로필 [유저명]", value: "자신 또는 다른 유저의 프로필 조회", inline: true },
+      { name: "🏆 /호감도순위", value: "유저별 호감도 랭킹 확인", inline: true },
+      { name: "❤️ /호감도지급 [유저]", value: "다른 유저에게 호감도 지급 (대상마다 하루 1회)", inline: true },
+      { name: "💔 /호감도차감 [유저]", value: "다른 유저의 호감도 차감 (대상마다 하루 1회)", inline: true },
+      { name: "💼 /인벤토리", value: "내 정수 아이템(소모품/스킬/강화) 확인", inline: true },
+      { name: "🛒 /정수상점", value: "파랑 정수(BE)로 아이템 구매", inline: true },
+      { name: "💸 /정수송금 [유저] [금액]", value: "유저에게 정수 송금 (수수료 10%)", inline: true },
+      { name: "🔝 /정수순위", value: "정수 보유 랭킹 TOP 확인", inline: true },
+      { name: "🔍 /정수조회 [유저]", value: "정수/가계부 내역 조회", inline: true },
+      { name: "🎮 /게임검색", value: "스팀 게임을 여러 키워드, 단어로 검색", inline: true },
+      { name: "📊 /전적검색", value: "닉네임#태그로 게임 전적을 조회", inline: true }
+    )
+    .setFooter({ text: "서버: 까리한 디스코드" })
+    .setColor(0x00bfff)
+    .setTimestamp()
+);
+
 
     // ---- 3페이지: 게임/미니게임/챔피언/겐지키우기 ----
     embeds.push(
