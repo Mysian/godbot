@@ -1,4 +1,5 @@
 const AFK_CHANNEL_ID = "1202971727915651092";
+const ANNOUNCE_TEXT_CHANNEL_ID = "1202971727915651092";
 const ALLOWED_CATEGORY_IDS = [
   "1207980297854124032",
   "1273762376889532426",
@@ -6,10 +7,10 @@ const ALLOWED_CATEGORY_IDS = [
 ];
 
 const soloTimers = new Map();
+const lastActivity = new Map();
 
 module.exports = function setupAutoAfkMove(client) {
   client.on("voiceStateUpdate", async (oldState, newState) => {
-    // 추적 대상 채널만 필터
     function isAllowed(channel) {
       return !!channel && ALLOWED_CATEGORY_IDS.includes(channel.parentId);
     }
@@ -27,6 +28,20 @@ module.exports = function setupAutoAfkMove(client) {
     }
   });
 
+  // 유저 활동 감지
+  client.on("messageCreate", activityHandler);
+  client.on("interactionCreate", activityHandler);
+  client.on("messageReactionAdd", (reaction, user) => {
+    if (!user.bot) lastActivity.set(user.id, Date.now());
+  });
+
+  async function activityHandler(msgOrInt) {
+    let userId = null;
+    if (msgOrInt.user && !msgOrInt.user.bot) userId = msgOrInt.user.id;
+    else if (msgOrInt.author && !msgOrInt.author.bot) userId = msgOrInt.author.id;
+    if (userId) lastActivity.set(userId, Date.now());
+  }
+
   function clearTimers(userId) {
     if (soloTimers.has(userId)) {
       const timers = soloTimers.get(userId);
@@ -43,37 +58,47 @@ module.exports = function setupAutoAfkMove(client) {
 
     let nickname = voiceState.member.nickname || voiceState.member.user.username;
 
-    // 110분 뒤 알림, 120분 뒤 이동 (2시간)
+    // 110분 뒤 알림 (해당 음성채널의 연결 텍스트채널)
     const warnTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
         channel.members.find(m => m.id === voiceState.id)
       ) {
-        try {
-          await channel.send(`-# '${nickname}'님, 공용 음성채널에 현재 110분째 계십니다. 10분 뒤 잠수방으로 자동 이동됩니다.`);
-        } catch {}
+        const last = lastActivity.get(voiceState.id) || 0;
+        const now = Date.now();
+        if (now - last >= 110 * 60 * 1000) {
+          try {
+            // 연결된 텍스트채널 찾기 (원래 코드)
+            const textChannel = findLinkedTextChannel(channel, client);
+            if (textChannel) {
+              await textChannel.send(`-# '${nickname}'님, 공용 음성채널에 현재 110분째 아무런 활동 없이 계십니다. 10분 뒤 잠수방으로 자동 이동됩니다.`);
+            }
+          } catch {}
+        }
       }
     }, 110 * 60 * 1000);
 
+    // 120분 뒤 이동 (무조건 AFK 채널로), 이동 알림은 ANNOUNCE_TEXT_CHANNEL_ID 고정
     const moveTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
         channel.members.find(m => m.id === voiceState.id)
       ) {
-        if (channel.id === AFK_CHANNEL_ID) {
-          clearTimers(voiceState.id);
-          return;
-        }
-        try {
-          await voiceState.setChannel(AFK_CHANNEL_ID, "2시간 혼자 있어서 잠수방 이동");
-          const afkChannel = await client.channels.fetch(AFK_CHANNEL_ID).catch(()=>null);
-          if (afkChannel && afkChannel.isVoiceBased()) {
-            const textChannel = findLinkedTextChannel(afkChannel, client);
-            if (textChannel) {
-              await textChannel.send(`-# '${nickname}'님, 120분간 공용 음성채널에 혼자 계셔서 잠수방으로 이동되었습니다.`);
-            }
+        const last = lastActivity.get(voiceState.id) || 0;
+        const now = Date.now();
+        if (now - last >= 120 * 60 * 1000) {
+          if (channel.id === AFK_CHANNEL_ID) {
+            clearTimers(voiceState.id);
+            return;
           }
-        } catch {}
+          try {
+            await voiceState.setChannel(AFK_CHANNEL_ID, "2시간 혼자 있어서 잠수방 이동");
+            const announceChannel = await client.channels.fetch(ANNOUNCE_TEXT_CHANNEL_ID).catch(() => null);
+            if (announceChannel) {
+              await announceChannel.send(`-# '${nickname}'님, 120분간 공용 음성채널에 비활동 상태로 혼자 계셔서 잠수방으로 이동되었습니다.`);
+            }
+          } catch {}
+        }
       }
       clearTimers(voiceState.id);
     }, 120 * 60 * 1000);
@@ -82,6 +107,7 @@ module.exports = function setupAutoAfkMove(client) {
     soloTimers.set(voiceState.id, { warn: warnTimer, move: moveTimer });
   }
 
+  // 연결 텍스트채널 찾기 (카테고리 내 첫번째 텍스트채널)
   function findLinkedTextChannel(voiceChannel, client) {
     if (!voiceChannel.parentId) return null;
     const guild = client.guilds.cache.get(voiceChannel.guild.id);
