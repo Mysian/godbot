@@ -72,7 +72,7 @@ module.exports = {
           break;
 
         case "supervive":
-          url = `https://supervive.op.gg/profile/${encodeURIComponent(nickname)}`;
+          url = `https://supervive.op.gg/ko_KR/players/steam-${encodeURIComponent(nickname)}`;
           result = "";
           break;
 
