@@ -1,4 +1,17 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { 
+  SlashCommandBuilder, 
+  EmbedBuilder, 
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType 
+} = require("discord.js");
+
+// 간단한 이미지 URL 검증 (jpg/png/gif/webp/svg)
+function isImageUrl(url) {
+  return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,7 +37,6 @@ module.exports = {
         .setDescription("모집할 음성 채널을 선택하세요.")
         .setRequired(false)
         .addChoices(
-          // 경비실, 방재실 삭제
           { name: "🎙️ 101호", value: "1222085152600096778" },
           { name: "🎙️ 102호", value: "1222085194706587730" },
           { name: "🎙️ 201호", value: "1230536383941050368" },
@@ -46,6 +58,12 @@ module.exports = {
         .setName("mention_role")
         .setDescription("알림 보낼 @역할을 선택하세요. (@here, @everyone 금지)")
         .setRequired(false)
+    )
+    .addStringOption(option =>
+      option
+        .setName("이미지")
+        .setDescription("임베드 하단에 크게 띄울 이미지 URL (jpg/png/gif/webp/svg)")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -53,6 +71,7 @@ module.exports = {
     const count = interaction.options.getInteger("모집인원");
     const voiceId = interaction.options.getString("음성채널");
     const mentionRole = interaction.options.getRole("mention_role");
+    const imageUrl = interaction.options.getString("이미지");
 
     // @here, @everyone 방지
     if (mentionRole && (mentionRole.name === "@everyone" || mentionRole.name === "@here")) {
@@ -67,7 +86,6 @@ module.exports = {
       .setDescription(content)
       .addFields(
         { name: "모집 인원", value: `${count}명`, inline: true },
-        // 음성채널이 있으면 추가, 없으면 생략
         ...(voiceId
           ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }]
           : []),
@@ -75,6 +93,11 @@ module.exports = {
       )
       .setColor(0x57c3ff)
       .setTimestamp();
+
+    // 이미지 URL 있으면 하단에 이미지 삽입
+    if (imageUrl && isImageUrl(imageUrl)) {
+      embed.setImage(imageUrl);
+    }
 
     const 모집채널 = await interaction.guild.channels.fetch(
       "1209147973255036959",
@@ -87,13 +110,68 @@ module.exports = {
       });
     }
 
-    // 역할 mention + embed 같이 전송
-    let msg = { embeds: [embed] };
-    if (mentionRole) {
-      msg.content = `${mentionRole}`;
+    // 버튼 생성
+    let row = null;
+    let msgOptions = { embeds: [embed] };
+    if (voiceId) {
+      row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`joinvoice_${voiceId}_${Date.now()}`)
+          .setLabel("음성채널 참여하기")
+          .setStyle(ButtonStyle.Primary)
+      );
+      msgOptions.components = [row];
+    }
+    if (mentionRole) msgOptions.content = `${mentionRole}`;
+
+    // 모집글 전송
+    const msg = await 모집채널.send(msgOptions);
+
+    // 15분 뒤 버튼 비활성화
+    if (voiceId) {
+      setTimeout(async () => {
+        try {
+          const disabledRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`disabled`)
+              .setLabel("음성채널 참여하기")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true)
+          );
+          await msg.edit({ components: [disabledRow] });
+        } catch (err) {}
+      }, 15 * 60 * 1000);
     }
 
-    await 모집채널.send(msg);
+    // 버튼 처리 핸들러
+    if (voiceId) {
+      const collector = msg.createMessageComponentCollector({ 
+        componentType: ComponentType.Button, 
+        time: 15 * 60 * 1000 
+      });
+
+      collector.on('collect', async btnInt => {
+        try {
+          await btnInt.deferReply({ ephemeral: true });
+          const guild = btnInt.guild;
+          const member = await guild.members.fetch(btnInt.user.id);
+          const channel = await guild.channels.fetch(voiceId);
+
+          if (!channel || channel.type !== 2) {
+            return await btnInt.editReply({ content: "❌ 해당 음성채널을 찾을 수 없어요." });
+          }
+          const limit = channel.userLimit;
+          const curr = channel.members.size;
+          if (limit > 0 && curr >= limit) {
+            return await btnInt.editReply({ content: "❌ 이미 해당 음성채널이 가득 찼어요!" });
+          }
+          await member.voice.setChannel(channel).catch(() => null);
+          await btnInt.editReply({ content: `✅ [${channel.name}] 음성채널로 이동 완료!` });
+        } catch (e) {
+          await btnInt.editReply({ content: "⚠️ 음성채널 이동에 실패했습니다!" });
+        }
+      });
+    }
 
     await interaction.reply({
       content: "✅ 모집 글이 전용 채널에 정상적으로 게시되었어요!",
