@@ -46,7 +46,9 @@ const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
       { body: commands }
     );
     console.log("✅ 명령어 아주 까리하게 등록 완료!");
+    process.exit(0);  // ★ 정상 종료 추가
   } catch (error) {
     console.error("❌ 아 문제 생겼다 확인해보자! 등록 실패!!:", error);
+    process.exit(1);  // ★ 실패도 명확히 종료
   }
 })();
