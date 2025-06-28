@@ -588,8 +588,12 @@ dmRelay.relayRegister(client);
 // 후원 이미지 받기 지원
 require("./utils/donate-dm-listener.js")(client);
 
-// 60분 혼자 있는 경우 잠수방 이전
+// 120분 혼자 있는 경우 잠수방 이전
 require("./utils/auto-afk-move")(client);
+
+// 봇 자동 재시작 화, 목, 토
+require('./utils/pm2-autorestart')();
+
 
 
 const app = express();
