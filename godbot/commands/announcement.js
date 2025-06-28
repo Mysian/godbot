@@ -29,24 +29,19 @@ function getRandomEmoji() {
 const timers = new Map();
 
 function nextScheduleTime(intervalMs) {
-  // intervalMs: ms단위 (예: 2시간 == 7200000)
-  // 현재 시간을 기준으로 정시에 맞춰서 계산 (KST 기준)
   const now = new Date();
   const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const base = new Date(kstNow);
-  base.setUTCHours(0,0,0,0); // 한국시간 00:00 기준
+  base.setUTCHours(0,0,0,0); // KST 00:00 기준
 
   let elapsed = kstNow - base;
   let next = Math.ceil(elapsed / intervalMs) * intervalMs;
   let nextTime = new Date(base.getTime() + next);
-  // 다시 UTC로 환산
   return new Date(nextTime.getTime() - 9 * 60 * 60 * 1000);
 }
 
 function startTimer(guildId, channelId, interval, tips) {
   if (timers.has(guildId)) clearInterval(timers.get(guildId));
-
-  // 다음 스케줄까지 남은 ms
   let now = Date.now();
   let nextTime = nextScheduleTime(interval).getTime();
   if (nextTime <= now) nextTime += interval;
@@ -59,7 +54,6 @@ function startTimer(guildId, channelId, interval, tips) {
     if (channel) channel.send(`-# ${emoji}: ${tip}`);
   };
 
-  // 첫 발송은 정시에 맞춰!
   const timeout = setTimeout(() => {
     sendTip();
     timers.set(guildId, setInterval(sendTip, interval));
@@ -126,7 +120,6 @@ function intervalToText(ms) {
   if (!ms) return '-';
   if (ms % hour === 0) return `${ms/hour}시간`;
   if (ms % min === 0) return `${Math.floor(ms/min)}분`;
-  // 2시간 30분 케이스만 따로
   if (ms === 2.5 * hour) return `2시간 30분`;
   return `${(ms/60000).toFixed(0)}분`;
 }
@@ -193,55 +186,52 @@ module.exports = {
       return;
     }
 
-    // 공지 주기 프리셋 선택 (6가지)
+    // 공지 주기 프리셋 선택 (6가지) - collector 완전 고정
     if (option === 'set_interval') {
-  // 시간 프리셋 버튼
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('interval_2h30m').setLabel('2시간 30분').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
-  );
-  // ⚡ fetchReply: true로 메시지 받아오기 (ephemeral: false로!)
-  const msg = await interaction.reply({
-    content: "공지 주기를 선택하세요 (정시 기준, 한국시간):",
-    components: [row],
-    ephemeral: false,
-    fetchReply: true
-  });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_2h30m').setLabel('2시간 30분').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
+      );
+      // public으로 reply, reply 메시지에서 collector 생성!
+      const msg = await interaction.reply({
+        content: "공지 주기를 선택하세요 (정시 기준, 한국시간):",
+        components: [row],
+        ephemeral: false,
+        fetchReply: true
+      });
 
-  const filter = btnInt => btnInt.user.id === interaction.user.id;
-  // collector는 reply 메시지(msg)에서 생성!
-  const collector = msg.createMessageComponentCollector({ filter, time: 60_000 });
+      const filter = btnInt => btnInt.user.id === interaction.user.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 60_000 });
 
-  collector.on('collect', async btnInt => {
-    let ms = 0;
-    switch(btnInt.customId) {
-      case 'interval_1h': ms = 60*60*1000; break;
-      case 'interval_2h': ms = 2*60*60*1000; break;
-      case 'interval_2h30m': ms = 2.5*60*60*1000; break;
-      case 'interval_3h': ms = 3*60*60*1000; break;
-      case 'interval_6h': ms = 6*60*60*1000; break;
-      case 'interval_12h': ms = 12*60*60*1000; break;
+      collector.on('collect', async btnInt => {
+        let ms = 0;
+        switch(btnInt.customId) {
+          case 'interval_1h': ms = 60*60*1000; break;
+          case 'interval_2h': ms = 2*60*60*1000; break;
+          case 'interval_2h30m': ms = 2.5*60*60*1000; break;
+          case 'interval_3h': ms = 3*60*60*1000; break;
+          case 'interval_6h': ms = 6*60*60*1000; break;
+          case 'interval_12h': ms = 12*60*60*1000; break;
+        }
+        data[guildId].interval = ms;
+        saveData(data);
+        if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
+          startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
+        }
+        await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: false });
+      });
+      return;
     }
-    data[guildId].interval = ms;
-    saveData(data);
-    if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
-      startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
-    }
-    await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: false });
-  });
-  return;
-}
 
     // 공지 글 리스트 (수정/삭제/페이지 이동)
     if (option === 'list_tips') {
       if (data[guildId].tips.length === 0) return interaction.reply({ content: '등록된 공지가 없습니다.', ephemeral: true });
       await showTipsPage(interaction, data, guildId, 1);
 
-      // 버튼 핸들러
       const filter = btnInt => btnInt.user.id === interaction.user.id;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 120_000 });
 
@@ -252,7 +242,6 @@ module.exports = {
           await showTipsPage(btnInt, data, guildId, newPage);
           return;
         }
-
         if (btnInt.customId.startsWith('edit_tip_modal_page_')) {
           const modal = new ModalBuilder()
             .setCustomId(`edit_tip_number_modal_page`)
@@ -270,7 +259,6 @@ module.exports = {
           await btnInt.showModal(modal);
           return;
         }
-
         if (btnInt.customId.startsWith('delete_tip_modal_page_')) {
           const modal = new ModalBuilder()
             .setCustomId(`delete_tip_number_modal_page`)
@@ -333,23 +321,18 @@ module.exports = {
     const data = loadData();
     if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [], enabled: false };
 
-    // 공지채널 설정
     if (interaction.customId === 'set_channel_modal') {
       const channelId = interaction.fields.getTextInputValue('channel_id_input');
       data[guildId].channelId = channelId;
       saveData(data);
       return interaction.reply({ content: `공지 채널이 <#${channelId}> 로 설정되었습니다.`, ephemeral: true });
     }
-
-    // 공지 글 추가
     if (interaction.customId === 'add_tip_modal') {
       const tip = interaction.fields.getTextInputValue('tip_content_input');
       data[guildId].tips.push(tip);
       saveData(data);
       return interaction.reply({ content: '공지 내용이 추가되었습니다.', ephemeral: true });
     }
-
-    // 공지 수정 번호 입력 모달
     if (interaction.customId === 'edit_tip_number_modal_page') {
       const idxText = interaction.fields.getTextInputValue('edit_tip_number_input');
       let idx = parseInt(idxText.replace(/[#\s]/g, '')) - 1;
@@ -372,8 +355,6 @@ module.exports = {
       await interaction.showModal(modal);
       return;
     }
-
-    // 실제 공지 수정
     if (interaction.customId.startsWith('edit_tip_modal_')) {
       const match = interaction.customId.match(/^edit_tip_modal_(\d+)$/);
       const idx = Number(match[1]);
@@ -382,8 +363,6 @@ module.exports = {
       saveData(data);
       return interaction.reply({ content: `공지 #${idx+1}번이 수정되었습니다.`, ephemeral: true });
     }
-
-    // 공지 삭제 번호 입력 모달
     if (interaction.customId === 'delete_tip_number_modal_page') {
       const idxText = interaction.fields.getTextInputValue('delete_tip_number_input');
       let idx = parseInt(idxText.replace(/[#\s]/g, '')) - 1;
