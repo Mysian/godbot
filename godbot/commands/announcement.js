@@ -12,19 +12,12 @@ const path = require('path');
 
 const dataPath = path.join(__dirname, '../data/announcements.json');
 
+// 공지 주기(3시간) 고정
+const ANNOUNCE_INTERVAL = 3 * 60 * 60 * 1000;
+
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
-  const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-  // 파일에 150분(2.5시간)이 있으면 자동으로 2시간(120분)으로 변환해서 저장/적용
-  let changed = false;
-  for (const guildId in data) {
-    if (data[guildId].interval === 150 * 60 * 1000) {
-      data[guildId].interval = 2 * 60 * 60 * 1000;
-      changed = true;
-    }
-  }
-  if (changed) fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-  return data;
+  return JSON.parse(fs.readFileSync(dataPath, 'utf8'));
 }
 function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
@@ -50,11 +43,11 @@ function nextScheduleTime(intervalMs) {
   return new Date(nextTime.getTime() - 9 * 60 * 60 * 1000);
 }
 
-function startTimer(guildId, channelId, interval, tips) {
+function startTimer(guildId, channelId, tips) {
   if (timers.has(guildId)) clearInterval(timers.get(guildId));
   let now = Date.now();
-  let nextTime = nextScheduleTime(interval).getTime();
-  if (nextTime <= now) nextTime += interval;
+  let nextTime = nextScheduleTime(ANNOUNCE_INTERVAL).getTime();
+  if (nextTime <= now) nextTime += ANNOUNCE_INTERVAL;
   let firstWait = nextTime - now;
 
   const sendTip = async () => {
@@ -66,7 +59,7 @@ function startTimer(guildId, channelId, interval, tips) {
 
   const timeout = setTimeout(() => {
     sendTip();
-    timers.set(guildId, setInterval(sendTip, interval));
+    timers.set(guildId, setInterval(sendTip, ANNOUNCE_INTERVAL));
   }, firstWait);
 
   timers.set(guildId, timeout);
@@ -125,13 +118,25 @@ async function showTipsPage(interaction, data, guildId, page) {
 }
 
 function intervalToText(ms) {
-  const hour = 60 * 60 * 1000;
-  const min = 60 * 1000;
   if (!ms) return '-';
+  const hour = 60 * 60 * 1000;
   if (ms % hour === 0) return `${ms/hour}시간`;
-  if (ms % min === 0) return `${Math.floor(ms/min)}분`;
   return `${(ms/60000).toFixed(0)}분`;
 }
+
+// 봇이 실행될 때 자동 복원
+function restoreTimersOnBoot() {
+  const data = loadData();
+  for (const guildId in data) {
+    const conf = data[guildId];
+    if (conf.enabled && conf.channelId && conf.tips && conf.tips.length > 0) {
+      startTimer(guildId, conf.channelId, conf.tips);
+    }
+  }
+}
+
+// 최초 로드 시 바로 복원
+restoreTimersOnBoot();
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -139,13 +144,12 @@ module.exports = {
     .setDescription('공지 관련 명령어')
     .addStringOption(option =>
       option.setName('옵션')
-        .setDescription('공지채널 설정/공지 글 추가/공지 리스트/공지 주기 선택/공지기능 켜기/끄기/공지 상태')
+        .setDescription('공지채널 설정/공지 글 추가/공지 리스트/공지기능 켜기/끄기/공지 상태')
         .setRequired(true)
         .addChoices(
           { name: '공지채널 설정', value: 'set_channel' },
           { name: '공지 글 추가', value: 'add_tip' },
           { name: '공지 리스트', value: 'list_tips' },
-          { name: '공지 주기 선택', value: 'set_interval' },
           { name: '공지기능 켜기', value: 'enable' },
           { name: '공지기능 끄기', value: 'disable' },
           { name: '공지 상태', value: 'status' }
@@ -156,7 +160,7 @@ module.exports = {
     const option = interaction.options.getString('옵션');
     const guildId = interaction.guild.id;
     const data = loadData();
-    if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [], enabled: false };
+    if (!data[guildId]) data[guildId] = { channelId: null, tips: [], enabled: false };
 
     // 공지채널 설정 모달
     if (option === 'set_channel') {
@@ -192,50 +196,6 @@ module.exports = {
           )
         );
       await interaction.showModal(modal);
-      return;
-    }
-
-    // 공지 주기 프리셋 (2시간 30분 제거)
-    if (option === 'set_interval') {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
-      );
-      const msg = await interaction.reply({
-        content: "공지 주기를 선택하세요 (정시 기준, 한국시간):",
-        components: [row],
-        ephemeral: false,
-        fetchReply: true
-      });
-
-      const filter = btnInt => btnInt.user.id === interaction.user.id;
-      const collector = msg.createMessageComponentCollector({ filter, time: 60_000 });
-
-      collector.on('collect', async btnInt => {
-        let ms = 0;
-        switch(btnInt.customId) {
-          case 'interval_1h': ms = 60*60*1000; break;
-          case 'interval_2h': ms = 2*60*60*1000; break;
-          case 'interval_3h': ms = 3*60*60*1000; break;
-          case 'interval_6h': ms = 6*60*60*1000; break;
-          case 'interval_12h': ms = 12*60*60*1000; break;
-        }
-        data[guildId].interval = ms;
-        saveData(data);
-        if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
-          startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
-        }
-        try {
-          await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: false });
-        } catch (e) {
-          try {
-            await btnInt.reply({ content: "명령어가 만료되었습니다. 다시 /공지하기로 시도해 주세요.", ephemeral: true });
-          } catch {}
-        }
-      });
       return;
     }
 
@@ -294,14 +254,14 @@ module.exports = {
 
     // 공지 상태
     if (option === 'status') {
-      const { channelId, interval, tips, enabled } = data[guildId];
+      const { channelId, tips, enabled } = data[guildId];
       let status = `**공지 상태**\n`;
       status += `상태: ${enabled ? '켜짐 🟢' : '꺼짐 🔴'}\n`;
       status += `공지 채널: ${channelId ? `<#${channelId}> (${channelId})` : '-'}\n`;
-      status += `공지 주기: ${intervalToText(interval)}\n`;
+      status += `공지 주기: 3시간 (고정)\n`;
       status += `등록된 공지: ${tips.length}개\n`;
-      if (enabled && channelId && interval && tips.length > 0) {
-        const nextT = nextScheduleTime(interval);
+      if (enabled && channelId && tips.length > 0) {
+        const nextT = nextScheduleTime(ANNOUNCE_INTERVAL);
         nextT.setHours(nextT.getHours() + 9); // KST 표시
         status += `다음 공지 예정: ${nextT.toISOString().replace('T', ' ').slice(0, 16)} (KST)\n`;
       }
@@ -311,13 +271,13 @@ module.exports = {
 
     // 공지 기능 켜기/끄기
     if (option === 'enable') {
-      const { channelId, tips, interval } = data[guildId];
-      if (!channelId || !interval || tips.length === 0) {
-        return interaction.reply({ content: '공지 채널, 주기, 공지 글이 모두 등록되어야 합니다.', ephemeral: true });
+      const { channelId, tips } = data[guildId];
+      if (!channelId || tips.length === 0) {
+        return interaction.reply({ content: '공지 채널과 공지 글이 모두 등록되어야 합니다.', ephemeral: true });
       }
       data[guildId].enabled = true;
       saveData(data);
-      startTimer(guildId, channelId, interval, tips);
+      startTimer(guildId, channelId, tips);
       return interaction.reply({ content: '공지 기능이 켜졌습니다.', ephemeral: true });
     } else if (option === 'disable') {
       data[guildId].enabled = false;
@@ -331,7 +291,7 @@ module.exports = {
   async modal(interaction) {
     const guildId = interaction.guild.id;
     const data = loadData();
-    if (!data[guildId]) data[guildId] = { channelId: null, interval: null, tips: [], enabled: false };
+    if (!data[guildId]) data[guildId] = { channelId: null, tips: [], enabled: false };
 
     if (interaction.customId === 'set_channel_modal') {
       const channelId = interaction.fields.getTextInputValue('channel_id_input');
