@@ -1,7 +1,7 @@
 // 📁 commands/be-fastgive.js
 const { Client, GatewayIntentBits } = require('discord.js');
 const cron = require('node-cron');
-const { addBE } = require('./be-util.js');
+const { addBE } = require('../commands/be-util.js');
 
 const CHANNEL_ID = '1381193562330370048';
 
