@@ -1,9 +1,10 @@
 // commands/bot-deploy-commands.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { exec } = require("child_process");
+const path = require("path");
 
 const MAIN_STAFF_ROLE_ID = "786128824365482025";
-const LINES_PER_PAGE = 25;
+const EMBED_CHAR_LIMIT = 1000; // 각 임베드 최대 표시
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,79 +22,47 @@ module.exports = {
       return interaction.reply({ content: "❌ 이 명령어는 메인스탭(관리진)만 사용할 수 있습니다.", ephemeral: true });
     }
 
-    await interaction.reply({
-      content: "⏳ 서버에서 node deploy-commands.js를 실행 중입니다...",
-      ephemeral: true
-    });
+    await interaction.deferReply({ ephemeral: true });
 
-    exec("node deploy-commands.js", async (err, stdout, stderr) => {
-      let output = err ? (stderr || err.message) : (stdout || "업데이트 완료!");
-      // 줄 단위로 자르기
-      let lines = output.split(/\r?\n/);
-      let totalPages = Math.ceil(lines.length / LINES_PER_PAGE);
+    const deployScriptPath = path.join(__dirname, "../deploy-commands.js");
 
-      // 페이지 생성 함수
-      const getPageEmbed = (page) => {
-        let start = (page - 1) * LINES_PER_PAGE;
-        let end = start + LINES_PER_PAGE;
-        let pageLines = lines.slice(start, end).join("\n") || "출력 없음";
-        return new EmbedBuilder()
-          .setTitle("✅ 명령어 업데이트 결과")
-          .setDescription("```" + pageLines + "```")
-          .setFooter({ text: `페이지 ${page} / ${totalPages}` });
-      };
+    exec(`node "${deployScriptPath}"`, { cwd: process.cwd(), timeout: 30_000 }, async (err, stdout, stderr) => {
+      if (err) {
+        const embed = new EmbedBuilder()
+          .setTitle("❌ 오류 발생")
+          .setDescription(`\`\`\`\n${stderr || err.message}\n\`\`\``)
+          .setColor(0xED4245);
+        await interaction.editReply({ embeds: [embed] }).catch(() => {});
+        return;
+      }
 
-      let page = 1;
+      const resultText = stdout || "업데이트 완료!";
+      const embeds = [];
 
-      // 버튼 생성
-      const getRow = (current) => {
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("prev_page")
-            .setLabel("⬅ 이전")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(current === 1),
-          new ButtonBuilder()
-            .setCustomId("next_page")
-            .setLabel("다음 ➡")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(current === totalPages)
+      // 두 페이지로 분할
+      if (resultText.length > EMBED_CHAR_LIMIT) {
+        embeds.push(
+          new EmbedBuilder()
+            .setTitle("✅ 명령어 업데이트 결과 (1/2)")
+            .setDescription(`\`\`\`\n${resultText.slice(0, EMBED_CHAR_LIMIT)}\n\`\`\``)
+            .setColor(0x57F287)
         );
-      };
+        embeds.push(
+          new EmbedBuilder()
+            .setTitle("✅ 명령어 업데이트 결과 (2/2)")
+            .setDescription(`\`\`\`\n${resultText.slice(EMBED_CHAR_LIMIT, EMBED_CHAR_LIMIT * 2)}\n\`\`\``)
+            .setColor(0x57F287)
+        );
+      } else {
+        embeds.push(
+          new EmbedBuilder()
+            .setTitle("✅ 명령어 업데이트 결과")
+            .setDescription(`\`\`\`\n${resultText}\n\`\`\``)
+            .setColor(0x57F287)
+        );
+      }
 
-      // 첫 임베드 전송
-      let sent = await interaction.followUp({
-        embeds: [getPageEmbed(page)],
-        components: [getRow(page)],
-        ephemeral: true
-      });
-
-      // 버튼 처리
-      const collector = sent.createMessageComponentCollector({ time: 1000 * 60 * 2 }); // 2분 대기
-
-      collector.on("collect", async i => {
-        if (i.user.id !== interaction.user.id) {
-          return i.reply({ content: "❌ 본인만 조작 가능합니다.", ephemeral: true });
-        }
-
-        if (i.customId === "prev_page" && page > 1) {
-          page--;
-        }
-        if (i.customId === "next_page" && page < totalPages) {
-          page++;
-        }
-        await i.update({
-          embeds: [getPageEmbed(page)],
-          components: [getRow(page)],
-          ephemeral: true
-        });
-      });
-
-      collector.on("end", async () => {
-        try {
-          await sent.edit({ components: [] });
-        } catch (e) {}
-      });
+      await interaction.editReply({ embeds });
     });
   }
 };
