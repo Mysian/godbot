@@ -314,7 +314,7 @@ client.on("messageCreate", async msg => {
 });
 
 // 3시간마다 랜덤 포인트
-const { setup: setupFastGive } = require('./commands/be-fastgive.js');
+const { setup: setupFastGive } = require('./utils/be-fastgive.js');
 setupFastGive(client);
 
 
