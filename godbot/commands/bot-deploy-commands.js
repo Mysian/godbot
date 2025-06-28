@@ -27,42 +27,39 @@ module.exports = {
     const deployScriptPath = path.join(__dirname, "../deploy-commands.js");
 
     exec(`node "${deployScriptPath}"`, { cwd: process.cwd(), timeout: 30_000 }, async (err, stdout, stderr) => {
+      // 콘솔에 모든 결과 남김(디버깅용)
+      console.log('===== 봇명령어업데이트 실행 결과 =====');
+      console.log('err:', err);
+      console.log('stdout:', stdout);
+      console.log('stderr:', stderr);
+
+      // 결과 취합
+      let resultText = '';
       if (err) {
-        const embed = new EmbedBuilder()
-          .setTitle("❌ 오류 발생")
-          .setDescription(`\`\`\`\n${stderr || err.message}\n\`\`\``)
-          .setColor(0xED4245);
-        await interaction.editReply({ embeds: [embed] }).catch(() => {});
-        return;
+        resultText += `❌ [Error]\n${err.message || ''}\n`;
+      }
+      if (stderr) {
+        resultText += `❗ [stderr]\n${stderr}\n`;
+      }
+      if (stdout) {
+        resultText += `✅ [stdout]\n${stdout}\n`;
+      }
+      if (!resultText.trim()) {
+        resultText = "업데이트 완료!";
       }
 
-      const resultText = stdout || "업데이트 완료!";
+      // 2,000자 넘으면 페이지 분할 (임베드 제한 고려)
       const embeds = [];
-
-      // 두 페이지로 분할
-      if (resultText.length > EMBED_CHAR_LIMIT) {
+      for (let i = 0; i < resultText.length; i += EMBED_CHAR_LIMIT) {
         embeds.push(
           new EmbedBuilder()
-            .setTitle("✅ 명령어 업데이트 결과 (1/2)")
-            .setDescription(`\`\`\`\n${resultText.slice(0, EMBED_CHAR_LIMIT)}\n\`\`\``)
-            .setColor(0x57F287)
-        );
-        embeds.push(
-          new EmbedBuilder()
-            .setTitle("✅ 명령어 업데이트 결과 (2/2)")
-            .setDescription(`\`\`\`\n${resultText.slice(EMBED_CHAR_LIMIT, EMBED_CHAR_LIMIT * 2)}\n\`\`\``)
-            .setColor(0x57F287)
-        );
-      } else {
-        embeds.push(
-          new EmbedBuilder()
-            .setTitle("✅ 명령어 업데이트 결과")
-            .setDescription(`\`\`\`\n${resultText}\n\`\`\``)
-            .setColor(0x57F287)
+            .setTitle(`봇 명령어 업데이트 결과${embeds.length ? ` (${embeds.length + 1})` : ""}`)
+            .setDescription("```" + resultText.slice(i, i + EMBED_CHAR_LIMIT) + "```")
+            .setColor(err ? 0xED4245 : 0x57F287)
         );
       }
 
-      await interaction.editReply({ embeds });
+      await interaction.editReply({ embeds }).catch(() => {});
     });
   }
 };
