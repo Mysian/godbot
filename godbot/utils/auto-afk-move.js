@@ -15,11 +15,9 @@ module.exports = function setupAutoAfkMove(client) {
       return !!channel && ALLOWED_CATEGORY_IDS.includes(channel.parentId);
     }
 
-    // 새로 입장/이동
     if (!oldState.channel && newState.channel && !newState.member.user.bot && isAllowed(newState.channel)) {
       watchSolo(newState);
     }
-    // 채널이 바뀌거나 퇴장
     if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
       clearTimers(oldState.id);
       if (newState.channel && !newState.member.user.bot && isAllowed(newState.channel)) {
@@ -28,7 +26,6 @@ module.exports = function setupAutoAfkMove(client) {
     }
   });
 
-  // 유저 활동 감지
   client.on("messageCreate", activityHandler);
   client.on("interactionCreate", activityHandler);
   client.on("messageReactionAdd", (reaction, user) => {
@@ -58,7 +55,7 @@ module.exports = function setupAutoAfkMove(client) {
 
     let nickname = voiceState.member.nickname || voiceState.member.user.username;
 
-    // 110분 뒤 알림 (해당 음성채널의 연결 텍스트채널)
+    // 110분 뒤 경고 메시지 (음성채널ID = 텍스트채널ID)
     const warnTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
@@ -68,8 +65,7 @@ module.exports = function setupAutoAfkMove(client) {
         const now = Date.now();
         if (now - last >= 110 * 60 * 1000) {
           try {
-            // 연결된 텍스트채널 찾기 (원래 코드)
-            const textChannel = findLinkedTextChannel(channel, client);
+            const textChannel = await client.channels.fetch(channel.id).catch(() => null);
             if (textChannel) {
               await textChannel.send(`-# '${nickname}'님, 공용 음성채널에 현재 110분째 아무런 활동 없이 계십니다. 10분 뒤 잠수방으로 자동 이동됩니다.`);
             }
@@ -78,7 +74,7 @@ module.exports = function setupAutoAfkMove(client) {
       }
     }, 110 * 60 * 1000);
 
-    // 120분 뒤 이동 (무조건 AFK 채널로), 이동 알림은 ANNOUNCE_TEXT_CHANNEL_ID 고정
+    // 120분 뒤 이동 + 이동 메시지 (ANNOUNCE_TEXT_CHANNEL_ID 고정)
     const moveTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
@@ -105,15 +101,5 @@ module.exports = function setupAutoAfkMove(client) {
 
     clearTimers(voiceState.id);
     soloTimers.set(voiceState.id, { warn: warnTimer, move: moveTimer });
-  }
-
-  // 연결 텍스트채널 찾기 (카테고리 내 첫번째 텍스트채널)
-  function findLinkedTextChannel(voiceChannel, client) {
-    if (!voiceChannel.parentId) return null;
-    const guild = client.guilds.cache.get(voiceChannel.guild.id);
-    if (!guild) return null;
-    return guild.channels.cache.find(
-      c => c.parentId === voiceChannel.parentId && c.type === 0
-    );
   }
 };
