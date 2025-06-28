@@ -204,35 +204,37 @@ module.exports = {
     new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
   );
+  // ⚡ fetchReply: true로 메시지 받아오기 (ephemeral: false로!)
   const msg = await interaction.reply({
     content: "공지 주기를 선택하세요 (정시 기준, 한국시간):",
     components: [row],
-    ephemeral: false,    // or true로 하고 싶으면 따로 modal/DM 방식 사용 추천
+    ephemeral: false,
     fetchReply: true
   });
 
   const filter = btnInt => btnInt.user.id === interaction.user.id;
+  // collector는 reply 메시지(msg)에서 생성!
   const collector = msg.createMessageComponentCollector({ filter, time: 60_000 });
 
-      collector.on('collect', async btnInt => {
-        let ms = 0;
-        switch(btnInt.customId) {
-          case 'interval_1h': ms = 60*60*1000; break;
-          case 'interval_2h': ms = 2*60*60*1000; break;
-          case 'interval_2h30m': ms = 2.5*60*60*1000; break;
-          case 'interval_3h': ms = 3*60*60*1000; break;
-          case 'interval_6h': ms = 6*60*60*1000; break;
-          case 'interval_12h': ms = 12*60*60*1000; break;
-        }
-        data[guildId].interval = ms;
-        saveData(data);
-        if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
-          startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
-        }
-        await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: true });
-      });
-      return;
+  collector.on('collect', async btnInt => {
+    let ms = 0;
+    switch(btnInt.customId) {
+      case 'interval_1h': ms = 60*60*1000; break;
+      case 'interval_2h': ms = 2*60*60*1000; break;
+      case 'interval_2h30m': ms = 2.5*60*60*1000; break;
+      case 'interval_3h': ms = 3*60*60*1000; break;
+      case 'interval_6h': ms = 6*60*60*1000; break;
+      case 'interval_12h': ms = 12*60*60*1000; break;
     }
+    data[guildId].interval = ms;
+    saveData(data);
+    if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
+      startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
+    }
+    await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: false });
+  });
+  return;
+}
 
     // 공지 글 리스트 (수정/삭제/페이지 이동)
     if (option === 'list_tips') {
