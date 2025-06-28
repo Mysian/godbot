@@ -91,6 +91,25 @@ module.exports = {
       });
     }
 
+    // 모집자 id 저장 (참여의사 태그용)
+    const recruiterId = interaction.user.id;
+
+    // 마감 시간 계산용
+    const startedAt = Date.now();
+    const closeMs = closeHour * 60 * 60 * 1000;
+    const closeAt = startedAt + closeMs;
+
+    // 남은 시간 포맷 함수
+    function getRemainStr(ms) {
+      if (ms <= 0) return "마감됨";
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      if (h === 0 && m === 0) return "마감 임박!";
+      return `${h > 0 ? `${h}시간` : ""}${m > 0 ? ` ${m}분` : ""}`.trim();
+    }
+
+    // 임베드 생성
     const embed = new EmbedBuilder()
       .setTitle("📢 모집 글")
       .setDescription(content)
@@ -99,8 +118,8 @@ module.exports = {
         ...(voiceId
           ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }]
           : []),
-        { name: "모집자", value: `<@${interaction.user.id}>`, inline: true },
-        { name: "마감 시간", value: `${closeHour}시간`, inline: true },
+        { name: "모집자", value: `<@${recruiterId}>`, inline: true },
+        { name: "마감까지", value: getRemainStr(closeAt - Date.now()), inline: true },
       )
       .setColor(0x57c3ff)
       .setTimestamp();
@@ -143,9 +162,35 @@ module.exports = {
     // 모집글 전송
     const msg = await 모집채널.send(msgOptions);
 
+    // 실시간 남은 시간 갱신 타이머
+    let intervalTimer = null;
+    if (voiceId) {
+      intervalTimer = setInterval(async () => {
+        const now = Date.now();
+        const remain = closeAt - now;
+        // 이미 마감됐으면 "마감됨"으로, 아니면 갱신
+        const fields = embed.data.fields.map(f => 
+          f.name === "마감까지" ? { name: "마감까지", value: getRemainStr(remain), inline: true } : f
+        );
+        embed.setFields(fields);
+        try {
+          await msg.edit({ embeds: [embed] });
+        } catch (e) {}
+        if (remain <= 0) {
+          clearInterval(intervalTimer);
+        }
+      }, 60 * 1000); // 1분마다 갱신
+    }
+
     // 버튼 유지 시간 (closeHour시간) 후 비활성화
     if (voiceId) {
       setTimeout(async () => {
+        if (intervalTimer) clearInterval(intervalTimer);
+        // 마지막으로 "마감됨"으로 갱신
+        const fields = embed.data.fields.map(f => 
+          f.name === "마감까지" ? { name: "마감까지", value: "마감됨", inline: true } : f
+        );
+        embed.setFields(fields);
         try {
           const disabledRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -159,16 +204,16 @@ module.exports = {
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(true)
           );
-          await msg.edit({ components: [disabledRow] });
+          await msg.edit({ embeds: [embed], components: [disabledRow] });
         } catch (err) {}
-      }, closeHour * 60 * 60 * 1000);
+      }, closeMs);
     }
 
     // 버튼 처리 핸들러
     if (voiceId) {
       const collector = msg.createMessageComponentCollector({ 
         componentType: ComponentType.Button, 
-        time: closeHour * 60 * 60 * 1000
+        time: closeMs
       });
 
       collector.on('collect', async btnInt => {
@@ -192,12 +237,13 @@ module.exports = {
           }
           if (btnInt.customId.startsWith('joinintent_')) {
             await btnInt.deferReply({ ephemeral: true });
-            // 해당 음성채널의 "텍스트채널"로 참여의사 메시지 전송
-            // (대부분의 경우: 음성채널ID == 텍스트채널ID, 최근 디스코드 정책)
+            // 명령어 유저(모집자)와 참여 의사 밝힌 유저를 동시에 태그해서 알림
             try {
               const channel = await btnInt.guild.channels.fetch(voiceId);
               if (channel && channel.isTextBased()) {
-                await channel.send(`💡 <@${btnInt.user.id}> 님이 참여 의사를 밝혔습니다!`);
+                await channel.send(
+                  `@${(await btnInt.guild.members.fetch(recruiterId)).user.username} 님, <@${btnInt.user.id}> 님께서 참여를 희망하십니다.`
+                );
               }
             } catch {}
             await btnInt.editReply({ content: `참여 의사가 전달되었습니다!` });
@@ -207,8 +253,13 @@ module.exports = {
         }
       });
 
-      // 마감시간 지나면 비활성화
       collector.on('end', async () => {
+        if (intervalTimer) clearInterval(intervalTimer);
+        // 마지막으로 "마감됨"으로 갱신
+        const fields = embed.data.fields.map(f => 
+          f.name === "마감까지" ? { name: "마감까지", value: "마감됨", inline: true } : f
+        );
+        embed.setFields(fields);
         try {
           const disabledRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -222,7 +273,7 @@ module.exports = {
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(true)
           );
-          await msg.edit({ components: [disabledRow] });
+          await msg.edit({ embeds: [embed], components: [disabledRow] });
         } catch (e) {}
       });
     }
