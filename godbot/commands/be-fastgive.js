@@ -79,4 +79,8 @@ function setup(client) {
   client.on('messageCreate', handleMessage);
 }
 
-module.exports = { setup };
+module.exports = {
+  data: null,
+  execute: async () => {},
+  setup,
+};
