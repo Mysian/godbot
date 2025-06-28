@@ -14,7 +14,17 @@ const dataPath = path.join(__dirname, '../data/announcements.json');
 
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
-  return JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+  const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+  // 파일에 150분(2.5시간)이 있으면 자동으로 2시간(120분)으로 변환해서 저장/적용
+  let changed = false;
+  for (const guildId in data) {
+    if (data[guildId].interval === 150 * 60 * 1000) {
+      data[guildId].interval = 2 * 60 * 60 * 1000;
+      changed = true;
+    }
+  }
+  if (changed) fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+  return data;
 }
 function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
@@ -120,7 +130,6 @@ function intervalToText(ms) {
   if (!ms) return '-';
   if (ms % hour === 0) return `${ms/hour}시간`;
   if (ms % min === 0) return `${Math.floor(ms/min)}분`;
-  if (ms === 2.5 * hour) return `2시간 30분`;
   return `${(ms/60000).toFixed(0)}분`;
 }
 
@@ -186,17 +195,15 @@ module.exports = {
       return;
     }
 
-    // 공지 주기 프리셋 선택 (6가지) - collector 완전 고정
+    // 공지 주기 프리셋 (2시간 30분 제거)
     if (option === 'set_interval') {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_2h30m').setLabel('2시간 30분').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
       );
-      // public으로 reply, reply 메시지에서 collector 생성!
       const msg = await interaction.reply({
         content: "공지 주기를 선택하세요 (정시 기준, 한국시간):",
         components: [row],
@@ -212,7 +219,6 @@ module.exports = {
         switch(btnInt.customId) {
           case 'interval_1h': ms = 60*60*1000; break;
           case 'interval_2h': ms = 2*60*60*1000; break;
-          case 'interval_2h30m': ms = 2.5*60*60*1000; break;
           case 'interval_3h': ms = 3*60*60*1000; break;
           case 'interval_6h': ms = 6*60*60*1000; break;
           case 'interval_12h': ms = 12*60*60*1000; break;
@@ -222,7 +228,13 @@ module.exports = {
         if (data[guildId].enabled && data[guildId].channelId && data[guildId].tips.length > 0) {
           startTimer(guildId, data[guildId].channelId, ms, data[guildId].tips);
         }
-        await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: false });
+        try {
+          await btnInt.update({ content: `공지 주기가 ${intervalToText(ms)}로 설정되었습니다.`, components: [], ephemeral: false });
+        } catch (e) {
+          try {
+            await btnInt.reply({ content: "명령어가 만료되었습니다. 다시 /공지하기로 시도해 주세요.", ephemeral: true });
+          } catch {}
+        }
       });
       return;
     }
