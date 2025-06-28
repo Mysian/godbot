@@ -195,20 +195,24 @@ module.exports = {
 
     // 공지 주기 프리셋 선택 (6가지)
     if (option === 'set_interval') {
-      // 시간 프리셋 버튼
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_2h30m').setLabel('2시간 30분').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
-      );
-      await interaction.reply({ content: "공지 주기를 선택하세요 (정시 기준, 한국시간):", components: [row], ephemeral: true });
+  // 시간 프리셋 버튼
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('interval_1h').setLabel('1시간').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('interval_2h').setLabel('2시간').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('interval_2h30m').setLabel('2시간 30분').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('interval_3h').setLabel('3시간').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('interval_6h').setLabel('6시간').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('interval_12h').setLabel('12시간').setStyle(ButtonStyle.Primary),
+  );
+  const msg = await interaction.reply({
+    content: "공지 주기를 선택하세요 (정시 기준, 한국시간):",
+    components: [row],
+    ephemeral: false,    // or true로 하고 싶으면 따로 modal/DM 방식 사용 추천
+    fetchReply: true
+  });
 
-      // 버튼 핸들러
-      const filter = btnInt => btnInt.user.id === interaction.user.id;
-      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60_000 });
+  const filter = btnInt => btnInt.user.id === interaction.user.id;
+  const collector = msg.createMessageComponentCollector({ filter, time: 60_000 });
 
       collector.on('collect', async btnInt => {
         let ms = 0;
