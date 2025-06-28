@@ -1,7 +1,6 @@
 const { 
   SlashCommandBuilder, 
   EmbedBuilder, 
-  PermissionFlagsBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -64,6 +63,14 @@ module.exports = {
         .setName("이미지")
         .setDescription("임베드 하단에 크게 띄울 이미지 URL (jpg/png/gif/webp/svg)")
         .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option
+        .setName("마감시간")
+        .setDescription("버튼이 유지될 시간(단위: 시간, 1~24, 기본 24)")
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(24)
     ),
 
   async execute(interaction) {
@@ -72,6 +79,9 @@ module.exports = {
     const voiceId = interaction.options.getString("음성채널");
     const mentionRole = interaction.options.getRole("mention_role");
     const imageUrl = interaction.options.getString("이미지");
+    let closeHour = interaction.options.getInteger("마감시간") || 24;
+    if (closeHour < 1) closeHour = 1;
+    if (closeHour > 24) closeHour = 24;
 
     // @here, @everyone 방지
     if (mentionRole && (mentionRole.name === "@everyone" || mentionRole.name === "@here")) {
@@ -90,6 +100,7 @@ module.exports = {
           ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }]
           : []),
         { name: "모집자", value: `<@${interaction.user.id}>`, inline: true },
+        { name: "마감 시간", value: `${closeHour}시간`, inline: true },
       )
       .setColor(0x57c3ff)
       .setTimestamp();
@@ -110,15 +121,20 @@ module.exports = {
       });
     }
 
-    // 버튼 생성
+    // 버튼 생성 (음성채널 있을 때만 2개)
     let row = null;
     let msgOptions = { embeds: [embed] };
+
     if (voiceId) {
       row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`joinvoice_${voiceId}_${Date.now()}`)
           .setLabel("음성채널 참여하기")
-          .setStyle(ButtonStyle.Primary)
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`joinintent_${voiceId}_${Date.now()}`)
+          .setLabel("참여 의사 밝히기")
+          .setStyle(ButtonStyle.Success)
       );
       msgOptions.components = [row];
     }
@@ -127,49 +143,87 @@ module.exports = {
     // 모집글 전송
     const msg = await 모집채널.send(msgOptions);
 
-    // 15분 뒤 버튼 비활성화
+    // 버튼 유지 시간 (closeHour시간) 후 비활성화
     if (voiceId) {
       setTimeout(async () => {
         try {
           const disabledRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setCustomId(`disabled`)
+              .setCustomId(`disabled1`)
               .setLabel("음성채널 참여하기")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+            new ButtonBuilder()
+              .setCustomId(`disabled2`)
+              .setLabel("참여 의사 밝히기")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(true)
           );
           await msg.edit({ components: [disabledRow] });
         } catch (err) {}
-      }, 15 * 60 * 1000);
+      }, closeHour * 60 * 60 * 1000);
     }
 
     // 버튼 처리 핸들러
     if (voiceId) {
       const collector = msg.createMessageComponentCollector({ 
         componentType: ComponentType.Button, 
-        time: 15 * 60 * 1000 
+        time: closeHour * 60 * 60 * 1000
       });
 
       collector.on('collect', async btnInt => {
         try {
-          await btnInt.deferReply({ ephemeral: true });
-          const guild = btnInt.guild;
-          const member = await guild.members.fetch(btnInt.user.id);
-          const channel = await guild.channels.fetch(voiceId);
+          if (btnInt.customId.startsWith('joinvoice_')) {
+            await btnInt.deferReply({ ephemeral: true });
+            const guild = btnInt.guild;
+            const member = await guild.members.fetch(btnInt.user.id);
+            const channel = await guild.channels.fetch(voiceId);
 
-          if (!channel || channel.type !== 2) {
-            return await btnInt.editReply({ content: "❌ 해당 음성채널을 찾을 수 없어요." });
+            if (!channel || channel.type !== 2) {
+              return await btnInt.editReply({ content: "❌ 해당 음성채널을 찾을 수 없어요." });
+            }
+            const limit = channel.userLimit;
+            const curr = channel.members.size;
+            if (limit > 0 && curr >= limit) {
+              return await btnInt.editReply({ content: "❌ 이미 해당 음성채널이 가득 찼어요!" });
+            }
+            await member.voice.setChannel(channel).catch(() => null);
+            await btnInt.editReply({ content: `✅ [${channel.name}] 음성채널로 이동 완료!` });
           }
-          const limit = channel.userLimit;
-          const curr = channel.members.size;
-          if (limit > 0 && curr >= limit) {
-            return await btnInt.editReply({ content: "❌ 이미 해당 음성채널이 가득 찼어요!" });
+          if (btnInt.customId.startsWith('joinintent_')) {
+            await btnInt.deferReply({ ephemeral: true });
+            // 해당 음성채널의 "텍스트채널"로 참여의사 메시지 전송
+            // (대부분의 경우: 음성채널ID == 텍스트채널ID, 최근 디스코드 정책)
+            try {
+              const channel = await btnInt.guild.channels.fetch(voiceId);
+              if (channel && channel.isTextBased()) {
+                await channel.send(`💡 <@${btnInt.user.id}> 님이 참여 의사를 밝혔습니다!`);
+              }
+            } catch {}
+            await btnInt.editReply({ content: `참여 의사가 전달되었습니다!` });
           }
-          await member.voice.setChannel(channel).catch(() => null);
-          await btnInt.editReply({ content: `✅ [${channel.name}] 음성채널로 이동 완료!` });
         } catch (e) {
-          await btnInt.editReply({ content: "⚠️ 음성채널 이동에 실패했습니다!" });
+          await btnInt.editReply({ content: "⚠️ 처리에 실패했습니다!" });
         }
+      });
+
+      // 마감시간 지나면 비활성화
+      collector.on('end', async () => {
+        try {
+          const disabledRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`disabled1`)
+              .setLabel("음성채널 참여하기")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+            new ButtonBuilder()
+              .setCustomId(`disabled2`)
+              .setLabel("참여 의사 밝히기")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true)
+          );
+          await msg.edit({ components: [disabledRow] });
+        } catch (e) {}
       });
     }
 
