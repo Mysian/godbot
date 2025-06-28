@@ -242,7 +242,7 @@ module.exports = {
               const channel = await btnInt.guild.channels.fetch(voiceId);
               if (channel && channel.isTextBased()) {
                 await channel.send(
-                  `@${(await btnInt.guild.members.fetch(recruiterId)).user.username} 님, <@${btnInt.user.id}> 님께서 참여를 희망하십니다.`
+                  `<@${recruiterId}> 님, <@${btnInt.user.id}> 님께서 참여를 희망하십니다.`
                 );
               }
             } catch {}
