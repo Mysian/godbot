@@ -1,6 +1,7 @@
 // commands/search-record.js
 const { SlashCommandBuilder } = require("discord.js");
 const axios = require("axios");
+const cheerio = require("cheerio");
 
 const GAME_TYPES = [
   { name: "리그 오브 레전드 (롤)", value: "lol" },
@@ -33,47 +34,52 @@ module.exports = {
     const game = interaction.options.getString("게임");
     let nickname = interaction.options.getString("닉네임").trim();
 
-    // op.gg 규칙: 닉네임#태그 형식 그대로 붙여서 encode해서 검색해야 함
-    // 예: op.gg/summoners/kr/닉네임-태그
-    // 발로란트/옵치2: /profile/닉네임-태그
-
     let url = "";
-    let result = "";
     let opggData = null;
+    let description = "";
+    let embedThumbnail = undefined;
 
     try {
       switch (game) {
         case "lol":
-          // 닉네임#태그 혹은 닉네임만 입력 가능, op.gg에서는 붙여서 -로
           url = `https://www.op.gg/summoners/kr/${encodeURIComponent(nickname.replace("#", "-"))}`;
-          opggData = await fetchLoLTier(nickname.replace("#", "-"));
-          result = opggData ? `**${opggData.tier}** ${opggData.lp || ""}` : "랭크 정보를 불러올 수 없습니다.";
+          opggData = await fetchLoLDetail(nickname.replace("#", "-"));
+          description = `[op.gg에서 상세 정보 확인하기](${url})` +
+            (opggData ? `
+**티어** : ${opggData.tier || "-"}
+**전적** : ${opggData.record || "-"}
+**KDA** : ${opggData.kda || "-"}
+` : "\n전적 정보를 불러올 수 없습니다.");
+          if (opggData && opggData.profileImg) {
+            embedThumbnail = { url: opggData.profileImg };
+          }
           break;
 
         case "tft":
           url = `https://op.gg/ko/tft/summoners/kr/${encodeURIComponent(nickname.replace("#", "-"))}`;
-          result = "";
+          description = `[op.gg에서 상세 정보 확인하기](${url})`;
           break;
 
         case "valorant":
           url = `https://op.gg/ko/valorant/profile/${encodeURIComponent(nickname.replace("#", "-"))}`;
           opggData = await fetchValorantTier(nickname.replace("#", "-"));
-          result = opggData ? `**${opggData.tier}**` : "";
+          description = `[op.gg에서 상세 정보 확인하기](${url})` +
+            (opggData && opggData.tier ? `\n**티어** : ${opggData.tier}` : "");
           break;
 
         case "overwatch2":
           url = `https://op.gg/ko/overwatch/search?playerName=${encodeURIComponent(nickname.replace("#", "-"))}`;
-          result = "";
+          description = `[op.gg에서 상세 정보 확인하기](${url})`;
           break;
 
         case "pubg":
           url = `https://op.gg/ko/pubg/user/${encodeURIComponent(nickname)}`;
-          result = "";
+          description = `[op.gg에서 상세 정보 확인하기](${url})`;
           break;
 
         case "supervive":
           url = `https://supervive.op.gg/ko_KR/players/steam-${encodeURIComponent(nickname)}`;
-          result = "";
+          description = `[op.gg에서 상세 정보 확인하기](${url})`;
           break;
 
         default:
@@ -84,15 +90,10 @@ module.exports = {
         color: 0x5865f2,
         title: `${nickname} 전적검색 (${GAME_TYPES.find(g => g.value === game).name})`,
         url,
-        description: `[op.gg에서 상세 정보 확인하기](${url})` +
-          (opggData ? `
-**티어** : ${opggData.tier || "-"}
-**전적** : ${opggData.record || "-"}
-**KDA** : ${opggData.kda || "-"}
-` : "\n전적 정보를 불러올 수 없습니다."),
+        description: description,
         footer: { text: "전적 정보는 op.gg 정책에 따라 일부 제한될 수 있음" },
-        thumbnail: opggData && opggData.profileImg ? { url: opggData.profileImg } : undefined,
       };
+      if (embedThumbnail) embed.thumbnail = embedThumbnail;
 
       await interaction.editReply({ embeds: [embed] });
 
@@ -103,24 +104,34 @@ module.exports = {
   }
 };
 
-// cheerio로 html 파싱
-const cheerio = require("cheerio");
 async function fetchLoLDetail(nicknameDash) {
   try {
-    const res = await axios.get(`https://www.op.gg/summoners/kr/${encodeURIComponent(nicknameDash)}`);
+    const res = await axios.get(`https://www.op.gg/summoners/kr/${encodeURIComponent(nicknameDash)}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+      }
+    });
     const html = res.data;
+
+    // (중요!) 받아온 html 앞부분 콘솔 출력 (터미널 확인용)
+    console.log("---- op.gg 응답 html ----");
+    console.log(html.slice(0, 1000));
+
+    // cheerio로 전체 태그+클래스+텍스트 한 번 쭉 출력 (선택자 체크용)
     const $ = cheerio.load(html);
+    $('body *').each((i, el) => {
+      const className = $(el).attr('class');
+      const text = $(el).text();
+      if (className && text) {
+        console.log(`class: ${className} | text: ${text.trim().slice(0,30)}`);
+      }
+    });
 
-    // 프로필 사진
+    // 실제 데이터 파싱
     const profileImg = $("img.rounded\\[20px\\]").attr("src") || null;
-
-    // 전적
     const record = $("div.leading-\\[16px\\]").first().text().trim();
-
-    // 킬뎃율
     const kda = $("strong.text-\\[15px\\].text-gray-900.md\\:text-\\[20px\\]").first().text().trim();
-
-    // 티어
     const tier = $("span.text-xs.lowercase.first-letter\\:uppercase").first().text().trim();
 
     return {
@@ -129,12 +140,13 @@ async function fetchLoLDetail(nicknameDash) {
       kda,
       tier,
     };
-  } catch {
+  } catch (e) {
+    console.error("fetchLoLDetail 에러:", e);
     return null;
   }
 }
 
-// 발로란트 티어 파싱 (링크만 제공, API 없음)
+// 발로란트 티어 파싱 (현재 구현 X, 나중에 직접 구조 제공해주면 구현 가능)
 async function fetchValorantTier(nicknameDash) {
   return null;
 }
