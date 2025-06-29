@@ -22,6 +22,66 @@ const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/
 // 키워드 없는 전체검색 인식 단어
 const ALL_KEYWORDS = ["전체", "all", "없음", "그냥", "전부"];
 
+function hasKorean(text) {
+  return /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(text);
+}
+
+function formatKoreanDate(str) {
+  if (!str) return "";
+  if (/[년월일]/.test(str)) return str;
+  const months = {
+    Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+    Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12"
+  };
+  let m = str.match(/^(\d{1,2}) (\w{3}), (\d{4})$/);
+  if (m) {
+    const [_, d, mon, y] = m;
+    return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
+  }
+  m = str.match(/^(\w{3}) (\d{1,2}), (\d{4})$/);
+  if (m) {
+    const [_, mon, d, y] = m;
+    return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
+  }
+  m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const [_, y, mon, d] = m;
+    return `${y}년 ${mon}월 ${d}일`;
+  }
+  return str;
+}
+
+// ★ 리뷰 영어→한국어 변환, 인원/비율 한글 표기
+function parseSteamReview(reviewHtml) {
+  if (!reviewHtml || typeof reviewHtml !== "string" || !reviewHtml.trim()) return { text: "평가 없음", count: null };
+  const map = {
+    "Overwhelmingly Positive": "압도적으로 긍정적",
+    "Very Positive": "매우 긍정적",
+    "Mostly Positive": "대체로 긍정적",
+    "Positive": "긍정적",
+    "Mixed": "복합적",
+    "Mostly Negative": "대체로 부정적",
+    "Negative": "부정적",
+    "Overwhelmingly Negative": "압도적으로 부정적",
+    "No user reviews": "평가 없음"
+  };
+  let matched = Object.entries(map).find(([eng]) => reviewHtml.includes(eng));
+  let kor = matched ? matched[1] : null;
+  let percent = null, count = null;
+  let m = reviewHtml.match(/([\d.]+)% of the ([\d,]+) user reviews/);
+  if (m) {
+    percent = m[1];
+    count = m[2].replace(/,/g, "");
+  }
+  let resultText = kor ? kor : "평가 없음";
+  if (kor && percent && count) {
+    resultText = `${kor} (${count}명, ${percent}% 긍정)`;
+  } else if (kor && count) {
+    resultText = `${kor} (${count}명)`;
+  }
+  return { text: resultText, count: count };
+}
+
 async function googleTranslateKorToEn(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
   try {
@@ -86,35 +146,6 @@ function getRandomItems(arr, n) {
     result.push(copy.splice(idx, 1)[0]);
   }
   return result;
-}
-
-function hasKorean(text) {
-  return /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(text);
-}
-
-function formatKoreanDate(str) {
-  if (!str) return "";
-  if (/[년월일]/.test(str)) return str;
-  const months = {
-    Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
-    Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12"
-  };
-  let m = str.match(/^(\d{1,2}) (\w{3}), (\d{4})$/);
-  if (m) {
-    const [_, d, mon, y] = m;
-    return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
-  }
-  m = str.match(/^(\w{3}) (\d{1,2}), (\d{4})$/);
-  if (m) {
-    const [_, mon, d, y] = m;
-    return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
-  }
-  m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) {
-    const [_, y, mon, d] = m;
-    return `${y}년 ${mon}월 ${d}일`;
-  }
-  return str;
 }
 
 module.exports = {
@@ -219,11 +250,12 @@ module.exports = {
         .setColor(0x1b2838)
         .setImage(EMBED_IMG);
       picks.forEach((game, idx) => {
+        const parsedReview = parseSteamReview(game.review);
         embed.addFields({
           name: `${idx+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
-            (game.review ? `⭐ ${game.review.split('<br>').join(' / ')}\n` : "") +
+            `⭐ ${parsedReview.text}\n` +
             (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
             (game.price ? `💰 가격: ${game.price}\n` : ""),
           inline: false,
@@ -263,11 +295,12 @@ module.exports = {
         .setImage(EMBED_IMG);
 
       results.forEach((game, idx) => {
+        const parsedReview = parseSteamReview(game.review);
         embed.addFields({
           name: `${idx+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
-            (game.review ? `⭐ ${game.review.split('<br>').join(' / ')}\n` : "") +
+            `⭐ ${parsedReview.text}\n` +
             (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
             (game.price ? `💰 가격: ${game.price}\n` : ""),
           inline: false,
