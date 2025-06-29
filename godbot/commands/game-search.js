@@ -92,23 +92,38 @@ async function getSupportInfo(appid) {
   try {
     const html = await fetch(`https://store.steampowered.com/app/${appid}/?l=koreana`, { headers: { "user-agent": "discord-bot" } }).then(r => r.text());
     const $ = cheerio.load(html);
-    // 한국어 지원
+
+    // --- 한국어 지원 여부 ---
     let kor = false;
     $("#languageTable tr").each((i, el) => {
-      const tds = $(el).find("td");
-      if (tds.eq(0).text().includes("한국어")) kor = true;
+      const firstTd = $(el).find("td").eq(0).text().trim();
+      if (!firstTd.includes("한국어")) return;
+      // '지원하지 않음'이 아닌 칸이 있는지 체크
+      let hasSupport = false;
+      $(el).find("td").each((idx, td) => {
+        if (idx === 0) return;
+        const txt = $(td).text().trim();
+        if (txt && !txt.includes("지원하지 않음")) hasSupport = true;
+      });
+      if (hasSupport) kor = true;
     });
-    // 멀티/싱글 체크
-    let support = "싱글";
-    const tags = $(".game_area_details_specs").text();
-    if (tags.includes("멀티플레이어") && tags.includes("싱글플레이어")) support = "싱글+멀티";
-    else if (tags.includes("멀티플레이어")) support = "멀티";
-    else if (tags.includes("싱글플레이어")) support = "싱글";
+
+    // --- 멀티/싱글 지원 여부 ---
+    let support = "미확인";
+    const labels = [];
+    $(".label").each((i, el) => labels.push($(el).text().trim()));
+    const hasSingle = labels.some(l => l.includes("싱글 플레이어"));
+    const hasMulti = labels.some(l => l.includes("멀티플레이어"));
+    if (hasSingle && hasMulti) support = "싱글+멀티";
+    else if (hasMulti) support = "멀티";
+    else if (hasSingle) support = "싱글";
+
     return { kor, support };
   } catch {
     return { kor: false, support: "미확인" };
   }
 }
+
 
 // 구글 번역
 async function googleTranslateKorToEn(text) {
