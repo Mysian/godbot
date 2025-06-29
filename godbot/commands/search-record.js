@@ -113,26 +113,19 @@ async function fetchLoLDetail(nicknameDash) {
       }
     });
     const html = res.data;
-
-    // (중요!) 받아온 html 앞부분 콘솔 출력 (터미널 확인용)
-    console.log("---- op.gg 응답 html ----");
-    console.log(html.slice(0, 1000));
-
-    // cheerio로 전체 태그+클래스+텍스트 한 번 쭉 출력 (선택자 체크용)
     const $ = cheerio.load(html);
-    $('body *').each((i, el) => {
-      const className = $(el).attr('class');
-      const text = $(el).text();
-      if (className && text) {
-        console.log(`class: ${className} | text: ${text.trim().slice(0,30)}`);
-      }
-    });
 
-    // 실제 데이터 파싱
-    const profileImg = $("img.rounded\\[20px\\]").attr("src") || null;
-    const record = $("div.leading-\\[16px\\]").first().text().trim();
-    const kda = $("strong.text-\\[15px\\].text-gray-900.md\\:text-\\[20px\\]").first().text().trim();
-    const tier = $("span.text-xs.lowercase.first-letter\\:uppercase").first().text().trim();
+    // 프로필 이미지
+    const profileImg = $('img[class*="rounded-\\[20px\\]"]').attr("src") || null;
+
+    // 전적
+    const record = $("div.leading-\\[16px\\]").first().text().trim() || null;
+
+    // KDA
+    const kda = $("strong.text-\\[15px\\].text-gray-900.md\\:text-\\[20px\\]").first().text().trim() || null;
+
+    // 티어
+    const tier = $("span.text-xs.lowercase.first-letter\\:uppercase").first().text().trim() || null;
 
     return {
       profileImg,
