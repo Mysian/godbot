@@ -5,12 +5,17 @@ const cheerio = require("cheerio");
 
 // 장르 태그
 const GENRE_TAG_MAP = {
+  "전체": null, // 실제 태그 없음
   "1인칭 슈팅": 1663, "3인칭 슈팅": 3814, "로그라이크": 1716, "RPG": 122, "JRPG": 4434,
   "어드벤처": 21, "액션": 19, "공포": 1667, "턴제": 1677, "전략": 9, "시뮬레이션": 599,
   "샌드박스": 3810, "아케이드": 1773, "격투": 1743, "퍼즐": 1664, "음악": 1621,
   "귀여운": 4726, "애니메": 4085, "레이싱": 699, "배틀로얄": 176981, "싱글플레이": 4182
 };
-const GENRE_CHOICES = Object.keys(GENRE_TAG_MAP).map(name => ({ name, value: name }));
+// '전체'를 제일 위에
+const GENRE_CHOICES = [
+  { name: "전체", value: "전체" },
+  ...Object.keys(GENRE_TAG_MAP).filter(x => x !== "전체").map(name => ({ name, value: name }))
+];
 
 const BASE_URL = "https://store.steampowered.com/search/?sort_by=Released_DESC&untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
 const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
@@ -116,7 +121,7 @@ module.exports = {
     .setDescription("Steam 스토어에서 장르+키워드로 게임을 검색합니다.")
     .addStringOption(opt =>
       opt.setName("장르1")
-        .setDescription("필수 장르 (예: 액션, 공포, RPG 등)")
+        .setDescription("필수 장르 (예: 전체, 액션, 공포, RPG 등)")
         .setRequired(true)
         .addChoices(...GENRE_CHOICES)
     )
@@ -152,7 +157,11 @@ module.exports = {
       interaction.options.getString("추가장르3"),
     ].filter(Boolean);
 
-    const tagIds = [...new Set(genres.map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
+    // "전체"만 단독 선택시 태그 없음, 추가장르 무시
+    let tagIds = [];
+    if (!(genres.length === 1 && genres[0] === "전체")) {
+      tagIds = [...new Set(genres.filter(g => g !== "전체").map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
+    }
 
     const keywordRaw = interaction.options.getString("키워드")?.trim() || "";
     await interaction.deferReply({ ephemeral: true });
