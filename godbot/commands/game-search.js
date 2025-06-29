@@ -3,10 +3,18 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
 
+// 장르 태그
+const GENRE_TAG_MAP = {
+  "1인칭 슈팅": 1663, "3인칭 슈팅": 3814, "로그라이크": 1716, "RPG": 122, "JRPG": 4434,
+  "어드벤처": 21, "액션": 19, "공포": 1667, "턴제": 1677, "전략": 9, "시뮬레이션": 599,
+  "샌드박스": 3810, "아케이드": 1773, "격투": 1743, "퍼즐": 1664, "음악": 1621,
+  "귀여운": 4726, "애니메": 4085, "레이싱": 699, "배틀로얄": 176981, "싱글플레이": 4182
+};
+const GENRE_CHOICES = Object.keys(GENRE_TAG_MAP).map(name => ({ name, value: name }));
+
 const BASE_URL = "https://store.steampowered.com/search/?sort_by=Released_DESC&untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
 const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
 
-// 구글 번역
 async function googleTranslateKorToEn(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
   try {
@@ -18,12 +26,10 @@ async function googleTranslateKorToEn(text) {
   }
 }
 
-// 게임 크롤러 (검색어: term 인코딩)
-async function fetchSteamGamesByTerm(term) {
+async function fetchSteamGamesByTerm(term, tagIds) {
   let url = BASE_URL;
-  if (term && term.trim() !== "") {
-    url += "&term=" + encodeURIComponent(term.trim());
-  }
+  if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
+  if (term && term.trim() !== "") url += "&term=" + encodeURIComponent(term.trim());
   const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r=>r.text());
   const $ = cheerio.load(html);
   const gameList = [];
@@ -43,9 +49,9 @@ async function fetchSteamGamesByTerm(term) {
   return gameList;
 }
 
-// 추천게임
-async function fetchSteamTopRatedGames() {
-  const url = BASE_URL + "&filter=topsellers";
+async function fetchSteamTopRatedGames(tagIds) {
+  let url = BASE_URL + "&filter=topsellers";
+  if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
   const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r=>r.text());
   const $ = cheerio.load(html);
   const games = [];
@@ -75,7 +81,6 @@ function getRandomItems(arr, n) {
   return result;
 }
 
-// 한글 여부 판별
 function hasKorean(text) {
   return /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(text);
 }
@@ -83,18 +88,51 @@ function hasKorean(text) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임검색")
-    .setDescription("Steam 스토어에서 키워드로 게임을 검색합니다.")
+    .setDescription("Steam 스토어에서 장르+키워드로 게임을 검색합니다.")
+    .addStringOption(opt =>
+      opt.setName("장르1")
+        .setDescription("필수 장르 (예: 액션, 공포, RPG 등)")
+        .setRequired(true)
+        .addChoices(...GENRE_CHOICES)
+    )
     .addStringOption(opt =>
       opt.setName("키워드")
-        .setDescription("검색할 키워드(띄어쓰기로 여러 개 가능, 예: 공포 좀비 슈팅)")
+        .setDescription("검색할 키워드 (선택, 예: 좀비, 판타지 등)")
         .setRequired(false)
+    )
+    .addStringOption(opt =>
+      opt.setName("추가장르1")
+        .setDescription("추가 장르1 (선택)")
+        .setRequired(false)
+        .addChoices(...GENRE_CHOICES)
+    )
+    .addStringOption(opt =>
+      opt.setName("추가장르2")
+        .setDescription("추가 장르2 (선택)")
+        .setRequired(false)
+        .addChoices(...GENRE_CHOICES)
+    )
+    .addStringOption(opt =>
+      opt.setName("추가장르3")
+        .setDescription("추가 장르3 (선택)")
+        .setRequired(false)
+        .addChoices(...GENRE_CHOICES)
     ),
   async execute(interaction) {
+    // 장르 태그 모으기(중복제거)
+    const genres = [
+      interaction.options.getString("장르1"),
+      interaction.options.getString("추가장르1"),
+      interaction.options.getString("추가장르2"),
+      interaction.options.getString("추가장르3"),
+    ].filter(Boolean);
+
+    const tagIds = [...new Set(genres.map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
+
     const keywordRaw = interaction.options.getString("키워드")?.trim() || "";
     await interaction.deferReply({ ephemeral: true });
 
     let searchTerms = [];
-    // 한글이면 번역 추가
     if (keywordRaw && hasKorean(keywordRaw)) {
       const translated = await googleTranslateKorToEn(keywordRaw);
       searchTerms = [keywordRaw];
@@ -114,7 +152,7 @@ module.exports = {
     let seen = new Set();
     if (searchTerms.length > 0) {
       for (const term of searchTerms) {
-        const list = await fetchSteamGamesByTerm(term);
+        const list = await fetchSteamGamesByTerm(term, tagIds);
         for (const g of list) {
           if (!seen.has(g.id)) {
             mergedList.push(g);
@@ -124,13 +162,12 @@ module.exports = {
         if (mergedList.length >= 50) break;
       }
     } else {
-      // 키워드 없으면 최신 전체
-      mergedList = await fetchSteamGamesByTerm("");
+      mergedList = await fetchSteamGamesByTerm("", tagIds);
     }
 
     if (!mergedList.length) {
-      // 결과 없으면 추천 5개
-      const topGames = await fetchSteamTopRatedGames();
+      // 결과 없으면 추천 5개 (장르 반영)
+      const topGames = await fetchSteamTopRatedGames(tagIds);
       const picks = getRandomItems(topGames, 5);
       const embed = new EmbedBuilder()
         .setTitle("이런! 검색 결과가 없습니다.\n대신 이런 게임은 어떠신가요?")
@@ -173,9 +210,10 @@ module.exports = {
         .setDisabled(currPage === totalPages-1)
     );
 
-    const createEmbed = (results, page, totalPages, keywords) => {
+    const createEmbed = (results, page, totalPages, genres, keywords) => {
+      const genreText = genres && genres.length ? `[${genres.join(", ")}]` : '';
       const embed = new EmbedBuilder()
-        .setTitle(`🔍 Steam 게임 검색: ${keywords ? keywords : '최신 게임'}`)
+        .setTitle(`🔍 Steam 게임 검색: ${genreText} ${keywords ? keywords : ''}`.trim())
         .setColor(0x1b2838)
         .setFooter({ text: `페이지 ${page+1} / ${totalPages} (버튼 유효시간: 5분)` })
         .setImage(EMBED_IMG);
@@ -195,7 +233,7 @@ module.exports = {
     };
 
     let msg = await interaction.editReply({
-      embeds: [createEmbed(pages[currPage], currPage, totalPages, keywordRaw)],
+      embeds: [createEmbed(pages[currPage], currPage, totalPages, genres, keywordRaw)],
       components: [getActionRow(currPage)],
       ephemeral: true
     });
@@ -204,13 +242,13 @@ module.exports = {
       i.user.id === interaction.user.id &&
       ["prevPage", "nextPage"].includes(i.customId);
 
-    const collector = msg.createMessageComponentCollector({ filter, time: 300_000 }); // 5분
+    const collector = msg.createMessageComponentCollector({ filter, time: 300_000 });
 
     collector.on("collect", async btn => {
       if (btn.customId === "prevPage" && currPage > 0) currPage--;
       else if (btn.customId === "nextPage" && currPage < totalPages-1) currPage++;
       await btn.update({
-        embeds: [createEmbed(pages[currPage], currPage, totalPages, keywordRaw)],
+        embeds: [createEmbed(pages[currPage], currPage, totalPages, genres, keywordRaw)],
         components: [getActionRow(currPage)],
         ephemeral: true
       });
