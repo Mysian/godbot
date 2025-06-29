@@ -34,8 +34,8 @@ module.exports = {
     const game = interaction.options.getString("게임");
     let nickname = interaction.options.getString("닉네임").trim();
 
-    // 롤/롤체는 # 없으면 자동으로 #KR1 붙임
-    if ((game === "lol" || game === "tft") && !nickname.includes("#")) {
+    // 롤/롤체/발로란트는 # 없으면 자동으로 #KR1 붙임, 오버워치는 # 유지
+    if ((game === "lol" || game === "tft" || game === "valorant") && !nickname.includes("#")) {
       nickname = `${nickname}#KR1`;
     }
 
@@ -92,8 +92,20 @@ module.exports = {
           break;
 
         case "overwatch2":
-          url = `https://op.gg/ko/overwatch/search?playerName=${encodeURIComponent(nickname.replace("#", "-"))}`;
-          description = `[op.gg에서 상세 정보 확인하기](${url})`;
+          // 오버워치는 #을 -로 바꾸지 않음, 그대로!
+          url = `https://op.gg/ko/overwatch/search?playerName=${encodeURIComponent(nickname)}`;
+          opggData = await fetchOverwatchDetail(nickname);
+          description = `[op.gg에서 상세 정보 확인하기](${url})` +
+            (opggData ? `
+**경쟁전 전체 승률** : ${opggData.winrate || "-"}
+**경쟁전 전체 승패** : ${opggData.totalWinlose || "-"}
+**탱커** : ${opggData.tankTier || "-"} / ${opggData.tankKD || "-"}
+**딜러** : ${opggData.damageTier || "-"} / ${opggData.damageKD || "-"}
+**힐러** : ${opggData.supportTier || "-"} / ${opggData.supportKD || "-"}
+` : "\n전적 정보를 불러올 수 없습니다.");
+          if (opggData && opggData.profileImg) {
+            embedThumbnail = { url: opggData.profileImg };
+          }
           break;
 
         case "pubg":
@@ -240,7 +252,7 @@ async function fetchValorantDetail(nicknameDash) {
     // 랭크: <div class="text-[14px] font-bold md:text-[20px]">언랭크</div>
     const rank = $("div.text-\\[14px\\].font-bold.md\\:text-\\[20px\\]").first().text().replace(/\s+/g, " ").trim() || null;
 
-    // 승/무/패: <span>0W 0D 0L</span>
+    // 승/무/패: <span>0W 0D 0L</span> 또는 <span>0W 0L</span>
     let result = null;
     $("span").each((_, el) => {
       const txt = $(el).text().replace(/\s+/g, " ").trim();
@@ -266,6 +278,54 @@ async function fetchValorantDetail(nicknameDash) {
     };
   } catch (e) {
     console.error("fetchValorantDetail 에러:", e);
+    return null;
+  }
+}
+
+async function fetchOverwatchDetail(nickname) {
+  try {
+    const res = await axios.get(`https://op.gg/ko/overwatch/search?playerName=${encodeURIComponent(nickname)}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+      }
+    });
+    const html = res.data;
+    const $ = cheerio.load(html);
+
+    // 프로필 이미지
+    const profileImg = $('img[onerror*="unlocks"]').attr("src") || null;
+
+    // 경쟁전 전체 승률: <span>54%</span> (가장 첫 번째 %)
+    let winrate = null;
+    $("span").each((_, el) => {
+      const txt = $(el).text().replace(/\s+/g, "");
+      if (/^\d+%$/.test(txt)) {
+        winrate = txt;
+        return false; // break
+      }
+    });
+
+    // 전체 승패: <span class="role-tier__winlose">25승 / 14패</span>
+    const totalWinlose = $("span.role-tier__winlose").first().text().replace(/\s+/g, " ").replace("/", "/").trim() || null;
+
+    // 티어/킬뎃
+    const roleTexts = $("span.role-tier__text.text-navy").toArray().map(el => $(el).text().replace(/\s+/g, " ").trim());
+    const roleKDs = $("b").toArray().map(el => $(el).text().replace(/\s+/g, " ").trim());
+
+    return {
+      profileImg,
+      winrate,
+      totalWinlose,
+      tankTier: roleTexts[0] || null,
+      tankKD: roleKDs[0] || null,
+      damageTier: roleTexts[1] || null,
+      damageKD: roleKDs[1] || null,
+      supportTier: roleTexts[2] || null,
+      supportKD: roleKDs[2] || null,
+    };
+  } catch (e) {
+    console.error("fetchOverwatchDetail 에러:", e);
     return null;
   }
 }
