@@ -34,6 +34,11 @@ module.exports = {
     const game = interaction.options.getString("게임");
     let nickname = interaction.options.getString("닉네임").trim();
 
+    // 롤/롤체는 # 없으면 자동으로 #KR1 붙임
+    if ((game === "lol" || game === "tft") && !nickname.includes("#")) {
+      nickname = `${nickname}#KR1`;
+    }
+
     let url = "";
     let opggData = null;
     let description = "";
@@ -129,15 +134,11 @@ async function fetchLoLDetail(nicknameDash) {
     const winlose = $("span.leading-\\[26px\\]").first().text().trim() || null;
 
     // 티어 그래프(큰 이미지)
-    // 일반적으로 op.gg는 svg 그래프 바로 위/아래 img 태그에 src가 걸려있음 (아니면 아예 이미지 제공 안함)
-    // 일단 대표적으로 svg 바로 다음 img, svg 바로 앞 img를 찾음
     let tierGraph = null;
     const svgParent = $('svg.recharts-surface').parent();
     if (svgParent.length > 0) {
-      // svg 태그의 부모 아래에 img가 있으면 그걸 사용
       tierGraph = svgParent.find('img').attr('src') || null;
     }
-    // 그래도 못찾으면 전체에서 너비 1000 이상 img 아무거나
     if (!tierGraph) {
       $('img').each((_, el) => {
         const src = $(el).attr('src');
@@ -146,7 +147,6 @@ async function fetchLoLDetail(nicknameDash) {
         }
       });
     }
-    // svg를 이미지로 변환해야 하는 경우는 서버 크롤링/이미지 생성 기능 필요하므로 패스
 
     return {
       profileImg,
