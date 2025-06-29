@@ -3,7 +3,6 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
 
-// 장르 태그
 const GENRE_TAG_MAP = {
   "전체": null,
   "1인칭 슈팅": 1663, "3인칭 슈팅": 3814, "로그라이크": 1716, "RPG": 122, "JRPG": 4434,
@@ -16,10 +15,16 @@ const GENRE_CHOICES = [
   ...Object.keys(GENRE_TAG_MAP).filter(x => x !== "전체").map(name => ({ name, value: name }))
 ];
 
-const BASE_URL = "https://store.steampowered.com/search/?sort_by=Released_DESC&untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
-const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
+const SORT_CHOICES = [
+  { name: "최신순", value: "latest" },
+  { name: "인기순", value: "popular" },
+  { name: "무작위", value: "random" },
+  { name: "과거순", value: "oldest" },
+  { name: "부정적", value: "negative" },
+];
 
-// 키워드 없는 전체검색 인식 단어
+const BASE_URL = "https://store.steampowered.com/search/?untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
+const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
 const ALL_KEYWORDS = ["전체", "all", "없음", "그냥", "전부"];
 
 function hasKorean(text) {
@@ -51,37 +56,61 @@ function formatKoreanDate(str) {
   return str;
 }
 
-// ★ 리뷰 영어→한국어 변환, 인원/비율 한글 표기
 function parseSteamReview(reviewHtml) {
-  if (!reviewHtml || typeof reviewHtml !== "string" || !reviewHtml.trim()) return { text: "평가 없음", count: null };
+  if (!reviewHtml || typeof reviewHtml !== "string" || !reviewHtml.trim()) return { text: "평가 없음", count: null, percent: null, score: 0 };
   const map = {
-    "Overwhelmingly Positive": "압도적으로 긍정적",
-    "Very Positive": "매우 긍정적",
-    "Mostly Positive": "대체로 긍정적",
-    "Positive": "긍정적",
-    "Mixed": "복합적",
-    "Mostly Negative": "대체로 부정적",
-    "Negative": "부정적",
-    "Overwhelmingly Negative": "압도적으로 부정적",
-    "No user reviews": "평가 없음"
+    "Overwhelmingly Positive": {kor:"압도적으로 긍정적", score: 6},
+    "Very Positive": {kor:"매우 긍정적", score: 5},
+    "Mostly Positive": {kor:"대체로 긍정적", score: 4},
+    "Positive": {kor:"긍정적", score: 3},
+    "Mixed": {kor:"복합적", score: 0},
+    "Mostly Negative": {kor:"대체로 부정적", score: -2},
+    "Negative": {kor:"부정적", score: -3},
+    "Overwhelmingly Negative": {kor:"압도적으로 부정적", score: -4},
+    "No user reviews": {kor:"평가 없음", score: 0}
   };
   let matched = Object.entries(map).find(([eng]) => reviewHtml.includes(eng));
-  let kor = matched ? matched[1] : null;
+  let kor = matched ? matched[1].kor : "평가 없음";
+  let score = matched ? matched[1].score : 0;
   let percent = null, count = null;
   let m = reviewHtml.match(/([\d.]+)% of the ([\d,]+) user reviews/);
   if (m) {
     percent = m[1];
     count = m[2].replace(/,/g, "");
   }
-  let resultText = kor ? kor : "평가 없음";
+  let resultText = kor;
   if (kor && percent && count) {
     resultText = `${kor} (${count}명, ${percent}% 긍정)`;
   } else if (kor && count) {
     resultText = `${kor} (${count}명)`;
   }
-  return { text: resultText, count: count };
+  return { text: resultText, count, percent, score };
 }
 
+// 상세페이지에서 한국어/멀티 지원 스크래핑
+async function getSupportInfo(appid) {
+  try {
+    const html = await fetch(`https://store.steampowered.com/app/${appid}/?l=koreana`, { headers: { "user-agent": "discord-bot" } }).then(r => r.text());
+    const $ = cheerio.load(html);
+    // 한국어 지원
+    let kor = false;
+    $("#languageTable tr").each((i, el) => {
+      const tds = $(el).find("td");
+      if (tds.eq(0).text().includes("한국어")) kor = true;
+    });
+    // 멀티/싱글 체크
+    let support = "싱글";
+    const tags = $(".game_area_details_specs").text();
+    if (tags.includes("멀티플레이어") && tags.includes("싱글플레이어")) support = "싱글+멀티";
+    else if (tags.includes("멀티플레이어")) support = "멀티";
+    else if (tags.includes("싱글플레이어")) support = "싱글";
+    return { kor, support };
+  } catch {
+    return { kor: false, support: "미확인" };
+  }
+}
+
+// 구글 번역
 async function googleTranslateKorToEn(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
   try {
@@ -93,11 +122,17 @@ async function googleTranslateKorToEn(text) {
   }
 }
 
-async function fetchSteamGamesByTerm(term, tagIds) {
+async function fetchSteamGamesByTerm(term, tagIds, sort) {
   let url = BASE_URL;
+  // 정렬 방식
+  if (sort === "latest") url += "&sort_by=Released_DESC";
+  else if (sort === "popular") url += "&filter=topsellers";
+  else if (sort === "oldest") url += "&sort_by=Released_ASC";
+  else url += "&sort_by=Released_DESC"; // 기본 최신순
+
   if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
   if (term && term.trim() !== "") url += "&term=" + encodeURIComponent(term.trim());
-  const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r=>r.text());
+  const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r => r.text());
   const $ = cheerio.load(html);
   const gameList = [];
   $('.search_result_row').each((i, el) => {
@@ -116,28 +151,6 @@ async function fetchSteamGamesByTerm(term, tagIds) {
   return gameList;
 }
 
-async function fetchSteamTopRatedGames(tagIds) {
-  let url = BASE_URL + "&filter=topsellers";
-  if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
-  const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r=>r.text());
-  const $ = cheerio.load(html);
-  const games = [];
-  $('.search_result_row').each((i, el) => {
-    if (games.length >= 50) return false;
-    const $el = $(el);
-    const appid = $el.attr('data-ds-appid');
-    const name = $el.find('.title').text().trim();
-    const link = $el.attr('href');
-    const release = $el.find('.search_released').text().trim();
-    const price = $el.find('.search_price, .discount_final_price').first().text().trim();
-    const review = $el.find('.search_reviewscore span').attr('data-tooltip-html') || "";
-    if (appid && name) {
-      games.push({ id: appid, name, link, release, price, review });
-    }
-  });
-  return games;
-}
-
 function getRandomItems(arr, n) {
   const copy = [...arr];
   const result = [];
@@ -146,6 +159,19 @@ function getRandomItems(arr, n) {
     result.push(copy.splice(idx, 1)[0]);
   }
   return result;
+}
+
+// 정렬 유틸(부정적, 무작위)
+function sortGames(list, mode) {
+  if (mode === "random") return getRandomItems(list, list.length);
+  if (mode === "negative") {
+    return [...list].sort((a, b) => {
+      const sA = parseSteamReview(a.review).score;
+      const sB = parseSteamReview(b.review).score;
+      return sA - sB; // 오름차순(부정적 우선)
+    });
+  }
+  return list;
 }
 
 module.exports = {
@@ -162,6 +188,12 @@ module.exports = {
       opt.setName("키워드")
         .setDescription("검색할 키워드 (전체 검색을 희망하는 경우 '없음' 또는 '전체' 입력)")
         .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName("정렬")
+        .setDescription("정렬 방식 (최신순/인기순/무작위/과거순/부정적)")
+        .setRequired(true)
+        .addChoices(...SORT_CHOICES)
     )
     .addStringOption(opt =>
       opt.setName("추가장르1")
@@ -189,15 +221,14 @@ module.exports = {
       interaction.options.getString("추가장르3"),
     ].filter(Boolean);
 
-    // "전체"만 단독 선택시 태그 없음, 추가장르는 무시
     let tagIds = [];
     if (!(genres.length === 1 && genres[0] === "전체")) {
       tagIds = [...new Set(genres.filter(g => g !== "전체").map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
     }
 
     let keywordRaw = interaction.options.getString("키워드")?.trim() || "";
+    let sortMode = interaction.options.getString("정렬") || "latest";
 
-    // ★ 전체/ALL/없음/그냥/전부 중 하나만 입력시 term 없이 전체 검색
     let isAllKeyword = false;
     if (
       ALL_KEYWORDS.includes(keywordRaw.toLowerCase()) &&
@@ -228,10 +259,10 @@ module.exports = {
     let mergedList = [];
     let seen = new Set();
     if (isAllKeyword || searchTerms.length === 0) {
-      mergedList = await fetchSteamGamesByTerm("", tagIds);
+      mergedList = await fetchSteamGamesByTerm("", tagIds, sortMode);
     } else {
       for (const term of searchTerms) {
-        const list = await fetchSteamGamesByTerm(term, tagIds);
+        const list = await fetchSteamGamesByTerm(term, tagIds, sortMode);
         for (const g of list) {
           if (!seen.has(g.id)) {
             mergedList.push(g);
@@ -242,36 +273,43 @@ module.exports = {
       }
     }
 
+    // 정렬 추가(부정적, 무작위)
+    mergedList = sortGames(mergedList, sortMode);
+
     if (!mergedList.length) {
-      const topGames = await fetchSteamTopRatedGames(tagIds);
-      const picks = getRandomItems(topGames, 5);
+      const topGames = await fetchSteamGamesByTerm("", tagIds, "popular");
+      const picks = getRandomItems(topGames, 3);
       const embed = new EmbedBuilder()
         .setTitle("이런! 검색 결과가 없습니다.\n대신 이런 게임은 어떠신가요?")
         .setColor(0x1b2838)
         .setImage(EMBED_IMG);
-      picks.forEach((game, idx) => {
+      for (let idx in picks) {
+        const game = picks[idx];
         const parsedReview = parseSteamReview(game.review);
+        const { kor, support } = await getSupportInfo(game.id);
         embed.addFields({
-          name: `${idx+1}. ${game.name}`,
+          name: `${parseInt(idx)+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
             `⭐ ${parsedReview.text}\n` +
             (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
-            (game.price ? `💰 가격: ${game.price}\n` : ""),
+            (game.price ? `💰 가격: ${game.price}\n` : "") +
+            `🌏 한국어: ${kor ? "지원" : "미지원"} / 🎮 멀티: ${support}`,
           inline: false,
         });
-      });
+      }
       await interaction.editReply({ embeds: [embed], ephemeral: true });
       return;
     }
 
+    // 3개씩 페이지네이션, 지원여부 비동기로 조회
     let pages = [];
-    for (let i = 0; i < 10; i++) {
-      let slice = mergedList.slice(i*5, (i+1)*5);
+    for (let i = 0; i < Math.ceil(mergedList.length/3); i++) {
+      let slice = mergedList.slice(i*3, (i+1)*3);
       pages.push(slice);
     }
     let currPage = 0;
-    const totalPages = pages.filter(p=>p.length>0).length;
+    const totalPages = pages.filter(p => p.length > 0).length;
 
     const getActionRow = (currPage) => new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -283,34 +321,37 @@ module.exports = {
         .setCustomId("nextPage")
         .setLabel("다음")
         .setStyle(ButtonStyle.Primary)
-        .setDisabled(currPage === totalPages-1)
+        .setDisabled(currPage === totalPages - 1)
     );
 
-    const createEmbed = (results, page, totalPages, genres, keywords) => {
+    async function createEmbed(results, page, totalPages, genres, keywords) {
       const genreText = genres && genres.length ? `[${genres.join(", ")}]` : '';
       const embed = new EmbedBuilder()
         .setTitle(`🔍 Steam 게임 검색: ${genreText} ${keywords ? keywords : ''}`.trim())
         .setColor(0x1b2838)
-        .setFooter({ text: `페이지 ${page+1} / ${totalPages} (버튼 유효시간: 5분)` })
+        .setFooter({ text: `페이지 ${page + 1} / ${totalPages} (버튼 유효시간: 5분)` })
         .setImage(EMBED_IMG);
 
-      results.forEach((game, idx) => {
+      for (let idx in results) {
+        const game = results[idx];
         const parsedReview = parseSteamReview(game.review);
+        const { kor, support } = await getSupportInfo(game.id);
         embed.addFields({
-          name: `${idx+1}. ${game.name}`,
+          name: `${parseInt(idx) + 1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
             `⭐ ${parsedReview.text}\n` +
             (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
-            (game.price ? `💰 가격: ${game.price}\n` : ""),
+            (game.price ? `💰 가격: ${game.price}\n` : "") +
+            `🌏 한국어: ${kor ? "지원" : "미지원"} / 🎮 멀티: ${support}`,
           inline: false,
         });
-      });
+      }
       return embed;
-    };
+    }
 
     let msg = await interaction.editReply({
-      embeds: [createEmbed(pages[currPage], currPage, totalPages, genres, keywordRaw)],
+      embeds: [await createEmbed(pages[currPage], currPage, totalPages, genres, keywordRaw)],
       components: [getActionRow(currPage)],
       ephemeral: true
     });
@@ -323,15 +364,15 @@ module.exports = {
 
     collector.on("collect", async btn => {
       if (btn.customId === "prevPage" && currPage > 0) currPage--;
-      else if (btn.customId === "nextPage" && currPage < totalPages-1) currPage++;
+      else if (btn.customId === "nextPage" && currPage < totalPages - 1) currPage++;
       await btn.update({
-        embeds: [createEmbed(pages[currPage], currPage, totalPages, genres, keywordRaw)],
+        embeds: [await createEmbed(pages[currPage], currPage, totalPages, genres, keywordRaw)],
         components: [getActionRow(currPage)],
         ephemeral: true
       });
     });
     collector.on("end", () => {
-      msg.edit({ components: [] }).catch(()=>{});
+      msg.edit({ components: [] }).catch(() => { });
     });
   }
 };
