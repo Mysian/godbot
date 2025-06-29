@@ -1,6 +1,7 @@
 // commands/game-search.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
+const cheerio = require("cheerio");
 
 const STEAM_SEARCH_URL = "https://store.steampowered.com/api/storesearch";
 const STEAM_DETAILS_URL = "https://store.steampowered.com/api/appdetails";
@@ -129,13 +130,63 @@ function createEmbed(results, page, totalPages, keywords, details, noticeMsg) {
   return embed;
 }
 
-async function fetchRecentGames() {
-  const url = `${STEAM_SEARCH_URL}?cc=KR&l=koreana&term=&count=250`;
-  const res = await fetch(url, { headers: { "accept": "application/json", "user-agent": "discord-bot" }});
-  const data = await res.json();
-  const items = (data?.items || []).filter(x => x.release_date);
-  items.sort((a, b) => (b.release_date || 0) - (a.release_date || 0));
-  return items.slice(0, 50);
+// ★ 신작 공포게임/공포게임 신작 전용 크롤링
+async function fetchSteamHorrorNewGames() {
+  const url = 'https://store.steampowered.com/search/?sort_by=Released_DESC&supportedlang=koreana&tags=1667&untags=5611&category1=998&unvrsupport=401&os=win&ndl=1';
+  const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r=>r.text());
+  const $ = cheerio.load(html);
+  const gameList = [];
+  $('.search_result_row').each((i, el) => {
+    if (i >= 50) return false; // 50개까지만
+    const $el = $(el);
+    const appid = $el.attr('data-ds-appid');
+    const name = $el.find('.title').text().trim();
+    const link = $el.attr('href');
+    const release = $el.find('.search_released').text().trim();
+    const price = $el.find('.search_price, .discount_final_price').first().text().trim();
+    const thumb = $el.find('.search_capsule img').attr('src');
+    if (appid && name) {
+      gameList.push({ id: appid, name, link, release, price, thumb });
+    }
+  });
+  return gameList;
+}
+
+// ★ 평점 좋은 게임(매우 긍정적 이상, 한글지원, 비성인) 무작위 추천
+async function fetchSteamTopRatedGames() {
+  const url = "https://store.steampowered.com/search/?filter=topsellers&supportedlang=koreana&category1=998";
+  const html = await fetch(url, { headers: { "user-agent": "discord-bot" } }).then(r=>r.text());
+  const $ = cheerio.load(html);
+  const games = [];
+  $('.search_result_row').each((i, el) => {
+    if (games.length >= 50) return false;
+    const $el = $(el);
+    const appid = $el.attr('data-ds-appid');
+    const name = $el.find('.title').text().trim();
+    const link = $el.attr('href');
+    const release = $el.find('.search_released').text().trim();
+    const price = $el.find('.search_price, .discount_final_price').first().text().trim();
+    const review = $el.find('.search_reviewscore span').attr('data-tooltip-html') || "";
+    const thumb = $el.find('.search_capsule img').attr('src');
+    // 평점 긍정적 이상, 성인게임 제외, 한글지원
+    if (
+      appid && name &&
+      /(매우 긍정적|압도적으로 긍정적)/.test(review)
+    ) {
+      games.push({ id: appid, name, link, release, price, review, thumb });
+    }
+  });
+  return games;
+}
+
+function getRandomItems(arr, n) {
+  const copy = [...arr];
+  const result = [];
+  while (copy.length && result.length < n) {
+    const idx = Math.floor(Math.random() * copy.length);
+    result.push(copy.splice(idx, 1)[0]);
+  }
+  return result;
 }
 
 module.exports = {
@@ -150,6 +201,109 @@ module.exports = {
   async execute(interaction) {
     const keywordRaw = interaction.options.getString("키워드").trim();
     const inputKeywords = keywordRaw.split(/\s+/);
+
+    // ★ 신작 공포게임/공포게임 신작 특별 처리
+    if (
+      keywordRaw === "공포게임 신작" ||
+      keywordRaw === "신작 공포게임"
+    ) {
+      await interaction.deferReply({ ephemeral: true });
+      const gameList = await fetchSteamHorrorNewGames();
+
+      if (!gameList.length) {
+        // 결과가 없으면 인기/평점게임 랜덤 5개 추천
+        const topGames = await fetchSteamTopRatedGames();
+        const picks = getRandomItems(topGames, 5);
+        const embed = new EmbedBuilder()
+          .setTitle("이런! 검색 결과가 없습니다.\n대신 이런 게임은 어떠신가요?")
+          .setColor(0x1b2838)
+          .setImage(EMBED_IMG);
+        picks.forEach((game, idx) => {
+          embed.addFields({
+            name: `${idx+1}. ${game.name}`,
+            value:
+              `[Steam 바로가기](${game.link})\n` +
+              (game.review ? `⭐ ${game.review.split('<br>').join(' / ')}\n` : "") +
+              (game.release ? `🗓️ 출시일: ${game.release}\n` : "") +
+              (game.price ? `💰 가격: ${game.price}\n` : ""),
+            inline: false,
+          });
+        });
+        await interaction.editReply({ embeds: [embed], ephemeral: true });
+        return;
+      }
+
+      // 페이지 분할
+      let pages = [];
+      for (let i = 0; i < 10; i++) {
+        let slice = gameList.slice(i*5, (i+1)*5);
+        pages.push(slice);
+      }
+      let currPage = 0;
+      const totalPages = pages.filter(p=>p.length>0).length;
+
+      const getActionRow = (currPage) => new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("prevPage")
+          .setLabel("이전")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(currPage === 0),
+        new ButtonBuilder()
+          .setCustomId("nextPage")
+          .setLabel("다음")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(currPage === totalPages-1)
+      );
+
+      const createSimpleEmbed = (results, page, totalPages) => {
+        const embed = new EmbedBuilder()
+          .setTitle("🧟‍♂️ Steam 공포 신작 게임 (자동링크 결과)")
+          .setColor(0x1b2838)
+          .setFooter({ text: `페이지 ${page+1} / ${totalPages} (버튼 유효시간: 5분)` })
+          .setImage(EMBED_IMG);
+
+        results.forEach((game, idx) => {
+          embed.addFields({
+            name: `${idx+1}. ${game.name}`,
+            value:
+              `[Steam 바로가기](${game.link})\n` +
+              (game.release ? `🗓️ 출시일: ${game.release}\n` : "") +
+              (game.price ? `💰 가격: ${game.price}\n` : ""),
+            inline: false,
+          });
+        });
+        return embed;
+      };
+
+      let msg = await interaction.editReply({
+        embeds: [createSimpleEmbed(pages[currPage], currPage, totalPages)],
+        components: [getActionRow(currPage)],
+        ephemeral: true
+      });
+
+      const filter = i =>
+        i.user.id === interaction.user.id &&
+        ["prevPage", "nextPage"].includes(i.customId);
+
+      const collector = msg.createMessageComponentCollector({ filter, time: 300_000 }); // 5분
+
+      collector.on("collect", async btn => {
+        if (btn.customId === "prevPage" && currPage > 0) currPage--;
+        else if (btn.customId === "nextPage" && currPage < totalPages-1) currPage++;
+        await btn.update({
+          embeds: [createSimpleEmbed(pages[currPage], currPage, totalPages)],
+          components: [getActionRow(currPage)],
+          ephemeral: true
+        });
+      });
+      collector.on("end", () => {
+        msg.edit({ components: [] }).catch(()=>{});
+      });
+
+      return;
+    }
+
+    // 기존 검색로직 (원본)
     await interaction.deferReply({ ephemeral: true });
 
     // 장르 필터(자동)
@@ -207,18 +361,26 @@ module.exports = {
       noticeMsg += "\n※ 장르/카테고리 조건을 완화해 유사 결과를 보여줍니다.";
     }
 
-    // 진짜로 아무것도 없으면 안내
+    // 진짜로 아무것도 없으면 안내 + 추천
     if (filteredGames.length === 0) {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("Steam 게임 검색")
-            .setColor(0x1b2838)
-            .setImage(EMBED_IMG)
-            .setDescription("정말로 결과가 없습니다. (Steam에 해당 조건 게임이 없거나, API 문제일 수 있습니다.)")
-        ],
-        ephemeral: true
+      const topGames = await fetchSteamTopRatedGames();
+      const picks = getRandomItems(topGames, 5);
+      const embed = new EmbedBuilder()
+        .setTitle("이런! 검색 결과가 없습니다.\n대신 이런 게임은 어떠신가요?")
+        .setColor(0x1b2838)
+        .setImage(EMBED_IMG);
+      picks.forEach((game, idx) => {
+        embed.addFields({
+          name: `${idx+1}. ${game.name}`,
+          value:
+            `[Steam 바로가기](${game.link})\n` +
+            (game.review ? `⭐ ${game.review.split('<br>').join(' / ')}\n` : "") +
+            (game.release ? `🗓️ 출시일: ${game.release}\n` : "") +
+            (game.price ? `💰 가격: ${game.price}\n` : ""),
+          inline: false,
+        });
       });
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
       return;
     }
 
