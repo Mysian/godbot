@@ -1,4 +1,3 @@
-// commands/game-search.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
@@ -14,13 +13,19 @@ const GENRE_CHOICES = [
   { name: "전체", value: "전체" },
   ...Object.keys(GENRE_TAG_MAP).filter(x => x !== "전체").map(name => ({ name, value: name }))
 ];
-
+const FILTER_CHOICES = [
+  { name: "한국어 지원", value: "kor" },
+  { name: "무료", value: "free" },
+  { name: "긍정적 평가", value: "positive" }
+];
 const SORT_CHOICES = [
   { name: "최신순", value: "latest" },
   { name: "인기순", value: "popular" },
   { name: "무작위", value: "random" },
   { name: "과거순", value: "oldest" },
   { name: "부정적", value: "negative" },
+  { name: "낮은 가격순", value: "price_asc" },
+  { name: "높은 가격순", value: "price_desc" }
 ];
 
 const BASE_URL = "https://store.steampowered.com/search/?untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
@@ -57,17 +62,17 @@ function formatKoreanDate(str) {
 }
 
 function parseSteamReview(reviewHtml) {
-  if (!reviewHtml || typeof reviewHtml !== "string" || !reviewHtml.trim()) return { text: "평가 없음", count: null, percent: null, score: 0 };
+  if (!reviewHtml || typeof reviewHtml !== "string" || !reviewHtml.trim()) return { text: "평가 없음", count: null, percent: null, score: 0, kor: "평가 없음" };
   const map = {
-    "Overwhelmingly Positive": {kor:"압도적으로 긍정적", score: 6},
-    "Very Positive": {kor:"매우 긍정적", score: 5},
-    "Mostly Positive": {kor:"대체로 긍정적", score: 4},
-    "Positive": {kor:"긍정적", score: 3},
-    "Mixed": {kor:"복합적", score: 0},
-    "Mostly Negative": {kor:"대체로 부정적", score: -2},
-    "Negative": {kor:"부정적", score: -3},
-    "Overwhelmingly Negative": {kor:"압도적으로 부정적", score: -4},
-    "No user reviews": {kor:"평가 없음", score: 0}
+    "Overwhelmingly Positive": { kor: "압도적으로 긍정적", score: 6 },
+    "Very Positive": { kor: "매우 긍정적", score: 5 },
+    "Mostly Positive": { kor: "대체로 긍정적", score: 4 },
+    "Positive": { kor: "긍정적", score: 3 },
+    "Mixed": { kor: "복합적", score: 0 },
+    "Mostly Negative": { kor: "대체로 부정적", score: -2 },
+    "Negative": { kor: "부정적", score: -3 },
+    "Overwhelmingly Negative": { kor: "압도적으로 부정적", score: -4 },
+    "No user reviews": { kor: "평가 없음", score: 0 }
   };
   let matched = Object.entries(map).find(([eng]) => reviewHtml.includes(eng));
   let kor = matched ? matched[1].kor : "평가 없음";
@@ -84,15 +89,13 @@ function parseSteamReview(reviewHtml) {
   } else if (kor && count) {
     resultText = `${kor} (${count}명)`;
   }
-  return { text: resultText, count, percent, score };
+  return { text: resultText, count, percent, score, kor };
 }
 
-// 상세페이지에서 한국어/멀티 지원 스크래핑
 async function getSupportInfo(appid) {
   try {
     const html = await fetch(`https://store.steampowered.com/app/${appid}/?l=koreana`, { headers: { "user-agent": "discord-bot" } }).then(r => r.text());
     const $ = cheerio.load(html);
-
     // --- 한국어 지원 여부 ---
     let kor = false;
     $("#languageTable tr").each((i, el) => {
@@ -107,7 +110,6 @@ async function getSupportInfo(appid) {
       });
       if (hasSupport) kor = true;
     });
-
     // --- 멀티/싱글 지원 여부 ---
     let support = "미확인";
     const labels = [];
@@ -117,15 +119,12 @@ async function getSupportInfo(appid) {
     if (hasSingle && hasMulti) support = "싱글+멀티";
     else if (hasMulti) support = "멀티";
     else if (hasSingle) support = "싱글";
-
     return { kor, support };
   } catch {
     return { kor: false, support: "미확인" };
   }
 }
 
-
-// 구글 번역
 async function googleTranslateKorToEn(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
   try {
@@ -143,6 +142,8 @@ async function fetchSteamGamesByTerm(term, tagIds, sort) {
   if (sort === "latest") url += "&sort_by=Released_DESC";
   else if (sort === "popular") url += "&filter=topsellers";
   else if (sort === "oldest") url += "&sort_by=Released_ASC";
+  else if (sort === "price_asc") url += "&sort_by=Price_ASC";
+  else if (sort === "price_desc") url += "&sort_by=Price_DESC";
   else url += "&sort_by=Released_DESC"; // 기본 최신순
 
   if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
@@ -176,14 +177,13 @@ function getRandomItems(arr, n) {
   return result;
 }
 
-// 정렬 유틸(부정적, 무작위)
 function sortGames(list, mode) {
   if (mode === "random") return getRandomItems(list, list.length);
   if (mode === "negative") {
     return [...list].sort((a, b) => {
       const sA = parseSteamReview(a.review).score;
       const sB = parseSteamReview(b.review).score;
-      return sA - sB; // 오름차순(부정적 우선)
+      return sA - sB;
     });
   }
   return list;
@@ -206,9 +206,15 @@ module.exports = {
     )
     .addStringOption(opt =>
       opt.setName("정렬")
-        .setDescription("정렬 방식 (최신순/인기순/무작위/과거순/부정적)")
+        .setDescription("정렬 방식 (최신순/인기순/무작위/과거순/부정적/낮은 가격순/높은 가격순)")
         .setRequired(true)
         .addChoices(...SORT_CHOICES)
+    )
+    .addStringOption(opt =>
+      opt.setName("필터")
+        .setDescription("특정 필터 적용 (한국어 지원, 무료, 긍정적 평가)")
+        .setRequired(false)
+        .addChoices(...FILTER_CHOICES)
     )
     .addStringOption(opt =>
       opt.setName("추가장르1")
@@ -221,19 +227,12 @@ module.exports = {
         .setDescription("추가 장르2 (선택)")
         .setRequired(false)
         .addChoices(...GENRE_CHOICES)
-    )
-    .addStringOption(opt =>
-      opt.setName("추가장르3")
-        .setDescription("추가 장르3 (선택)")
-        .setRequired(false)
-        .addChoices(...GENRE_CHOICES)
     ),
   async execute(interaction) {
     const genres = [
       interaction.options.getString("장르1"),
       interaction.options.getString("추가장르1"),
       interaction.options.getString("추가장르2"),
-      interaction.options.getString("추가장르3"),
     ].filter(Boolean);
 
     let tagIds = [];
@@ -243,6 +242,7 @@ module.exports = {
 
     let keywordRaw = interaction.options.getString("키워드")?.trim() || "";
     let sortMode = interaction.options.getString("정렬") || "latest";
+    let filter = interaction.options.getString("필터");
 
     let isAllKeyword = false;
     if (
@@ -255,7 +255,6 @@ module.exports = {
 
     await interaction.deferReply({ ephemeral: true });
 
-    // 한글 키워드 자동 번역 통합 검색(전체검색 모드 제외)
     let searchTerms = [];
     if (!isAllKeyword && keywordRaw && hasKorean(keywordRaw)) {
       const translated = await googleTranslateKorToEn(keywordRaw);
@@ -291,6 +290,26 @@ module.exports = {
     // 정렬 추가(부정적, 무작위)
     mergedList = sortGames(mergedList, sortMode);
 
+    // --------------------------
+    // 필터 적용
+    if (filter) {
+      const promises = mergedList.map(async game => {
+        const support = await getSupportInfo(game.id);
+        const parsedReview = parseSteamReview(game.review);
+        return { ...game, support, parsedReview };
+      });
+      let filteredList = await Promise.all(promises);
+      if (filter === "kor") {
+        filteredList = filteredList.filter(g => g.support.kor);
+      } else if (filter === "free") {
+        filteredList = filteredList.filter(g => g.price && (g.price === "무료" || g.price === "Free" || g.price === "무료 플레이"));
+      } else if (filter === "positive") {
+        filteredList = filteredList.filter(g => g.parsedReview.score >= 3);
+      }
+      mergedList = filteredList;
+    }
+    // --------------------------
+
     if (!mergedList.length) {
       const topGames = await fetchSteamGamesByTerm("", tagIds, "popular");
       const picks = getRandomItems(topGames, 3);
@@ -303,7 +322,7 @@ module.exports = {
         const parsedReview = parseSteamReview(game.review);
         const { kor, support } = await getSupportInfo(game.id);
         embed.addFields({
-          name: `${parseInt(idx)+1}. ${game.name}`,
+          name: `${parseInt(idx) + 1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
             `⭐ ${parsedReview.text}\n` +
@@ -317,10 +336,9 @@ module.exports = {
       return;
     }
 
-    // 3개씩 페이지네이션, 지원여부 비동기로 조회
     let pages = [];
-    for (let i = 0; i < Math.ceil(mergedList.length/3); i++) {
-      let slice = mergedList.slice(i*3, (i+1)*3);
+    for (let i = 0; i < Math.ceil(mergedList.length / 3); i++) {
+      let slice = mergedList.slice(i * 3, (i + 1) * 3);
       pages.push(slice);
     }
     let currPage = 0;
@@ -349,8 +367,15 @@ module.exports = {
 
       for (let idx in results) {
         const game = results[idx];
-        const parsedReview = parseSteamReview(game.review);
-        const { kor, support } = await getSupportInfo(game.id);
+        // 이미 support 필드가 있으면 사용(필터 적용된 경우)
+        let parsedReview, kor, support;
+        if (game.support && game.parsedReview) {
+          ({ parsedReview } = game);
+          ({ kor, support } = game.support);
+        } else {
+          parsedReview = parseSteamReview(game.review);
+          ({ kor, support } = await getSupportInfo(game.id));
+        }
         embed.addFields({
           name: `${parseInt(idx) + 1}. ${game.name}`,
           value:
@@ -371,11 +396,11 @@ module.exports = {
       ephemeral: true
     });
 
-    const filter = i =>
+    const filterBtn = i =>
       i.user.id === interaction.user.id &&
       ["prevPage", "nextPage"].includes(i.customId);
 
-    const collector = msg.createMessageComponentCollector({ filter, time: 300_000 });
+    const collector = msg.createMessageComponentCollector({ filter: filterBtn, time: 300_000 });
 
     collector.on("collect", async btn => {
       if (btn.customId === "prevPage" && currPage > 0) currPage--;
