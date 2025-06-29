@@ -19,7 +19,9 @@ const GENRE_CHOICES = [
 const BASE_URL = "https://store.steampowered.com/search/?sort_by=Released_DESC&untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
 const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
 
-// 번역
+// 키워드 없는 전체검색 인식 단어
+const ALL_KEYWORDS = ["전체", "all", "없음", "그냥", "전부"];
+
 async function googleTranslateKorToEn(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
   try {
@@ -31,7 +33,6 @@ async function googleTranslateKorToEn(text) {
   }
 }
 
-// 크롤링
 async function fetchSteamGamesByTerm(term, tagIds) {
   let url = BASE_URL;
   if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
@@ -128,7 +129,7 @@ module.exports = {
     )
     .addStringOption(opt =>
       opt.setName("키워드")
-        .setDescription("검색할 키워드 (필수, 예: 좀비, 판타지 등)")
+        .setDescription("검색할 키워드 (전체 검색을 희망하는 경우 '없음' 또는 '전체' 입력)")
         .setRequired(true)
     )
     .addStringOption(opt =>
@@ -163,12 +164,23 @@ module.exports = {
       tagIds = [...new Set(genres.filter(g => g !== "전체").map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
     }
 
-    const keywordRaw = interaction.options.getString("키워드")?.trim() || "";
+    let keywordRaw = interaction.options.getString("키워드")?.trim() || "";
+
+    // ★ 전체/ALL/없음/그냥/전부 중 하나만 입력시 term 없이 전체 검색
+    let isAllKeyword = false;
+    if (
+      ALL_KEYWORDS.includes(keywordRaw.toLowerCase()) &&
+      keywordRaw.split(/\s+/).length === 1
+    ) {
+      keywordRaw = "";
+      isAllKeyword = true;
+    }
+
     await interaction.deferReply({ ephemeral: true });
 
-    // 한글 키워드 자동 번역 통합 검색
+    // 한글 키워드 자동 번역 통합 검색(전체검색 모드 제외)
     let searchTerms = [];
-    if (keywordRaw && hasKorean(keywordRaw)) {
+    if (!isAllKeyword && keywordRaw && hasKorean(keywordRaw)) {
       const translated = await googleTranslateKorToEn(keywordRaw);
       searchTerms = [keywordRaw];
       if (
@@ -178,14 +190,15 @@ module.exports = {
       ) {
         searchTerms.push(translated);
       }
-    } else if (keywordRaw) {
+    } else if (!isAllKeyword && keywordRaw) {
       searchTerms = [keywordRaw];
     }
 
-    // 검색결과 통합
     let mergedList = [];
     let seen = new Set();
-    if (searchTerms.length > 0) {
+    if (isAllKeyword || searchTerms.length === 0) {
+      mergedList = await fetchSteamGamesByTerm("", tagIds);
+    } else {
       for (const term of searchTerms) {
         const list = await fetchSteamGamesByTerm(term, tagIds);
         for (const g of list) {
@@ -199,7 +212,6 @@ module.exports = {
     }
 
     if (!mergedList.length) {
-      // 결과 없으면 추천 5개 (장르 반영)
       const topGames = await fetchSteamTopRatedGames(tagIds);
       const picks = getRandomItems(topGames, 5);
       const embed = new EmbedBuilder()
@@ -221,7 +233,6 @@ module.exports = {
       return;
     }
 
-    // 페이지 분할
     let pages = [];
     for (let i = 0; i < 10; i++) {
       let slice = mergedList.slice(i*5, (i+1)*5);
