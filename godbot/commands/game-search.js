@@ -4,6 +4,7 @@ const fetch = require("node-fetch");
 const cheerio = require("cheerio");
 
 const GENRE_TAG_MAP = {
+  "전체": null,
   "1인칭 슈팅": 1663, "3인칭 슈팅": 3814, "로그라이크": 1716, "RPG": 122, "JRPG": 4434,
   "어드벤처": 21, "액션": 19, "공포": 1667, "턴제": 1677, "전략": 9, "시뮬레이션": 599,
   "샌드박스": 3810, "아케이드": 1773, "격투": 1743, "퍼즐": 1664, "음악": 1621,
@@ -199,7 +200,11 @@ module.exports = {
       interaction.options.getString("추가장르2"),
       interaction.options.getString("추가장르3"),
     ].filter(Boolean);
-    const tagIds = [...new Set(genres.map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
+    
+    let tagIds = [];
+if (!(genres.length === 1 && genres[0] === "전체")) {
+  tagIds = [...new Set(genres.filter(g => g !== "전체").map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
+}
 
     const keywordRaw = interaction.options.getString("키워드")?.trim() || "";
     await interaction.deferReply({ ephemeral: true });
