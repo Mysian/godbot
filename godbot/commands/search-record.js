@@ -84,8 +84,14 @@ module.exports = {
         color: 0x5865f2,
         title: `${nickname} 전적검색 (${GAME_TYPES.find(g => g.value === game).name})`,
         url,
-        description: `[op.gg에서 상세 정보 확인하기](${url})\n${result ? `\n${result}` : ""}`,
-        footer: { text: "전적 정보는 op.gg 정책에 따라 일부 제한될 수 있음" }
+        description: `[op.gg에서 상세 정보 확인하기](${url})` +
+          (opggData ? `
+**티어** : ${opggData.tier || "-"}
+**전적** : ${opggData.record || "-"}
+**KDA** : ${opggData.kda || "-"}
+` : "\n전적 정보를 불러올 수 없습니다."),
+        footer: { text: "전적 정보는 op.gg 정책에 따라 일부 제한될 수 있음" },
+        thumbnail: opggData && opggData.profileImg ? { url: opggData.profileImg } : undefined,
       };
 
       await interaction.editReply({ embeds: [embed] });
@@ -97,16 +103,31 @@ module.exports = {
   }
 };
 
-// 롤 티어 간단 파싱 (HTML 크롤링, axios+정규식, puppeteer 쓰면 더 정확)
-async function fetchLoLTier(nicknameDash) {
+// cheerio로 html 파싱
+const cheerio = require("cheerio");
+async function fetchLoLDetail(nicknameDash) {
   try {
     const res = await axios.get(`https://www.op.gg/summoners/kr/${encodeURIComponent(nicknameDash)}`);
     const html = res.data;
-    const tierMatch = html.match(/<div class="tier">(.*?)<\/div>/);
-    const lpMatch = html.match(/<div class="lp">(.*?)<\/div>/);
+    const $ = cheerio.load(html);
+
+    // 프로필 사진
+    const profileImg = $("img.rounded\\[20px\\]").attr("src") || null;
+
+    // 전적
+    const record = $("div.leading-\\[16px\\]").first().text().trim();
+
+    // 킬뎃율
+    const kda = $("strong.text-\\[15px\\].text-gray-900.md\\:text-\\[20px\\]").first().text().trim();
+
+    // 티어
+    const tier = $("span.text-xs.lowercase.first-letter\\:uppercase").first().text().trim();
+
     return {
-      tier: tierMatch ? tierMatch[1].replace(/<.*?>/g, "").trim() : null,
-      lp: lpMatch ? lpMatch[1].replace(/<.*?>/g, "").trim() : null,
+      profileImg,
+      record,
+      kda,
+      tier,
     };
   } catch {
     return null;
