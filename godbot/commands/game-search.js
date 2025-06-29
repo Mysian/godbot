@@ -109,6 +109,37 @@ function parseExtraInfo(detail) {
     review: "평가 자료 부족"
   };
 
+function formatKoreanDate(str) {
+  if (!str) return "";
+  // 케이스: 2025년 7월 2일 (이미 한글이면 그대로)
+  if (/[년월일]/.test(str)) return str;
+  // 케이스: Jun 25, 2025 또는 25 Jun, 2025
+  const months = {
+    Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+    Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12"
+  };
+  // "25 Jun, 2025"
+  let m = str.match(/^(\d{1,2}) (\w{3}), (\d{4})$/);
+  if (m) {
+    const [_, d, mon, y] = m;
+    return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
+  }
+  // "Jun 25, 2025"
+  m = str.match(/^(\w{3}) (\d{1,2}), (\d{4})$/);
+  if (m) {
+    const [_, mon, d, y] = m;
+    return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
+  }
+  // "2025-06-25" ISO 케이스
+  m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const [_, y, mon, d] = m;
+    return `${y}년 ${mon}월 ${d}일`;
+  }
+  // 못 맞추면 그대로
+  return str;
+}
+
   const kor = (detail.supported_languages || "").includes("한국어");
   const categories = (detail.categories || []).map(c=>c.description);
   const mp = categories.some(c => /멀티|Multi/i.test(c));
@@ -222,7 +253,7 @@ module.exports = {
           name: `${idx+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
-            (game.release ? `🗓️ 출시일: ${game.release}\n` : "") +
+            (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
             (game.price ? `💰 가격: ${game.price}\n` : "") +
             (extra.korean ? "🇰🇷 **한국어 지원**  " : "") +
             (extra.multiplayer ? "🧑‍🤝‍🧑 **멀티플레이**  " : "") +
@@ -272,7 +303,7 @@ module.exports = {
           name: `${idx+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
-            (game.release ? `🗓️ 출시일: ${game.release}\n` : "") +
+            (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
             (game.price ? `💰 가격: ${game.price}\n` : "") +
             (extra.korean ? "🇰🇷 **한국어 지원**  " : "") +
             (extra.multiplayer ? "🧑‍🤝‍🧑 **멀티플레이**  " : "") +
