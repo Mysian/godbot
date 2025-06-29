@@ -34,8 +34,8 @@ module.exports = {
     const game = interaction.options.getString("게임");
     let nickname = interaction.options.getString("닉네임").trim();
 
-    // 롤/롤체는 # 없으면 자동으로 #KR1 붙임
-    if ((game === "lol" || game === "tft") && !nickname.includes("#")) {
+    // 롤/롤체/발로란트는 # 없으면 자동으로 #KR1 붙임
+    if ((game === "lol" || game === "tft" || game === "valorant") && !nickname.includes("#")) {
       nickname = `${nickname}#KR1`;
     }
 
@@ -240,7 +240,7 @@ async function fetchValorantDetail(nicknameDash) {
     // 랭크: <div class="text-[14px] font-bold md:text-[20px]">언랭크</div>
     const rank = $("div.text-\\[14px\\].font-bold.md\\:text-\\[20px\\]").first().text().replace(/\s+/g, " ").trim() || null;
 
-    // 승/무/패: <span>0W 0D 0L</span>
+    // 승/무/패: <span>0W 0D 0L</span> 또는 <span>0W 0L</span>
     let result = null;
     $("span").each((_, el) => {
       const txt = $(el).text().replace(/\s+/g, " ").trim();
