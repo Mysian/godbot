@@ -585,9 +585,6 @@ client.login(process.env.DISCORD_TOKEN);
 const dmRelay = require('./commands/dm.js');
 dmRelay.relayRegister(client);
 
-// 후원 이미지 받기 지원
-require("./utils/donate-dm-listener.js")(client);
-
 // 120분 혼자 있는 경우 잠수방 이전
 require("./utils/auto-afk-move")(client);
 
