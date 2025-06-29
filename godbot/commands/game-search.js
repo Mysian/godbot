@@ -228,10 +228,10 @@ function createEmbed(results, page, totalPages, keywords, details, inputKeywords
     .setTitle(`🔍 Steam 게임 검색: ${keywords.join(", ")}`)
     .setColor(0x1b2838)
     .setFooter({ text: `페이지 ${page+1} / ${totalPages} (버튼 유효시간: 5분)` });
-    .setImage(EMBED_IMG);
 
   if (!results.length) {
     embed.setDescription("결과가 없습니다.");
+    embed.setImage(EMBED_IMG);
     return embed;
   }
 
