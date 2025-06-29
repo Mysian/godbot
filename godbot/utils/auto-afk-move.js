@@ -6,6 +6,8 @@ const ALLOWED_CATEGORY_IDS = [
   "1369008627045765173",
 ];
 
+const EXCEPT_CHANNEL_ID = "1202971727915651092";
+
 const soloTimers = new Map();
 const lastActivity = new Map();
 
@@ -51,6 +53,7 @@ module.exports = function setupAutoAfkMove(client) {
   async function watchSolo(voiceState) {
     const channel = voiceState.channel;
     if (!channel) return;
+    if (channel.id === EXCEPT_CHANNEL_ID) return;
     if (channel.members.filter(m => !m.user.bot).size !== 1) return;
 
     let nickname = voiceState.member.nickname || voiceState.member.user.username;
