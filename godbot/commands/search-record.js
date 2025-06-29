@@ -38,6 +38,7 @@ module.exports = {
     let opggData = null;
     let description = "";
     let embedThumbnail = undefined;
+    let embedImage = undefined;
 
     try {
       switch (game) {
@@ -47,11 +48,13 @@ module.exports = {
           description = `[op.gg에서 상세 정보 확인하기](${url})` +
             (opggData ? `
 **티어** : ${opggData.tier || "-"}
-**전적** : ${opggData.record || "-"}
-**KDA** : ${opggData.kda || "-"}
+**전적(승/패)** : ${opggData.winlose || "-"}
 ` : "\n전적 정보를 불러올 수 없습니다.");
           if (opggData && opggData.profileImg) {
             embedThumbnail = { url: opggData.profileImg };
+          }
+          if (opggData && opggData.tierGraph) {
+            embedImage = { url: opggData.tierGraph };
           }
           break;
 
@@ -94,6 +97,7 @@ module.exports = {
         footer: { text: "전적 정보는 op.gg 정책에 따라 일부 제한될 수 있음" },
       };
       if (embedThumbnail) embed.thumbnail = embedThumbnail;
+      if (embedImage) embed.image = embedImage;
 
       await interaction.editReply({ embeds: [embed] });
 
@@ -118,28 +122,37 @@ async function fetchLoLDetail(nicknameDash) {
     // 프로필 이미지
     const profileImg = $('img[class*="rounded-\\[20px\\]"]').attr("src") || null;
 
-    // 전적: 텍스트 패턴 매칭
-    let record = null;
-    $('div').each((_, el) => {
-      const txt = $(el).text().trim();
-      if (/^\d+전 \d+승 \d+패$/.test(txt)) record = txt;
-    });
+    // 티어: <strong class="text-xl first-letter:uppercase">master</strong>
+    const tier = $("strong.text-xl.first-letter\\:uppercase").first().text().trim() || null;
 
-    // KDA: 텍스트 패턴 매칭
-    let kda = null;
-    $('strong').each((_, el) => {
-      const txt = $(el).text().trim();
-      if (/^\d+\.\d+\s*:\s*1$/.test(txt)) kda = txt;
-    });
+    // 전적(승/패): <span class="leading-[26px]">648승 653패</span>
+    const winlose = $("span.leading-\\[26px\\]").first().text().trim() || null;
 
-    // 티어
-    const tier = $("span.text-xs.lowercase.first-letter\\:uppercase").first().text().trim() || null;
+    // 티어 그래프(큰 이미지)
+    // 일반적으로 op.gg는 svg 그래프 바로 위/아래 img 태그에 src가 걸려있음 (아니면 아예 이미지 제공 안함)
+    // 일단 대표적으로 svg 바로 다음 img, svg 바로 앞 img를 찾음
+    let tierGraph = null;
+    const svgParent = $('svg.recharts-surface').parent();
+    if (svgParent.length > 0) {
+      // svg 태그의 부모 아래에 img가 있으면 그걸 사용
+      tierGraph = svgParent.find('img').attr('src') || null;
+    }
+    // 그래도 못찾으면 전체에서 너비 1000 이상 img 아무거나
+    if (!tierGraph) {
+      $('img').each((_, el) => {
+        const src = $(el).attr('src');
+        if (src && ($(el).attr('width') == "1000" || src.includes("graph") || src.includes("chart"))) {
+          tierGraph = src;
+        }
+      });
+    }
+    // svg를 이미지로 변환해야 하는 경우는 서버 크롤링/이미지 생성 기능 필요하므로 패스
 
     return {
       profileImg,
-      record,
-      kda,
       tier,
+      winlose,
+      tierGraph,
     };
   } catch (e) {
     console.error("fetchLoLDetail 에러:", e);
@@ -147,8 +160,7 @@ async function fetchLoLDetail(nicknameDash) {
   }
 }
 
-
-// 발로란트 티어 파싱 (현재 구현 X, 나중에 직접 구조 제공해주면 구현 가능)
+// 발로란트 티어 파싱 (구현 필요 시 구조 제공해주면 맞춤 가능)
 async function fetchValorantTier(nicknameDash) {
   return null;
 }
