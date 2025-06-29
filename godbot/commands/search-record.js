@@ -65,7 +65,16 @@ module.exports = {
 
         case "tft":
           url = `https://op.gg/ko/tft/summoners/kr/${encodeURIComponent(nickname.replace("#", "-"))}`;
-          description = `[op.gg에서 상세 정보 확인하기](${url})`;
+          opggData = await fetchTFTDetail(nickname.replace("#", "-"));
+          description = `[op.gg에서 상세 정보 확인하기](${url})` +
+            (opggData ? `
+**티어** : ${opggData.tier || "-"}
+**승패** : ${opggData.winlose || "-"}
+**순방 확률** : ${opggData.topRate || "-"}
+` : "\n전적 정보를 불러올 수 없습니다.");
+          if (opggData && opggData.profileImg) {
+            embedThumbnail = { url: opggData.profileImg };
+          }
           break;
 
         case "valorant":
@@ -127,10 +136,10 @@ async function fetchLoLDetail(nicknameDash) {
     // 프로필 이미지
     const profileImg = $('img[class*="rounded-\\[20px\\]"]').attr("src") || null;
 
-    // 티어: <strong class="text-xl first-letter:uppercase">master</strong>
+    // 티어
     const tier = $("strong.text-xl.first-letter\\:uppercase").first().text().trim() || null;
 
-    // 전적(승/패): <span class="leading-[26px]">648승 653패</span>
+    // 전적(승/패)
     const winlose = $("span.leading-\\[26px\\]").first().text().trim() || null;
 
     // 티어 그래프(큰 이미지)
@@ -156,6 +165,56 @@ async function fetchLoLDetail(nicknameDash) {
     };
   } catch (e) {
     console.error("fetchLoLDetail 에러:", e);
+    return null;
+  }
+}
+
+async function fetchTFTDetail(nicknameDash) {
+  try {
+    const res = await axios.get(`https://op.gg/ko/tft/summoners/kr/${encodeURIComponent(nicknameDash)}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+      }
+    });
+    const html = res.data;
+    const $ = cheerio.load(html);
+
+    // 프로필 이미지 (rounded-[20px]만 있는 경우도 포함)
+    const profileImg = $('img.rounded-\\[20px\\]').attr("src") || null;
+
+    // 티어: <span class="text-[20px] font-bold leading-[26px] text-gray-0">Gold IV</span>
+    const tier = $("span.text-\\[20px\\].font-bold.leading-\\[26px\\].text-gray-0").first().text().replace(/\s+/g, " ").trim() || null;
+
+    // 승패: <span>17W 13L</span> (숫자+W, 숫자+L)
+    let winlose = null;
+    $("span").each((_, el) => {
+      const txt = $(el).text().replace(/\s+/g, " ").trim();
+      if (/^\d+\s*W\s*\d+\s*L$/.test(txt)) {
+        winlose = txt;
+      }
+    });
+
+    // 순방 확률: <span>순방 확률 57%</span>
+    let topRate = null;
+    $("span").each((_, el) => {
+      const txt = $(el).text().replace(/\s+/g, " ").trim();
+      if (txt.includes("순방 확률")) {
+        topRate = txt.replace(/[^0-9%]/g, "") + "%";
+        if (txt.match(/(\d+)%/)) {
+          topRate = txt.match(/(\d+)%/)[1] + "%";
+        }
+      }
+    });
+
+    return {
+      profileImg,
+      tier,
+      winlose,
+      topRate,
+    };
+  } catch (e) {
+    console.error("fetchTFTDetail 에러:", e);
     return null;
   }
 }
