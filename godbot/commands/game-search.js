@@ -3,8 +3,8 @@ const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
 
+// 장르 태그
 const GENRE_TAG_MAP = {
-  "전체": null,
   "1인칭 슈팅": 1663, "3인칭 슈팅": 3814, "로그라이크": 1716, "RPG": 122, "JRPG": 4434,
   "어드벤처": 21, "액션": 19, "공포": 1667, "턴제": 1677, "전략": 9, "시뮬레이션": 599,
   "샌드박스": 3810, "아케이드": 1773, "격투": 1743, "퍼즐": 1664, "음악": 1621,
@@ -15,7 +15,6 @@ const GENRE_CHOICES = Object.keys(GENRE_TAG_MAP).map(name => ({ name, value: nam
 const BASE_URL = "https://store.steampowered.com/search/?sort_by=Released_DESC&untags=12095,5611,6650,9130&category1=998&unvrsupport=401&ndl=1";
 const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
 
-// 구글 번역
 async function googleTranslateKorToEn(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
   try {
@@ -27,7 +26,6 @@ async function googleTranslateKorToEn(text) {
   }
 }
 
-// 검색 결과 크롤러
 async function fetchSteamGamesByTerm(term, tagIds) {
   let url = BASE_URL;
   if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
@@ -51,7 +49,6 @@ async function fetchSteamGamesByTerm(term, tagIds) {
   return gameList;
 }
 
-// 추천게임(장르 적용)
 async function fetchSteamTopRatedGames(tagIds) {
   let url = BASE_URL + "&filter=topsellers";
   if (tagIds && tagIds.length > 0) url += "&tags=" + tagIds.join(",");
@@ -74,19 +71,6 @@ async function fetchSteamTopRatedGames(tagIds) {
   return games;
 }
 
-// 상세정보 API
-async function fetchGameDetails(appids) {
-  let result = {};
-  await Promise.all(appids.map(async id => {
-    try {
-      let res = await fetch(`https://store.steampowered.com/api/appdetails?appids=${id}&cc=KR&l=koreana`);
-      let json = await res.json();
-      result[id] = json[id]?.data || null;
-    } catch {}
-  }));
-  return result;
-}
-
 function getRandomItems(arr, n) {
   const copy = [...arr];
   const result = [];
@@ -96,68 +80,34 @@ function getRandomItems(arr, n) {
   }
   return result;
 }
+
 function hasKorean(text) {
   return /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(text);
 }
 
-// 지원 언어(한글), 카테고리(멀티/싱글/협동), 유저 평가 파싱
-function parseExtraInfo(detail) {
-  if (!detail) return {
-    korean: false,
-    multiplayer: false,
-    singleplayer: false,
-    coop: false,
-    review: "평가 자료 부족"
-  };
-
 function formatKoreanDate(str) {
   if (!str) return "";
-  // 케이스: 2025년 7월 2일 (이미 한글이면 그대로)
   if (/[년월일]/.test(str)) return str;
-  // 케이스: Jun 25, 2025 또는 25 Jun, 2025
   const months = {
     Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
     Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12"
   };
-  // "25 Jun, 2025"
   let m = str.match(/^(\d{1,2}) (\w{3}), (\d{4})$/);
   if (m) {
     const [_, d, mon, y] = m;
     return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
   }
-  // "Jun 25, 2025"
   m = str.match(/^(\w{3}) (\d{1,2}), (\d{4})$/);
   if (m) {
     const [_, mon, d, y] = m;
     return `${y}년 ${months[mon]}월 ${d.padStart(2, "0")}일`;
   }
-  // "2025-06-25" ISO 케이스
   m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
     const [_, y, mon, d] = m;
     return `${y}년 ${mon}월 ${d}일`;
   }
-  // 못 맞추면 그대로
   return str;
-}
-
-  const kor = (detail.supported_languages || "").includes("한국어");
-  const categories = (detail.categories || []).map(c=>c.description);
-  const mp = categories.some(c => /멀티|Multi/i.test(c));
-  const sp = categories.some(c => /싱글|Single/i.test(c));
-  const coop = categories.some(c => /협동|Co-op|Coop/i.test(c));
-  // 유저평가(steam 평점, metacritic 등)
-  let review = "평가 자료 부족";
-  if (detail.recommendations && detail.recommendations.total)
-    review = `추천 ${detail.recommendations.total.toLocaleString()}+`;
-  else if (detail.metacritic && detail.metacritic.score)
-    review = `메타크리틱 ${detail.metacritic.score}`;
-  else if (detail.release_date && detail.release_date.coming_soon)
-    review = "출시 예정";
-  else if (detail.short_description && /압도적으로 긍정적|매우 긍정적|긍정적|복합적|부정적|매우 부정적|없음/.test(detail.short_description))
-    review = detail.short_description.match(/압도적으로 긍정적|매우 긍정적|긍정적|복합적|부정적|매우 부정적|없음/)[0];
-
-  return { korean: kor, multiplayer: mp, singleplayer: sp, coop, review };
 }
 
 module.exports = {
@@ -194,17 +144,15 @@ module.exports = {
         .addChoices(...GENRE_CHOICES)
     ),
   async execute(interaction) {
+    // 장르 태그 모으기(중복제거)
     const genres = [
       interaction.options.getString("장르1"),
       interaction.options.getString("추가장르1"),
       interaction.options.getString("추가장르2"),
       interaction.options.getString("추가장르3"),
     ].filter(Boolean);
-    
-    let tagIds = [];
-if (!(genres.length === 1 && genres[0] === "전체")) {
-  tagIds = [...new Set(genres.filter(g => g !== "전체").map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
-}
+
+    const tagIds = [...new Set(genres.map(g => GENRE_TAG_MAP[g]).filter(Boolean))];
 
     const keywordRaw = interaction.options.getString("키워드")?.trim() || "";
     await interaction.deferReply({ ephemeral: true });
@@ -224,6 +172,7 @@ if (!(genres.length === 1 && genres[0] === "전체")) {
       searchTerms = [keywordRaw];
     }
 
+    // 검색결과 통합
     let mergedList = [];
     let seen = new Set();
     if (searchTerms.length > 0) {
@@ -241,30 +190,22 @@ if (!(genres.length === 1 && genres[0] === "전체")) {
       mergedList = await fetchSteamGamesByTerm("", tagIds);
     }
 
-    // 게임 상세 데이터 불러오기 (한 번에)
-    const details = await fetchGameDetails(mergedList.map(g=>g.id));
-
     if (!mergedList.length) {
+      // 결과 없으면 추천 5개 (장르 반영)
       const topGames = await fetchSteamTopRatedGames(tagIds);
       const picks = getRandomItems(topGames, 5);
-      const detailPick = await fetchGameDetails(picks.map(g=>g.id));
       const embed = new EmbedBuilder()
         .setTitle("이런! 검색 결과가 없습니다.\n대신 이런 게임은 어떠신가요?")
         .setColor(0x1b2838)
         .setImage(EMBED_IMG);
       picks.forEach((game, idx) => {
-        const extra = parseExtraInfo(detailPick[game.id]);
         embed.addFields({
           name: `${idx+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
+            (game.review ? `⭐ ${game.review.split('<br>').join(' / ')}\n` : "") +
             (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
-            (game.price ? `💰 가격: ${game.price}\n` : "") +
-            (extra.korean ? "🇰🇷 **한국어 지원**  " : "") +
-            (extra.multiplayer ? "🧑‍🤝‍🧑 **멀티플레이**  " : "") +
-            (extra.singleplayer ? "👤 싱글 " : "") +
-            (extra.coop ? "🤝 협동 " : "") +
-            `\n⭐ 유저 평가: ${extra.review}`,
+            (game.price ? `💰 가격: ${game.price}\n` : ""),
           inline: false,
         });
       });
@@ -303,18 +244,13 @@ if (!(genres.length === 1 && genres[0] === "전체")) {
         .setImage(EMBED_IMG);
 
       results.forEach((game, idx) => {
-        const extra = parseExtraInfo(details[game.id]);
         embed.addFields({
           name: `${idx+1}. ${game.name}`,
           value:
             `[Steam 바로가기](${game.link})\n` +
+            (game.review ? `⭐ ${game.review.split('<br>').join(' / ')}\n` : "") +
             (game.release ? `🗓️ 출시일: ${formatKoreanDate(game.release)}\n` : "") +
-            (game.price ? `💰 가격: ${game.price}\n` : "") +
-            (extra.korean ? "🇰🇷 **한국어 지원**  " : "") +
-            (extra.multiplayer ? "🧑‍🤝‍🧑 **멀티플레이**  " : "") +
-            (extra.singleplayer ? "👤 싱글 " : "") +
-            (extra.coop ? "🤝 협동 " : "") +
-            `\n⭐ 유저 평가: ${extra.review}`,
+            (game.price ? `💰 가격: ${game.price}\n` : ""),
           inline: false,
         });
       });
