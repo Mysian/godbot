@@ -4,6 +4,7 @@ const fetch = require("node-fetch");
 
 const STEAM_SEARCH_URL = "https://store.steampowered.com/api/storesearch";
 const STEAM_DETAILS_URL = "https://store.steampowered.com/api/appdetails";
+const EMBED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1388729871508832267/image.png?ex=68620afa&is=6860b97a&hm=0dfb144342b6577a6d7d8abdbd2338cdee5736dd948cfe49a428fdc7cb2d199a&=&format=webp&quality=lossless";
 
 // 신작(최신순) 트리거 단어
 const NEW_KEYWORDS = ["신작", "신작게임", "최신", "new", "newgame", "new_game", "recent"];
@@ -227,6 +228,7 @@ function createEmbed(results, page, totalPages, keywords, details, inputKeywords
     .setTitle(`🔍 Steam 게임 검색: ${keywords.join(", ")}`)
     .setColor(0x1b2838)
     .setFooter({ text: `페이지 ${page+1} / ${totalPages} (버튼 유효시간: 5분)` });
+    .setImage(EMBED_IMG);
 
   if (!results.length) {
     embed.setDescription("결과가 없습니다.");
