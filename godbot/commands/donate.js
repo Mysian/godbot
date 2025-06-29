@@ -7,7 +7,7 @@ const {
   ButtonStyle, 
   ModalBuilder, 
   TextInputBuilder, 
-  TextInputStyle, 
+  TextInputStyle,
   ChannelType
 } = require('discord.js');
 
@@ -224,7 +224,7 @@ module.exports = {
 
       // ============ 상품 후원 ================
       if (btnInt.customId === 'donate_item') {
-        // 모달 띄우기
+        // 모달 띄우기(기존과 동일)
         const modal = new ModalBuilder()
           .setCustomId('donate_item_modal')
           .setTitle('🎁 상품 후원 신청');
@@ -290,39 +290,13 @@ module.exports = {
         let displayName = interaction.member.displayName;
         if (anonymous && anonymous.toLowerCase() === '예') displayName = '익명';
 
-        // 1. DM 발송(후원자에게)
-        try {
-          const user = await interaction.client.users.fetch(interaction.user.id);
-          await user.send([
-            `**[까리한 디스코드]에 후원을 해주셔서 대단히 감사드립니다.**`,
-            '',
-            `후원을 희망하시는 상품의 **바코드/링크/이미지/사진** 등을 이곳에 보내주세요.`,
-            `특이사항/요청사항 있으시면 같이 남겨주시면 됩니다.`,
-            '',
-            `*혹시 DM이 정상적으로 전달되지 않았다면 서버 관리자에게 알려주세요!*`
-          ].join('\n'));
-        } catch (e) {
-          // DM이 차단된 경우 무시
-        }
-
-        // 2. 비공개 로그 채널에 스레드 생성/후원 접수 등록 (스레드명 통일)
+        // 1. DM 발송 생략(삭제)
+        // 2. 로그 채널에 스레드 없이 Embed만 남김
         try {
           const guild = submitted.guild;
           const logChannel = await guild.channels.fetch(DONATION_LOG_CHANNEL).catch(() => null);
           if (logChannel && logChannel.type === ChannelType.GuildText) {
-            const threadName = `[상품후원] ${interaction.user.id}`;
-            let thread = logChannel.threads.cache.find(
-              t => t.name === threadName && !t.archived
-            );
-            if (!thread) {
-              thread = await logChannel.threads.create({
-                name: threadName,
-                autoArchiveDuration: 1440,
-                reason: '상품 후원 내역 정리'
-              });
-            }
-
-            await thread.send({
+            await logChannel.send({
               content: `<@${interaction.user.id}> 정말 소중한 상품 후원, 감사히 잘 사용하겠습니다!`,
               embeds: [
                 new EmbedBuilder()
@@ -340,7 +314,7 @@ module.exports = {
           }
         } catch {}
 
-        // 3. 공개 감사 메시지(공개채널)
+        // 3. 공개 감사 메시지(공개채널) 동일
         try {
           const thanksEmbed = new EmbedBuilder()
             .setTitle('🎁 상품 후원 접수')
@@ -354,16 +328,18 @@ module.exports = {
           if (thanksChannel) await thanksChannel.send({ embeds: [thanksEmbed] });
         } catch {}
 
-        // 4. 유저 명령어 응답(에페메랄)
+        // 4. 유저 명령어 응답(에페메랄) 동일
         try {
           await submitted.reply({
             content: [
               `정말 소중한 후원, 진심으로 감사드립니다!`,
-              '상품 정보, 이미지 등은 봇이 보낸 DM 또는 이곳을 통해 꼭 전달해 주세요.'
+              '상품 정보, 이미지 등은 영갓 또는 스탭진에게 직접 DM으로 전송해주세요!'
             ].join('\n\n'),
             ephemeral: true
           });
         } catch {}
+
+        return;
       }
 
     } catch (err) {
