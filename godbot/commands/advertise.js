@@ -130,10 +130,6 @@ module.exports = {
     if (voiceId) {
       row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`joinvoice_${voiceId}_${Date.now()}`)
-          .setLabel("음성채널 참여하기")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
           .setCustomId(`joinintent_${voiceId}_${Date.now()}`)
           .setLabel("참여 의사 밝히기")
           .setStyle(ButtonStyle.Success)
@@ -156,11 +152,6 @@ module.exports = {
           embed.setFields(fields);
           const disabledRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setCustomId(`disabled1`)
-              .setLabel("음성채널 참여하기")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true),
-            new ButtonBuilder()
               .setCustomId(`disabled2`)
               .setLabel("참여 의사 밝히기")
               .setStyle(ButtonStyle.Secondary)
@@ -179,23 +170,6 @@ module.exports = {
 
       collector.on('collect', async btnInt => {
         try {
-          if (btnInt.customId.startsWith('joinvoice_')) {
-            await btnInt.deferReply({ ephemeral: true });
-            const guild = btnInt.guild;
-            const member = await guild.members.fetch(btnInt.user.id);
-            const channel = await guild.channels.fetch(voiceId);
-
-            if (!channel || channel.type !== 2) {
-              return await btnInt.editReply({ content: "❌ 해당 음성채널을 찾을 수 없어요." });
-            }
-            const limit = channel.userLimit;
-            const curr = channel.members.size;
-            if (limit > 0 && curr >= limit) {
-              return await btnInt.editReply({ content: "❌ 이미 해당 음성채널이 가득 찼어요!" });
-            }
-            await member.voice.setChannel(channel).catch(() => null);
-            await btnInt.editReply({ content: `✅ [${channel.name}] 음성채널로 이동 완료!` });
-          }
           if (btnInt.customId.startsWith('joinintent_')) {
             await btnInt.deferReply({ ephemeral: true });
             try {
@@ -223,11 +197,6 @@ module.exports = {
         embed.setFields(fields);
         try {
           const disabledRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`disabled1`)
-              .setLabel("음성채널 참여하기")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true),
             new ButtonBuilder()
               .setCustomId(`disabled2`)
               .setLabel("참여 의사 밝히기")
