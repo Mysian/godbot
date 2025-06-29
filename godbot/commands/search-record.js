@@ -118,11 +118,19 @@ async function fetchLoLDetail(nicknameDash) {
     // 프로필 이미지
     const profileImg = $('img[class*="rounded-\\[20px\\]"]').attr("src") || null;
 
-    // 전적
-    const record = $("div.leading-\\[16px\\]").first().text().trim() || null;
+    // 전적: 텍스트 패턴 매칭
+    let record = null;
+    $('div').each((_, el) => {
+      const txt = $(el).text().trim();
+      if (/^\d+전 \d+승 \d+패$/.test(txt)) record = txt;
+    });
 
-    // KDA
-    const kda = $("strong.text-\\[15px\\].text-gray-900.md\\:text-\\[20px\\]").first().text().trim() || null;
+    // KDA: 텍스트 패턴 매칭
+    let kda = null;
+    $('strong').each((_, el) => {
+      const txt = $(el).text().trim();
+      if (/^\d+\.\d+\s*:\s*1$/.test(txt)) kda = txt;
+    });
 
     // 티어
     const tier = $("span.text-xs.lowercase.first-letter\\:uppercase").first().text().trim() || null;
@@ -138,6 +146,7 @@ async function fetchLoLDetail(nicknameDash) {
     return null;
   }
 }
+
 
 // 발로란트 티어 파싱 (현재 구현 X, 나중에 직접 구조 제공해주면 구현 가능)
 async function fetchValorantTier(nicknameDash) {
