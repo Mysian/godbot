@@ -79,9 +79,16 @@ module.exports = {
 
         case "valorant":
           url = `https://op.gg/ko/valorant/profile/${encodeURIComponent(nickname.replace("#", "-"))}`;
-          opggData = await fetchValorantTier(nickname.replace("#", "-"));
+          opggData = await fetchValorantDetail(nickname.replace("#", "-"));
           description = `[op.gg에서 상세 정보 확인하기](${url})` +
-            (opggData && opggData.tier ? `\n**티어** : ${opggData.tier}` : "");
+            (opggData ? `
+**랭크** : ${opggData.rank || "-"}
+**승/무/패** : ${opggData.result || "-"}
+**승률** : ${opggData.winrate || "-"}
+` : "\n전적 정보를 불러올 수 없습니다.");
+          if (opggData && opggData.profileImg) {
+            embedThumbnail = { url: opggData.profileImg };
+          }
           break;
 
         case "overwatch2":
@@ -186,7 +193,7 @@ async function fetchTFTDetail(nicknameDash) {
     // 티어: <span class="text-[20px] font-bold leading-[26px] text-gray-0">Gold IV</span>
     const tier = $("span.text-\\[20px\\].font-bold.leading-\\[26px\\].text-gray-0").first().text().replace(/\s+/g, " ").trim() || null;
 
-    // 승패: <span>17W 13L</span> (숫자+W, 숫자+L)
+    // 승패: <span>17W 13L</span>
     let winlose = null;
     $("span").each((_, el) => {
       const txt = $(el).text().replace(/\s+/g, " ").trim();
@@ -200,10 +207,7 @@ async function fetchTFTDetail(nicknameDash) {
     $("span").each((_, el) => {
       const txt = $(el).text().replace(/\s+/g, " ").trim();
       if (txt.includes("순방 확률")) {
-        topRate = txt.replace(/[^0-9%]/g, "") + "%";
-        if (txt.match(/(\d+)%/)) {
-          topRate = txt.match(/(\d+)%/)[1] + "%";
-        }
+        topRate = txt.match(/(\d+)%/)?.[1] + "%" || null;
       }
     });
 
@@ -219,7 +223,49 @@ async function fetchTFTDetail(nicknameDash) {
   }
 }
 
-// 발로란트 티어 파싱 (구현 필요 시 구조 제공해주면 맞춤 가능)
-async function fetchValorantTier(nicknameDash) {
-  return null;
+async function fetchValorantDetail(nicknameDash) {
+  try {
+    const res = await axios.get(`https://op.gg/ko/valorant/profile/${encodeURIComponent(nicknameDash)}`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+      }
+    });
+    const html = res.data;
+    const $ = cheerio.load(html);
+
+    // 프로필 이미지
+    const profileImg = $('img[alt="Player card"]').attr("src") || null;
+
+    // 랭크: <div class="text-[14px] font-bold md:text-[20px]">언랭크</div>
+    const rank = $("div.text-\\[14px\\].font-bold.md\\:text-\\[20px\\]").first().text().replace(/\s+/g, " ").trim() || null;
+
+    // 승/무/패: <span>0W 0D 0L</span>
+    let result = null;
+    $("span").each((_, el) => {
+      const txt = $(el).text().replace(/\s+/g, " ").trim();
+      if (/^\d+\s*W\s*\d+\s*D\s*\d+\s*L$/.test(txt) || /^\d+\s*W\s*\d+\s*L$/.test(txt)) {
+        result = txt;
+      }
+    });
+
+    // 승률: <span>승률 0%</span>
+    let winrate = null;
+    $("span").each((_, el) => {
+      const txt = $(el).text().replace(/\s+/g, " ").trim();
+      if (txt.includes("승률")) {
+        winrate = txt.match(/(\d+)%/)?.[1] + "%" || null;
+      }
+    });
+
+    return {
+      profileImg,
+      rank,
+      result,
+      winrate,
+    };
+  } catch (e) {
+    console.error("fetchValorantDetail 에러:", e);
+    return null;
+  }
 }
