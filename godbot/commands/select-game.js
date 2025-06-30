@@ -155,19 +155,19 @@ module.exports = {
     async function showPage(pageIdx, updateInteraction = null) {
       const rolesThisPage = getPageRoles(pageIdx);
 
-      // 예쁜 시안성
-      const description =
+     // 임베드 설명부
+const description =
   rolesThisPage.map((role) =>
-    ${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? **${role.name}** : *${role.name}*}
+    `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
   ).join('\n') || '선택 가능한 역할이 없습니다.';
 
       const embed = new EmbedBuilder()
-        .setTitle(게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages}))
+        .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
         .setDescription(description)
         .setColor(0x2095ff)
         .setImage(MAIN_IMAGE_URL)
         .setFooter({
-          text: "게임 태그를 반드시 1개 이상 유지하세요. │ 추가를 희망하는 게임이 있다면 스탭에게 문의하세요.",
+          text: "게임 태그를 반드시 1개 이상 유지하세요.",
           iconURL: FOOTER_ICON_URL
         });
 
@@ -224,7 +224,7 @@ module.exports = {
         if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
 
         await i.reply({
-          content: ✅ 역할이 적용되었습니다! (추가: ${toAdd.length}, 해제: ${toRemove.length}),
+          content: `✅ 역할이 적용되었습니다! (추가: ${toAdd.length}, 해제: ${toRemove.length})`,
           ephemeral: true
         });
       } else if (i.isButton()) {
