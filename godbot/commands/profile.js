@@ -159,14 +159,14 @@ module.exports = {
         { name: "💻 스팀",             value: profile.steamNick || "없음",                inline: true },
         { name: "🔖 롤 닉네임",        value: profile.lolNick   || "없음",                inline: true },
         { name: "🟦 배틀넷",           value: profile.bnetNick  || "없음",                inline: true },
-        { name: "🤗 친구 TOP3",        value: friendsStr,                              inline: false },
+        { name: "🤗 교류가 활발한 3인",        value: friendsStr,                              inline: false },
         { name: "📊 최근 7일 채팅",    value: `${recentMsg}회`,                         inline: true },
         { name: "🔊 최근 7일 음성",    value: formatVoice(recentVoice),                inline: true },
       )
       .setFooter({
         text: userId === interaction.user.id
-          ? "내 프로필은 오직 나만 볼 수 있어요!"
-          : "이 정보는 오직 명령어 입력자만 볼 수 있어요!",
+          ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!"
+          : "혁신적 종합게임서버, 까리한디스코드",
         iconURL: interaction.client.user.displayAvatarURL(),
       });
 
