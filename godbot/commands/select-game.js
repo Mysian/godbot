@@ -227,45 +227,32 @@ module.exports = {
     });
 
     collector.on("collect", async i => {
-      // 처리중엔 deferUpdate만 하고 아무것도 하지 않는다!
-      if (processing) {
-        await i.deferUpdate();
-        return;
-      }
+  if (i.isStringSelectMenu()) {
+    const selected = new Set(i.values);
+    const rolesThisPage = getPageRoles(page);
+    const toAdd = [];
+    const toRemove = [];
+    for (const role of rolesThisPage) {
+      if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
+      if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
+    }
+    if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
+    if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
 
-      // 셀렉트 메뉴
-      if (i.isStringSelectMenu()) {
-        processing = true;
-        await showPage(page, i, true);
+    member = await interaction.guild.members.fetch(interaction.user.id);
+    await showPage(page, i);
 
-        const selected = new Set(i.values);
-        const rolesThisPage = getPageRoles(page);
-        const toAdd = [];
-        const toRemove = [];
-        for (const role of rolesThisPage) {
-          if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
-          if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
-        }
-        // 역할 변동
-        if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
-        if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
-
-        // 멤버 정보 갱신
-        member = await interaction.guild.members.fetch(interaction.user.id);
-
-        processing = false;
-        await showPage(page, i);
-      } else if (i.isButton()) {
-        if (i.customId === "prev" && page > 0) {
-          page -= 1;
-          await showPage(page, i);
-        }
-        if (i.customId === "next" && page < totalPages - 1) {
-          page += 1;
-          await showPage(page, i);
-        }
-      }
-    });
+  } else if (i.isButton()) {
+    if (i.customId === "prev" && page > 0) {
+      page -= 1;
+      await showPage(page, i);
+    }
+    if (i.customId === "next" && page < totalPages - 1) {
+      page += 1;
+      await showPage(page, i);
+    }
+  }
+});
 
     collector.on("end", async () => {
       try {
