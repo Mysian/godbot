@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder } = require("discord.js");
 
-// 태그 설정
 const PLAY_STYLE_TAGS = [
   { label: "빡겜러", id: "1210762363704311838", emoji: "❤️" },
   { label: "즐빡겜러", id: "1210762298172383273", emoji: "💛" },
@@ -33,13 +32,9 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
-    // 빡겜러/즐빡겜러/즐겜러 롤 ID만 모으기
     const playStyleRoleIds = PLAY_STYLE_TAGS.map(tag => tag.id);
-
-    // 유저가 현재 가진 플레이스타일 역할 ID
     let ownedPlayStyle = playStyleRoleIds.filter(id => member.roles.cache.has(id));
 
-    // 정상적인 상태 아니면(0개 또는 2개 이상), '즐빡겜러'만 남기고 나머지 제거
     if (ownedPlayStyle.length !== 1) {
       const defaultPlayStyleId = PLAY_STYLE_TAGS[1].id;
       await member.roles.remove(playStyleRoleIds, "플레이 스타일 역할 초기화");
@@ -47,48 +42,51 @@ module.exports = {
       ownedPlayStyle = [defaultPlayStyleId];
     }
 
-    // 기타 태그
-    const otherTags = [
-      ADULT_CHAT_TAG,
-      ...NOTIFY_TAGS,
-    ];
+    const otherTags = [ADULT_CHAT_TAG, ...NOTIFY_TAGS];
 
-    // embed, 메뉴 생성 함수 (항상 fresh하게 만듦)
     function makeEmbedAndMenus(currentRoles) {
-      // embed
+      // 역할 설명 구간
+      const desc = [
+        "**플레이스타일은 서로 배려해주세요!**",
+        "❤️ **빡겜러**: 모든 게임에서 집중하고 경쟁을 즐기며 순위권을 가려는 자.",
+        "💛 **즐빡겜러**: 기본적으로는 즐겜을 선호하지만, 특정 순간 빡겜러가 되어버리는 자.",
+        "💚 **즐겜러**: 실력에 상관없이 유쾌하고 즐거운 분위기 위주로 즐기려는 자.",
+        "",
+        "🔞 **성인 채팅방 활성화**: 🔞🗨채팅방🔞│수위＆반말 방 접근 권한 해제",
+        "",
+        "⏰ **알림 태그**: 서버의 각종 주요 알림을 받아볼 수 있습니다.",
+        "",
+        "---",
+        "**⏬ 아래에서 원하는 태그를 선택하세요.**",
+      ].join("\n");
+
+      // 상태 구간(더 띄우고, bold title)
+      const tagStatusText = [
+        " ",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "**[ 현재 내 태그 상태 ]**",
+        "",
+        "플레이 스타일:",
+        PLAY_STYLE_TAGS.map(tag =>
+          `${currentRoles.has(tag.id) ? "✅" : "⬜"} ${tag.emoji} ${currentRoles.has(tag.id) ? `**${tag.label}**` : `*${tag.label}*`}`
+        ).join("   "),
+        "",
+        "기타 태그:",
+        otherTags.map(tag =>
+          `${currentRoles.has(tag.id) ? "✅" : "⬜"} ${tag.emoji} ${currentRoles.has(tag.id) ? `**${tag.label}**` : `*${tag.label}*`}`
+        ).join("   "),
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "✅ **굵게**: 이미 보유중, *기울임*: 미보유",
+      ].join("\n");
+
       const embed = new EmbedBuilder()
         .setTitle("💎 서버 태그 역할 설정")
-        .setDescription([
-          "서로 다른 플레이 스타일이 있음을 배려해주세요.",
-          "❤️ **빡겜러**: 모든 게임에서 집중하고 경쟁을 즐기며 순위권을 가려는 자.",
-          "💛 **즐빡겜러**: 기본적으로는 즐겜을 선호하지만, 특정 순간 빡겜러가 되어버리는 자.",
-          "💚 **즐겜러**: 실력에 상관없이 유쾌하고 즐거운 분위기 위주로 즐기려는 자.",
-          "",
-          "🔞 **성인 채팅방 활성화**: 🔞🗨채팅방🔞│수위＆반말 방 접근 권한 해제",
-          "",
-          "⏰ **알림 태그**: 서버의 각종 주요 알림을 받아볼 수 있습니다.",
-          "",
-          "✅ **굵게** 표시된 태그는 이미 보유중, *기울임*은 미보유 상태입니다.",
-        ].join("\n"))
+        .setDescription(desc)
+        .addFields({ name: "\u200b", value: tagStatusText }) // 빈 이름 필드로 구분(더 깔끔)
         .setColor(0x7b2ff2)
         .setFooter({ text: "플레이 스타일 3개 중 1개는 반드시 선택해야 합니다." });
 
-      // 상태 필드
-      const tagStatusText = [
-        "**플레이 스타일**",
-        PLAY_STYLE_TAGS.map(tag =>
-          `${currentRoles.has(tag.id) ? "✅" : "⬜"} ${tag.emoji} ${currentRoles.has(tag.id) ? `**${tag.label}**` : `*${tag.label}*`}`
-        ).join(" "),
-        "",
-        "**기타 태그**",
-        otherTags.map(tag =>
-          `${currentRoles.has(tag.id) ? "✅" : "⬜"} ${tag.emoji} ${currentRoles.has(tag.id) ? `**${tag.label}**` : `*${tag.label}*`}`
-        ).join("  "),
-      ].join("\n");
-
-      embed.setFields([{ name: "현재 내 태그 상태", value: tagStatusText }]);
-
-      // 메뉴
       const playStyleSelect = new StringSelectMenuBuilder()
         .setCustomId("play_style_select")
         .setPlaceholder("플레이 스타일을 선택하세요 (필수)")
@@ -140,16 +138,12 @@ module.exports = {
     });
 
     collector.on("collect", async i => {
-      // **중요: 최신 상태 기준으로 항상 다시 생성**
       member = await interaction.guild.members.fetch(interaction.user.id);
-      let updateRequired = false;
-
       if (i.customId === "play_style_select") {
         const newPlayStyleId = i.values[0];
-        if (!member.roles.cache.has(newPlayStyleId) || ownedPlayStyle[0] !== newPlayStyleId) {
+        if (!member.roles.cache.has(newPlayStyleId) || !playStyleRoleIds.includes(newPlayStyleId)) {
           await member.roles.remove(playStyleRoleIds, "플레이 스타일 변경");
           await member.roles.add(newPlayStyleId, "플레이 스타일 선택");
-          updateRequired = true;
         }
       }
       else if (i.customId === "server_tags_select") {
@@ -161,11 +155,9 @@ module.exports = {
           if (selected.has(tag.id) && !hasRole) toAdd.push(tag.id);
           if (!selected.has(tag.id) && hasRole) toRemove.push(tag.id);
         }
-        if (toAdd.length > 0) { await member.roles.add(toAdd, "서버 태그 추가"); updateRequired = true; }
-        if (toRemove.length > 0) { await member.roles.remove(toRemove, "서버 태그 해제"); updateRequired = true; }
+        if (toAdd.length > 0) await member.roles.add(toAdd, "서버 태그 추가");
+        if (toRemove.length > 0) await member.roles.remove(toRemove, "서버 태그 해제");
       }
-
-      // 항상 최신 정보로 재생성
       member = await interaction.guild.members.fetch(interaction.user.id);
       const { embed: embed2, actionRows: actionRows2 } = makeEmbedAndMenus(member.roles.cache);
 
