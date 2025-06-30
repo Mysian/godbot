@@ -278,13 +278,17 @@ module.exports = {
       const { client } = require('../index.js');
       const modalHandler = async interaction => {
         if (!interaction.isModalSubmit()) return;
-        // 수정 (공지 번호 선택)
+
+        // ✅ 수정 (공지 번호 선택)
         if (interaction.customId.startsWith('edit_tip_modal_')) {
           const page = parseInt(interaction.customId.split('_').pop());
           const idxText = interaction.fields.getTextInputValue('edit_tip_index');
           const idx = parseInt(idxText.replace(/[^0-9]/g, '')) - 1;
           if (isNaN(idx) || idx < 0 || idx >= tips.length) {
-            return interaction.reply({ content: '잘못된 번호입니다.', ephemeral: true });
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: '잘못된 번호입니다.', ephemeral: true });
+            }
+            return;
           }
           const editModal = new ModalBuilder()
             .setCustomId(`edit_tip_final_${idx}_${page}`)
@@ -302,13 +306,15 @@ module.exports = {
           await interaction.showModal(editModal);
           return;
         }
-        // 실제 수정
+        // ✅ 실제 수정
         if (interaction.customId.startsWith('edit_tip_final_')) {
           const [_, idx, page] = interaction.customId.split('_').slice(-3);
           const newContent = interaction.fields.getTextInputValue('edit_tip_content');
           tips[parseInt(idx)] = newContent;
           saveData(data);
-          await interaction.reply({ content: `공지 #${parseInt(idx) + 1}번이 수정되었습니다.`, ephemeral: true });
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: `공지 #${parseInt(idx) + 1}번이 수정되었습니다.`, ephemeral: true });
+          }
           setTimeout(async () => {
             try {
               const { embed, navRow } = getPageEmbedAndRow(Number(page));
@@ -317,17 +323,22 @@ module.exports = {
           }, 500);
           return;
         }
-        // 삭제
+        // ✅ 삭제
         if (interaction.customId.startsWith('delete_tip_modal_')) {
           const page = parseInt(interaction.customId.split('_').pop());
           const idxText = interaction.fields.getTextInputValue('delete_tip_index');
           const idx = parseInt(idxText.replace(/[^0-9]/g, '')) - 1;
           if (isNaN(idx) || idx < 0 || idx >= tips.length) {
-            return interaction.reply({ content: '잘못된 번호입니다.', ephemeral: true });
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: '잘못된 번호입니다.', ephemeral: true });
+            }
+            return;
           }
           tips.splice(idx, 1);
           saveData(data);
-          await interaction.reply({ content: `공지 #${idx + 1}번이 삭제되었습니다.`, ephemeral: true });
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: `공지 #${idx + 1}번이 삭제되었습니다.`, ephemeral: true });
+          }
           setTimeout(async () => {
             try {
               let realPage = currentPage;
