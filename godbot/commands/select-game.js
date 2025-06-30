@@ -207,7 +207,7 @@ const description =
     const msg = await interaction.fetchReply();
     const collector = msg.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
-      time: 120_000
+      time: 600_000
     });
 
     collector.on("collect", async i => {
