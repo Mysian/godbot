@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBuilder, EmbedBuilder, ComponentType } = require("discord.js");
 
 // 롤, 스팀게임, 나머지
-const ROLL_GAMES = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
+const LOL = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
 const STEAM_GAMES = ["스팀게임"];
+const THUMBNAIL_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=6863b968&is=686267e8&hm=f5cd94557360f427a8a3bfca9b8c27290ce29d5e655871541c309133b0082e85&=&format=webp&quality=lossless";
 const ALL_GAMES = [
   "소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드", // 롤
   "스팀게임", // 스팀
@@ -15,6 +16,7 @@ const ALL_GAMES = [
   "테이블 탑 시뮬레이터", "테일즈런너", "파스모포비아", "파워워시 시뮬레이터", "파티 애니멀즈", "팰월드", "페긴",
   "프래그 펑크", "휴먼폴플랫", "헬다이버즈", "히오스"
 ];
+
 
 // 롤/스팀 제외 나머지 정렬
 function getInitial(char) {
@@ -39,11 +41,11 @@ function sortByInitial(a, b) {
   return ia.localeCompare(ib, "en");
 }
 
-const EXCLUDE_GAMES = [...ROLL_GAMES, ...STEAM_GAMES];
+const EXCLUDE_GAMES = [...LOL, ...STEAM_GAMES];
 const ETC_GAMES = ALL_GAMES.filter(x => !EXCLUDE_GAMES.includes(x)).sort(sortByInitial);
 
 const GAMES_PAGED = [ // 첫 페이지만 롤+스팀, 나머지는 10개씩 끊음
-  [...ROLL_GAMES, ...STEAM_GAMES, ...ETC_GAMES.slice(0, 5)],
+  [...LOL, ...STEAM_GAMES, ...ETC_GAMES.slice(0, 5)],
   ...Array.from({ length: Math.ceil((ETC_GAMES.length - 5) / 10) }, (_, i) =>
     ETC_GAMES.slice(5 + i * 10, 5 + (i + 1) * 10)
   )
@@ -52,7 +54,7 @@ const GAMES_PAGED = [ // 첫 페이지만 롤+스팀, 나머지는 10개씩 끊�
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임선택")
-    .setDescription("모든 게임 역할을 한 번에! (롤/스팀은 첫 페이지 최상단 고정)"),
+    .setDescription("게임 역할 태그를 설정합니다. (가나다 순 정렬)"),
 
   async execute(interaction) {
     await interaction.guild.roles.fetch();
@@ -79,14 +81,18 @@ module.exports = {
 
       // 임베드 출력
       const embed = new EmbedBuilder()
-        .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
-        .setDescription(
-          rolesThisPage.map((role, idx) =>
-            `${idx + 1}. ${role.name}${member.roles.cache.has(role.id) ? " ✅" : ""}`
-          ).join('\n') ||
-          '선택 가능한 역할이 없습니다.'
-        )
-        .setColor(0x2095ff);
+  .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
+  .setDescription(
+    rolesThisPage.map((role, idx) =>
+      `${idx + 1}. ${role.name}${member.roles.cache.has(role.id) ? " ✅" : ""}`
+    ).join('\n') ||
+    '선택 가능한 역할이 없습니다.'
+  )
+  .setColor(0x2095ff)
+  .setFooter({
+    text: "게임 태그는 자유롭게 설정/해제할 수 있습니다.",
+    iconURL: THUMBNAIL_URL
+  });
 
       // 셀렉트 메뉴(최대 25개 제한: 실제론 10개 이하)
       const selectMenu = new StringSelectMenuBuilder()
