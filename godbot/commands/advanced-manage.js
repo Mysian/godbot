@@ -13,6 +13,7 @@ const EXEMPT_ROLE_IDS = ['1371476512024559756'];
 const STEAM_TAG_ROLE_ID = '1202781853875183697';
 const RANGE_ROLE_LOWER = 1389171818371350598;
 const RANGE_ROLE_UPPER = 1389171946960195624;
+const GAME_MEMBER_ROLE_ID = '816619403205804042';
 
 const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
 const PERIODS = [
@@ -135,15 +136,25 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
 // [여기 추가] A~B 범위 내 역할 단 하나도 없는 유저 찾기
 async function fetchNoGameRoleMembers(guild) {
   const allMembers = await guild.members.fetch();
-  // 범위 내 역할들 가져오기
+
+  // 범위 내 역할들 추출 (역할ID 존재 체크!)
+  const lowerRole = guild.roles.cache.get(String(RANGE_ROLE_LOWER));
+  const upperRole = guild.roles.cache.get(String(RANGE_ROLE_UPPER));
+  if (!lowerRole || !upperRole) return []; // 또는 안내 메시지
+
   const rolesInRange = guild.roles.cache.filter(r =>
-    r.position >= guild.roles.cache.get(String(RANGE_ROLE_LOWER)).position &&
-    r.position <= guild.roles.cache.get(String(RANGE_ROLE_UPPER)).position
+    r.position >= lowerRole.position &&
+    r.position <= upperRole.position
   );
+
   let arr = [];
   for (const member of allMembers.values()) {
     if (member.user.bot) continue;
-    // 범위 내 역할 중 1개도 없는 경우만
+
+    // **[1] '게임 멤버' 역할을 가진 유저만 필터링**
+    if (!member.roles.cache.has(GAME_MEMBER_ROLE_ID)) continue;
+
+    // **[2] 범위 내 역할 중 1개도 없는 경우만**
     if (rolesInRange.every(role => !member.roles.cache.has(role.id))) {
       arr.push({
         id: member.id,
