@@ -141,6 +141,14 @@ const modalHandlers = new Map([
     const cmd = client.commands.get("공지하기");
     if (cmd?.modal) return cmd.modal(interaction);
   }],
+  ["edit_tip_final_", async (interaction) => {
+  const cmd = client.commands.get("공지하기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["delete_tip_modal_", async (interaction) => {
+  const cmd = client.commands.get("공지하기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   ["warn_modal_", async (interaction) => {
     const cmd = client.commands.get("경고");
     if (cmd?.handleModal) return cmd.handleModal(interaction);
@@ -279,43 +287,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-
-  // 4. 공지하기 버튼 처리 (공지 리스트 임베드의 모든 버튼)
-if (
-  interaction.isButton() &&
-  (
-    interaction.customId.startsWith('prev_page_') ||
-    interaction.customId.startsWith('next_page_') ||
-    interaction.customId.startsWith('edit_tip_modal_page_') ||
-    interaction.customId.startsWith('delete_tip_modal_page_')
-  )
-) {
-  // 공지하기 명령어에서 collector가 아닌, 직접 execute로 넘겨줌!
-  const cmd = client.commands.get("공지하기");
-  if (cmd && typeof cmd.handleButton === "function") {
-    try {
-      await cmd.handleButton(interaction);
-    } catch (error) {
-      console.error(error);
-      if (interaction.deferred || interaction.replied) {
-        await interaction.followUp({
-          content: "❌ 버튼 실행 중 오류가 발생했습니다.",
-          ephemeral: true
-        }).catch(() => {});
-      } else {
-        await interaction.reply({
-          content: "❌ 버튼 실행 중 오류가 발생했습니다.",
-          ephemeral: true
-        }).catch(() => {});
-      }
-    }
-  } else {
-    // collector 내에서만 처리하는 구조면 여기에선 아무 것도 안 해도 됨!
-    // 단, execute에서 collector 생성이 정상적으로 돼야 함
-  }
-  return;
-}
-
+  
   // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
