@@ -113,12 +113,13 @@ function sortByInitial(a, b) {
 const EXCLUDE_GAMES = [...LOL, ...STEAM_GAMES];
 const ETC_GAMES = ALL_GAMES.filter(x => !EXCLUDE_GAMES.includes(x)).sort(sortByInitial);
 
-const GAMES_PAGED = [ // 첫 페이지만 롤+스팀, 나머지는 10개씩 끊음
+const GAMES_PAGED = [
   [...LOL, ...STEAM_GAMES, ...ETC_GAMES.slice(0, 5)],
   ...Array.from({ length: Math.ceil((ETC_GAMES.length - 5) / 10) }, (_, i) =>
     ETC_GAMES.slice(5 + i * 10, 5 + (i + 1) * 10)
   )
-];
+].filter(pageArr => pageArr.length > 0); 
+
 
 // 역할명별로 아이콘 부여
 function getIcon(roleName) {
