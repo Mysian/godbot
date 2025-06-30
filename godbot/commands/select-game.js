@@ -185,73 +185,68 @@ let processing = false;
     }
 
     async function showPage(pageIdx, updateInteraction = null, isProcessing = false) {
-      const rolesThisPage = getPageRoles(pageIdx);
+  const rolesThisPage = getPageRoles(pageIdx);
 
-      const description =
-        rolesThisPage.map((role) =>
-          `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
-        ).join('\n') || '선택 가능한 역할이 없습니다.';
+  const description =
+    rolesThisPage.map((role) =>
+      `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
+    ).join('\n') || '선택 가능한 역할이 없습니다.';
 
-      const embed = new EmbedBuilder()
-        .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
-        .setDescription(description)
-        .setColor(0x2095ff)
-        .setImage(MAIN_IMAGE_URL)
-        .setFooter({
-          text: "게임 태그를 1개 이상 유지하세요. │신규 게임태그 문의는 스탭진에게",
-          iconURL: FOOTER_ICON_URL
-        });
+  const embed = new EmbedBuilder()
+    .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
+    .setDescription(description)
+    .setColor(0x2095ff)
+    .setImage(MAIN_IMAGE_URL)
+    .setFooter({
+      text: "게임 태그를 1개 이상 유지하세요. │신규 게임태그 문의는 스탭진에게",
+      iconURL: FOOTER_ICON_URL
+    });
 
-      if (isProcessing) {
-        const processingRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("processing")
-            .setLabel("처리중입니다. 잠시만 기다려주세요")
-            .setStyle("Secondary")
-            .setDisabled(true)
-        );
-        if (updateInteraction) return updateInteraction.update({ embeds: [embed], components: [processingRow], ephemeral: true });
-        else return interaction.editReply({ embeds: [embed], components: [processingRow], ephemeral: true });
-      }
+  // rolesThisPage가 1개 이상 있을 때만 셀렉트 메뉴 생성
+  let components = [];
 
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("game_roles_select")
-        .setPlaceholder("설정할 게임 태그를 선택하세요")
-        .setMinValues(0)
-        .setMaxValues(rolesThisPage.length)
-        .addOptions(
-          rolesThisPage.map(role => ({
-            label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
-            value: role.id,
-            default: member.roles.cache.has(role.id)
-          }))
-        );
-
-      const actionRow = new ActionRowBuilder().addComponents(selectMenu);
-
-      const navRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("prev")
-          .setLabel("이전")
-          .setStyle("Secondary")
-          .setDisabled(pageIdx === 0)
-          .setEmoji("⬅️"),
-        new ButtonBuilder()
-          .setCustomId("next")
-          .setLabel("다음")
-          .setStyle("Primary")
-          .setDisabled(pageIdx >= totalPages - 1)
-          .setEmoji("➡️"),
+  if (rolesThisPage.length > 0) {
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId("game_roles_select")
+      .setPlaceholder("설정할 게임 태그를 선택하세요")
+      .setMinValues(0)
+      .setMaxValues(rolesThisPage.length) // 이 값이 반드시 1이상이어야!
+      .addOptions(
+        rolesThisPage.map(role => ({
+          label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
+          value: role.id,
+          default: member.roles.cache.has(role.id)
+        }))
       );
 
-      const payload = {
-        embeds: [embed],
-        components: [actionRow, navRow],
-        ephemeral: true,
-      };
-      if (updateInteraction) await updateInteraction.update(payload);
-      else await interaction.reply(payload);
-    }
+    const actionRow = new ActionRowBuilder().addComponents(selectMenu);
+    components.push(actionRow);
+  }
+
+  const navRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("prev")
+      .setLabel("이전")
+      .setStyle("Secondary")
+      .setDisabled(pageIdx === 0)
+      .setEmoji("⬅️"),
+    new ButtonBuilder()
+      .setCustomId("next")
+      .setLabel("다음")
+      .setStyle("Primary")
+      .setDisabled(pageIdx >= totalPages - 1)
+      .setEmoji("➡️"),
+  );
+  components.push(navRow);
+
+  const payload = {
+    embeds: [embed],
+    components: components,
+    ephemeral: true,
+  };
+  if (updateInteraction) await updateInteraction.update(payload);
+  else await interaction.reply(payload);
+}
 
     await showPage(page);
 
