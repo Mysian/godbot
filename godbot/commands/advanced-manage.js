@@ -137,25 +137,33 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
 async function fetchNoGameRoleMembers(guild) {
   const allMembers = await guild.members.fetch();
 
-  // 범위 내 역할들 추출 (역할ID 존재 체크!)
+  // 범위 역할 체크
   const lowerRole = guild.roles.cache.get(String(RANGE_ROLE_LOWER));
   const upperRole = guild.roles.cache.get(String(RANGE_ROLE_UPPER));
-  if (!lowerRole || !upperRole) return []; // 또는 안내 메시지
+  if (!lowerRole || !upperRole) return [];
+
+  // **position 오름차순 보정**
+  const minPos = Math.min(lowerRole.position, upperRole.position);
+  const maxPos = Math.max(lowerRole.position, upperRole.position);
 
   const rolesInRange = guild.roles.cache.filter(r =>
-    r.position >= lowerRole.position &&
-    r.position <= upperRole.position
+    r.position >= minPos && r.position <= maxPos
   );
 
   let arr = [];
   for (const member of allMembers.values()) {
     if (member.user.bot) continue;
-
-    // **[1] '게임 멤버' 역할을 가진 유저만 필터링**
     if (!member.roles.cache.has(GAME_MEMBER_ROLE_ID)) continue;
 
-    // **[2] 범위 내 역할 중 1개도 없는 경우만**
-    if (rolesInRange.every(role => !member.roles.cache.has(role.id))) {
+    // **중요! 범위 내 역할이 1개라도 있으면 패스**
+    let hasAny = false;
+    for (const role of rolesInRange.values()) {
+      if (member.roles.cache.has(role.id)) {
+        hasAny = true;
+        break;
+      }
+    }
+    if (!hasAny) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
