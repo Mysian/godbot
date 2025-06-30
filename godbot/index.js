@@ -141,6 +141,14 @@ const modalHandlers = new Map([
     const cmd = client.commands.get("공지하기");
     if (cmd?.modal) return cmd.modal(interaction);
   }],
+  ["edit_tip_final_", async (interaction) => {
+  const cmd = client.commands.get("공지하기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["delete_tip_modal_", async (interaction) => {
+  const cmd = client.commands.get("공지하기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   ["warn_modal_", async (interaction) => {
     const cmd = client.commands.get("경고");
     if (cmd?.handleModal) return cmd.handleModal(interaction);
