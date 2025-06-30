@@ -230,7 +230,7 @@ module.exports = {
     });
   }
 
-  await showPage(page);
+  await showPage(page, null, true);
 
   const msg = await interaction.fetchReply();
   const collector = msg.createMessageComponentCollector({
