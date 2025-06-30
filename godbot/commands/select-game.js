@@ -205,13 +205,13 @@ module.exports = {
     await showPage(page);
 
     const msg = await interaction.fetchReply();
-    const collector = msg.createMessageComponentCollector({
-      filter: i => i.user.id === interaction.user.id,
-      time: 120_000
-    });
+const collector = msg.createMessageComponentCollector({
+  filter: i => i.user.id === interaction.user.id,
+  time: 600_000 // 10분 (원하면 더 늘려도 됨)
+});
 
     collector.on("collect", async i => {
-      if (i.isStringSelectMenu()) {
+  if (i.isStringSelectMenu()) {
         const selected = new Set(i.values);
         const rolesThisPage = getPageRoles(page);
         const toAdd = [];
@@ -237,6 +237,7 @@ module.exports = {
           await showPage(page, i);
         }
       }
+      collector.resetTimer(); 
     });
 
     collector.on("end", async () => {
