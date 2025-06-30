@@ -134,7 +134,7 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.guild.roles.fetch();
-    const member = await interaction.guild.members.fetch(interaction.user.id);
+    let member = await interaction.guild.members.fetch(interaction.user.id);
 
     let page = 0;
     const totalPages = GAMES_PAGED.length;
@@ -167,38 +167,18 @@ module.exports = {
           iconURL: FOOTER_ICON_URL
         });
 
-      // 메뉴·버튼 비활성화 상태
       if (isProcessing) {
-        return updateInteraction
-          ? updateInteraction.update({
-              embeds: [embed],
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder()
-                    .setCustomId("processing")
-                    .setLabel("처리중입니다. 잠시만 기다려주세요")
-                    .setStyle("Secondary")
-                    .setDisabled(true)
-                ),
-              ],
-              ephemeral: true,
-            })
-          : interaction.editReply({
-              embeds: [embed],
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder()
-                    .setCustomId("processing")
-                    .setLabel("처리중입니다. 잠시만 기다려주세요")
-                    .setStyle("Secondary")
-                    .setDisabled(true)
-                ),
-              ],
-              ephemeral: true,
-            });
+        const processingRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("processing")
+            .setLabel("처리중입니다. 잠시만 기다려주세요")
+            .setStyle("Secondary")
+            .setDisabled(true)
+        );
+        if (updateInteraction) return updateInteraction.update({ embeds: [embed], components: [processingRow], ephemeral: true });
+        else return interaction.editReply({ embeds: [embed], components: [processingRow], ephemeral: true });
       }
 
-      // 셀렉트 메뉴 + 페이지네이션 버튼
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("game_roles_select")
         .setPlaceholder("설정할 게임 태그를 선택하세요")
@@ -214,22 +194,20 @@ module.exports = {
 
       const actionRow = new ActionRowBuilder().addComponents(selectMenu);
 
-      // 이모지 + 버튼 색상 구분
-      const navRow = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId("prev")
-            .setLabel("이전")
-            .setStyle("Secondary")
-            .setDisabled(pageIdx === 0)
-            .setEmoji("⬅️"),
-          new ButtonBuilder()
-            .setCustomId("next")
-            .setLabel("다음")
-            .setStyle("Primary")
-            .setDisabled(pageIdx >= totalPages - 1)
-            .setEmoji("➡️"),
-        );
+      const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("prev")
+          .setLabel("이전")
+          .setStyle("Secondary")
+          .setDisabled(pageIdx === 0)
+          .setEmoji("⬅️"),
+        new ButtonBuilder()
+          .setCustomId("next")
+          .setLabel("다음")
+          .setStyle("Primary")
+          .setDisabled(pageIdx >= totalPages - 1)
+          .setEmoji("➡️"),
+      );
 
       const payload = {
         embeds: [embed],
@@ -249,10 +227,12 @@ module.exports = {
     });
 
     collector.on("collect", async i => {
+      // 처리중엔 deferUpdate만 하고 아무것도 하지 않는다!
       if (processing) {
         await i.deferUpdate();
         return;
       }
+
       // 셀렉트 메뉴
       if (i.isStringSelectMenu()) {
         processing = true;
@@ -266,15 +246,14 @@ module.exports = {
           if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
           if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
         }
-        // 실제 역할 변동 처리
+        // 역할 변동
         if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
         if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
 
-        // 최신 멤버 정보 반영
-        await member.fetch(true);
+        // 멤버 정보 갱신
+        member = await interaction.guild.members.fetch(interaction.user.id);
 
         processing = false;
-        // 역할 변동 결과를 임베드에 반영해서 다시 띄우기
         await showPage(page, i);
       } else if (i.isButton()) {
         if (i.customId === "prev" && page > 0) {
