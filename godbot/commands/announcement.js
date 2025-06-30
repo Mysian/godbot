@@ -222,57 +222,62 @@ module.exports = {
       const filter = i => i.user.id === interaction.user.id;
       const collector = msg.createMessageComponentCollector({ filter, time: 300_000 });
 
-      collector.on('collect', async btnInt => {
-        await btnInt.deferUpdate().catch(() => {});
-        // 페이지 이동
-        if (btnInt.customId.startsWith('prev_page_')) {
-          if (currentPage > 1) currentPage--;
-        }
-        if (btnInt.customId.startsWith('next_page_')) {
-          if (currentPage < maxPage) currentPage++;
-        }
-        if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
-          const { embed, navRow } = getPageEmbedAndRow(currentPage);
-          await msg.edit({ embeds: [embed], components: [navRow] });
-          return;
-        }
-        // 수정 모달
-        if (btnInt.customId.startsWith('edit_tip_modal_page_')) {
-          const modal = new ModalBuilder()
-            .setCustomId(`edit_tip_modal_${currentPage}`)
-            .setTitle('공지 수정')
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('edit_tip_index')
-                  .setLabel('수정할 공지 번호를 입력하세요 (#숫자)')
-                  .setStyle(TextInputStyle.Short)
-                  .setRequired(true)
-                  .setPlaceholder(`예: ${(currentPage - 1) * PAGE_SIZE + 1}`)
-              ),
-            );
-          await btnInt.showModal(modal);
-          return;
-        }
-        // 삭제 모달
-        if (btnInt.customId.startsWith('delete_tip_modal_page_')) {
-          const modal = new ModalBuilder()
-            .setCustomId(`delete_tip_modal_${currentPage}`)
-            .setTitle('공지 삭제')
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('delete_tip_index')
-                  .setLabel('삭제할 공지 번호를 입력하세요 (#숫자)')
-                  .setStyle(TextInputStyle.Short)
-                  .setRequired(true)
-                  .setPlaceholder(`예: ${(currentPage - 1) * PAGE_SIZE + 1}`)
-              ),
-            );
-          await btnInt.showModal(modal);
-          return;
-        }
-      });
+      collector.on('collect', async i => {
+  const id = i.customId;
+
+  // 페이지 이동 👉 deferUpdate() 필요
+  if (id.startsWith('prev_page_') || id.startsWith('next_page_')) {
+    await i.deferUpdate();
+    if (id.startsWith('prev_page_')) {
+      if (currentPage > 1) currentPage--;
+    }
+    if (id.startsWith('next_page_')) {
+      if (currentPage < maxPage) currentPage++;
+    }
+    const { embed, navRow } = getPageEmbedAndRow(currentPage);
+    await msg.edit({ embeds: [embed], components: [navRow] });
+    return;
+  }
+
+  // 공지 수정 모달 👉 showModal만!
+  if (id.startsWith('edit_tip_modal_page_')) {
+    const modal = new ModalBuilder()
+      .setCustomId(`edit_tip_modal_${currentPage}`)
+      .setTitle('공지 수정')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('edit_tip_index')
+            .setLabel('수정할 공지 번호를 입력하세요 (#숫자)')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setPlaceholder(`예: ${(currentPage - 1) * PAGE_SIZE + 1}`)
+        ),
+      );
+    await i.showModal(modal);   // deferUpdate() 없이!
+    return;
+  }
+
+  // 공지 삭제 모달 👉 showModal만!
+  if (id.startsWith('delete_tip_modal_page_')) {
+    const modal = new ModalBuilder()
+      .setCustomId(`delete_tip_modal_${currentPage}`)
+      .setTitle('공지 삭제')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('delete_tip_index')
+            .setLabel('삭제할 공지 번호를 입력하세요 (#숫자)')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setPlaceholder(`예: ${(currentPage - 1) * PAGE_SIZE + 1}`)
+        ),
+      );
+    await i.showModal(modal);   // deferUpdate() 없이!
+    return;
+  }
+});
+
 
       // ==== 모달 핸들러 등록 ====
       const { client } = require('../index.js');
