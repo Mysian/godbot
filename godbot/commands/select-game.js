@@ -226,6 +226,14 @@ async function showProcessing(i) {
   });
 }
 
+await showPage(page);
+
+const msg = await interaction.fetchReply();
+const collector = msg.createMessageComponentCollector({
+  filter: i => i.user.id === interaction.user.id,
+  time: 600_000
+});
+
 // 콜렉터 처리부 수정
 collector.on("collect", async i => {
   if (i.isStringSelectMenu()) {
