@@ -52,7 +52,7 @@ const GAMES_PAGED = [ // 첫 페이지만 롤+스팀, 나머지는 10개씩 끊�
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임선택")
-    .setDescription("게임 역할 태그를 장착 및 해제합니다. (가나다 순 정렬)"),
+    .setDescription("게임 역할 태그를 설정합니다. (가나다 순 정렬)"),
 
   async execute(interaction) {
     await interaction.guild.roles.fetch();
