@@ -214,7 +214,7 @@ module.exports = {
       const msg = await interaction.reply({
         embeds: [embed],
         components: [navRow],
-        ephemeral: true,
+        ephemeral: false,
         fetchReply: true,
       });
 
@@ -272,13 +272,6 @@ module.exports = {
           await btnInt.showModal(modal);
           return;
         }
-      });
-
-      collector.on('end', async () => {
-        try {
-          const { embed, navRow } = getPageEmbedAndRow(currentPage);
-          await msg.edit({ embeds: [embed], components: [getNavRow(currentPage, maxPage, true)] });
-        } catch { }
       });
 
       // ==== 모달 핸들러 등록 ====
