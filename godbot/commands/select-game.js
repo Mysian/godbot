@@ -3,7 +3,7 @@ const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBu
 // 롤, 스팀게임, 나머지
 const LOL = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
 const STEAM_GAMES = ["스팀게임"];
-const THUMBNAIL_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=6863b968&is=686267e8&hm=f5cd94557360f427a8a3bfca9b8c27290ce29d5e655871541c309133b0082e85&=&format=webp&quality=lossless";
+const MAIN_IMAGE_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=6863b968&is=686267e8&hm=f5cd94557360f427a8a3bfca9b8c27290ce29d5e655871541c309133b0082e85&=&format=webp&quality=lossless";
 const FOOTER_ICON_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389194104424108223/2D.png?ex=6863bb54&is=686269d4&hm=59f7fbfb39d474b2577fbc87765daa533f636fa3e702285c24eda0fd51aebaa3&=&format=webp&quality=lossless";
 const ALL_GAMES = [
   "소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드", // 롤
@@ -90,7 +90,7 @@ module.exports = {
     '선택 가능한 역할이 없습니다.'
   )
   .setColor(0x2095ff)
-  .setThumbnail(THUMBNAIL_URL) 
+  .setImage(MAIN_IMAGE_URL)
   .setFooter({
     text: "게임 태그를 반드시 1개 이상 유지하세요.",
     iconURL: FOOTER_ICON_URL
