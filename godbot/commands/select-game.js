@@ -136,6 +136,32 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
+    const allRoles = interaction.guild.roles.cache.filter(
+      role => !role.managed && ALL_GAMES.includes(role.name)
+    );
+    const rolePopularity = {};
+    allRoles.forEach(role => {
+      rolePopularity[role.name] = role.members.size;
+    });
+    const popularGames = ALL_GAMES
+      .filter(name => !LOL.includes(name) && !STEAM_GAMES.includes(name))
+      .sort((a, b) => (rolePopularity[b] || 0) - (rolePopularity[a] || 0))
+      .slice(0, 10);
+    const firstPageGames = [
+      ...LOL,
+      ...STEAM_GAMES,
+      ...popularGames.filter(name => !LOL.includes(name) && !STEAM_GAMES.includes(name)),
+    ];
+    const ETC_GAMES = ALL_GAMES.filter(
+      x => !firstPageGames.includes(x)
+    ).sort(sortByInitial);
+    const GAMES_PAGED = [
+      firstPageGames,
+      ...Array.from({ length: Math.ceil(ETC_GAMES.length / 10) }, (_, i) =>
+        ETC_GAMES.slice(i * 10, (i + 1) * 10)
+      )
+    ];
+
     let page = 0;
     const totalPages = GAMES_PAGED.length;
     let processing = false;
