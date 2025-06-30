@@ -137,6 +137,13 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
+    // [0] 게임 역할이 하나도 없으면 '스팀게임' 자동 부여
+    const userGameRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
+  if (userGameRoles.size === 0) {
+    const steamRole = interaction.guild.roles.cache.find(r => r.name === "스팀게임");
+    if (steamRole) await member.roles.add(steamRole, "최소 1개 게임태그 자동 부여");
+  }
+
     // 1. 롤/스팀 게임 배열 고정
 const lolSteam = [...LOL, ...STEAM_GAMES];
 
@@ -210,8 +217,8 @@ let processing = false;
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId("game_roles_select")
       .setPlaceholder("설정할 게임 태그를 선택하세요")
-      .setMinValues(0)
-      .setMaxValues(rolesThisPage.length) // 이 값이 반드시 1이상이어야!
+      .setMinValues(1)
+      .setMaxValues(rolesThisPage.length) 
       .addOptions(
         rolesThisPage.map(role => ({
           label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
