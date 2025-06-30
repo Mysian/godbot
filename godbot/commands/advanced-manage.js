@@ -11,9 +11,74 @@ const EXEMPT_ROLE_IDS = ['1371476512024559756'];
 
 // [추가] 스팀게임 태그 역할ID 및 범위 역할ID
 const STEAM_TAG_ROLE_ID = '1202781853875183697';
-const RANGE_ROLE_LOWER = 1389171818371350598;
-const RANGE_ROLE_UPPER = 1389171946960195624;
 const GAME_MEMBER_ROLE_ID = '816619403205804042';
+const ROLE_KEYWORDS = [
+  "소환사의 협곡",
+  "칼바람 나락",
+  "롤토체스",
+  "이벤트 모드",
+  "DJ MAX",
+  "FC",
+  "GTA",
+  "GTFO",
+  "TRPG",
+  "건파이어 리본",
+  "구스구스 덕",
+  "데드락",
+  "데바데",
+  "델타포스",
+  "돈스타브",
+  "래프트",
+  "레인보우식스",
+  "레포",
+  "로스트아크",
+  "리썰컴퍼니",
+  "리스크 오브 레인",
+  "마스터 듀얼",
+  "마인크래프트",
+  "마피아42",
+  "메이플스토리",
+  "몬스터 헌터",
+  "문명",
+  "발로란트",
+  "배틀그라운드",
+  "배틀필드",
+  "백룸",
+  "백 포 블러드",
+  "블레이드 앤 소울",
+  "블루아카이브",
+  "비세라 클린업",
+  "서든어택",
+  "선 헤이븐",
+  "스컬",
+  "스타듀밸리",
+  "스타크래프트",
+  "스팀게임",
+  "에이펙스",
+  "엘소드",
+  "오버워치",
+  "왁제이맥스",
+  "워프레임",
+  "원신",
+  "원스 휴먼",
+  "이터널 리턴",
+  "좀보이드",
+  "카운터스트라이크",
+  "코어 키퍼",
+  "콜오브듀티",
+  "테라리아",
+  "테이블 탑 시뮬레이터",
+  "테일즈런너",
+  "파스모포비아",
+  "파워워시 시뮬레이터",
+  "파티 애니멀즈",
+  "팰월드",
+  "페긴",
+  "프래그 펑크",
+  "휴먼폴플랫",
+  "헬다이버즈",
+  "히오스"
+];
 
 const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
 const PERIODS = [
@@ -133,21 +198,12 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
   return arr;
 }
 
-// [여기 추가] A~B 범위 내 역할 단 하나도 없는 유저 찾기
 async function fetchNoGameRoleMembers(guild) {
   const allMembers = await guild.members.fetch();
 
-  // 범위 역할 체크
-  const lowerRole = guild.roles.cache.get(String(RANGE_ROLE_LOWER));
-  const upperRole = guild.roles.cache.get(String(RANGE_ROLE_UPPER));
-  if (!lowerRole || !upperRole) return [];
-
-  // **position 오름차순 보정**
-  const minPos = Math.min(lowerRole.position, upperRole.position);
-  const maxPos = Math.max(lowerRole.position, upperRole.position);
-
-  const rolesInRange = guild.roles.cache.filter(r =>
-    r.position >= minPos && r.position <= maxPos
+  // 키워드가 포함된 역할들만 추출
+  const rolesWithKeywords = guild.roles.cache.filter(r =>
+    ROLE_KEYWORDS.some(keyword => r.name.toLowerCase().includes(keyword.toLowerCase()))
   );
 
   let arr = [];
@@ -155,9 +211,9 @@ async function fetchNoGameRoleMembers(guild) {
     if (member.user.bot) continue;
     if (!member.roles.cache.has(GAME_MEMBER_ROLE_ID)) continue;
 
-    // **중요! 범위 내 역할이 1개라도 있으면 패스**
+    // 해당 역할 중 1개라도 있으면 필터링 대상에서 제외
     let hasAny = false;
-    for (const role of rolesInRange.values()) {
+    for (const role of rolesWithKeywords.values()) {
       if (member.roles.cache.has(role.id)) {
         hasAny = true;
         break;
