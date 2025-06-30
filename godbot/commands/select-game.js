@@ -207,13 +207,15 @@ module.exports = {
       ephemeral: true
     };
     if (componentInteraction) {
-      // 버튼/셀렉트 상호작용일 때만 update 사용
-      await componentInteraction.update(payload);
-    } else {
-      // 슬래시 명령어에서는 reply만!
-      await interaction.reply(payload);
-    }
-  }
+  // 버튼/셀렉트 등 컴포넌트 상호작용이면 update()
+  await componentInteraction.update(payload);
+} else if (interaction.replied || interaction.deferred) {
+  // 이미 reply 한 이후면 editReply만!
+  await interaction.editReply(payload);
+} else {
+  // 최초 reply만 reply()
+  await interaction.reply(payload);
+}
 
   // ↓↓↓ 처리중 표시 함수 ↓↓↓
   async function showProcessing(i) {
@@ -239,7 +241,7 @@ module.exports = {
   });
 
   collector.on("collect", async i => {
-    if (i.isStringSelectMenu()) {
+  if (i.isStringSelectMenu()) {
       await showProcessing(i);
       const selected = new Set(i.values);
       const rolesThisPage = getPageRoles(page);
@@ -253,8 +255,8 @@ module.exports = {
       if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
 
       // 역할 처리 후 UI 다시 보여줌(상태 갱신)
-      await showPage(page, i); // 🚩 i로 전달!
-    } else if (i.isButton()) {
+      await showPage(page, i); 
+  } else if (i.isButton()) {
       await showProcessing(i);
       if (i.customId === "prev" && page > 0) {
         page -= 1;
