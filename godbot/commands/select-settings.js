@@ -51,49 +51,47 @@ module.exports = {
     }
 
     // 현재 유저가 가진 태그 역할들
-    const currentRoles2 = member.roles.cache;
+   const currentRoles = member.roles.cache;
 
-  // [1] 플레이스타일 셀렉트 갱신
-  const playStyleSelect2 = new StringSelectMenuBuilder()
-    .setCustomId("play_style_select")
-    .setPlaceholder("플레이 스타일을 선택하세요 (필수)")
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(
-      PLAY_STYLE_TAGS.map(tag => ({
-        label: tag.label,
-        value: tag.id,
-        emoji: tag.emoji,
-        default: currentRoles2.has(tag.id),
-      }))
-    );
+    // 플레이스타일 선택 메뉴(무조건 1개, 해제 불가)
+    const playStyleSelect = new StringSelectMenuBuilder()
+      .setCustomId("play_style_select")
+      .setPlaceholder("플레이 스타일을 선택하세요 (필수)")Add commentMore actions
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        PLAY_STYLE_TAGS.map(tag => ({
+          label: tag.label,
+          value: tag.id,
+          emoji: tag.emoji,
+          default: currentRoles.has(tag.id),
+        }))
+      );
 
-  // [2] 기타 태그 셀렉트 갱신
-  const tagSelect2 = new StringSelectMenuBuilder()
-    .setCustomId("server_tags_select")
-    .setPlaceholder("서버 알림/기타 태그 선택")
-    .setMinValues(0)
-    .setMaxValues(otherTags.length)
-    .addOptions(
-      otherTags.map(tag => ({
-        label: tag.label,
-        value: tag.id,
-        emoji: tag.emoji,
-        default: currentRoles2.has(tag.id),
-      }))
-    );
+    // 그 외 태그는 자유 선택(0개~n개)
+    const otherTags = [
+      ADULT_CHAT_TAG,
+      ...NOTIFY_TAGS,
+    ];
+    const tagSelect = new StringSelectMenuBuilder()
+      .setCustomId("server_tags_select")
+      .setPlaceholder("서버 알림/기타 태그 선택")
+      .setMinValues(0)
+      .setMaxValues(otherTags.length)
+      .addOptions(
+        otherTags.map(tag => ({
+          label: tag.label,
+          value: tag.id,
+          emoji: tag.emoji,
+          default: currentRoles.has(tag.id),
+        }))
+      );
 
-  const actionRows2 = [
-    new ActionRowBuilder().addComponents(playStyleSelect2),
-    new ActionRowBuilder().addComponents(tagSelect2),
-  ];
-
-  await i.update({
-    embeds: [embed],
-    components: actionRows2,
-  });
-});
-
+    const actionRows = [
+      new ActionRowBuilder().addComponents(playStyleSelect),
+      new ActionRowBuilder().addComponents(tagSelect),
+    ];
+    
     // 설명 embed
     const embed = new EmbedBuilder()
       .setTitle("💎 서버 태그 역할 설정")
