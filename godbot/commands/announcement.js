@@ -13,6 +13,7 @@ const path = require('path');
 
 const dataPath = path.join(__dirname, '../data/announcements.json');
 const ANNOUNCE_INTERVAL = 3 * 60 * 60 * 1000;
+const PAGE_SIZE = 5;
 
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
@@ -71,8 +72,6 @@ function stopTimer(guildId) {
   }
 }
 
-const PAGE_SIZE = 5;
-
 function getTipsEmbed(tips, page) {
   const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
   if (page < 1) page = 1;
@@ -92,117 +91,40 @@ function getTipsEmbed(tips, page) {
   return embed;
 }
 
-function getNavRow(page, maxPage) {
+function getNavRow(page, maxPage, disabled = false) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`prev_page_${page}`)
       .setLabel('⬅ 이전')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 1),
+      .setDisabled(disabled || page <= 1),
     new ButtonBuilder()
       .setCustomId(`next_page_${page}`)
       .setLabel('다음 ➡')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= maxPage),
+      .setDisabled(disabled || page >= maxPage),
     new ButtonBuilder()
       .setCustomId(`edit_tip_modal_page_${page}`)
       .setLabel('공지 수정')
-      .setStyle(ButtonStyle.Primary),
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(`delete_tip_modal_page_${page}`)
       .setLabel('공지 삭제')
       .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled)
   );
 }
 
-// collectorMap: key = userId, value = { messageId, collector }
-const collectorMap = new Map();
-
-async function showTipsPage(interaction, data, guildId, page, edit = false) {
+// collector 없이 임베드만 갱신 (msg.edit 전용)
+async function showTipsPageForEdit(msg, data, guildId, page) {
   const tips = data[guildId].tips;
   const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
   if (page < 1) page = 1;
   if (page > maxPage) page = maxPage;
   const embed = getTipsEmbed(tips, page);
   const navRow = getNavRow(page, maxPage);
-
-  // 처음 출력, 혹은 editReply
-  if (!edit) {
-    const msg = await interaction.reply({ embeds: [embed], components: [navRow], ephemeral: true, fetchReply: true });
-    createTipsCollector(msg, interaction.user.id, data, guildId, page);
-  } else {
-    await interaction.editReply({ embeds: [embed], components: [navRow] });
-    // 메시지 ID를 알아야 collector 재생성
-    const msg = await interaction.fetchReply();
-    createTipsCollector(msg, interaction.user.id, data, guildId, page);
-  }
-}
-
-// collector 관리 (중복 방지)
-function createTipsCollector(msg, userId, data, guildId, page) {
-  // 기존 collector 중지
-  if (collectorMap.has(userId)) {
-    const prev = collectorMap.get(userId);
-    prev.collector.stop();
-    collectorMap.delete(userId);
-  }
-  const tips = data[guildId].tips;
-  const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
-
-  const filter = btnInt => btnInt.user.id === userId;
-  const collector = msg.createMessageComponentCollector({ filter, time: 120_000 });
-
-  collector.on('collect', async btnInt => {
-    // 페이지 이동
-    if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
-      let curPage = parseInt(btnInt.customId.split('_').pop());
-      let newPage = btnInt.customId.startsWith('prev') ? curPage - 1 : curPage + 1;
-      await showTipsPage(btnInt, data, guildId, newPage, true);
-      return;
-    }
-    // 수정 모달
-    if (btnInt.customId.startsWith('edit_tip_modal_page_')) {
-      const modal = new ModalBuilder()
-        .setCustomId(`edit_tip_number_modal_page_${page}`)
-        .setTitle('공지 수정')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('edit_tip_number_input')
-              .setLabel('수정할 공지 번호 입력 (#숫자)')
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true)
-              .setPlaceholder('예: 1')
-          )
-        );
-      await btnInt.showModal(modal);
-      return;
-    }
-    // 삭제 모달
-    if (btnInt.customId.startsWith('delete_tip_modal_page_')) {
-      const modal = new ModalBuilder()
-        .setCustomId(`delete_tip_number_modal_page_${page}`)
-        .setTitle('공지 삭제')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('delete_tip_number_input')
-              .setLabel('삭제할 공지 번호 입력 (#숫자)')
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true)
-              .setPlaceholder('예: 1')
-          )
-        );
-      await btnInt.showModal(modal);
-      return;
-    }
-  });
-
-  collector.on('end', () => {
-    collectorMap.delete(userId);
-  });
-
-  collectorMap.set(userId, { messageId: msg.id, collector });
+  await msg.edit({ embeds: [embed], components: [navRow] });
 }
 
 // 봇이 실행될 때 자동 복원
@@ -275,7 +197,74 @@ module.exports = {
     }
     if (option === 'list_tips') {
       if (data[guildId].tips.length === 0) return interaction.reply({ content: '등록된 공지가 없습니다.', ephemeral: true });
-      await showTipsPage(interaction, data, guildId, 1, false);
+      // 최초 1회만 collector 생성!
+      const tips = data[guildId].tips;
+      const maxPage = Math.ceil(tips.length / PAGE_SIZE) || 1;
+      const embed = getTipsEmbed(tips, 1);
+      const navRow = getNavRow(1, maxPage);
+      const msg = await interaction.reply({ embeds: [embed], components: [navRow], ephemeral: true, fetchReply: true });
+
+      // 5분 collector, 페이지 이동/수정/삭제 등 모두 여기서만 처리
+      const filter = btnInt => btnInt.user.id === interaction.user.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 300_000 });
+
+      let currentPage = 1;
+
+      collector.on('collect', async btnInt => {
+        // deferUpdate 항상 호출!
+        if (btnInt.customId.startsWith('prev_page_') || btnInt.customId.startsWith('next_page_')) {
+          let curPage = parseInt(btnInt.customId.split('_').pop());
+          currentPage = btnInt.customId.startsWith('prev') ? curPage - 1 : curPage + 1;
+          await showTipsPageForEdit(msg, data, guildId, currentPage);
+          await btnInt.deferUpdate();
+          return;
+        }
+        if (btnInt.customId.startsWith('edit_tip_modal_page_')) {
+          const modal = new ModalBuilder()
+            .setCustomId(`edit_tip_number_modal_page_${currentPage}`)
+            .setTitle('공지 수정')
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId('edit_tip_number_input')
+                  .setLabel('수정할 공지 번호 입력 (#숫자)')
+                  .setStyle(TextInputStyle.Short)
+                  .setRequired(true)
+                  .setPlaceholder('예: 1')
+              )
+            );
+          await btnInt.showModal(modal);
+          await btnInt.deferUpdate();
+          return;
+        }
+        if (btnInt.customId.startsWith('delete_tip_modal_page_')) {
+          const modal = new ModalBuilder()
+            .setCustomId(`delete_tip_number_modal_page_${currentPage}`)
+            .setTitle('공지 삭제')
+            .addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId('delete_tip_number_input')
+                  .setLabel('삭제할 공지 번호 입력 (#숫자)')
+                  .setStyle(TextInputStyle.Short)
+                  .setRequired(true)
+                  .setPlaceholder('예: 1')
+              )
+            );
+          await btnInt.showModal(modal);
+          await btnInt.deferUpdate();
+          return;
+        }
+      });
+
+      collector.on('end', async () => {
+        // 5분 후 버튼 비활성화
+        try {
+          const embed = getTipsEmbed(data[guildId].tips, currentPage);
+          const navRow = getNavRow(currentPage, Math.ceil(data[guildId].tips.length / PAGE_SIZE) || 1, true);
+          await msg.edit({ embeds: [embed], components: [navRow] });
+        } catch {}
+      });
       return;
     }
     if (option === 'status') {
@@ -368,7 +357,11 @@ module.exports = {
         try {
           const msgs = await interaction.channel.messages.fetch({ limit: 20 });
           const botMsg = msgs.find(m => m.interaction && m.interaction.user.id === interaction.user.id && m.embeds.length > 0);
-          if (botMsg) await botMsg.edit({ embeds: [getTipsEmbed(data[guildId].tips, page)], components: [getNavRow(page, Math.ceil(data[guildId].tips.length / PAGE_SIZE) || 1)] });
+          if (botMsg) {
+            const embed = getTipsEmbed(data[guildId].tips, page);
+            const navRow = getNavRow(page, Math.ceil(data[guildId].tips.length / PAGE_SIZE) || 1);
+            await botMsg.edit({ embeds: [embed], components: [navRow] });
+          }
         } catch {}
       }, 1000);
       return;
@@ -393,7 +386,11 @@ module.exports = {
           const tipCount = data[guildId].tips.length;
           const maxPage = Math.ceil(tipCount / PAGE_SIZE) || 1;
           if (realPage > maxPage) realPage = maxPage;
-          if (botMsg) await botMsg.edit({ embeds: [getTipsEmbed(data[guildId].tips, realPage)], components: [getNavRow(realPage, maxPage)] });
+          if (botMsg) {
+            const embed = getTipsEmbed(data[guildId].tips, realPage);
+            const navRow = getNavRow(realPage, maxPage);
+            await botMsg.edit({ embeds: [embed], components: [navRow] });
+          }
         } catch {}
       }, 1000);
       return;
