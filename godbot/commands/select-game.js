@@ -19,6 +19,74 @@ const ALL_GAMES = [
   "프래그 펑크", "휴먼폴플랫", "헬다이버즈", "히오스"
 ];
 
+const GAME_EMOJIS = {
+  "소환사의 협곡": "<:lol1:1209715264115974144>",
+  "칼바람 나락": "<:lol2:1209715933262905484>",
+  "롤토체스": "<:lol3:1209715268964720680>",
+  "이벤트 모드": "<:lol4:1264547319550840863>",
+  "스팀게임": "<:steamgames:1209715229492117534>",
+  "DJ MAX": "<:djmax:1209715237864087603>",
+  "FC": "<:FcFifa:1209715892913438730>",
+  "GTA": "<:gta:1209715249016737892>",
+  "GTFO": "<:gtfo:1209715231647989791>",
+  "TRPG": "🎲",
+  "건파이어 리본": "<:Gunfire_Reborn:1287616806843842600>",
+  "구스구스 덕": "<:GooseGooseDuck:1209715246743429140>",
+  "데드락": "<:Dead_Lock:1287616809876324374>",
+  "데바데": "<:DeadByDaylight:1212026350123225138>",
+  "델타포스": "<:DeltaForce:1325337677691617331>",
+  "돈스타브": "<:Dontstarve:1227026743777431553>",
+  "래프트": "<:raft:1209715251826786314>",
+  "레인보우식스": "<:RainbowSix:1209715227122466887>",
+  "레포": "<:REPO:1348545414013390858>",
+  "로스트아크": "<:lostark:1209715273070936064>",
+  "리썰컴퍼니": "<:lethalCompany:1209715276325724180>",
+  "리스크 오브 레인": "<:riskofrain:1209715278259425330>",
+  "마스터 듀얼": "<:masterduel:1209715988556423179>",
+  "마인크래프트": "<:minecraft:1209715287616917534>",
+  "마피아42": "<:mafia42:1209739752862126092>",
+  "메이플스토리": "<:maplestory:1239453793741963274>",
+  "몬스터 헌터": "<:MONSTERHUNTER:1239453811941183558>",
+  "문명": "<:Civilization:1227027166663938068>",
+  "발로란트": "<:Valorant:1209715300032057436>",
+  "배틀그라운드": "<:PUBG:1209741906133786634>",
+  "배틀필드": "<:battlefield:1209715305270616094>",
+  "백룸": "<:backroom:1209715310303641650>",
+  "백 포 블러드": "<:Back4Blood:1239453806186729544>",
+  "블레이드 앤 소울": "<:BladeandSoul:아이디_직접입력>",
+  "블루아카이브": "<:bluearchive:1209750788080013322>",
+  "비세라 클린업": "<:VisceraCleanup:1239453802386690090>",
+  "서든어택": "<:suddenattack:1209715325038497832>",
+  "선 헤이븐": "<:sunhaven:1239475392176459856>",
+  "스컬": "<:skul:1212026352539144203>",
+  "스타듀밸리": "<:StardewValley:1227026750718869638>",
+  "스타크래프트": "<:Starcraft:1239453819381743737>",
+  "에이펙스": "<:apex:1209715329400311859>",
+  "엘소드": "<:Elsword:1319307644485505044>",
+  "오버워치": "<:overwatch:1209715332126875720>",
+  "왁제이맥스": "<:Wak:1239468331376054314>",
+  "워프레임": "<:warframe:1209715336404803615>",
+  "원신": "<:genshin:1209750786012221471>",
+  "원스 휴먼": "<:once_human:1277595703941533696>",
+  "이터널 리턴": "<:EternalReturn:1209715201860173836>",
+  "좀보이드": "<:zomboid:1209715205324406865>",
+  "카운터스트라이크": "<:CSO:1209715207220232212>",
+  "코어 키퍼": "<:CoreKeeper:1239454456110780466>",
+  "콜오브듀티": "<:CallOfDuty:1227026741650915429>",
+  "테라리아": "<:terraria:1209715209120387172>",
+  "테이블 탑 시뮬레이터": "<:TabletopSimulator:1239453797668098079>",
+  "테일즈런너": "<:TalesRunner:1209715210852638731>",
+  "파스모포비아": "<:phasmophobia:1209715213306302524>",
+  "파워워시 시뮬레이터": "<:PowerWashSimulator:1227026735619637368>",
+  "파티 애니멀즈": "<:party_animals2:1319307580773761106>",
+  "팰월드": "<:Palworld:1209715220360990791>",
+  "페긴": "<:feign:1209715217152475166>",
+  "프래그 펑크": "<:FragPunk:1348542967677456444>",
+  "휴먼폴플랫": "<:humanfallflat:1209715225742549062>",
+  "헬다이버즈": "<:helldivers:1209715222462599188>",
+  "히오스": "<:HeroesoftheStorm:1361899848579678218>"
+};
+
 // 롤/스팀 제외 나머지 정렬
 function getInitial(char) {
   const code = char.charCodeAt(0);
@@ -90,7 +158,7 @@ module.exports = {
       // 예쁜 시안성
       const description =
   rolesThisPage.map((role) =>
-    `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
+    `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
   ).join('\n') || '선택 가능한 역할이 없습니다.';
 
       const embed = new EmbedBuilder()
@@ -99,7 +167,7 @@ module.exports = {
         .setColor(0x2095ff)
         .setImage(MAIN_IMAGE_URL)
         .setFooter({
-          text: "게임 태그를 반드시 1개 이상 유지하세요.",
+          text: "게임 태그를 반드시 1개 이상 유지하세요. │ 추가를 희망하는 게임이 있다면 스탭에게 문의하세요.",
           iconURL: FOOTER_ICON_URL
         });
 
@@ -137,13 +205,13 @@ module.exports = {
     await showPage(page);
 
     const msg = await interaction.fetchReply();
-    const collector = msg.createMessageComponentCollector({
-      filter: i => i.user.id === interaction.user.id,
-      time: 120_000
-    });
+const collector = msg.createMessageComponentCollector({
+  filter: i => i.user.id === interaction.user.id,
+  time: 600_000 // 10분 (원하면 더 늘려도 됨)
+});
 
     collector.on("collect", async i => {
-      if (i.isStringSelectMenu()) {
+  if (i.isStringSelectMenu()) {
         const selected = new Set(i.values);
         const rolesThisPage = getPageRoles(page);
         const toAdd = [];
@@ -169,6 +237,7 @@ module.exports = {
           await showPage(page, i);
         }
       }
+      collector.resetTimer(); 
     });
 
     collector.on("end", async () => {
