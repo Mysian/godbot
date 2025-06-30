@@ -121,17 +121,14 @@ module.exports = {
 
     await showPage(page);
 
-    // collector: 셀렉트+버튼 전부
-    const msg = await interaction.fetchReply();
+        const msg = await interaction.fetchReply();
     const collector = msg.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
-      time: 120_000,
-      componentType: ComponentType.ActionRow // v14에서는 컴포넌트 타입 체크 자동화용, 실전에서 isButton/isStringSelectMenu 등 분기!
+      time: 120_000
     });
 
     collector.on("collect", async i => {
       if (i.isStringSelectMenu()) {
-        // 역할 추가/해제
         const selected = new Set(i.values);
         const rolesThisPage = getPageRoles(page);
         const toAdd = [];
@@ -158,6 +155,7 @@ module.exports = {
         }
       }
     });
+
 
     collector.on("end", async () => {
       try {
