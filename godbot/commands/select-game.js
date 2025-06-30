@@ -153,92 +153,108 @@ module.exports = {
     }
 
     async function showPage(pageIdx, updateInteraction = null) {
-      const rolesThisPage = getPageRoles(pageIdx);
+  const rolesThisPage = getPageRoles(pageIdx);
 
-      // 예쁜 시안성
-      const description =
-  rolesThisPage.map((role) =>
-    `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
-  ).join('\n') || '선택 가능한 역할이 없습니다.';
+  const description =
+    rolesThisPage.map((role) =>
+      `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
+    ).join('\n') || '선택 가능한 역할이 없습니다.';
 
-      const embed = new EmbedBuilder()
-        .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
-        .setDescription(description)
-        .setColor(0x2095ff)
-        .setImage(MAIN_IMAGE_URL)
-        .setFooter({
-          text: "게임 태그를 반드시 1개 이상 유지하세요. │ 추가를 희망하는 게임이 있다면 스탭에게 문의하세요.",
-          iconURL: FOOTER_ICON_URL
-        });
-
-      // 셀렉트 메뉴(최대 25개 제한: 실제론 10개 이하)
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("game_roles_select")
-        .setPlaceholder("선택/해제할 게임 역할을 체크하세요")
-        .setMinValues(0)
-        .setMaxValues(rolesThisPage.length)
-        .addOptions(
-          rolesThisPage.map(role => ({
-            label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
-            value: role.id,
-            default: member.roles.cache.has(role.id)
-          }))
-        );
-      const actionRow = new ActionRowBuilder().addComponents(selectMenu);
-
-      // 페이지네이션 버튼
-      const navRow = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle("Secondary").setDisabled(pageIdx === 0),
-          new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle("Secondary").setDisabled(pageIdx >= totalPages - 1)
-        );
-
-      const payload = {
-        embeds: [embed],
-        components: [actionRow, navRow],
-        ephemeral: true
-      };
-      if (updateInteraction) await updateInteraction.update(payload);
-      else await interaction.reply(payload);
-    }
-
-    await showPage(page);
-
-    const msg = await interaction.fetchReply();
-const collector = msg.createMessageComponentCollector({
-  filter: i => i.user.id === interaction.user.id,
-  time: 600_000 // 10분 (원하면 더 늘려도 됨)
-});
-
-    collector.on("collect", async i => {
-  if (i.isStringSelectMenu()) {
-        const selected = new Set(i.values);
-        const rolesThisPage = getPageRoles(page);
-        const toAdd = [];
-        const toRemove = [];
-        for (const role of rolesThisPage) {
-          if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
-          if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
-        }
-        if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
-        if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
-
-        await i.reply({
-          content: `✅ 역할이 적용되었습니다! (추가: ${toAdd.length}, 해제: ${toRemove.length})`,
-          ephemeral: true
-        });
-      } else if (i.isButton()) {
-        if (i.customId === "prev" && page > 0) {
-          page -= 1;
-          await showPage(page, i);
-        }
-        if (i.customId === "next" && page < totalPages - 1) {
-          page += 1;
-          await showPage(page, i);
-        }
-      }
-      collector.resetTimer(); 
+  const embed = new EmbedBuilder()
+    .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
+    .setDescription(description)
+    .setColor(0x2095ff)
+    .setImage(MAIN_IMAGE_URL)
+    .setFooter({
+      text: "게임 태그를 반드시 1개 이상 유지하세요. │ 추가를 희망하는 게임이 있다면 스탭에게 문의하세요.",
+      iconURL: FOOTER_ICON_URL
     });
+
+  // 셀렉트 메뉴와 버튼
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId("game_roles_select")
+    .setPlaceholder("설정할 게임 태그를 선택하세요") // 안내 문구 변경
+    .setMinValues(0)
+    .setMaxValues(rolesThisPage.length)
+    .addOptions(
+      rolesThisPage.map(role => ({
+        label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
+        value: role.id,
+        default: member.roles.cache.has(role.id)
+      }))
+    );
+  const actionRow = new ActionRowBuilder().addComponents(selectMenu);
+
+  // 페이지네이션 버튼에 이모지+색상
+  const navRow = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId("prev")
+        .setLabel("이전")
+        .setEmoji("⬅️")
+        .setStyle("Secondary")
+        .setDisabled(pageIdx === 0),
+      new ButtonBuilder()
+        .setCustomId("next")
+        .setLabel("다음")
+        .setEmoji("➡️")
+        .setStyle("Primary")
+        .setDisabled(pageIdx >= totalPages - 1)
+    );
+
+  const payload = {
+    embeds: [embed],
+    components: [actionRow, navRow],
+    ephemeral: true
+  };
+  if (updateInteraction) await updateInteraction.update(payload);
+  else await interaction.reply(payload);
+}
+
+// ↓↓↓ 처리중 표시 함수 ↓↓↓
+async function showProcessing(i) {
+  const processingRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("processing")
+      .setLabel("처리중입니다. 잠시 기다려주세요")
+      .setStyle("Secondary")
+      .setDisabled(true)
+  );
+  await i.update({
+    components: [processingRow],
+    ephemeral: true
+  });
+}
+
+// 콜렉터 처리부 수정
+collector.on("collect", async i => {
+  if (i.isStringSelectMenu()) {
+    await showProcessing(i); // 처리중 표시
+    const selected = new Set(i.values);
+    const rolesThisPage = getPageRoles(page);
+    const toAdd = [];
+    const toRemove = [];
+    for (const role of rolesThisPage) {
+      if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
+      if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
+    }
+    if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
+    if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
+
+    // 역할 처리 후 UI 다시 보여줌(상태 갱신)
+    await showPage(page, interaction);
+  } else if (i.isButton()) {
+    await showProcessing(i); // 처리중 표시
+    if (i.customId === "prev" && page > 0) {
+      page -= 1;
+    }
+    if (i.customId === "next" && page < totalPages - 1) {
+      page += 1;
+    }
+    await showPage(page, interaction);
+  }
+  collector.resetTimer();
+});
 
     collector.on("end", async () => {
       try {
