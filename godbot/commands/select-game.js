@@ -131,7 +131,7 @@ function getIcon(roleName) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임태그설정")
-    .setDescription("게임 역할 태그를 설정합니다. (가나다 순 정렬)"),
+    .setDescription("게임 역할 태그를 설정합니다. (인기순 정렬)"),
 
   async execute(interaction) {
     await interaction.guild.roles.fetch();
