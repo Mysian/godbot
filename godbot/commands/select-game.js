@@ -337,4 +337,6 @@ collector.on("end", async () => {
     } catch {}
   }
 });
+  }
+};
 
