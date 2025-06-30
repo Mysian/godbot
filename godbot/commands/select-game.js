@@ -133,148 +133,118 @@ module.exports = {
     .setDescription("게임 역할 태그를 설정합니다. (가나다 순 정렬)"),
 
   async execute(interaction) {
-  await interaction.guild.roles.fetch();
-  const member = await interaction.guild.members.fetch(interaction.user.id);
+    await interaction.guild.roles.fetch();
+    const member = await interaction.guild.members.fetch(interaction.user.id);
 
-  let page = 0;
-  const totalPages = GAMES_PAGED.length;
+    let page = 0;
+    const totalPages = GAMES_PAGED.length;
 
-  // 역할 id, 이름 추출(실제 존재하는 역할만)
-  function getPageRoles(idx) {
-    const gameNames = GAMES_PAGED[idx];
-    const roles = interaction.guild.roles.cache.filter(
-      role => !role.managed && gameNames.includes(role.name)
-    );
-    const rolesInOrder = gameNames
-      .map(name => roles.find(r => r.name === name))
-      .filter(Boolean);
-    return rolesInOrder;
-  }
-
-  // 🚩 interactionType 구분
-  async function showPage(pageIdx, componentInteraction = null) {
-    const rolesThisPage = getPageRoles(pageIdx);
-    const description =
-      rolesThisPage.map((role) =>
-        `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
-      ).join('\n') || '선택 가능한 역할이 없습니다.';
-
-    const embed = new EmbedBuilder()
-      .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
-      .setDescription(description)
-      .setColor(0x2095ff)
-      .setImage(MAIN_IMAGE_URL)
-      .setFooter({
-        text: "게임 태그를 반드시 1개 이상 유지하세요. │ 추가를 희망하는 게임이 있다면 스탭에게 문의하세요.",
-        iconURL: FOOTER_ICON_URL
-      });
-
-    // 셀렉트 메뉴와 버튼
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId("game_roles_select")
-      .setPlaceholder("설정할 게임 태그를 선택하세요")
-      .setMinValues(0)
-      .setMaxValues(rolesThisPage.length)
-      .addOptions(
-        rolesThisPage.map(role => ({
-          label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
-          value: role.id,
-          default: member.roles.cache.has(role.id)
-        }))
+    // 역할 id, 이름 추출(실제 존재하는 역할만)
+    function getPageRoles(idx) {
+      const gameNames = GAMES_PAGED[idx];
+      const roles = interaction.guild.roles.cache.filter(
+        role => !role.managed && gameNames.includes(role.name)
       );
-    const actionRow = new ActionRowBuilder().addComponents(selectMenu);
+      // 리스트 실제 순서 유지
+      const rolesInOrder = gameNames
+        .map(name => roles.find(r => r.name === name))
+        .filter(Boolean);
+      return rolesInOrder;
+    }
 
-    // 페이지네이션 버튼
-    const navRow = new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId("prev")
-          .setLabel("이전")
-          .setEmoji("⬅️")
-          .setStyle("Secondary")
-          .setDisabled(pageIdx === 0),
-        new ButtonBuilder()
-          .setCustomId("next")
-          .setLabel("다음")
-          .setEmoji("➡️")
-          .setStyle("Primary")
-          .setDisabled(pageIdx >= totalPages - 1)
-      );
+    async function showPage(pageIdx, updateInteraction = null) {
+      const rolesThisPage = getPageRoles(pageIdx);
 
-    const payload = {
-      embeds: [embed],
-      components: [actionRow, navRow],
-      ephemeral: true
-    };
-    if (componentInteraction) {
-  // 버튼/셀렉트 등 컴포넌트 상호작용이면 update()
-  await componentInteraction.update(payload);
-} else if (interaction.replied || interaction.deferred) {
-  // 이미 reply 한 이후면 editReply만!
-  await interaction.editReply(payload);
-} else {
-  // 최초 reply만 reply()
-  await interaction.reply(payload);
-}
+      // 예쁜 시안성
+      const description =
+  rolesThisPage.map((role) =>
+    ${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? **${role.name}** : *${role.name}*}
+  ).join('\n') || '선택 가능한 역할이 없습니다.';
 
-  // ↓↓↓ 처리중 표시 함수 ↓↓↓
-  async function showProcessing(i) {
-    const processingRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("processing")
-        .setLabel("처리중입니다. 잠시 기다려주세요")
-        .setStyle("Secondary")
-        .setDisabled(true)
-    );
-    await i.update({
-      components: [processingRow],
-      ephemeral: true
+      const embed = new EmbedBuilder()
+        .setTitle(게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages}))
+        .setDescription(description)
+        .setColor(0x2095ff)
+        .setImage(MAIN_IMAGE_URL)
+        .setFooter({
+          text: "게임 태그를 반드시 1개 이상 유지하세요. │ 추가를 희망하는 게임이 있다면 스탭에게 문의하세요.",
+          iconURL: FOOTER_ICON_URL
+        });
+
+      // 셀렉트 메뉴(최대 25개 제한: 실제론 10개 이하)
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId("game_roles_select")
+        .setPlaceholder("선택/해제할 게임 역할을 체크하세요")
+        .setMinValues(0)
+        .setMaxValues(rolesThisPage.length)
+        .addOptions(
+          rolesThisPage.map(role => ({
+            label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
+            value: role.id,
+            default: member.roles.cache.has(role.id)
+          }))
+        );
+      const actionRow = new ActionRowBuilder().addComponents(selectMenu);
+
+      // 페이지네이션 버튼
+      const navRow = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle("Secondary").setDisabled(pageIdx === 0),
+          new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle("Secondary").setDisabled(pageIdx >= totalPages - 1)
+        );
+
+      const payload = {
+        embeds: [embed],
+        components: [actionRow, navRow],
+        ephemeral: true
+      };
+      if (updateInteraction) await updateInteraction.update(payload);
+      else await interaction.reply(payload);
+    }
+
+    await showPage(page);
+
+    const msg = await interaction.fetchReply();
+    const collector = msg.createMessageComponentCollector({
+      filter: i => i.user.id === interaction.user.id,
+      time: 120_000
+    });
+
+    collector.on("collect", async i => {
+      if (i.isStringSelectMenu()) {
+        const selected = new Set(i.values);
+        const rolesThisPage = getPageRoles(page);
+        const toAdd = [];
+        const toRemove = [];
+        for (const role of rolesThisPage) {
+          if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
+          if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
+        }
+        if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
+        if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
+
+        await i.reply({
+          content: ✅ 역할이 적용되었습니다! (추가: ${toAdd.length}, 해제: ${toRemove.length}),
+          ephemeral: true
+        });
+      } else if (i.isButton()) {
+        if (i.customId === "prev" && page > 0) {
+          page -= 1;
+          await showPage(page, i);
+        }
+        if (i.customId === "next" && page < totalPages - 1) {
+          page += 1;
+          await showPage(page, i);
+        }
+      }
+    });
+
+    collector.on("end", async () => {
+      try {
+        await interaction.editReply({
+          components: []
+        });
+      } catch {}
     });
   }
-
-  await showPage(page, null, true);
-
-  const msg = await interaction.fetchReply();
-  const collector = msg.createMessageComponentCollector({
-    filter: i => i.user.id === interaction.user.id,
-    time: 600_000
-  });
-
-  collector.on("collect", async i => {
-  if (i.isStringSelectMenu()) {
-      await showProcessing(i);
-      const selected = new Set(i.values);
-      const rolesThisPage = getPageRoles(page);
-      const toAdd = [];
-      const toRemove = [];
-      for (const role of rolesThisPage) {
-        if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
-        if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
-      }
-      if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
-      if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
-
-      // 역할 처리 후 UI 다시 보여줌(상태 갱신)
-      await showPage(page, i); 
-  } else if (i.isButton()) {
-      await showProcessing(i);
-      if (i.customId === "prev" && page > 0) {
-        page -= 1;
-      }
-      if (i.customId === "next" && page < totalPages - 1) {
-        page += 1;
-      }
-      await showPage(page, i); // 🚩 i로 전달!
-    }
-    collector.resetTimer();
-  });
-
-  collector.on("end", async () => {
-    try {
-      await interaction.editReply({
-        components: []
-      });
-    } catch {}
-  });
- }
 };
