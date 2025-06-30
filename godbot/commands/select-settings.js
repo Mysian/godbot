@@ -60,9 +60,9 @@ module.exports = {
         "**⏬ 아래에서 원하는 태그를 선택하세요.**",
       ].join("\n");
 
-      // 상태 구간(더 띄우고, bold title)
+      // 상태 구간 (기타 태그는 한 줄씩 보유여부)
       const tagStatusText = [
-        " ",
+        "",
         "━━━━━━━━━━━━━━━━━━━━",
         "**[ 현재 내 태그 상태 ]**",
         "",
@@ -73,8 +73,8 @@ module.exports = {
         "",
         "기타 태그:",
         otherTags.map(tag =>
-          `${currentRoles.has(tag.id) ? "✅" : "⬜"} ${tag.emoji} ${currentRoles.has(tag.id) ? `**${tag.label}**` : `*${tag.label}*`}`
-        ).join("   "),
+          `${tag.emoji} ${tag.label} : ${currentRoles.has(tag.id) ? "✅ 보유" : "⬜ 미보유"}`
+        ).join("\n"),
         "",
         "━━━━━━━━━━━━━━━━━━━━",
         "✅ **굵게**: 이미 보유중, *기울임*: 미보유",
@@ -83,7 +83,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle("💎 서버 태그 역할 설정")
         .setDescription(desc)
-        .addFields({ name: "\u200b", value: tagStatusText }) // 빈 이름 필드로 구분(더 깔끔)
+        .addFields({ name: "\u200b", value: tagStatusText })
         .setColor(0x7b2ff2)
         .setFooter({ text: "플레이 스타일 3개 중 1개는 반드시 선택해야 합니다." });
 
@@ -122,7 +122,6 @@ module.exports = {
       return { embed, actionRows };
     }
 
-    // 최초 렌더링
     let { embed, actionRows } = makeEmbedAndMenus(member.roles.cache);
 
     await interaction.reply({
