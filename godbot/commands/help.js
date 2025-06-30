@@ -139,7 +139,7 @@ module.exports = {
 
     const collector = reply.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
-      time: 120_000
+      time: 300_000
     });
 
     collector.on("collect", async i => {
