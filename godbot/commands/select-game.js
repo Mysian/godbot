@@ -19,11 +19,6 @@ const ALL_GAMES = [
   "프래그 펑크", "휴먼폴플랫", "헬다이버즈", "히오스"
 ];
 
-function getGlobalIndex(pageIdx, idxInPage) {
-  if (pageIdx === 0) return idxInPage; // 
-  return 5 + (pageIdx - 1) * PAGE_SIZE + idxInPage; 
-}
-
 // 롤/스팀 제외 나머지 정렬
 function getInitial(char) {
   const code = char.charCodeAt(0);
@@ -57,6 +52,13 @@ const GAMES_PAGED = [ // 첫 페이지만 롤+스팀, 나머지는 10개씩 끊�
   )
 ];
 
+// 역할명별로 아이콘 부여
+function getIcon(roleName) {
+  if (LOL.includes(roleName)) return "🟦";
+  if (STEAM_GAMES.includes(roleName)) return "⚙️";
+  return "🎮";
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임선택")
@@ -85,21 +87,21 @@ module.exports = {
     async function showPage(pageIdx, updateInteraction = null) {
       const rolesThisPage = getPageRoles(pageIdx);
 
-      // 임베드 출력
+      // 예쁜 시안성
+      const description =
+        rolesThisPage.map((role) =>
+          `${getIcon(role.name)}  **${role.name}**   ${member.roles.cache.has(role.id) ? "✅" : "⬜"}`
+        ).join('\n') || '선택 가능한 역할이 없습니다.';
+
       const embed = new EmbedBuilder()
-  .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
-  .setDescription(
-    rolesThisPage.map((role, idx) =>
-      `${getGlobalIndex(pageIdx, idx) + 1}. ${role.name}${member.roles.cache.has(role.id) ? " ✅" : ""}`
-    ).join('\n') ||
-    '선택 가능한 역할이 없습니다.'
-  )
-  .setColor(0x2095ff)
-  .setImage(MAIN_IMAGE_URL)
-  .setFooter({
-    text: "게임 태그를 반드시 1개 이상 유지하세요.",
-    iconURL: FOOTER_ICON_URL
-  });
+        .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
+        .setDescription(description)
+        .setColor(0x2095ff)
+        .setImage(MAIN_IMAGE_URL)
+        .setFooter({
+          text: "게임 태그를 반드시 1개 이상 유지하세요.",
+          iconURL: FOOTER_ICON_URL
+        });
 
       // 셀렉트 메뉴(최대 25개 제한: 실제론 10개 이하)
       const selectMenu = new StringSelectMenuBuilder()
@@ -134,7 +136,7 @@ module.exports = {
 
     await showPage(page);
 
-        const msg = await interaction.fetchReply();
+    const msg = await interaction.fetchReply();
     const collector = msg.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
       time: 120_000
@@ -168,7 +170,6 @@ module.exports = {
         }
       }
     });
-
 
     collector.on("end", async () => {
       try {
