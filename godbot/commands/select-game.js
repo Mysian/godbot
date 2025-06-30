@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBuilder, EmbedBuilder, ComponentType } = require("discord.js");
 
 // 롤, 스팀게임, 나머지
+const PAGE_SIZE = 10;
 const LOL = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
 const STEAM_GAMES = ["스팀게임"];
 const MAIN_IMAGE_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=6863b968&is=686267e8&hm=f5cd94557360f427a8a3bfca9b8c27290ce29d5e655871541c309133b0082e85&=&format=webp&quality=lossless";
@@ -18,6 +19,10 @@ const ALL_GAMES = [
   "프래그 펑크", "휴먼폴플랫", "헬다이버즈", "히오스"
 ];
 
+function getGlobalIndex(pageIdx, idxInPage) {
+  if (pageIdx === 0) return idxInPage; // 
+  return 5 + (pageIdx - 1) * PAGE_SIZE + idxInPage; 
+}
 
 // 롤/스팀 제외 나머지 정렬
 function getInitial(char) {
@@ -85,7 +90,7 @@ module.exports = {
   .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
   .setDescription(
     rolesThisPage.map((role, idx) =>
-      `${idx + 1}. ${role.name}${member.roles.cache.has(role.id) ? " ✅" : ""}`
+      `${getGlobalIndex(pageIdx, idx) + 1}. ${role.name}${member.roles.cache.has(role.id) ? " ✅" : ""}`
     ).join('\n') ||
     '선택 가능한 역할이 없습니다.'
   )
