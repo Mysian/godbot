@@ -52,7 +52,7 @@ const GAMES_PAGED = [ // 첫 페이지만 롤+스팀, 나머지는 10개씩 끊�
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임선택")
-    .setDescription("모든 게임 역할을 한 번에! (롤/스팀은 첫 페이지 최상단 고정)"),
+    .setDescription("게임 역할 태그를 장착 및 해제합니다. (가나다 순 정렬)"),
 
   async execute(interaction) {
     await interaction.guild.roles.fetch();
