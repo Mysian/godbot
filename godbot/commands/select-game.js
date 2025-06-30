@@ -256,50 +256,85 @@ module.exports = {
     });
 
     collector.on("collect", async i => {
-      if (i.isStringSelectMenu()) {
-        const selected = new Set(i.values);
-        const rolesThisPage = getPageRoles(page);
-        const toAdd = [];
-        const toRemove = [];
-        for (const role of rolesThisPage) {
-          if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
-          if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
-        }
-        if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
-        if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
-        member = await interaction.guild.members.fetch(interaction.user.id);
-        await showPage(page, i);
-      } else if (i.isButton()) {
-        if (i.customId === "prev" && page > 0) {
-          page -= 1;
-          await showPage(page, i);
-        }
-        if (i.customId === "next" && page < totalPages - 1) {
-          page += 1;
-          await showPage(page, i);
-        }
-      }
-    });
+  if (i.isStringSelectMenu()) {
+    const selected = new Set(i.values);
+    const rolesThisPage = getPageRoles(page);
 
-    collector.on("end", async () => {
+    // 앞으로 유저가 가지게 될 전체 게임 역할 계산
+    const selectedRoleIds = [...selected];
+    const rolesThisPageIds = rolesThisPage.map(role => role.id);
+
+    // 1. 기존에 가진 역할 중, 이 페이지와 무관한 건 그대로 남김
+    // 2. 이 페이지에서 새롭게 선택한 것(selected)만 추가
+    let futureRoles = new Set(
+      member.roles.cache
+        .filter(r => ALL_GAMES.includes(r.name) && !rolesThisPageIds.includes(r.id))
+        .map(r => r.id)
+        .concat(selectedRoleIds)
+    );
+
+    // 만약 0개로 만들려고 시도하면 → 역할 변경 없이 안내만!
+    if (futureRoles.size === 0) {
+      await i.reply({
+        content: "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. (모든 역할을 제거할 수 없습니다!)",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // 실제 역할 추가/제거
+    const toAdd = [];
+    const toRemove = [];
+    for (const role of rolesThisPage) {
+      if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
+      if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
+    }
+
+    try {
+      if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
+      if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
+
+      // 역할 갱신
       member = await interaction.guild.members.fetch(interaction.user.id);
-      const userGameRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
-      if (userGameRoles.size === 0) {
-        try {
-          await interaction.editReply({
-            content: "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. 다시 시도해 주세요.",
-            embeds: [],
-            components: [],
-            ephemeral: true,
-          });
-        } catch {}
-      } else {
-        try {
-          await interaction.editReply({
-            components: [],
-          });
-        } catch {}
-      }
-    });
+      await showPage(page, i);
+    } catch (err) {
+      await i.reply({
+        content: "❌ 역할 변경 중 오류가 발생했습니다. (권한 확인 필요)",
+        ephemeral: true,
+      });
+    }
   }
-};
+  // 버튼 페이지 이동은 기존 그대로
+  else if (i.isButton()) {
+    if (i.customId === "prev" && page > 0) {
+      page -= 1;
+      await showPage(page, i);
+    }
+    if (i.customId === "next" && page < totalPages - 1) {
+      page += 1;
+      await showPage(page, i);
+    }
+  }
+});
+
+collector.on("end", async () => {
+  member = await interaction.guild.members.fetch(interaction.user.id);
+  const userGameRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
+  if (userGameRoles.size === 0) {
+    try {
+      await interaction.editReply({
+        content: "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. 다시 시도해 주세요.",
+        embeds: [],
+        components: [],
+        ephemeral: true,
+      });
+    } catch {}
+  } else {
+    try {
+      await interaction.editReply({
+        components: [],
+      });
+    } catch {}
+  }
+});
+
