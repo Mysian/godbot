@@ -352,12 +352,12 @@ module.exports = {
         }
       };
 
-      client.on('interactionCreate', modalHandler);
-      collector.on('end', () => {
-        client.off('interactionCreate', modalHandler);
-      });
-      return;
-    }
+      //client.on('interactionCreate', modalHandler);
+     // collector.on('end', () => {
+     //   client.off('interactionCreate', modalHandler);
+    //  });
+    //  return;
+  //  }
     // === 상태 출력 ===
     if (option === 'status') {
       const { channelId, tips, enabled } = data[guildId];
