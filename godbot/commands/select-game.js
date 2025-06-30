@@ -89,9 +89,9 @@ module.exports = {
 
       // 예쁜 시안성
       const description =
-        rolesThisPage.map((role) =>
-          `${getIcon(role.name)}  **${role.name}**   ${member.roles.cache.has(role.id) ? "✅" : "⬜"}`
-        ).join('\n') || '선택 가능한 역할이 없습니다.';
+  rolesThisPage.map((role) =>
+    `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
+  ).join('\n') || '선택 가능한 역할이 없습니다.';
 
       const embed = new EmbedBuilder()
         .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
