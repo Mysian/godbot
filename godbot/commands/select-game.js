@@ -136,35 +136,44 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
-    const allRoles = interaction.guild.roles.cache.filter(
-      role => !role.managed && ALL_GAMES.includes(role.name)
-    );
-    const rolePopularity = {};
-    allRoles.forEach(role => {
-      rolePopularity[role.name] = role.members.size;
-    });
-    const popularGames = ALL_GAMES
-      .filter(name => !LOL.includes(name) && !STEAM_GAMES.includes(name))
-      .sort((a, b) => (rolePopularity[b] || 0) - (rolePopularity[a] || 0))
-      .slice(0, 10);
-    const firstPageGames = [
-      ...LOL,
-      ...STEAM_GAMES,
-      ...popularGames.filter(name => !LOL.includes(name) && !STEAM_GAMES.includes(name)),
-    ];
-    const ETC_GAMES = ALL_GAMES.filter(
-      x => !firstPageGames.includes(x)
-    ).sort(sortByInitial);
-    const GAMES_PAGED = [
-      firstPageGames,
-      ...Array.from({ length: Math.ceil(ETC_GAMES.length / 10) }, (_, i) =>
-        ETC_GAMES.slice(i * 10, (i + 1) * 10)
-      )
-    ];
+    // 1. 롤/스팀 게임 배열 고정
+const lolSteam = [...LOL, ...STEAM_GAMES];
 
-    let page = 0;
-    const totalPages = GAMES_PAGED.length;
-    let processing = false;
+// 2. 인기순 정렬 (기타만)
+const allRoles = interaction.guild.roles.cache.filter(
+  role => !role.managed && ALL_GAMES.includes(role.name)
+);
+
+const rolePopularity = {};
+allRoles.forEach(role => {
+  rolePopularity[role.name] = role.members.size;
+});
+
+// 기타 게임 목록 (롤/스팀 제외)
+const ETC_GAMES = ALL_GAMES.filter(
+  name => !lolSteam.includes(name)
+);
+
+const ETC_GAMES_POPULAR = [...ETC_GAMES].sort((a, b) => (rolePopularity[b] || 0) - (rolePopularity[a] || 0));
+
+// 3. 페이지 구성: 첫 페이지는 롤/스팀 + 인기순, 이후는 인기순만 10개씩
+const firstPageGames = [
+  ...lolSteam,
+  ...ETC_GAMES_POPULAR.slice(0, Math.max(0, 10 - lolSteam.length))
+];
+
+const remainingPopularGames = ETC_GAMES_POPULAR.slice(Math.max(0, 10 - lolSteam.length));
+
+const GAMES_PAGED = [
+  firstPageGames,
+  ...Array.from({ length: Math.ceil(remainingPopularGames.length / 10) }, (_, i) =>
+    remainingPopularGames.slice(i * 10, (i + 1) * 10)
+  )
+];
+
+let page = 0;
+const totalPages = GAMES_PAGED.length;
+let processing = false;
 
     function getPageRoles(idx) {
       const gameNames = GAMES_PAGED[idx];
