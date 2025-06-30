@@ -354,16 +354,19 @@ module.exports = {
       await interaction.reply({ content: `공지 #${idx+1}번이 수정되었습니다.`, ephemeral: true });
       // 리스트 자동 갱신
       setTimeout(async () => {
-        try {
-          const msgs = await interaction.channel.messages.fetch({ limit: 20 });
-          const botMsg = msgs.find(m => m.interaction && m.interaction.user.id === interaction.user.id && m.embeds.length > 0);
-          if (botMsg) {
-            const embed = getTipsEmbed(data[guildId].tips, page);
-            const navRow = getNavRow(page, Math.ceil(data[guildId].tips.length / PAGE_SIZE) || 1);
-            await botMsg.edit({ embeds: [embed], components: [navRow] });
-          }
-        } catch {}
-      }, 1000);
+  try {
+    const msgs = await interaction.channel.messages.fetch({ limit: 20 });
+    const botMsg = msgs.find(m => m.interaction && m.interaction.user.id === interaction.user.id && m.embeds.length > 0);
+    if (botMsg) {
+      const embed = getTipsEmbed(data[guildId].tips, page);
+      const navRow = getNavRow(page, Math.ceil(data[guildId].tips.length / PAGE_SIZE) || 1);
+      await botMsg.edit({ embeds: [embed], components: [navRow] });
+    }
+  } catch (err) {
+    if (err.code !== 10008) console.error(err);
+    // 10008은 무시
+  }
+}, 1000);
       return;
     }
     // 삭제 번호 선택
