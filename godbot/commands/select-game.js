@@ -1,4 +1,15 @@
-const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBuilder, EmbedBuilder, ComponentType } = require("discord.js");
+const { 
+  SlashCommandBuilder, 
+  StringSelectMenuBuilder, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  EmbedBuilder, 
+  ComponentType,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require("discord.js");
+
 
 // 롤, 스팀게임, 나머지
 const PAGE_SIZE        = 20;
