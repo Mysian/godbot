@@ -158,11 +158,11 @@ module.exports = {
 
       
       const emojis = rolesThisPage.map(r => GAME_EMOJIS[r.name] || "❔");
-      const lines  = [];
-    for (let i = 0; i < emojis.length; i += 5) {
-      lines.push(emojis.slice(i, i + 5).join(", "));
-    }
-      const pageList = `(\n${lines.join(",\n")}\n)`; 
+const lines  = [];
+for (let i = 0; i < emojis.length; i += 5) {
+  lines.push(emojis.slice(i, i + 5).join(", "));
+}
+const pageList = lines.join(",\n");
 
       const embed = new EmbedBuilder()
         .setTitle("🎮 게임 태그 설정하기")
