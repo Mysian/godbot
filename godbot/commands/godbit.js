@@ -38,8 +38,7 @@ async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
   const release = await lockfile.lock(file, { retries: 5, minTimeout: 50, stale: 5000 });
   try {
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return data;
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   } finally {
     await release();
   }
@@ -213,7 +212,6 @@ module.exports = {
     const msg = await interaction.fetchReply();
     const buttonCollector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      time: 120_000,
       filter: btn => btn.user.id === interaction.user.id
     });
 
@@ -223,8 +221,6 @@ module.exports = {
 
       const id = subI.customId;
       const coinName = subI.fields.getTextInputValue('coin');
-
-      // always simulate and save market before handling
       await simulateMarket(interaction.guild, coins);
       await saveJson(coinsPath, coins);
 
@@ -287,13 +283,7 @@ module.exports = {
         return subI.reply({ embeds: [e], ephemeral: true });
       }
     };
-
     interaction.client.on('interactionCreate', modalHandler);
-
-    // clean up listener when collector ends
-    buttonCollector.on('end', () => {
-      interaction.client.removeListener('interactionCreate', modalHandler);
-    });
 
     // handle button clicks
     buttonCollector.on('collect', async btn => {
@@ -303,9 +293,10 @@ module.exports = {
           return btn.deferUpdate();
         case 'godbit_buy':
         case 'godbit_sell': {
-          const modalId = btn.customId === 'godbit_buy' ? 'godbit_buy_modal' : 'godbit_sell_modal';
-          const title = btn.customId === 'godbit_buy' ? '코인 매수' : '코인 매도';
-          const modal = new ModalBuilder().setCustomId(modalId).setTitle(title);
+          const isBuy = btn.customId === 'godbit_buy';
+          const modal = new ModalBuilder()
+            .setCustomId(isBuy ? 'godbit_buy_modal' : 'godbit_sell_modal')
+            .setTitle(isBuy ? '코인 매수' : '코인 매도');
           modal.addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
