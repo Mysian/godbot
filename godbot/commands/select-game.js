@@ -149,8 +149,8 @@ module.exports = {
     async function render(u=null){
       const chosen = member.roles.cache.filter(r=>ALL_GAMES.includes(r.name));
       const desc = chosen.size
-        ? chosen.map(r=>`${GAME_EMOJIS[r.name]||""} **${r.name}**`).join("\n")
-        : "아직 선택한 게임이 없습니다.";
+        ? chosen.map(r=>`${GAME_EMOJIS[r.name]||""} **${r.name}**`).join(", ")
+        : "서버 내에서 교류를 원하시는 게임을 선택하세요. │ 복수 선택 가능";
 
       const embed = new EmbedBuilder()
         .setTitle("🏷️ 그대의 게임 태그 현황")
@@ -176,10 +176,10 @@ module.exports = {
 
       const nav = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId("prev").setLabel("이전").setStyle("Secondary")
+          .setCustomId("prev").setLabel("이전 게임 목록").setStyle("Secondary")
           .setDisabled(page===0).setEmoji("⬅️"),
         new ButtonBuilder()
-          .setCustomId("next").setLabel("다음").setStyle("Primary")
+          .setCustomId("next").setLabel("다음 게임 목록").setStyle("Primary")
           .setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
       );
 
