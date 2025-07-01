@@ -326,17 +326,17 @@ module.exports = {
         }));
         const labels = Array.from({ length: chartRange }, (_,i) => i+1);
         const chartConfig = {
-          type: 'line',
-          data: { labels, datasets },
-          options: {
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { title: { display: true, text: '시간(5분 단위)' } },
-              y: { title: { display: true, text: '가격 (BE)' } }
-            }
-          },
-        backgroundColor: "white"
-        };
+  backgroundColor: "white", 
+  type: 'line',
+  data: { labels, datasets },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { title: { display: true, text: '시간(5분 단위)' } },
+      y: { title: { display: true, text: '가격 (BE)' } }
+    }
+  }
+};
         const chartEmbed = new EmbedBuilder()
           .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
           .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
