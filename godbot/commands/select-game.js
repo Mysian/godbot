@@ -153,7 +153,7 @@ module.exports = {
         : "서버 내에서 교류를 원하시는 게임을 선택하세요. │ 복수 선택 가능";
 
       const embed = new EmbedBuilder()
-        .setTitle("🏷️ 그대의 게임 태그 현황")
+        .setTitle("🏷️ 설정하신 게임 리스트")
         .setDescription(desc)
         .setColor(0x2095ff)
         .setImage(MAIN_IMAGE_URL)
