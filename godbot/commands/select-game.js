@@ -181,9 +181,19 @@ module.exports = {
         new ButtonBuilder()
           .setCustomId("next").setLabel("다음 게임 목록").setStyle("Primary")
           .setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
+        new ButtonBuilder()
+          .setCustomId("info").setLabel("설명").setStyle("Success")
+          .setEmoji("ℹ️")
       );
 
-      const payload = { embeds:[embed], components:[new ActionRowBuilder().addComponents(select), nav], ephemeral:true };
+      const payload = {
+        embeds:[embed],
+        components:[
+          new ActionRowBuilder().addComponents(select),
+          nav
+        ],
+        ephemeral:true
+      };
       return u ? u.update(payload) : interaction.reply(payload);
     }
 
@@ -221,9 +231,23 @@ module.exports = {
           await i.reply({content:"❌ 역할 변경 중 오류가 발생했어요 (관리자에게 문의)",ephemeral:true});
         }
       }else if(i.isButton()){
-        if(i.customId==="prev"&&page>0) page--;
-        if(i.customId==="next"&&page<PAGES.length-1) page++;
-        await render(i);
+        if(i.customId==="prev"&&page>0){
+          page--;
+          await render(i);
+        }else if(i.customId==="next"&&page<PAGES.length-1){
+          page++;
+          await render(i);
+        }else if(i.customId==="info"){
+          const infoEmbed = new EmbedBuilder()
+            .setTitle("📌 게임 태그 사용 안내")
+            .setColor(0x2ecc71)
+            .setDescription([
+              "• 현재 목록은 **서버에서 인기 높은 순**으로 정렬되어 있어요!",
+              "• **게임 태그는 최소 1개** 이상 항상 유지해주세요.",
+              "• 파티원을 모으고 싶을 땐 **자유롭게 @게임태그를 맨션**해 주세요! 함께 게임할 사람을 찾기 쉬워요 🎮"
+            ].join("\n"));
+          await i.reply({embeds:[infoEmbed],ephemeral:true});
+        }
       }
     });
 
