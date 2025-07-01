@@ -19,7 +19,7 @@ const BAD_WORDS = [
   "tlqkf", "Tlqkf"
 ];
 // 초성(ㄱ~ㅎ), 이모지, 특수문자(디코 이모지) 차단 정규식
-const FORBIDDEN_REGEX = /([\u3131-\u314e])|(:[a-zA-Z0-9_]+:)|([\uD800-\uDBFF][\uDC00-\uDFFF])|([^\x00-\x7F]+)/g;
+const FORBIDDEN_REGEX = /([\u3131-\u314e])|([\u314f-\u3163])|(:[a-zA-Z0-9_]+:)|([\uD800-\uDBFF][\uDC00-\uDFFF])/g;
 
 const ROLE_ID = '1273055963535904840'; // 별명 변경권
 const LOG_CHANNEL_ID = '1380874052855529605';
@@ -39,7 +39,7 @@ module.exports = {
     const member = interaction.member;
     // 역할 확인
     if (!member.roles.cache.has(ROLE_ID)) {
-      await interaction.reply({ content: '❌ 별명 변경권 역할이 있어야 이 명령어를 사용할 수 있어.', ephemeral: true });
+      await interaction.reply({ content: '❌ 별명 변경권 역할이 있어야 이 명령어를 사용할 수 있습니다.', ephemeral: true });
       return;
     }
 
@@ -48,19 +48,19 @@ module.exports = {
 
     // 필터링: 금지어 포함, 초성/이모지/이모티콘 포함 시 거부
     if (BAD_WORDS.some(w => newNick.toLowerCase().includes(w))) {
-      await interaction.reply({ content: '❌ 욕설, 금지어, 광고, 비속어, 디코 위반어는 사용할 수 없어.', ephemeral: true });
+      await interaction.reply({ content: '❌ 욕설, 금지어, 광고, 비속어, 디코 위반어는 사용할 수 없습니다.', ephemeral: true });
       return;
     }
     // 이모지, 초성, 이모티콘, 특수문자(디코 이모지) 필터
     if (FORBIDDEN_REGEX.test(newNick)) {
-      await interaction.reply({ content: '❌ 이모지, 이모티콘, 초성, 특수문자는 별명에 사용할 수 없어.', ephemeral: true });
+      await interaction.reply({ content: '❌ 이모지, 이모티콘, 초성, 특수문자는 별명에 사용할 수 없습니다.', ephemeral: true });
       return;
     }
 
     // 기존 닉네임
     const oldNick = member.nickname || member.user.username;
     if (newNick === oldNick) {
-      await interaction.reply({ content: '❌ 기존 별명과 동일해. 다른 별명으로 바꿔줘!', ephemeral: true });
+      await interaction.reply({ content: '❌ 기존 별명과 동일합니다, 다른 별명으로 진행해주세요.', ephemeral: true });
       return;
     }
 
@@ -70,7 +70,7 @@ module.exports = {
       // 역할 제거 (별명 변경권 소모)
       await member.roles.remove(ROLE_ID);
 
-      await interaction.reply({ content: `✅ 별명이 \`${oldNick}\` → \`${newNick}\` 으로 변경됐어!\n별명 변경권이 소모됐어.`, ephemeral: true });
+      await interaction.reply({ content: `✅ 별명이 \`${oldNick}\` → \`${newNick}\` 으로 변경 완료!\n별명 변경권이 소모됩니다.`, ephemeral: true });
 
       // 로그 임베드 전송
       const logEmbed = new EmbedBuilder()
@@ -86,7 +86,7 @@ module.exports = {
       }
     } catch (e) {
       console.error(e);
-      await interaction.reply({ content: '❌ 별명 변경에 실패했어. (관리자에게 문의)', ephemeral: true });
+      await interaction.reply({ content: '❌ 별명 변경에 실패했습니다. (관리자에게 문의)', ephemeral: true });
     }
   }
 };
