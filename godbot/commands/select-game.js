@@ -86,7 +86,8 @@ const GAME_EMOJIS = {
   "히오스": "<:HeroesoftheStorm:1361899848579678218>"
 };
 
-// ---- 정렬/페이징 유틸 --------------------------------------------------------
+
+// -------- 정렬 유틸 ---------------------------------
 function getInitial(ch){
   const code = ch.charCodeAt(0);
   if(code>=0xac00&&code<=0xd7a3){
@@ -109,7 +110,7 @@ function sortByInitial(a,b){
 
 const ETC_GAMES = ALL_GAMES.filter(x=>![...LOL,...STEAM_GAMES].includes(x)).sort(sortByInitial);
 
-// ---- 페이지 분할 -------------------------------------------------------------
+// -------- 명령어 -------------------------------------
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임태그설정")
@@ -119,6 +120,7 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
+    // 인기 순 정렬용
     const rolePopularity = {};
     interaction.guild.roles.cache
       .filter(r=>!r.managed&&ALL_GAMES.includes(r.name))
@@ -152,16 +154,22 @@ module.exports = {
         : "아직 등록된 태그가 없습니다.";
 
       const rolesThisPage = getRoles(PAGES[page]);
-      const pageList = rolesThisPage.map(r=>r.name).join("  ");
+
+      // 👉 이 부분만 변경
+      const pageList = `(${rolesThisPage.map(r=>GAME_EMOJIS[r.name]||"❔").join(", ")})`;
 
       const embed = new EmbedBuilder()
         .setTitle("🎮 게임 태그 설정")
         .setColor(0x2095ff)
         .setFooter({text:"게임 태그는 최소 1개 이상 유지해야 합니다.",iconURL:FOOTER_ICON_URL})
         .addFields(
-          { name:"📌 등록된 게임 태그",        value: chosenText },
-          { name:`🗂️ 현재 목록에 있는 게임 목록 (페이지 ${page+1}/${PAGES.length})`, value: pageList || "표시할 게임이 없습니다." }
-        ); // 이미지 제거됨
+          { name: "📌 등록된 게임 태그", value: chosenText },
+  { name: BLANK, value: BLANK },
+  { name: BLANK, value: BLANK },
+  { name: BLANK, value: BLANK },
+  { name: `🗂️ 현재 목록에 있는 게임 (페이지 ${page+1}/${PAGES.length})`, value: pageList },
+  { name: BLANK, value: BLANK }
+);
 
       const select = new StringSelectMenuBuilder()
         .setCustomId("select")
@@ -178,15 +186,9 @@ module.exports = {
         );
 
       const nav = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("prev").setLabel("이전 게임").setStyle("Secondary")
-          .setDisabled(page===0).setEmoji("⬅️"),
-        new ButtonBuilder()
-          .setCustomId("next").setLabel("다음 게임").setStyle("Primary")
-          .setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
-        new ButtonBuilder()
-          .setCustomId("info").setLabel("설명").setStyle("Success")
-          .setEmoji("ℹ️")
+        new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle("Secondary").setDisabled(page===0).setEmoji("⬅️"),
+        new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle("Primary").setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
+        new ButtonBuilder().setCustomId("info").setLabel("설명").setStyle("Success").setEmoji("ℹ️")
       );
 
       const payload = {
@@ -234,19 +236,15 @@ module.exports = {
           await i.reply({content:"❌ 역할 변경 중 오류가 발생했어 (관리자에게 문의)",ephemeral:true});
         }
       }else if(i.isButton()){
-        if(i.customId==="prev"&&page>0){
-          page--;
-          await render(i);
-        }else if(i.customId==="next"&&page<PAGES.length-1){
-          page++;
-          await render(i);
-        }else if(i.customId==="info"){
+        if(i.customId==="prev"&&page>0){ page--; await render(i); }
+        else if(i.customId==="next"&&page<PAGES.length-1){ page++; await render(i); }
+        else if(i.customId==="info"){
           const infoEmbed = new EmbedBuilder()
             .setTitle("📌 게임 태그 사용 안내")
             .setColor(0x2ecc71)
             .setDescription([
-              "• 현재 목록은 **서버에서 인기 순**으로 정렬돼 있어!",
-              "• **게임 태그는 최소 1개** 이상 항상 유지해야 해.",
+              "• 목록은 **서버 인기 순**으로 정렬돼 있어.",
+              "• **게임 태그는 최소 1개** 이상 유지해야 해.",
               "• 파티원을 모으려면 자유롭게 **@게임태그 멘션** 쓰면 돼 🎮"
             ].join("\n"));
           await i.reply({embeds:[infoEmbed],ephemeral:true});
