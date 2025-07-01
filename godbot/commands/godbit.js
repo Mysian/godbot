@@ -16,6 +16,8 @@ const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫
 
 // KST 변환
 function toKSTString(utcOrDate) {
+  if (!utcOrDate) return '-';
+  if (typeof utcOrDate === 'string' && utcOrDate.includes('오전')) return utcOrDate; // 이미 KST String
   return new Date(utcOrDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 }
 async function loadJson(file, def) {
@@ -36,12 +38,11 @@ async function ensureBaseCoin(coins) {
     coins['까리코인'] = {
       price: 1000,
       history: [1000],
-      historyT: [new Date().toISOString()],
-      listedAt: new Date().toISOString()
+      historyT: [new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })],
+      listedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
     };
   }
 }
-// 히스토리 추가: 가격+타임
 async function addHistory(info, price) {
   if (!info.history) info.history = [];
   if (!info.historyT) info.historyT = [];
@@ -51,7 +52,13 @@ async function addHistory(info, price) {
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
 
-// ===== ⭐️⭐️ 5분마다 코인 자동 시세+타임 갱신! =====
+// ⭐️ 옵션(폐지 기준/확률) 읽기
+async function getDelistOption() {
+  const coins = await loadJson(coinsPath, {});
+  return coins._delistOption || { type: 'profitlow', prob: 10 };
+}
+
+// ===== ⭐️ 5분마다 코인 자동 시세+타임+자동폐지 반영! =====
 async function periodicMarket() {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
@@ -63,16 +70,23 @@ async function periodicMarket() {
   base.price = newBase;
   base.history.push(newBase);
   base.historyT = base.historyT || [];
-  base.historyT.push(new Date().toISOString());
+  base.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
   while (base.history.length > HISTORY_MAX) base.history.shift();
   while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
+
+  // 상장폐지 옵션 자동 적용
+  const delistOpt = coins._delistOption || { type: 'profitlow', prob: 10 };
 
   // 나머지 코인
   for (const [name, info] of Object.entries(coins)) {
     if (name === '까리코인' || info.delistedAt) continue;
+
+    // 가격 변동성
+    let minVar = -0.1, maxVar = 0.1;
+    if (info.volatility) { minVar = info.volatility.min; maxVar = info.volatility.max; }
     const kImpact = deltaBase * (0.4 + Math.random()*0.2);
-    let delta = (Math.random() * 0.2) - 0.1 + kImpact;
-    delta = Math.max(-0.2, Math.min(delta, 0.2));
+    let delta = (Math.random() * (maxVar-minVar)) + minVar + kImpact;
+    delta = Math.max(-0.5, Math.min(delta, 0.5));
     const p = Math.max(1, Math.floor(info.price * (1 + delta)));
     info.price = p;
     info.history = info.history || [];
@@ -81,10 +95,25 @@ async function periodicMarket() {
     info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
     while (info.history.length > HISTORY_MAX) info.history.shift();
     while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
+
+    // === 자동 상장폐지 ===
+    if (delistOpt.type === 'profitlow') {
+      const h = info.history || [];
+      const prev = h.at(-2) ?? h.at(-1) ?? 0;
+      const now = h.at(-1) ?? 0;
+      const pct = prev ? ((now - prev) / prev * 100) : 0;
+      if (now < 300 && pct <= -30) {
+        info.delistedAt = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      }
+    }
+    if (delistOpt.type === 'random' && delistOpt.prob) {
+      if (Math.random() * 100 < delistOpt.prob) {
+        info.delistedAt = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      }
+    }
   }
   await saveJson(coinsPath, coins);
 }
-// ⭐️ 봇 실행 시 5분 간격 자동 갱신!
 setInterval(periodicMarket, 300_000);
 
 module.exports = {
