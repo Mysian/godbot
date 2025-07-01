@@ -1,3 +1,5 @@
+// ==== commands/godbit.js ====
+
 const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType
 } = require('discord.js');
@@ -11,14 +13,13 @@ const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const PAGE_SIZE   = 5;
 const HISTORY_PAGE = 20;
 const HISTORY_MAX = 100;
-const MAX_AUTO_COINS = 20; // ⭐️ 자동 신규상장 목표치
+const MAX_AUTO_COINS = 20;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
 // KST 변환
 function toKSTString(utcOrDate) {
   if (!utcOrDate) return '-';
-  // ISO면 변환, 이미 한국식이면 그대로
   if (typeof utcOrDate === 'string' && (utcOrDate.includes('오전') || utcOrDate.includes('오후'))) return utcOrDate;
   try {
     return new Date(utcOrDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
@@ -59,15 +60,13 @@ async function addHistory(info, price) {
   while (info.history.length > HISTORY_MAX) info.history.shift();
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
-
-// ⭐️ 옵션(폐지 기준/확률) 읽기
 async function getDelistOption() {
   const coins = await loadJson(coinsPath, {});
   return coins._delistOption || { type: 'profitlow', prob: 10 };
 }
 
 // ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
-async function periodicMarket() {
+async function autoMarketUpdate(members) {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
 
@@ -121,50 +120,41 @@ async function periodicMarket() {
     }
   }
 
-  // 자동 신규상장 (20개 미만일 때)
-const aliveCoins = Object.entries(coins)
-  .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
-if (aliveCoins.length < MAX_AUTO_COINS) {
-  // ⭐️ 길이 2글자인 멤버 닉네임 수집 (봇/중복/코인명 제외)
-  let guild;
-  try { guild = interaction && interaction.guild ? interaction.guild : null; } catch {}
-  let nameList = [];
-  if (guild) {
-    // 캐시 우선, 없으면 fetch
-    let members;
-    try { members = guild.members.cache.map(m => m).filter(m => !m.user.bot); }
-    catch { members = []; }
-    // 2글자 닉네임만 추출(중복제거)
-    nameList = Array.from(new Set(
-      members
-        .map(m => m.nickname || m.user.username)
-        .filter(nick => nick && nick.length === 2)
-        .filter(nick => !coins[nick + '코인'])
-    ));
+  // ⭐️ 자동 신규상장 (20개 미만일 때, 2글자 닉네임 기반)
+  const aliveCoins = Object.entries(coins)
+    .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
+  if (aliveCoins.length < MAX_AUTO_COINS && members) {
+    // 2글자 닉네임 추출(중복X, 봇X, 이미 상장된 코인X)
+    const nameList = Array.from(
+      new Set(
+        [...members.values()]
+          .filter(m => !m.user.bot)
+          .map(m => m.nickname || m.user.username)
+          .filter(nick => nick && nick.length === 2)
+          .filter(nick => !coins[nick + '코인'])
+      )
+    );
+    let newName;
+    if (nameList.length) {
+      newName = nameList[Math.floor(Math.random() * nameList.length)] + '코인';
+    } else {
+      let n = 1;
+      do { newName = `신규코인${n++}`; } while (coins[newName]);
+    }
+    const now = new Date().toISOString();
+    const vopt = coins._volatilityGlobal || null;
+    let info = {
+      price: Math.floor(800 + Math.random()*700),
+      history: [],
+      historyT: [],
+      listedAt: now,
+      delistedAt: null
+    };
+    if (vopt) info.volatility = vopt;
+    info.history.push(info.price);
+    info.historyT.push(now);
+    coins[newName] = info;
   }
-  // 닉네임이 하나도 없으면 fallback
-  let newName;
-  if (nameList.length) {
-    // 랜덤
-    newName = nameList[Math.floor(Math.random()*nameList.length)] + '코인';
-  } else {
-    let n = 1;
-    do { newName = `신규코인${n++}`; } while (coins[newName]);
-  }
-  const now = new Date().toISOString();
-  const vopt = coins._volatilityGlobal || null;
-  let info = {
-    price: Math.floor(800 + Math.random()*700),
-    history: [],
-    historyT: [],
-    listedAt: now,
-    delistedAt: null
-  };
-  if (vopt) info.volatility = vopt;
-  info.history.push(info.price);
-  info.historyT.push(now);
-  coins[newName] = info;
-}
 
   await saveJson(coinsPath, coins);
 }
