@@ -16,11 +16,11 @@ const { addBE, getBE, loadConfig } = require('./be-util.js');
 
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
-const MAX_COINS   = 10;
+const MAX_COINS   = 50;    // 진짜 최대 코인수(실전엔 10~30개 추천)
+const PAGE_SIZE   = 5;     // 한 페이지에 코인 5개
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
-// 안전하게 JSON 읽기/쓰기 (lock)
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
   const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
@@ -41,7 +41,6 @@ async function saveJson(file, data) {
   }
 }
 
-// 까리코인 생성 보장
 async function ensureBaseCoin(coins) {
   if (!coins['까리코인']) {
     coins['까리코인'] = {
@@ -54,7 +53,7 @@ async function ensureBaseCoin(coins) {
 
 // 시세/상장/폐지/동조효과 시뮬레이션
 async function simulateMarket(interaction, coins) {
-  // 1) 까리코인
+  // 1. 까리코인
   const base = coins['까리코인'];
   const deltaBase = (Math.random() * 0.2) - 0.1;
   const newBase = Math.max(1, Math.floor(base.price * (1 + deltaBase)));
@@ -62,7 +61,7 @@ async function simulateMarket(interaction, coins) {
   base.history.push(newBase);
   if (base.history.length > 100) base.history.shift();
 
-  // 2) 타 코인(까리코인 동조효과 40~60% + 자체 변동)
+  // 2. 타 코인 동조효과 + 자체 변동
   for (const [name, info] of Object.entries(coins)) {
     if (name === '까리코인' || info.delistedAt) continue;
     const kImpact = deltaBase * (0.4 + Math.random()*0.2);
@@ -74,7 +73,7 @@ async function simulateMarket(interaction, coins) {
     if (info.history.length > 100) info.history.shift();
   }
 
-  // 3) 확률적 상장/폐지
+  // 3. 확률적 상장/폐지
   if (interaction.guild) {
     // 상장 (5%)
     if (Math.random() < 0.05) {
@@ -102,7 +101,7 @@ async function simulateMarket(interaction, coins) {
     }
   }
 
-  // 4) MAX_COINS 유지
+  // 4. MAX_COINS 유지
   let alive = Object.keys(coins).filter(n => !coins[n].delistedAt);
   if (interaction.guild) {
     const mems = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
@@ -127,7 +126,7 @@ async function simulateMarket(interaction, coins) {
   }
 }
 
-// 과부하 방지: 히스토리, 폐지된 코인 삭제
+// 과부하 방지
 setInterval(async () => {
   const coins = await loadJson(coinsPath, {});
   const now = Date.now();
@@ -144,13 +143,12 @@ setInterval(async () => {
   await saveJson(coinsPath, coins);
 }, 60_000);
 
-// 명령어 본체
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('갓비트')
     .setDescription('가상 코인 거래 시스템')
     .addSubcommand(sub =>
-      sub.setName('코인차트').setDescription('모든 코인 현황 + 통합 차트')
+      sub.setName('코인차트').setDescription('모든 코인 현황 + 통합 차트 (페이지)')
     ),
 
   async execute(interaction) {
@@ -160,14 +158,18 @@ module.exports = {
       const wallets = await loadJson(walletsPath, {});
       await ensureBaseCoin(coins);
 
-      async function renderMain() {
+      const allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
+      const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
+
+      async function renderPage(page=0) {
         await simulateMarket(interaction, coins);
         await saveJson(coinsPath, coins);
 
         const userBE = getBE(interaction.user.id);
-        const aliveEntries = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
+        const slice = allAlive.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
         const change = {};
-        aliveEntries.forEach(([n,info]) => {
+        slice.forEach(([n,info]) => {
           const h = info.history;
           const last = h.at(-1), prev = h.at(-2) ?? last;
           const diff = last - prev;
@@ -176,12 +178,12 @@ module.exports = {
         });
 
         const listEmbed = new EmbedBuilder()
-          .setTitle('📈 갓비트 시장 현황')
+          .setTitle(`📈 갓비트 시장 현황 (페이지 ${page+1}/${totalPages})`)
           .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE`)
           .setColor('#FFFFFF')
           .setTimestamp();
 
-        aliveEntries.forEach(([n], i) => {
+        slice.forEach(([n], i) => {
           const { price, diff, pct } = change[n];
           const arrow = diff >= 0 ? '🔺' : '🔽';
           const maxBuy = Math.floor(userBE / price);
@@ -192,17 +194,17 @@ module.exports = {
               `${price.toLocaleString()} BE ${arrow}${Math.abs(diff).toLocaleString()} (${diff>=0?'+':''}${pct.toFixed(2)}%)`,
               `🛒 최대 매수: ${maxBuy}개`
             ].join('\n'),
-            inline: true
+            inline: false
           });
         });
 
-        // 차트 이미지
-        const histories = aliveEntries.map(([,info]) => info.history);
+        // 차트는 이 페이지의 코인들만!
+        const histories = slice.map(([,info]) => info.history.slice(-30));
         const maxLen = Math.max(...histories.map(h => h.length));
         const labels = Array.from({ length: maxLen }, (_,i) => i+1);
-        const datasets = aliveEntries.map(([n,info], i) => ({
+        const datasets = slice.map(([n,info], i) => ({
           label: n,
-          data: Array(maxLen - info.history.length).fill(null).concat(info.history),
+          data: Array(maxLen - info.history.slice(-30).length).fill(null).concat(info.history.slice(-30)),
           borderColor: COLORS[i % COLORS.length],
           fill: false
         }));
@@ -218,25 +220,34 @@ module.exports = {
           }
         };
         const chartEmbed = new EmbedBuilder()
-          .setTitle('📊 통합 코인 가격 차트')
+          .setTitle('📊 이 페이지 코인 가격 차트')
           .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
           .setColor('#FFFFFF')
           .setTimestamp();
 
-        const row1 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('buy').setLabel('매수').setEmoji('💰').setStyle(ButtonStyle.Primary),
+        // 버튼: ◀️이전, ▶️다음, 🏠처음, 🕘히스토리, 🔄새로고침
+        const navRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
+          new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
+          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
+          new ButtonBuilder().setCustomId('history').setLabel('🕘 히스토리').setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Secondary)
+        );
+        const actionRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('buy').setLabel('매수').setEmoji('💰').setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId('sell').setLabel('매도').setEmoji('💸').setStyle(ButtonStyle.Danger),
           new ButtonBuilder().setCustomId('portfolio').setLabel('내 코인').setEmoji('📂').setStyle(ButtonStyle.Secondary)
         );
-        const row2 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('history').setLabel('코인 히스토리').setEmoji('🕘').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setEmoji('🔄').setStyle(ButtonStyle.Secondary)
-        );
 
-        await interaction.editReply({ embeds: [listEmbed, chartEmbed], components: [row1, row2] });
+        await interaction.editReply({
+          embeds: [listEmbed, chartEmbed],
+          components: [navRow, actionRow]
+        });
+        return page;
       }
 
-      await renderMain();
+      let page = 0;
+      await renderPage(page);
       const message = await interaction.fetchReply();
 
       const collector = message.createMessageComponentCollector({
@@ -248,7 +259,27 @@ module.exports = {
       collector.on('collect', async btn => {
         try {
           await btn.deferUpdate();
-
+          // 페이지네비게이션
+          if (btn.customId === 'first') {
+            page = 0;
+            await renderPage(page);
+            return;
+          }
+          if (btn.customId === 'prev' && page > 0) {
+            page -= 1;
+            await renderPage(page);
+            return;
+          }
+          if (btn.customId === 'next' && page < totalPages-1) {
+            page += 1;
+            await renderPage(page);
+            return;
+          }
+          if (btn.customId === 'refresh') {
+            await renderPage(page);
+            return;
+          }
+          // 나머지 기존 매수/매도/포트폴리오/히스토리 동일!
           const makeModal = (id, title, fields) => {
             const m = new ModalBuilder().setCustomId(id).setTitle(title);
             fields.forEach(f => {
@@ -265,8 +296,6 @@ module.exports = {
             });
             return m;
           };
-
-          // 매수/매도
           if (btn.customId === 'buy' || btn.customId === 'sell') {
             const isBuy = btn.customId === 'buy';
             const modal = makeModal(
@@ -298,9 +327,9 @@ module.exports = {
               const needBE = total + fee;
               const bal = getBE(sub.user.id);
               if (bal < needBE) return sub.editReply({ content: `❌ BE 부족: 필요 ${needBE}` });
-              await addBE(sub.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
               wallets[sub.user.id] = wallets[sub.user.id] || {};
               wallets[sub.user.id][coin] = (wallets[sub.user.id][coin] || 0) + amount;
+              await addBE(sub.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
               await saveJson(walletsPath, wallets);
               return sub.editReply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)` });
             } else {
@@ -309,15 +338,14 @@ module.exports = {
               const gross = coins[coin].price * amount;
               const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
               const net = gross - fee;
-              await addBE(sub.user.id, net, `매도 ${amount} ${coin}`);
               wallets[sub.user.id][coin] -= amount;
               if (wallets[sub.user.id][coin] <= 0) delete wallets[sub.user.id][coin];
+              await addBE(sub.user.id, net, `매도 ${amount} ${coin}`);
               await saveJson(walletsPath, wallets);
               return sub.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
             }
           }
 
-          // 포트폴리오
           if (btn.customId === 'portfolio') {
             const userW = wallets[btn.user.id] || {};
             const e = new EmbedBuilder().setTitle('💼 내 코인').setColor('#00CC99').setTimestamp();
@@ -336,7 +364,6 @@ module.exports = {
             return btn.followUp({ embeds: [e], ephemeral: true });
           }
 
-          // 히스토리
           if (btn.customId === 'history') {
             const modal = makeModal(
               'history_modal',
@@ -375,11 +402,6 @@ module.exports = {
               .setColor('#3498DB')
               .setTimestamp();
             return sub.editReply({ embeds: [e] });
-          }
-
-          // 새로고침
-          if (btn.customId === 'refresh') {
-            return renderMain();
           }
         } catch (err) {
           console.error(err);
