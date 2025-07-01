@@ -143,6 +143,11 @@ module.exports = {
         remaining.slice(i*PAGE_SIZE,(i+1)*PAGE_SIZE))
     ];
 
+    const pageHasRole = arr => arr.some(name =>
+  interaction.guild.roles.cache.find(r => r.name === name)
+);
+PAGES = PAGES.filter(pageHasRole);
+
     let page = 0;
     const getRoles = names=>names
       .map(n=>interaction.guild.roles.cache.find(r=>r.name===n))
