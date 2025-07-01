@@ -334,7 +334,8 @@ module.exports = {
               x: { title: { display: true, text: '시간(5분 단위)' } },
               y: { title: { display: true, text: '가격 (BE)' } }
             }
-          }
+          },
+        backgroundColor: "white"
         };
         const chartEmbed = new EmbedBuilder()
           .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
