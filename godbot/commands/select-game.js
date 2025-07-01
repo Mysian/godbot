@@ -204,10 +204,30 @@ const pageList = lines.join(",\n");
         );
 
       const nav = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("prev").setLabel("이전 게임").setStyle("Secondary").setDisabled(page===0).setEmoji("⬅️"),
-        new ButtonBuilder().setCustomId("next").setLabel("다음 게임").setStyle("Primary").setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
-        new ButtonBuilder().setCustomId("info").setLabel("설명").setStyle("Success").setEmoji("ℹ️")
-      );
+        
+  new ButtonBuilder()
+    .setCustomId("search")
+    .setEmoji("🔍")
+    .setStyle("Secondary"),
+
+  new ButtonBuilder()
+    .setCustomId("prev")
+    .setLabel("이전 게임")
+    .setStyle("Secondary")
+    .setDisabled(page===0)
+    .setEmoji("⬅️"),
+  new ButtonBuilder()
+    .setCustomId("next")
+    .setLabel("다음 게임")
+    .setStyle("Primary")
+    .setDisabled(page>=PAGES.length-1)
+    .setEmoji("➡️"),
+  new ButtonBuilder()
+    .setCustomId("info")
+    .setLabel("설명")
+    .setStyle("Success")
+    .setEmoji("ℹ️")
+);
 
       const payload = {
         embeds:[embed],
@@ -228,6 +248,25 @@ const pageList = lines.join(",\n");
     });
 
     collector.on("collect",async i=>{
+
+      if(i.isButton()&&i.customId==="search"){
+    const modal = new ModalBuilder()
+      .setCustomId("gameSearchModal")
+      .setTitle("🔍 게임 검색")
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("searchKeyword")
+            .setLabel("검색할 게임 키워드")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("예: 배틀그라운드")
+            .setRequired(true)
+        )
+      );
+    await i.showModal(modal);
+    return;
+  }
+      
       if(i.isStringSelectMenu()){
         const chosen = new Set(i.values);
         const pageRoles = getRoles(PAGES[page]);
