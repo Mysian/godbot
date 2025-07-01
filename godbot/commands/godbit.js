@@ -22,7 +22,6 @@ const PAGE_SIZE   = 5;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
-// 차트 구간(단위: 5분 기준, 1=5분, 12=1시간, 36=3시간 ...)
 const CHART_INTERVALS = [
   { label: '5분', value: 1 },
   { label: '1시간', value: 12 },
@@ -35,6 +34,13 @@ const CHART_INTERVALS = [
   { label: '14일', value: 4032 },
   { label: '30일', value: 8640 }
 ];
+
+// 안전하게 history 뽑아내기(null로 채움)
+function safeSliceHistory(hist, n) {
+  if (!Array.isArray(hist)) return Array(n).fill(null);
+  if (hist.length >= n) return hist.slice(-n);
+  return Array(n - hist.length).fill(null).concat(hist);
+}
 
 // JSON 읽기/쓰기(락)
 async function loadJson(file, def) {
@@ -89,9 +95,6 @@ async function periodicMarket() {
     info.history.push(p);
     if (info.history.length > 8640) info.history.shift();
   }
-
-  // 신규 상장/폐지/최대코인 유지
-  // (옵션: 필요시 추가, 여기서는 기본 형태만)
   await saveJson(coinsPath, coins);
 }
 setInterval(periodicMarket, 300_000); // 5분(=300,000ms)마다만 시세 변동
@@ -132,7 +135,6 @@ module.exports = {
       const allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
       const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
 
-      // 차트 구간 값(5분=1, 1시간=12...) - 기본: 12(1시간)
       let chartRange = 12;
 
       async function renderPage(page=0, chartInterval=chartRange) {
@@ -142,7 +144,7 @@ module.exports = {
         const change = {};
         slice.forEach(([n,info]) => {
           const h = info.history;
-          const last = h.at(-1), prev = h.at(-2) ?? last;
+          const last = h?.at(-1) ?? 0, prev = h?.at(-2) ?? last;
           const diff = last - prev;
           const pct = prev ? (diff / prev * 100) : 0;
           change[n] = { price: last, diff, pct };
@@ -169,13 +171,13 @@ module.exports = {
           });
         });
 
-        // 차트 히스토리: chartInterval(5~8640) 길이만
-        const histories = slice.map(([,info]) => info.history.slice(-chartInterval));
+        // 안전하게 차트 그리기
+        const histories = slice.map(([,info]) => safeSliceHistory(info.history, chartInterval));
         const maxLen = Math.max(...histories.map(h => h.length));
         const labels = Array.from({ length: maxLen }, (_,i) => i+1);
         const datasets = slice.map(([n,info], i) => ({
           label: n,
-          data: Array(maxLen - info.history.slice(-chartInterval).length).fill(null).concat(info.history.slice(-chartInterval)),
+          data: safeSliceHistory(info.history, chartInterval),
           borderColor: COLORS[i % COLORS.length],
           fill: false
         }));
@@ -196,7 +198,6 @@ module.exports = {
           .setColor('#FFFFFF')
           .setTimestamp();
 
-        // 버튼
         const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
           new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
@@ -209,8 +210,6 @@ module.exports = {
           new ButtonBuilder().setCustomId('sell').setLabel('매도').setEmoji('💸').setStyle(ButtonStyle.Danger),
           new ButtonBuilder().setCustomId('portfolio').setLabel('내 코인').setEmoji('📂').setStyle(ButtonStyle.Secondary)
         );
-
-        // **차트 단위 선택용 셀렉트 메뉴**
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId('chart_range')
           .setPlaceholder('차트 구간 선택')
@@ -298,7 +297,6 @@ module.exports = {
             });
             await sub.deferReply({ ephemeral: true });
 
-            // ★ 시세 변동 없음, 즉시 거래만!
             const coins = await loadJson(coinsPath, {});
             const wallets = await loadJson(walletsPath, {});
             await ensureBaseCoin(coins);
@@ -378,11 +376,10 @@ module.exports = {
             if (!coins[coin]) return sub.editReply({ content: `❌ 코인 없음: ${coin}` });
 
             const info = coins[coin];
-            const h = info.history.slice(-cnt);
-            const lines = h.map((p, idx) => {
-              const arrow = p >= (h[idx-1] ?? p) ? '🔺' : '🔽';
-              return `${idx+1}: ${arrow}${p}`;
-            });
+            const h = safeSliceHistory(info.history, cnt);
+            const lines = h.map((p, idx) =>
+              p === null ? `${idx+1}: 데이터없음` : `${idx+1}: ${p >= (h[idx-1] ?? p) ? '🔺' : '🔽'}${p}`
+            );
             const e = new EmbedBuilder()
               .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력 (5분 단위)`)
               .setDescription(lines.join('\n'))
@@ -400,7 +397,6 @@ module.exports = {
         }
       });
 
-      // ★ 차트 구간 선택
       selectCollector.on('collect', async sel => {
         selectCollector.resetTimer();
         try {
@@ -419,68 +415,79 @@ module.exports = {
   },
 
   async modal(interaction) {
-    // 매수/매도/히스토리
+    // 매수/매도/히스토리 모두 deferReply/editReply 방식만 허용!
     if (interaction.customId === 'buy_modal' || interaction.customId === 'sell_modal') {
-      const isBuy = interaction.customId === 'buy_modal';
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
-      await ensureBaseCoin(coins);
+      try {
+        await interaction.deferReply({ ephemeral: true });
+        const isBuy = interaction.customId === 'buy_modal';
+        const coins = await loadJson(coinsPath, {});
+        const wallets = await loadJson(walletsPath, {});
+        await ensureBaseCoin(coins);
 
-      const coin = interaction.fields.getTextInputValue('coin');
-      const amount = Number(interaction.fields.getTextInputValue('amount'));
-      if (!coins[coin] || coins[coin].delistedAt) return interaction.reply({ content: `❌ 상장 중인 코인만 거래 가능: ${coin}`, ephemeral: true });
-      if (!Number.isFinite(amount) || amount <= 0) return interaction.reply({ content: `❌ 올바른 수량을 입력하세요.`, ephemeral: true });
+        const coin = interaction.fields.getTextInputValue('coin');
+        const amount = Number(interaction.fields.getTextInputValue('amount'));
+        if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 거래 가능: ${coin}` });
+        if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
 
-      if (isBuy) {
-        const price = coins[coin].price;
-        const total = price * amount;
-        const fee = Math.floor(total * 0.3);
-        const needBE = total + fee;
-        const bal = getBE(interaction.user.id);
-        if (bal < needBE) return interaction.reply({ content: `❌ BE 부족: 필요 ${needBE}`, ephemeral: true });
-        wallets[interaction.user.id] = wallets[interaction.user.id] || {};
-        wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
-        await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
-        await saveJson(walletsPath, wallets);
-        return interaction.reply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)`, ephemeral: true });
-      } else {
-        const have = wallets[interaction.user.id]?.[coin] || 0;
-        if (have < amount) return interaction.reply({ content: `❌ 보유 부족: ${have}`, ephemeral: true });
-        const gross = coins[coin].price * amount;
-        const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
-        const net = gross - fee;
-        wallets[interaction.user.id][coin] -= amount;
-        if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
-        await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
-        await saveJson(walletsPath, wallets);
-        return interaction.reply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)`, ephemeral: true });
+        if (isBuy) {
+          const price = coins[coin].price;
+          const total = price * amount;
+          const fee = Math.floor(total * 0.3);
+          const needBE = total + fee;
+          const bal = getBE(interaction.user.id);
+          if (bal < needBE) return interaction.editReply({ content: `❌ BE 부족: 필요 ${needBE}` });
+          wallets[interaction.user.id] = wallets[interaction.user.id] || {};
+          wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
+          await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
+          await saveJson(walletsPath, wallets);
+          return interaction.editReply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)` });
+        } else {
+          const have = wallets[interaction.user.id]?.[coin] || 0;
+          if (have < amount) return interaction.editReply({ content: `❌ 보유 부족: ${have}` });
+          const gross = coins[coin].price * amount;
+          const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
+          const net = gross - fee;
+          wallets[interaction.user.id][coin] -= amount;
+          if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
+          await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
+          await saveJson(walletsPath, wallets);
+          return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
+        }
+      } catch (err) {
+        console.error(err);
+        try { await interaction.editReply({ content: "⏳ 거래 처리에 실패했습니다.", ephemeral: true }); } catch {}
       }
     }
 
     if (interaction.customId === 'history_modal') {
-      const coins = await loadJson(coinsPath, {});
-      await ensureBaseCoin(coins);
+      try {
+        await interaction.deferReply({ ephemeral: true });
+        const coins = await loadJson(coinsPath, {});
+        await ensureBaseCoin(coins);
 
-      const coin = interaction.fields.getTextInputValue('coin');
-      const cnt = Math.min(8640, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 12));
-      if (!coins[coin]) return interaction.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+        const coin = interaction.fields.getTextInputValue('coin');
+        const cnt = Math.min(8640, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 12));
+        if (!coins[coin]) return interaction.editReply({ content: `❌ 코인 없음: ${coin}` });
 
-      const info = coins[coin];
-      const h = info.history.slice(-cnt);
-      const lines = h.map((p, idx) => {
-        const arrow = p >= (h[idx-1] ?? p) ? '🔺' : '🔽';
-        return `${idx+1}: ${arrow}${p}`;
-      });
-      const e = new EmbedBuilder()
-        .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력 (5분 단위)`)
-        .setDescription(lines.join('\n'))
-        .addFields(
-          { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : '-', inline: true },
-          { name: '폐지일', value: info.delistedAt ? new Date(info.delistedAt).toLocaleString() : '-', inline: true }
-        )
-        .setColor('#3498DB')
-        .setTimestamp();
-      return interaction.reply({ embeds: [e], ephemeral: true });
+        const info = coins[coin];
+        const h = safeSliceHistory(info.history, cnt);
+        const lines = h.map((p, idx) =>
+          p === null ? `${idx+1}: 데이터없음` : `${idx+1}: ${p >= (h[idx-1] ?? p) ? '🔺' : '🔽'}${p}`
+        );
+        const e = new EmbedBuilder()
+          .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력 (5분 단위)`)
+          .setDescription(lines.join('\n'))
+          .addFields(
+            { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : '-', inline: true },
+            { name: '폐지일', value: info.delistedAt ? new Date(info.delistedAt).toLocaleString() : '-', inline: true }
+          )
+          .setColor('#3498DB')
+          .setTimestamp();
+        return interaction.editReply({ embeds: [e] });
+      } catch (err) {
+        console.error(err);
+        try { await interaction.editReply({ content: "⏳ 이력 조회에 실패했습니다.", ephemeral: true }); } catch {}
+      }
     }
   }
 };
