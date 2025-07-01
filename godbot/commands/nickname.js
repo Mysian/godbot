@@ -1,6 +1,7 @@
 // commands/nickname.js
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
-
+const FORBIDDEN_REGEX =
+  /([\u3131-\u314e\u314f-\u3163]+)|(:[a-zA-Z0-9_]+:)|([\uD800-\uDBFF][\uDC00-\uDFFF])/u;
 // 욕설, 금지어, 디코 위반어 필터 (간단 예시/추가 확장 가능)
 const BAD_WORDS = [
   'fuck', 'shit', '바보', '병신', '시발', '좆', '섹스', '애미', '애비', '씨발', 'sex', 'discord.gg', 'http', 'www', '디스코드',
