@@ -7,7 +7,8 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ComponentType
+  ComponentType,
+  StringSelectMenuBuilder
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -20,6 +21,20 @@ const MAX_COINS   = 50;
 const PAGE_SIZE   = 5;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
+
+// 차트 구간(단위: 5분 기준, 1=5분, 12=1시간, 36=3시간 ...)
+const CHART_INTERVALS = [
+  { label: '5분', value: 1 },
+  { label: '1시간', value: 12 },
+  { label: '3시간', value: 36 },
+  { label: '6시간', value: 72 },
+  { label: '12시간', value: 144 },
+  { label: '24시간', value: 288 },
+  { label: '3일', value: 864 },
+  { label: '7일', value: 2016 },
+  { label: '14일', value: 4032 },
+  { label: '30일', value: 8640 }
+];
 
 // JSON 읽기/쓰기(락)
 async function loadJson(file, def) {
@@ -50,14 +65,19 @@ async function ensureBaseCoin(coins) {
     };
   }
 }
-// 코인 가격 변동 시뮬레이션 + 코인 추가/삭제
-async function simulateMarket(interaction, coins) {
+
+// **5분마다만 가격 변동 (유저 액션에선 변동 X)**
+async function periodicMarket() {
+  const coins = await loadJson(coinsPath, {});
+  await ensureBaseCoin(coins);
+
+  // 시세 갱신
   const base = coins['까리코인'];
   const deltaBase = (Math.random() * 0.2) - 0.1;
   const newBase = Math.max(1, Math.floor(base.price * (1 + deltaBase)));
   base.price = newBase;
   base.history.push(newBase);
-  if (base.history.length > 100) base.history.shift();
+  if (base.history.length > 8640) base.history.shift(); // 30일치(5분 단위=8640개)만
 
   for (const [name, info] of Object.entries(coins)) {
     if (name === '까리코인' || info.delistedAt) continue;
@@ -67,65 +87,22 @@ async function simulateMarket(interaction, coins) {
     const p = Math.max(1, Math.floor(info.price * (1 + delta)));
     info.price = p;
     info.history.push(p);
-    if (info.history.length > 100) info.history.shift();
+    if (info.history.length > 8640) info.history.shift();
   }
 
-  if (interaction.guild) {
-    if (Math.random() < 0.05) {
-      const mems = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
-      if (mems.size) {
-        const pick = Array.from(mems.values())[Math.floor(Math.random() * mems.size)];
-        const name = `${pick.displayName}코인`;
-        if (!coins[name]) {
-          coins[name] = {
-            price: Math.floor(Math.random() * 900) + 100,
-            history: [base.price],
-            listedAt: new Date().toISOString()
-          };
-          delete coins[name].delistedAt;
-        }
-      }
-    }
-    if (Math.random() < 0.02) {
-      const alive = Object.keys(coins).filter(n => n !== '까리코인' && !coins[n].delistedAt);
-      if (alive.length) {
-        const del = alive[Math.floor(Math.random() * alive.length)];
-        coins[del].delistedAt = new Date().toISOString();
-      }
-    }
-  }
-
-  let alive = Object.keys(coins).filter(n => !coins[n].delistedAt);
-  if (interaction.guild) {
-    const mems = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
-    while (alive.length < MAX_COINS && mems.size) {
-      const pick = Array.from(mems.values())[Math.floor(Math.random() * mems.size)];
-      const name = `${pick.displayName}코인`;
-      if (!coins[name]) {
-        coins[name] = {
-          price: Math.floor(Math.random() * 900) + 100,
-          history: [base.price],
-          listedAt: new Date().toISOString()
-        };
-        delete coins[name].delistedAt;
-        alive.push(name);
-      }
-    }
-  }
-  while (alive.length > MAX_COINS) {
-    const rem = alive[Math.floor(Math.random() * alive.length)];
-    coins[rem].delistedAt = new Date().toISOString();
-    alive = alive.filter(n => n !== rem);
-  }
+  // 신규 상장/폐지/최대코인 유지
+  // (옵션: 필요시 추가, 여기서는 기본 형태만)
+  await saveJson(coinsPath, coins);
 }
+setInterval(periodicMarket, 300_000); // 5분(=300,000ms)마다만 시세 변동
 
-// 주기적 데이터 정리 (히스토리 100개 초과시 잘라내기)
+// 7일 지난 폐지 코인, 오래된 히스토리 정리 (매 5분)
 setInterval(async () => {
   const coins = await loadJson(coinsPath, {});
   const now = Date.now();
 
   for (const [name, info] of Object.entries(coins)) {
-    while (info.history && info.history.length > 100) info.history.shift();
+    while (info.history && info.history.length > 8640) info.history.shift();
     if (info.delistedAt && name !== '까리코인') {
       const delistTime = new Date(info.delistedAt).getTime();
       if (now - delistTime > 1000*60*60*24*7) {
@@ -134,7 +111,7 @@ setInterval(async () => {
     }
   }
   await saveJson(coinsPath, coins);
-}, 60_000);
+}, 300_000);
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -155,12 +132,11 @@ module.exports = {
       const allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
       const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
 
-      async function renderPage(page=0) {
-        await simulateMarket(interaction, coins);
-        await saveJson(coinsPath, coins);
+      // 차트 구간 값(5분=1, 1시간=12...) - 기본: 12(1시간)
+      let chartRange = 12;
 
+      async function renderPage(page=0, chartInterval=chartRange) {
         const userBE = getBE(interaction.user.id);
-        // **5개로 강제 제한**
         const slice = allAlive.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
         const change = {};
@@ -193,13 +169,13 @@ module.exports = {
           });
         });
 
-        // 차트도 10개만!
-        const histories = slice.map(([,info]) => info.history.slice(-10));
+        // 차트 히스토리: chartInterval(5~8640) 길이만
+        const histories = slice.map(([,info]) => info.history.slice(-chartInterval));
         const maxLen = Math.max(...histories.map(h => h.length));
         const labels = Array.from({ length: maxLen }, (_,i) => i+1);
         const datasets = slice.map(([n,info], i) => ({
           label: n,
-          data: Array(maxLen - info.history.slice(-10).length).fill(null).concat(info.history.slice(-10)),
+          data: Array(maxLen - info.history.slice(-chartInterval).length).fill(null).concat(info.history.slice(-chartInterval)),
           borderColor: COLORS[i % COLORS.length],
           fill: false
         }));
@@ -209,7 +185,7 @@ module.exports = {
           options: {
             plugins: { legend: { display: false } },
             scales: {
-              x: { title: { display: true, text: '시간(스텝)' } },
+              x: { title: { display: true, text: '시간(5분 단위)' } },
               y: { title: { display: true, text: '가격 (BE)' } }
             }
           }
@@ -234,15 +210,24 @@ module.exports = {
           new ButtonBuilder().setCustomId('portfolio').setLabel('내 코인').setEmoji('📂').setStyle(ButtonStyle.Secondary)
         );
 
+        // **차트 단위 선택용 셀렉트 메뉴**
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('chart_range')
+          .setPlaceholder('차트 구간 선택')
+          .addOptions(CHART_INTERVALS.map(opt => ({
+            label: opt.label, value: String(opt.value), default: opt.value === chartInterval
+          })));
+        const selectRow = new ActionRowBuilder().addComponents(selectMenu);
+
         await interaction.editReply({
           embeds: [listEmbed, chartEmbed],
-          components: [navRow, actionRow]
+          components: [navRow, actionRow, selectRow]
         });
         return page;
       }
 
       let page = 0;
-      await renderPage(page);
+      await renderPage(page, chartRange);
       const message = await interaction.fetchReply();
 
       const COLLECTOR_TIMEOUT = 600_000;
@@ -251,6 +236,11 @@ module.exports = {
         time: COLLECTOR_TIMEOUT,
         filter: btn => btn.user.id === interaction.user.id
       });
+      const selectCollector = message.createMessageComponentCollector({
+        componentType: ComponentType.StringSelect,
+        time: COLLECTOR_TIMEOUT,
+        filter: sel => sel.user.id === interaction.user.id
+      });
 
       collector.on('collect', async btn => {
         collector.resetTimer();
@@ -258,21 +248,21 @@ module.exports = {
           await btn.deferUpdate();
           if (btn.customId === 'first') {
             page = 0;
-            await renderPage(page);
+            await renderPage(page, chartRange);
             return;
           }
           if (btn.customId === 'prev' && page > 0) {
             page -= 1;
-            await renderPage(page);
+            await renderPage(page, chartRange);
             return;
           }
           if (btn.customId === 'next' && page < totalPages-1) {
             page += 1;
-            await renderPage(page);
+            await renderPage(page, chartRange);
             return;
           }
           if (btn.customId === 'refresh') {
-            await renderPage(page);
+            await renderPage(page, chartRange);
             return;
           }
           const makeModal = (id, title, fields) => {
@@ -307,8 +297,11 @@ module.exports = {
               time: 300_000
             });
             await sub.deferReply({ ephemeral: true });
-            await simulateMarket(sub, coins);
-            await saveJson(coinsPath, coins);
+
+            // ★ 시세 변동 없음, 즉시 거래만!
+            const coins = await loadJson(coinsPath, {});
+            const wallets = await loadJson(walletsPath, {});
+            await ensureBaseCoin(coins);
 
             const coin = sub.fields.getTextInputValue('coin');
             const amount = Number(sub.fields.getTextInputValue('amount'));
@@ -342,6 +335,8 @@ module.exports = {
           }
 
           if (btn.customId === 'portfolio') {
+            const wallets = await loadJson(walletsPath, {});
+            const coins = await loadJson(coinsPath, {});
             const userW = wallets[btn.user.id] || {};
             const e = new EmbedBuilder().setTitle('💼 내 코인').setColor('#00CC99').setTimestamp();
             let total = 0;
@@ -365,7 +360,7 @@ module.exports = {
               '코인 히스토리 조회',
               [
                 { customId: 'coin', label: '코인 이름', style: TextInputStyle.Short, required: true },
-                { customId: 'count', label: '조회 개수 (최대 10)', style: TextInputStyle.Short, required: false, placeholder: '예: 10 (기본 5)' }
+                { customId: 'count', label: '조회 개수 (최대 30일=8640)', style: TextInputStyle.Short, required: false, placeholder: '예: 12 (기본 12, 5분x12=1시간)' }
               ]
             );
             await btn.showModal(modal);
@@ -374,11 +369,12 @@ module.exports = {
               time: 300_000
             });
             await sub.deferReply({ ephemeral: true });
-            await simulateMarket(sub, coins);
-            await saveJson(coinsPath, coins);
+
+            const coins = await loadJson(coinsPath, {});
+            await ensureBaseCoin(coins);
 
             const coin = sub.fields.getTextInputValue('coin');
-            const cnt = Math.min(10, Math.max(1, parseInt(sub.fields.getTextInputValue('count')) || 5));
+            const cnt = Math.min(8640, Math.max(1, parseInt(sub.fields.getTextInputValue('count')) || 12));
             if (!coins[coin]) return sub.editReply({ content: `❌ 코인 없음: ${coin}` });
 
             const info = coins[coin];
@@ -388,7 +384,7 @@ module.exports = {
               return `${idx+1}: ${arrow}${p}`;
             });
             const e = new EmbedBuilder()
-              .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력`)
+              .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력 (5분 단위)`)
               .setDescription(lines.join('\n'))
               .addFields(
                 { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : '-', inline: true },
@@ -403,6 +399,19 @@ module.exports = {
           try { await btn.followUp({ content: "⏳ 해당 명령어가 만료되었습니다.", ephemeral: true }); } catch {}
         }
       });
+
+      // ★ 차트 구간 선택
+      selectCollector.on('collect', async sel => {
+        selectCollector.resetTimer();
+        try {
+          chartRange = Number(sel.values[0]) || 12;
+          await sel.deferUpdate();
+          await renderPage(page, chartRange);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
     } catch (err) {
       console.error(err);
       try { await interaction.followUp({ content: "⏳ 해당 명령어가 만료되었습니다.", ephemeral: true }); } catch {}
@@ -410,14 +419,12 @@ module.exports = {
   },
 
   async modal(interaction) {
+    // 매수/매도/히스토리
     if (interaction.customId === 'buy_modal' || interaction.customId === 'sell_modal') {
       const isBuy = interaction.customId === 'buy_modal';
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
       await ensureBaseCoin(coins);
-
-      await simulateMarket(interaction, coins);
-      await saveJson(coinsPath, coins);
 
       const coin = interaction.fields.getTextInputValue('coin');
       const amount = Number(interaction.fields.getTextInputValue('amount'));
@@ -453,11 +460,9 @@ module.exports = {
     if (interaction.customId === 'history_modal') {
       const coins = await loadJson(coinsPath, {});
       await ensureBaseCoin(coins);
-      await simulateMarket(interaction, coins);
-      await saveJson(coinsPath, coins);
 
       const coin = interaction.fields.getTextInputValue('coin');
-      const cnt = Math.min(10, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 5));
+      const cnt = Math.min(8640, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 12));
       if (!coins[coin]) return interaction.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
 
       const info = coins[coin];
@@ -467,7 +472,7 @@ module.exports = {
         return `${idx+1}: ${arrow}${p}`;
       });
       const e = new EmbedBuilder()
-        .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력`)
+        .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력 (5분 단위)`)
         .setDescription(lines.join('\n'))
         .addFields(
           { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : '-', inline: true },
