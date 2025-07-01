@@ -18,8 +18,6 @@ const BAD_WORDS = [
   "쉬이발", "시ㅂ", "시발", "시벌", "시부랄", "시빨", "십할", "ㅆㅃ", "씨발", "씨벌", "씨부랄", "씨불", "씨빨", "씹할", "Tlq",
   "tlqkf", "Tlqkf"
 ];
-// 초성(ㄱ~ㅎ), 이모지, 특수문자(디코 이모지) 차단 정규식
-const FORBIDDEN_REGEX = /([\u3131-\u314e])|([\u314f-\u3163])|(:[a-zA-Z0-9_]+:)|([\uD800-\uDBFF][\uDC00-\uDFFF])/g;
 
 const ROLE_ID = '1273055963535904840'; // 별명 변경권
 const LOG_CHANNEL_ID = '1380874052855529605';
@@ -30,7 +28,7 @@ module.exports = {
     .setDescription('별명 변경권으로 내 별명을 바꿉니다.')
     .addStringOption(option =>
       option.setName('새별명')
-        .setDescription('설정할 새 별명을 입력하세요')
+        .setDescription('설정할 새 별명을 입력하세요 │ 초성, 이모지, 비속어 등 절대 금지!')
         .setMinLength(2)
         .setMaxLength(24)
         .setRequired(true)
