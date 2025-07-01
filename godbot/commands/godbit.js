@@ -46,7 +46,7 @@ async function addHistory(info, price) {
   if (!info.history) info.history = [];
   if (!info.historyT) info.historyT = [];
   info.history.push(price);
-  info.historyT.push(new Date().toISOString());
+  info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
   while (info.history.length > HISTORY_MAX) info.history.shift();
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
@@ -78,7 +78,7 @@ async function periodicMarket() {
     info.history = info.history || [];
     info.historyT = info.historyT || [];
     info.history.push(p);
-    info.historyT.push(new Date().toISOString());
+    info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
     while (info.history.length > HISTORY_MAX) info.history.shift();
     while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
   }
@@ -290,7 +290,7 @@ module.exports = {
           let emoji = '⏸️';
           if (diff > 0) emoji = '🔺';
           else if (diff < 0) emoji = '🔻';
-          return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`;
+          return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${timeList[idx]}`;
         });
 
         const embed = new EmbedBuilder()
