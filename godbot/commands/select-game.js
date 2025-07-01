@@ -153,7 +153,7 @@ module.exports = {
         : "아직 선택한 게임이 없습니다.";
 
       const embed = new EmbedBuilder()
-        .setTitle("🎮 현재 선택된 게임 태그")
+        .setTitle("🏷️ 당신이 설정한 게임 리스트")
         .setDescription(desc)
         .setColor(0x2095ff)
         .setImage(MAIN_IMAGE_URL)
@@ -162,7 +162,7 @@ module.exports = {
       const rolesThisPage = getRoles(PAGES[page]);
       const select = new StringSelectMenuBuilder()
         .setCustomId("select")
-        .setPlaceholder("게임 태그를 선택 / 해제하세요")
+        .setPlaceholder("이곳을 눌러 게임 태그를 설정하세요!")
         .setMinValues(0)
         .setMaxValues(rolesThisPage.length)
         .addOptions(
@@ -191,7 +191,7 @@ module.exports = {
     const msg = await interaction.fetchReply();
     const collector = msg.createMessageComponentCollector({
       filter:i=>i.user.id===interaction.user.id,
-      time:120_000,
+      time:600_000,
     });
 
     collector.on("collect",async i=>{
