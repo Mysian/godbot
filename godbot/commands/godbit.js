@@ -158,9 +158,9 @@ info.history.push(info.price);
 info.historyT.push(now);
 coins[newName] = info;
 
-  await saveJson(coinsPath, coins);
 }
-
+await saveJson(coinsPath, coins);
+}
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('갓비트')
