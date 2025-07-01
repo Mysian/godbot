@@ -108,7 +108,7 @@ module.exports = {
         .setColor('#0099FF')
         .setTimestamp();
       for (const [name, { price, diff, pct }] of Object.entries(changeInfo)) {
-        const arrow = diff >= 0 ? '🔺' : '🔻';
+        const arrow = diff >= 0 ? '🔺' : '🔽';
         listEmbed.addFields({
           name,
           value: `${price.toLocaleString()} BE ${arrow}${Math.abs(diff).toLocaleString()} (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`,
