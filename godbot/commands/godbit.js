@@ -158,7 +158,6 @@ async function autoMarketUpdate(members) {
 
   await saveJson(coinsPath, coins);
 }
-setInterval(periodicMarket, 60_000); // ⭐️ 1분마다!
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -516,5 +515,6 @@ module.exports = {
       }
       return interaction.editReply({ embeds: [e] });
     }
-  }
+  },
+  autoMarketUpdate
 };
