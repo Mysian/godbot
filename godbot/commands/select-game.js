@@ -2,6 +2,7 @@ const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBu
 
 // 롤, 스팀게임, 나머지
 const PAGE_SIZE        = 20;
+const BLANK = '\u200B';
 const LOL              = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
 const STEAM_GAMES      = ["스팀게임"];
 const FOOTER_ICON_URL  = "https://media.discordapp.net/attachments/1388728993787940914/1389194104424108223/2D.png?format=webp&quality=lossless";
