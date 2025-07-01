@@ -154,19 +154,16 @@ module.exports = {
           });
         });
 
-        // 차트(각 코인 히스토리)
+       // 차트(각 코인 히스토리)
 const chartRange = 12;
 const histories = slice.map(([,info]) => (info.history||[]).slice(-chartRange));
 const times = slice.map(([,info]) => (info.historyT||[]).slice(-chartRange));
-
-// 라벨을 시간(HH:MM)으로 맞춤
-const labels = times[0]?.length
-  ? times[0].map(t =>
-      new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-    )
-  : Array.from({ length: chartRange }, (_,i) => `${i+1}`);
-
-// 차트 데이터셋(선 두께, tension)
+const labels =
+  (times[0]?.length > 0)
+    ? times[0].map(t =>
+        new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+      )
+    : Array.from({ length: chartRange }, (_,i) => `${i+1}`);
 const datasets = slice.map(([n,info], i) => ({
   label: n,
   data: (info.history||[]).slice(-chartRange),
@@ -176,17 +173,18 @@ const datasets = slice.map(([n,info], i) => ({
   tension: 0.3,
   pointRadius: 2
 }));
-
 const chartConfig = {
   type: 'line',
   data: { labels, datasets },
   options: {
-    backgroundColor: '#23272a',
     plugins: {
       legend: {
         display: true,
         position: 'bottom',
-        labels: { font: { size: 14 }, color: '#fff' }
+        labels: { color: '#fff', font: { size: 15 } }
+      },
+      background: {
+        color: '#23272a'
       }
     },
     layout: { padding: 25 },
@@ -206,12 +204,14 @@ const chartConfig = {
     }
   }
 };
+const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&plugins=background`;
 
 const chartEmbed = new EmbedBuilder()
   .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
-  .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
+  .setImage(chartUrl)
   .setColor('#23272a')
   .setTimestamp();
+
 
 
         // 버튼
