@@ -339,6 +339,9 @@ const chartEmbed = new EmbedBuilder()
 
       wallets[interaction.user.id] = wallets[interaction.user.id] || {};
       wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
+      wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
+      wallets[interaction.user.id + "_buys"][coin] = (wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount);
+
       await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
       await saveJson(walletsPath, wallets);
 
@@ -376,26 +379,53 @@ const chartEmbed = new EmbedBuilder()
       return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
     }
 
-    // 5. 내코인
     if (sub === '내코인') {
-      await interaction.deferReply({ ephemeral: true });
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
-      const userW = wallets[interaction.user.id] || {};
-      const e = new EmbedBuilder().setTitle('💼 내 코인').setColor('#00CC99').setTimestamp();
-      let total = 0;
-      if (!Object.keys(userW).length) {
-        e.setDescription('보유 코인이 없습니다.');
-      } else {
-        for (const [c, q] of Object.entries(userW)) {
-          if (!coins[c] || coins[c].delistedAt) continue;
-          const v = (coins[c]?.price || 0) * q;
-          total += v;
-          e.addFields({ name: c, value: `수량: ${q}개\n평가액: ${v.toLocaleString()} BE\n🔽 최대 매도: ${q}개` });
-        }
-        e.addFields({ name: '총 평가액', value: `${total.toLocaleString()} BE` });
-      }
-      return interaction.editReply({ embeds: [e] });
+  await interaction.deferReply({ ephemeral: true });
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  const userW = wallets[interaction.user.id] || {};
+  // 누적 매수 내역(예시: 추가로 매수 때 별도 기록 필요)
+  const userBuys = wallets[interaction.user.id + "_buys"] || {}; // {코인: 누적매수액}
+  let totalEval = 0, totalBuy = 0, totalProfit = 0;
+
+  const e = new EmbedBuilder()
+    .setTitle('💼 내 코인 평가/수익 현황')
+    .setColor('#2ecc71')
+    .setTimestamp();
+
+  if (!Object.keys(userW).length) {
+    e.setDescription('보유 코인이 없습니다.');
+  } else {
+    let detailLines = [];
+    for (const [c, q] of Object.entries(userW)) {
+      if (!coins[c] || coins[c].delistedAt) continue;
+      const nowPrice = coins[c]?.price || 0;
+      const buyCost = userBuys[c] || 0;
+      const evalPrice = nowPrice * q;
+      const profit = evalPrice - buyCost;
+      const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+      totalEval += evalPrice;
+      totalBuy += buyCost;
+      totalProfit += profit;
+      detailLines.push(
+        `**${c}**
+        • 보유: ${q}개
+        • 누적매수: ${buyCost.toLocaleString()} BE
+        • 평가액: ${evalPrice.toLocaleString()} BE
+        • 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)
+        `
+      );
     }
+    const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+    e.setDescription(detailLines.join('\n\n'));
+    e.addFields(
+      { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
+      { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
+      { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+    );
+  }
+  return interaction.editReply({ embeds: [e] });
+}
+
   }
 };
