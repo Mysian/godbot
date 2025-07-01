@@ -87,15 +87,14 @@ const GAME_EMOJIS = {
   "히오스": "<:HeroesoftheStorm:1361899848579678218>"
 };
 
-// 롤/스팀 제외 나머지 정렬
-function getInitial(char) {
-  const code = char.charCodeAt(0);
+// ---- 정렬 유틸 ---------------------------------------------------------------
+function getInitial(ch) {
+  const code = ch.charCodeAt(0);
   if (code >= 0xac00 && code <= 0xd7a3) {
     const INITIALS = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
-    const initialIdx = Math.floor((code - 0xac00) / 588);
-    return INITIALS[initialIdx];
+    return INITIALS[Math.floor((code - 0xac00) / 588)];
   }
-  if (/[a-zA-Z]/.test(char)) return char[0].toLowerCase();
+  if (/[a-zA-Z]/.test(ch)) return ch[0].toLowerCase();
   return "Ω";
 }
 function sortByInitial(a, b) {
@@ -110,24 +109,19 @@ function sortByInitial(a, b) {
   return ia.localeCompare(ib, "en");
 }
 
-const EXCLUDE_GAMES = [...LOL, ...STEAM_GAMES];
-const ETC_GAMES = ALL_GAMES.filter(x => !EXCLUDE_GAMES.includes(x)).sort(sortByInitial);
+// 롤·스팀 제외 나머지
+const ETC_GAMES = ALL_GAMES
+  .filter(x => ![...LOL, ...STEAM_GAMES].includes(x))
+  .sort(sortByInitial);
 
+// ---- 페이지 분할 -------------------------------------------------------------
 const GAMES_PAGED = [
   [...LOL, ...STEAM_GAMES, ...ETC_GAMES.slice(0, 5)],
-  ...Array.from({ length: Math.ceil((ETC_GAMES.length - 5) / 10) }, (_, i) =>
-    ETC_GAMES.slice(5 + i * 10, 5 + (i + 1) * 10)
-  )
-].filter(pageArr => pageArr.length > 0); 
+  ...Array.from({ length: Math.ceil((ETC_GAMES.length - 5) / PAGE_SIZE) }, (_, i) =>
+      ETC_GAMES.slice(5 + i * PAGE_SIZE, 5 + (i + 1) * PAGE_SIZE))
+].filter(p => p.length);
 
-
-// 역할명별로 아이콘 부여
-function getIcon(roleName) {
-  if (LOL.includes(roleName)) return "🟦";
-  if (STEAM_GAMES.includes(roleName)) return "⚙️";
-  return "🎮";
-}
-
+// ---- 명령어 ------------------------------------------------------------------
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임태그설정")
@@ -137,206 +131,162 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
-    // [0] 게임 역할이 하나도 없으면 '스팀게임' 자동 부여
-    const userGameRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
-    if (userGameRoles.size === 0) {
-      const steamRole = interaction.guild.roles.cache.find(r => r.name === "스팀게임");
-      if (steamRole) await member.roles.add(steamRole, "최소 1개 게임태그 자동 부여");
-    }
-
-    // 1. 롤/스팀 게임 배열 고정
-    const lolSteam = [...LOL, ...STEAM_GAMES];
-
-    // 2. 인기순 정렬 (기타만)
-    const allRoles = interaction.guild.roles.cache.filter(
-      role => !role.managed && ALL_GAMES.includes(role.name)
-    );
+    // 인기순 계산 (기타 게임만)
     const rolePopularity = {};
-    allRoles.forEach(role => {
-      rolePopularity[role.name] = role.members.size;
-    });
+    interaction.guild.roles.cache
+      .filter(r => !r.managed && ALL_GAMES.includes(r.name))
+      .forEach(r => { rolePopularity[r.name] = r.members.size; });
 
-    const ETC_GAMES = ALL_GAMES.filter(
-      name => !lolSteam.includes(name)
-    );
-    const ETC_GAMES_POPULAR = [...ETC_GAMES].sort((a, b) => (rolePopularity[b] || 0) - (rolePopularity[a] || 0));
-
+    // 첫 페이지 재구성 – 롤/스팀 + 인기순  (롤/스팀 수 부족 시 기타로 채움)
     const firstPageGames = [
-      ...lolSteam,
-      ...ETC_GAMES_POPULAR.slice(0, Math.max(0, 10 - lolSteam.length))
+      ...LOL, ...STEAM_GAMES,
+      ...ETC_GAMES
+        .sort((a, b) => (rolePopularity[b] || 0) - (rolePopularity[a] || 0))
+        .slice(0, Math.max(0, PAGE_SIZE - LOL.length - STEAM_GAMES.length))
     ];
 
-    const remainingPopularGames = ETC_GAMES_POPULAR.slice(Math.max(0, 10 - lolSteam.length));
+    const remainingGames = ETC_GAMES
+      .filter(g => !firstPageGames.includes(g))
+      .sort((a, b) => (rolePopularity[b] || 0) - (rolePopularity[a] || 0));
 
-    const GAMES_PAGED = [
+    const PAGES = [
       firstPageGames,
-      ...Array.from({ length: Math.ceil(remainingPopularGames.length / 10) }, (_, i) =>
-        remainingPopularGames.slice(i * 10, (i + 1) * 10)
-      )
+      ...Array.from({ length: Math.ceil(remainingGames.length / PAGE_SIZE) }, (_, i) =>
+          remainingGames.slice(i * PAGE_SIZE, (i + 1) * PAGE_SIZE))
     ];
 
     let page = 0;
-    const totalPages = GAMES_PAGED.length;
 
-    function getPageRoles(idx) {
-      const gameNames = GAMES_PAGED[idx];
-      const roles = interaction.guild.roles.cache.filter(
-        role => !role.managed && gameNames.includes(role.name)
-      );
-      const rolesInOrder = gameNames.map(name => roles.find(r => r.name === name)).filter(Boolean);
-      return rolesInOrder;
-    }
+    // --- 헬퍼 --------------------------------------------------------------
+    const getRolesByNames = names =>
+      names
+        .map(n => interaction.guild.roles.cache.find(r => r.name === n))
+        .filter(Boolean);
 
-    async function showPage(pageIdx, updateInteraction = null) {
-      const rolesThisPage = getPageRoles(pageIdx);
+    async function render(update = null) {
+      // 현재 ‘선택 완료’ 게임 (서버 전체 기준)
+      const chosenRoles = member.roles.cache
+        .filter(r => ALL_GAMES.includes(r.name));
 
-      const description =
-        rolesThisPage.map((role) =>
-          `${member.roles.cache.has(role.id) ? "✅" : "⬜"}  ${GAME_EMOJIS[role.name] || ""}  ${member.roles.cache.has(role.id) ? `**${role.name}**` : `*${role.name}*`}`
-        ).join('\n') || '선택 가능한 역할이 없습니다.';
+      const desc = chosenRoles.size
+        ? chosenRoles
+            .map(r => `${GAME_EMOJIS[r.name] || ""} **${r.name}**`)
+            .join("\n")
+        : "아직 선택한 게임이 없습니다.";
 
       const embed = new EmbedBuilder()
-        .setTitle(`게임 역할 선택 (페이지 ${pageIdx + 1}/${totalPages})`)
-        .setDescription(description)
+        .setTitle("🎮 현재 선택된 게임 태그")
+        .setDescription(desc)
         .setColor(0x2095ff)
         .setImage(MAIN_IMAGE_URL)
         .setFooter({
-          text: "게임 태그를 1개 이상 유지하세요. │신규 게임태그 문의는 스탭진에게",
-          iconURL: FOOTER_ICON_URL
+          text: "게임 태그는 최소 1개 이상 유지해야 합니다.",
+          iconURL: FOOTER_ICON_URL,
         });
 
-      let components = [];
-      if (rolesThisPage.length > 0) {
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId("game_roles_select")
-          .setPlaceholder("설정할 게임 태그를 선택하세요")
-          .setMinValues(0)
-          .setMaxValues(rolesThisPage.length)
-          .addOptions(
-            rolesThisPage.map(role => ({
-              label: role.name.length > 100 ? role.name.slice(0, 97) + "..." : role.name,
-              value: role.id,
-              default: member.roles.cache.has(role.id)
-            }))
-          );
-        const actionRow = new ActionRowBuilder().addComponents(selectMenu);
-        components.push(actionRow);
-      }
-      const navRow = new ActionRowBuilder().addComponents(
+      // 이번 페이지의 게임들을 셀렉트 메뉴에 표시
+      const rolesThisPage = getRolesByNames(PAGES[page]);
+      const select = new StringSelectMenuBuilder()
+        .setCustomId("select")
+        .setPlaceholder("게임 태그를 선택 / 해제하세요")
+        .setMinValues(0)
+        .setMaxValues(rolesThisPage.length)
+        .addOptions(
+          rolesThisPage.map(role => ({
+            label: role.name.length > 100 ? role.name.slice(0, 97) + "…" : role.name,
+            value: role.id,
+            default: member.roles.cache.has(role.id),
+          }))
+        );
+
+      const nav = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("prev")
           .setLabel("이전")
           .setStyle("Secondary")
-          .setDisabled(pageIdx === 0)
+          .setDisabled(page === 0)
           .setEmoji("⬅️"),
         new ButtonBuilder()
           .setCustomId("next")
           .setLabel("다음")
           .setStyle("Primary")
-          .setDisabled(pageIdx >= totalPages - 1)
+          .setDisabled(page >= PAGES.length - 1)
           .setEmoji("➡️"),
       );
-      components.push(navRow);
 
       const payload = {
         embeds: [embed],
-        components: components,
+        components: [new ActionRowBuilder().addComponents(select), nav],
         ephemeral: true,
       };
-      if (updateInteraction) await updateInteraction.update(payload);
-      else await interaction.reply(payload);
+
+      return update ? update.update(payload) : interaction.reply(payload);
     }
 
-    await showPage(page);
-
+    await render();                     // 최초 렌더
     const msg = await interaction.fetchReply();
+
+    // --- 인터랙션 콜렉터 ---------------------------------------------------
     const collector = msg.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
       time: 120_000,
     });
 
     collector.on("collect", async i => {
-  if (i.isStringSelectMenu()) {
-    const selected = new Set(i.values);
-    const rolesThisPage = getPageRoles(page);
+      // 셀렉트 메뉴
+      if (i.isStringSelectMenu()) {
+        const chosen = new Set(i.values);
+        const rolesThisPage = getRolesByNames(PAGES[page]);
 
-    // 앞으로 유저가 가지게 될 전체 게임 역할 계산
-    const selectedRoleIds = [...selected];
-    const rolesThisPageIds = rolesThisPage.map(role => role.id);
+        const willHave = new Set(
+          member.roles.cache
+            .filter(r => ALL_GAMES.includes(r.name) && !rolesThisPage.find(rt => rt.id === r.id))
+            .map(r => r.id)
+            .concat([...chosen])
+        );
 
-    // 1. 기존에 가진 역할 중, 이 페이지와 무관한 건 그대로 남김
-    // 2. 이 페이지에서 새롭게 선택한 것(selected)만 추가
-    let futureRoles = new Set(
-      member.roles.cache
-        .filter(r => ALL_GAMES.includes(r.name) && !rolesThisPageIds.includes(r.id))
-        .map(r => r.id)
-        .concat(selectedRoleIds)
-    );
+        // 최소 1개 체크
+        if (willHave.size === 0) {
+          await i.reply({
+            content: "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다!",
+            ephemeral: true,
+          });
+          return;
+        }
 
-    // 만약 0개로 만들려고 시도하면 → 역할 변경 없이 안내만!
-    if (futureRoles.size === 0) {
-      await i.reply({
-        content: "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. (모든 역할을 제거할 수 없습니다!)",
-        ephemeral: true,
-      });
-      return;
-    }
+        const toAdd    = rolesThisPage.filter(r => chosen.has(r.id) && !member.roles.cache.has(r.id));
+        const toRemove = rolesThisPage.filter(r => !chosen.has(r.id) && member.roles.cache.has(r.id));
 
-    // 실제 역할 추가/제거
-    const toAdd = [];
-    const toRemove = [];
-    for (const role of rolesThisPage) {
-      if (selected.has(role.id) && !member.roles.cache.has(role.id)) toAdd.push(role.id);
-      if (!selected.has(role.id) && member.roles.cache.has(role.id)) toRemove.push(role.id);
-    }
+        try {
+          if (toAdd.length)    await member.roles.add(toAdd,    "게임 태그 추가");
+          if (toRemove.length) await member.roles.remove(toRemove, "게임 태그 제거");
+          member = await interaction.guild.members.fetch(interaction.user.id); // 갱신
+          await render(i);
+        } catch (err) {
+          await i.reply({ content: "❌ 역할 변경 중 오류가 발생했습니다. (권한 확인 필요)", ephemeral: true });
+        }
+      }
 
-    try {
-      if (toAdd.length) await member.roles.add(toAdd, "게임 역할 선택");
-      if (toRemove.length) await member.roles.remove(toRemove, "게임 역할 해제");
+      // 페이지 이동
+      else if (i.isButton()) {
+        if (i.customId === "prev" && page > 0)           page--;
+        if (i.customId === "next" && page < PAGES.length - 1) page++;
+        await render(i);
+      }
+    });
 
-      // 역할 갱신
+    // 만료 시 임베드 정리 & 최소 1개 검증
+    collector.on("end", async () => {
       member = await interaction.guild.members.fetch(interaction.user.id);
-      await showPage(page, i);
-    } catch (err) {
-      await i.reply({
-        content: "❌ 역할 변경 중 오류가 발생했습니다. (권한 확인 필요)",
-        ephemeral: true,
-      });
-    }
-  }
-  // 버튼 페이지 이동은 기존 그대로
-  else if (i.isButton()) {
-    if (i.customId === "prev" && page > 0) {
-      page -= 1;
-      await showPage(page, i);
-    }
-    if (i.customId === "next" && page < totalPages - 1) {
-      page += 1;
-      await showPage(page, i);
-    }
-  }
-});
-
-collector.on("end", async () => {
-  member = await interaction.guild.members.fetch(interaction.user.id);
-  const userGameRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
-  if (userGameRoles.size === 0) {
-    try {
-      await interaction.editReply({
-        content: "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. 다시 시도해 주세요.",
-        embeds: [],
-        components: [],
-        ephemeral: true,
-      });
-    } catch {}
-  } else {
-    try {
-      await interaction.editReply({
-        components: [],
-      });
-    } catch {}
-  }
-});
-  }
+      const gameRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
+      try {
+        await interaction.editReply({
+          content: gameRoles.size === 0
+            ? "❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. 다시 시도해 주세요."
+            : null,
+          components: [],
+        });
+      } catch {/* 무시 */}
+    });
+  },
 };
-
