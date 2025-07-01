@@ -288,62 +288,78 @@ module.exports = {
     });
 
     // 모달 제출 처리
-    interaction.client.on('interactionCreate', async subI => {
-      if (!subI.isModalSubmit()) return;
-      const id = subI.customId;
-      const coin = subI.fields.getTextInputValue('coin');
-      const amount = Number(subI.fields.getTextInputValue('amount'));
-      await simulateMarket(subI, coins);
-      await saveJson(coinsPath, coins);
+interaction.client.on('interactionCreate', async subI => {
+  if (!subI.isModalSubmit()) return;
+  const id = subI.customId;
+  await simulateMarket(subI, coins);
+  await saveJson(coinsPath, coins);
 
-      if (id === 'godbit_buy_modal') {
-        if (!coins[coin]) return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
-        const cost = coins[coin].price * amount;
-        const bal = getBE(subI.user.id);
-        if (bal < cost) return subI.reply({ content: `❌ BE 부족: 필요 ${cost}`, ephemeral: true });
-        await addBE(subI.user.id, -cost, `매수 ${amount} ${coin}`);
-        wallets[subI.user.id] = wallets[subI.user.id] || {};
-        wallets[subI.user.id][coin] = (wallets[subI.user.id][coin] || 0) + amount;
-        await saveJson(walletsPath, wallets);
-        return subI.reply({ content: `✅ ${coin} ${amount}개 매수 완료!`, ephemeral: true });
-      }
-      if (id === 'godbit_sell_modal') {
-        if (!coins[coin]) return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
-        const have = wallets[subI.user.id]?.[coin] || 0;
-        if (have < amount) return subI.reply({ content: `❌ 보유 부족: ${have}`, ephemeral: true });
-        const gross = coins[coin].price * amount;
-        const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
-        const net = gross - fee;
-        await addBE(subI.user.id, net, `매도 ${amount} ${coin}`);
-        wallets[subI.user.id][coin] -= amount;
-        if (wallets[subI.user.id][coin] <= 0) delete wallets[subI.user.id][coin];
-        await saveJson(walletsPath, wallets);
-        return subI.reply({ content: `✅ ${coin} ${amount}개 매도 완료!`, ephemeral: true });
-      }
-      if (id === 'godbit_history_modal') {
-        const rawCount = subI.fields.getTextInputValue('count');
-        const cnt = Math.min(100, Math.max(1, parseInt(rawCount) || 20));
-        if (!coins[coin]) return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
-        const info = coins[coin];
-        const h = info.history.slice(-cnt);
-        const lines = [];
-        for (let i = 0; i < h.length; i++) {
-          const p = h[i];
-          const prev = i > 0 ? h[i - 1] : h[0];
-          const arrow = p >= prev ? '🔺' : '🔽';
-          lines.push(`${i + 1}: ${arrow}${p}`);
-        }
-        const e = new EmbedBuilder()
-          .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력`)
-          .setDescription(lines.join('\n'))
-          .addFields(
-            { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : 'Unknown', inline: true },
-            { name: '폐지일', value: info.delistedAt ? new Date(info.delistedAt).toLocaleString() : '-', inline: true }
-          )
-          .setColor('#3498DB')
-          .setTimestamp();
-        return subI.reply({ embeds: [e], ephemeral: true });
-      }
+  // --- 매수 모달 처리 ---
+  if (id === 'godbit_buy_modal') {
+    const coin = subI.fields.getTextInputValue('coin');
+    const amount = Number(subI.fields.getTextInputValue('amount'));
+    if (!coins[coin]) {
+      return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+    }
+    const cost = coins[coin].price * amount;
+    const bal = getBE(subI.user.id);
+    if (bal < cost) {
+      return subI.reply({ content: `❌ BE 부족: 필요 ${cost}`, ephemeral: true });
+    }
+    await addBE(subI.user.id, -cost, `매수 ${amount} ${coin}`);
+    wallets[subI.user.id] = wallets[subI.user.id] || {};
+    wallets[subI.user.id][coin] = (wallets[subI.user.id][coin] || 0) + amount;
+    await saveJson(walletsPath, wallets);
+    return subI.reply({ content: `✅ ${coin} ${amount}개 매수 완료!`, ephemeral: true });
+  }
+
+  // --- 매도 모달 처리 ---
+  if (id === 'godbit_sell_modal') {
+    const coin = subI.fields.getTextInputValue('coin');
+    const amount = Number(subI.fields.getTextInputValue('amount'));
+    if (!coins[coin]) {
+      return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+    }
+    const have = wallets[subI.user.id]?.[coin] || 0;
+    if (have < amount) {
+      return subI.reply({ content: `❌ 보유 부족: ${have}`, ephemeral: true });
+    }
+    const gross = coins[coin].price * amount;
+    const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
+    const net = gross - fee;
+    await addBE(subI.user.id, net, `매도 ${amount} ${coin}`);
+    wallets[subI.user.id][coin] -= amount;
+    if (wallets[subI.user.id][coin] <= 0) delete wallets[subI.user.id][coin];
+    await saveJson(walletsPath, wallets);
+    return subI.reply({ content: `✅ ${coin} ${amount}개 매도 완료!`, ephemeral: true });
+  }
+
+  // --- 히스토리 모달 처리 ---
+  if (id === 'godbit_history_modal') {
+    const coin = subI.fields.getTextInputValue('coin');
+    const rawCount = subI.fields.getTextInputValue('count');
+    const cnt = Math.min(100, Math.max(1, parseInt(rawCount) || 20));
+    if (!coins[coin]) {
+      return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+    }
+    const info = coins[coin];
+    const h = info.history.slice(-cnt);
+    const lines = h.map((p, idx) => {
+      const prev = idx > 0 ? h[idx - 1] : h[0];
+      const arrow = p >= prev ? '🔺' : '🔽';
+      return `${idx + 1}: ${arrow}${p}`;
     });
+    const e = new EmbedBuilder()
+      .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력`)
+      .setDescription(lines.join('\n'))
+      .addFields(
+        { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : 'Unknown', inline: true },
+        { name: '폐지일', value: info.delistedAt ? new Date(info.delistedAt).toLocaleString() : '-', inline: true }
+      )
+      .setColor('#3498DB')
+      .setTimestamp();
+    return subI.reply({ embeds: [e], ephemeral: true });
+  }
+});
   }
 };
