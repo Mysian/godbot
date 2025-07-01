@@ -10,7 +10,7 @@ const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const PAGE_SIZE   = 5;
 const HISTORY_PAGE = 20;
-const HISTORY_MAX = 100;  // 히스토리 최대 100개
+const HISTORY_MAX = 100;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
@@ -49,14 +49,13 @@ async function addHistory(info, price) {
   if (!info.historyT) info.historyT = [];
   info.history.push(price);
   info.historyT.push(new Date().toISOString());
-  // 100개 제한
   while (info.history.length > HISTORY_MAX) info.history.shift();
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
+
 function safeHistoryPair(info, from, to) {
   const h = info.history || [];
   const ht = info.historyT || [];
-  const len = h.length;
   if (!ht.length) {
     info.historyT = h.map((_,i) =>
       info.listedAt
@@ -75,42 +74,37 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('갓비트')
     .setDescription('가상 코인 시스템 통합 명령어')
-    // 1. 코인차트(검색+버튼)
     .addSubcommand(sub =>
       sub.setName('코인차트')
         .setDescription('시장 전체 또는 특정 코인 차트')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명(선택)').setRequired(false))
     )
-    // 2. 히스토리(버튼)
     .addSubcommand(sub =>
       sub.setName('히스토리')
         .setDescription('코인 가격 이력(페이지) 조회')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
     )
-    // 3. 매수
     .addSubcommand(sub =>
       sub.setName('매수')
         .setDescription('코인을 매수합니다')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('수량').setDescription('매수 수량').setMinValue(1).setRequired(true))
     )
-    // 4. 매도
     .addSubcommand(sub =>
       sub.setName('매도')
         .setDescription('코인을 매도합니다')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('수량').setDescription('매도 수량').setMinValue(1).setRequired(true))
     )
-    // 5. 내코인
     .addSubcommand(sub =>
       sub.setName('내코인')
-        .setDescription('내 보유 코인/평가액 조회')
+        .setDescription('내 보유 코인/평가액/손익/수익률 조회')
     ),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
-    // 1. 코인차트(검색+버튼)
+    // 1. 코인차트(정렬/표시/새로고침)
     if (sub === '코인차트') {
       await interaction.deferReply({ ephemeral: true });
       const search = (interaction.options.getString('코인')||'').trim();
@@ -118,87 +112,91 @@ module.exports = {
       await ensureBaseCoin(coins);
       const wallets = await loadJson(walletsPath, {});
       let allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
+
+      // 검색 필터
       if (search) {
-        // 부분 일치 검색
         allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
         if (!allAlive.length) {
           return interaction.editReply({ content: `❌ [${search}] 코인 없음!` });
         }
       }
+
+      // 전일대비 수익률로 내림차순 정렬
+      const chartRange = 12;
+      allAlive = allAlive.map(([name, info]) => {
+        const h = info.history || [];
+        const prev = h.at(-2) ?? h.at(-1) ?? 0;
+        const now = h.at(-1) ?? 0;
+        const change = now - prev;
+        const pct = prev ? (change / prev) * 100 : 0;
+        return { name, info, now, prev, change, pct };
+      })
+      .sort((a, b) => b.pct - a.pct);
+
       const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
 
       let page = 0;
-      const chartRange = 12; // 1시간
 
       async function renderChartPage(pageIdx = 0) {
         const userBE = getBE(interaction.user.id);
         const slice = allAlive.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
 
-        const listEmbed = new EmbedBuilder()
-          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${totalPages})`)
-          .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE`)
+        // 차트(위)
+        const datasets = slice.map((item, i) => ({
+          label: item.name,
+          data: (item.info.history||[]).slice(-chartRange),
+          borderColor: COLORS[i % COLORS.length],
+          fill: false
+        }));
+        const labels = Array.from({ length: chartRange }, (_,i) => i+1);
+        const chartConfig = {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { title: { display: true, text: '시간(5분 단위)' } },
+              y: { title: { display: true, text: '가격 (BE)' } }
+            }
+          }
+        };
+        const chartEmbed = new EmbedBuilder()
+          .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
+          .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
           .setColor('#FFFFFF')
           .setTimestamp();
 
-        slice.forEach(([n,info], i) => {
-          const price = info.price ?? 0;
+        // 시장 현황(아래)
+        const listEmbed = new EmbedBuilder()
+          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${totalPages})`)
+          .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**수익률 내림차순 정렬**`)
+          .setColor('#FFFFFF')
+          .setTimestamp();
+
+        slice.forEach((item, i) => {
           const emoji = EMOJIS[i % EMOJIS.length];
-          const maxBuy = Math.floor(userBE / price);
+          const arrow = item.change > 0 ? '▲' : item.change < 0 ? '▼' : '⏺';
+          const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
+          const maxBuy = Math.floor(userBE / (item.now||1));
           listEmbed.addFields({
-            name: `${emoji} ${n}`,
-            value: [
-              `${price.toLocaleString()} BE`,
-              `🛒 최대 매수: ${maxBuy}개`
-            ].join('\n'),
+            name: `${emoji} ${item.name}`,
+            value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)
+🛒 최대 매수: ${maxBuy}개`,
             inline: false
           });
         });
 
-       // 차트(각 코인 히스토리)
-const chartRange = 12;
-const histories = slice.map(([,info]) => (info.history||[]).slice(-chartRange));
-const maxLen = Math.max(...histories.map(h => h.length));
-const labels = Array.from({ length: maxLen }, (_,i) => i+1);
-
-const datasets = slice.map(([n,info], i) => ({
-  label: n,
-  data: (info.history||[]).slice(-chartRange),
-  borderColor: COLORS[i % COLORS.length],
-  fill: false
-}));
-
-const chartConfig = {
-  type: 'line',
-  data: { labels, datasets },
-  options: {
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { title: { display: true, text: '시간(5분 단위)' } },
-      y: { title: { display: true, text: '가격 (BE)' } }
-    }
-  }
-};
-
-const chartEmbed = new EmbedBuilder()
-  .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
-  .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
-  .setColor('#FFFFFF')
-  .setTimestamp();
-
-
-
-
-
-        // 버튼
+        // 버튼(새로고침)
         const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===0),
           new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(pageIdx===0),
+          new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(pageIdx===totalPages-1),
           new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===totalPages-1)
         );
 
         await interaction.editReply({
-          embeds: [listEmbed, chartEmbed],
+          embeds: [chartEmbed, listEmbed],
           components: [navRow]
         });
       }
@@ -217,6 +215,7 @@ const chartEmbed = new EmbedBuilder()
         else if (btn.customId === 'prev' && page > 0) page -= 1;
         else if (btn.customId === 'next' && page < totalPages-1) page += 1;
         else if (btn.customId === 'last') page = totalPages-1;
+        // 🔄 새로고침
         await renderChartPage(page);
       });
 
@@ -233,19 +232,15 @@ const chartEmbed = new EmbedBuilder()
       const coin = interaction.options.getString('코인');
       const coins = await loadJson(coinsPath, {});
       const info = coins[coin];
-      // --- 상장 정보 체크 ---
       if (!info) return interaction.editReply({ content: `❌ [${coin}] 상장 정보가 없는 코인입니다.` });
 
-      // 폐지/상장여부 판정
       let isDelisted = !!info.delistedAt;
       let delistMsg = '';
       if (isDelisted) {
-        // 폐지 후 재상장 이력 체크
         const allList = Object.entries(coins)
           .filter(([name]) => name === coin)
           .map(([_,i]) => i)
           .sort((a,b) => (a.listedAt||'').localeCompare(b.listedAt||''));
-        // 현재 info가 가장 최근인지 확인
         if (info.listedAt && allList.length >= 2) {
           const last = allList[allList.length-1];
           if (last === info) isDelisted = true;
@@ -255,8 +250,6 @@ const chartEmbed = new EmbedBuilder()
           delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
         }
       }
-
-      // 히스토리 100개까지만 지원
       const h = (info.history || []).slice(-HISTORY_MAX);
       const ht = (info.historyT || []).slice(-HISTORY_MAX);
       if (!h.length) {
@@ -339,6 +332,7 @@ const chartEmbed = new EmbedBuilder()
 
       wallets[interaction.user.id] = wallets[interaction.user.id] || {};
       wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
+      // ⭐ 누적 매수액 기록
       wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
       wallets[interaction.user.id + "_buys"][coin] = (wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount);
 
@@ -379,53 +373,51 @@ const chartEmbed = new EmbedBuilder()
       return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
     }
 
+    // 5. 내코인 (누적매수, 평가손익, 수익률)
     if (sub === '내코인') {
-  await interaction.deferReply({ ephemeral: true });
-  const coins = await loadJson(coinsPath, {});
-  const wallets = await loadJson(walletsPath, {});
-  const userW = wallets[interaction.user.id] || {};
-  // 누적 매수 내역(예시: 추가로 매수 때 별도 기록 필요)
-  const userBuys = wallets[interaction.user.id + "_buys"] || {}; // {코인: 누적매수액}
-  let totalEval = 0, totalBuy = 0, totalProfit = 0;
+      await interaction.deferReply({ ephemeral: true });
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
+      const userW = wallets[interaction.user.id] || {};
+      const userBuys = wallets[interaction.user.id + "_buys"] || {};
+      let totalEval = 0, totalBuy = 0, totalProfit = 0;
 
-  const e = new EmbedBuilder()
-    .setTitle('💼 내 코인 평가/수익 현황')
-    .setColor('#2ecc71')
-    .setTimestamp();
+      const e = new EmbedBuilder()
+        .setTitle('💼 내 코인 평가/수익 현황')
+        .setColor('#2ecc71')
+        .setTimestamp();
 
-  if (!Object.keys(userW).length) {
-    e.setDescription('보유 코인이 없습니다.');
-  } else {
-    let detailLines = [];
-    for (const [c, q] of Object.entries(userW)) {
-      if (!coins[c] || coins[c].delistedAt) continue;
-      const nowPrice = coins[c]?.price || 0;
-      const buyCost = userBuys[c] || 0;
-      const evalPrice = nowPrice * q;
-      const profit = evalPrice - buyCost;
-      const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-      totalEval += evalPrice;
-      totalBuy += buyCost;
-      totalProfit += profit;
-      detailLines.push(
-        `**${c}**
-        • 보유: ${q}개
-        • 누적매수: ${buyCost.toLocaleString()} BE
-        • 평가액: ${evalPrice.toLocaleString()} BE
-        • 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)
-        `
-      );
+      if (!Object.keys(userW).length) {
+        e.setDescription('보유 코인이 없습니다.');
+      } else {
+        let detailLines = [];
+        for (const [c, q] of Object.entries(userW)) {
+          if (!coins[c] || coins[c].delistedAt) continue;
+          const nowPrice = coins[c]?.price || 0;
+          const buyCost = userBuys[c] || 0;
+          const evalPrice = nowPrice * q;
+          const profit = evalPrice - buyCost;
+          const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+          totalEval += evalPrice;
+          totalBuy += buyCost;
+          totalProfit += profit;
+          detailLines.push(
+            `**${c}**
+• 보유: ${q}개
+• 누적매수: ${buyCost.toLocaleString()} BE
+• 평가액: ${evalPrice.toLocaleString()} BE
+• 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
+          );
+        }
+        const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+        e.setDescription(detailLines.join('\n\n'));
+        e.addFields(
+          { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
+          { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
+          { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+        );
+      }
+      return interaction.editReply({ embeds: [e] });
     }
-    const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-    e.setDescription(detailLines.join('\n\n'));
-    e.addFields(
-      { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
-      { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
-      { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-    );
-  }
-  return interaction.editReply({ embeds: [e] });
-}
-
   }
 };
