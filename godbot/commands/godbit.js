@@ -250,8 +250,8 @@ module.exports = {
           delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
         }
       }
-      const h = (info.history || []).slice(-HISTORY_MAX);
-      const ht = (info.historyT || []).slice(-HISTORY_MAX);
+      const h = (info.history || []).slice(-HISTORY_MAX).reverse();
+      const ht = (info.historyT || []).slice(-HISTORY_MAX).reverse();
       if (!h.length) {
         return interaction.editReply({ content: `📉 [${coin}] 가격 이력 데이터 없음${delistMsg ? `\n${delistMsg}` : ''}` });
       }
