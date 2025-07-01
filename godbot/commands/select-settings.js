@@ -25,31 +25,57 @@ const NOTIFY_TAGS = [
 
 const CHAT_TAG = { label: "성인 채팅방 활성화", id: "1215261658314702859", emoji: "🔞" };
 
+// ---- 카테고리 메타 -----------------------------------------------------------
 const CATEGORIES = [
   {
     name: "플레이 스타일 태그",
-    tags: PLAY_STYLE_TAGS,
     selectId: "play_style_select",
     min: 1,
     max: 1,
+    tags: PLAY_STYLE_TAGS,
+    intro: [
+      "**플레이스타일은 서로 배려해주세요!**",
+      "❤️ **빡겜러**: 모든 게임에서 집중하고 경쟁을 즐기며 순위권을 가려는 자.",
+      "💛 **즐빡겜러**: 기본적으로는 즐겜을 선호하지만, 특정 순간 빡겜러가 되어버리는 자.",
+      "💚 **즐겜러**: 실력에 상관없이 유쾌하고 즐거운 분위기 위주로 즐기려는 자.",
+    ],
+    footer: "플레이 스타일 태그는 반드시 1개 유지해야 합니다.",
   },
   {
     name: "알림 태그",
-    tags: NOTIFY_TAGS,
     selectId: "notify_select",
     min: 0,
     max: NOTIFY_TAGS.length,
+    tags: NOTIFY_TAGS,
+    intro: [
+      "⏰ **알림 태그**: 서버의 각종 주요 알림을 받아볼 수 있습니다.",
+    ],
   },
   {
     name: "채팅방 태그",
-    tags: [CHAT_TAG],
     selectId: "chat_select",
     min: 0,
     max: 1,
+    tags: [CHAT_TAG],
+    intro: [
+      "🔞 **성인 채팅방 활성화**: 🔞🗨채팅방🔞│수위＆반말 방 접근 권한 해제",
+    ],
   },
 ];
 
-// ---- 슬래시 명령 --------------------------------------------------------------
+// ---- 유틸: 카테고리별 상태 텍스트 ------------------------------------------
+function makeStatusText(roleCache, cat) {
+  if (cat.selectId === "play_style_select") {
+    return cat.tags
+      .map(t => `${roleCache.has(t.id) ? "✅" : "⬜"} ${t.emoji} ${roleCache.has(t.id) ? `**${t.label}**` : t.label}`)
+      .join("   ");
+  }
+  return cat.tags
+    .map(t => `${t.emoji} ${t.label} : ${roleCache.has(t.id) ? "✅" : "⬜"}`)
+    .join("\n");
+}
+
+// -----------------------------------------------------------------------------
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("서버태그설정")
@@ -59,54 +85,30 @@ module.exports = {
     await interaction.guild.roles.fetch();
     let member = await interaction.guild.members.fetch(interaction.user.id);
 
-    // 플레이 스타일 1개 강제 유지 ------------------------------------------------
+    // 플레이 스타일 1개 강제 유지 -------------------------------------------
     const playStyleIds = PLAY_STYLE_TAGS.map(t => t.id);
-    const ownedPlayStyles = playStyleIds.filter(id => member.roles.cache.has(id));
-    if (ownedPlayStyles.length !== 1) {
-      const defaultId = PLAY_STYLE_TAGS[1].id; // 즐빡겜러
+    const ownedPlay = playStyleIds.filter(id => member.roles.cache.has(id));
+    if (ownedPlay.length !== 1) {
+      const defaultId = PLAY_STYLE_TAGS[1].id; // 즐빡겜러 기본
       await member.roles.remove(playStyleIds, "플레이 스타일 초기화");
       await member.roles.add(defaultId, "비정상 상태: 즐빡겜러로 보정");
       member = await interaction.guild.members.fetch(interaction.user.id);
     }
 
-    // ---- 렌더 함수 -----------------------------------------------------------
+    // ---- 렌더 함수 ---------------------------------------------------------
     let page = 0;
-    function makeStatusText(roleCache) {
-      const lines = [
-        "━━━━━━━━━━━━━━━━━━━━",
-        "**[ 현재 내 태그 상태 ]**",
-        "",
-        "**플레이 스타일**:",
-        PLAY_STYLE_TAGS.map(t =>
-          `${roleCache.has(t.id) ? "✅" : "⬜"} ${t.emoji} ${roleCache.has(t.id) ? `**${t.label}**` : `*${t.label}*`}`
-        ).join("   "),
-        "",
-        "**알림 태그**:",
-        NOTIFY_TAGS.map(t =>
-          `${t.emoji} ${t.label} : ${roleCache.has(t.id) ? "✅" : "⬜"}`
-        ).join("\n"),
-        "",
-        "**채팅방 태그**:",
-        `${CHAT_TAG.emoji} ${CHAT_TAG.label} : ${roleCache.has(CHAT_TAG.id) ? "✅" : "⬜"}`,
-        "",
-        "━━━━━━━━━━━━━━━━━━━━",
-        "✅ 굵게: 보유 | ⬜ 미보유",
-      ];
-      return lines.join("\n");
-    }
-
-    function renderPayload(roleCache) {
+    const buildPayload = cache => {
       const cat = CATEGORIES[page];
 
-      // ── embed ---------------------------------------------------------------
+      // ── 임베드 ------------------------------------------------------------
       const embed = new EmbedBuilder()
         .setTitle(`💎 ${cat.name} 설정 (${page + 1}/${CATEGORIES.length})`)
-        .setDescription(`아래 드롭다운에서 ${cat.name}을(를) 선택/해제하세요.`)
-        .addFields({ name: "\u200b", value: makeStatusText(roleCache) })
-        .setColor(0x7b2ff2)
-        .setFooter({ text: "플레이 스타일 태그는 반드시 1개 유지해야 합니다." });
+        .setDescription(cat.intro.join("\n"))
+        .addFields({ name: "현재 내 태그 상태", value: makeStatusText(cache, cat) })
+        .setColor(0x7b2ff2);
+      if (cat.footer) embed.setFooter({ text: cat.footer });
 
-      // ── select --------------------------------------------------------------
+      // ── 셀렉트 메뉴 --------------------------------------------------------
       const select = new StringSelectMenuBuilder()
         .setCustomId(cat.selectId)
         .setPlaceholder(cat.name)
@@ -117,23 +119,24 @@ module.exports = {
             label: t.label,
             value: t.id,
             emoji: t.emoji,
-            default: roleCache.has(t.id),
+            default: cache.has(t.id),
           }))
         );
 
-      // ── nav buttons ---------------------------------------------------------
+      // ── 네비 버튼 ----------------------------------------------------------
+      const prevLabel = page === 0 ? "" : `⬅️ ${CATEGORIES[page - 1].name}`;
+      const nextLabel = page === CATEGORIES.length - 1 ? "" : `${CATEGORIES[page + 1].name} ➡️`;
+
       const nav = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("prev")
-          .setLabel("이전")
           .setStyle("Secondary")
-          .setEmoji("⬅️")
+          .setLabel(prevLabel || "이전")
           .setDisabled(page === 0),
         new ButtonBuilder()
           .setCustomId("next")
-          .setLabel("다음")
           .setStyle("Primary")
-          .setEmoji("➡️")
+          .setLabel(nextLabel || "다음")
           .setDisabled(page === CATEGORIES.length - 1),
       );
 
@@ -142,9 +145,9 @@ module.exports = {
         components: [new ActionRowBuilder().addComponents(select), nav],
         ephemeral: true,
       };
-    }
+    };
 
-    await interaction.reply(renderPayload(member.roles.cache));
+    await interaction.reply(buildPayload(member.roles.cache));
     const msg = await interaction.fetchReply();
 
     const collector = msg.createMessageComponentCollector({
@@ -152,51 +155,43 @@ module.exports = {
       time: 600_000,
     });
 
-    // ---- 인터랙션 처리 -------------------------------------------------------
+    // ---- 인터랙션 처리 -----------------------------------------------------
     collector.on("collect", async i => {
       member = await interaction.guild.members.fetch(interaction.user.id);
 
-      // 페이지 버튼 ------------------------------------------------------------
+      // 페이지 이동 ---------------------------------------------------------
       if (i.isButton()) {
         if (i.customId === "prev" && page > 0) page--;
         if (i.customId === "next" && page < CATEGORIES.length - 1) page++;
-        return void i.update(renderPayload(member.roles.cache));
+        return void i.update(buildPayload(member.roles.cache));
       }
 
-      // 셀렉트 메뉴 ------------------------------------------------------------
+      // 셀렉트 메뉴 ---------------------------------------------------------
       const cat = CATEGORIES.find(c => c.selectId === i.customId);
       if (!cat) return;
 
-      const selected = new Set(i.values);
+      const chosen = new Set(i.values);
 
-      // 플레이 스타일 교체 (단일 선택) ----------------------------------------
       if (cat.selectId === "play_style_select") {
-        const current = playStyleIds.filter(id => member.roles.cache.has(id))[0];
-        const nextId = [...selected][0];
+        const current = playStyleIds.find(id => member.roles.cache.has(id));
+        const nextId = [...chosen][0];
         if (current !== nextId) {
           await member.roles.remove(playStyleIds, "플레이 스타일 변경");
           await member.roles.add(nextId, "플레이 스타일 선택");
         }
       } else {
-        // 알림/채팅방 태그 다중 선택 -----------------------------------------
-        const toAdd = cat.tags
-          .filter(t => selected.has(t.id) && !member.roles.cache.has(t.id))
-          .map(t => t.id);
-        const toRemove = cat.tags
-          .filter(t => !selected.has(t.id) && member.roles.cache.has(t.id))
-          .map(t => t.id);
+        const toAdd = cat.tags.filter(t => chosen.has(t.id) && !member.roles.cache.has(t.id)).map(t => t.id);
+        const toRemove = cat.tags.filter(t => !chosen.has(t.id) && member.roles.cache.has(t.id)).map(t => t.id);
         if (toAdd.length) await member.roles.add(toAdd, `${cat.name} 추가`);
         if (toRemove.length) await member.roles.remove(toRemove, `${cat.name} 제거`);
       }
 
       member = await interaction.guild.members.fetch(interaction.user.id);
-      await i.update(renderPayload(member.roles.cache));
+      await i.update(buildPayload(member.roles.cache));
     });
 
     collector.on("end", async () => {
-      try {
-        await interaction.editReply({ components: [] });
-      } catch {}
+      try { await interaction.editReply({ components: [] }); } catch {}
     });
   },
 };
