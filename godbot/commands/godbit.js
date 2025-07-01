@@ -339,7 +339,7 @@ module.exports = {
 };
         const chartEmbed = new EmbedBuilder()
           .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
-          .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
+          .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
           .setColor('#FFFFFF')
           .setTimestamp(); // <- 시간 기재
 
