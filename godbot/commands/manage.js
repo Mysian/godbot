@@ -368,49 +368,51 @@ module.exports = {
       });
 
       collector.on("collect", async (i) => {
-        const targetUserId = target.id;
+  const targetUserId = target.id;
 
-        if (i.customId === "refresh_userinfo") {
-          await showUserInfo(targetUserId, i); // 최신 정보 다시 표시
-        } else if (i.customId === "timeout" || i.customId === "kick") {
-          const modal = new ModalBuilder()
-            .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
-            .setTitle("관리 비밀번호 입력")
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("pw")
-                  .setLabel("비밀번호 4자리")
-                  .setStyle(TextInputStyle.Short)
-                  .setMinLength(4)
-                  .setMaxLength(4)
-                  .setRequired(true)
-              )
-            );
-          await i.showModal(modal);
-        } else if (i.customId === "timeout_release") {
-          await i.update({
-            content: "⏳ 타임아웃 해제 중...",
-            embeds: [],
-            components: [],
-          });
-          try {
-            await interaction.guild.members.edit(targetUserId, {
-              communicationDisabledUntil: null,
-              reason: "관리 명령어로 타임아웃 해제"
-            });
-            await interaction.followUp({
-              content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`,
-              ephemeral: true,
-            });
-          } catch (err) {
-            await interaction.followUp({
-              content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)",
-              ephemeral: true,
-            });
-          }
-        }
+  if (i.customId === "refresh_userinfo") {
+    await i.deferUpdate(); // 버튼 인터랙션 응답 먼저!
+    await showUserInfo(targetUserId, interaction); // 슬래시 명령 interaction으로 다시 출력
+  } else if (i.customId === "timeout" || i.customId === "kick") {
+    const modal = new ModalBuilder()
+      .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
+      .setTitle("관리 비밀번호 입력")
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("pw")
+            .setLabel("비밀번호 4자리")
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(4)
+            .setMaxLength(4)
+            .setRequired(true)
+        )
+      );
+    await i.showModal(modal);
+  } else if (i.customId === "timeout_release") {
+    await i.update({
+      content: "⏳ 타임아웃 해제 중...",
+      embeds: [],
+      components: [],
+    });
+    try {
+      await interaction.guild.members.edit(targetUserId, {
+        communicationDisabledUntil: null,
+        reason: "관리 명령어로 타임아웃 해제"
       });
+      await interaction.followUp({
+        content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`,
+        ephemeral: true,
+      });
+    } catch (err) {
+      await interaction.followUp({
+        content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)",
+        ephemeral: true,
+      });
+    }
+  }
+});
+
 
       collector.on("end", (collected) => {});
       return;
