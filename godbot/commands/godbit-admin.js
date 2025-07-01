@@ -33,10 +33,6 @@ module.exports = {
       sub.setName('조정')
         .setDescription('코인 전체적 흐름(변동성) 조정')
         .addStringOption(opt =>
-          opt.setName('코인명').setDescription('코인명(선택)').setRequired(false)
-            .setAutocomplete(true)
-        )
-        .addStringOption(opt =>
           opt.setName('흐름').setDescription('변동성 옵션').setRequired(true)
             .addChoices(
               { name: '하이리스크 하이리턴', value: 'high' },
@@ -44,6 +40,10 @@ module.exports = {
               { name: '안전한', value: 'safe' },
               { name: '불규칙적인', value: 'chaos' }
             )
+        )
+        .addStringOption(opt =>
+          opt.setName('코인명').setDescription('코인명(선택)').setRequired(false)
+            .setAutocomplete(true)
         )
     )
     // 특정 유저에게 특정 코인 지급
