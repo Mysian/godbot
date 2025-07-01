@@ -250,13 +250,15 @@ module.exports = {
       await renderPage(page);
       const message = await interaction.fetchReply();
 
+      const COLLECTOR_TIMEOUT = 600_000; // 10분
       const collector = message.createMessageComponentCollector({
         componentType: ComponentType.Button,
-        time: 120_000,
+        time: COLLECTOR_TIMEOUT,
         filter: btn => btn.user.id === interaction.user.id
       });
 
       collector.on('collect', async btn => {
+        collector.resetTimer(); // 버튼 누를 때마다 타이머 갱신!
         try {
           await btn.deferUpdate();
           // 페이지네비게이션
@@ -309,7 +311,7 @@ module.exports = {
             await btn.showModal(modal);
             const sub = await btn.awaitModalSubmit({
               filter: i => i.customId === (isBuy ? 'buy_modal' : 'sell_modal') && i.user.id === btn.user.id,
-              time: 60_000
+              time: 300_000
             });
             await sub.deferReply({ ephemeral: true });
             await simulateMarket(sub, coins);
@@ -376,7 +378,7 @@ module.exports = {
             await btn.showModal(modal);
             const sub = await btn.awaitModalSubmit({
               filter: i => i.customId === 'history_modal' && i.user.id === btn.user.id,
-              time: 60_000
+              time: 300_000
             });
             await sub.deferReply({ ephemeral: true });
             await simulateMarket(sub, coins);
