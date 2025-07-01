@@ -153,11 +153,20 @@ PAGES = PAGES.filter(pageHasRole);
       .map(n=>interaction.guild.roles.cache.find(r=>r.name===n))
       .filter(Boolean);
 
-    async function render(u=null){
-      const chosenRoles = member.roles.cache.filter(r=>ALL_GAMES.includes(r.name));
-      const chosenText = chosenRoles.size
-        ? chosenRoles.map(r=>`${GAME_EMOJIS[r.name]||""} **${r.name}**`).join(", ")
-        : "아직 등록된 태그가 없습니다.";
+   async function render(u = null) {
+  const chosenRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
+
+  let chosenText;
+  if (chosenRoles.size) {
+    const arr = chosenRoles.map(r => `${GAME_EMOJIS[r.name] || ""} **${r.name}**`);
+    const lines = [];
+    for (let i = 0; i < arr.length; i += 3) {
+      lines.push(arr.slice(i, i + 3).join(", "));
+    }
+    chosenText = lines.join(",\n");
+  } else {
+    chosenText = "아직 등록된 태그가 없습니다.";
+  }
 
       const rolesThisPage = getRoles(PAGES[page]);
 
