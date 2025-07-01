@@ -236,7 +236,7 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     ? chosenRoles.map(n => `• ${n}`).join("\n")
     : "아직 등록된 태그가 없습니다.";
   const embed = new EmbedBuilder()
-    .setTitle("🎮 검색한 게임 태그가 등록되었습니다.")
+    .setTitle("🎮 검색한 게임 태그 등록/해제 처리 완료")
     .setColor(0x2095ff)
     .setDescription(chosenText);
 
