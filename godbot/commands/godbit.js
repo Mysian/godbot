@@ -144,17 +144,19 @@ async function autoMarketUpdate(members) {
     const now = new Date().toISOString();
     const vopt = coins._volatilityGlobal || null;
     let info = {
-      price: Math.floor(800 + Math.random()*700),
-      history: [],
-      historyT: [],
-      listedAt: now,
-      delistedAt: null
-    };
-    if (vopt) info.volatility = vopt;
-    info.history.push(info.price);
-    info.historyT.push(now);
-    coins[newName] = info;
-  }
+  price: Math.floor(800 + Math.random()*700),
+  history: [],
+  historyT: [],
+  listedAt: now,
+  delistedAt: null
+};
+// typeof로 안전하게
+if (typeof vopt === "object" && vopt !== null) {
+  info.volatility = vopt;
+}
+info.history.push(info.price);
+info.historyT.push(now);
+coins[newName] = info;
 
   await saveJson(coinsPath, coins);
 }
