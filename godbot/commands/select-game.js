@@ -162,7 +162,7 @@ module.exports = {
       const rolesThisPage = getRoles(PAGES[page]);
       const select = new StringSelectMenuBuilder()
         .setCustomId("select")
-        .setPlaceholder("게임 태그를 선택 / 해제하세요")
+        .setPlaceholder("여기를 눌러 게임 태그를 설정하세요!")
         .setMinValues(0)
         .setMaxValues(rolesThisPage.length)
         .addOptions(
