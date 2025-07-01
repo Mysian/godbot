@@ -287,10 +287,14 @@ module.exports = {
       }
     });
 
-    // 모달 제출 처리
+// 모달 제출 처리
 interaction.client.on('interactionCreate', async subI => {
   if (!subI.isModalSubmit()) return;
+  // 우선 ACK
+  await subI.deferReply({ ephemeral: true });
+
   const id = subI.customId;
+  // 시장 변동 한 번 탭니다
   await simulateMarket(subI, coins);
   await saveJson(coinsPath, coins);
 
@@ -299,18 +303,18 @@ interaction.client.on('interactionCreate', async subI => {
     const coin = subI.fields.getTextInputValue('coin');
     const amount = Number(subI.fields.getTextInputValue('amount'));
     if (!coins[coin]) {
-      return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+      return subI.editReply({ content: `❌ 코인 없음: ${coin}` });
     }
     const cost = coins[coin].price * amount;
     const bal = getBE(subI.user.id);
     if (bal < cost) {
-      return subI.reply({ content: `❌ BE 부족: 필요 ${cost}`, ephemeral: true });
+      return subI.editReply({ content: `❌ BE 부족: 필요 ${cost}` });
     }
     await addBE(subI.user.id, -cost, `매수 ${amount} ${coin}`);
     wallets[subI.user.id] = wallets[subI.user.id] || {};
     wallets[subI.user.id][coin] = (wallets[subI.user.id][coin] || 0) + amount;
     await saveJson(walletsPath, wallets);
-    return subI.reply({ content: `✅ ${coin} ${amount}개 매수 완료!`, ephemeral: true });
+    return subI.editReply({ content: `✅ ${coin} ${amount}개 매수 완료!` });
   }
 
   // --- 매도 모달 처리 ---
@@ -318,11 +322,11 @@ interaction.client.on('interactionCreate', async subI => {
     const coin = subI.fields.getTextInputValue('coin');
     const amount = Number(subI.fields.getTextInputValue('amount'));
     if (!coins[coin]) {
-      return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+      return subI.editReply({ content: `❌ 코인 없음: ${coin}` });
     }
     const have = wallets[subI.user.id]?.[coin] || 0;
     if (have < amount) {
-      return subI.reply({ content: `❌ 보유 부족: ${have}`, ephemeral: true });
+      return subI.editReply({ content: `❌ 보유 부족: ${have}` });
     }
     const gross = coins[coin].price * amount;
     const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
@@ -331,16 +335,16 @@ interaction.client.on('interactionCreate', async subI => {
     wallets[subI.user.id][coin] -= amount;
     if (wallets[subI.user.id][coin] <= 0) delete wallets[subI.user.id][coin];
     await saveJson(walletsPath, wallets);
-    return subI.reply({ content: `✅ ${coin} ${amount}개 매도 완료!`, ephemeral: true });
+    return subI.editReply({ content: `✅ ${coin} ${amount}개 매도 완료!` });
   }
 
-  // --- 히스토리 모달 처리 ---
+  // --- 코인 히스토리 모달 처리 ---
   if (id === 'godbit_history_modal') {
     const coin = subI.fields.getTextInputValue('coin');
     const rawCount = subI.fields.getTextInputValue('count');
     const cnt = Math.min(100, Math.max(1, parseInt(rawCount) || 20));
     if (!coins[coin]) {
-      return subI.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+      return subI.editReply({ content: `❌ 코인 없음: ${coin}` });
     }
     const info = coins[coin];
     const h = info.history.slice(-cnt);
@@ -358,7 +362,7 @@ interaction.client.on('interactionCreate', async subI => {
       )
       .setColor('#3498DB')
       .setTimestamp();
-    return subI.reply({ embeds: [e], ephemeral: true });
+    return subI.editReply({ embeds: [e] });
   }
 });
   }
