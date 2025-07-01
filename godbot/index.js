@@ -1,7 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
-const { Client, Collection, GatewayIntentBits, Events, ActivityType } = require("discord.js");
+const { Client, Collection, GatewayIntentBits, Events, ActivityType, StringSelectMenuBuilder, ActionRowBuilder, ModalBuilder,
+  TextInputBuilder, EmbedBuilder } = require("discord.js");
 require("dotenv").config();
 const activity = require("./utils/activity-tracker");
 const relationship = require("./utils/relationship.js");
@@ -189,6 +190,37 @@ const unwarnCmd = client.commands.get("경고취소");
 const champBattle = require('./commands/champ-battle');
 
 client.on(Events.InteractionCreate, async interaction => {
+
+  // 0. 게임 검색 모달 제출 처리
+if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
+  const keyword = interaction.fields.getTextInputValue("searchKeyword");
+  const matches = ALL_GAMES.filter(g => g.includes(keyword)).slice(0, 25);
+
+  if (matches.length === 0) {
+    return interaction.reply({ content: "🔍 검색 결과가 없습니다.", ephemeral: true });
+  }
+
+  const options = matches.map(name => ({
+    label: name.length > 100 ? name.slice(0, 97) + "…" : name,
+    value: name
+  }));
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("searchSelect")
+    .setPlaceholder("검색 결과 중 선택하세요")
+    .addOptions(options);
+
+  return interaction.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle(`🔍 "${keyword}" 검색 결과`)
+        .setColor(0x2095ff)
+    ],
+    components: [ new ActionRowBuilder().addComponents(menu) ],
+    ephemeral: true
+  });
+}
+  
   // 1. 경고 카테고리/세부사유 SelectMenu warn
   if (
     interaction.isStringSelectMenu() &&
