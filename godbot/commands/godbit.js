@@ -11,14 +11,20 @@ const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const PAGE_SIZE   = 5;
 const HISTORY_PAGE = 20;
 const HISTORY_MAX = 100;
+const MAX_AUTO_COINS = 20; // ⭐️ 자동 신규상장 목표치
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
 // KST 변환
 function toKSTString(utcOrDate) {
   if (!utcOrDate) return '-';
-  if (typeof utcOrDate === 'string' && utcOrDate.includes('오전')) return utcOrDate; // 이미 KST String
-  return new Date(utcOrDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+  // ISO면 변환, 이미 한국식이면 그대로
+  if (typeof utcOrDate === 'string' && (utcOrDate.includes('오전') || utcOrDate.includes('오후'))) return utcOrDate;
+  try {
+    return new Date(utcOrDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+  } catch {
+    return '-';
+  }
 }
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
@@ -35,19 +41,21 @@ async function saveJson(file, data) {
 }
 async function ensureBaseCoin(coins) {
   if (!coins['까리코인']) {
+    const now = new Date().toISOString();
     coins['까리코인'] = {
       price: 1000,
       history: [1000],
-      historyT: [new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })],
-      listedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+      historyT: [now],
+      listedAt: now
     };
   }
 }
 async function addHistory(info, price) {
   if (!info.history) info.history = [];
   if (!info.historyT) info.historyT = [];
+  const now = new Date().toISOString();
   info.history.push(price);
-  info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+  info.historyT.push(now);
   while (info.history.length > HISTORY_MAX) info.history.shift();
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
@@ -58,7 +66,7 @@ async function getDelistOption() {
   return coins._delistOption || { type: 'profitlow', prob: 10 };
 }
 
-// ===== ⭐️ 5분마다 코인 자동 시세+타임+자동폐지 반영! =====
+// ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
 async function periodicMarket() {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
@@ -70,7 +78,7 @@ async function periodicMarket() {
   base.price = newBase;
   base.history.push(newBase);
   base.historyT = base.historyT || [];
-  base.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+  base.historyT.push(new Date().toISOString());
   while (base.history.length > HISTORY_MAX) base.history.shift();
   while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
 
@@ -92,7 +100,7 @@ async function periodicMarket() {
     info.history = info.history || [];
     info.historyT = info.historyT || [];
     info.history.push(p);
-    info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+    info.historyT.push(new Date().toISOString());
     while (info.history.length > HISTORY_MAX) info.history.shift();
     while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 
@@ -103,18 +111,44 @@ async function periodicMarket() {
       const now = h.at(-1) ?? 0;
       const pct = prev ? ((now - prev) / prev * 100) : 0;
       if (now < 300 && pct <= -30) {
-        info.delistedAt = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+        info.delistedAt = new Date().toISOString();
       }
     }
     if (delistOpt.type === 'random' && delistOpt.prob) {
       if (Math.random() * 100 < delistOpt.prob) {
-        info.delistedAt = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+        info.delistedAt = new Date().toISOString();
       }
     }
   }
+
+  // ⭐️ 자동 신규상장 (20개 미만일 때)
+  const aliveCoins = Object.entries(coins)
+    .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
+  if (aliveCoins.length < MAX_AUTO_COINS) {
+    // 이름 중복 없는 랜덤 신규 코인명 (신규코인N)
+    let n = 1, newName;
+    do {
+      newName = `신규코인${n++}`;
+    } while (coins[newName]);
+    const now = new Date().toISOString();
+    // volatility 글로벌 옵션 반영
+    const vopt = coins._volatilityGlobal || null;
+    let info = {
+      price: Math.floor(800 + Math.random()*700),
+      history: [],
+      historyT: [],
+      listedAt: now,
+      delistedAt: null
+    };
+    if (vopt) info.volatility = vopt;
+    info.history.push(info.price);
+    info.historyT.push(now);
+    coins[newName] = info;
+  }
+
   await saveJson(coinsPath, coins);
 }
-setInterval(periodicMarket, 300_000);
+setInterval(periodicMarket, 60_000); // ⭐️ 1분마다!
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -319,7 +353,7 @@ module.exports = {
           let emoji = '⏸️';
           if (diff > 0) emoji = '🔺';
           else if (diff < 0) emoji = '🔻';
-          return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${timeList[idx]}`;
+          return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`;
         });
 
         const embed = new EmbedBuilder()
