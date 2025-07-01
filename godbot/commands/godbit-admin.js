@@ -102,7 +102,6 @@ module.exports = {
       let changed = 0;
 
       const setMode = (info, mode) => {
-        // 변동성 옵션에 따라 info.volatility 속성 설정
         if (mode === 'high') info.volatility = { min: 0.2, max: 0.5 };
         else if (mode === 'balance') info.volatility = { min: 0.07, max: 0.15 };
         else if (mode === 'safe') info.volatility = { min: 0.01, max: 0.05 };
@@ -114,10 +113,18 @@ module.exports = {
         setMode(coins[coin], mode);
         changed = 1;
       } else {
+        // 전체 적용
         for (const [name, info] of Object.entries(coins)) {
           setMode(info, mode);
           changed++;
         }
+        // ⭐ 글로벌 옵션도 저장!
+        let vopt = { min: 0.07, max: 0.15 };
+        if (mode === 'high') vopt = { min: 0.2, max: 0.5 };
+        else if (mode === 'balance') vopt = { min: 0.07, max: 0.15 };
+        else if (mode === 'safe') vopt = { min: 0.01, max: 0.05 };
+        else if (mode === 'chaos') vopt = { min: -0.5, max: 0.5 };
+        coins._volatilityGlobal = vopt;
       }
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `✅ ${changed}개 코인에 변동성 옵션 [${mode}] 적용됨!`, ephemeral: true });
@@ -159,15 +166,20 @@ module.exports = {
       const coins = await loadJson(coinsPath, {});
       if (coins[coin]) return interaction.reply({ content: `❌ 이미 존재하는 코인: ${coin}`, ephemeral: true });
 
-      coins[coin] = {
-        price: Math.floor(800 + Math.random()*700), // 랜덤 시작가
+      // 글로벌 volatility 옵션 적용
+      let vopt = coins._volatilityGlobal || null;
+      let info = {
+        price: Math.floor(800 + Math.random()*700),
         history: [],
         historyT: [],
         listedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
         delistedAt: null
       };
-      coins[coin].history.push(coins[coin].price);
-      coins[coin].historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+      if (vopt) info.volatility = vopt;
+
+      info.history.push(info.price);
+      info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+      coins[coin] = info;
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `✅ 코인 [${coin}]이 상장되었습니다!`, ephemeral: true });
     }
@@ -187,7 +199,6 @@ module.exports = {
       const standard = interaction.options.getString('폐지기준');
       const prob = interaction.options.getInteger('확률') || null;
 
-      // 예시로 config.json 또는 coins.json에 옵션 저장(자유 확장)
       const coins = await loadJson(coinsPath, {});
       coins._delistOption = { type: standard, prob };
       await saveJson(coinsPath, coins);
