@@ -1,3 +1,4 @@
 data/*.json
+!data/BE.json
 /*.json
 .env
