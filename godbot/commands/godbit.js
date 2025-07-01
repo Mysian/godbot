@@ -51,22 +51,41 @@ async function addHistory(info, price) {
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
 
-function safeHistoryPair(info, from, to) {
-  const h = info.history || [];
-  const ht = info.historyT || [];
-  if (!ht.length) {
-    info.historyT = h.map((_,i) =>
-      info.listedAt
-        ? new Date(new Date(info.listedAt).getTime() + 1000*60*5*i).toISOString()
-        : new Date(Date.now() - 1000*60*5*(h.length-i-1)).toISOString()
-    );
-    return safeHistoryPair(info, from, to);
+// ===== ⭐️⭐️ 5분마다 코인 자동 시세+타임 갱신! =====
+async function periodicMarket() {
+  const coins = await loadJson(coinsPath, {});
+  await ensureBaseCoin(coins);
+
+  // 까리코인
+  const base = coins['까리코인'];
+  const deltaBase = (Math.random() * 0.2) - 0.1;
+  const newBase = Math.max(1, Math.floor(base.price * (1 + deltaBase)));
+  base.price = newBase;
+  base.history.push(newBase);
+  base.historyT = base.historyT || [];
+  base.historyT.push(new Date().toISOString());
+  while (base.history.length > HISTORY_MAX) base.history.shift();
+  while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
+
+  // 나머지 코인
+  for (const [name, info] of Object.entries(coins)) {
+    if (name === '까리코인' || info.delistedAt) continue;
+    const kImpact = deltaBase * (0.4 + Math.random()*0.2);
+    let delta = (Math.random() * 0.2) - 0.1 + kImpact;
+    delta = Math.max(-0.2, Math.min(delta, 0.2));
+    const p = Math.max(1, Math.floor(info.price * (1 + delta)));
+    info.price = p;
+    info.history = info.history || [];
+    info.historyT = info.historyT || [];
+    info.history.push(p);
+    info.historyT.push(new Date().toISOString());
+    while (info.history.length > HISTORY_MAX) info.history.shift();
+    while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
   }
-  return {
-    h: h.slice(from, to),
-    ht: ht.slice(from, to)
-  };
+  await saveJson(coinsPath, coins);
 }
+// ⭐️ 봇 실행 시 5분 간격 자동 갱신!
+setInterval(periodicMarket, 300_000);
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -173,7 +192,6 @@ module.exports = {
 
         slice.forEach((item, i) => {
           const emoji = EMOJIS[i % EMOJIS.length];
-          const arrow = item.change > 0 ? '▲' : item.change < 0 ? '▼' : '⏺';
           const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
           const maxBuy = Math.floor(userBE / (item.now||1));
           listEmbed.addFields({
@@ -248,6 +266,7 @@ module.exports = {
           delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
         }
       }
+      // 최신순으로 reverse!
       const h = (info.history || []).slice(-HISTORY_MAX).reverse();
       const ht = (info.historyT || []).slice(-HISTORY_MAX).reverse();
       if (!h.length) {
@@ -258,22 +277,22 @@ module.exports = {
       let page = 0;
 
       async function renderHistoryPage(pageIdx = 0) {
-  const start = pageIdx * HISTORY_PAGE;
-  const end = start + HISTORY_PAGE;
-  const list = h.slice(start, end);
-  const timeList = ht.slice(start, end);
+        const start = pageIdx * HISTORY_PAGE;
+        const end = start + HISTORY_PAGE;
+        const list = h.slice(start, end);
+        const timeList = ht.slice(start, end);
 
-  const lines = list.map((p, idx) => {
-    if (p == null) return `${start+idx+1}. (데이터없음)`;
-    const prev = list[idx+1] ?? null;
-    let diff = 0;
-    if (prev != null) diff = p - prev;
-    let emoji = '⏸️';
-    if (diff > 0) emoji = '🔺';
-    else if (diff < 0) emoji = '🔻';
-    return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`;
-  });
-        
+        const lines = list.map((p, idx) => {
+          if (p == null) return `${start+idx+1}. (데이터없음)`;
+          const prev = list[idx+1] ?? null;
+          let diff = 0;
+          if (prev != null) diff = p - prev;
+          let emoji = '⏸️';
+          if (diff > 0) emoji = '🔺';
+          else if (diff < 0) emoji = '🔻';
+          return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`;
+        });
+
         const embed = new EmbedBuilder()
           .setTitle(`🕘 ${coin} 가격 이력 (페이지 ${pageIdx+1}/${totalPages})`)
           .setDescription(lines.length ? lines.join('\n') : '데이터 없음')
