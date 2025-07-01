@@ -160,11 +160,12 @@ const histories = slice.map(([,info]) => (info.history||[]).slice(-chartRange));
 const times = slice.map(([,info]) => (info.historyT||[]).slice(-chartRange));
 
 // 라벨을 시간(HH:MM)으로 맞춤
-const labels = times[0]?.length
-  ? times[0].map(t =>
-      new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-    )
-  : Array.from({ length: chartRange }, (_,i) => ${i+1});
+const labels =
+  (times[0] && times[0].length)
+    ? times[0].map(t =>
+        new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+      )
+    : Array.from({ length: chartRange }, (_,i) => `${i+1}`);
 
 // 차트 데이터셋(선 두께, tension)
 const datasets = slice.map(([n,info], i) => ({
@@ -181,13 +182,13 @@ const chartConfig = {
   type: 'line',
   data: { labels, datasets },
   options: {
-    backgroundColor: '#23272a',
     plugins: {
       legend: {
         display: true,
         position: 'bottom',
         labels: { font: { size: 14 }, color: '#fff' }
-      }
+      },
+      background: { color: '#23272a' }
     },
     layout: { padding: 25 },
     scales: {
@@ -207,11 +208,15 @@ const chartConfig = {
   }
 };
 
+// &plugins=background 붙여줘야 배경색 적용됨!
+const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&plugins=background`;
+
 const chartEmbed = new EmbedBuilder()
-  .setTitle(📊 코인 가격 차트 (1시간)${search ?  - [${search}] : ''})
-  .setImage(https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))})
+  .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
+  .setImage(chartUrl)
   .setColor('#23272a')
   .setTimestamp();
+
 
 
 
