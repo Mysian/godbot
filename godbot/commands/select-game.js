@@ -137,7 +137,7 @@ module.exports = {
     const remaining = ETC_GAMES.filter(g=>!firstPageGames.includes(g))
       .sort((a,b)=>(rolePopularity[b]||0)-(rolePopularity[a]||0));
 
-    const PAGES = [
+    let PAGES = [
       firstPageGames,
       ...Array.from({length: Math.ceil(remaining.length/PAGE_SIZE)},(_,i)=>
         remaining.slice(i*PAGE_SIZE,(i+1)*PAGE_SIZE))
