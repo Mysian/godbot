@@ -1,7 +1,7 @@
 // ==== commands/godbit.js ====
 
 const {
-  SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType
+  SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -286,10 +286,10 @@ module.exports = {
       sub.setName('내코인')
         .setDescription('내 보유 코인/평가액/손익/수익률 조회')
     )
-    .addSubcommand(sub =>
-      sub.setName('순위')
-        .setDescription('코인 실현 수익/자산 TOP20 순위')
-    ),
+  .addSubcommand(sub =>
+  sub.setName('순위')
+    .setDescription('코인 실현 수익/자산 TOP20 순위')
+),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -311,122 +311,70 @@ module.exports = {
       }
 
       // 전일대비 수익률 내림차순 정렬
-      const defaultFilter = CHART_FILTERS[2]; // "1시간" 기본
-      let currentFilter = defaultFilter.value;
+      const chartRange = 12;
+      allAlive = allAlive.map(([name, info]) => {
+        const h = info.history || [];
+        const prev = h.at(-2) ?? h.at(-1) ?? 0;
+        const now = h.at(-1) ?? 0;
+        const change = now - prev;
+        const pct = prev ? (change / prev) * 100 : 0;
+        return { name, info, now, prev, change, pct };
+      })
+      .sort((a, b) => b.pct - a.pct);
+
+      const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
+
       let page = 0;
 
-      // 필터 옵션 셀렉트 메뉴 생성
-      function getChartFilterSelectMenu(selected) {
-        return new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId('chart_filter')
-            .setPlaceholder('차트 시간 필터 선택')
-            .addOptions(
-              CHART_FILTERS.map(f => ({
-                label: f.label,
-                value: f.value,
-                default: f.value === selected
-              }))
-            )
-        );
-      }
-
-      async function renderChartPage(pageIdx = 0, chartFilterValue = currentFilter) {
-        const filterObj = CHART_FILTERS.find(f => f.value === chartFilterValue) || defaultFilter;
-        const chartRange = filterObj.points;
-        const interval = filterObj.interval;
-
+      async function renderChartPage(pageIdx = 0) {
         const userBE = getBE(interaction.user.id);
         const slice = allAlive.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
 
         // 차트(위)
-        const datasets = slice.map((item, i) => {
-          // history, historyT 시간 기준으로 downsample
-          let h = item.info.history || [];
-          let t = item.info.historyT || [];
-          if (h.length && t.length) {
-            // Downsample: 가장 최신부터 interval 간격으로 points 개만 추출
-            let points = [];
-            let labels = [];
-            let lastIdx = h.length - 1;
-            let lastTime = new Date(t[lastIdx]);
-            for (let p = filterObj.points - 1; p >= 0; p--) {
-              let targetTime = new Date(lastTime.getTime() - interval * 60 * 1000 * (filterObj.points-1-p));
-              // 가장 가까운 데이터 찾기
-              let idx = t.findIndex((tt, ii) => new Date(tt) >= targetTime);
-              if (idx === -1) idx = 0;
-              points.push(h[idx]);
-              labels.push(toKSTString(t[idx]).slice(5, 16));
-            }
-            return {
-              label: item.name,
-              data: points,
-              borderColor: COLORS[i % COLORS.length],
-              fill: false
-            };
-          } else {
-            return {
-              label: item.name,
-              data: [],
-              borderColor: COLORS[i % COLORS.length],
-              fill: false
-            };
-          }
-        });
-        // 차트 라벨(시간축)
-        let labels = [];
-        if (slice[0] && slice[0].info.historyT) {
-          let t = slice[0].info.historyT || [];
-          let h = slice[0].info.history || [];
-          let lastIdx = h.length - 1;
-          let lastTime = new Date(t[lastIdx]);
-          for (let p = filterObj.points - 1; p >= 0; p--) {
-            let targetTime = new Date(lastTime.getTime() - interval * 60 * 1000 * (filterObj.points-1-p));
-            let idx = t.findIndex((tt, ii) => new Date(tt) >= targetTime);
-            if (idx === -1) idx = 0;
-            labels.push(toKSTString(t[idx]).slice(5, 16));
-          }
-        }
-
+        const datasets = slice.map((item, i) => ({
+          label: item.name,
+          data: (item.info.history||[]).slice(-chartRange),
+          borderColor: COLORS[i % COLORS.length],
+          fill: false
+        }));
+        const labels = Array.from({ length: chartRange }, (_,i) => i+1);
         const chartConfig = {
-          backgroundColor: "white", 
-          type: 'line',
-          data: { labels, datasets },
-          options: {
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { title: { display: true, text: `시간 (${filterObj.label})` } },
-              y: { title: { display: true, text: '가격 (BE)' } }
-            }
-          }
-        };
+  backgroundColor: "white", 
+  type: 'line',
+  data: { labels, datasets },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { title: { display: true, text: '시간(5분 단위)' } },
+      y: { title: { display: true, text: '가격 (BE)' } }
+    }
+  }
+};
         const chartEmbed = new EmbedBuilder()
-          .setTitle(`📊 코인 가격 차트 (${filterObj.label})${search ? ` - [${search}]` : ''}`)
+          .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
           .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
           .setColor('#FFFFFF')
-          .setTimestamp();
+          .setTimestamp(); // <- 시간 기재
 
         // 시장 현황(아래)
         const listEmbed = new EmbedBuilder()
-          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${Math.ceil(allAlive.length / PAGE_SIZE)})`)
+          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${totalPages})`)
           .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**수익률 내림차순 정렬**`)
           .setColor('#FFFFFF');
+          // 시간 기재 X
 
         slice.forEach((item, i) => {
           const emoji = EMOJIS[i % EMOJIS.length];
-          const now = item.info.history?.at(-1) ?? 0;
-          const prev = item.info.history?.at(-2) ?? now;
-          const change = now - prev;
-          const pct = prev ? (change / prev) * 100 : 0;
-          const arrowColor = change > 0 ? '🔺' : change < 0 ? '🔻' : '⏺';
-          const maxBuy = Math.floor(userBE / (now||1));
+          const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
+          const maxBuy = Math.floor(userBE / (item.now||1));
           listEmbed.addFields({
             name: `${emoji} ${item.name}`,
-            value: `${now.toLocaleString()} BE ${arrowColor} (${change>=0?'+':''}${pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
+            value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
             inline: false
           });
         });
 
+        // 임베드 하단 - 매수/매도 커맨드 안내만(시간 X)
         listEmbed.setFooter({
           text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
         });
@@ -436,42 +384,31 @@ module.exports = {
           new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===0),
           new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(pageIdx===0),
           new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(pageIdx===(Math.ceil(allAlive.length / PAGE_SIZE)-1)),
-          new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===(Math.ceil(allAlive.length / PAGE_SIZE)-1))
+          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(pageIdx===totalPages-1),
+          new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===totalPages-1)
         );
-
-        // 셀렉트 필터 메뉴
-        const filterRow = getChartFilterSelectMenu(chartFilterValue);
 
         await interaction.editReply({
           embeds: [chartEmbed, listEmbed],
-          components: [filterRow, navRow]
+          components: [navRow]
         });
       }
 
-      // 최초 렌더링
-      await renderChartPage(0, currentFilter);
+      await renderChartPage(0);
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({
+        componentType: ComponentType.Button,
         time: 600_000,
-        filter: c => c.user.id === interaction.user.id
+        filter: btn => btn.user.id === interaction.user.id
       });
 
-      collector.on('collect', async interaction2 => {
-        if (interaction2.isStringSelectMenu() && interaction2.customId === 'chart_filter') {
-          // 필터값 변경 → 차트 새로 렌더
-          currentFilter = interaction2.values[0];
-          await interaction2.deferUpdate();
-          await renderChartPage(page, currentFilter);
-        } else if (interaction2.isButton()) {
-          await interaction2.deferUpdate();
-          if (interaction2.customId === 'first') page = 0;
-          else if (interaction2.customId === 'prev' && page > 0) page -= 1;
-          else if (interaction2.customId === 'next' && page < Math.ceil(allAlive.length / PAGE_SIZE)-1) page += 1;
-          else if (interaction2.customId === 'last') page = Math.ceil(allAlive.length / PAGE_SIZE)-1;
-          else if (interaction2.customId === 'refresh') {/* 새로고침 */}
-          await renderChartPage(page, currentFilter);
-        }
+      collector.on('collect', async btn => {
+        await btn.deferUpdate();
+        if (btn.customId === 'first') page = 0;
+        else if (btn.customId === 'prev' && page > 0) page -= 1;
+        else if (btn.customId === 'next' && page < totalPages-1) page += 1;
+        else if (btn.customId === 'last') page = totalPages-1;
+        await renderChartPage(page);
       });
 
       collector.on('end', async () => {
