@@ -156,20 +156,23 @@ module.exports = {
 
       const rolesThisPage = getRoles(PAGES[page]);
 
-      // 👉 이 부분만 변경
-      const pageList = `(${rolesThisPage.map(r=>GAME_EMOJIS[r.name]||"❔").join(", ")})`;
+      
+      const emojis = rolesThisPage.map(r => GAME_EMOJIS[r.name] || "❔");
+      const lines  = [];
+    for (let i = 0; i < emojis.length; i += 5) {
+      lines.push(emojis.slice(i, i + 5).join(", "));
+    }
+      const pageList = `(\n${lines.join(",\n")}\n)`; 
 
       const embed = new EmbedBuilder()
-        .setTitle("🎮 게임 태그 설정")
+        .setTitle("🎮 게임 태그 설정하기")
         .setColor(0x2095ff)
         .setFooter({text:"게임 태그는 최소 1개 이상 유지해야 합니다.",iconURL:FOOTER_ICON_URL})
         .addFields(
-          { name: "📌 등록된 게임 태그", value: chosenText },
+          { name: "📌 등록한 게임 태그", value: chosenText },
   { name: BLANK, value: BLANK },
   { name: BLANK, value: BLANK },
-  { name: BLANK, value: BLANK },
-  { name: `🗂️ 현재 목록에 있는 게임 (페이지 ${page+1}/${PAGES.length})`, value: pageList },
-  { name: BLANK, value: BLANK }
+  { name: `🗂️ 현재 목록에 있는 게임 (페이지 ${page+1}/${PAGES.length})`, value: pageList }
 );
 
       const select = new StringSelectMenuBuilder()
