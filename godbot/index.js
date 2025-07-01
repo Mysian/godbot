@@ -210,7 +210,7 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   }
   if (matches.length > 1) {
     return interaction.reply({
-      content: `🔍 여러 개가 검색되었어요: ${matches.join(", ")}`,
+      content: `🔍 여러 개가 검색되었어요, 정확히 입력하시면 자동 등록됩니다. : ${matches.join(", ")}`,
       ephemeral: true
     });
   }
@@ -236,7 +236,7 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     ? chosenRoles.map(n => `• ${n}`).join("\n")
     : "아직 등록된 태그가 없습니다.";
   const embed = new EmbedBuilder()
-    .setTitle("🎮 현재 등록된 게임 태그")
+    .setTitle("🎮 검색한 게임 태그가 등록되었습니다.")
     .setColor(0x2095ff)
     .setDescription(chosenText);
 
