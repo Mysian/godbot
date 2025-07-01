@@ -10,15 +10,16 @@ const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const PAGE_SIZE   = 5;
 const HISTORY_PAGE = 20;
+const HISTORY_MAX = 100;  // 히스토리 최대 100개
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
+// KST 변환
 function toKSTString(utcOrDate) {
   const d = new Date(utcOrDate);
   d.setHours(d.getHours() + 9);
   return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 }
-
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
   const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
@@ -42,19 +43,27 @@ async function ensureBaseCoin(coins) {
     };
   }
 }
-// 안전하게 히스토리/타임 배열 페어로 slice
+// 히스토리 추가: 가격+타임
+async function addHistory(info, price) {
+  if (!info.history) info.history = [];
+  if (!info.historyT) info.historyT = [];
+  info.history.push(price);
+  info.historyT.push(new Date().toISOString());
+  // 100개 제한
+  while (info.history.length > HISTORY_MAX) info.history.shift();
+  while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
+}
 function safeHistoryPair(info, from, to) {
   const h = info.history || [];
   const ht = info.historyT || [];
   const len = h.length;
-  // 타임 배열 없으면 historyT를 강제로 만든다
   if (!ht.length) {
     info.historyT = h.map((_,i) =>
       info.listedAt
         ? new Date(new Date(info.listedAt).getTime() + 1000*60*5*i).toISOString()
         : new Date(Date.now() - 1000*60*5*(h.length-i-1)).toISOString()
     );
-    return safeHistoryPair(info, from, to); // 재귀로 강제 변환
+    return safeHistoryPair(info, from, to);
   }
   return {
     h: h.slice(from, to),
@@ -66,31 +75,33 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('갓비트')
     .setDescription('가상 코인 시스템 통합 명령어')
-    // 차트(버튼)
+    // 1. 코인차트(검색+버튼)
     .addSubcommand(sub =>
-      sub.setName('코인차트').setDescription('시장 전체 차트 보기')
+      sub.setName('코인차트')
+        .setDescription('시장 전체 또는 특정 코인 차트')
+        .addStringOption(opt => opt.setName('코인').setDescription('코인명(선택)').setRequired(false))
     )
-    // 히스토리(버튼)
+    // 2. 히스토리(버튼)
     .addSubcommand(sub =>
       sub.setName('히스토리')
         .setDescription('코인 가격 이력(페이지) 조회')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
     )
-    // 매수
+    // 3. 매수
     .addSubcommand(sub =>
       sub.setName('매수')
         .setDescription('코인을 매수합니다')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('수량').setDescription('매수 수량').setMinValue(1).setRequired(true))
     )
-    // 매도
+    // 4. 매도
     .addSubcommand(sub =>
       sub.setName('매도')
         .setDescription('코인을 매도합니다')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('수량').setDescription('매도 수량').setMinValue(1).setRequired(true))
     )
-    // 내코인
+    // 5. 내코인
     .addSubcommand(sub =>
       sub.setName('내코인')
         .setDescription('내 보유 코인/평가액 조회')
@@ -99,26 +110,32 @@ module.exports = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
-    // 1. 코인차트(버튼 페이지)
+    // 1. 코인차트(검색+버튼)
     if (sub === '코인차트') {
       await interaction.deferReply({ ephemeral: true });
+      const search = (interaction.options.getString('코인')||'').trim();
       const coins = await loadJson(coinsPath, {});
       await ensureBaseCoin(coins);
       const wallets = await loadJson(walletsPath, {});
-      const allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
+      let allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
+      if (search) {
+        // 부분 일치 검색
+        allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
+        if (!allAlive.length) {
+          return interaction.editReply({ content: `❌ [${search}] 코인 없음!` });
+        }
+      }
       const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
 
       let page = 0;
-      // 코인 차트 기본 구간: 12(1시간)
-      const chartRange = 12;
+      const chartRange = 12; // 1시간
 
       async function renderChartPage(pageIdx = 0) {
         const userBE = getBE(interaction.user.id);
         const slice = allAlive.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
 
-        // 현황
         const listEmbed = new EmbedBuilder()
-          .setTitle(`📈 갓비트 시장 현황 (페이지 ${pageIdx+1}/${totalPages})`)
+          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${totalPages})`)
           .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE`)
           .setColor('#FFFFFF')
           .setTimestamp();
@@ -137,7 +154,7 @@ module.exports = {
           });
         });
 
-        // 차트 (가격만, 1시간치)
+        // 차트(각 코인 히스토리)
         const histories = slice.map(([,info]) => (info.history||[]).slice(-chartRange));
         const maxLen = Math.max(...histories.map(h => h.length));
         const labels = Array.from({ length: maxLen }, (_,i) => i+1);
@@ -159,7 +176,7 @@ module.exports = {
           }
         };
         const chartEmbed = new EmbedBuilder()
-          .setTitle('📊 코인 가격 차트 (1시간)')
+          .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
           .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
           .setColor('#FFFFFF')
           .setTimestamp();
@@ -182,7 +199,7 @@ module.exports = {
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({
         componentType: ComponentType.Button,
-        time: 600_000, // 10분
+        time: 600_000,
         filter: btn => btn.user.id === interaction.user.id
       });
 
@@ -202,34 +219,50 @@ module.exports = {
       return;
     }
 
-    // 2. 히스토리(버튼 페이지)
+    // 2. 히스토리(버튼)
     if (sub === '히스토리') {
       await interaction.deferReply({ ephemeral: true });
       const coin = interaction.options.getString('코인');
       const coins = await loadJson(coinsPath, {});
-      if (!coins[coin]) return interaction.editReply({ content: `❌ 코인 없음: ${coin}` });
       const info = coins[coin];
+      // --- 상장 정보 체크 ---
+      if (!info) return interaction.editReply({ content: `❌ [${coin}] 상장 정보가 없는 코인입니다.` });
 
-      // 날짜 배열 보정(히스토리 추가 주기마다 반드시 historyT도 push)
-      if (!info.historyT || info.historyT.length !== (info.history?.length||0)) {
-        // historyT를 없거나 불일치하면 재생성
-        info.historyT = (info.history||[]).map((_,i) =>
-          info.listedAt
-            ? new Date(new Date(info.listedAt).getTime() + 1000*60*5*i).toISOString()
-            : new Date(Date.now() - 1000*60*5*((info.history?.length||0)-i-1)).toISOString()
-        );
-        await saveJson(coinsPath, coins);
+      // 폐지/상장여부 판정
+      let isDelisted = !!info.delistedAt;
+      let delistMsg = '';
+      if (isDelisted) {
+        // 폐지 후 재상장 이력 체크
+        const allList = Object.entries(coins)
+          .filter(([name]) => name === coin)
+          .map(([_,i]) => i)
+          .sort((a,b) => (a.listedAt||'').localeCompare(b.listedAt||''));
+        // 현재 info가 가장 최근인지 확인
+        if (info.listedAt && allList.length >= 2) {
+          const last = allList[allList.length-1];
+          if (last === info) isDelisted = true;
+          else isDelisted = false;
+        }
+        if (isDelisted) {
+          delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
+        }
       }
 
-      const h = info.history || [];
-      const ht = info.historyT || [];
+      // 히스토리 100개까지만 지원
+      const h = (info.history || []).slice(-HISTORY_MAX);
+      const ht = (info.historyT || []).slice(-HISTORY_MAX);
+      if (!h.length) {
+        return interaction.editReply({ content: `📉 [${coin}] 가격 이력 데이터 없음${delistMsg ? `\n${delistMsg}` : ''}` });
+      }
+
       const totalPages = Math.ceil(h.length / HISTORY_PAGE);
       let page = 0;
 
       async function renderHistoryPage(pageIdx = 0) {
         const start = pageIdx * HISTORY_PAGE;
         const end = start + HISTORY_PAGE;
-        const { h: list, ht: timeList } = safeHistoryPair(info, start, end);
+        const list = h.slice(start, end);
+        const timeList = ht.slice(start, end);
         const lines = list.map((p, idx) =>
           p == null
             ? `${start+idx+1}. (데이터없음)`
@@ -242,7 +275,9 @@ module.exports = {
             { name: '상장일', value: info.listedAt ? toKSTString(info.listedAt) : '-', inline: true },
             { name: '폐지일', value: info.delistedAt ? toKSTString(info.delistedAt) : '-', inline: true }
           )
-          .setColor('#3498DB').setTimestamp();
+          .setColor(isDelisted ? '#888888' : '#3498DB')
+          .setTimestamp();
+        if (delistMsg && isDelisted) embed.setFooter({ text: delistMsg });
 
         const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===0),
@@ -299,6 +334,10 @@ module.exports = {
       await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
       await saveJson(walletsPath, wallets);
 
+      // 히스토리/타임 추가
+      await addHistory(coins[coin], price);
+      await saveJson(coinsPath, coins);
+
       return interaction.editReply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)` });
     }
 
@@ -321,6 +360,10 @@ module.exports = {
       if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
       await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
       await saveJson(walletsPath, wallets);
+
+      // 히스토리/타임 추가
+      await addHistory(coins[coin], coins[coin].price);
+      await saveJson(coinsPath, coins);
 
       return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
     }
