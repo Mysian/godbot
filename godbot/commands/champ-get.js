@@ -19,7 +19,7 @@ const lockfile = require("proper-lockfile");
 const { getBE, addBE } = require("./be-util");
 
 const dataPath = path.join(__dirname, "../data/champion-users.json");
-const BE_COST = 0; // 파랑 정수 소모량
+const BE_COST = 100; // 파랑 정수 소모량
 
 function formatNumber(num) {
   return num.toLocaleString("ko-KR");
