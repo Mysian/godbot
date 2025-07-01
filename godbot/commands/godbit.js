@@ -157,65 +157,34 @@ module.exports = {
        // 차트(각 코인 히스토리)
 const chartRange = 12;
 const histories = slice.map(([,info]) => (info.history||[]).slice(-chartRange));
-const times = slice.map(([,info]) => (info.historyT||[]).slice(-chartRange));
+const maxLen = Math.max(...histories.map(h => h.length));
+const labels = Array.from({ length: maxLen }, (_,i) => i+1);
 
-// 라벨을 시간(HH:MM)으로 맞춤
-const labels =
-  (times[0] && times[0].length)
-    ? times[0].map(t =>
-        new Date(t).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-      )
-    : Array.from({ length: chartRange }, (_,i) => `${i+1}`);
-
-// 차트 데이터셋(선 두께, tension)
 const datasets = slice.map(([n,info], i) => ({
   label: n,
   data: (info.history||[]).slice(-chartRange),
   borderColor: COLORS[i % COLORS.length],
-  fill: false,
-  borderWidth: 3,
-  tension: 0.3,
-  pointRadius: 2
+  fill: false
 }));
 
 const chartConfig = {
   type: 'line',
   data: { labels, datasets },
   options: {
-    plugins: {
-      legend: {
-        display: true,
-        position: 'bottom',
-        labels: { font: { size: 14 }, color: '#fff' }
-      },
-      background: { color: '#23272a' }
-    },
-    layout: { padding: 25 },
+    plugins: { legend: { display: false } },
     scales: {
-      x: {
-        title: { display: true, text: '시간', color: '#fff', font: { weight: 'bold', size: 15 } },
-        ticks: { color: '#fff', font: { size: 13 } }
-      },
-      y: {
-        title: { display: true, text: '가격 (BE)', color: '#fff', font: { weight: 'bold', size: 15 } },
-        ticks: { color: '#fff', font: { size: 13 } }
-      }
-    },
-    elements: {
-      line: { borderWidth: 3, tension: 0.3 },
-      point: { radius: 2 }
+      x: { title: { display: true, text: '시간(5분 단위)' } },
+      y: { title: { display: true, text: '가격 (BE)' } }
     }
   }
 };
 
-// &plugins=background 붙여줘야 배경색 적용됨!
-const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&plugins=background`;
-
 const chartEmbed = new EmbedBuilder()
   .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
-  .setImage(chartUrl)
-  .setColor('#23272a')
+  .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`)
+  .setColor('#FFFFFF')
   .setTimestamp();
+
 
 
 
