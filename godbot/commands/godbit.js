@@ -21,6 +21,7 @@ const PAGE_SIZE   = 5;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
+// JSON 읽기/쓰기(락)
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
   const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
@@ -49,6 +50,7 @@ async function ensureBaseCoin(coins) {
     };
   }
 }
+// 코인 가격 변동 시뮬레이션 + 코인 추가/삭제
 async function simulateMarket(interaction, coins) {
   const base = coins['까리코인'];
   const deltaBase = (Math.random() * 0.2) - 0.1;
@@ -117,6 +119,7 @@ async function simulateMarket(interaction, coins) {
   }
 }
 
+// 주기적 데이터 정리 (히스토리 100개 초과시 잘라내기)
 setInterval(async () => {
   const coins = await loadJson(coinsPath, {});
   const now = Date.now();
@@ -143,7 +146,8 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
+
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
       await ensureBaseCoin(coins);
@@ -156,6 +160,7 @@ module.exports = {
         await saveJson(coinsPath, coins);
 
         const userBE = getBE(interaction.user.id);
+        // **5개로 강제 제한**
         const slice = allAlive.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
         const change = {};
@@ -173,7 +178,7 @@ module.exports = {
           .setColor('#FFFFFF')
           .setTimestamp();
 
-        slice.forEach(([n], i) => {
+        slice.slice(0, 5).forEach(([n], i) => {
           const { price, diff, pct } = change[n];
           const arrow = diff >= 0 ? '🔺' : '🔽';
           const maxBuy = Math.floor(userBE / price);
@@ -188,13 +193,13 @@ module.exports = {
           });
         });
 
-        // 차트는 이 페이지의 코인들만!
-        const histories = slice.map(([,info]) => info.history.slice(-30));
+        // 차트도 10개만!
+        const histories = slice.map(([,info]) => info.history.slice(-10));
         const maxLen = Math.max(...histories.map(h => h.length));
         const labels = Array.from({ length: maxLen }, (_,i) => i+1);
         const datasets = slice.map(([n,info], i) => ({
           label: n,
-          data: Array(maxLen - info.history.slice(-30).length).fill(null).concat(info.history.slice(-30)),
+          data: Array(maxLen - info.history.slice(-10).length).fill(null).concat(info.history.slice(-10)),
           borderColor: COLORS[i % COLORS.length],
           fill: false
         }));
@@ -215,7 +220,7 @@ module.exports = {
           .setColor('#FFFFFF')
           .setTimestamp();
 
-        // 버튼: ◀️이전, ▶️다음, 🏠처음, 🕘히스토리, 🔄새로고침
+        // 버튼
         const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
           new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
@@ -360,7 +365,7 @@ module.exports = {
               '코인 히스토리 조회',
               [
                 { customId: 'coin', label: '코인 이름', style: TextInputStyle.Short, required: true },
-                { customId: 'count', label: '조회 개수 (최대 100)', style: TextInputStyle.Short, required: false, placeholder: '예: 100 (기본 20)' }
+                { customId: 'count', label: '조회 개수 (최대 10)', style: TextInputStyle.Short, required: false, placeholder: '예: 10 (기본 5)' }
               ]
             );
             await btn.showModal(modal);
@@ -373,7 +378,7 @@ module.exports = {
             await saveJson(coinsPath, coins);
 
             const coin = sub.fields.getTextInputValue('coin');
-            const cnt = Math.min(100, Math.max(1, parseInt(sub.fields.getTextInputValue('count')) || 20));
+            const cnt = Math.min(10, Math.max(1, parseInt(sub.fields.getTextInputValue('count')) || 5));
             if (!coins[coin]) return sub.editReply({ content: `❌ 코인 없음: ${coin}` });
 
             const info = coins[coin];
@@ -452,7 +457,7 @@ module.exports = {
       await saveJson(coinsPath, coins);
 
       const coin = interaction.fields.getTextInputValue('coin');
-      const cnt = Math.min(100, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 20));
+      const cnt = Math.min(10, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 5));
       if (!coins[coin]) return interaction.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
 
       const info = coins[coin];
