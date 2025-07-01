@@ -12,7 +12,7 @@ const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-histor
 const SOUL_ROLE_ID = "1382169247538745404";
 
 const GREAT_SUCCESS_RATE = 0.05;
-const ENHANCE_BE_COST = 0; // 강화 1회당 소모 BE (원하는 값으로 설정)
+const ENHANCE_BE_COST = 200; // 강화 1회당 소모 BE (원하는 값으로 설정)
 function formatNum(n) { return n.toLocaleString("ko-KR"); }
 
 async function loadJSON(p) {
