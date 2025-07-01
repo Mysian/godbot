@@ -245,19 +245,19 @@ module.exports = {
       return;
     }
 
-    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방/닉변) ======
+    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
     if (option === "user") {
       await interaction.deferReply({ ephemeral: true });
 
       async function showUserInfo(targetUserId, userInteraction) {
         function formatSeconds(sec) {
-    sec = Math.floor(sec || 0);
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    if (h) return `${h}시간 ${m}분 ${s}초`;
-    if (m) return `${m}분 ${s}초`;
-    return `${s}초`;
+          sec = Math.floor(sec || 0);
+          const h = Math.floor(sec / 3600);
+          const m = Math.floor((sec % 3600) / 60);
+          const s = sec % 60;
+          if (h) return `${h}시간 ${m}분 ${s}초`;
+          if (m) return `${m}분 ${s}초`;
+          return `${s}초`;
         }
         const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
         const member = await guild.members.fetch(targetUserId).catch(() => null);
@@ -339,10 +339,6 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId("nickname_change")
-            .setLabel("별명 변경")
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
             .setCustomId(timeoutActive ? "timeout_release" : "timeout")
             .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
             .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
@@ -375,24 +371,7 @@ module.exports = {
         const targetUserId = target.id;
 
         if (i.customId === "refresh_userinfo") {
-          await showUserInfo(targetUserId, i);
-        } else if (i.customId === "nickname_change") {
-          // 닉네임 변경을 모달로 처리!
-          const modal = new ModalBuilder()
-            .setCustomId(`nickname_change_modal_${targetUserId}`)
-            .setTitle("별명 변경")
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("nickname_input")
-                  .setLabel("새로운 별명")
-                  .setStyle(TextInputStyle.Short)
-                  .setMinLength(1)
-                  .setMaxLength(32)
-                  .setRequired(true)
-              )
-            );
-          await i.showModal(modal);
+          await showUserInfo(targetUserId, i); // 최신 정보 다시 표시
         } else if (i.customId === "timeout" || i.customId === "kick") {
           const modal = new ModalBuilder()
             .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
@@ -439,25 +418,6 @@ module.exports = {
   },
 
   async modalSubmit(interaction) {
-    // 닉네임 변경 모달 처리
-    if (interaction.customId.startsWith("nickname_change_modal_")) {
-      const targetUserId = interaction.customId.split("nickname_change_modal_")[1];
-      const newNick = interaction.fields.getTextInputValue("nickname_input");
-      try {
-        await interaction.guild.members.edit(targetUserId, { nick: newNick });
-        await interaction.reply({
-          content: `✅ 별명이 **${newNick}**(으)로 변경되었습니다.`,
-          ephemeral: true,
-        });
-      } catch (err) {
-        await interaction.reply({
-          content: "❌ 별명 변경 실패 (권한 문제일 수 있음)",
-          ephemeral: true,
-        });
-      }
-      return;
-    }
-
     const pw = interaction.fields.getTextInputValue("pw");
     const savedPw = loadAdminPw();
     if (!savedPw || pw !== savedPw) {
