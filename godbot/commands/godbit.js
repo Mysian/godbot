@@ -17,6 +17,19 @@ const MAX_AUTO_COINS = 20;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
+// 차트 기간 옵션
+const CHART_FILTERS = [
+  { label: "1분", value: "1m", points: 12, interval: 1 },    // 최근 12분 (raw)
+  { label: "30분", value: "30m", points: 24, interval: 30 }, // 최근 12시간 (30분 단위)
+  { label: "1시간", value: "1h", points: 24, interval: 60 }, // 최근 24시간 (1시간 단위)
+  { label: "3시간", value: "3h", points: 24, interval: 180 },// 최근 3일 (3시간 단위)
+  { label: "6시간", value: "6h", points: 28, interval: 360 },// 최근 7일 (6시간 단위)
+  { label: "12시간", value: "12h", points: 28, interval: 720 }, // 최근 14일 (12시간 단위)
+  { label: "24시간", value: "24h", points: 30, interval: 1440 }, // 최근 30일 (1일 단위)
+  { label: "7일", value: "7d", points: 14, interval: 1440*7/14 }, // 7일 (2회/일)
+  { label: "30일", value: "30d", points: 30, interval: 1440*30/30 }, // 30일 (1회/일)
+];
+
 // ==== 우상향/우하향 코인 키워드 ====
 const UPTREND_KEYWORDS = ["팔복", "반달", "시민", "핑핑", "효철"];
 const DOWNTREND_KEYWORDS = ["영빈", "티나", "동키", "은달", "지녕"];
