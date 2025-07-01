@@ -6,8 +6,9 @@ const lockfile = require('proper-lockfile');
 const { addBE, getBE, loadConfig } = require('./be-util.js');
 
 // Data file paths
-const coinsPath = path.join(__dirname, '../data/coins.json');
-const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
+const coinsPath    = path.join(__dirname, '../data/coins.json');
+const walletsPath  = path.join(__dirname, '../data/godbit-wallets.json');
+const MAX_COINS    = 10;
 
 // Load or initialize JSON data with lock
 async function loadJson(filePath, defaultData) {
@@ -20,7 +21,6 @@ async function loadJson(filePath, defaultData) {
     if (release) await release();
   }
 }
-
 async function saveJson(filePath, data) {
   let release;
   try {
@@ -38,17 +38,16 @@ async function ensureBaseCoin(coins) {
   }
 }
 
-// Simulate market events: price update, random listing/delist
+// Simulate market: 가격 변동, 상장, 폐지, 최대 개수 유지
 async function simulateMarket(interaction, coins) {
-  const config = loadConfig();
-  // Price movement ±10%
+  // 1) 가격 변동 ±10%
   for (const info of Object.values(coins)) {
     const delta = (Math.random() * 0.2) - 0.1;
     const newPrice = Math.max(1, Math.floor(info.price * (1 + delta)));
     info.price = newPrice;
     info.history.push(newPrice);
   }
-  // Random new coin listing (5% chance)
+  // 2) 랜덤 상장 (5% 확률)
   if (Math.random() < 0.05) {
     const members = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
     if (members.size > 0) {
@@ -59,12 +58,18 @@ async function simulateMarket(interaction, coins) {
       }
     }
   }
-  // Random delisting (2% chance)
+  // 3) 랜덤 폐지 (2% 확률)
   if (Math.random() < 0.02) {
-    const otherCoins = Object.keys(coins).filter(n => n !== '까리코인');
-    if (otherCoins.length > 0) {
-      delete coins[otherCoins[Math.floor(Math.random() * otherCoins.length)]];
+    const others = Object.keys(coins).filter(n => n !== '까리코인');
+    if (others.length > 0) {
+      delete coins[others[Math.floor(Math.random() * others.length)]];
     }
+  }
+  // 4) 최대 코인 개수 유지
+  while (Object.keys(coins).length > MAX_COINS) {
+    const others = Object.keys(coins).filter(n => n !== '까리코인');
+    if (others.length === 0) break;
+    delete coins[others[Math.floor(Math.random() * others.length)]];
   }
 }
 
@@ -75,8 +80,13 @@ module.exports = {
     .addSubcommand(sub =>
       sub
         .setName('코인차트')
-        .setDescription('코인 목록 및 선택 코인 차트 표시')
-        .addStringOption(opt => opt.setName('코인').setDescription('코인 이름').setRequired(true))
+        .setDescription('코인 목록과 (원하면) 특정 코인 차트를 동시에 표시')
+        .addStringOption(opt =>
+          opt
+            .setName('코인')
+            .setDescription('차트로 보고 싶은 코인 이름 (선택)')
+            .setRequired(false)
+        )
     )
     .addSubcommand(sub =>
       sub
@@ -100,101 +110,129 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply();
-    const coins = await loadJson(coinsPath, {});
-    await ensureBaseCoin(coins);
+    const coins   = await loadJson(coinsPath, {});
     const wallets = await loadJson(walletsPath, {});
-    const sub = interaction.options.getSubcommand();
+    await ensureBaseCoin(coins);
 
+    const sub = interaction.options.getSubcommand();
+    // 통합: 코인차트
     if (sub === '코인차트') {
       await simulateMarket(interaction, coins);
       await saveJson(coinsPath, coins);
-      // 목록 Embed
+
+      // ► 목록 Embed
       const listEmbed = new EmbedBuilder()
         .setTitle('📈 갓비트 코인 목록')
-        .setDescription(Object.entries(coins)
-          .map(([name, info]) => `${name}: ${info.price.toLocaleString()} BE`)
-          .join('\n'))
+        .setDescription(
+          Object.entries(coins)
+            .map(([name, info]) => `• **${name}**: ${info.price.toLocaleString()} BE`)
+            .join('\n')
+        )
         .setColor('#0099FF')
         .setTimestamp();
 
-      // 차트 Embed
-      const coin = interaction.options.getString('코인');
-      if (!coins[coin]) return interaction.editReply(`❌ '${coin}' 코인을 찾을 수 없습니다.`);
-      const prices = coins[coin].history;
-      const labels = prices.map((_, i) => i + 1);
-      const config = `{
-        type:'line',
-        data:{
-          labels:${JSON.stringify(labels)},
-          datasets:[{
-            label:'${coin}',
-            data:${JSON.stringify(prices)},
-            fill:false,
-            segment:{
-              borderColor:ctx=>ctx.p1.parsed.y>ctx.p0.parsed.y?'red':'blue'
-            }
-          }]
-        },
-        options:{
-          plugins:{legend:{display:false}},
-          scales:{x:{title:{display:true,text:'Time'}},y:{title:{display:true,text:'Price'}}}
+      const embeds = [listEmbed];
+      // ► 차트 Embed (코인 옵션이 있을 때만)
+      const coinName = interaction.options.getString('코인');
+      if (coinName) {
+        if (!coins[coinName]) {
+          return interaction.editReply(`❌ '${coinName}' 코인을 찾을 수 없습니다.`);
         }
-      }`;
-      const chartUrl = `https://quickchart.io/chart?version=3.6.0&c=${encodeURIComponent(config)}`;
-      const chartEmbed = new EmbedBuilder()
-        .setTitle(`📊 ${coin} 코인차트`)
-        .setImage(chartUrl)
-        .setColor('#FF9900')
-        .setTimestamp();
+        const prices = coins[coinName].history;
+        const labels = prices.map((_, i) => i + 1);
+        const chartConfig = {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: coinName,
+              data: prices,
+              fill: false,
+              segment: {
+                borderColor: ctx => ctx.p1.parsed.y > ctx.p0.parsed.y ? 'red' : 'blue'
+              }
+            }]
+          },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { title: { display: true, text: 'Time' } },
+              y: { title: { display: true, text: 'Price (BE)' } }
+            }
+          }
+        };
+        const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+        const chartEmbed = new EmbedBuilder()
+          .setTitle(`📊 ${coinName} 코인차트`)
+          .setImage(chartUrl)
+          .setColor('#FF9900')
+          .setTimestamp();
+        embeds.push(chartEmbed);
+      }
 
-      return interaction.editReply({ embeds: [listEmbed, chartEmbed] });
+      return interaction.editReply({ embeds });
     }
 
+    // 매수
     if (sub === '매수') {
-      const coin = interaction.options.getString('코인');
+      const coin   = interaction.options.getString('코인');
       const amount = interaction.options.getNumber('수량');
       if (!coins[coin]) return interaction.editReply(`❌ '${coin}' 코인을 찾을 수 없습니다.`);
       const cost = coins[coin].price * amount;
-      const bal = getBE(interaction.user.id);
-      if (bal < cost) return interaction.editReply(`❌ BE 잔액이 부족합니다. 필요한 BE: ${cost.toLocaleString()}, 보유 BE: ${bal.toLocaleString()}`);
-      await addBE(interaction.user.id, -cost, `구매: ${amount} ${coin}`);
+      const bal  = getBE(interaction.user.id);
+      if (bal < cost) {
+        return interaction.editReply(`❌ BE 잔액 부족: 필요 ${cost.toLocaleString()} BE, 보유 ${bal.toLocaleString()} BE`);
+      }
+      await addBE(interaction.user.id, -cost, `매수: ${amount} ${coin}`);
       wallets[interaction.user.id] = wallets[interaction.user.id] || {};
       wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
       await saveJson(walletsPath, wallets);
-      return interaction.editReply(`✅ ${coin} ${amount}개 매수 완료! 지불 BE: ${cost.toLocaleString()}`);
+      return interaction.editReply(`✅ ${coin} ${amount}개 매수 완료! 지불 ${cost.toLocaleString()} BE`);
     }
 
+    // 매도
     if (sub === '매도') {
-      const coin = interaction.options.getString('코인');
+      const coin   = interaction.options.getString('코인');
       const amount = interaction.options.getNumber('수량');
       if (!coins[coin]) return interaction.editReply(`❌ '${coin}' 코인을 찾을 수 없습니다.`);
-      const holding = wallets[interaction.user.id]?.[coin] || 0;
-      if (holding < amount) return interaction.editReply(`❌ 보유 수량이 부족합니다. 보유: ${holding}`);
-      const sellGross = coins[coin].price * amount;
-      const feePercent = loadConfig().fee || 0;
-      const fee = Math.floor(sellGross * feePercent / 100);
-      const net = sellGross - fee;
-      await addBE(interaction.user.id, net, `판매: ${amount} ${coin}`);
+      const have = wallets[interaction.user.id]?.[coin] || 0;
+      if (have < amount) return interaction.editReply(`❌ 보유 수량 부족: 보유 ${have}개`);
+      const gross = coins[coin].price * amount;
+      const fee   = Math.floor(gross * (loadConfig().fee || 0) / 100);
+      const net   = gross - fee;
+      await addBE(interaction.user.id, net, `매도: ${amount} ${coin}`);
       wallets[interaction.user.id][coin] -= amount;
       if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
       await saveJson(walletsPath, wallets);
-      return interaction.editReply(`✅ ${coin} ${amount}개 매도 완료! 수령 BE: ${net.toLocaleString()} (수수료 ${fee} BE)`);
+      return interaction.editReply(`✅ ${coin} ${amount}개 매도 완료! 수령 ${net.toLocaleString()} BE (수수료 ${fee} BE)`);
     }
 
+    // 내코인
     if (sub === '내코인') {
       const userWallet = wallets[interaction.user.id] || {};
       const embed = new EmbedBuilder()
         .setTitle('💼 내코인 포트폴리오')
         .setColor('#00CC99')
         .setTimestamp();
-      let totalVal = 0;
-      for (const [coin, qty] of Object.entries(userWallet)) {
-        const price = coins[coin]?.price || 0;
-        const value = price * qty;
-        totalVal += value;
-        embed.addFields({ name: coin, value: `수량: ${qty}, 평가액: ${value.toLocaleString()} BE`, inline: false });
+      let total = 0;
+      if (!Object.keys(userWallet).length) {
+        embed.setDescription('보유한 코인이 없습니다.');
+      } else {
+        for (const [c, qty] of Object.entries(userWallet)) {
+          const val = (coins[c]?.price || 0) * qty;
+          total += val;
+          embed.addFields({
+            name: c,
+            value: `수량: ${qty}개\n평가액: ${val.toLocaleString()} BE`,
+            inline: false
+          });
+        }
+        embed.addFields({
+          name: '총 평가액',
+          value: `${total.toLocaleString()} BE`,
+          inline: false
+        });
       }
-      embed.addFields({ name: '총 평가액', value: `${totalVal.toLocaleString()} BE`, inline: false });
       return interaction.editReply({ embeds: [embed] });
     }
   }
