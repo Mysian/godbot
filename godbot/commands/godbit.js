@@ -19,6 +19,7 @@ const coinsPath   = path.join(__dirname, '../data/coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const MAX_COINS   = 10;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
+const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟦'];
 
 // 자동 1분마다 가격만 업데이트
 async function updatePricesOnly() {
@@ -58,9 +59,9 @@ async function ensureBaseCoin(coins) {
   }
 }
 
-// Market simulation with correlation + listing/delisting
+// Market simulation with correlation + listing/delisting + enforce exact MAX_COINS alive
 async function simulateMarket(interaction, coins) {
-  // base coin
+  // base coin first
   const base = coins['까리코인'];
   const deltaBase = (Math.random() * 0.2) - 0.1;
   const newBase = Math.max(1, Math.floor(base.price * (1 + deltaBase)));
@@ -77,7 +78,7 @@ async function simulateMarket(interaction, coins) {
     info.history.push(p);
   }
 
-  // listing/delisting
+  // random listing (5%)
   if (Math.random() < 0.05) {
     const mems = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
     if (mems.size) {
@@ -92,18 +93,35 @@ async function simulateMarket(interaction, coins) {
       }
     }
   }
+  // random delisting (2%)
   if (Math.random() < 0.02) {
-    const others = Object.keys(coins).filter(n => n !== '까리코인');
+    const others = Object.keys(coins).filter(n => n !== '까리코인' && !coins[n].delistedAt);
     if (others.length) {
       const del = others[Math.floor(Math.random() * others.length)];
       coins[del].delistedAt = new Date().toISOString();
     }
   }
-  // enforce max
-  while (Object.keys(coins).length > MAX_COINS) {
-    const others = Object.keys(coins).filter(n => n !== '까리코인');
-    if (!others.length) break;
-    delete coins[others[Math.floor(Math.random() * others.length)]];
+
+  // enforce at most MAX_COINS alive
+  let alive = Object.keys(coins).filter(n => !coins[n].delistedAt);
+  while (alive.length > MAX_COINS) {
+    const rem = alive[Math.floor(Math.random() * alive.length)];
+    coins[rem].delistedAt = new Date().toISOString();
+    alive = alive.filter(n => n !== rem);
+  }
+  // enforce at least MAX_COINS alive
+  const members = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
+  while (alive.length < MAX_COINS && members.size > 0) {
+    const pick = Array.from(members.values())[Math.floor(Math.random() * members.size)];
+    const name = `${pick.displayName}코인`;
+    if (!coins[name]) {
+      coins[name] = {
+        price: Math.floor(Math.random() * 900) + 100,
+        history: [coins['까리코인'].price],
+        listedAt: new Date().toISOString()
+      };
+      alive.push(name);
+    }
   }
 }
 
@@ -122,46 +140,53 @@ module.exports = {
     const wallets = await loadJson(walletsPath, {});
     await ensureBaseCoin(coins);
 
-    // 메인 렌더 함수
+    // render market view
     async function renderMain() {
       await simulateMarket(interaction, coins);
       await saveJson(coinsPath, coins);
 
       const userBE = getBE(interaction.user.id);
-      // 변동 정보
+
+      // only alive coins (no delistedAt)
+      const aliveEntries = Object.entries(coins).filter(([n,info]) => !info.delistedAt);
+
+      // prepare change data
       const change = {};
-      for (const [n, info] of Object.entries(coins)) {
+      aliveEntries.forEach(([n, info]) => {
         const h = info.history;
         const last = h[h.length - 1], prev = h[h.length - 2] || last;
         const diff = last - prev;
         const pct  = prev ? (diff / prev * 100) : 0;
         change[n] = { price: last, diff, pct };
-      }
+      });
 
-      // 목록 Embed
+      // list embed with color emojis
       const listEmbed = new EmbedBuilder()
         .setTitle('📈 갓비트 시장 현황')
         .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE`)
         .setColor('#FFFFFF')
         .setTimestamp();
-      for (const [n, { price, diff, pct }] of Object.entries(change)) {
+
+      aliveEntries.forEach(([n, info], i) => {
+        const { price, diff, pct } = change[n];
         const arrow = diff >= 0 ? '🔺' : '🔽';
         const maxBuy = Math.floor(userBE / price);
+        const emoji = EMOJIS[i % EMOJIS.length];
         listEmbed.addFields({
-          name: `**${n}**`,
+          name: `${emoji} ${n}`,
           value: [
-            `${price.toLocaleString()} BE ${arrow}${Math.abs(diff).toLocaleString()} (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`,
+            `${price.toLocaleString()} BE ${arrow}${Math.abs(diff).toLocaleString()} (${diff>=0?'+':''}${pct.toFixed(2)}%)`,
             `🛒 최대 매수: ${maxBuy}개`
           ].join('\n'),
           inline: true
         });
-      }
+      });
 
-      // 차트 Embed
-      const histories = Object.values(coins).map(c => c.history);
+      // chart embed
+      const histories = aliveEntries.map(([,info]) => info.history);
       const maxLen = Math.max(...histories.map(h => h.length));
-      const labels = Array.from({ length: maxLen }, (_, i) => i + 1);
-      const datasets = Object.entries(coins).map(([n, info], i) => ({
+      const labels = Array.from({length:maxLen},(_,i)=>i+1);
+      const datasets = aliveEntries.map(([n, info], i) => ({
         label: n,
         data: Array(maxLen - info.history.length).fill(null).concat(info.history),
         borderColor: COLORS[i % COLORS.length],
@@ -185,7 +210,7 @@ module.exports = {
         .setColor('#FFFFFF')
         .setTimestamp();
 
-      // 버튼 행
+      // buttons
       const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('godbit_buy').setLabel('매수').setEmoji('💰').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('godbit_sell').setLabel('매도').setEmoji('💸').setStyle(ButtonStyle.Danger),
@@ -200,8 +225,8 @@ module.exports = {
     }
 
     await renderMain();
-
     const msg = await interaction.fetchReply();
+
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: 120_000,
