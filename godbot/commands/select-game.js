@@ -195,8 +195,8 @@ const pageList = lines.join(",\n");
         );
 
       const nav = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle("Secondary").setDisabled(page===0).setEmoji("⬅️"),
-        new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle("Primary").setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
+        new ButtonBuilder().setCustomId("prev").setLabel("이전 게임").setStyle("Secondary").setDisabled(page===0).setEmoji("⬅️"),
+        new ButtonBuilder().setCustomId("next").setLabel("다음 게임").setStyle("Primary").setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
         new ButtonBuilder().setCustomId("info").setLabel("설명").setStyle("Success").setEmoji("ℹ️")
       );
 
@@ -242,19 +242,19 @@ const pageList = lines.join(",\n");
           member = await interaction.guild.members.fetch(interaction.user.id);
           await render(i);
         }catch(e){
-          await i.reply({content:"❌ 역할 변경 중 오류가 발생했어 (관리자에게 문의)",ephemeral:true});
+          await i.reply({content:"❌ 역할 변경 중 오류가 발생했어요 (관리자에게 문의)",ephemeral:true});
         }
       }else if(i.isButton()){
         if(i.customId==="prev"&&page>0){ page--; await render(i); }
         else if(i.customId==="next"&&page<PAGES.length-1){ page++; await render(i); }
         else if(i.customId==="info"){
           const infoEmbed = new EmbedBuilder()
-            .setTitle("📌 게임 태그 사용 안내")
+            .setTitle("📌 게임 태그 안내")
             .setColor(0x2ecc71)
             .setDescription([
-              "• 목록은 **서버 인기 순**으로 정렬돼 있어.",
-              "• **게임 태그는 최소 1개** 이상 유지해야 해.",
-              "• 파티원을 모으려면 자유롭게 **@게임태그 멘션** 쓰면 돼 🎮"
+              "• 게임 목록은 **서버 인기 순** 정렬입니다.",
+              "• **게임 태그는 최소 1개** 이상 장착해주세요.",
+              "• 자유롭게 **@게임태그 멘션**을 활용하여 소통하세요! 🎮"
             ].join("\n"));
           await i.reply({embeds:[infoEmbed],ephemeral:true});
         }
@@ -264,7 +264,7 @@ const pageList = lines.join(",\n");
     collector.on("end",async()=>{
       member = await interaction.guild.members.fetch(interaction.user.id);
       if(member.roles.cache.filter(r=>ALL_GAMES.includes(r.name)).size===0){
-        try{ await interaction.editReply({content:"❌ 최소 1개 이상의 게임 태그를 선택해야 해. 1개는 상시 유지!",components:[]}); }catch{}
+        try{ await interaction.editReply({content:"❌ 최소 1개 이상의 게임 태그를 선택하세요. 1개는 상시 유지!",components:[]}); }catch{}
       }else{
         try{ await interaction.editReply({components:[]}); }catch{}
       }
