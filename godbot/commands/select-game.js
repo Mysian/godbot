@@ -1,10 +1,9 @@
 const { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBuilder, EmbedBuilder, ComponentType } = require("discord.js");
 
 // 롤, 스팀게임, 나머지
-const PAGE_SIZE        = 25;
+const PAGE_SIZE        = 20;
 const LOL              = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
 const STEAM_GAMES      = ["스팀게임"];
-const MAIN_IMAGE_URL   = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?format=webp&quality=lossless";
 const FOOTER_ICON_URL  = "https://media.discordapp.net/attachments/1388728993787940914/1389194104424108223/2D.png?format=webp&quality=lossless";
 const ALL_GAMES = [
   "소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드", // 롤
@@ -147,19 +146,27 @@ module.exports = {
       .filter(Boolean);
 
     async function render(u=null){
-      const chosen = member.roles.cache.filter(r=>ALL_GAMES.includes(r.name));
-      const desc = chosen.size
-        ? chosen.map(r=>`${GAME_EMOJIS[r.name]||""} **${r.name}**`).join(", ")
-        : "서버 내에서 교류를 원하시는 게임을 선택하세요. │ 복수 선택 가능";
-
-      const embed = new EmbedBuilder()
-        .setTitle("🏷️ 설정하신 게임 리스트")
-        .setDescription(desc)
-        .setColor(0x2095ff)
-        .setImage(MAIN_IMAGE_URL)
-        .setFooter({text:"게임 태그는 최소 1개 이상 유지해야 합니다.",iconURL:FOOTER_ICON_URL});
+      const chosenRoles = member.roles.cache.filter(r=>ALL_GAMES.includes(r.name));
+      const chosenText = chosenRoles.size
+        ? chosenRoles.map(r=>`${GAME_EMOJIS[r.name]||""} **${r.name}**`).join(", ")
+        : "아직 등록된 태그가 없습니다.";
 
       const rolesThisPage = getRoles(PAGES[page]);
+      const pageList = rolesThisPage.map(r=>{
+        const mark = member.roles.cache.has(r.id) ? "✅" : "⬜";
+        const emoji = GAME_EMOJIS[r.name] || "";
+        return `${mark} ${emoji} ${r.name}`;
+      }).join("  ");
+
+      const embed = new EmbedBuilder()
+        .setTitle("🎮 게임 태그 설정")
+        .setColor(0x2095ff)
+        .setFooter({text:"게임 태그는 최소 1개 이상 유지해야 합니다.",iconURL:FOOTER_ICON_URL})
+        .addFields(
+          { name:"📌 등록된 게임 태그",        value: chosenText },
+          { name:`🗂️ 현재 목록에 있는 게임 목록 (페이지 ${page+1}/${PAGES.length})`, value: pageList || "표시할 게임이 없습니다." }
+        ); // 이미지 제거됨
+
       const select = new StringSelectMenuBuilder()
         .setCustomId("select")
         .setPlaceholder("여기를 눌러 게임 태그를 설정하세요!")
@@ -176,10 +183,10 @@ module.exports = {
 
       const nav = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId("prev").setLabel("이전 게임 목록").setStyle("Secondary")
+          .setCustomId("prev").setLabel("이전").setStyle("Secondary")
           .setDisabled(page===0).setEmoji("⬅️"),
         new ButtonBuilder()
-          .setCustomId("next").setLabel("다음 게임 목록").setStyle("Primary")
+          .setCustomId("next").setLabel("다음").setStyle("Primary")
           .setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
         new ButtonBuilder()
           .setCustomId("info").setLabel("설명").setStyle("Success")
@@ -228,7 +235,7 @@ module.exports = {
           member = await interaction.guild.members.fetch(interaction.user.id);
           await render(i);
         }catch(e){
-          await i.reply({content:"❌ 역할 변경 중 오류가 발생했어요 (관리자에게 문의)",ephemeral:true});
+          await i.reply({content:"❌ 역할 변경 중 오류가 발생했어 (관리자에게 문의)",ephemeral:true});
         }
       }else if(i.isButton()){
         if(i.customId==="prev"&&page>0){
@@ -242,9 +249,9 @@ module.exports = {
             .setTitle("📌 게임 태그 사용 안내")
             .setColor(0x2ecc71)
             .setDescription([
-              "• 현재 목록은 **서버에서 인기 높은 순**으로 정렬되어 있어요!",
-              "• **게임 태그는 최소 1개** 이상 항상 유지해주세요.",
-              "• 파티원을 모으고 싶을 땐 **자유롭게 @게임태그를 맨션**해 주세요! 함께 게임할 사람을 찾기 쉬워요 🎮"
+              "• 현재 목록은 **서버에서 인기 순**으로 정렬돼 있어!",
+              "• **게임 태그는 최소 1개** 이상 항상 유지해야 해.",
+              "• 파티원을 모으려면 자유롭게 **@게임태그 멘션** 쓰면 돼 🎮"
             ].join("\n"));
           await i.reply({embeds:[infoEmbed],ephemeral:true});
         }
@@ -254,7 +261,7 @@ module.exports = {
     collector.on("end",async()=>{
       member = await interaction.guild.members.fetch(interaction.user.id);
       if(member.roles.cache.filter(r=>ALL_GAMES.includes(r.name)).size===0){
-        try{ await interaction.editReply({content:"❌ 최소 1개 이상의 게임 태그를 선택해야 합니다. 1개는 상시 유지!",components:[]}); }catch{}
+        try{ await interaction.editReply({content:"❌ 최소 1개 이상의 게임 태그를 선택해야 해. 1개는 상시 유지!",components:[]}); }catch{}
       }else{
         try{ await interaction.editReply({components:[]}); }catch{}
       }
