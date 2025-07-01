@@ -127,6 +127,7 @@ async function autoMarketUpdate(members) {
   let corrQueue = [];
 
   for (const [name, info] of Object.entries(coins)) {
+    if (name.startsWith('_')) continue;
     if (name === '까리코인' || info.delistedAt) continue;
 
     let minVar = -0.1, maxVar = 0.1;
