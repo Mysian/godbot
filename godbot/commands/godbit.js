@@ -121,30 +121,50 @@ async function periodicMarket() {
     }
   }
 
-  // ⭐️ 자동 신규상장 (20개 미만일 때)
-  const aliveCoins = Object.entries(coins)
-    .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
-  if (aliveCoins.length < MAX_AUTO_COINS) {
-    // 이름 중복 없는 랜덤 신규 코인명 (신규코인N)
-    let n = 1, newName;
-    do {
-      newName = `신규코인${n++}`;
-    } while (coins[newName]);
-    const now = new Date().toISOString();
-    // volatility 글로벌 옵션 반영
-    const vopt = coins._volatilityGlobal || null;
-    let info = {
-      price: Math.floor(800 + Math.random()*700),
-      history: [],
-      historyT: [],
-      listedAt: now,
-      delistedAt: null
-    };
-    if (vopt) info.volatility = vopt;
-    info.history.push(info.price);
-    info.historyT.push(now);
-    coins[newName] = info;
+  // 자동 신규상장 (20개 미만일 때)
+const aliveCoins = Object.entries(coins)
+  .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
+if (aliveCoins.length < MAX_AUTO_COINS) {
+  // ⭐️ 길이 2글자인 멤버 닉네임 수집 (봇/중복/코인명 제외)
+  let guild;
+  try { guild = interaction && interaction.guild ? interaction.guild : null; } catch {}
+  let nameList = [];
+  if (guild) {
+    // 캐시 우선, 없으면 fetch
+    let members;
+    try { members = guild.members.cache.map(m => m).filter(m => !m.user.bot); }
+    catch { members = []; }
+    // 2글자 닉네임만 추출(중복제거)
+    nameList = Array.from(new Set(
+      members
+        .map(m => m.nickname || m.user.username)
+        .filter(nick => nick && nick.length === 2)
+        .filter(nick => !coins[nick + '코인'])
+    ));
   }
+  // 닉네임이 하나도 없으면 fallback
+  let newName;
+  if (nameList.length) {
+    // 랜덤
+    newName = nameList[Math.floor(Math.random()*nameList.length)] + '코인';
+  } else {
+    let n = 1;
+    do { newName = `신규코인${n++}`; } while (coins[newName]);
+  }
+  const now = new Date().toISOString();
+  const vopt = coins._volatilityGlobal || null;
+  let info = {
+    price: Math.floor(800 + Math.random()*700),
+    history: [],
+    historyT: [],
+    listedAt: now,
+    delistedAt: null
+  };
+  if (vopt) info.volatility = vopt;
+  info.history.push(info.price);
+  info.historyT.push(now);
+  coins[newName] = info;
+}
 
   await saveJson(coinsPath, coins);
 }
