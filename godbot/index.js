@@ -53,8 +53,6 @@ for (const file of commandFiles) {
   }
 }
 
-const { ALL_GAMES } = require("./commands/select-game.js");
-
 // ✅ 이벤트 핸들링
 const eventsPath = path.join(__dirname, "events");
 if (fs.existsSync(eventsPath)) {
