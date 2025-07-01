@@ -330,3 +330,5 @@ const pageList = lines.join(",\n");
     });
   },
 };
+
+module.exports.ALL_GAMES = ALL_GAMES;
