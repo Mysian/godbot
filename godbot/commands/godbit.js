@@ -260,15 +260,22 @@ module.exports = {
       let page = 0;
 
       async function renderHistoryPage(pageIdx = 0) {
-        const start = pageIdx * HISTORY_PAGE;
-        const end = start + HISTORY_PAGE;
-        const list = h.slice(start, end);
-        const timeList = ht.slice(start, end);
-        const lines = list.map((p, idx) =>
-          p == null
-            ? `${start+idx+1}. (데이터없음)`
-            : `${start+idx+1}. ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`
-        );
+  const start = pageIdx * HISTORY_PAGE;
+  const end = start + HISTORY_PAGE;
+  const list = h.slice(start, end);
+  const timeList = ht.slice(start, end);
+
+  const lines = list.map((p, idx) => {
+    if (p == null) return `${start+idx+1}. (데이터없음)`;
+    const prev = list[idx+1] ?? null;
+    let diff = 0;
+    if (prev != null) diff = p - prev;
+    let emoji = '⏸️';
+    if (diff > 0) emoji = '🔺';
+    else if (diff < 0) emoji = '🔻';
+    return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`;
+  });
+        
         const embed = new EmbedBuilder()
           .setTitle(`🕘 ${coin} 가격 이력 (페이지 ${pageIdx+1}/${totalPages})`)
           .setDescription(lines.length ? lines.join('\n') : '데이터 없음')
