@@ -21,6 +21,85 @@ const PAGE_SIZE   = 5;     // 한 페이지에 코인 5개
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
+module.exports = {
+  // ...data, execute 등 기존 내용 그대로...
+  async modal(interaction) {
+    // 모달 종류에 따라 분기
+    if (interaction.customId === 'buy_modal' || interaction.customId === 'sell_modal') {
+      // buy/sell과 완전 동일하게 처리
+      const isBuy = interaction.customId === 'buy_modal';
+      // coins, wallets, 기타 필요한 함수들 import한 것 그대로 사용
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
+      await ensureBaseCoin(coins);
+
+      await simulateMarket(interaction, coins);
+      await saveJson(coinsPath, coins);
+
+      const coin = interaction.fields.getTextInputValue('coin');
+      const amount = Number(interaction.fields.getTextInputValue('amount'));
+      if (!coins[coin] || coins[coin].delistedAt) return interaction.reply({ content: `❌ 상장 중인 코인만 거래 가능: ${coin}`, ephemeral: true });
+      if (!Number.isFinite(amount) || amount <= 0) return interaction.reply({ content: `❌ 올바른 수량을 입력하세요.`, ephemeral: true });
+
+      if (isBuy) {
+        const price = coins[coin].price;
+        const total = price * amount;
+        const fee = Math.floor(total * 0.3);
+        const needBE = total + fee;
+        const bal = getBE(interaction.user.id);
+        if (bal < needBE) return interaction.reply({ content: `❌ BE 부족: 필요 ${needBE}`, ephemeral: true });
+        wallets[interaction.user.id] = wallets[interaction.user.id] || {};
+        wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
+        await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
+        await saveJson(walletsPath, wallets);
+        return interaction.reply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)`, ephemeral: true });
+      } else {
+        const have = wallets[interaction.user.id]?.[coin] || 0;
+        if (have < amount) return interaction.reply({ content: `❌ 보유 부족: ${have}`, ephemeral: true });
+        const gross = coins[coin].price * amount;
+        const fee = Math.floor(gross * (loadConfig().fee || 0) / 100);
+        const net = gross - fee;
+        wallets[interaction.user.id][coin] -= amount;
+        if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
+        await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
+        await saveJson(walletsPath, wallets);
+        return interaction.reply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)`, ephemeral: true });
+      }
+    }
+
+    if (interaction.customId === 'history_modal') {
+      const coins = await loadJson(coinsPath, {});
+      await ensureBaseCoin(coins);
+      await simulateMarket(interaction, coins);
+      await saveJson(coinsPath, coins);
+
+      const coin = interaction.fields.getTextInputValue('coin');
+      const cnt = Math.min(100, Math.max(1, parseInt(interaction.fields.getTextInputValue('count')) || 20));
+      if (!coins[coin]) return interaction.reply({ content: `❌ 코인 없음: ${coin}`, ephemeral: true });
+
+      const info = coins[coin];
+      const h = info.history.slice(-cnt);
+      const lines = h.map((p, idx) => {
+        const arrow = p >= (h[idx-1] ?? p) ? '🔺' : '🔽';
+        return `${idx+1}: ${arrow}${p}`;
+      });
+      const e = new EmbedBuilder()
+        .setTitle(`🕘 ${coin} 최근 ${cnt}개 이력`)
+        .setDescription(lines.join('\n'))
+        .addFields(
+          { name: '상장일', value: info.listedAt ? new Date(info.listedAt).toLocaleString() : '-', inline: true },
+          { name: '폐지일', value: info.delistedAt ? new Date(info.delistedAt).toLocaleString() : '-', inline: true }
+        )
+        .setColor('#3498DB')
+        .setTimestamp();
+      return interaction.reply({ embeds: [e], ephemeral: true });
+    }
+  },
+
+  // ...data, execute 등 기존 내용 그대로...
+};
+
+
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
   const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
@@ -212,7 +291,7 @@ module.exports = {
           type: 'line',
           data: { labels, datasets },
           options: {
-            plugins: { legend: { position: 'bottom', labels: { color: 'black' } } },
+            plugins: { legend: { display: false } },
             scales: {
               x: { title: { display: true, text: '시간(스텝)' } },
               y: { title: { display: true, text: '가격 (BE)' } }
