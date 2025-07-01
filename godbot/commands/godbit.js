@@ -5,70 +5,53 @@ const path = require('path');
 const lockfile = require('proper-lockfile');
 const { addBE, getBE, loadConfig } = require('./be-util.js');
 
-// Data file paths
-const coinsPath    = path.join(__dirname, '../data/coins.json');
-const walletsPath  = path.join(__dirname, '../data/godbit-wallets.json');
-const MAX_COINS    = 10;
+const coinsPath   = path.join(__dirname, '../data/coins.json');
+const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
+const MAX_COINS   = 10;
+const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 
-// Load or initialize JSON data with lock
-async function loadJson(filePath, defaultData) {
-  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
-  let release;
-  try {
-    release = await lockfile.lock(filePath, { retries: 5, minTimeout: 50 });
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } finally {
-    if (release) await release();
-  }
+// 안전하게 JSON 로드/저장
+async function loadJson(file, def) {
+  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
+  const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  await release();
+  return data;
 }
-async function saveJson(filePath, data) {
-  let release;
-  try {
-    release = await lockfile.lock(filePath, { retries: 5, minTimeout: 50 });
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-  } finally {
-    if (release) await release();
-  }
+async function saveJson(file, data) {
+  const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  await release();
 }
 
-// Ensure base coin exists
+// 기본 코인 보장
 async function ensureBaseCoin(coins) {
-  if (!coins['까리코인']) {
-    coins['까리코인'] = { price: 1000, history: [1000] };
-  }
+  if (!coins['까리코인']) coins['까리코인'] = { price: 1000, history: [1000] };
 }
 
-// Simulate market: 가격 변동, 상장, 폐지, 최대 개수 유지
+// 시장 시뮬레이션
 async function simulateMarket(interaction, coins) {
-  // 1) 가격 변동 ±10%
   for (const info of Object.values(coins)) {
     const delta = (Math.random() * 0.2) - 0.1;
-    const newPrice = Math.max(1, Math.floor(info.price * (1 + delta)));
-    info.price = newPrice;
-    info.history.push(newPrice);
+    const newP = Math.max(1, Math.floor(info.price * (1 + delta)));
+    info.price = newP;
+    info.history.push(newP);
   }
-  // 2) 랜덤 상장 (5% 확률)
   if (Math.random() < 0.05) {
-    const members = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
-    if (members.size > 0) {
-      const pick = Array.from(members.values())[Math.floor(Math.random() * members.size)];
-      const coinName = `${pick.displayName}코인`;
-      if (!coins[coinName]) {
-        coins[coinName] = { price: Math.floor(Math.random() * 900) + 100, history: [coins['까리코인'].price] };
-      }
+    const mems = interaction.guild.members.cache.filter(m => /^[가-힣]{2}$/.test(m.displayName));
+    if (mems.size) {
+      const pick = Array.from(mems.values())[Math.floor(Math.random() * mems.size)];
+      const name = `${pick.displayName}코인`;
+      if (!coins[name]) coins[name] = { price: Math.floor(Math.random() * 900) + 100, history: [coins['까리코인'].price] };
     }
   }
-  // 3) 랜덤 폐지 (2% 확률)
   if (Math.random() < 0.02) {
     const others = Object.keys(coins).filter(n => n !== '까리코인');
-    if (others.length > 0) {
-      delete coins[others[Math.floor(Math.random() * others.length)]];
-    }
+    if (others.length) delete coins[others[Math.floor(Math.random() * others.length)]];
   }
-  // 4) 최대 코인 개수 유지
   while (Object.keys(coins).length > MAX_COINS) {
     const others = Object.keys(coins).filter(n => n !== '까리코인');
-    if (others.length === 0) break;
+    if (!others.length) break;
     delete coins[others[Math.floor(Math.random() * others.length)]];
   }
 }
@@ -78,34 +61,24 @@ module.exports = {
     .setName('갓비트')
     .setDescription('가상 코인 거래 시스템')
     .addSubcommand(sub =>
-      sub
-        .setName('코인차트')
-        .setDescription('코인 목록과 (원하면) 특정 코인 차트를 동시에 표시')
-        .addStringOption(opt =>
-          opt
-            .setName('코인')
-            .setDescription('차트로 보고 싶은 코인 이름 (선택)')
-            .setRequired(false)
-        )
+      sub.setName('코인차트')
+         .setDescription('모든 코인 현황 + 통합 차트 표시')
     )
     .addSubcommand(sub =>
-      sub
-        .setName('매수')
-        .setDescription('코인 매수')
-        .addStringOption(opt => opt.setName('코인').setDescription('코인 이름').setRequired(true))
-        .addNumberOption(opt => opt.setName('수량').setDescription('구매 수량').setRequired(true))
+      sub.setName('매수')
+         .setDescription('코인 매수')
+         .addStringOption(o => o.setName('코인').setDescription('코인 이름').setRequired(true))
+         .addNumberOption(o => o.setName('수량').setDescription('수량').setRequired(true))
     )
     .addSubcommand(sub =>
-      sub
-        .setName('매도')
-        .setDescription('코인 매도')
-        .addStringOption(opt => opt.setName('코인').setDescription('코인 이름').setRequired(true))
-        .addNumberOption(opt => opt.setName('수량').setDescription('판매 수량').setRequired(true))
+      sub.setName('매도')
+         .setDescription('코인 매도')
+         .addStringOption(o => o.setName('코인').setDescription('코인 이름').setRequired(true))
+         .addNumberOption(o => o.setName('수량').setDescription('수량').setRequired(true))
     )
     .addSubcommand(sub =>
-      sub
-        .setName('내코인')
-        .setDescription('내 코인 보유 현황 확인')
+      sub.setName('내코인')
+         .setDescription('내 보유 코인 현황')
     ),
 
   async execute(interaction) {
@@ -115,62 +88,66 @@ module.exports = {
     await ensureBaseCoin(coins);
 
     const sub = interaction.options.getSubcommand();
-    // 통합: 코인차트
     if (sub === '코인차트') {
       await simulateMarket(interaction, coins);
       await saveJson(coinsPath, coins);
 
-      // ► 목록 Embed
-      const listEmbed = new EmbedBuilder()
-        .setTitle('📈 갓비트 코인 목록')
-        .setDescription(
-          Object.entries(coins)
-            .map(([name, info]) => `• **${name}**: ${info.price.toLocaleString()} BE`)
-            .join('\n')
-        )
-        .setColor('#0099FF')
-        .setTimestamp();
-
-      const embeds = [listEmbed];
-      // ► 차트 Embed (코인 옵션이 있을 때만)
-      const coinName = interaction.options.getString('코인');
-      if (coinName) {
-        if (!coins[coinName]) {
-          return interaction.editReply(`❌ '${coinName}' 코인을 찾을 수 없습니다.`);
-        }
-        const prices = coins[coinName].history;
-        const labels = prices.map((_, i) => i + 1);
-        const chartConfig = {
-          type: 'line',
-          data: {
-            labels,
-            datasets: [{
-              label: coinName,
-              data: prices,
-              fill: false,
-              segment: {
-                borderColor: ctx => ctx.p1.parsed.y > ctx.p0.parsed.y ? 'red' : 'blue'
-              }
-            }]
-          },
-          options: {
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { title: { display: true, text: 'Time' } },
-              y: { title: { display: true, text: 'Price (BE)' } }
-            }
-          }
-        };
-        const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
-        const chartEmbed = new EmbedBuilder()
-          .setTitle(`📊 ${coinName} 코인차트`)
-          .setImage(chartUrl)
-          .setColor('#FF9900')
-          .setTimestamp();
-        embeds.push(chartEmbed);
+      // 변경 정보 수집
+      const changeInfo = {};
+      for (const [name, info] of Object.entries(coins)) {
+        const h = info.history;
+        const last = h[h.length - 1], prev = h[h.length - 2] || last;
+        const diff = last - prev;
+        const pct  = prev ? (diff / prev * 100) : 0;
+        changeInfo[name] = { price: last, diff, pct };
       }
 
-      return interaction.editReply({ embeds });
+      // 목록 Embed
+      const listEmbed = new EmbedBuilder()
+        .setTitle('📈 갓비트 코인 현황')
+        .setColor('#0099FF')
+        .setTimestamp();
+      for (const [name, { price, diff, pct }] of Object.entries(changeInfo)) {
+        const arrow = diff >= 0 ? '🔺' : '🔻';
+        listEmbed.addFields({
+          name,
+          value: `${price.toLocaleString()} BE ${arrow}${Math.abs(diff).toLocaleString()} (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`,
+          inline: true
+        });
+      }
+
+      // 통합 차트
+      const histories = Object.values(coins).map(c => c.history);
+      const maxLen = Math.max(...histories.map(h => h.length));
+      const labels = Array.from({ length: maxLen }, (_, i) => i + 1);
+      const datasets = Object.entries(coins).map(([name, info], i) => {
+        const padded = Array(maxLen - info.history.length).fill(null).concat(info.history);
+        return {
+          label: name,
+          data: padded,
+          borderColor: COLORS[i % COLORS.length],
+          fill: false
+        };
+      });
+      const chartConfig = {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            x: { title: { display: true, text: 'Time' } },
+            y: { title: { display: true, text: 'Price (BE)' } }
+          }
+        }
+      };
+      const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+      const chartEmbed = new EmbedBuilder()
+        .setTitle('📊 통합 코인 가격 차트')
+        .setImage(chartUrl)
+        .setColor('#FF9900')
+        .setTimestamp();
+
+      return interaction.editReply({ embeds: [listEmbed, chartEmbed] });
     }
 
     // 매수
