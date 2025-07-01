@@ -109,7 +109,7 @@ function sortByInitial(a,b){
 
 const ETC_GAMES = ALL_GAMES.filter(x=>![...LOL,...STEAM_GAMES].includes(x)).sort(sortByInitial);
 
-// ---- 페이지 분할 (첫 페이지: 롤+스팀+인기순) -----------------------------------
+// ---- 페이지 분할 -------------------------------------------------------------
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("게임태그설정")
@@ -152,11 +152,7 @@ module.exports = {
         : "아직 등록된 태그가 없습니다.";
 
       const rolesThisPage = getRoles(PAGES[page]);
-      const pageList = rolesThisPage.map(r=>{
-        const mark = member.roles.cache.has(r.id) ? "✅" : "⬜";
-        const emoji = GAME_EMOJIS[r.name] || "";
-        return `${mark} ${emoji} ${r.name}`;
-      }).join("  ");
+      const pageList = rolesThisPage.map(r=>r.name).join("  ");
 
       const embed = new EmbedBuilder()
         .setTitle("🎮 게임 태그 설정")
@@ -183,10 +179,10 @@ module.exports = {
 
       const nav = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId("prev").setLabel("이전").setStyle("Secondary")
+          .setCustomId("prev").setLabel("이전 게임").setStyle("Secondary")
           .setDisabled(page===0).setEmoji("⬅️"),
         new ButtonBuilder()
-          .setCustomId("next").setLabel("다음").setStyle("Primary")
+          .setCustomId("next").setLabel("다음 게임").setStyle("Primary")
           .setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
         new ButtonBuilder()
           .setCustomId("info").setLabel("설명").setStyle("Success")
