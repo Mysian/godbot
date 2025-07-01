@@ -16,9 +16,7 @@ const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫
 
 // KST 변환
 function toKSTString(utcOrDate) {
-  const d = new Date(utcOrDate);
-  d.setHours(d.getHours() + 9);
-  return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+  return new Date(utcOrDate).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 }
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
