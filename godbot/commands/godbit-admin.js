@@ -146,44 +146,44 @@ module.exports = {
     }
 
     // --- 시장 완전 초기화 ---
-    if (sub === '초기화') {
-      const newCoins = {
-        '까리코인': {
-          price: 1000,
-          history: [1000],
-          historyT: [new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })],
-          listedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
-        }
-      };
-      await saveJson(coinsPath, newCoins);
-      await saveJson(walletsPath, {});
-      return interaction.reply({ content: '✅ 코인판이 완전히 초기화되었습니다! (까리코인만 남음)', ephemeral: true });
+if (sub === '초기화') {
+  const now = new Date().toISOString();
+  const newCoins = {
+    '까리코인': {
+      price: 1000,
+      history: [1000],
+      historyT: [now],
+      listedAt: now
     }
+  };
+  await saveJson(coinsPath, newCoins);
+  await saveJson(walletsPath, {});
+  return interaction.reply({ content: '✅ 코인판이 완전히 초기화되었습니다! (까리코인만 남음)', ephemeral: true });
+}
 
-    // --- 상장 ---
-    if (sub === '상장') {
-      const coin = interaction.options.getString('코인명');
-      const coins = await loadJson(coinsPath, {});
-      if (coins[coin]) return interaction.reply({ content: `❌ 이미 존재하는 코인: ${coin}`, ephemeral: true });
+// --- 상장 ---
+if (sub === '상장') {
+  const coin = interaction.options.getString('코인명');
+  const coins = await loadJson(coinsPath, {});
+  if (coins[coin]) return interaction.reply({ content: `❌ 이미 존재하는 코인: ${coin}`, ephemeral: true });
 
-      // 글로벌 volatility 옵션 적용
-      let vopt = coins._volatilityGlobal || null;
-      let info = {
-        price: Math.floor(800 + Math.random()*700),
-        history: [],
-        historyT: [],
-        listedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
-        delistedAt: null
-      };
-      if (vopt) info.volatility = vopt;
+  let now = new Date().toISOString();
+  let vopt = coins._volatilityGlobal || null;
+  let info = {
+    price: Math.floor(800 + Math.random()*700),
+    history: [],
+    historyT: [],
+    listedAt: now,
+    delistedAt: null
+  };
+  if (vopt) info.volatility = vopt;
 
-      info.history.push(info.price);
-      info.historyT.push(new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
-      coins[coin] = info;
-      await saveJson(coinsPath, coins);
-      return interaction.reply({ content: `✅ 코인 [${coin}]이 상장되었습니다!`, ephemeral: true });
-    }
-
+  info.history.push(info.price);
+  info.historyT.push(now);
+  coins[coin] = info;
+  await saveJson(coinsPath, coins);
+  return interaction.reply({ content: `✅ 코인 [${coin}]이 상장되었습니다!`, ephemeral: true });
+}
     // --- 상장폐지 ---
     if (sub === '상장폐지') {
       const coin = interaction.options.getString('코인명');
