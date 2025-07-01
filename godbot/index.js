@@ -6,6 +6,7 @@ const { Client, Collection, GatewayIntentBits, Events, ActivityType, StringSelec
 require("dotenv").config();
 const activity = require("./utils/activity-tracker");
 const relationship = require("./utils/relationship.js");
+const { ALL_GAMES } = require("./commands/select-game.js");
 
 const client = new Client({
   intents: [
