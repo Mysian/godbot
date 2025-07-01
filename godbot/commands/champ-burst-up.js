@@ -11,7 +11,7 @@ const { getBE, addBE } = require("./be-util"); // ★ BE 연동
 const dataPath = path.join(__dirname, "../data/champion-users.json");
 const enhanceHistoryPath = path.join(__dirname, "../data/champion-enhance-history.json");
 const GREAT_SOUL_ROLE_ID = "1382665471605870592";
-const ENHANCE_BE_COST = 0; // 연속강화 1회당 BE 소모
+const ENHANCE_BE_COST = 205; // 연속강화 1회당 BE 소모
 function formatNum(n) { return n.toLocaleString("ko-KR"); }
 
 async function loadJSON(p) {
