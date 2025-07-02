@@ -30,16 +30,15 @@ const CHART_FILTERS = [
   { label: "30일", value: "30d", points: 30, interval: 1440*30/30 }, // 30일 (1회/일)
 ];
 
-// ==== 우상향/우하향 코인 키워드 ====
-const UPTREND_KEYWORDS = ["팔복", "반달", "시민", "핑핑", "효철"];
-const DOWNTREND_KEYWORDS = ["영빈", "티나", "동키", "은달", "지녕"];
-
 // ==== 코인 상관관계 쌍 ====
 const CORR_PAIRS = [
   ["까리코인", "영갓코인"],
   ["추경코인", "도롱코인"],
   ["팔복코인", "가또코인"],
   ["애옹코인", "호의코인"],
+  ["수박코인", "호떡코인"],
+  ["오레오렌찌코인", "강수덕코인"],
+  ["마라탕좋아함코인", "후수니코인"],
 ];
 
 // ==== 거래량 기록 (10분마다 리셋) ====
@@ -123,6 +122,9 @@ function recordVolume(coin, amount) {
 // ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
 async function autoMarketUpdate(members) {
   const coins = await loadJson(coinsPath, {});
+  const uptrend = coins._uptrend || [];
+  const downtrend = coins._downtrend || [];
+  
   await ensureBaseCoin(coins);
 
   const base = coins['까리코인'];
@@ -159,13 +161,14 @@ async function autoMarketUpdate(members) {
     }
 
     // 우상향/우하향 가중
-    let trendPower = 0;
-    for (const kw of UPTREND_KEYWORDS) { if (name.includes(kw)) trendPower += 0.05; }
-    for (const kw of DOWNTREND_KEYWORDS) { if (name.includes(kw)) trendPower -= 0.06; }
-    if (trendPower > 0.07) trendPower = 0.12;
-    if (trendPower < -0.08) trendPower = -0.14;
+  let trendPower = 0;
+  if (uptrend.includes(name)) trendPower += 0.02;
+  if (downtrend.includes(name)) trendPower -= 0.025;
+  trendPower *= (0.8 + Math.random() * 0.4);
+  if (trendPower > 0.04) trendPower = 0.04;
+  if (trendPower < -0.05) trendPower = -0.05;
 
-    let delta = (Math.random() * (maxVar-minVar)) + minVar + kImpact + trendPower;
+  let delta = (Math.random() * (maxVar-minVar)) + minVar + kImpact + trendPower;
     delta *= timePower;
     delta *= volumePower;
 
