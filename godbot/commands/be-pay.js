@@ -5,9 +5,11 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수지급')
     .setDescription('파랑 정수(BE)를 지급하거나 차감합니다.')
+    // ⬇️ 필수 옵션 먼저 (유저, 금액)
     .addUserOption(opt => opt.setName('유저').setDescription('대상 유저').setRequired(true))
-    .addRoleOption(opt => opt.setName('역할').setDescription('지급/차감할 역할(선택)').setRequired(false))
     .addIntegerOption(opt => opt.setName('금액').setDescription('지급/차감할 금액').setRequired(true))
+    // ⬇️ 선택 옵션 (역할, 사유)
+    .addRoleOption(opt => opt.setName('역할').setDescription('지급/차감할 역할(선택)').setRequired(false))
     .addStringOption(opt => opt.setName('사유').setDescription('이력에 남길 메시지(선택)').setRequired(false)),
   async execute(interaction) {
     const target = interaction.options.getUser('유저');
