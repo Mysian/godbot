@@ -647,30 +647,74 @@ client.on("messageCreate", async msg => {
 // 상시 클릭 가능 버튼형 공지 모달
 const report = require('./commands/report.js');
 const complaint = require('./commands/complaint.js');
+const punishGuide = require('./commands/punishment-guide.js');
+const warnCheck = require('./commands/warncheck.js');
 const gameTag = require('./commands/select-game.js');
 const serverTag = require('./commands/select-settings.js');
+const serverInfo = require('./commands/serverInfo.js');
+const serverRules = require('./commands/server-rules.js');
+const levelGuide = require('./commands/level-guide.js');
+const help = require('./commands/help.js');
+const profileRegister = require('./commands/profile-register.js');
+const profileEdit = require('./commands/profile-edit.js');
 
+// 버튼 클릭 핸들러 (한 번만 등록!)
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
 
-  // 민원
+  // 1. 신고/민원 세트
   if (interaction.customId === 'complaint_open') {
     await complaint.execute(interaction);
     return;
   }
-  // 신고
   if (interaction.customId === 'report_open') {
     await report.execute(interaction);
     return;
   }
-  // 게임 태그 설정
+  if (interaction.customId === 'punish_guide_open') {
+    await punishGuide.execute(interaction);
+    return;
+  }
+  if (interaction.customId === 'warn_check_open') {
+    await warnCheck.execute(interaction);
+    return;
+  }
+
+  // 2. 태그 세트
   if (interaction.customId === 'game_tag_open') {
     await gameTag.execute(interaction);
     return;
   }
-  // 서버 태그 설정
   if (interaction.customId === 'server_tag_open') {
     await serverTag.execute(interaction);
+    return;
+  }
+
+  // 3. 안내 세트
+  if (interaction.customId === 'serverinfo_open') {
+    await serverInfo.execute(interaction);
+    return;
+  }
+  if (interaction.customId === 'serverrules_open') {
+    await serverRules.execute(interaction);
+    return;
+  }
+  if (interaction.customId === 'levelguide_open') {
+    await levelGuide.execute(interaction);
+    return;
+  }
+  if (interaction.customId === 'help_open') {
+    await help.execute(interaction);
+    return;
+  }
+
+  // 4. 프로필 관리 세트
+  if (interaction.customId === 'profile_register_open') {
+    await profileRegister.execute(interaction);
+    return;
+  }
+  if (interaction.customId === 'profile_edit_open') {
+    await profileEdit.execute(interaction);
     return;
   }
 });
