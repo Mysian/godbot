@@ -110,6 +110,18 @@ module.exports = {
         .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
     )
     .addSubcommand(sub =>
+  sub.setName('떡상')
+    .setDescription('특정 코인을 입력한 금액까지 점진적/자연스럽게 떡상시킴')
+    .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
+    .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
+)
+.addSubcommand(sub =>
+  sub.setName('떡락')
+    .setDescription('특정 코인을 입력한 금액까지 점진적/자연스럽게 떡락시킴')
+    .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
+    .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
+)
+    .addSubcommand(sub =>
       sub.setName('상태')
         .setDescription('갓비트 코인 시스템 전체 현황/세팅 상태를 확인')
     ),
@@ -301,6 +313,55 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `✅ [${coin}]을 우하향 코인에서 제거!`, ephemeral: true });
     }
+    if (sub === '떡상' || sub === '떡락') {
+  const coin = interaction.options.getString('코인명');
+  const target = interaction.options.getInteger('금액');
+  const coins = await loadJson(coinsPath, {});
+  if (!coins[coin]) return interaction.reply({ content: `❌ 해당 코인 없음: ${coin}`, ephemeral: true });
+
+  let now = coins[coin].price;
+  if (sub === '떡상' && target <= now)
+    return interaction.reply({ content: `❌ 현재 가격(${now})보다 높은 금액을 입력해 주세요!`, ephemeral: true });
+  if (sub === '떡락' && target >= now)
+    return interaction.reply({ content: `❌ 현재 가격(${now})보다 낮은 금액을 입력해 주세요!`, ephemeral: true });
+
+  // 점진적/자연스러운 흐름 생성 (진짜 차트처럼 히스토리 생성)
+  let steps = Math.min(20, Math.abs(target - now)); // 최대 20스텝
+  let data = [];
+  for (let i = 1; i <= steps; i++) {
+    let ratio = i / steps;
+    // 곡선 느낌(저항/반등)
+    let wave = 1 + (Math.sin(i / 2) * 0.06 * Math.random());
+    if (sub === '떡상') {
+      let price = Math.round(now + (target - now) * ratio * wave);
+      if (i < steps && price > target) price = target - Math.floor(Math.random() * 3);
+      data.push(price);
+    } else {
+      let price = Math.round(now - (now - target) * ratio * wave);
+      if (i < steps && price < target) price = target + Math.floor(Math.random() * 3);
+      data.push(price);
+    }
+  }
+
+  // 히스토리 및 가격에 반영
+  let tNow = new Date();
+  for (let i = 0; i < data.length; i++) {
+    coins[coin].price = data[i];
+    coins[coin].history = coins[coin].history || [];
+    coins[coin].historyT = coins[coin].historyT || [];
+    coins[coin].history.push(data[i]);
+    coins[coin].historyT.push(new Date(tNow.getTime() + i * 60 * 1000).toISOString());
+    while (coins[coin].history.length > 100) coins[coin].history.shift();
+    while (coins[coin].historyT.length > 100) coins[coin].historyT.shift();
+  }
+  coins[coin].price = target; // 마지막은 정확하게 맞추기
+  await saveJson(coinsPath, coins);
+
+  return interaction.reply({
+    content: `✅ **${coin}** 코인이 ${sub === '떡상' ? '떡상' : '떡락'}해 ${target} BE까지 도달했습니다!`,
+    ephemeral: true
+  });
+}
     if (sub === '상태') {
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
