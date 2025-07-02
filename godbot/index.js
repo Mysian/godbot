@@ -654,7 +654,6 @@ const serverTag = require('./commands/select-settings.js');
 const serverInfo = require('./commands/serverInfo.js');
 const serverRules = require('./commands/server-rules.js');
 const levelGuide = require('./commands/level-guide.js');
-const help = require('./commands/help.js');
 const profileRegister = require('./commands/profile-register.js');
 const profileEdit = require('./commands/profile-edit.js');
 
@@ -679,7 +678,6 @@ client.on(Events.InteractionCreate, async interaction => {
       if (interaction.customId === 'serverinfo_open') return await serverInfo.execute(interaction);
       if (interaction.customId === 'serverrules_open') return await serverRules.execute(interaction);
       if (interaction.customId === 'levelguide_open') return await levelGuide.execute(interaction);
-      if (interaction.customId === 'help_open') return await help.execute(interaction);
 
       // 4. 프로필 관리 세트
       if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
