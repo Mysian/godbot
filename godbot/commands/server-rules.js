@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+// server-rules.js
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 
-const ruleSets = {
-  a: {
-    title: "📋 프로필 정보 규칙",
+const ruleSets = [
+  {
+    title: "📋 A 프로필 정보 규칙",
     desc: [
       "**1. 별명**",
       "가. 비속어 별명 금지",
@@ -23,8 +24,8 @@ const ruleSets = {
       "다. 타인의 사진으로 본인 행세 금지"
     ].join('\n')
   },
-  b: {
-    title: "💬 채팅과 음성대화 규칙",
+  {
+    title: "💬 B 채팅과 음성대화 규칙",
     desc: [
       "**1. 채팅 ⌨️**",
       "가. 분란, 갈등, 다툼을 유발하는 채팅 금지",
@@ -52,8 +53,8 @@ const ruleSets = {
       "자. 특정 게임을 비하하는 대화 지양"
     ].join('\n')
   },
-  c: {
-    title: "🔖 공통수칙",
+  {
+    title: "🔖 C 공통수칙",
     desc: [
       "**1. 잘못된 이용방법**",
       "가. 서버 유저를 개인적으로 취하는 행위 금지",
@@ -86,8 +87,8 @@ const ruleSets = {
       "사. 타인의 개인정보를 제3자에게 노출하는 행위 금지"
     ].join('\n')
   },
-  d: {
-    title: "🛡️ 관리방침",
+  {
+    title: "🛡️ D 관리방침",
     desc: [
       "**1. 민원과 제보**",
       "가. 민원센터를 통하지 않는 민원 및 제보를 지양",
@@ -102,42 +103,62 @@ const ruleSets = {
       "마. 관리진 내부 사안의 발설 금지"
     ].join('\n')
   }
-};
+];
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("서버규칙")
-    .setDescription("서버 규칙을 확인합니다.")
-    .addStringOption(opt =>
-      opt.setName("옵션")
-        .setDescription("확인할 항목을 선택하세요.")
-        .setRequired(true)
-        .addChoices(
-          { name: "A.프로필 정보", value: "a" },
-          { name: "B.채팅과 음성대화", value: "b" },
-          { name: "C.공통수칙", value: "c" },
-          { name: "D.관리방침", value: "d" }
-        )
-    ),
-
+    .setDescription("서버 규칙 전체를 페이지로 보여줍니다."),
   async execute(interaction) {
-    const type = interaction.options.getString("옵션");
-    const rule = ruleSets[type];
+    let page = 0;
 
-    if (!rule) {
-      return interaction.reply({ content: "❌ 잘못된 옵션입니다.", ephemeral: true });
-    }
+    const getEmbed = (page) =>
+      new EmbedBuilder()
+        .setTitle(ruleSets[page].title)
+        .setDescription(ruleSets[page].desc)
+        .setFooter({ text: `까리한 디스코드 • ${page + 1} / 4` })
+        .setColor(0x5BFFAF)
+        .setTimestamp();
 
-    const embed = new EmbedBuilder()
-      .setTitle(rule.title)
-      .setDescription(rule.desc)
-      .setFooter({ text: "까리한 디스코드" })
-      .setColor(0x5BFFAF)
-      .setTimestamp();
+    const row = () =>
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("prev")
+          .setLabel("이전")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(page === 0),
+        new ButtonBuilder()
+          .setCustomId("next")
+          .setLabel("다음")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(page === ruleSets.length - 1)
+      );
 
-    await interaction.reply({
-      embeds: [embed],
-      ephemeral: true // 본인에게만 보이게!
+    const reply = await interaction.reply({
+      embeds: [getEmbed(page)],
+      components: [row()],
+      ephemeral: true
+    });
+
+    const collector = reply.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120_000
+    });
+
+    collector.on("collect", async (btn) => {
+      if (btn.user.id !== interaction.user.id) {
+        return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
+      }
+      if (btn.customId === "prev" && page > 0) page -= 1;
+      else if (btn.customId === "next" && page < ruleSets.length - 1) page += 1;
+
+      await btn.update({ embeds: [getEmbed(page)], components: [row()] });
+    });
+
+    collector.on("end", async () => {
+      try {
+        await interaction.editReply({ components: [] });
+      } catch {}
     });
   }
 };
