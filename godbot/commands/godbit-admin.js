@@ -7,7 +7,7 @@ const lockfile = require('proper-lockfile');
 
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
-const NOTICE_CHANNEL_ID = '1389779555384037478';
+const NOTICE_CHANNEL_ID = '1389821392618262631';
 
 // ---- 빠른 JSON I/O ----
 async function loadJson(file, def) {
