@@ -478,7 +478,7 @@ allAlive = allAlive.map(([name, info]) => {
   }
 };
         const chartEmbed = new EmbedBuilder()
-          .setTitle(`📊 코인 가격 차트 (1시간)${search ? ` - [${search}]` : ''}`)
+          .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
           .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
           .setColor('#FFFFFF')
           .setTimestamp(); // <- 시간 기재
