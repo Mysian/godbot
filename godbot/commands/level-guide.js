@@ -1,6 +1,6 @@
 // commands/level-guide.js
 
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 const pages = [
   {
@@ -96,51 +96,18 @@ module.exports = {
     .setName('레벨가이드')
     .setDescription('레벨별 권한 및 혜택 안내'),
   async execute(interaction) {
-    let page = 0;
-
-    const getEmbed = (page) => new EmbedBuilder()
-      .setTitle(pages[page].title)
-      .setDescription(pages[page].content)
-      .setColor(0x7DDFFF)
-      .setFooter({ text: `까리한 디스코드 레벨 시스템 • ${page + 1} / 3` })
-      .setTimestamp();
-
-    const getRow = () => new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('prev')
-        .setLabel('이전')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(page === 0),
-      new ButtonBuilder()
-        .setCustomId('next')
-        .setLabel('다음')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(page === pages.length - 1)
+    const embeds = pages.map((page, idx) =>
+      new EmbedBuilder()
+        .setTitle(page.title)
+        .setDescription(page.content)
+        .setColor(0x7DDFFF)
+        .setFooter({ text: `까리한 디스코드 레벨 시스템 • ${idx + 1} / 3` })
+        .setTimestamp()
     );
 
-    const reply = await interaction.reply({
-      embeds: [getEmbed(page)],
-      components: [getRow()],
+    await interaction.reply({
+      embeds: embeds,
       ephemeral: true
-    });
-
-    const collector = reply.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 300_000
-    });
-
-    collector.on("collect", async (btn) => {
-      if (btn.user.id !== interaction.user.id) {
-        return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
-      }
-      if (btn.customId === "prev" && page > 0) page -= 1;
-      else if (btn.customId === "next" && page < pages.length - 1) page += 1;
-
-      await btn.update({ embeds: [getEmbed(page)], components: [getRow()] });
-    });
-
-    collector.on("end", async () => {
-      try { await interaction.editReply({ components: [] }); } catch {}
     });
   }
 };
