@@ -662,62 +662,69 @@ const profileEdit = require('./commands/profile-edit.js');
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
 
-  // 1. 신고/민원 세트
-  if (interaction.customId === 'complaint_open') {
-    await complaint.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'report_open') {
-    await report.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'punish_guide_open') {
-    await punishGuide.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'warn_check_open') {
-    await warnCheck.execute(interaction);
-    return;
-  }
+  try {
+    // 1. 신고/민원 세트
+    if (interaction.customId === 'complaint_open') {
+      await complaint.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'report_open') {
+      await report.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'punish_guide_open') {
+      await punishGuide.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'warn_check_open') {
+      await warnCheck.execute(interaction);
+      return;
+    }
 
-  // 2. 태그 세트
-  if (interaction.customId === 'game_tag_open') {
-    await gameTag.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'server_tag_open') {
-    await serverTag.execute(interaction);
-    return;
-  }
+    // 2. 태그 세트
+    if (interaction.customId === 'game_tag_open') {
+      await gameTag.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'server_tag_open') {
+      await serverTag.execute(interaction);
+      return;
+    }
 
-  // 3. 안내 세트
-  if (interaction.customId === 'serverinfo_open') {
-    await serverInfo.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'serverrules_open') {
-    await serverRules.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'levelguide_open') {
-    await levelGuide.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'help_open') {
-    await help.execute(interaction);
-    return;
-  }
+    // 3. 안내 세트
+    if (interaction.customId === 'serverinfo_open') {
+      await serverInfo.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'serverrules_open') {
+      await serverRules.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'levelguide_open') {
+      await levelGuide.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'help_open') {
+      await help.execute(interaction);
+      return;
+    }
 
-  // 4. 프로필 관리 세트
-  if (interaction.customId === 'profile_register_open') {
-    await profileRegister.execute(interaction);
-    return;
-  }
-  if (interaction.customId === 'profile_edit_open') {
-    await profileEdit.execute(interaction);
-    return;
+    // 4. 프로필 관리 세트
+    if (interaction.customId === 'profile_register_open') {
+      await profileRegister.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'profile_edit_open') {
+      await profileEdit.execute(interaction);
+      return;
+    }
+  } catch (err) {
+    // 10062(Unknown interaction)만 조용히 무시, 그 외 에러만 콘솔에 남김
+    if (err?.code === 10062) return;
+    // console.error(err); // ← 이것도 빼면 완전 조용!
   }
 });
+
 
 
 // 중복 처리 방지
