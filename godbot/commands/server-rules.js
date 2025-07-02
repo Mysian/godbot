@@ -135,30 +135,24 @@ module.exports = {
       );
 
     const reply = await interaction.reply({
-      embeds: [getEmbed(page)],
-      components: [row()],
-      ephemeral: true
-    });
+  embeds: [getEmbed(page)],
+  components: [row()],
+  ephemeral: true,
+  fetchReply: true
+});
 
-    const collector = reply.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 120_000
-    });
+const collector = reply.createMessageComponentCollector({
+  componentType: ComponentType.Button,
+  time: 120_000
+});
 
-    collector.on("collect", async (btn) => {
-      if (btn.user.id !== interaction.user.id) {
-        return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
-      }
-      if (btn.customId === "prev" && page > 0) page -= 1;
-      else if (btn.customId === "next" && page < ruleSets.length - 1) page += 1;
-
-      await btn.update({ embeds: [getEmbed(page)], components: [row()] });
-    });
-
-    collector.on("end", async () => {
-      try {
-        await interaction.editReply({ components: [] });
-      } catch {}
-    });
+collector.on("collect", async (btn) => {
+  if (btn.user.id !== interaction.user.id) {
+    return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
   }
-};
+  if (btn.customId === "prev" && page > 0) page -= 1;
+  else if (btn.customId === "next" && page < ruleSets.length - 1) page += 1;
+
+  await btn.deferUpdate();
+  await interaction.editReply({ embeds: [getEmbed(page)], components: [row()] });
+});
