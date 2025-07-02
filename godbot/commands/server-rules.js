@@ -1,5 +1,5 @@
 // server-rules.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 const ruleSets = [
   {
@@ -108,57 +108,20 @@ const ruleSets = [
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("서버규칙")
-    .setDescription("서버 규칙 전체를 페이지로 보여줍니다."),
+    .setDescription("서버 규칙 전체를 한 번에 보여줍니다."),
   async execute(interaction) {
-    let page = 0;
-
-    const getEmbed = (page) =>
+    const embeds = ruleSets.map((rule, idx) =>
       new EmbedBuilder()
-        .setTitle(ruleSets[page].title)
-        .setDescription(ruleSets[page].desc)
-        .setFooter({ text: `까리한 디스코드 • ${page + 1} / 4` })
+        .setTitle(rule.title)
+        .setDescription(rule.desc)
+        .setFooter({ text: `까리한 디스코드 • ${idx + 1} / 4` })
         .setColor(0x5BFFAF)
-        .setTimestamp();
+        .setTimestamp()
+    );
 
-    const row = () =>
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("prev")
-          .setLabel("이전")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(page === 0),
-        new ButtonBuilder()
-          .setCustomId("next")
-          .setLabel("다음")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(page === ruleSets.length - 1)
-      );
-
-    const reply = await interaction.reply({
-      embeds: [getEmbed(page)],
-      components: [row()],
+    await interaction.reply({
+      embeds: embeds,
       ephemeral: true
-    });
-
-    const collector = reply.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 120_000
-    });
-
-    collector.on("collect", async (btn) => {
-      if (btn.user.id !== interaction.user.id) {
-        return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
-      }
-      if (btn.customId === "prev" && page > 0) page -= 1;
-      else if (btn.customId === "next" && page < ruleSets.length - 1) page += 1;
-
-      await btn.update({ embeds: [getEmbed(page)], components: [row()] });
-    });
-
-    collector.on("end", async () => {
-      try {
-        await interaction.editReply({ components: [] });
-      } catch {}
     });
   }
 };
