@@ -723,6 +723,7 @@ module.exports = {
 
         page = await renderChartPage(page);
       });
+    }
 
     // 2. 히스토리(버튼)
     if (sub === '히스토리') {
