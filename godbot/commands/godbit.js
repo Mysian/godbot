@@ -322,11 +322,10 @@ module.exports = {
 
       // 코인 가격 내림차순 정렬
       const chartRange = 12;
-const wallets = await loadJson(walletsPath, {});
 allAlive = allAlive.map(([name, info]) => {
   const h = info.history || [];
   const prev = h.at(-2) ?? h.at(-1) ?? 0;
-  const now = h.at(-1) ?? h.at(-1) ?? 0;
+  const now = h.at(-1) ?? 0;
   const change = now - prev;
   const pct = prev ? (change / prev) * 100 : 0;
   return { name, info, now, prev, change, pct };
