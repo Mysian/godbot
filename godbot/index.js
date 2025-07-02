@@ -644,55 +644,44 @@ client.on("messageCreate", async msg => {
 });
 
 
-// 상시 클릭 가능 버튼형 공지 모달
-const report = require('./commands/report.js');
-const complaint = require('./commands/complaint.js');
-const punishGuide = require('./commands/punishment-guide.js');
-const warnCheck = require('./commands/warncheck.js');
-const gameTag = require('./commands/select-game.js');
-const serverTag = require('./commands/select-settings.js');
-const serverInfo = require('./commands/serverInfo.js');
-const serverRules = require('./commands/server-rules.js');
-const levelGuide = require('./commands/level-guide.js');
-const help = require('./commands/help.js');
+// ───── 상시 클릭 가능 버튼형 공지 모달 ─────
+const report          = require('./commands/report.js');
+const complaint       = require('./commands/complaint.js');
+const punishGuide     = require('./commands/punishment-guide.js');
+const warnCheck       = require('./commands/warncheck.js');
+const gameTag         = require('./commands/select-game.js');
+const serverTag       = require('./commands/select-settings.js');
+const serverInfo      = require('./commands/serverInfo.js');
+const serverRules     = require('./commands/server-rules.js');
+const levelGuide      = require('./commands/level-guide.js');
+const help            = require('./commands/help.js');
 const profileRegister = require('./commands/profile-register.js');
-const profileEdit = require('./commands/profile-edit.js');
+const profileEdit     = require('./commands/profile-edit.js');
 
 client.on(Events.InteractionCreate, async interaction => {
-  // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
+  const id = interaction.customId;
 
-  // "_open"으로 끝나는 버튼만 index.js에서 직접 처리!
-  if (interaction.customId.endsWith('_open')) {
-    try {
-      // 1. 신고/민원 세트
-      if (interaction.customId === 'complaint_open') return await complaint.execute(interaction);
-      if (interaction.customId === 'report_open') return await report.execute(interaction);
-      if (interaction.customId === 'punish_guide_open') return await punishGuide.execute(interaction);
-      if (interaction.customId === 'warn_check_open') return await warnCheck.execute(interaction);
+  // 1) _open 버튼: 최초 공지 열기
+  if (id === 'complaint_open')       return complaint.execute(interaction);
+  if (id === 'report_open')          return report.execute(interaction);
+  if (id === 'punish_guide_open')    return punishGuide.execute(interaction);
+  if (id === 'warn_check_open')      return warnCheck.execute(interaction);
+  if (id === 'game_tag_open')        return gameTag.execute(interaction);
+  if (id === 'server_tag_open')      return serverTag.execute(interaction);
+  if (id === 'serverinfo_open')      return serverInfo.execute(interaction);
+  if (id === 'serverrules_open')     return serverRules.execute(interaction);
+  if (id === 'levelguide_open')      return levelGuide.execute(interaction);
+  if (id === 'help_open')            return help.execute(interaction);
+  if (id === 'profile_register_open')return profileRegister.execute(interaction);
+  if (id === 'profile_edit_open')    return profileEdit.execute(interaction);
 
-      // 2. 태그 세트
-      if (interaction.customId === 'game_tag_open') return await gameTag.execute(interaction);
-      if (interaction.customId === 'server_tag_open') return await serverTag.execute(interaction);
+  // 2) complaint/report 폼 제출 후 생성되는 버튼 처리
+  if (id.startsWith('complaint_'))    return complaint.handleButton?.(interaction);
+  if (id.startsWith('report_'))       return report.handleButton?.(interaction);
 
-      // 3. 안내 세트
-      if (interaction.customId === 'serverinfo_open') return await serverInfo.execute(interaction);
-      if (interaction.customId === 'serverrules_open') return await serverRules.execute(interaction);
-      if (interaction.customId === 'levelguide_open') return await levelGuide.execute(interaction);
-      if (interaction.customId === 'help_open') return await help.execute(interaction);
-
-      // 4. 프로필 관리 세트
-      if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
-      if (interaction.customId === 'profile_edit_open') return await profileEdit.execute(interaction);
-
-      if (interaction.customId === 'prev' || interaction.customId === 'next') return;
-      // ================================
-    } catch (err) {
-      if (err?.code === 10062) return;
-      console.error('버튼 핸들러 오류:', err);
-    }
-    return;
-  }
+  // 3) 필요하면 다른 모듈 버튼들도 동일한 방식으로 추가…
+});
 
   // "_open" 아닌 버튼은 무시(페이지네이션 등은 각 collector가 처리)
 });
