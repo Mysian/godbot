@@ -685,6 +685,8 @@ client.on(Events.InteractionCreate, async interaction => {
       if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
       if (interaction.customId === 'profile_edit_open') return await profileEdit.execute(interaction);
 
+      if (interaction.customId === 'prev' || interaction.customId === 'next') return;
+      // ================================
     } catch (err) {
       if (err?.code === 10062) return;
       console.error('버튼 핸들러 오류:', err);
