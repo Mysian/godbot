@@ -88,21 +88,44 @@ async function saveJson(file, data) {
 }
 
 // --- 차트 히스토리 샘플링 함수 추가 ---
-function getSampledHistory(info, chartRange, chartInterval) {
-  if (!info.history || !info.historyT) return [];
-  const result = [];
+function getSampledHistory(info, chartRange, chartInterval, chartValue) {
+  if (!info.history || !info.historyT) return { data: [], labels: [] };
+  const data = [];
+  const labels = [];
   let prevTime = null;
+
   for (let i = info.history.length - 1; i >= 0; i--) {
     const t = new Date(info.historyT[i]);
     if (!prevTime || (prevTime - t) >= chartInterval * 60 * 1000) {
-      result.unshift(info.history[i]);
+      data.unshift(info.history[i]);
+
+      // [여기서 라벨 포맷 결정!]
+      let label = '';
+      if (['1m','10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
+        // "02:32" 식 (시:분)
+        label = t.toTimeString().slice(0,5);
+      } else if (['1d','3d','7d','15d','30d'].includes(chartValue)) {
+        // "05.04" 식 (월.일)
+        label = `${(t.getMonth()+1).toString().padStart(2,'0')}.${t.getDate().toString().padStart(2,'0')}`;
+      } else if (chartValue === '1y') {
+        // "2024" 식 (연도)
+        label = t.getFullYear().toString();
+      } else {
+        label = '-';
+      }
+
+      labels.unshift(label);
       prevTime = t;
-      if (result.length >= chartRange) break;
+      if (data.length >= chartRange) break;
     }
   }
-  while (result.length < chartRange) result.unshift(0);
-  return result;
+  while (data.length < chartRange) {
+    data.unshift(0);
+    labels.unshift('-');
+  }
+  return { data, labels };
 }
+
 
 async function ensureBaseCoin(coins) {
   if (!coins['까리코인']) {
@@ -457,22 +480,29 @@ allAlive = allAlive.map(([name, info]) => {
         const userBE = getBE(interaction.user.id);
         const slice = allAlive.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
 
-        // 차트(위)
-        const datasets = slice.map((item, i) => ({
+        //차트
+        const chartValue = filterConfig.value; // "1m", "1d", "1y" 등
+const chartDataArr = slice.map((item, i) =>
+  getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
+);
+let labels = [];
+if (chartDataArr.length > 0) {
+  labels = chartDataArr[0].labels;
+}
+const datasets = slice.map((item, i) => ({
   label: item.name,
-  data: getSampledHistory(item.info, chartRange, filterConfig.interval),
+  data: chartDataArr[i].data,
   borderColor: COLORS[i % COLORS.length],
   fill: false
 }));
-        const labels = Array.from({ length: chartRange }, (_,i) => i+1);
-        const chartConfig = {
-  backgroundColor: "white", 
+const chartConfig = {
+  backgroundColor: "white",
   type: 'line',
   data: { labels, datasets },
   options: {
     plugins: { legend: { display: false } },
     scales: {
-      x: { title: { display: true, text: '시간(5분 단위)' } },
+      x: { title: { display: true, text: `시간(${chartLabel})` } },
       y: { title: { display: true, text: '가격 (BE)' } }
     }
   }
