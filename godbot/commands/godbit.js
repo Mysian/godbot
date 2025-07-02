@@ -1005,5 +1005,5 @@ module.exports = {
       return;
     }
   },
-  autoMarketUpdate
+  autoMarketUpdate,
 };
