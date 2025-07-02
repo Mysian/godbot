@@ -131,31 +131,28 @@ module.exports = {
     );
 
     let curPage = 0;
-const reply = await interaction.reply({
-  embeds: [embeds[curPage]],
-  components: [getRow(curPage, embeds.length - 1)],
-  ephemeral: true,
-  fetchReply: true
-});
+    const reply = await interaction.reply({ embeds:[embeds[curPage]], components:[getRow(curPage, max)], ephemeral:true, fetchReply:true });
 
-const collector = reply.createMessageComponentCollector({
-  filter: i => i.user.id === interaction.user.id,
-  time: 300_000
-});
+    const collector = reply.createMessageComponentCollector({
+      filter: i => i.user.id === interaction.user.id,
+      time: 300_000
+    });
 
-collector.on("collect", async i => {
-  if (i.customId === "prev") curPage--;
-  if (i.customId === "next") curPage++;
+    collector.on("collect", async i => {
+      if (i.customId === "prev") curPage--;
+      if (i.customId === "next") curPage++;
 
-  await i.deferUpdate();
-  await reply.edit({
-    embeds: [embeds[curPage]],
-    components: [getRow(curPage, embeds.length - 1)]
-  });
-});
+      await i.deferUpdate();
+      await reply.edit({
+        embeds: [embeds[curPage]],
+        components: [getRow(curPage, embeds.length - 1)]
+      });
+    });
 
-collector.on("end", async () => {
-  try {
-    await reply.edit({ components: [] });
-  } catch {}
-});
+    collector.on("end", async () => {
+      try {
+        await reply.edit({ components: [] });
+      } catch {}
+    });
+  },
+};
