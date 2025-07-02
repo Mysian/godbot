@@ -320,17 +320,18 @@ module.exports = {
         }
       }
 
-      // 전일대비 수익률 내림차순 정렬
+      // 코인 가격 내림차순 정렬
       const chartRange = 12;
-      allAlive = allAlive.map(([name, info]) => {
-        const h = info.history || [];
-        const prev = h.at(-2) ?? h.at(-1) ?? 0;
-        const now = h.at(-1) ?? 0;
-        const change = now - prev;
-        const pct = prev ? (change / prev) * 100 : 0;
-        return { name, info, now, prev, change, pct };
-      })
-      .sort((a, b) => b.pct - a.pct);
+const wallets = await loadJson(walletsPath, {});
+allAlive = allAlive.map(([name, info]) => {
+  const h = info.history || [];
+  const prev = h.at(-2) ?? h.at(-1) ?? 0;
+  const now = h.at(-1) ?? h.at(-1) ?? 0;
+  const change = now - prev;
+  const pct = prev ? (change / prev) * 100 : 0;
+  return { name, info, now, prev, change, pct };
+})
+.sort((a, b) => b.now - a.now);
 
       const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
 
@@ -369,7 +370,7 @@ module.exports = {
         // 시장 현황(아래)
         const listEmbed = new EmbedBuilder()
           .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${totalPages})`)
-          .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**수익률 내림차순 정렬**`)
+          .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
           .setColor('#FFFFFF');
           // 시간 기재 X
 
