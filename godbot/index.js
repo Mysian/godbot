@@ -645,6 +645,7 @@ client.on("messageCreate", async msg => {
 
 
 // 상시 클릭 가능 버튼형 공지 모달
+// 상시 클릭 가능 버튼형 공지 모달
 const report = require('./commands/report.js');
 const complaint = require('./commands/complaint.js');
 const punishGuide = require('./commands/punishment-guide.js');
@@ -658,18 +659,25 @@ const help = require('./commands/help.js');
 const profileRegister = require('./commands/profile-register.js');
 const profileEdit = require('./commands/profile-edit.js');
 
-// 버튼 클릭 핸들러 (한 번만 등록!)
-client.on('interactionCreate', async interaction => {
+client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
 
   try {
     // 1. 신고/민원 세트
     if (interaction.customId === 'complaint_open') {
-      await complaint.execute(interaction);
+      if (typeof complaint.modal === 'function') {
+        await complaint.modal(interaction);
+      } else {
+        await complaint.execute(interaction);
+      }
       return;
     }
     if (interaction.customId === 'report_open') {
-      await report.execute(interaction);
+      if (typeof report.modal === 'function') {
+        await report.modal(interaction);
+      } else {
+        await report.execute(interaction);
+      }
       return;
     }
     if (interaction.customId === 'punish_guide_open') {
@@ -718,12 +726,13 @@ client.on('interactionCreate', async interaction => {
       await profileEdit.execute(interaction);
       return;
     }
+
   } catch (err) {
-    // 10062(Unknown interaction)만 조용히 무시, 그 외 에러만 콘솔에 남김
     if (err?.code === 10062) return;
-    // console.error(err); // ← 이것도 빼면 완전 조용!
+    console.error('버튼 핸들러 오류:', err);
   }
 });
+
 
 
 
