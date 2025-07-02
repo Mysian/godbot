@@ -8,8 +8,9 @@ const path = require('path');
 const lockfile = require('proper-lockfile');
 const { addBE, getBE, loadConfig } = require('./be-util.js');
 
-// 공지 채널 ID
+// 공지 채널 ID, 로그 채널 ID
 const NOTICE_CHANNEL_ID = '1389779555384037478';
+const LOG_CHANNEL_ID = '1389821392618262631';
 
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
@@ -20,17 +21,21 @@ const MAX_AUTO_COINS = 20;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
-// 차트 기간 옵션
+// 차트 기간 옵션 (label, value, points, interval(분))
 const CHART_FILTERS = [
-  { label: "1분", value: "1m", points: 12, interval: 1 },
-  { label: "30분", value: "30m", points: 24, interval: 30 },
-  { label: "1시간", value: "1h", points: 24, interval: 60 },
-  { label: "3시간", value: "3h", points: 24, interval: 180 },
-  { label: "6시간", value: "6h", points: 28, interval: 360 },
-  { label: "12시간", value: "12h", points: 28, interval: 720 },
-  { label: "24시간", value: "24h", points: 30, interval: 1440 },
-  { label: "7일", value: "7d", points: 14, interval: 1440*7/14 },
-  { label: "30일", value: "30d", points: 30, interval: 1440*30/30 },
+  { label: "1분",   value: "1m",   points: 20, interval: 1 },
+  { label: "10분",  value: "10m",  points: 20, interval: 10 },
+  { label: "30분",  value: "30m",  points: 24, interval: 30 },
+  { label: "1시간", value: "1h",   points: 24, interval: 60 },
+  { label: "3시간", value: "3h",   points: 24, interval: 180 },
+  { label: "6시간", value: "6h",   points: 24, interval: 360 },
+  { label: "12시간",value: "12h",  points: 24, interval: 720 },
+  { label: "1일",   value: "1d",   points: 20, interval: 1440 },
+  { label: "3일",   value: "3d",   points: 20, interval: 1440*3 },
+  { label: "일주일",value: "7d",   points: 20, interval: 1440*7 },
+  { label: "보름",  value: "15d",  points: 15, interval: 1440*15 },
+  { label: "30일",  value: "30d",  points: 30, interval: 1440*30 },
+  { label: "1년",   value: "1y",   points: 12, interval: 1440*30 }, // 1개월 단위 12포인트
 ];
 
 // ==== 코인 상관관계 쌍 ====
@@ -44,11 +49,9 @@ const CORR_PAIRS = [
   ["마라탕좋아함코인", "후수니코인"],
 ];
 
-// ==== 거래량 기록 (10분마다 리셋) ====
 let lastVolume = {};
 let lastVolumeResetAt = 0;
 
-// ==== 시간/요일 보정 ====
 function getTimePower() {
   const now = new Date();
   const hour = now.getHours();
@@ -59,7 +62,6 @@ function getTimePower() {
   return power;
 }
 
-// ==== KST 변환 ====
 function toKSTString(utcOrDate) {
   if (!utcOrDate) return '-';
   if (typeof utcOrDate === 'string' && (utcOrDate.includes('오전') || utcOrDate.includes('오후'))) return utcOrDate;
@@ -107,11 +109,6 @@ async function addHistory(info, price) {
   while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
 }
 
-async function getDelistOption() {
-  const coins = await loadJson(coinsPath, {});
-  return coins._delistOption || { type: 'profitlow', prob: 10 };
-}
-
 function recordVolume(coin, amount) {
   const now = Date.now();
   if (!lastVolumeResetAt || now - lastVolumeResetAt > 10*60*1000) {
@@ -123,6 +120,13 @@ function recordVolume(coin, amount) {
 
 function isKoreanName(str) {
   return /^[가-힣]+$/.test(str);
+}
+
+async function sendLog(client, msg) {
+  try {
+    const logCh = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (logCh) await logCh.send(`[${toKSTString(new Date())}] ${msg}`);
+  } catch(e) {}
 }
 
 // ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
@@ -145,53 +149,46 @@ async function autoMarketUpdate(members, client) {
   const delistOpt = coins._delistOption || { type: 'profitlow', prob: 10 };
   const timePower = getTimePower();
 
-  // 상관관계 쌍 기록용
   let corrQueue = [];
-
-  // --- 이벤트 메시지 저장
   const eventNotices = [];
   let newlyListed = null;
-  let revivedListed = null; // [추가] 부활상장
+  let revivedListed = null;
 
-  // 1. 자동 신규상장 + 상폐코인 부활 [로직 통합]
+  // 상장 후보
   const aliveCoins = Object.entries(coins)
     .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
   const totalAvailable = MAX_AUTO_COINS - aliveCoins.length;
 
-  // 신규상장 후보(아직 한 번도 상장되지 않은 멤버 닉네임)
   const candidateNames = Array.from(
     new Set(
-    [...members.values()]
+      [...members.values()]
       .filter(m => !m.user.bot)
       .map(m => m.nickname || m.user.username)
       .filter(nick => !!nick && isKoreanName(nick) && nick.length >= 2)
       .filter(nick => !coins[nick + '코인'])
-  )
-);
+    )
+  );
 
-  // 상폐코인 후보
   const delistedCoins = Object.entries(coins)
     .filter(([name, info]) =>
-      info.delistedAt && name !== '까리코인'
-      && (!info._alreadyRevived) // 부활된 적 없는 것만
+      info.delistedAt && name !== '까리코인' && (!info._alreadyRevived)
     )
-    .map(([name, info]) => name);
+    .map(([name]) => name);
 
-  // (신규상장, 부활상장 모두 1개씩 시도할 수 있게)
   let numListed = 0;
   if (totalAvailable > 0) {
     // 부활(상폐 코인) 상장 확률: 50% (혹은 부활 후보 있으면 무조건)
     if (delistedCoins.length > 0 && (Math.random() < 0.5 || candidateNames.length === 0)) {
-      // 랜덤 부활
       const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
       const now = new Date().toISOString();
       coins[reviveName].delistedAt = null;
-      coins[reviveName]._alreadyRevived = true; // 한 번만 부활 (원하면 여러번도 가능)
+      coins[reviveName]._alreadyRevived = true;
       coins[reviveName].listedAt = now;
       revivedListed = { name: reviveName, time: now };
       numListed++;
+      if (client) await sendLog(client, `♻️ ${reviveName} 부활상장 (${toKSTString(now)})`);
     }
-    // 남은 슬롯 있으면 신규상장도 계속 시도
+    // 남은 슬롯 있으면 신규상장
     if (candidateNames.length > 0 && numListed < totalAvailable) {
       const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
       const newName = newNick + '코인';
@@ -209,6 +206,7 @@ async function autoMarketUpdate(members, client) {
       info.historyT.push(now);
       coins[newName] = info;
       newlyListed = { name: newName, time: now };
+      if (client) await sendLog(client, `✅ ${newName} 신규상장 (${toKSTString(now)})`);
     }
     await saveJson(coinsPath, coins);
   }
@@ -220,8 +218,9 @@ async function autoMarketUpdate(members, client) {
 
     // 폐지 직후 감지
     if (info.delistedAt && !info._notifiedDelist) {
-      eventNotices.push(`⛔ **${name}** 코인이 폐지되었습니다. (${toKSTString(info.delistedAt)})`);
-      info._notifiedDelist = true; // 중복 방지
+      eventNotices.push(`⛔ **${name}** 코인 폐지 (${toKSTString(info.delistedAt)})`);
+      info._notifiedDelist = true;
+      if (client) await sendLog(client, `⛔ ${name} 폐지 (${toKSTString(info.delistedAt)})`);
     }
 
     // 수익률 급등락 감지
@@ -231,28 +230,32 @@ async function autoMarketUpdate(members, client) {
       const now = h.at(-1);
       const pct = prev ? ((now - prev) / prev * 100) : 0;
       if (pct >= 30) {
-        eventNotices.push(`📈 **${name}** 수익률이 급등! (${pct.toFixed(2)}%) (${toKSTString(new Date())})`);
+        eventNotices.push(`📈 **${name}** 수익률 급등! (${pct.toFixed(2)}%)`);
+        if (client) await sendLog(client, `📈 ${name} 수익률 급등! (${pct.toFixed(2)}%)`);
       } else if (pct <= -30) {
-        eventNotices.push(`📉 **${name}** 수익률이 급락! (${pct.toFixed(2)}%) (${toKSTString(new Date())})`);
+        eventNotices.push(`📉 **${name}** 수익률 급락! (${pct.toFixed(2)}%)`);
+        if (client) await sendLog(client, `📉 ${name} 수익률 급락! (${pct.toFixed(2)}%)`);
       }
     }
 
     // 상폐 위기
     if (!info.delistedAt && h.length >= 4) {
       if (h.at(-1) < 350 && h.at(-1) < h.at(-2) && h.at(-2) < h.at(-3) && h.at(-3) < h.at(-4)) {
-        eventNotices.push(`⚠️ **${name}** 코인 상폐 위기! (${h.at(-1)} BE, ${toKSTString(new Date())})`);
+        eventNotices.push(`⚠️ **${name}** 코인 상폐 위기! (${h.at(-1)} BE)`);
+        if (client) await sendLog(client, `⚠️ ${name} 상폐 위기 (${h.at(-1)} BE)`);
       }
     }
 
-    // 불규칙 변동(변동폭 > 0.4)
+    // 비정상 변동
     if (!info.delistedAt && h.length >= 2) {
       const prev = h.at(-2), now = h.at(-1);
       if (prev && Math.abs(now - prev) / prev > 0.4) {
-        eventNotices.push(`🌪️ **${name}** 비정상적 급변! (${toKSTString(new Date())})`);
+        eventNotices.push(`🌪️ **${name}** 비정상 급변!`);
+        if (client) await sendLog(client, `🌪️ ${name} 비정상 급변!`);
       }
     }
 
-    // (가격 갱신은 기존대로)
+    // (가격 갱신)
     if (!info.delistedAt) {
       let minVar = -0.1, maxVar = 0.1;
       if (info.volatility) { minVar = info.volatility.min; maxVar = info.volatility.max; }
@@ -324,24 +327,13 @@ async function autoMarketUpdate(members, client) {
     }
   }
 
-   // 신규/부활 상장 알림
-  if (revivedListed) {
-    eventNotices.unshift(`♻️ **${revivedListed.name}** 코인이 부활상장되었습니다! (${toKSTString(revivedListed.time)})`);
-  }
-  if (newlyListed) {
-    eventNotices.unshift(`✅ **${newlyListed.name}** 코인이 신규상장되었습니다. (${toKSTString(newlyListed.time)})`);
-  }
+  if (revivedListed) eventNotices.unshift(`♻️ **${revivedListed.name}** 코인 부활상장! (${toKSTString(revivedListed.time)})`);
+  if (newlyListed) eventNotices.unshift(`✅ **${newlyListed.name}** 코인 신규상장! (${toKSTString(newlyListed.time)})`);
 
-  // 이벤트 있으면 공지 채널로 전송
   if (eventNotices.length && client) {
     const noticeChannel = client.channels.cache.get(NOTICE_CHANNEL_ID);
-    if (noticeChannel) {
-      for (const msg of eventNotices) {
-        await noticeChannel.send(msg);
-      }
-    }
+    if (noticeChannel) for (const msg of eventNotices) await noticeChannel.send(msg);
   }
-
   await saveJson(coinsPath, coins);
 }
 
