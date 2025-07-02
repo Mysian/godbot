@@ -616,8 +616,8 @@ allAlive = allAlive.map(([name, info]) => {
 
       const price = coins[coin].price;
       const total = price * amount;
-      const fee = Math.floor(total * 0.3);
-      const needBE = total + fee;
+      const fee = 0;
+      const needBE = total;
       const bal = getBE(interaction.user.id);
       if (bal < needBE) return interaction.editReply({ content: `❌ BE 부족: 필요 ${needBE}` });
 
@@ -653,7 +653,7 @@ if (sub === '매도') {
   const have = wallets[interaction.user.id]?.[coin] || 0;
   if (have < amount) return interaction.editReply({ content: `❌ 보유 부족: ${have}` });
   const gross = coins[coin].price * amount;
-  const fee = Math.floor(gross * ((loadConfig?.() || {}).fee || 0) / 100);
+  const fee = Math.floor(gross * 0.3);
   const net = gross - fee;
   wallets[interaction.user.id][coin] -= amount;
   if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
