@@ -645,7 +645,6 @@ client.on("messageCreate", async msg => {
 
 
 // 상시 클릭 가능 버튼형 공지 모달
-// 상시 클릭 가능 버튼형 공지 모달
 const report = require('./commands/report.js');
 const complaint = require('./commands/complaint.js');
 const punishGuide = require('./commands/punishment-guide.js');
@@ -663,50 +662,64 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
 
   try {
-    // 1) 모달 버튼: showModal 만 호출
+    // 1. 신고/민원 세트
     if (interaction.customId === 'complaint_open') {
-      return await complaint.execute(interaction); // 내부에서 interaction.showModal(modal)
+      await complaint.execute(interaction);
+      return;
     }
     if (interaction.customId === 'report_open') {
-      return await report.execute(interaction);
+      await report.execute(interaction);
+      return;
     }
     if (interaction.customId === 'punish_guide_open') {
-      return await punishGuide.execute(interaction);
+      await punishGuide.execute(interaction);
+      return;
     }
     if (interaction.customId === 'warn_check_open') {
-      return await warnCheck.execute(interaction);
+      await warnCheck.execute(interaction);
+      return;
     }
 
-    // 2) 기타 버튼: deferUpdate 로 ACK → execute
-    await interaction.deferUpdate();
-
-    switch (interaction.customId) {
-      case 'game_tag_open':
-        await gameTag.execute(interaction);
-        break;
-      case 'server_tag_open':
-        await serverTag.execute(interaction);
-        break;
-      case 'serverinfo_open':
-        await serverInfo.execute(interaction);
-        break;
-      case 'serverrules_open':
-        await serverRules.execute(interaction);
-        break;
-      case 'levelguide_open':
-        await levelGuide.execute(interaction);
-        break;
-      case 'help_open':
-        await help.execute(interaction);
-        break;
-      case 'profile_register_open':
-        await profileRegister.execute(interaction);
-        break;
-      case 'profile_edit_open':
-        await profileEdit.execute(interaction);
-        break;
+    // 2. 태그 세트
+    if (interaction.customId === 'game_tag_open') {
+      await gameTag.execute(interaction);
+      return;
     }
+    if (interaction.customId === 'server_tag_open') {
+      await serverTag.execute(interaction);
+      return;
+    }
+
+    // 3. 안내 세트
+    if (interaction.customId === 'serverinfo_open') {
+      await serverInfo.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'serverrules_open') {
+      await serverRules.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'levelguide_open') {
+      await levelGuide.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'help_open') {
+      await help.execute(interaction);
+      return;
+    }
+
+    // 4. 프로필 관리 세트
+    if (interaction.customId === 'profile_register_open') {
+      await profileRegister.execute(interaction);
+      return;
+    }
+    if (interaction.customId === 'profile_edit_open') {
+      await profileEdit.execute(interaction);
+      return;
+    }
+
   } catch (err) {
+    if (err?.code === 10062) return;
     console.error('버튼 핸들러 오류:', err);
   }
 });
