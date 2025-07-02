@@ -643,6 +643,39 @@ client.on("messageCreate", async msg => {
   }
 });
 
+
+// 상시 클릭 가능 버튼형 공지 모달
+const report = require('./commands/report.js');
+const complaint = require('./commands/complaint.js');
+const gameTag = require('./commands/select-game.js');
+const serverTag = require('./commands/select-settings.js');
+
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
+
+  // 민원
+  if (interaction.customId === 'complaint_open') {
+    await complaint.execute(interaction);
+    return;
+  }
+  // 신고
+  if (interaction.customId === 'report_open') {
+    await report.execute(interaction);
+    return;
+  }
+  // 게임 태그 설정
+  if (interaction.customId === 'game_tag_open') {
+    await gameTag.execute(interaction);
+    return;
+  }
+  // 서버 태그 설정
+  if (interaction.customId === 'server_tag_open') {
+    await serverTag.execute(interaction);
+    return;
+  }
+});
+
+
 // 중복 처리 방지
 require("./utils/activity-stats");
 
