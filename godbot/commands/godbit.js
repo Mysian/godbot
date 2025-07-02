@@ -90,28 +90,42 @@ async function saveJson(file, data) {
 // --- 차트 히스토리 샘플링 함수 (KST 보정 + 라벨 포맷 완벽!) ---
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
+
+  // 1분 주기는 slice만 적용
+  if (chartValue === '1m') {
+    const start = info.history.length - chartRange;
+    const data = (info.history || []).slice(start < 0 ? 0 : start);
+    const ts = (info.historyT || []).slice(start < 0 ? 0 : start);
+    // KST로 변환해서 라벨 생성
+    const labels = ts.map(str => {
+      const t = new Date(str);
+      const kst = new Date(t.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+      return kst.getHours().toString().padStart(2, '0') + ':' + kst.getMinutes().toString().padStart(2, '0');
+    });
+    // 부족한 앞부분 0/-로 채우기
+    while (data.length < chartRange) {
+      data.unshift(0);
+      labels.unshift('-');
+    }
+    return { data, labels };
+  }
+
+  // 나머지는 기존 샘플링
   const data = [];
   const labels = [];
   let prevTime = null;
   let n = 0;
-
   for (let i = info.history.length - 1; i >= 0; i--) {
-    // 항상 KST 기준으로!
     const t = new Date(info.historyT[i]);
     const kst = new Date(t.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-
-    // prevTime도 KST 기준으로 맞추기
     if (!prevTime || (prevTime - kst) >= chartInterval * 60 * 1000) {
       data.unshift(info.history[i]);
       let label = '-';
-      if (['1m','10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
-        // 02:32 형식 (시:분, KST)
+      if (['10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
         label = kst.getHours().toString().padStart(2, '0') + ':' + kst.getMinutes().toString().padStart(2, '0');
       } else if (['1d','3d','7d','15d','30d'].includes(chartValue)) {
-        // 05.04 형식 (월.일)
         label = (kst.getMonth()+1).toString().padStart(2,'0') + '.' + kst.getDate().toString().padStart(2,'0');
       } else if (chartValue === '1y') {
-        // 2024 형식 (년도)
         label = kst.getFullYear().toString();
       }
       labels.unshift(label);
@@ -120,13 +134,13 @@ function getSampledHistory(info, chartRange, chartInterval, chartValue) {
       if (n >= chartRange) break;
     }
   }
-  // 데이터가 부족하면 0/-로 앞에 채움
   while (data.length < chartRange) {
     data.unshift(0);
     labels.unshift('-');
   }
   return { data, labels };
 }
+
 
 
 
