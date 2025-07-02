@@ -743,15 +743,7 @@ process.on("uncaughtException", async (err) => {
 });
 
 process.on("unhandledRejection", async (reason) => {
-  // === 10062(Unknown interaction)는 아예 무시! ===
-  if (
-    reason &&
-    ((typeof reason === 'object' && 'code' in reason && reason.code === 10062) ||
-    (typeof reason === 'object' && 'rawError' in reason && reason.rawError?.code === 10062))
-  ) {
-    return; // 완전히 무시!
-  }
-  // 그 외 에러만 로그 채널로!
+
   try {
     const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
     if (logChannel && logChannel.isTextBased()) {
