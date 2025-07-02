@@ -344,10 +344,30 @@ module.exports = {
     .setName('갓비트')
     .setDescription('가상 코인 시스템 통합 명령어')
     .addSubcommand(sub =>
-      sub.setName('코인차트')
-        .setDescription('시장 전체 또는 특정 코인 차트')
-        .addStringOption(opt => opt.setName('코인').setDescription('코인명(선택)').setRequired(false))
+  sub.setName('코인차트')
+    .setDescription('시장 전체 또는 특정 코인 차트')
+    .addStringOption(opt => opt.setName('코인').setDescription('코인명(선택)').setRequired(false))
+    .addStringOption(opt =>
+      opt.setName('차트주기')
+        .setDescription('차트 주기')
+        .setRequired(true)
+        .addChoices(
+          { name: '1분', value: '1m' },
+          { name: '10분', value: '10m' },
+          { name: '30분', value: '30m' },
+          { name: '1시간', value: '1h' },
+          { name: '3시간', value: '3h' },
+          { name: '6시간', value: '6h' },
+          { name: '12시간', value: '12h' },
+          { name: '1일', value: '1d' },
+          { name: '3일', value: '3d' },
+          { name: '일주일', value: '7d' },
+          { name: '보름', value: '15d' },
+          { name: '30일', value: '30d' },
+          { name: '1년', value: '1y' }
+        )
     )
+)
     .addSubcommand(sub =>
       sub.setName('히스토리')
         .setDescription('코인 가격 이력(페이지) 조회')
@@ -379,8 +399,12 @@ module.exports = {
 
     // 1. 코인차트(정렬/표시/새로고침)
     if (sub === '코인차트') {
-      await interaction.deferReply({ ephemeral: true });
-      const search = (interaction.options.getString('코인')||'').trim();
+  await interaction.deferReply({ ephemeral: true });
+  const search = (interaction.options.getString('코인')||'').trim();
+  const chartFilter = interaction.options.getString('차트주기') || '1m';
+  const filterConfig = CHART_FILTERS.find(f => f.value === chartFilter) || CHART_FILTERS[0];
+  const chartRange = filterConfig.points;
+  const chartLabel = filterConfig.label;
       const coins = await loadJson(coinsPath, {});
       await ensureBaseCoin(coins);
       const wallets = await loadJson(walletsPath, {});
@@ -394,8 +418,6 @@ module.exports = {
         }
       }
 
-      // 코인 가격 내림차순 정렬
-      const chartRange = 12;
 allAlive = allAlive.map(([name, info]) => {
   const h = info.history || [];
   const prev = h.at(-2) ?? h.at(-1) ?? 0;
