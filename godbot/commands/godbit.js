@@ -8,6 +8,9 @@ const path = require('path');
 const lockfile = require('proper-lockfile');
 const { addBE, getBE, loadConfig } = require('./be-util.js');
 
+// 공지 채널 ID
+const NOTICE_CHANNEL_ID = '1389779555384037478';
+
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const PAGE_SIZE   = 5;
@@ -19,15 +22,15 @@ const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫
 
 // 차트 기간 옵션
 const CHART_FILTERS = [
-  { label: "1분", value: "1m", points: 12, interval: 1 },    // 최근 12분 (raw)
-  { label: "30분", value: "30m", points: 24, interval: 30 }, // 최근 12시간 (30분 단위)
-  { label: "1시간", value: "1h", points: 24, interval: 60 }, // 최근 24시간 (1시간 단위)
-  { label: "3시간", value: "3h", points: 24, interval: 180 },// 최근 3일 (3시간 단위)
-  { label: "6시간", value: "6h", points: 28, interval: 360 },// 최근 7일 (6시간 단위)
-  { label: "12시간", value: "12h", points: 28, interval: 720 }, // 최근 14일 (12시간 단위)
-  { label: "24시간", value: "24h", points: 30, interval: 1440 }, // 최근 30일 (1일 단위)
-  { label: "7일", value: "7d", points: 14, interval: 1440*7/14 }, // 7일 (2회/일)
-  { label: "30일", value: "30d", points: 30, interval: 1440*30/30 }, // 30일 (1회/일)
+  { label: "1분", value: "1m", points: 12, interval: 1 },
+  { label: "30분", value: "30m", points: 24, interval: 30 },
+  { label: "1시간", value: "1h", points: 24, interval: 60 },
+  { label: "3시간", value: "3h", points: 24, interval: 180 },
+  { label: "6시간", value: "6h", points: 28, interval: 360 },
+  { label: "12시간", value: "12h", points: 28, interval: 720 },
+  { label: "24시간", value: "24h", points: 30, interval: 1440 },
+  { label: "7일", value: "7d", points: 14, interval: 1440*7/14 },
+  { label: "30일", value: "30d", points: 30, interval: 1440*30/30 },
 ];
 
 // ==== 코인 상관관계 쌍 ====
@@ -109,7 +112,6 @@ async function getDelistOption() {
   return coins._delistOption || { type: 'profitlow', prob: 10 };
 }
 
-// ==== 거래량 기록 함수 ====
 function recordVolume(coin, amount) {
   const now = Date.now();
   if (!lastVolumeResetAt || now - lastVolumeResetAt > 10*60*1000) {
@@ -119,17 +121,15 @@ function recordVolume(coin, amount) {
   lastVolume[coin] = (lastVolume[coin] || 0) + amount;
 }
 
-
 function isKoreanName(str) {
   return /^[가-힣]+$/.test(str);
 }
 
 // ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
-async function autoMarketUpdate(members) {
+async function autoMarketUpdate(members, client) {
   const coins = await loadJson(coinsPath, {});
   const uptrend = coins._uptrend || [];
   const downtrend = coins._downtrend || [];
-  
   await ensureBaseCoin(coins);
 
   const base = coins['까리코인'];
@@ -148,63 +148,140 @@ async function autoMarketUpdate(members) {
   // 상관관계 쌍 기록용
   let corrQueue = [];
 
+  // --- 이벤트 메시지 저장
+  const eventNotices = [];
+  let newlyListed = null;
+
+  // 1. 자동 신규상장
+  const aliveCoins = Object.entries(coins)
+    .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
+  if (aliveCoins.length < MAX_AUTO_COINS && members) {
+    const candidateNames = Array.from(
+      new Set(
+        [...members.values()]
+          .filter(m => !m.user.bot)
+          .map(m => m.nickname || m.user.username)
+          .filter(nick => isKoreanName(nick))
+          .filter(nick => !coins[nick + '코인'])
+      )
+    );
+
+    if (candidateNames.length > 0) {
+      const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
+      const newName = newNick + '코인';
+
+      const now = new Date().toISOString();
+      const vopt = coins._volatilityGlobal || null;
+      let info = {
+        price: Math.floor(800 + Math.random()*700),
+        history: [],
+        historyT: [],
+        listedAt: now,
+        delistedAt: null
+      };
+      if (typeof vopt === "object" && vopt !== null) info.volatility = vopt;
+      info.history.push(info.price);
+      info.historyT.push(now);
+      coins[newName] = info;
+      newlyListed = { name: newName, time: now };
+      await saveJson(coinsPath, coins);
+    }
+  }
+
+  // 2. 코인 가격 업데이트 + 이벤트 감지
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
-    if (name === '까리코인' || info.delistedAt) continue;
+    if (name === '까리코인') continue;
 
-    let minVar = -0.1, maxVar = 0.1;
-    if (info.volatility) { minVar = info.volatility.min; maxVar = info.volatility.max; }
-    let kImpact = deltaBase * (0.4 + Math.random()*0.2);
-
-    // 거래량 기반 변동폭 가중
-    const volume = lastVolume[name] || 0;
-    let volumePower = 1.0;
-    if (volume > 0) {
-      if (volume > 30) volumePower += 0.5;
-      if (volume > 100) volumePower += 0.7;
-      if (volume > 300) volumePower += 1.0;
+    // 폐지 직후 감지
+    if (info.delistedAt && !info._notifiedDelist) {
+      eventNotices.push(`⛔ **${name}** 코인이 폐지되었습니다. (${toKSTString(info.delistedAt)})`);
+      info._notifiedDelist = true; // 중복 방지
     }
 
-    // 우상향/우하향 가중
-  let trendPower = 0;
-  if (uptrend.includes(name)) trendPower += 0.02;
-  if (downtrend.includes(name)) trendPower -= 0.025;
-  trendPower *= (0.8 + Math.random() * 0.4);
-  if (trendPower > 0.04) trendPower = 0.04;
-  if (trendPower < -0.05) trendPower = -0.05;
-
-  let delta = (Math.random() * (maxVar-minVar)) + minVar + kImpact + trendPower;
-    delta *= timePower;
-    delta *= volumePower;
-
-    // 상관관계 쌍 기록(동시 적용)
-    for (const [a, b] of CORR_PAIRS) {
-      if (name === a || name === b) corrQueue.push([a, b, delta]);
-    }
-
-    delta = Math.max(-0.5, Math.min(delta, 0.5));
-    const p = Math.max(1, Math.floor(info.price * (1 + delta)));
-    info.price = p;
-    info.history = info.history || [];
-    info.historyT = info.historyT || [];
-    info.history.push(p);
-    info.historyT.push(new Date().toISOString());
-    while (info.history.length > HISTORY_MAX) info.history.shift();
-    while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
-
-    // 자동 상장폐지
-    if (delistOpt.type === 'profitlow') {
-      const h = info.history || [];
-      const prev = h.at(-2) ?? h.at(-1) ?? 0;
-      const now = h.at(-1) ?? 0;
+    // 수익률 급등락 감지
+    const h = info.history || [];
+    if (h.length >= 2 && !info.delistedAt) {
+      const prev = h.at(-2) ?? h.at(-1);
+      const now = h.at(-1);
       const pct = prev ? ((now - prev) / prev * 100) : 0;
-      if (now < 300 && pct <= -30) {
-        info.delistedAt = new Date().toISOString();
+      if (pct >= 30) {
+        eventNotices.push(`📈 **${name}** 수익률이 급등! (${pct.toFixed(2)}%) (${toKSTString(new Date())})`);
+      } else if (pct <= -30) {
+        eventNotices.push(`📉 **${name}** 수익률이 급락! (${pct.toFixed(2)}%) (${toKSTString(new Date())})`);
       }
     }
-    if (delistOpt.type === 'random' && delistOpt.prob) {
-      if (Math.random() * 100 < delistOpt.prob) {
-        info.delistedAt = new Date().toISOString();
+
+    // 상폐 위기
+    if (!info.delistedAt && h.length >= 4) {
+      if (h.at(-1) < 350 && h.at(-1) < h.at(-2) && h.at(-2) < h.at(-3) && h.at(-3) < h.at(-4)) {
+        eventNotices.push(`⚠️ **${name}** 코인 상폐 위기! (${h.at(-1)} BE, ${toKSTString(new Date())})`);
+      }
+    }
+
+    // 불규칙 변동(변동폭 > 0.4)
+    if (!info.delistedAt && h.length >= 2) {
+      const prev = h.at(-2), now = h.at(-1);
+      if (prev && Math.abs(now - prev) / prev > 0.4) {
+        eventNotices.push(`🌪️ **${name}** 비정상적 급변! (${toKSTString(new Date())})`);
+      }
+    }
+
+    // (가격 갱신은 기존대로)
+    if (!info.delistedAt) {
+      let minVar = -0.1, maxVar = 0.1;
+      if (info.volatility) { minVar = info.volatility.min; maxVar = info.volatility.max; }
+      let kImpact = deltaBase * (0.4 + Math.random()*0.2);
+
+      const volume = lastVolume[name] || 0;
+      let volumePower = 1.0;
+      if (volume > 0) {
+        if (volume > 30) volumePower += 0.5;
+        if (volume > 100) volumePower += 0.7;
+        if (volume > 300) volumePower += 1.0;
+      }
+
+      const uptrend = coins._uptrend || [];
+      const downtrend = coins._downtrend || [];
+      let trendPower = 0;
+      if (uptrend.includes(name)) trendPower += 0.02;
+      if (downtrend.includes(name)) trendPower -= 0.025;
+      trendPower *= (0.8 + Math.random() * 0.4);
+      if (trendPower > 0.04) trendPower = 0.04;
+      if (trendPower < -0.05) trendPower = -0.05;
+
+      let delta = (Math.random() * (maxVar-minVar)) + minVar + kImpact + trendPower;
+      delta *= timePower;
+      delta *= volumePower;
+
+      for (const [a, b] of CORR_PAIRS) {
+        if (name === a || name === b) corrQueue.push([a, b, delta]);
+      }
+
+      delta = Math.max(-0.5, Math.min(delta, 0.5));
+      const p = Math.max(1, Math.floor(info.price * (1 + delta)));
+      info.price = p;
+      info.history = info.history || [];
+      info.historyT = info.historyT || [];
+      info.history.push(p);
+      info.historyT.push(new Date().toISOString());
+      while (info.history.length > HISTORY_MAX) info.history.shift();
+      while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
+
+      // 자동 상장폐지
+      if (delistOpt.type === 'profitlow') {
+        const h = info.history || [];
+        const prev = h.at(-2) ?? h.at(-1) ?? 0;
+        const now = h.at(-1) ?? 0;
+        const pct = prev ? ((now - prev) / prev * 100) : 0;
+        if (now < 300 && pct <= -30) {
+          info.delistedAt = new Date().toISOString();
+        }
+      }
+      if (delistOpt.type === 'random' && delistOpt.prob) {
+        if (Math.random() * 100 < delistOpt.prob) {
+          info.delistedAt = new Date().toISOString();
+        }
       }
     }
   }
@@ -222,44 +299,21 @@ async function autoMarketUpdate(members) {
     }
   }
 
-  // 자동 신규상장 (20개 미만, 2글자 닉네임 기반)
-  const aliveCoins = Object.entries(coins)
-    .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
-  if (aliveCoins.length < MAX_AUTO_COINS && members) {
-    // 1. 한글 닉네임만 수집, 이미 등록된 코인과 중복제외, 2글자 제한X
-    const candidateNames = Array.from(
-      new Set(
-        [...members.values()]
-          .filter(m => !m.user.bot)
-          .map(m => m.nickname || m.user.username)
-          .filter(nick => isKoreanName(nick))        // 한글만 허용
-          .filter(nick => !coins[nick + '코인'])     // 이미 등록X
-      )
-    );
-
-    if (candidateNames.length > 0) {
-      // 랜덤 1명 뽑아서 상장
-      const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
-      const newName = newNick + '코인';
-
-      const now = new Date().toISOString();
-      const vopt = coins._volatilityGlobal || null;
-      let info = {
-        price: Math.floor(800 + Math.random()*700),
-        history: [],
-        historyT: [],
-        listedAt: now,
-        delistedAt: null
-      };
-      if (typeof vopt === "object" && vopt !== null) info.volatility = vopt;
-      info.history.push(info.price);
-      info.historyT.push(now);
-      coins[newName] = info;
-      await saveJson(coinsPath, coins);
-    }
-    // 후보가 1명도 없으면 신규 상장 자체 스킵(신규코인XX, 영문 등 생성X)
+  // 신규 상장 알림
+  if (newlyListed) {
+    eventNotices.unshift(`✅ **${newlyListed.name}** 코인이 상장되었습니다. (${toKSTString(newlyListed.time)})`);
   }
-  // (이하 저장 및 나머지 코드 동일)
+
+  // 이벤트 있으면 공지 채널로 전송
+  if (eventNotices.length && client) {
+    const noticeChannel = client.channels.cache.get(NOTICE_CHANNEL_ID);
+    if (noticeChannel) {
+      for (const msg of eventNotices) {
+        await noticeChannel.send(msg);
+      }
+    }
+  }
+
   await saveJson(coinsPath, coins);
 }
 
