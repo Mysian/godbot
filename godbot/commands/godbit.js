@@ -310,7 +310,8 @@ module.exports = {
       const coins = await loadJson(coinsPath, {});
       await ensureBaseCoin(coins);
       const wallets = await loadJson(walletsPath, {});
-      let allAlive = Object.entries(coins).filter(([_,info]) => !info.delistedAt);
+      let allAlive = Object.entries(coins)
+        .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
 
       if (search) {
         allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
