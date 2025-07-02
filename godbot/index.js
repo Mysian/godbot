@@ -663,67 +663,54 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
 
   try {
-    // 1. 신고/민원 세트
+    // 1) 모달 버튼: showModal 만 호출
     if (interaction.customId === 'complaint_open') {
-      await complaint.execute(interaction);
-      return;
+      return await complaint.execute(interaction); // 내부에서 interaction.showModal(modal)
     }
     if (interaction.customId === 'report_open') {
-      await report.execute(interaction);
-      return;
+      return await report.execute(interaction);
     }
     if (interaction.customId === 'punish_guide_open') {
-      await punishGuide.execute(interaction);
-      return;
+      return await punishGuide.execute(interaction);
     }
     if (interaction.customId === 'warn_check_open') {
-      await warnCheck.execute(interaction);
-      return;
+      return await warnCheck.execute(interaction);
     }
 
-    // 2. 태그 세트
-    if (interaction.customId === 'game_tag_open') {
-      await gameTag.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'server_tag_open') {
-      await serverTag.execute(interaction);
-      return;
-    }
+    // 2) 기타 버튼: deferUpdate 로 ACK → execute
+    await interaction.deferUpdate();
 
-    // 3. 안내 세트
-    if (interaction.customId === 'serverinfo_open') {
-      await serverInfo.execute(interaction);
-      return;
+    switch (interaction.customId) {
+      case 'game_tag_open':
+        await gameTag.execute(interaction);
+        break;
+      case 'server_tag_open':
+        await serverTag.execute(interaction);
+        break;
+      case 'serverinfo_open':
+        await serverInfo.execute(interaction);
+        break;
+      case 'serverrules_open':
+        await serverRules.execute(interaction);
+        break;
+      case 'levelguide_open':
+        await levelGuide.execute(interaction);
+        break;
+      case 'help_open':
+        await help.execute(interaction);
+        break;
+      case 'profile_register_open':
+        await profileRegister.execute(interaction);
+        break;
+      case 'profile_edit_open':
+        await profileEdit.execute(interaction);
+        break;
     }
-    if (interaction.customId === 'serverrules_open') {
-      await serverRules.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'levelguide_open') {
-      await levelGuide.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'help_open') {
-      await help.execute(interaction);
-      return;
-    }
-
-    // 4. 프로필 관리 세트
-    if (interaction.customId === 'profile_register_open') {
-      await profileRegister.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'profile_edit_open') {
-      await profileEdit.execute(interaction);
-      return;
-    }
-
   } catch (err) {
-    if (err?.code === 10062) return;
     console.error('버튼 핸들러 오류:', err);
   }
 });
+
 
 
 
