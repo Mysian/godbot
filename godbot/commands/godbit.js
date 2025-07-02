@@ -6,11 +6,10 @@ const {
 const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
-const { addBE, getBE, loadConfig } = require('./be-util.js');
+const { addBE, getBE } = require('./be-util.js');
 
-// 공지 채널 ID, 로그 채널 ID
+// 공지 채널 ID
 const NOTICE_CHANNEL_ID = '1389779555384037478';
-const LOG_CHANNEL_ID = '1389821392618262631';
 
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
@@ -35,7 +34,7 @@ const CHART_FILTERS = [
   { label: "일주일",value: "7d",   points: 20, interval: 1440*7 },
   { label: "보름",  value: "15d",  points: 15, interval: 1440*15 },
   { label: "30일",  value: "30d",  points: 30, interval: 1440*30 },
-  { label: "1년",   value: "1y",   points: 12, interval: 1440*30 }, // 1개월 단위 12포인트
+  { label: "1년",   value: "1y",   points: 12, interval: 1440*30 },
 ];
 
 // ==== 코인 상관관계 쌍 ====
@@ -87,11 +86,8 @@ async function saveJson(file, data) {
   finally { await release(); }
 }
 
-// --- 차트 히스토리 샘플링 함수 (KST 보정 + 라벨 포맷 완벽!) ---
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
-
-  // 1분 주기: '현재', '1분전' ... 라벨로!
   if (chartValue === '1m') {
     const start = info.history.length - chartRange;
     const data = (info.history || []).slice(start < 0 ? 0 : start);
@@ -104,8 +100,6 @@ function getSampledHistory(info, chartRange, chartInterval, chartValue) {
     while (labels.length < chartRange) labels.unshift('-');
     return { data, labels };
   }
-
-  // 나머지는 기존 샘플링
   const data = [];
   const labels = [];
   let prevTime = null;
@@ -136,9 +130,6 @@ function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   return { data, labels };
 }
 
-
-
-
 async function ensureBaseCoin(coins) {
   if (!coins['까리코인']) {
     const now = new Date().toISOString();
@@ -146,7 +137,10 @@ async function ensureBaseCoin(coins) {
       price: 1000,
       history: [1000],
       historyT: [now],
-      listedAt: now
+      listedAt: now,
+      volatility: { min: -0.06, max: 0.07 },
+      trend: 0.003,
+      coinType: "base"
     };
   }
 }
@@ -174,18 +168,9 @@ function isKoreanName(str) {
   return /^[가-힣]+$/.test(str);
 }
 
-async function sendLog(client, msg) {
-  try {
-    const logCh = client.channels.cache.get(LOG_CHANNEL_ID);
-    if (logCh) await logCh.send(`[${toKSTString(new Date())}] ${msg}`);
-  } catch(e) {}
-}
-
-// ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
-async function autoMarketUpdate(members, client) {
+// ⭐️ 1분마다 시세/폐지/신규상장/부활/이벤트!
+async function autoMarketUpdate(members) {
   const coins = await loadJson(coinsPath, {});
-  const uptrend = coins._uptrend || [];
-  const downtrend = coins._downtrend || [];
   await ensureBaseCoin(coins);
 
   const base = coins['까리코인'];
@@ -202,7 +187,6 @@ async function autoMarketUpdate(members, client) {
   const timePower = getTimePower();
 
   let corrQueue = [];
-  const eventNotices = [];
   let newlyListed = null;
   let revivedListed = null;
 
@@ -212,19 +196,19 @@ async function autoMarketUpdate(members, client) {
   const totalAvailable = MAX_AUTO_COINS - aliveCoins.length;
 
   const candidateNames = Array.from(
-  new Set(
-    [...members.values()]
-    .filter(m => !m.user.bot)
-    .map(m => m.nickname || m.user.username)
-    .filter(nick =>
-      !!nick &&
-      isKoreanName(nick) &&
-      !/^신규코인\d{1,3}$/.test(nick) &&
-      !['테스트','운영자','관리자','봇'].includes(nick)
+    new Set(
+      [...members.values()]
+        .filter(m => !m.user.bot)
+        .map(m => m.nickname || m.user.username)
+        .filter(nick =>
+          !!nick &&
+          isKoreanName(nick) &&
+          !/^신규코인\d{1,3}$/.test(nick) &&
+          !['테스트','운영자','관리자','봇'].includes(nick)
+        )
+        .filter(nick => !coins[nick + '코인'])
     )
-    .filter(nick => !coins[nick + '코인'])
-  )
-);
+  );
 
   const delistedCoins = Object.entries(coins)
     .filter(([name, info]) =>
@@ -243,81 +227,68 @@ async function autoMarketUpdate(members, client) {
       coins[reviveName].listedAt = now;
       revivedListed = { name: reviveName, time: now };
       numListed++;
-      if (client) await sendLog(client, `♻️ ${reviveName} 부활상장 (${toKSTString(now)})`);
     }
     // 남은 슬롯 있으면 신규상장
     if (candidateNames.length > 0 && numListed < totalAvailable) {
       const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
       const newName = newNick + '코인';
       const now = new Date().toISOString();
-      const vopt = coins._volatilityGlobal || null;
+
+      // --- 코인 타입 랜덤 배정! ---
+      const startPrice = Math.floor(1000 + Math.random() * 49000);
+      const coinTypePick = Math.random();
+      let coinType = 'neutral', volatility, trend;
+      if (coinTypePick < 0.15) {
+        coinType = 'short';
+        volatility = { min: -0.2, max: 0.22 };
+        trend = 0.01;
+      } else if (coinTypePick < 0.30) {
+        coinType = 'long';
+        volatility = { min: -0.04, max: 0.06 };
+        trend = 0.015;
+      } else if (coinTypePick < 0.45) {
+        coinType = 'box';
+        volatility = { min: -0.08, max: 0.09 };
+        trend = 0;
+      } else if (coinTypePick < 0.60) {
+        coinType = 'pump';
+        volatility = { min: -0.22, max: 0.21 };
+        trend = -0.007;
+      } else if (coinTypePick < 0.75) {
+        coinType = 'drop';
+        volatility = { min: -0.07, max: 0.08 };
+        trend = -0.012;
+      } else {
+        coinType = 'bluechip';
+        volatility = { min: -0.03, max: 0.04 };
+        trend = 0.003;
+      }
       let info = {
-        price: Math.floor(800 + Math.random()*700),
-        history: [],
-        historyT: [],
+        price: startPrice,
+        history: [startPrice],
+        historyT: [now],
         listedAt: now,
-        delistedAt: null
+        delistedAt: null,
+        volatility,
+        trend,
+        coinType
       };
-      if (typeof vopt === "object" && vopt !== null) info.volatility = vopt;
-      info.history.push(info.price);
-      info.historyT.push(now);
       coins[newName] = info;
       newlyListed = { name: newName, time: now };
-      if (client) await sendLog(client, `✅ ${newName} 신규상장 (${toKSTString(now)})`);
     }
     await saveJson(coinsPath, coins);
   }
 
-  // 2. 코인 가격 업데이트 + 이벤트 감지
+  // 코인 가격 업데이트
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
-
-    // 폐지 직후 감지
-    if (info.delistedAt && !info._notifiedDelist) {
-      eventNotices.push(`⛔ **${name}** 코인 폐지 (${toKSTString(info.delistedAt)})`);
-      info._notifiedDelist = true;
-      if (client) await sendLog(client, `⛔ ${name} 폐지 (${toKSTString(info.delistedAt)})`);
-    }
-
-    // 수익률 급등락 감지
     const h = info.history || [];
-    if (h.length >= 2 && !info.delistedAt) {
-      const prev = h.at(-2) ?? h.at(-1);
-      const now = h.at(-1);
-      const pct = prev ? ((now - prev) / prev * 100) : 0;
-      if (pct >= 30) {
-        eventNotices.push(`📈 **${name}** 수익률 급등! (${pct.toFixed(2)}%)`);
-        if (client) await sendLog(client, `📈 ${name} 수익률 급등! (${pct.toFixed(2)}%)`);
-      } else if (pct <= -30) {
-        eventNotices.push(`📉 **${name}** 수익률 급락! (${pct.toFixed(2)}%)`);
-        if (client) await sendLog(client, `📉 ${name} 수익률 급락! (${pct.toFixed(2)}%)`);
-      }
-    }
-
-    // 상폐 위기
-    if (!info.delistedAt && h.length >= 4) {
-      if (h.at(-1) < 350 && h.at(-1) < h.at(-2) && h.at(-2) < h.at(-3) && h.at(-3) < h.at(-4)) {
-        eventNotices.push(`⚠️ **${name}** 코인 상폐 위기! (${h.at(-1)} BE)`);
-        if (client) await sendLog(client, `⚠️ ${name} 상폐 위기 (${h.at(-1)} BE)`);
-      }
-    }
-
-    // 비정상 변동
-    if (!info.delistedAt && h.length >= 2) {
-      const prev = h.at(-2), now = h.at(-1);
-      if (prev && Math.abs(now - prev) / prev > 0.4) {
-        eventNotices.push(`🌪️ **${name}** 비정상 급변!`);
-        if (client) await sendLog(client, `🌪️ ${name} 비정상 급변!`);
-      }
-    }
-
-    // (가격 갱신)
+    // 가격 갱신
     if (!info.delistedAt) {
       let minVar = -0.1, maxVar = 0.1;
       if (info.volatility) { minVar = info.volatility.min; maxVar = info.volatility.max; }
       let kImpact = deltaBase * (0.4 + Math.random()*0.2);
-
       const volume = lastVolume[name] || 0;
       let volumePower = 1.0;
       if (volume > 0) {
@@ -325,24 +296,20 @@ async function autoMarketUpdate(members, client) {
         if (volume > 100) volumePower += 0.7;
         if (volume > 300) volumePower += 1.0;
       }
-
-      const uptrend = coins._uptrend || [];
-      const downtrend = coins._downtrend || [];
       let trendPower = 0;
-      if (uptrend.includes(name)) trendPower += 0.02;
-      if (downtrend.includes(name)) trendPower -= 0.025;
+      if (Array.isArray(coins._uptrend) && coins._uptrend.includes(name)) trendPower += 0.02;
+      if (Array.isArray(coins._downtrend) && coins._downtrend.includes(name)) trendPower -= 0.025;
       trendPower *= (0.8 + Math.random() * 0.4);
       if (trendPower > 0.04) trendPower = 0.04;
       if (trendPower < -0.05) trendPower = -0.05;
-
       let delta = (Math.random() * (maxVar-minVar)) + minVar + kImpact + trendPower;
+      // **여기에 코인별 trend 적용!**
+      if (typeof info.trend === 'number') delta += info.trend;
       delta *= timePower;
       delta *= volumePower;
-
       for (const [a, b] of CORR_PAIRS) {
         if (name === a || name === b) corrQueue.push([a, b, delta]);
       }
-
       delta = Math.max(-0.5, Math.min(delta, 0.5));
       const p = Math.max(1, Math.floor(info.price * (1 + delta)));
       info.price = p;
@@ -384,13 +351,6 @@ async function autoMarketUpdate(members, client) {
     }
   }
 
-  if (revivedListed) eventNotices.unshift(`♻️ **${revivedListed.name}** 코인 부활상장! (${toKSTString(revivedListed.time)})`);
-  if (newlyListed) eventNotices.unshift(`✅ **${newlyListed.name}** 코인 신규상장! (${toKSTString(newlyListed.time)})`);
-
-  if (eventNotices.length && client) {
-    const noticeChannel = client.channels.cache.get(NOTICE_CHANNEL_ID);
-    if (noticeChannel) for (const msg of eventNotices) await noticeChannel.send(msg);
-  }
   await saveJson(coinsPath, coins);
 }
 
@@ -401,34 +361,34 @@ module.exports = {
     .setName('갓비트')
     .setDescription('가상 코인 시스템 통합 명령어')
     .addSubcommand(sub =>
-  sub.setName('코인차트')
-    .setDescription('시장 전체 또는 특정 코인 차트')
-    .addStringOption(opt => 
-  opt.setName('차트주기')
-    .setDescription('차트 주기')
-    .setRequired(true)
-    .addChoices(
-      { name: '1분', value: '1m' },
-      { name: '10분', value: '10m' },
-      { name: '30분', value: '30m' },
-      { name: '1시간', value: '1h' },
-      { name: '3시간', value: '3h' },
-      { name: '6시간', value: '6h' },
-      { name: '12시간', value: '12h' },
-      { name: '1일', value: '1d' },
-      { name: '3일', value: '3d' },
-      { name: '일주일', value: '7d' },
-      { name: '보름', value: '15d' },
-      { name: '30일', value: '30d' },
-      { name: '1년', value: '1y' }
+      sub.setName('코인차트')
+        .setDescription('시장 전체 또는 특정 코인 차트')
+        .addStringOption(opt => 
+          opt.setName('차트주기')
+            .setDescription('차트 주기')
+            .setRequired(true)
+            .addChoices(
+              { name: '1분', value: '1m' },
+              { name: '10분', value: '10m' },
+              { name: '30분', value: '30m' },
+              { name: '1시간', value: '1h' },
+              { name: '3시간', value: '3h' },
+              { name: '6시간', value: '6h' },
+              { name: '12시간', value: '12h' },
+              { name: '1일', value: '1d' },
+              { name: '3일', value: '3d' },
+              { name: '일주일', value: '7d' },
+              { name: '보름', value: '15d' },
+              { name: '30일', value: '30d' },
+              { name: '1년', value: '1y' }
+            )
+        )
+        .addStringOption(opt =>
+          opt.setName('코인')
+            .setDescription('코인명(선택)')
+            .setRequired(false)
+        )
     )
-)
-.addStringOption(opt =>
-  opt.setName('코인')
-    .setDescription('코인명(선택)')
-    .setRequired(false)
-)
-)
     .addSubcommand(sub =>
       sub.setName('히스토리')
         .setDescription('코인 가격 이력(페이지) 조회')
@@ -450,22 +410,22 @@ module.exports = {
       sub.setName('내코인')
         .setDescription('내 보유 코인/평가액/손익/수익률 조회')
     )
-  .addSubcommand(sub =>
-  sub.setName('순위')
-    .setDescription('코인 실현 수익/자산 TOP20 순위')
-),
+    .addSubcommand(sub =>
+      sub.setName('순위')
+        .setDescription('코인 실현 수익/자산 TOP20 순위')
+    ),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
     // 1. 코인차트(정렬/표시/새로고침)
     if (sub === '코인차트') {
-  await interaction.deferReply({ ephemeral: true });
-  const search = (interaction.options.getString('코인')||'').trim();
-  const chartFilter = interaction.options.getString('차트주기') || '1m';
-  const filterConfig = CHART_FILTERS.find(f => f.value === chartFilter) || CHART_FILTERS[0];
-  const chartRange = filterConfig.points;
-  const chartLabel = filterConfig.label;
+      await interaction.deferReply({ ephemeral: true });
+      const search = (interaction.options.getString('코인')||'').trim();
+      const chartFilter = interaction.options.getString('차트주기') || '1m';
+      const filterConfig = CHART_FILTERS.find(f => f.value === chartFilter) || CHART_FILTERS[0];
+      const chartRange = filterConfig.points;
+      const chartLabel = filterConfig.label;
       const coins = await loadJson(coinsPath, {});
       await ensureBaseCoin(coins);
       const wallets = await loadJson(walletsPath, {});
@@ -473,10 +433,10 @@ module.exports = {
         .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
 
       if (chartFilter === '1m' && !search) {
-    return interaction.editReply({
-      content: `❌ 1분 주기 시장 전체 차트는 데이터가 너무 많아 지원하지 않습니다.\n코인명을 입력해서 단일 코인 차트만 확인해 주세요!`
-    });
-  }
+        return interaction.editReply({
+          content: `❌ 1분 주기 시장 전체 차트는 데이터가 너무 많아 지원하지 않습니다.\n코인명을 입력해서 단일 코인 차트만 확인해 주세요!`
+        });
+      }
 
       if (search) {
         allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
@@ -485,15 +445,15 @@ module.exports = {
         }
       }
 
-allAlive = allAlive.map(([name, info]) => {
-  const h = info.history || [];
-  const prev = h.at(-2) ?? h.at(-1) ?? 0;
-  const now = h.at(-1) ?? 0;
-  const change = now - prev;
-  const pct = prev ? (change / prev) * 100 : 0;
-  return { name, info, now, prev, change, pct };
-})
-.sort((a, b) => b.now - a.now);
+      allAlive = allAlive.map(([name, info]) => {
+        const h = info.history || [];
+        const prev = h.at(-2) ?? h.at(-1) ?? 0;
+        const now = h.at(-1) ?? 0;
+        const change = now - prev;
+        const pct = prev ? (change / prev) * 100 : 0;
+        return { name, info, now, prev, change, pct };
+      })
+      .sort((a, b) => b.now - a.now);
 
       const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
 
@@ -503,45 +463,42 @@ allAlive = allAlive.map(([name, info]) => {
         const userBE = getBE(interaction.user.id);
         const slice = allAlive.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
 
-        //차트
-        const chartValue = filterConfig.value; // "1m", "1d", "1y" 등
-const chartDataArr = slice.map((item, i) =>
-  getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
-);
-let labels = [];
-if (chartDataArr.length > 0) {
-  labels = chartDataArr[0].labels;
-}
-const datasets = slice.map((item, i) => ({
-  label: item.name,
-  data: chartDataArr[i].data,
-  borderColor: COLORS[i % COLORS.length],
-  fill: false
-}));
-const chartConfig = {
-  backgroundColor: "white",
-  type: 'line',
-  data: { labels, datasets },
-  options: {
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { title: { display: true, text: `시간(${chartLabel})` } },
-      y: { title: { display: true, text: '가격 (BE)' } }
-    }
-  }
-};
+        const chartValue = filterConfig.value;
+        const chartDataArr = slice.map((item, i) =>
+          getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
+        );
+        let labels = [];
+        if (chartDataArr.length > 0) {
+          labels = chartDataArr[0].labels;
+        }
+        const datasets = slice.map((item, i) => ({
+          label: item.name,
+          data: chartDataArr[i].data,
+          borderColor: COLORS[i % COLORS.length],
+          fill: false
+        }));
+        const chartConfig = {
+          backgroundColor: "white",
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { title: { display: true, text: `시간(${chartLabel})` } },
+              y: { title: { display: true, text: '가격 (BE)' } }
+            }
+          }
+        };
         const chartEmbed = new EmbedBuilder()
           .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
           .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
           .setColor('#FFFFFF')
-          .setTimestamp(); // <- 시간 기재
+          .setTimestamp();
 
-        // 시장 현황(아래)
         const listEmbed = new EmbedBuilder()
           .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${pageIdx+1}/${totalPages})`)
           .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
           .setColor('#FFFFFF');
-          // 시간 기재 X
 
         slice.forEach((item, i) => {
           const emoji = EMOJIS[i % EMOJIS.length];
@@ -554,12 +511,10 @@ const chartConfig = {
           });
         });
 
-        // 임베드 하단 - 매수/매도 커맨드 안내만(시간 X)
         listEmbed.setFooter({
           text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
         });
 
-        // 버튼(새로고침)
         const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(pageIdx===0),
           new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(pageIdx===0),
@@ -609,18 +564,7 @@ const chartConfig = {
       let isDelisted = !!info.delistedAt;
       let delistMsg = '';
       if (isDelisted) {
-        const allList = Object.entries(coins)
-          .filter(([name]) => name === coin)
-          .map(([_,i]) => i)
-          .sort((a,b) => (a.listedAt||'').localeCompare(b.listedAt||''));
-        if (info.listedAt && allList.length >= 2) {
-          const last = allList[allList.length-1];
-          if (last === info) isDelisted = true;
-          else isDelisted = false;
-        }
-        if (isDelisted) {
-          delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
-        }
+        delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
       }
       const h = (info.history || []).slice(-HISTORY_MAX).reverse();
       const ht = (info.historyT || []).slice(-HISTORY_MAX).reverse();
@@ -711,55 +655,49 @@ const chartConfig = {
 
       wallets[interaction.user.id] = wallets[interaction.user.id] || {};
       wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
-      // ⭐ 누적 매수액 기록
       wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
       wallets[interaction.user.id + "_buys"][coin] = (wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount);
 
       await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
       await saveJson(walletsPath, wallets);
 
-      // 히스토리/타임 추가
       await addHistory(coins[coin], price);
       await saveJson(coinsPath, coins);
 
-      // 거래량 기록!
       recordVolume(coin, amount);
 
       return interaction.editReply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)` });
     }
 
     // 4. 매도
-if (sub === '매도') {
-  await interaction.deferReply({ ephemeral: true });
-  const coin = interaction.options.getString('코인');
-  const amount = interaction.options.getInteger('수량');
-  const coins = await loadJson(coinsPath, {});
-  const wallets = await loadJson(walletsPath, {});
-  if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 매도 가능: ${coin}` });
-  if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
+    if (sub === '매도') {
+      await interaction.deferReply({ ephemeral: true });
+      const coin = interaction.options.getString('코인');
+      const amount = interaction.options.getInteger('수량');
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
+      if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 매도 가능: ${coin}` });
+      if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
 
-  const have = wallets[interaction.user.id]?.[coin] || 0;
-  if (have < amount) return interaction.editReply({ content: `❌ 보유 부족: ${have}` });
-  const gross = coins[coin].price * amount;
-  const fee = Math.floor(gross * 0.3);
-  const net = gross - fee;
-  wallets[interaction.user.id][coin] -= amount;
-  if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
-  await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
-  // ⭐ 실현수익 기록
-  wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
-  wallets[interaction.user.id + "_realized"][coin] = (wallets[interaction.user.id + "_realized"][coin] || 0) + net;
-  await saveJson(walletsPath, wallets);
+      const have = wallets[interaction.user.id]?.[coin] || 0;
+      if (have < amount) return interaction.editReply({ content: `❌ 보유 부족: ${have}` });
+      const gross = coins[coin].price * amount;
+      const fee = Math.floor(gross * 0.3);
+      const net = gross - fee;
+      wallets[interaction.user.id][coin] -= amount;
+      if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
+      await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
+      wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
+      wallets[interaction.user.id + "_realized"][coin] = (wallets[interaction.user.id + "_realized"][coin] || 0) + net;
+      await saveJson(walletsPath, wallets);
 
-  // 히스토리/타임 추가
-  await addHistory(coins[coin], coins[coin].price);
-  await saveJson(coinsPath, coins);
+      await addHistory(coins[coin], coins[coin].price);
+      await saveJson(coinsPath, coins);
 
-  // 거래량 기록!
-  recordVolume(coin, amount);
+      recordVolume(coin, amount);
 
-  return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
-}
+      return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
+    }
 
     // 5. 내코인 (누적매수, 평가손익, 수익률)
     if (sub === '내코인') {
@@ -809,93 +747,89 @@ if (sub === '매도') {
     }
 
     // 6. 순위
-if (sub === '순위') {
-  await interaction.deferReply({ ephemeral: true });
+    if (sub === '순위') {
+      await interaction.deferReply({ ephemeral: true });
 
-  const coins = await loadJson(coinsPath, {});
-  const wallets = await loadJson(walletsPath, {});
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
 
-  // 1. 실현수익 TOP 20 (매도 수익)
-  let realized = {};
-  for (const uid in wallets) {
-    if (!uid.endsWith("_realized")) continue;
-    const sum = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
-    realized[uid.replace("_realized", "")] = sum;
-  }
-  const realizedRank = Object.entries(realized)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20);
+      let realized = {};
+      for (const uid in wallets) {
+        if (!uid.endsWith("_realized")) continue;
+        const sum = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
+        realized[uid.replace("_realized", "")] = sum;
+      }
+      const realizedRank = Object.entries(realized)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20);
 
-  // 2. 평가자산 TOP 20 (보유 평가액)
-  let userHoldings = {};
-  for (const uid in wallets) {
-    if (uid.endsWith("_buys") || uid.endsWith("_realized")) continue;
-    const userW = wallets[uid] || {};
-    let evalSum = 0;
-    for (const [coin, q] of Object.entries(userW)) {
-      if (!coins[coin] || coins[coin].delistedAt) continue;
-      evalSum += (coins[coin]?.price || 0) * q;
+      let userHoldings = {};
+      for (const uid in wallets) {
+        if (uid.endsWith("_buys") || uid.endsWith("_realized")) continue;
+        const userW = wallets[uid] || {};
+        let evalSum = 0;
+        for (const [coin, q] of Object.entries(userW)) {
+          if (!coins[coin] || coins[coin].delistedAt) continue;
+          evalSum += (coins[coin]?.price || 0) * q;
+        }
+        userHoldings[uid] = evalSum;
+      }
+      const holdingsRank = Object.entries(userHoldings)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20);
+
+      const realizedEmbed = new EmbedBuilder()
+        .setTitle('💰 실현 수익(매도 차익) TOP 20')
+        .setColor('#ffcc00')
+        .setDescription(
+          realizedRank.length
+            ? realizedRank.map(([uid, val], i) =>
+                `**${i+1}. <@${uid}>**  \`${val.toLocaleString()} 파랑 정수\``).join('\n')
+            : '데이터 없음'
+        )
+        .setFooter({ text: '실현수익: 코인 매도를 통한 누적 손익 합산' });
+
+      const holdingsEmbed = new EmbedBuilder()
+        .setTitle('🏦 코인 평가자산 TOP 20')
+        .setColor('#33ccff')
+        .setDescription(
+          holdingsRank.length
+            ? holdingsRank.map(([uid, val], i) =>
+                `**${i+1}. <@${uid}>**  \`${val.toLocaleString()} 파랑 정수\``).join('\n')
+            : '데이터 없음'
+        )
+        .setFooter({ text: '자산평가: 현재 보유 코인의 시세 기준 합산' });
+
+      let page = 0;
+      const pages = [realizedEmbed, holdingsEmbed];
+
+      const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('rank_prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+        new ButtonBuilder().setCustomId('rank_next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page === pages.length-1)
+      );
+
+      await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
+      const msg = await interaction.fetchReply();
+      const collector = msg.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 600_000,
+        filter: btn => btn.user.id === interaction.user.id
+      });
+
+      collector.on('collect', async btn => {
+        await btn.deferUpdate();
+        if (btn.customId === 'rank_prev' && page > 0) page -= 1;
+        else if (btn.customId === 'rank_next' && page < pages.length-1) page += 1;
+        navRow.components[0].setDisabled(page === 0);
+        navRow.components[1].setDisabled(page === pages.length-1);
+        await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
+      });
+
+      collector.on('end', async () => {
+        try { await interaction.editReply({ components: [] }); } catch {}
+      });
+      return;
     }
-    userHoldings[uid] = evalSum;
-  }
-  const holdingsRank = Object.entries(userHoldings)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20);
-
-  // 1페이지: 실현수익 TOP 20
-  const realizedEmbed = new EmbedBuilder()
-    .setTitle('💰 실현 수익(매도 차익) TOP 20')
-    .setColor('#ffcc00')
-    .setDescription(
-      realizedRank.length
-        ? realizedRank.map(([uid, val], i) =>
-            `**${i+1}. <@${uid}>**  \`${val.toLocaleString()} 파랑 정수\``).join('\n')
-        : '데이터 없음'
-    )
-    .setFooter({ text: '실현수익: 코인 매도를 통한 누적 손익 합산' });
-
-  // 2페이지: 자산 TOP 20
-  const holdingsEmbed = new EmbedBuilder()
-    .setTitle('🏦 코인 평가자산 TOP 20')
-    .setColor('#33ccff')
-    .setDescription(
-      holdingsRank.length
-        ? holdingsRank.map(([uid, val], i) =>
-            `**${i+1}. <@${uid}>**  \`${val.toLocaleString()} 파랑 정수\``).join('\n')
-        : '데이터 없음'
-    )
-    .setFooter({ text: '자산평가: 현재 보유 코인의 시세 기준 합산' });
-
-  let page = 0;
-  const pages = [realizedEmbed, holdingsEmbed];
-
-  const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('rank_prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
-    new ButtonBuilder().setCustomId('rank_next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page === pages.length-1)
-  );
-
-  await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
-  const msg = await interaction.fetchReply();
-  const collector = msg.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 600_000,
-    filter: btn => btn.user.id === interaction.user.id
-  });
-
-  collector.on('collect', async btn => {
-    await btn.deferUpdate();
-    if (btn.customId === 'rank_prev' && page > 0) page -= 1;
-    else if (btn.customId === 'rank_next' && page < pages.length-1) page += 1;
-    navRow.components[0].setDisabled(page === 0);
-    navRow.components[1].setDisabled(page === pages.length-1);
-    await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
-  });
-
-  collector.on('end', async () => {
-    try { await interaction.editReply({ components: [] }); } catch {}
-  });
-  return;
-  }
- },
+  },
   autoMarketUpdate
 };
