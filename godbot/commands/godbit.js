@@ -472,6 +472,12 @@ module.exports = {
       let allAlive = Object.entries(coins)
         .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
 
+      if (chartFilter === '1m' && !search) {
+    return interaction.editReply({
+      content: `❌ 1분 주기 시장 전체 차트는 데이터가 너무 많아 지원하지 않습니다.\n코인명을 입력해서 단일 코인 차트만 확인해 주세요!`
+    });
+  }
+
       if (search) {
         allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
         if (!allAlive.length) {
