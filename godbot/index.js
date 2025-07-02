@@ -210,6 +210,14 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("갓비트");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
+["modal_buy", async (interaction) => {
+  const cmd = client.commands.get("갓비트");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["modal_sell", async (interaction) => {
+  const cmd = client.commands.get("갓비트");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],  
   // 필요하면 추가로 더 여기에 등록
 ]);
 
