@@ -22,12 +22,13 @@ module.exports = {
     const reasonGiveRole = reasonInput || `역할관리자 지급 by <@${interaction.user.id}>`;
     const reasonTakeRole = reasonInput || `역할관리자 차감 by <@${interaction.user.id}>`;
 
-    // 역할 지급/차감
+    // 역할 지급/차감 (유저 옵션과 무관하게 역할이 있으면 역할 우선)
     if (role) {
+      await interaction.deferReply({ ephemeral: false }); // 응답 미리 연장
       await interaction.guild.members.fetch();
       const members = interaction.guild.members.cache.filter(m => m.roles.cache.has(role.id) && !m.user.bot);
       if (members.size === 0)
-        return interaction.reply({ content: '해당 역할을 가진 멤버가 없습니다.', ephemeral: true });
+        return interaction.editReply({ content: '해당 역할을 가진 멤버가 없습니다.' });
 
       let msg = [];
       for (const member of members.values()) {
@@ -44,11 +45,11 @@ module.exports = {
         }
       }
       if (msg.length === 0) {
-        return interaction.reply({ content: '차감/지급할 멤버가 없습니다.', ephemeral: true });
+        return interaction.editReply({ content: '차감/지급할 멤버가 없습니다.' });
       } else {
         let txt = `**역할 지급/차감 결과 (${members.size}명):**\n` + msg.join('\n');
         if (txt.length > 1800) txt = txt.slice(0, 1800) + '\n(생략)';
-        return interaction.reply({ content: txt, ephemeral: false });
+        return interaction.editReply({ content: txt });
       }
     }
 
