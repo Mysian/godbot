@@ -119,6 +119,11 @@ function recordVolume(coin, amount) {
   lastVolume[coin] = (lastVolume[coin] || 0) + amount;
 }
 
+
+function isKoreanName(str) {
+  return /^[가-힣]+$/.test(str);
+}
+
 // ===== ⭐️ 1분마다 시세/폐지/신규상장 자동 갱신! =====
 async function autoMarketUpdate(members) {
   const coins = await loadJson(coinsPath, {});
