@@ -183,34 +183,61 @@ module.exports = {
 
     // === [여기부터 로그 메시지!] ===
     if (sub === '상장') {
-      const coin = interaction.options.getString('코인명');
-      const coins = await loadJson(coinsPath, {});
-      if (coins[coin]) return interaction.reply({ content: `❌ 이미 존재하는 코인: ${coin}`, ephemeral: true });
+  const coin = interaction.options.getString('코인명');
+  const coins = await loadJson(coinsPath, {});
 
-      let now = new Date().toISOString();
-      let vopt = coins._volatilityGlobal || null;
-      let info = {
-        price: Math.floor(800 + Math.random()*700),
-        history: [],
-        historyT: [],
-        listedAt: now,
-        delistedAt: null
-      };
-      if (vopt) info.volatility = vopt;
+  if (coins[coin] && !coins[coin].delistedAt) {
+    // 이미 상장 중인 코인
+    return interaction.reply({ content: `❌ 이미 상장 중인 코인: ${coin}`, ephemeral: true });
+  }
 
-      info.history.push(info.price);
-      info.historyT.push(now);
-      coins[coin] = info;
-      await saveJson(coinsPath, coins);
+  let now = new Date().toISOString();
+  let vopt = coins._volatilityGlobal || null;
 
-      // ✅ 상장 로그 메시지 전송
-      const noticeChannel = client.channels.cache.get(NOTICE_CHANNEL_ID);
-      if (noticeChannel) {
-        await noticeChannel.send(`✅ **${coin}** 코인이 상장되었습니다. (${toKSTString(now)})`);
-      }
+  if (coins[coin] && coins[coin].delistedAt) {
+    // 상폐 코인 "부활"!
+    coins[coin].delistedAt = null;
+    coins[coin].listedAt = now;
+    coins[coin]._alreadyRevived = true; // 부활 표시(선택)
 
-      return interaction.reply({ content: `✅ 코인 [${coin}]이 상장되었습니다!`, ephemeral: true });
-    }
+    coins[coin].price = Math.floor(800 + Math.random()*700);
+    coins[coin].history = [coins[coin].price];
+    coins[coin].historyT = [now];
+  } else {
+    // 완전 신규 상장
+    let info = {
+      price: Math.floor(800 + Math.random()*700),
+      history: [],
+      historyT: [],
+      listedAt: now,
+      delistedAt: null
+    };
+    if (vopt) info.volatility = vopt;
+    info.history.push(info.price);
+    info.historyT.push(now);
+    coins[coin] = info;
+  }
+
+  await saveJson(coinsPath, coins);
+
+  // ✅ 상장(또는 부활) 로그 메시지 전송
+  const noticeChannel = client.channels.cache.get(NOTICE_CHANNEL_ID);
+  if (noticeChannel) {
+    await noticeChannel.send(
+      coins[coin]._alreadyRevived
+        ? `♻️ **${coin}** 코인이 부활상장되었습니다. (${toKSTString(now)})`
+        : `✅ **${coin}** 코인이 상장되었습니다. (${toKSTString(now)})`
+    );
+  }
+
+  return interaction.reply({
+    content: coins[coin]._alreadyRevived
+      ? `♻️ 코인 [${coin}]이 부활상장되었습니다!`
+      : `✅ 코인 [${coin}]이 상장되었습니다!`,
+    ephemeral: true
+  });
+}
+
 
     if (sub === '상장폐지') {
       const coin = interaction.options.getString('코인명');
