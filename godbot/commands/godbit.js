@@ -460,8 +460,44 @@ module.exports = {
       let page = 0;
 
       async function renderChartPage(pageIdx = 0) {
+        const coins = await loadJson(coinsPath, {});
+        await ensureBaseCoin(coins);
+        const wallets = await loadJson(walletsPath, {});
+        let allAlive = Object.entries(coins)
+          .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
+
+        if (chartFilter === '1m' && !search) {
+          return interaction.editReply({
+            content: `❌ 1분 주기 시장 전체 차트는 데이터가 너무 많아 지원하지 않습니다.\n코인명을 입력해서 단일 코인 차트만 확인해 주세요!`
+          });
+        }
+
+        if (search) {
+          allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
+          if (!allAlive.length) {
+            return interaction.editReply({ content: `❌ [${search}] 코인 없음!` });
+          }
+        }
+
+        allAlive = allAlive.map(([name, info]) => {
+          const h = info.history || [];
+          const prev = h.at(-2) ?? h.at(-1) ?? 0;
+          const now = h.at(-1) ?? 0;
+          const change = now - prev;
+          const pct = prev ? (change / prev) * 100 : 0;
+          return { name, info, now, prev, change, pct };
+        })
+        .sort((a, b) => b.now - a.now);
+
+        const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
+
+        // (페이지 범위 자동 보정)
+        let page = pageIdx;
+        if (page < 0) page = 0;
+        if (page >= totalPages) page = totalPages-1;
+
         const userBE = getBE(interaction.user.id);
-        const slice = allAlive.slice(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE);
+        const slice = allAlive.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
         const chartValue = filterConfig.value;
         const chartDataArr = slice.map((item, i) =>
@@ -541,9 +577,11 @@ module.exports = {
         await btn.deferUpdate();
         if (btn.customId === 'first') page = 0;
         else if (btn.customId === 'prev' && page > 0) page -= 1;
-        else if (btn.customId === 'next' && page < totalPages-1) page += 1;
-        else if (btn.customId === 'last') page = totalPages-1;
-        await renderChartPage(page);
+        else if (btn.customId === 'next') page += 1;
+        else if (btn.customId === 'last') page = 9999;
+        else if (btn.customId === 'refresh') {
+        }
+        page = await renderChartPage(page);
       });
 
       collector.on('end', async () => {
