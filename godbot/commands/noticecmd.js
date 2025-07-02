@@ -141,11 +141,6 @@ module.exports = {
           .setLabel('레벨 가이드')
           .setEmoji('🌈')
           .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId('help_open')
-          .setLabel('명령어 도움말')
-          .setEmoji('❓')
-          .setStyle(ButtonStyle.Secondary),
       );
 
       await channel.send({ embeds: [embed], components: [row] });
