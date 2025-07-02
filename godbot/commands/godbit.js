@@ -161,13 +161,13 @@ async function autoMarketUpdate(members, client) {
   // 신규상장 후보(아직 한 번도 상장되지 않은 멤버 닉네임)
   const candidateNames = Array.from(
     new Set(
-      [...members.values()]
-        .filter(m => !m.user.bot)
-        .map(m => m.nickname || m.user.username)
-        .filter(nick => isKoreanName(nick))
-        .filter(nick => !coins[nick + '코인'])
-    )
-  );
+    [...members.values()]
+      .filter(m => !m.user.bot)
+      .map(m => m.nickname || m.user.username)
+      .filter(nick => !!nick && isKoreanName(nick) && nick.length >= 2)
+      .filter(nick => !coins[nick + '코인'])
+  )
+);
 
   // 상폐코인 후보
   const delistedCoins = Object.entries(coins)
