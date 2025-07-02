@@ -91,22 +91,17 @@ async function saveJson(file, data) {
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
 
-  // 1분 주기는 slice만 적용
+  // 1분 주기: '현재', '1분전' ... 라벨로!
   if (chartValue === '1m') {
     const start = info.history.length - chartRange;
     const data = (info.history || []).slice(start < 0 ? 0 : start);
-    const ts = (info.historyT || []).slice(start < 0 ? 0 : start);
-    // KST로 변환해서 라벨 생성
-    const labels = ts.map(str => {
-      const t = new Date(str);
-      const kst = new Date(t.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-      return kst.getHours().toString().padStart(2, '0') + ':' + kst.getMinutes().toString().padStart(2, '0');
-    });
-    // 부족한 앞부분 0/-로 채우기
-    while (data.length < chartRange) {
-      data.unshift(0);
-      labels.unshift('-');
+    const labels = [];
+    for (let i = 0; i < chartRange; i++) {
+      if (i === chartRange - 1) labels.push('현재');
+      else labels.push(`${chartRange - 1 - i}분전`);
     }
+    while (data.length < chartRange) data.unshift(0);
+    while (labels.length < chartRange) labels.unshift('-');
     return { data, labels };
   }
 
