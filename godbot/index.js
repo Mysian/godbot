@@ -659,71 +659,41 @@ const profileRegister = require('./commands/profile-register.js');
 const profileEdit = require('./commands/profile-edit.js');
 
 client.on(Events.InteractionCreate, async interaction => {
+  // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
 
-  try {
-    // 1. 신고/민원 세트
-    if (interaction.customId === 'complaint_open') {
-      await complaint.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'report_open') {
-      await report.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'punish_guide_open') {
-      await punishGuide.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'warn_check_open') {
-      await warnCheck.execute(interaction);
-      return;
-    }
+  // "_open"으로 끝나는 버튼만 index.js에서 직접 처리!
+  if (interaction.customId.endsWith('_open')) {
+    try {
+      // 1. 신고/민원 세트
+      if (interaction.customId === 'complaint_open') return await complaint.execute(interaction);
+      if (interaction.customId === 'report_open') return await report.execute(interaction);
+      if (interaction.customId === 'punish_guide_open') return await punishGuide.execute(interaction);
+      if (interaction.customId === 'warn_check_open') return await warnCheck.execute(interaction);
 
-    // 2. 태그 세트
-    if (interaction.customId === 'game_tag_open') {
-      await gameTag.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'server_tag_open') {
-      await serverTag.execute(interaction);
-      return;
-    }
+      // 2. 태그 세트
+      if (interaction.customId === 'game_tag_open') return await gameTag.execute(interaction);
+      if (interaction.customId === 'server_tag_open') return await serverTag.execute(interaction);
 
-    // 3. 안내 세트
-    if (interaction.customId === 'serverinfo_open') {
-      await serverInfo.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'serverrules_open') {
-      await serverRules.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'levelguide_open') {
-      await levelGuide.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'help_open') {
-      await help.execute(interaction);
-      return;
-    }
+      // 3. 안내 세트
+      if (interaction.customId === 'serverinfo_open') return await serverInfo.execute(interaction);
+      if (interaction.customId === 'serverrules_open') return await serverRules.execute(interaction);
+      if (interaction.customId === 'levelguide_open') return await levelGuide.execute(interaction);
+      if (interaction.customId === 'help_open') return await help.execute(interaction);
 
-    // 4. 프로필 관리 세트
-    if (interaction.customId === 'profile_register_open') {
-      await profileRegister.execute(interaction);
-      return;
-    }
-    if (interaction.customId === 'profile_edit_open') {
-      await profileEdit.execute(interaction);
-      return;
-    }
+      // 4. 프로필 관리 세트
+      if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
+      if (interaction.customId === 'profile_edit_open') return await profileEdit.execute(interaction);
 
-  } catch (err) {
-    if (err?.code === 10062) return;
-    console.error('버튼 핸들러 오류:', err);
+    } catch (err) {
+      if (err?.code === 10062) return;
+      console.error('버튼 핸들러 오류:', err);
+    }
+    return;
   }
-});
 
+  // "_open" 아닌 버튼은 무시(페이지네이션 등은 각 collector가 처리)
+});
 
 
 
