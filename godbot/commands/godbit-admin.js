@@ -106,7 +106,11 @@ module.exports = {
       sub.setName('우하향삭제')
         .setDescription('특정 코인을 우하향 목록에서 제거')
         .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-    ),
+    )
+    .addSubcommand(sub =>
+  sub.setName('상태')
+    .setDescription('갓비트 코인 시스템 전체 현황/세팅 상태를 확인')
+  ),
 
   async execute(interaction) {
     // 관리자 권한 체크
@@ -264,5 +268,63 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `✅ [${coin}]을 우하향 코인에서 제거!`, ephemeral: true });
     }
+    if (sub === '상태') {
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  const volatility = coins._volatilityGlobal
+    ? `[${Object.entries(coins._volatilityGlobal).map(([k,v])=>`${k}: ${v}`).join(', ')}]`
+    : '기본(0.07~0.15)';
+  const delistOpt = coins._delistOption || { type: 'profitlow', prob: 10 };
+
+  // 우상향/우하향 코인 목록
+  const uptrend = coins._uptrend || [];
+  const downtrend = coins._downtrend || [];
+
+  // 전체 상장 코인
+  const alive = Object.entries(coins).filter(([name, info]) =>
+    !name.startsWith('_') && !info.delistedAt
+  );
+  // 폐지 코인
+  const delisted = Object.entries(coins).filter(([name, info]) =>
+    !name.startsWith('_') && !!info.delistedAt
+  );
+
+  // 임베드 구성
+  const embed = new EmbedBuilder()
+    .setTitle('💼 갓비트 관리 시스템 현황')
+    .addFields(
+      { name: '변동성 옵션', value: volatility, inline: true },
+      { name: '상장폐지 옵션', value: `기준: ${delistOpt.type}${delistOpt.prob ? `, 확률: ${delistOpt.prob}%` : ''}`, inline: true },
+      { name: '우상향 코인', value: uptrend.length ? uptrend.join(', ') : '없음', inline: false },
+      { name: '우하향 코인', value: downtrend.length ? downtrend.join(', ') : '없음', inline: false },
+      { name: '상장 코인 수', value: `${alive.length}개`, inline: true },
+      { name: '상장폐지 코인 수', value: `${delisted.length}개`, inline: true }
+    )
+    .setColor('#00C9FF')
+    .setTimestamp();
+
+  // 상장 코인 간략 리스트 (최대 15개까지만 표시)
+  if (alive.length) {
+    embed.addFields({
+      name: '상장 코인',
+      value: alive.slice(0, 15).map(
+        ([name, info]) => `- ${name} (${info.price} BE)`
+      ).join('\n') + (alive.length > 15 ? '\n외 ' + (alive.length-15) + '개...' : ''),
+      inline: false
+    });
+  }
+  if (delisted.length) {
+    embed.addFields({
+      name: '폐지 코인',
+      value: delisted.slice(0, 10).map(
+        ([name, info]) => `- ${name} (${info.delistedAt ? info.delistedAt.split('T')[0] : '-'})`
+      ).join('\n') + (delisted.length > 10 ? '\n외 ' + (delisted.length-10) + '개...' : ''),
+      inline: false
+    });
+  }
+
+  return interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
   }
 };
