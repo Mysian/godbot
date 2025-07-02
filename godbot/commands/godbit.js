@@ -537,8 +537,6 @@ module.exports = {
         );
         // 둘째줄: 매수/매도/내코인 버튼
         const actionRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('buy').setLabel('매수').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('sell').setLabel('매도').setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
         );
 
@@ -561,109 +559,56 @@ module.exports = {
       });
 
       collector.on('collect', async btn => {
-        await btn.deferUpdate();
+  await btn.deferUpdate();
 
-        if (btn.customId === 'first') page = 0;
-        else if (btn.customId === 'prev' && page > 0) page -= 1;
-        else if (btn.customId === 'next') page += 1;
-        else if (btn.customId === 'last') page = 9999;
-        // 새로고침(refresh)는 page 변화 없음
+  if (btn.customId === 'first') page = 0;
+  else if (btn.customId === 'prev' && page > 0) page -= 1;
+  else if (btn.customId === 'next') page += 1;
+  else if (btn.customId === 'last') page = 9999;
+  else if (btn.customId === 'mycoin') {
+    // (기존 '내코인' 처리만 남김)
+    const coins = await loadJson(coinsPath, {});
+    const wallets = await loadJson(walletsPath, {});
+    const userW = wallets[btn.user.id] || {};
+    const userBuys = wallets[btn.user.id + "_buys"] || {};
+    let totalEval = 0, totalBuy = 0, totalProfit = 0;
+    const e = new EmbedBuilder()
+      .setTitle('💼 내 코인 평가/수익 현황')
+      .setColor('#2ecc71')
+      .setTimestamp();
+    if (!Object.keys(userW).length) {
+      e.setDescription('보유 코인이 없습니다.');
+    } else {
+      let detailLines = [];
+      for (const [c, q] of Object.entries(userW)) {
+        if (!coins[c] || coins[c].delistedAt) continue;
+        const nowPrice = coins[c]?.price || 0;
+        const buyCost = userBuys[c] || 0;
+        const evalPrice = nowPrice * q;
+        const profit = evalPrice - buyCost;
+        const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+        totalEval += evalPrice;
+        totalBuy += buyCost;
+        totalProfit += profit;
+        detailLines.push(
+          `**${c}**\n• 보유: ${q}개\n• 누적매수: ${buyCost.toLocaleString()} BE\n• 평가액: ${evalPrice.toLocaleString()} BE\n• 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
+        );
+      }
+      const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+      e.setDescription(detailLines.join('\n\n'));
+      e.addFields(
+        { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
+        { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
+        { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+      );
+    }
+    await btn.followUp({ embeds: [e], ephemeral: true });
+    return;
+  }
 
-        // 매수 버튼: 모달 호출
-        else if (btn.customId === 'buy') {
-          const modal = new ModalBuilder()
-            .setCustomId('modal_buy')
-            .setTitle('코인 매수')
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('coin_name')
-                  .setLabel('코인명 (정확히 입력)')
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder('예) 까리코인')
-                  .setRequired(true)
-              ),
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('amount')
-                  .setLabel('수량 (숫자)')
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder('예) 5')
-                  .setRequired(true)
-              )
-            );
-          await btn.showModal(modal);
-          return;
-        }
-        // 매도 버튼: 모달 호출
-        else if (btn.customId === 'sell') {
-          const modal = new ModalBuilder()
-            .setCustomId('modal_sell')
-            .setTitle('코인 매도')
-            .addComponents(
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('coin_name')
-                  .setLabel('코인명 (정확히 입력)')
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder('예) 까리코인')
-                  .setRequired(true)
-              ),
-              new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                  .setCustomId('amount')
-                  .setLabel('수량 (숫자)')
-                  .setStyle(TextInputStyle.Short)
-                  .setPlaceholder('예) 3')
-                  .setRequired(true)
-              )
-            );
-          await btn.showModal(modal);
-          return;
-        }
-        // 내코인 버튼
-        else if (btn.customId === 'mycoin') {
-          const coins = await loadJson(coinsPath, {});
-          const wallets = await loadJson(walletsPath, {});
-          const userW = wallets[btn.user.id] || {};
-          const userBuys = wallets[btn.user.id + "_buys"] || {};
-          let totalEval = 0, totalBuy = 0, totalProfit = 0;
-          const e = new EmbedBuilder()
-            .setTitle('💼 내 코인 평가/수익 현황')
-            .setColor('#2ecc71')
-            .setTimestamp();
-          if (!Object.keys(userW).length) {
-            e.setDescription('보유 코인이 없습니다.');
-          } else {
-            let detailLines = [];
-            for (const [c, q] of Object.entries(userW)) {
-              if (!coins[c] || coins[c].delistedAt) continue;
-              const nowPrice = coins[c]?.price || 0;
-              const buyCost = userBuys[c] || 0;
-              const evalPrice = nowPrice * q;
-              const profit = evalPrice - buyCost;
-              const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-              totalEval += evalPrice;
-              totalBuy += buyCost;
-              totalProfit += profit;
-              detailLines.push(
-                `**${c}**\n• 보유: ${q}개\n• 누적매수: ${buyCost.toLocaleString()} BE\n• 평가액: ${evalPrice.toLocaleString()} BE\n• 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
-              );
-            }
-            const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-            e.setDescription(detailLines.join('\n\n'));
-            e.addFields(
-              { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
-              { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
-              { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-            );
-          }
-          await btn.followUp({ embeds: [e], ephemeral: true });
-          return;
-        }
+  page = await renderChartPage(page);
+});
 
-        page = await renderChartPage(page);
-      });
 
       // ==== 모달 이벤트 핸들러 (매수/매도) ====
       interaction.client.on('interactionCreate', async modal => {
