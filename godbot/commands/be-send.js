@@ -15,7 +15,8 @@ module.exports = {
     const config = loadConfig();
     const fromBalance = getBE(interaction.user.id);
     if (fromBalance < amount) return interaction.reply({ content: '잔액이 부족합니다.', ephemeral: true });
-    const { ok, fee, sendAmount, reason } = transferBE(interaction.user.id, to.id, amount, config.fee || 0);
+    // [수정] transferBE에 await 추가!
+    const { ok, fee, sendAmount, reason } = await transferBE(interaction.user.id, to.id, amount, config.fee || 0);
     if (!ok) return interaction.reply({ content: `송금 실패: ${reason}`, ephemeral: true });
     return interaction.reply({
       embeds: [
