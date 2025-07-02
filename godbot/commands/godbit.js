@@ -87,44 +87,47 @@ async function saveJson(file, data) {
   finally { await release(); }
 }
 
-// --- 차트 히스토리 샘플링 함수 추가 ---
+// --- 차트 히스토리 샘플링 함수 (KST 보정 + 라벨 포맷 완벽!) ---
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
   const data = [];
   const labels = [];
   let prevTime = null;
+  let n = 0;
 
   for (let i = info.history.length - 1; i >= 0; i--) {
+    // 항상 KST 기준으로!
     const t = new Date(info.historyT[i]);
-    if (!prevTime || (prevTime - t) >= chartInterval * 60 * 1000) {
+    const kst = new Date(t.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+
+    // prevTime도 KST 기준으로 맞추기
+    if (!prevTime || (prevTime - kst) >= chartInterval * 60 * 1000) {
       data.unshift(info.history[i]);
-
-      // [여기서 라벨 포맷 결정!]
-      let label = '';
+      let label = '-';
       if (['1m','10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
-        // "02:32" 식 (시:분)
-        label = t.toTimeString().slice(0,5);
+        // 02:32 형식 (시:분, KST)
+        label = kst.getHours().toString().padStart(2, '0') + ':' + kst.getMinutes().toString().padStart(2, '0');
       } else if (['1d','3d','7d','15d','30d'].includes(chartValue)) {
-        // "05.04" 식 (월.일)
-        label = `${(t.getMonth()+1).toString().padStart(2,'0')}.${t.getDate().toString().padStart(2,'0')}`;
+        // 05.04 형식 (월.일)
+        label = (kst.getMonth()+1).toString().padStart(2,'0') + '.' + kst.getDate().toString().padStart(2,'0');
       } else if (chartValue === '1y') {
-        // "2024" 식 (연도)
-        label = t.getFullYear().toString();
-      } else {
-        label = '-';
+        // 2024 형식 (년도)
+        label = kst.getFullYear().toString();
       }
-
       labels.unshift(label);
-      prevTime = t;
-      if (data.length >= chartRange) break;
+      prevTime = kst;
+      n++;
+      if (n >= chartRange) break;
     }
   }
+  // 데이터가 부족하면 0/-로 앞에 채움
   while (data.length < chartRange) {
     data.unshift(0);
     labels.unshift('-');
   }
   return { data, labels };
 }
+
 
 
 async function ensureBaseCoin(coins) {
