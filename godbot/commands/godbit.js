@@ -151,25 +151,50 @@ async function autoMarketUpdate(members, client) {
   // --- 이벤트 메시지 저장
   const eventNotices = [];
   let newlyListed = null;
+  let revivedListed = null; // [추가] 부활상장
 
-  // 1. 자동 신규상장
+  // 1. 자동 신규상장 + 상폐코인 부활 [로직 통합]
   const aliveCoins = Object.entries(coins)
     .filter(([name, info]) => !info.delistedAt && name !== '까리코인');
-  if (aliveCoins.length < MAX_AUTO_COINS && members) {
-    const candidateNames = Array.from(
-      new Set(
-        [...members.values()]
-          .filter(m => !m.user.bot)
-          .map(m => m.nickname || m.user.username)
-          .filter(nick => isKoreanName(nick))
-          .filter(nick => !coins[nick + '코인'])
-      )
-    );
+  const totalAvailable = MAX_AUTO_COINS - aliveCoins.length;
 
-    if (candidateNames.length > 0) {
+  // 신규상장 후보(아직 한 번도 상장되지 않은 멤버 닉네임)
+  const candidateNames = Array.from(
+    new Set(
+      [...members.values()]
+        .filter(m => !m.user.bot)
+        .map(m => m.nickname || m.user.username)
+        .filter(nick => isKoreanName(nick))
+        .filter(nick => !coins[nick + '코인'])
+    )
+  );
+
+  // 상폐코인 후보
+  const delistedCoins = Object.entries(coins)
+    .filter(([name, info]) =>
+      info.delistedAt && name !== '까리코인'
+      && (!info._alreadyRevived) // 부활된 적 없는 것만
+    )
+    .map(([name, info]) => name);
+
+  // (신규상장, 부활상장 모두 1개씩 시도할 수 있게)
+  let numListed = 0;
+  if (totalAvailable > 0) {
+    // 부활(상폐 코인) 상장 확률: 50% (혹은 부활 후보 있으면 무조건)
+    if (delistedCoins.length > 0 && (Math.random() < 0.5 || candidateNames.length === 0)) {
+      // 랜덤 부활
+      const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
+      const now = new Date().toISOString();
+      coins[reviveName].delistedAt = null;
+      coins[reviveName]._alreadyRevived = true; // 한 번만 부활 (원하면 여러번도 가능)
+      coins[reviveName].listedAt = now;
+      revivedListed = { name: reviveName, time: now };
+      numListed++;
+    }
+    // 남은 슬롯 있으면 신규상장도 계속 시도
+    if (candidateNames.length > 0 && numListed < totalAvailable) {
       const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
       const newName = newNick + '코인';
-
       const now = new Date().toISOString();
       const vopt = coins._volatilityGlobal || null;
       let info = {
@@ -184,8 +209,8 @@ async function autoMarketUpdate(members, client) {
       info.historyT.push(now);
       coins[newName] = info;
       newlyListed = { name: newName, time: now };
-      await saveJson(coinsPath, coins);
     }
+    await saveJson(coinsPath, coins);
   }
 
   // 2. 코인 가격 업데이트 + 이벤트 감지
@@ -299,9 +324,12 @@ async function autoMarketUpdate(members, client) {
     }
   }
 
-  // 신규 상장 알림
+   // 신규/부활 상장 알림
+  if (revivedListed) {
+    eventNotices.unshift(`♻️ **${revivedListed.name}** 코인이 부활상장되었습니다! (${toKSTString(revivedListed.time)})`);
+  }
   if (newlyListed) {
-    eventNotices.unshift(`✅ **${newlyListed.name}** 코인이 상장되었습니다. (${toKSTString(newlyListed.time)})`);
+    eventNotices.unshift(`✅ **${newlyListed.name}** 코인이 신규상장되었습니다. (${toKSTString(newlyListed.time)})`);
   }
 
   // 이벤트 있으면 공지 채널로 전송
