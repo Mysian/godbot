@@ -665,19 +665,11 @@ client.on(Events.InteractionCreate, async interaction => {
   try {
     // 1. 신고/민원 세트
     if (interaction.customId === 'complaint_open') {
-      if (typeof complaint.modal === 'function') {
-        await complaint.modal(interaction);
-      } else {
-        await complaint.execute(interaction);
-      }
+      await complaint.execute(interaction);
       return;
     }
     if (interaction.customId === 'report_open') {
-      if (typeof report.modal === 'function') {
-        await report.modal(interaction);
-      } else {
-        await report.execute(interaction);
-      }
+      await report.execute(interaction);
       return;
     }
     if (interaction.customId === 'punish_guide_open') {
