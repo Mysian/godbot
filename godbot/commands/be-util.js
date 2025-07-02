@@ -47,7 +47,7 @@ async function addBE(userId, amount, reason) {
 }
 
 // lock 적용된 transferBE
-async function transferBE(fromId, toId, amount, feePercent) {
+async function transferBE(fromId, toId, amount, feePercent, reasonInput) {
   let release;
   try {
     release = await lockfile.lock(bePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
@@ -58,12 +58,15 @@ async function transferBE(fromId, toId, amount, feePercent) {
     const sendAmount = amount - fee;
     if (be[fromId].amount < amount) return { ok: false, reason: "잔액 부족" };
     if (sendAmount <= 0) return { ok: false, reason: "수수료가 전액 초과" };
+    // reason 적용
+    const sendReason = reasonInput || `정수송금 -> <@${toId}> (수수료 ${fee}BE)`;
+    const recvReason = reasonInput || `정수송금 ← <@${fromId}> (수수료 ${fee}BE)`;
     // 송금 차감
     be[fromId].amount -= amount;
     be[fromId].history.push({
       type: "spend",
       amount: amount,
-      reason: `정수송금 -> <@${toId}> (수수료 ${fee}BE)`,
+      reason: sendReason,
       timestamp: Date.now()
     });
     // 수령인 지급
@@ -71,7 +74,7 @@ async function transferBE(fromId, toId, amount, feePercent) {
     be[toId].history.push({
       type: "earn",
       amount: sendAmount,
-      reason: `정수송금 ← <@${fromId}> (수수료 ${fee}BE)`,
+      reason: recvReason,
       timestamp: Date.now()
     });
     saveBE(be);
