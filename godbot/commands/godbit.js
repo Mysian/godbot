@@ -212,14 +212,19 @@ async function autoMarketUpdate(members, client) {
   const totalAvailable = MAX_AUTO_COINS - aliveCoins.length;
 
   const candidateNames = Array.from(
-    new Set(
-      [...members.values()]
-      .filter(m => !m.user.bot)
-      .map(m => m.nickname || m.user.username)
-      .filter(nick => !!nick && isKoreanName(nick) && nick.length >= 2)
-      .filter(nick => !coins[nick + '코인'])
+  new Set(
+    [...members.values()]
+    .filter(m => !m.user.bot)
+    .map(m => m.nickname || m.user.username)
+    .filter(nick =>
+      !!nick &&
+      isKoreanName(nick) &&
+      !/^신규코인\d{1,3}$/.test(nick) &&
+      !['테스트','운영자','관리자','봇'].includes(nick)
     )
-  );
+    .filter(nick => !coins[nick + '코인'])
+  )
+);
 
   const delistedCoins = Object.entries(coins)
     .filter(([name, info]) =>
