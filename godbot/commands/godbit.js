@@ -87,6 +87,23 @@ async function saveJson(file, data) {
   finally { await release(); }
 }
 
+// --- 차트 히스토리 샘플링 함수 추가 ---
+function getSampledHistory(info, chartRange, chartInterval) {
+  if (!info.history || !info.historyT) return [];
+  const result = [];
+  let prevTime = null;
+  for (let i = info.history.length - 1; i >= 0; i--) {
+    const t = new Date(info.historyT[i]);
+    if (!prevTime || (prevTime - t) >= chartInterval * 60 * 1000) {
+      result.unshift(info.history[i]);
+      prevTime = t;
+      if (result.length >= chartRange) break;
+    }
+  }
+  while (result.length < chartRange) result.unshift(0);
+  return result;
+}
+
 async function ensureBaseCoin(coins) {
   if (!coins['까리코인']) {
     const now = new Date().toISOString();
@@ -442,11 +459,11 @@ allAlive = allAlive.map(([name, info]) => {
 
         // 차트(위)
         const datasets = slice.map((item, i) => ({
-          label: item.name,
-          data: (item.info.history||[]).slice(-chartRange),
-          borderColor: COLORS[i % COLORS.length],
-          fill: false
-        }));
+  label: item.name,
+  data: getSampledHistory(item.info, chartRange, filterConfig.interval),
+  borderColor: COLORS[i % COLORS.length],
+  fill: false
+}));
         const labels = Array.from({ length: chartRange }, (_,i) => i+1);
         const chartConfig = {
   backgroundColor: "white", 
