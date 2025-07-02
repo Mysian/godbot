@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -8,7 +8,7 @@ module.exports = {
   async execute(interaction) {
     const embeds = [];
 
-    // ---- 1페이지 ----
+    // ---- 1페이지: 서버 이용 안내/규칙/신고/민원/스탭/주요 생활 명령어 + 관계 명령어 ----
     embeds.push(
       new EmbedBuilder()
         .setTitle("📚 도움말 (1/4)")
@@ -43,7 +43,7 @@ module.exports = {
         .setTimestamp()
     );
 
-    // ---- 2페이지 ----
+    // ---- 2페이지: 서버 유틸/프로필/정수/호감도 ----
     embeds.push(
       new EmbedBuilder()
         .setTitle("📚 도움말 (2/4)")
@@ -67,7 +67,7 @@ module.exports = {
         .setTimestamp()
     );
 
-    // ---- 3페이지 ----
+    // ---- 3페이지: 게임/미니게임/챔피언/겐지키우기 ----
     embeds.push(
       new EmbedBuilder()
         .setTitle("📚 도움말 (3/4)")
@@ -116,6 +116,7 @@ module.exports = {
         .setTimestamp()
     );
 
+    // 페이지 버튼
     const getRow = (page, max) => new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("prev")
@@ -137,26 +138,18 @@ module.exports = {
     });
 
     const collector = reply.createMessageComponentCollector({
-      componentType: ComponentType.Button,
+      filter: i => i.user.id === interaction.user.id,
       time: 300_000
     });
 
-    collector.on("collect", async btn => {
-      if (btn.user.id !== interaction.user.id) {
-        try {
-          await btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
-        } catch (e) {}
-        return;
-      }
-      if (btn.customId === "prev") curPage--;
-      if (btn.customId === "next") curPage++;
-      try {
-        await btn.update({
-          embeds: [embeds[curPage]],
-          components: [getRow(curPage, embeds.length - 1)],
-          ephemeral: true
-        });
-      } catch (e) {}
+    collector.on("collect", async i => {
+      if (i.customId === "prev") curPage--;
+      if (i.customId === "next") curPage++;
+      await i.update({
+        embeds: [embeds[curPage]],
+        components: [getRow(curPage, embeds.length - 1)],
+        ephemeral: true
+      });
     });
 
     collector.on("end", async () => {

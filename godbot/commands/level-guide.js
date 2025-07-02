@@ -118,7 +118,6 @@ module.exports = {
         .setDisabled(page === pages.length - 1)
     );
 
-    // 반드시 reply로 collector를 받아야 함!
     const reply = await interaction.reply({
       embeds: [getEmbed(page)],
       components: [getRow()],
@@ -132,19 +131,12 @@ module.exports = {
 
     collector.on("collect", async (btn) => {
       if (btn.user.id !== interaction.user.id) {
-        // 응답 누락 방지: 반드시 reply!
-        try {
-          await btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
-        } catch (e) {}
-        return;
+        return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
       }
       if (btn.customId === "prev" && page > 0) page -= 1;
       else if (btn.customId === "next" && page < pages.length - 1) page += 1;
-      try {
-        await btn.update({ embeds: [getEmbed(page)], components: [getRow()] });
-      } catch (e) {
-        // 이미 만료/응답된 interaction은 무시
-      }
+
+      await btn.update({ embeds: [getEmbed(page)], components: [getRow()] });
     });
 
     collector.on("end", async () => {

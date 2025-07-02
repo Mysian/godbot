@@ -1,4 +1,4 @@
-// commands/server-rules.js
+// server-rules.js
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 
 const ruleSets = [
@@ -120,7 +120,7 @@ module.exports = {
         .setColor(0x5BFFAF)
         .setTimestamp();
 
-    const getRow = () =>
+    const row = () =>
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("prev")
@@ -136,7 +136,7 @@ module.exports = {
 
     const reply = await interaction.reply({
       embeds: [getEmbed(page)],
-      components: [getRow()],
+      components: [row()],
       ephemeral: true
     });
 
@@ -147,16 +147,12 @@ module.exports = {
 
     collector.on("collect", async (btn) => {
       if (btn.user.id !== interaction.user.id) {
-        try {
-          await btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
-        } catch (e) {}
-        return;
+        return btn.reply({ content: "본인만 조작 가능합니다.", ephemeral: true });
       }
       if (btn.customId === "prev" && page > 0) page -= 1;
       else if (btn.customId === "next" && page < ruleSets.length - 1) page += 1;
-      try {
-        await btn.update({ embeds: [getEmbed(page)], components: [getRow()] });
-      } catch (e) {}
+
+      await btn.update({ embeds: [getEmbed(page)], components: [row()] });
     });
 
     collector.on("end", async () => {
