@@ -131,7 +131,11 @@ module.exports = {
     );
 
     let curPage = 0;
-    const reply = await interaction.reply({ embeds:[embeds[curPage]], components:[getRow(curPage, max)], ephemeral:true, fetchReply:true });
+    const reply = await interaction.reply({
+      embeds: [embeds[curPage]],
+      components: [getRow(curPage, embeds.length - 1)],
+      ephemeral: true
+    });
 
     const collector = reply.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
@@ -141,11 +145,10 @@ module.exports = {
     collector.on("collect", async i => {
       if (i.customId === "prev") curPage--;
       if (i.customId === "next") curPage++;
-
-      await i.deferUpdate();
-      await reply.edit({
+      await i.update({
         embeds: [embeds[curPage]],
-        components: [getRow(curPage, embeds.length - 1)]
+        components: [getRow(curPage, embeds.length - 1)],
+        ephemeral: true
       });
     });
 

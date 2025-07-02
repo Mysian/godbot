@@ -118,7 +118,11 @@ module.exports = {
         .setDisabled(page === pages.length - 1)
     );
 
-    const reply = await interaction.reply({ embeds:[getEmbed(page)], components:[getRow()], ephemeral:true, fetchReply:true });
+    const reply = await interaction.reply({
+      embeds: [getEmbed(page)],
+      components: [getRow()],
+      ephemeral: true
+    });
 
     const collector = reply.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -132,8 +136,7 @@ module.exports = {
       if (btn.customId === "prev" && page > 0) page -= 1;
       else if (btn.customId === "next" && page < pages.length - 1) page += 1;
 
-      await btn.deferUpdate();
-      await interaction.editReply({ embeds:[getEmbed(page)], components:[getRow()] });
+      await btn.update({ embeds: [getEmbed(page)], components: [getRow()] });
     });
 
     collector.on("end", async () => {

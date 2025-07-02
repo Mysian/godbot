@@ -138,7 +138,6 @@ module.exports = {
       embeds: [getEmbed(page)],
       components: [row()],
       ephemeral: true
-      fetchReply: true
     });
 
     const collector = reply.createMessageComponentCollector({
@@ -153,8 +152,7 @@ module.exports = {
       if (btn.customId === "prev" && page > 0) page -= 1;
       else if (btn.customId === "next" && page < ruleSets.length - 1) page += 1;
 
-      await btn.deferUpdate();
-      await interaction.editReply({ embeds: [getEmbed(page)], components: [row()] });
+      await btn.update({ embeds: [getEmbed(page)], components: [row()] });
     });
 
     collector.on("end", async () => {
