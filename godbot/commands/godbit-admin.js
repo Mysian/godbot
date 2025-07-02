@@ -85,26 +85,27 @@ module.exports = {
         .addIntegerOption(opt =>
           opt.setName('확률').setDescription('랜덤 폐지 확률(%)').setMinValue(1).setMaxValue(100).setRequired(false)
         )
+    )
+    // 우상향/우하향 관리
     .addSubcommand(sub =>
-  sub.setName('우상향')
-    .setDescription('특정 코인을 우상향 목록에 추가/제거')
-    .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-)
-.addSubcommand(sub =>
-  sub.setName('우상향삭제')
-    .setDescription('특정 코인을 우상향 목록에서 제거')
-    .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-)
-.addSubcommand(sub =>
-  sub.setName('우하향')
-    .setDescription('특정 코인을 우하향 목록에 추가/제거')
-    .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-)
-.addSubcommand(sub =>
-  sub.setName('우하향삭제')
-    .setDescription('특정 코인을 우하향 목록에서 제거')
-    .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-)
+      sub.setName('우상향')
+        .setDescription('특정 코인을 우상향 목록에 추가')
+        .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName('우상향삭제')
+        .setDescription('특정 코인을 우상향 목록에서 제거')
+        .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName('우하향')
+        .setDescription('특정 코인을 우하향 목록에 추가')
+        .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName('우하향삭제')
+        .setDescription('특정 코인을 우하향 목록에서 제거')
+        .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
     ),
 
   async execute(interaction) {
@@ -166,44 +167,45 @@ module.exports = {
     }
 
     // --- 시장 완전 초기화 ---
-if (sub === '초기화') {
-  const now = new Date().toISOString();
-  const newCoins = {
-    '까리코인': {
-      price: 1000,
-      history: [1000],
-      historyT: [now],
-      listedAt: now
+    if (sub === '초기화') {
+      const now = new Date().toISOString();
+      const newCoins = {
+        '까리코인': {
+          price: 1000,
+          history: [1000],
+          historyT: [now],
+          listedAt: now
+        }
+      };
+      await saveJson(coinsPath, newCoins);
+      await saveJson(walletsPath, {});
+      return interaction.reply({ content: '✅ 코인판이 완전히 초기화되었습니다! (까리코인만 남음)', ephemeral: true });
     }
-  };
-  await saveJson(coinsPath, newCoins);
-  await saveJson(walletsPath, {});
-  return interaction.reply({ content: '✅ 코인판이 완전히 초기화되었습니다! (까리코인만 남음)', ephemeral: true });
-}
 
-// --- 상장 ---
-if (sub === '상장') {
-  const coin = interaction.options.getString('코인명');
-  const coins = await loadJson(coinsPath, {});
-  if (coins[coin]) return interaction.reply({ content: `❌ 이미 존재하는 코인: ${coin}`, ephemeral: true });
+    // --- 상장 ---
+    if (sub === '상장') {
+      const coin = interaction.options.getString('코인명');
+      const coins = await loadJson(coinsPath, {});
+      if (coins[coin]) return interaction.reply({ content: `❌ 이미 존재하는 코인: ${coin}`, ephemeral: true });
 
-  let now = new Date().toISOString();
-  let vopt = coins._volatilityGlobal || null;
-  let info = {
-    price: Math.floor(800 + Math.random()*700),
-    history: [],
-    historyT: [],
-    listedAt: now,
-    delistedAt: null
-  };
-  if (vopt) info.volatility = vopt;
+      let now = new Date().toISOString();
+      let vopt = coins._volatilityGlobal || null;
+      let info = {
+        price: Math.floor(800 + Math.random()*700),
+        history: [],
+        historyT: [],
+        listedAt: now,
+        delistedAt: null
+      };
+      if (vopt) info.volatility = vopt;
 
-  info.history.push(info.price);
-  info.historyT.push(now);
-  coins[coin] = info;
-  await saveJson(coinsPath, coins);
-  return interaction.reply({ content: `✅ 코인 [${coin}]이 상장되었습니다!`, ephemeral: true });
-}
+      info.history.push(info.price);
+      info.historyT.push(now);
+      coins[coin] = info;
+      await saveJson(coinsPath, coins);
+      return interaction.reply({ content: `✅ 코인 [${coin}]이 상장되었습니다!`, ephemeral: true });
+    }
+
     // --- 상장폐지 ---
     if (sub === '상장폐지') {
       const coin = interaction.options.getString('코인명');
@@ -226,39 +228,41 @@ if (sub === '상장') {
       let msg = `상장폐지 기준이 [${standard}]${prob ? `, 확률 ${prob}%` : ''}로 설정됨.`;
       return interaction.reply({ content: '✅ '+msg, ephemeral: true });
     }
+
+    // --- 우상향/우하향 관리 ---
     if (sub === '우상향') {
-  const coin = interaction.options.getString('코인명');
-  const coins = await loadJson(coinsPath, {});
-  coins._uptrend = coins._uptrend || [];
-  if (!coins[coin]) return interaction.reply({ content: `❌ 해당 코인 없음: ${coin}`, ephemeral: true });
-  if (!coins._uptrend.includes(coin)) coins._uptrend.push(coin);
-  await saveJson(coinsPath, coins);
-  return interaction.reply({ content: `✅ [${coin}]을 우상향 코인에 추가!`, ephemeral: true });
-}
-if (sub === '우상향삭제') {
-  const coin = interaction.options.getString('코인명');
-  const coins = await loadJson(coinsPath, {});
-  coins._uptrend = coins._uptrend || [];
-  coins._uptrend = coins._uptrend.filter(x => x !== coin);
-  await saveJson(coinsPath, coins);
-  return interaction.reply({ content: `✅ [${coin}]을 우상향 코인에서 제거!`, ephemeral: true });
-}
-if (sub === '우하향') {
-  const coin = interaction.options.getString('코인명');
-  const coins = await loadJson(coinsPath, {});
-  coins._downtrend = coins._downtrend || [];
-  if (!coins[coin]) return interaction.reply({ content: `❌ 해당 코인 없음: ${coin}`, ephemeral: true });
-  if (!coins._downtrend.includes(coin)) coins._downtrend.push(coin);
-  await saveJson(coinsPath, coins);
-  return interaction.reply({ content: `✅ [${coin}]을 우하향 코인에 추가!`, ephemeral: true });
-}
-if (sub === '우하향삭제') {
-  const coin = interaction.options.getString('코인명');
-  const coins = await loadJson(coinsPath, {});
-  coins._downtrend = coins._downtrend || [];
-  coins._downtrend = coins._downtrend.filter(x => x !== coin);
-  await saveJson(coinsPath, coins);
-  return interaction.reply({ content: `✅ [${coin}]을 우하향 코인에서 제거!`, ephemeral: true });
-}
+      const coin = interaction.options.getString('코인명');
+      const coins = await loadJson(coinsPath, {});
+      coins._uptrend = coins._uptrend || [];
+      if (!coins[coin]) return interaction.reply({ content: `❌ 해당 코인 없음: ${coin}`, ephemeral: true });
+      if (!coins._uptrend.includes(coin)) coins._uptrend.push(coin);
+      await saveJson(coinsPath, coins);
+      return interaction.reply({ content: `✅ [${coin}]을 우상향 코인에 추가!`, ephemeral: true });
+    }
+    if (sub === '우상향삭제') {
+      const coin = interaction.options.getString('코인명');
+      const coins = await loadJson(coinsPath, {});
+      coins._uptrend = coins._uptrend || [];
+      coins._uptrend = coins._uptrend.filter(x => x !== coin);
+      await saveJson(coinsPath, coins);
+      return interaction.reply({ content: `✅ [${coin}]을 우상향 코인에서 제거!`, ephemeral: true });
+    }
+    if (sub === '우하향') {
+      const coin = interaction.options.getString('코인명');
+      const coins = await loadJson(coinsPath, {});
+      coins._downtrend = coins._downtrend || [];
+      if (!coins[coin]) return interaction.reply({ content: `❌ 해당 코인 없음: ${coin}`, ephemeral: true });
+      if (!coins._downtrend.includes(coin)) coins._downtrend.push(coin);
+      await saveJson(coinsPath, coins);
+      return interaction.reply({ content: `✅ [${coin}]을 우하향 코인에 추가!`, ephemeral: true });
+    }
+    if (sub === '우하향삭제') {
+      const coin = interaction.options.getString('코인명');
+      const coins = await loadJson(coinsPath, {});
+      coins._downtrend = coins._downtrend || [];
+      coins._downtrend = coins._downtrend.filter(x => x !== coin);
+      await saveJson(coinsPath, coins);
+      return interaction.reply({ content: `✅ [${coin}]을 우하향 코인에서 제거!`, ephemeral: true });
+    }
   }
 };
