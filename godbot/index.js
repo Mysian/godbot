@@ -656,105 +656,10 @@ const serverRules = require('./commands/server-rules.js');
 const levelGuide = require('./commands/level-guide.js');
 const profileRegister = require('./commands/profile-register.js');
 const profileEdit = require('./commands/profile-edit.js');
-const godbit = require('./commands/godbit.js');
 
 client.on(Events.InteractionCreate, async interaction => {
   // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
-
-  // === 0. 코인 시스템 버튼 직접 분기 ===
-  if (interaction.customId === 'coin_modal_buy') {
-    const modal = new ModalBuilder()
-      .setCustomId('modal_buy')
-      .setTitle('코인 매수')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('coin_name')
-            .setLabel('코인명')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('예시: 까리코인')
-            .setRequired(true)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('amount')
-            .setLabel('매수 수량')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('숫자만 입력')
-            .setRequired(true)
-        )
-      );
-    await interaction.showModal(modal);
-    return;
-  }
-
-  if (interaction.customId === 'coin_modal_sell') {
-    const modal = new ModalBuilder()
-      .setCustomId('modal_sell')
-      .setTitle('코인 매도')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('coin_name')
-            .setLabel('코인명')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('예시: 까리코인')
-            .setRequired(true)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('amount')
-            .setLabel('매도 수량')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('숫자만 입력')
-            .setRequired(true)
-        )
-      );
-    await interaction.showModal(modal);
-    return;
-  }
-
-  // =======================
-  // **여기서부터 명령어 입력 없이 결과 바로 출력**
-  // =======================
-
-  if (interaction.customId === 'coin_modal_my') {
-    // 갓비트 내코인 명령어의 핵심 로직만 바로 실행
-    await interaction.deferReply({ ephemeral: true });
-    try {
-      await godbit.execute({
-        ...interaction,
-        options: {
-          getSubcommand: () => "내코인"
-        }
-      });
-    } catch (e) {
-      await interaction.editReply({ content: '❌ 내코인 정보 불러오기 실패', ephemeral: true });
-    }
-    return;
-  }
-
-  if (interaction.customId === 'coin_modal_chart') {
-    // '코인차트' 명령어 핵심 로직 바로 실행 (여기선 '코인' 파라미터 없이 전체차트)
-    await interaction.deferReply({ ephemeral: true });
-    try {
-      await godbit.execute({
-        ...interaction,
-        options: {
-          getSubcommand: () => "코인차트",
-          getString: (opt) => {
-            if (opt === '차트주기') return '1h'; // 기본값(필요시 변경)
-            if (opt === '코인') return '';
-            return '';
-          }
-        }
-      });
-    } catch (e) {
-      await interaction.editReply({ content: '❌ 차트 정보 불러오기 실패', ephemeral: true });
-    }
-    return;
-  }
 
   // "_open"으로 끝나는 버튼만 index.js에서 직접 처리!
   if (interaction.customId.endsWith('_open')) {
