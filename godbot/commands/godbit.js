@@ -177,8 +177,8 @@ async function autoMarketUpdate(members) {
 
   const base = coins['까리코인'];
   const deltaBase = (Math.random() * 0.2) - 0.1;
-  const newBase = Math.max(1, Math.floor(base.price * (1 + deltaBase)));
-  base.price = newBase;
+const newBase = Math.max(1000, Math.floor(base.price * (1 + deltaBase)));
+base.price = newBase;
   base.history.push(newBase);
   base.historyT = base.historyT || [];
   base.historyT.push(new Date().toISOString());
@@ -225,6 +225,7 @@ async function autoMarketUpdate(members) {
       const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
       const now = new Date().toISOString();
       coins[reviveName].delistedAt = null;
+      delete coins[reviveName]._alreadyRevived;
       coins[reviveName]._alreadyRevived = true;
       coins[reviveName].listedAt = now;
       revivedListed = { name: reviveName, time: now };
@@ -328,7 +329,7 @@ async function autoMarketUpdate(members) {
         const prev = h.at(-2) ?? h.at(-1) ?? 0;
         const now = h.at(-1) ?? 0;
         const pct = prev ? ((now - prev) / prev * 100) : 0;
-        if (now < 300 && pct <= -30) {
+        if (now < 200 && pct <= -50) {
           info.delistedAt = new Date().toISOString();
         }
       }
