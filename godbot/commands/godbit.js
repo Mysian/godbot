@@ -512,13 +512,13 @@ module.exports = {
     )
     .addSubcommand(sub =>
       sub.setName('매수')
-        .setDescription('코인을 매수합니다')
+        .setDescription('코인을 매수합니다. 수수료 없음')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('수량').setDescription('매수 수량').setMinValue(1).setRequired(true))
     )
     .addSubcommand(sub =>
       sub.setName('매도')
-        .setDescription('코인을 매도합니다')
+        .setDescription('코인을 매도합니다. 수수료 30퍼센트 존재')
         .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('수량').setDescription('매도 수량').setMinValue(1).setRequired(true))
     )
