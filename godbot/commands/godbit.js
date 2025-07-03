@@ -550,13 +550,6 @@ module.exports = {
         let allAlive = Object.entries(coins)
           .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
 
-        if (chartFilter === '1m' && !search) {
-          await interaction.editReply({
-            content: `❌ 1분 주기 시장 전체 차트는 데이터가 너무 많아 지원하지 않습니다.\n코인명을 입력해서 단일 코인 차트만 확인해 주세요!`
-          });
-          return 0;
-        }
-
         if (search) {
           allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
           if (!allAlive.length) {
@@ -615,52 +608,64 @@ module.exports = {
             }
           }
         };
-        const chartEmbed = new EmbedBuilder()
-          .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
-          .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
-          .setColor('#FFFFFF')
-          .setTimestamp();
 
-        const listEmbed = new EmbedBuilder()
-          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
-          .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
-          .setColor('#FFFFFF');
+        
+         const NO_CHART_PERIODS = ['1m', '10m', '30m'];
+  let chartEmbed = null;
+  if (!NO_CHART_PERIODS.includes(chartValue)) {
+    chartEmbed = new EmbedBuilder()
+      .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
+      .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
+      .setColor('#FFFFFF')
+      .setTimestamp();
+  } else {
+    chartEmbed = new EmbedBuilder()
+      .setTitle(`⏸️ [${chartLabel}] 차트 1시간부터 지원`)
+      .setDescription('시장 리스트는 아래에서 확인 가능!')
+      .setColor('#888888')
+      .setTimestamp();
+  }
 
-        slice.forEach((item, i) => {
-          const emoji = EMOJIS[i % EMOJIS.length];
-          const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
-          const maxBuy = Math.floor(userBE / (item.now||1));
-          listEmbed.addFields({
-            name: `${emoji} ${item.name}`,
-            value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
-            inline: false
-          });
-        });
+  const listEmbed = new EmbedBuilder()
+    .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
+    .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
+    .setColor('#FFFFFF');
 
-        listEmbed.setFooter({
-          text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
-        });
+  slice.forEach((item, i) => {
+    const emoji = EMOJIS[i % EMOJIS.length];
+    const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
+    const maxBuy = Math.floor(userBE / (item.now||1));
+    listEmbed.addFields({
+      name: `${emoji} ${item.name}`,
+      value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
+      inline: false
+    });
+  });
 
-        // 첫줄: 페이지 버튼
-        const navRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
-          new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
-          new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
-          new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(page===totalPages-1)
-        );
-        // 둘째줄: 매수/매도/내코인 버튼
-        const actionRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
-        );
+  listEmbed.setFooter({
+    text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
+  });
 
-        await interaction.editReply({
-          embeds: [chartEmbed, listEmbed],
-          components: [navRow, actionRow]
-        });
+  // 첫줄: 페이지 버튼
+  const navRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
+    new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
+    new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
+    new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(page===totalPages-1)
+  );
+  // 둘째줄: 매수/매도/내코인 버튼
+  const actionRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
+  );
 
-        return page;
-      }
+  await interaction.editReply({
+    embeds: [chartEmbed, listEmbed],
+    components: [navRow, actionRow]
+  });
+
+  return page;
+}
 
       let page = 0;
       page = await renderChartPage(page);
