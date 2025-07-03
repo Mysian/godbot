@@ -137,9 +137,9 @@ module.exports = {
     collector.on("end", async () => {
       await message.delete().catch(() => {});
 
-      const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
-
       if (yesCount >= requiredVotes) {
+        const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
+
         const afkChannel = interaction.guild.channels.cache.get(AFK_CHANNEL_ID);
         if (!afkChannel?.isVoiceBased()) {
           return interaction.followUp({
@@ -174,7 +174,7 @@ module.exports = {
             await errorLog.send({
               embeds: [
                 new EmbedBuilder()
-                  .setTitle("❗ <#${voiceChannel.id}> 에서 <@${target.id}> 님 [강퇴투표 - 채널 이동 실패]")
+                  .setTitle(`❗ <#${voiceChannel.id}> 에서 <@${target.id}> 님 [강퇴투표 - 채널 이동 실패]`)
                   .setDescription(`\`\`\`${err.stack?.slice(0, 1900)}\`\`\``)
                   .setColor(0xff0000),
               ],
@@ -188,11 +188,8 @@ module.exports = {
           .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
           .setColor(0xffaa00);
 
-        await interaction.followUp({ embeds: [failEmbed] });
 
-        if (resultLogChannel?.isTextBased()) {
-          await resultLogChannel.send({ embeds: [failEmbed] });
-        }
+        await interaction.followUp({ embeds: [failEmbed] });
       }
     });
   },
