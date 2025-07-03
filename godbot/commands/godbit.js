@@ -235,33 +235,38 @@ async function autoMarketUpdate(members, client = global.client) {
   while (base.history.length > HISTORY_MAX) base.history.shift();
   while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
 
-  // === 폭등/폭락 감지 (최근 1분, 10분, 30분, 1시간 내) ===
-  for (const [name, info] of Object.entries(coins)) {
-    if (name === '까리코인' || name.startsWith('_')) continue;
-    if (!info.history || !info.historyT) continue;
-    const h = info.history;
-    const ht = info.historyT;
-    const nowIdx = h.length - 1;
+  // === 폭등/폭락 감지 (최근 60분 내만, 중복 없음!) ===
+for (const [name, info] of Object.entries(coins)) {
+  if (name === '까리코인' || name.startsWith('_')) continue;
+  if (!info.history || !info.historyT) continue;
+  if (!info.listedAt || getMinutesAgo(info.listedAt) < 1440) continue; // 상장 후 24시간 지난 코인만!
 
-    // 폭락/폭등 체크 구간(분)
-    const checkPeriods = [1, 10, 30, 60];
-    checkPeriods.forEach(period => {
-      // 해당 기간 전 인덱스 찾기
-      let idx = -1;
-      for (let i = nowIdx; i >= 0; i--) {
-        if (getMinutesAgo(ht[i]) >= period) { idx = i; break; }
-      }
-      if (idx >= 0 && idx < nowIdx) {
-        const old = h[idx];
-        const curr = h[nowIdx];
-        if (!old || !curr) return;
-        const pct = ((curr - old) / old) * 100;
-        // 30% 이상 폭락/폭등시 알림
-        if (pct <= -30) postEventMsg('crash', name, pct, client);
-        else if (pct >= 30) postEventMsg('soar', name, pct, client);
-      }
-    });
+  const h = info.history;
+  const ht = info.historyT;
+  const nowIdx = h.length - 1;
+
+  // 최근 60분 전 인덱스 찾기
+  let idx = -1;
+  for (let i = nowIdx; i >= 0; i--) {
+    if (getMinutesAgo(ht[i]) >= 60) { idx = i; break; }
   }
+  if (idx >= 0 && idx < nowIdx) {
+    const old = h[idx];
+    const curr = h[nowIdx];
+    if (!old || !curr) continue;
+    const pct = ((curr - old) / old) * 100;
+    let eventType = pct <= -30 ? 'crash' : pct >= 30 ? 'soar' : null;
+    if (eventType) {
+      const key = `${name}_${eventType}`;
+      const nowMin = Math.floor(Date.now() / 60000);
+      const lastMin = lastEventLogTime[key] || 0;
+      if (nowMin - lastMin >= 360) { // 6시간(360분) 이상 지난 경우만 알림
+        postEventMsg(eventType, name, pct, client);
+        lastEventLogTime[key] = nowMin;
+      }
+    }
+  }
+}
 
   // === 이벤트 확률 상폐 (까리코인 예외, 상장 후 5일~만) ===
   for (const [name, info] of Object.entries(coins)) {
