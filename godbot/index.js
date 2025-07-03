@@ -668,14 +668,10 @@ const godbitSimple = require('./commands/godbit-simple.js');
 client.on(Events.InteractionCreate, async interaction => {
   // 갓비트 시세 요약 버튼 처리
   if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
-    await godbitSimple.execute({
-      ...interaction,
-      options: {
-        getString: () => null  
-      }
-    });
-    return;
-  }
+  interaction.options = { getString: () => null };
+  await godbitSimple.execute(interaction);
+  return;
+}
 
   // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
