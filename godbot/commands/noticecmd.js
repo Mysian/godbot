@@ -17,11 +17,12 @@ module.exports = {
         .setDescription('공지 종류')
         .setRequired(true)
         .addChoices(
-          { name: '신고 및 민원', value: 'report' },
-          { name: '게임/서버 태그', value: 'tag' },
           { name: '까리한 디스코드 안내', value: 'info' },
           { name: '서버 프로필 관리', value: 'profile' },
+          { name: '신고 및 민원', value: 'report' },
+          { name: '게임/서버 태그', value: 'tag' },
           { name: '겐지 키우기 및 챔피언 모험', value: 'genji_adv' },
+          { name: '갓비트 시세 요약', value: 'godbit_summary' },
           { name: '봇 관리', value: 'bot_manage' },
     )
 )
@@ -262,6 +263,32 @@ if (type === 'bot_manage') {
 
   await channel.send({ embeds: [embed], components: [row] });
   return void interaction.reply({ content: '봇 관리 안내 공지 전송 완료!', ephemeral: true });
+}
+    
+    // ───────────── 7. 갓비트 시세 요약 ─────────────
+if (type === 'godbit_summary') {
+  const embed = new EmbedBuilder()
+    .setTitle('📊 갓비트 시세 요약')
+    .setDescription([
+      '• 까리한 디스코드만의 랜덤 가상코인 시세/현황판!',
+      '• 주요 코인 가격을 한눈에 확인할 수 있습니다.',
+      '',
+      '자세한 시세는 `/갓비트 코인차트` 명령어 참고!',
+      '실거래는 `/갓비트 매수`, `/갓비트 매도` 명령어로!',
+    ].join('\n'))
+    .setColor(0x4EC3F7)
+    .setFooter({ text: '코인 가격은 실시간으로 변동됩니다. (상세: /갓비트 코인차트)' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('godbit_simple_summary')
+      .setLabel('갓비트 시세 요약')
+      .setEmoji('📊')
+      .setStyle(ButtonStyle.Primary),
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+  return void interaction.reply({ content: '갓비트 시세 요약 공지 전송 완료!', ephemeral: true });
 }
   }
 }
