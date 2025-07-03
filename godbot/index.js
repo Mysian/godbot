@@ -660,6 +660,9 @@ const genji = require('./commands/genji.js');
 const adventure = require('./commands/adventure.js');
 const genjiRank = require('./commands/genji-rank.js');
 const adventureRank = require('./commands/adventure-rank.js');
+const botPull = require('./commands/bot-pull.js');
+const botDeployCommands = require('./commands/bot-deploy-commands.js');
+const botRestart = require('./commands/bot-restart.js');
 
 client.on(Events.InteractionCreate, async interaction => {
   // 버튼만 처리, 나머지는 무시
@@ -692,6 +695,11 @@ client.on(Events.InteractionCreate, async interaction => {
       if (interaction.customId === 'adventure_open') return await adventure.execute(interaction);
       if (interaction.customId === 'genji_rank_open') return await genjiRank.execute(interaction);
       if (interaction.customId === 'adventure_rank_open') return await adventureRank.execute(interaction);
+
+      // 6. 봇 관리 버튼 세트
+      if (interaction.customId === 'bot_pull_open') return await botPull.execute(interaction);
+      if (interaction.customId === 'bot_deploy_commands_open') return await botDeployCommands.execute(interaction);
+      if (interaction.customId === 'bot_restart_open') return await botRestart.execute(interaction);
 
       if (interaction.customId === 'prev' || interaction.customId === 'next') return;
       // ================================
