@@ -65,7 +65,7 @@ function getRecentChange(info, intervalMin = 1) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('갓비트')
+    .setName('갓비트요약')
     .setDescription('간편 전체 코인 현황판')
     .addStringOption(opt =>
       opt.setName('주기')
