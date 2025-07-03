@@ -939,10 +939,17 @@ if (sub === '내코인') {
     filter: btn => btn.user.id === interaction.user.id && btn.customId === 'refresh_mycoin'
   });
   collector.on('collect', async btn => {
-    await btn.deferUpdate();
-    const updatedEmbed = buildMyCoinEmbed();
-    await interaction.editReply({ embeds: [updatedEmbed], components: [row] });
-  });
+  await btn.deferUpdate();
+  // 최신 데이터 다시 로드
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  const userW = wallets[interaction.user.id] || {};
+  const userBuys = wallets[interaction.user.id + "_buys"] || {};
+
+  // 최신 데이터 기반으로 embed 재생성
+  const updatedEmbed = buildMyCoinEmbed(coins, userW, userBuys);
+  await interaction.editReply({ embeds: [updatedEmbed], components: [row] });
+});
 
   return;
 }
