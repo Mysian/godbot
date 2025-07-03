@@ -765,6 +765,28 @@ client.login(process.env.DISCORD_TOKEN);
 const dmRelay = require('./commands/dm.js');
 dmRelay.relayRegister(client);
 
+const statusPath = path.join(__dirname, "data/status.json");
+
+function loadStatus() {
+  if (!fs.existsSync(statusPath)) fs.writeFileSync(statusPath, '{}');
+  return JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+}
+
+// ✅ 멘션 상태 메시지 안내
+client.on("messageCreate", async msg => {
+  if (!msg.guild || msg.author.bot) return;
+  const status = loadStatus();
+  // 멘션 유저 중 상태설정 된 사람 찾기
+  const mentioned = msg.mentions.members?.find(u => status[u.id]);
+  if (mentioned) {
+    try {
+      await msg.author.send(`-# [상태] 현재 ${mentioned.displayName}님은 ${status[mentioned.id]}`);
+    } catch (e) {
+      // DM 차단 등 예외는 무시
+    }
+  }
+});
+
 // 120분 혼자 있는 경우 잠수방 이전
 require("./utils/auto-afk-move")(client);
 
