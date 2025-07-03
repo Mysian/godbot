@@ -22,6 +22,7 @@ module.exports = {
           { name: '까리한 디스코드 안내', value: 'info' },
           { name: '서버 프로필 관리', value: 'profile' },
           { name: '겐지 키우기 및 챔피언 모험', value: 'genji_adv' },
+          { name: '봇 관리', value: 'bot_manage' },
     )
 )
     .addChannelOption(opt =>
@@ -223,6 +224,44 @@ module.exports = {
 
   await channel.send({ embeds: [embed], components: [row] });
   return void interaction.reply({ content: '겐지키우기/챔피언모험 안내 공지 전송 완료!', ephemeral: true });
+}
+
+ // ───────────── 6. 봇 관리 안내 ─────────────
+if (type === 'bot_manage') {
+  const embed = new EmbedBuilder()
+    .setTitle('🤖 봇 관리 패널 (메인스탭 전용)')
+    .setDescription([
+      '※ 이 기능은 **메인스탭(관리진)**만 사용 가능합니다.',
+      '',
+      '**1. [봇업데이트]**: 서버에서 최신 코드로 git pull!',
+      '**2. [봇명령어업데이트]**: slash 명령어 전체 재등록!',
+      '**3. [봇재시작]**: 봇 프로세스 PM2 재시작!',
+      '',
+      '아래 버튼 클릭 시 바로 실행됩니다.'
+    ].join('\n'))
+    .setColor(0x2D3748)
+    .setFooter({ text: '🛠️ 관리자 전용 기능입니다.' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('bot_pull_open')
+      .setLabel('봇업데이트')
+      .setEmoji('⬇️')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('bot_deploy_commands_open')
+      .setLabel('봇명령어업데이트')
+      .setEmoji('⚙️')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('bot_restart_open')
+      .setLabel('봇재시작')
+      .setEmoji('♻️')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+  return void interaction.reply({ content: '봇 관리 안내 공지 전송 완료!', ephemeral: true });
 }
   }
 }
