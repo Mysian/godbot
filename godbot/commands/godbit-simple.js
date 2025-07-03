@@ -1,5 +1,5 @@
 // ==== commands/godbit-simple.js ====
-// /갓비트 : 그래프 없이 셀렉트/새로고침+페이징(1개씩) 전체 현황
+// /갓비트 : 그래프 없이 셀렉트/새로고침으로 전체 현황만
 
 const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, ComponentType
@@ -44,6 +44,7 @@ function toKSTString(utcOrDate) {
   }
 }
 
+// 최근 데이터 구하기 (interval분 전 대비)
 function getRecentChange(info, intervalMin = 1) {
   const h = info.history || [];
   const ht = info.historyT || [];
@@ -62,12 +63,10 @@ function getRecentChange(info, intervalMin = 1) {
   return { change, pct, prev, now, prevTime: ht[baseIdx] ?? null };
 }
 
-const PAGE_SIZE = 1; // 한 페이지에 1개만 표시
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('갓비트')
-    .setDescription('간편 전체 코인 현황판 (한 페이지 1개씩)')
+    .setDescription('간편 전체 코인 현황판')
     .addStringOption(opt =>
       opt.setName('주기')
         .setDescription('시간 필터')
@@ -79,11 +78,10 @@ module.exports = {
     const defaultFilter = '1h';
     let filterValue = interaction.options.getString('주기') || defaultFilter;
     let filterConfig = CHART_FILTERS.find(f=>f.value === filterValue) || CHART_FILTERS[3];
-    let page = 0;
-
     await interaction.deferReply({ ephemeral: true });
 
-    async function render(filterValue, pageIdx = 0) {
+    // 렌더 함수
+    async function render(filterValue) {
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
       let allAlive = Object.entries(coins)
@@ -101,21 +99,14 @@ module.exports = {
         };
       }).sort((a, b) => b.now - a.now);
 
-      const totalPages = Math.ceil(coinList.length / PAGE_SIZE);
-      let curPage = pageIdx;
-      if (curPage < 0) curPage = 0;
-      if (curPage >= totalPages) curPage = totalPages - 1;
-
-      const slice = coinList.slice(curPage * PAGE_SIZE, (curPage + 1) * PAGE_SIZE);
-
       const embed = new EmbedBuilder()
         .setTitle(`📈 [갓비트] 전체 시장 현황 (${filterConfig.label})`)
         .setColor('#4EC3F7')
-        .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n**코인 가격 내림차순 정렬**\n페이지 ${curPage+1}/${totalPages}`)
+        .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n**코인 가격 내림차순 정렬**`)
         .setTimestamp();
 
-      slice.forEach((item, i) => {
-        const emoji = EMOJIS[(curPage * PAGE_SIZE + i) % EMOJIS.length];
+      coinList.forEach((item, i) => {
+        const emoji = EMOJIS[i % EMOJIS.length];
         const arrow = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
         const maxBuy = Math.floor(userBE / (item.now||1));
         embed.addFields({
@@ -125,33 +116,27 @@ module.exports = {
         });
       });
 
-      // 셀렉트/새로고침/이전/다음 컨트롤
+      // 셀렉트/새로고침 컨트롤
       const select = new StringSelectMenuBuilder()
         .setCustomId('filter')
         .setPlaceholder('시간 주기 선택')
         .addOptions(CHART_FILTERS.map(f=>({
           label: f.label, value: f.value, default: f.value===filterValue
         })));
-
-      const navRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(curPage === 0),
-        new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(curPage === totalPages-1),
+      const row1 = new ActionRowBuilder().addComponents(select);
+      const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success)
       );
 
-      const row1 = new ActionRowBuilder().addComponents(select);
-
       await interaction.editReply({
         embeds: [embed],
-        components: [row1, navRow]
+        components: [row1, row2]
       });
     }
 
-    await render(filterValue, page);
+    await render(filterValue);
 
     const msg = await interaction.fetchReply();
-
-    // 셀렉트(필터) 콜렉터
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
       time: 600_000,
@@ -161,12 +146,10 @@ module.exports = {
     collector.on('collect', async sel => {
       filterValue = sel.values[0];
       filterConfig = CHART_FILTERS.find(f=>f.value === filterValue) || filterConfig;
-      page = 0;
       await sel.deferUpdate();
-      await render(filterValue, page);
+      await render(filterValue);
     });
 
-    // 버튼 콜렉터
     const btnCollector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: 600_000,
@@ -175,25 +158,8 @@ module.exports = {
     btnCollector.on('collect', async btn => {
       if (btn.customId === 'refresh') {
         await btn.deferUpdate();
-        await render(filterValue, page);
+        await render(filterValue);
       }
-      if (btn.customId === 'prev' && page > 0) {
-        page--;
-        await btn.deferUpdate();
-        await render(filterValue, page);
-      }
-      if (btn.customId === 'next') {
-        page++;
-        await btn.deferUpdate();
-        await render(filterValue, page);
-      }
-    });
-
-    collector.on('end', async () => {
-      try { await interaction.editReply({ components: [] }); } catch {}
-    });
-    btnCollector.on('end', async () => {
-      try { await interaction.editReply({ components: [] }); } catch {}
     });
   }
 };
