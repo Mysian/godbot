@@ -217,7 +217,11 @@ const modalHandlers = new Map([
 ["modal_sell", async (interaction) => {
   const cmd = client.commands.get("갓비트");
   if (cmd?.modal) return cmd.modal(interaction);
-}],  
+}],
+ ["status_set", async (interaction) => {
+    const cmd = client.commands.get("상태설정");
+    if (cmd?.modal) return cmd.modal.execute(interaction);
+ }],  
   // 필요하면 추가로 더 여기에 등록
 ]);
 
