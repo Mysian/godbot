@@ -1,5 +1,3 @@
 data/*.json
-!data/champion-users.json
 /*.json
-
 .env
