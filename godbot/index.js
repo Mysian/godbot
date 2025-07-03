@@ -668,6 +668,8 @@ const botPull = require('./commands/bot-pull.js');
 const botDeployCommands = require('./commands/bot-deploy-commands.js');
 const botRestart = require('./commands/bot-restart.js');
 const godbitSimple = require('./commands/godbit-simple.js');
+const setStatus = require('./commands/setstatus.js');
+const removeStatus = require('./commands/removestatus.js');
 
 client.on(Events.InteractionCreate, async interaction => {
   // 갓비트 시세 요약 버튼 처리
@@ -712,6 +714,10 @@ client.on(Events.InteractionCreate, async interaction => {
       if (interaction.customId === 'bot_pull_open') return await botPull.execute(interaction);
       if (interaction.customId === 'bot_deploy_commands_open') return await botDeployCommands.execute(interaction);
       if (interaction.customId === 'bot_restart_open') return await botRestart.execute(interaction);
+
+      // 7. 상태 설정 afk
+      if (interaction.customId === 'set_status_open') return await setStatus.execute(interaction);
+      if (interaction.customId === 'remove_status_open') return await removeStatus.execute(interaction);
 
       if (interaction.customId === 'prev' || interaction.customId === 'next') return;
       // ================================
