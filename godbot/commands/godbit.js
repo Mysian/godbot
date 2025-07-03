@@ -173,24 +173,24 @@ function isKoreanName(str) {
 
 // ==== 이벤트 상폐/부활/상장 멘트 ====
 const DELIST_MSGS = [
-  '😱 이런! {coin}은(는) 스캠 코인으로 판명되었습니다! 해당 코인이 상장 폐지되었습니다.',
-  '😱 {coin}은(는) 사기였습니다! 사기! 상장 폐지되었습니다 ㅠㅠ',
-  '😱 {coin} 관련 좋지 않은 소식입니다.. 그렇습니다.. 상장 폐지되었습니다.',
-  '😱 {coin}에 투자하신 분들! 큰일났습니다..! 해당 코인은 휴지 쪼가리가 되었어요!',
-  '😱 충격! {coin}은(는) 상장 폐지되었습니다.',
-  '😱 {coin} 투자자 여러분, 안타깝게도 상장 폐지 소식입니다.'
+  '😱 [상폐] 이런! {coin}은(는) 스캠 코인으로 판명되었습니다!',
+  '😱 [상폐] {coin}은(는) 사기였습니다! 사기!',
+  '😱 [상폐] {coin} 관련 좋지 않은 소식입니다.. 그렇습니다.. 상장 폐지되었습니다.',
+  '😱 [상폐] {coin}에 투자하신 분들! 큰일났습니다..! 해당 코인은 휴지 쪼가리가 되었어요!',
+  '😱 [상폐] 충격! {coin}은(는) 좋지 않은 결말을 맞이합니다.',
+  '😱 [상폐] {coin} 투자자 여러분, 안타까운 소식입니다.'
 ];
 const REVIVE_MSGS = [
-  '🐦‍🔥 {coin} 부활! 투자자들의 눈물 속에 다시 상장되었습니다!',
-  '🐦‍🔥 놀랍게도 {coin}이(가) 재상장! 다시 한 번 기회를 노려보세요!',
-  '🐦‍🔥 희소식! {coin}이(가) 시장에 복귀했습니다!',
-  '🐦‍🔥 죽지 않는 불사조! {coin}이(가) 다시 거래소에 등장했습니다.',
+  '🐦‍🔥 [부활] {coin} 부활! 투자자들의 눈물 속에 다시 상장되었습니다!',
+  '🐦‍🔥 [부활] 놀랍게도 {coin}이(가) 재상장! 다시 한 번 기회를 노려보세요!',
+  '🐦‍🔥 [부활] 희소식! {coin}이(가) 시장에 복귀했습니다!',
+  '🐦‍🔥 [부활] 죽지 않고 돌아왔다! {coin}이(가) 다시 거래소에 등장했습니다.',
 ];
 const NEWCOIN_MSGS = [
-  '🌟 새로운 코인! {coin}이(가) 거래소에 등장했습니다. 모두 주목!',
-  '🌟 {coin} 신규 상장! 이제부터 거래가 가능합니다!',
-  '🌟 {coin}이(가) 오늘부로 공식 상장되었습니다. 첫 번째 투자자는 누구?',
-  '🌟 {coin} 코인, 대망의 상장! 승부의 시작을 알립니다!',
+  '🌟 [상장] 새로운 코인! {coin}이(가) 거래소에 등장했습니다. 모두 주목!',
+  '🌟 [상장] {coin} 신규 상장! 이제부터 거래가 가능합니다!',
+  '🌟 [상장] {coin}이(가) 오늘부로 공식 상장되었습니다. 첫 번째 투자자는 누구?',
+  '🌟 [상장] {coin} 코인, 대망의 상장! 승부의 시작을 알립니다!',
 ];
 function pickRandom(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
 async function postLogMsg(type, coinName, client) {
@@ -203,8 +203,23 @@ async function postLogMsg(type, coinName, client) {
     if (ch) ch.send(msg);
   } catch (e) {}
 }
+async function postEventMsg(type, coinName, percent, client) {
+  let msg;
+  if (type === 'crash') msg = `📉 [폭락!] ${coinName}코인이 ${percent.toFixed(1)}% 폭락 추이를 보입니다!`;
+  if (type === 'soar')  msg = `📈 [폭등!] ${coinName}코인이 ${percent.toFixed(1)}% 폭등 추이를 보입니다!`;
+  try {
+    const ch = await client.channels.fetch(LOG_CHANNEL_ID);
+    if (ch) ch.send(msg);
+  } catch (e) {}
+}
 
-// ⭐️ 1분마다 시세/이벤트성 폐지/신규상장/부활!
+function getMinutesAgo(dateStr) {
+  const now = Date.now();
+  const date = new Date(dateStr).getTime();
+  return Math.floor((now - date) / 60000); // 분 단위 반환
+}
+
+// ⭐️ 1분마다 시세/이벤트성 폐지/신규상장/부활/폭등폭락 알림!
 async function autoMarketUpdate(members, client = global.client) {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
@@ -220,11 +235,42 @@ async function autoMarketUpdate(members, client = global.client) {
   while (base.history.length > HISTORY_MAX) base.history.shift();
   while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
 
-  // === 이벤트 확률 상폐 (까리코인 예외, 급등락시 2%) ===
+  // === 폭등/폭락 감지 (최근 1분, 10분, 30분, 1시간 내) ===
+  for (const [name, info] of Object.entries(coins)) {
+    if (name === '까리코인' || name.startsWith('_')) continue;
+    if (!info.history || !info.historyT) continue;
+    const h = info.history;
+    const ht = info.historyT;
+    const nowIdx = h.length - 1;
+
+    // 폭락/폭등 체크 구간(분)
+    const checkPeriods = [1, 10, 30, 60];
+    checkPeriods.forEach(period => {
+      // 해당 기간 전 인덱스 찾기
+      let idx = -1;
+      for (let i = nowIdx; i >= 0; i--) {
+        if (getMinutesAgo(ht[i]) >= period) { idx = i; break; }
+      }
+      if (idx >= 0 && idx < nowIdx) {
+        const old = h[idx];
+        const curr = h[nowIdx];
+        if (!old || !curr) return;
+        const pct = ((curr - old) / old) * 100;
+        // 30% 이상 폭락/폭등시 알림
+        if (pct <= -30) postEventMsg('crash', name, pct, client);
+        else if (pct >= 30) postEventMsg('soar', name, pct, client);
+      }
+    });
+  }
+
+  // === 이벤트 확률 상폐 (까리코인 예외, 상장 후 5일~만) ===
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
     if (info.delistedAt) continue;
+    // 상장일 5일(7200분) 미만이면 상폐 불가
+    const listedAt = info.listedAt;
+    if (!listedAt || getMinutesAgo(listedAt) < 7200) continue;
 
     const h = info.history || [];
     let pct = 0;
@@ -265,10 +311,14 @@ async function autoMarketUpdate(members, client = global.client) {
     )
   );
 
+  // 부활은 상폐 7일(10080분) 이상 지난 코인만!
   const delistedCoins = Object.entries(coins)
-    .filter(([name, info]) =>
-      info.delistedAt && name !== '까리코인' && (!info._alreadyRevived)
-    )
+    .filter(([name, info]) => {
+      if (name === '까리코인') return false;
+      if (!info.delistedAt || info._alreadyRevived) return false;
+      if (getMinutesAgo(info.delistedAt) < 10080) return false;
+      return true;
+    })
     .map(([name]) => name);
 
   let numListed = 0;
@@ -277,13 +327,23 @@ async function autoMarketUpdate(members, client = global.client) {
     if (delistedCoins.length > 0 && (Math.random() < 0.5 || candidateNames.length === 0)) {
       const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
       const now = new Date().toISOString();
+      // 랜덤 타입 배정!
+      const types = [
+        { coinType: 'verystable', volatility: { min: -0.01, max: 0.01 }, trend: 0.001 },
+        { coinType: 'chaotic', volatility: { min: -0.35, max: 0.35 }, trend: 0.02 },
+        { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
+        { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
+        { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
+        { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
+      ];
+      const pick = pickRandom(types);
+      coins[reviveName].coinType = pick.coinType;
+      coins[reviveName].volatility = pick.volatility;
+      coins[reviveName].trend = pick.trend;
       coins[reviveName].delistedAt = null;
-      delete coins[reviveName]._alreadyRevived;
       coins[reviveName]._alreadyRevived = true;
       coins[reviveName].listedAt = now;
       revivedListed = { name: reviveName, time: now };
-
-      // 부활 안내 멘트
       await postLogMsg('revive', reviveName, client);
       numListed++;
     }
@@ -293,55 +353,38 @@ async function autoMarketUpdate(members, client = global.client) {
       const newName = newNick + '코인';
       const now = new Date().toISOString();
 
-      // --- 코인 타입 랜덤 배정! ---
-      const startPrice = Math.floor(1000 + Math.random() * 49000);
-      const coinTypePick = Math.random();
-      let coinType = 'neutral', volatility, trend;
-      if (coinTypePick < 0.15) {
-        coinType = 'short';
-        volatility = { min: -0.2, max: 0.22 };
-        trend = 0.01;
-      } else if (coinTypePick < 0.30) {
-        coinType = 'long';
-        volatility = { min: -0.04, max: 0.06 };
-        trend = 0.015;
-      } else if (coinTypePick < 0.45) {
-        coinType = 'box';
-        volatility = { min: -0.08, max: 0.09 };
-        trend = 0;
-      } else if (coinTypePick < 0.60) {
-        coinType = 'pump';
-        volatility = { min: -0.22, max: 0.21 };
-        trend = -0.007;
-      } else if (coinTypePick < 0.75) {
-        coinType = 'drop';
-        volatility = { min: -0.07, max: 0.08 };
-        trend = -0.012;
-      } else {
-        coinType = 'bluechip';
-        volatility = { min: -0.03, max: 0.04 };
-        trend = 0.003;
-      }
+      // 랜덤 타입 배정!
+      const types = [
+        { coinType: 'verystable', volatility: { min: -0.01, max: 0.01 }, trend: 0.001 },
+        { coinType: 'chaotic', volatility: { min: -0.35, max: 0.35 }, trend: 0.02 },
+        { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
+        { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
+        { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
+        { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
+      ];
+      const pick = pickRandom(types);
+
       let info = {
-        price: startPrice,
-        history: [startPrice],
-        historyT: [now],
+        price: Math.floor(1000 + Math.random() * 49000),
+        history: [],
+        historyT: [],
         listedAt: now,
         delistedAt: null,
-        volatility,
-        trend,
-        coinType
+        volatility: pick.volatility,
+        trend: pick.trend,
+        coinType: pick.coinType
       };
+      info.history.push(info.price);
+      info.historyT.push(now);
       coins[newName] = info;
       newlyListed = { name: newName, time: now };
-
-      // 신규상장 안내 멘트
       await postLogMsg('new', newName, client);
     }
     await saveJson(coinsPath, coins);
   }
 
-  // 코인 가격 업데이트
+  // 코인 가격 업데이트(기존대로)
+  let corrQueue = [];
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
