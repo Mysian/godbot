@@ -24,6 +24,7 @@ module.exports = {
           { name: '겐지 키우기 및 챔피언 모험', value: 'genji_adv' },
           { name: '갓비트 시세 요약', value: 'godbit_summary' },
           { name: '봇 관리', value: 'bot_manage' },
+          { name: '상태 설정 (afk)', value: 'afk_status' },
     )
 )
     .addChannelOption(opt =>
@@ -289,6 +290,38 @@ if (type === 'godbit_summary') {
 
   await channel.send({ embeds: [embed], components: [row] });
   return void interaction.reply({ content: '갓비트 시세 요약 공지 전송 완료!', ephemeral: true });
+}
+
+// ───────────── 8. 상태 설정 (afk) 안내 ─────────────
+if (type === 'afk_status') {
+  const embed = new EmbedBuilder()
+    .setTitle('💤 상태 메시지(AFK) 설정')
+    .setDescription([
+      '• "잠시 자리를 비웠어요!" 같은 상태 메시지를 등록하면,',
+      '• 누군가 당신을 @멘션할 때 자동으로 안내 메시지가 전송됩니다.',
+      '',
+      '상태 메시지는 언제든 변경/해제 가능!',
+      '',
+      '▶️ 아래 버튼으로 상태 메시지를 직접 등록하거나, 기존 메시지를 해제하세요.'
+    ].join('\n'))
+    .setColor(0x95A5A6)
+    .setFooter({ text: '상태 메시지는 전체 채팅방 어디서든 동작합니다.' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('set_status_open')
+      .setLabel('상태 메시지 등록')
+      .setEmoji('💬')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('remove_status_open')
+      .setLabel('상태 메시지 해제')
+      .setEmoji('❌')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+  return void interaction.reply({ content: '상태 메시지(AFK) 안내 공지 전송 완료!', ephemeral: true });
 }
   }
 }
