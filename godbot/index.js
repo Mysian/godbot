@@ -666,9 +666,14 @@ const botRestart = require('./commands/bot-restart.js');
 const godbitSimple = require('./commands/godbit-simple.js');
 
 client.on(Events.InteractionCreate, async interaction => {
-  // === 0. 갓비트 시세 요약 버튼 처리 (제일 먼저) ===
+  // 갓비트 시세 요약 버튼 처리
   if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
-    await godbitSimple.execute(interaction);
+    await godbitSimple.execute({
+      ...interaction,
+      options: {
+        getString: () => null  
+      }
+    });
     return;
   }
 
