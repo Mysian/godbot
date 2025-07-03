@@ -20,9 +20,10 @@ module.exports = {
           { name: '신고 및 민원', value: 'report' },
           { name: '게임/서버 태그', value: 'tag' },
           { name: '까리한 디스코드 안내', value: 'info' },
-          { name: '서버 프로필 관리', value: 'profile' }
-        )
+          { name: '서버 프로필 관리', value: 'profile' },
+          { name: '겐지 키우기 및 챔피언 모험', value: 'genji_adv' },
     )
+)
     .addChannelOption(opt =>
       opt.setName('채널')
         .setDescription('공지 채널')
@@ -176,5 +177,52 @@ module.exports = {
       await channel.send({ embeds: [embed], components: [row] });
       return void interaction.reply({ content: '서버 프로필 안내 공지 전송 완료!', ephemeral: true });
     }
+
+
+
+    // ───────────── 5. 겐지 키우기 챔피언 모험 ─────────────
+    if (type === 'genji_adv') {
+  const embed = new EmbedBuilder()
+    .setTitle('⚔️ 겐지 키우기 & 챔피언 모험 안내')
+    .setDescription([
+      '### 겐지 키우기',
+      '1. **오버워치 모든 영웅과 1:1 대결!** 겐지로 스테이지를 클리어하며 능력치를 키워보세요.',
+      '2. 다양한 버튼(공격, 수리검, 질풍참 등) 선택형 전투! 클리어 시 능력치 업그레이드 제공!',
+      '`/겐지키우기` 명령어 입력 또는 아래 버튼 클릭!',
+      '',
+      '### 챔피언 모험 (무한 도전 RPG)',
+      '1. **챔피언을 직접 키우고 강화**해서 끝없이 스테이지를 도전!',
+      '2. 랜덤 몬스터, 보스, 드래곤 등과 실시간 전투. 패배 시 강화 레벨 1단계 하락!',
+      '`/모험` 명령어 입력 또는 아래 버튼 클릭!',
+    ].join('\n'))
+    .setColor(0x8864e5)
+    .setFooter({ text: '갓봇의 더 자세한 사용법은 /도움말 을 이용하세요.' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('genji_open')
+      .setLabel('겐지 키우기')
+      .setEmoji('🥷')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('adventure_open')
+      .setLabel('챔피언 모험')
+      .setEmoji('🏹')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('genji_rank_open')
+      .setLabel('겐지 랭크')
+      .setEmoji('🥇')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('adventure_rank_open')
+      .setLabel('모험 순위')
+      .setEmoji('🥈')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+  return void interaction.reply({ content: '겐지키우기/챔피언모험 안내 공지 전송 완료!', ephemeral: true });
+}
   }
 }
