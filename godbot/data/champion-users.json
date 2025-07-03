@@ -1,17 +1,4 @@
 {
-  "445590914874998794": {
-    "name": "아트록스",
-    "level": 1,
-    "success": 1,
-    "stats": {
-      "attack": 73,
-      "ap": 1,
-      "hp": 700,
-      "defense": 41,
-      "penetration": 26
-    },
-    "timestamp": 1749575598074
-  },
   "1294002637103956019": {
     "name": "노틸러스",
     "level": 0,
@@ -24,97 +11,6 @@
       "penetration": 12
     },
     "timestamp": 1749577894740
-  },
-  "751267368696807424": {
-    "name": "라이즈",
-    "level": 7,
-    "success": 7,
-    "stats": {
-      "attack": 27,
-      "ap": 82,
-      "hp": 670,
-      "defense": 36,
-      "penetration": 24
-    },
-    "timestamp": 1749600378008
-  },
-  "403164325595971584": {
-    "name": "클레드",
-    "level": 0,
-    "success": 0,
-    "stats": {
-      "attack": 74,
-      "ap": 0,
-      "hp": 660,
-      "defense": 36,
-      "penetration": 25
-    },
-    "timestamp": 1749600981322
-  },
-  "328826726278758400": {
-    "name": "아칼리",
-    "level": 14,
-    "success": 14,
-    "stats": {
-      "attack": 51,
-      "ap": 121.5,
-      "hp": 1730,
-      "defense": 48,
-      "penetration": 27
-    },
-    "timestamp": 1749620427178
-  },
-  "1106640146914353162": {
-    "name": "이즈리얼",
-    "level": 11,
-    "success": 11,
-    "stats": {
-      "attack": 108.5,
-      "ap": 45,
-      "hp": 1425,
-      "defense": 39,
-      "penetration": 31
-    },
-    "timestamp": 1749620733907
-  },
-  "285645561582059520": {
-    "name": "벨코즈",
-    "level": 1,
-    "success": 1,
-    "stats": {
-      "attack": 21,
-      "ap": 78,
-      "hp": 620,
-      "defense": 27,
-      "penetration": 23
-    },
-    "timestamp": 1749621679523
-  },
-  "783512002651750430": {
-    "name": "니달리",
-    "level": 1,
-    "success": 1,
-    "stats": {
-      "attack": 31,
-      "ap": 73,
-      "hp": 630,
-      "defense": 29,
-      "penetration": 27
-    },
-    "timestamp": 1749622581443
-  },
-  "269837995820056586": {
-    "name": "클레드",
-    "level": 0,
-    "success": 0,
-    "stats": {
-      "attack": 74,
-      "ap": 0,
-      "hp": 660,
-      "defense": 36,
-      "penetration": 25
-    },
-    "timestamp": 1749623090266
   },
   "358959463425769473": {
     "name": "탈론",
@@ -129,32 +25,6 @@
     },
     "timestamp": 1749623379960
   },
-  "308999309947437076": {
-    "name": "우디르",
-    "level": 8,
-    "success": 8,
-    "stats": {
-      "attack": 102.5,
-      "ap": 9,
-      "hp": 1200,
-      "defense": 44,
-      "penetration": 28
-    },
-    "timestamp": 1749623436138
-  },
-  "490417019028504597": {
-    "name": "타릭",
-    "level": 3,
-    "success": 3,
-    "stats": {
-      "attack": 47,
-      "ap": 38,
-      "hp": 835,
-      "defense": 49,
-      "penetration": 17
-    },
-    "timestamp": 1749625158957
-  },
   "333982382220902422": {
     "name": "헤카림",
     "level": 2,
@@ -168,43 +38,251 @@
     },
     "timestamp": 1749625333895
   },
-  "1255342003508478044": {
-    "name": "리산드라",
-    "level": 3,
-    "success": 3,
+  "383784679901233172": {
+    "name": "아크샨",
+    "level": 0,
+    "success": 0,
     "stats": {
-      "attack": 23,
-      "ap": 83,
-      "hp": 745,
-      "defense": 29,
+      "attack": 65,
+      "ap": 0,
+      "hp": 530,
+      "defense": 27,
       "penetration": 25
     },
-    "timestamp": 1749633786021
+    "timestamp": 1749721616826
   },
-  "757033323162763385": {
-    "name": "퀸",
-    "level": 6,
-    "success": 6,
+  "1207767628412747886": {
+    "name": "사미라",
+    "level": 0,
+    "success": 0,
     "stats": {
-      "attack": 93.5,
-      "ap": 6,
-      "hp": 995,
-      "defense": 36,
-      "penetration": 29
+      "attack": 74,
+      "ap": 0,
+      "hp": 610,
+      "defense": 30,
+      "penetration": 27
     },
-    "timestamp": 1749633910910
+    "timestamp": 1749753317598
   },
-  "362413312954204160": {
-    "name": "모데카이저",
+  "308999309947437076": {
+    "name": "피들스틱",
+    "level": 20,
+    "success": 20,
+    "stats": {
+      "attack": 57,
+      "ap": 180,
+      "hp": 2530,
+      "defense": 56,
+      "penetration": 32
+    },
+    "timestamp": 1749788992417
+  },
+  "1061868519383388250": {
+    "name": "아칼리",
+    "level": 20,
+    "success": 20,
+    "stats": {
+      "attack": 69,
+      "ap": 165,
+      "hp": 2525,
+      "defense": 60,
+      "penetration": 30
+    },
+    "timestamp": 1749828883084
+  },
+  "1324685105528307765": {
+    "name": "니코",
+    "level": 11,
+    "success": 11,
+    "stats": {
+      "attack": 35,
+      "ap": 115.5,
+      "hp": 1385,
+      "defense": 39,
+      "penetration": 28
+    },
+    "timestamp": 1749831229369
+  },
+  "783512002651750430": {
+    "name": "이블린",
     "level": 2,
     "success": 2,
     "stats": {
-      "attack": 76,
-      "ap": 42,
-      "hp": 775,
-      "defense": 42,
-      "penetration": 23
+      "attack": 28,
+      "ap": 78,
+      "hp": 675,
+      "defense": 25,
+      "penetration": 29
     },
-    "timestamp": 1749634616737
+    "timestamp": 1749836687775
+  },
+  "249210909992550400": {
+    "name": "오리아나",
+    "level": 21,
+    "success": 21,
+    "stats": {
+      "attack": 60,
+      "ap": 189,
+      "hp": 2660,
+      "defense": 60,
+      "penetration": 32
+    },
+    "timestamp": 1749884402053
+  },
+  "417331366557122580": {
+    "name": "케이틀린",
+    "level": 25,
+    "success": 25,
+    "stats": {
+      "attack": 218,
+      "ap": 58,
+      "hp": 3330,
+      "defense": 73,
+      "penetration": 38
+    },
+    "timestamp": 1749983268649
+  },
+  "638742607861645372": {
+    "name": "아트록스",
+    "level": 0,
+    "success": 0,
+    "stats": {
+      "attack": 70,
+      "ap": 0,
+      "hp": 650,
+      "defense": 40,
+      "penetration": 25
+    },
+    "timestamp": 1750134174560
+  },
+  "403164325595971584": {
+    "name": "이즈리얼",
+    "level": 3,
+    "success": 3,
+    "stats": {
+      "attack": 74,
+      "ap": 33,
+      "hp": 765,
+      "defense": 30,
+      "penetration": 27
+    },
+    "timestamp": 1750172997799
+  },
+  "1114510682021441536": {
+    "name": "워윅",
+    "level": 22,
+    "success": 20,
+    "stats": {
+      "attack": 195,
+      "ap": 46,
+      "hp": 2915,
+      "defense": 72,
+      "penetration": 35
+    },
+    "timestamp": 1750254755304
+  },
+  "344891846465552384": {
+    "name": "나피리",
+    "level": 0,
+    "success": 0,
+    "stats": {
+      "attack": 78,
+      "ap": 0,
+      "hp": 610,
+      "defense": 30,
+      "penetration": 30
+    },
+    "timestamp": 1750256162830
+  },
+  "328826726278758400": {
+    "name": "아이번",
+    "level": 1,
+    "success": 1,
+    "stats": {
+      "attack": 11,
+      "ap": 63,
+      "hp": 635,
+      "defense": 31,
+      "penetration": 16
+    },
+    "timestamp": 1750302049169
+  },
+  "410271326301978634": {
+    "name": "세주아니",
+    "level": 19,
+    "success": 15,
+    "stats": {
+      "attack": 139.5,
+      "ap": 66,
+      "hp": 2495,
+      "defense": 80,
+      "penetration": 24
+    },
+    "timestamp": 1750310949794
+  },
+  "395719866881146881": {
+    "name": "블라디미르",
+    "level": 4,
+    "success": 5,
+    "stats": {
+      "attack": 23,
+      "ap": 93,
+      "hp": 900,
+      "defense": 32,
+      "penetration": 25
+    },
+    "timestamp": 1750345923906
+  },
+  "822301411554754591": {
+    "name": "케이틀린",
+    "level": 177,
+    "success": 169,
+    "stats": {
+      "attack": 5166.5,
+      "ap": 2327,
+      "hp": 87310,
+      "defense": 1684,
+      "penetration": 114
+    },
+    "timestamp": 1750662997967
+  },
+  "269837995820056586": {
+    "name": "미스 포츈",
+    "level": 3,
+    "success": 3,
+    "stats": {
+      "attack": 84,
+      "ap": 3,
+      "hp": 775,
+      "defense": 31,
+      "penetration": 27
+    },
+    "timestamp": 1750663033601
+  },
+  "285645561582059520": {
+    "name": "아트록스",
+    "level": 5,
+    "success": 0,
+    "stats": {
+      "attack": 74.5,
+      "ap": 1,
+      "hp": 725,
+      "defense": 41,
+      "penetration": 25
+    },
+    "timestamp": 1750930350135
+  },
+  "353475063116464130": {
+    "name": "카이사",
+    "level": 113,
+    "success": 0,
+    "stats": {
+      "attack": 104,
+      "ap": 42,
+      "hp": 1235,
+      "defense": 41,
+      "penetration": 26
+    },
+    "timestamp": 1750930404050
   }
 }
