@@ -780,7 +780,7 @@ client.on("messageCreate", async msg => {
   const mentioned = msg.mentions.members?.find(u => status[u.id]);
   if (mentioned) {
     try {
-      await msg.author.send(`-# [상태] 현재 ${mentioned.displayName}님은 ${status[mentioned.id]}`);
+      await msg.channel.send(`-# [상태] 현재 ${mentioned.displayName}님은 ${status[mentioned.id]}`);
     } catch (e) {
       // DM 차단 등 예외는 무시
     }
