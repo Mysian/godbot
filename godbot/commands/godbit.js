@@ -836,7 +836,10 @@ module.exports = {
 
       recordVolume(coin, amount);
 
-      return interaction.editReply({ content: `✅ ${coin} ${amount}개 매수 완료! (수수료 ${fee} BE)` });
+      return interaction.editReply({
+  content: `✅ ${coin} ${amount}개 매수 완료! (개당 ${price} BE, 총 ${total} BE 소모, 수수료 ${fee} BE)`
+});
+
     }
 
     // 4. 매도
@@ -866,55 +869,84 @@ module.exports = {
 
       recordVolume(coin, amount);
 
-      return interaction.editReply({ content: `✅ ${coin} ${amount}개 매도 완료! (수수료 ${fee} BE)` });
+      return interaction.editReply({
+  content: `✅ ${coin} ${amount}개 매도 완료! (개당 ${coins[coin].price} BE, 총 ${gross} BE, 수수료 ${fee} BE, 실수령 ${net} BE)`
+});
+
     }
 
     // 5. 내코인
-    if (sub === '내코인') {
-      await interaction.deferReply({ ephemeral: true });
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
-      const userW = wallets[interaction.user.id] || {};
-      const userBuys = wallets[interaction.user.id + "_buys"] || {};
-      let totalEval = 0, totalBuy = 0, totalProfit = 0;
+if (sub === '내코인') {
+  await interaction.deferReply({ ephemeral: true });
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  const userW = wallets[interaction.user.id] || {};
+  const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
-      const e = new EmbedBuilder()
-        .setTitle('💼 내 코인 평가/수익 현황')
-        .setColor('#2ecc71')
-        .setTimestamp();
+  const buildMyCoinEmbed = () => {
+    let totalEval = 0, totalBuy = 0, totalProfit = 0;
+    const embed = new EmbedBuilder()
+      .setTitle('💼 내 코인 평가/수익 현황')
+      .setColor('#2ecc71')
+      .setTimestamp();
 
-      if (!Object.keys(userW).length) {
-        e.setDescription('보유 코인이 없습니다.');
-      } else {
-        let detailLines = [];
-        for (const [c, q] of Object.entries(userW)) {
-          if (!coins[c] || coins[c].delistedAt) continue;
-          const nowPrice = coins[c]?.price || 0;
-          const buyCost = userBuys[c] || 0;
-          const evalPrice = nowPrice * q;
-          const profit = evalPrice - buyCost;
-          const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-          totalEval += evalPrice;
-          totalBuy += buyCost;
-          totalProfit += profit;
-          detailLines.push(
-            `**${c}**
+    if (!Object.keys(userW).length) {
+      embed.setDescription('보유 코인이 없습니다.');
+    } else {
+      let detailLines = [];
+      for (const [c, q] of Object.entries(userW)) {
+        if (!coins[c] || coins[c].delistedAt) continue;
+        const nowPrice = coins[c]?.price || 0;
+        const buyCost = userBuys[c] || 0;
+        const evalPrice = nowPrice * q;
+        const profit = evalPrice - buyCost;
+        const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+        totalEval += evalPrice;
+        totalBuy += buyCost;
+        totalProfit += profit;
+        detailLines.push(
+          `**${c}**
 • 보유: ${q}개
 • 누적매수: ${buyCost.toLocaleString()} BE
 • 평가액: ${evalPrice.toLocaleString()} BE
 • 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
-          );
-        }
-        const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-        e.setDescription(detailLines.join('\n\n'));
-        e.addFields(
-          { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
-          { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
-          { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
         );
       }
-      return interaction.editReply({ embeds: [e] });
+      const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+      embed.setDescription(detailLines.join('\n\n'));
+      embed.addFields(
+        { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
+        { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
+        { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+      );
     }
+    return embed;
+  };
+
+  const e = buildMyCoinEmbed();
+  const refreshButton = new ButtonBuilder()
+    .setCustomId('refresh_mycoin')
+    .setLabel('🔄 새로고침')
+    .setStyle(ButtonStyle.Success);
+  const row = new ActionRowBuilder().addComponents(refreshButton);
+
+  await interaction.editReply({ embeds: [e], components: [row] });
+
+  const msg = await interaction.fetchReply();
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 600_000,
+    filter: btn => btn.user.id === interaction.user.id && btn.customId === 'refresh_mycoin'
+  });
+  collector.on('collect', async btn => {
+    await btn.deferUpdate();
+    const updatedEmbed = buildMyCoinEmbed();
+    await interaction.editReply({ embeds: [updatedEmbed], components: [row] });
+  });
+
+  return;
+}
+
 
     // 6. 순위
     if (sub === '순위') {
