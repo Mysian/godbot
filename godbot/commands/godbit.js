@@ -610,7 +610,7 @@ module.exports = {
         };
 
         
-         const NO_CHART_PERIODS = ['1m', '10m', '30m'];
+      const NO_CHART_PERIODS = ['1m', '10m', '30m'];
 let chartEmbed = null;
 if (NO_CHART_PERIODS.includes(chartValue) && !search) {
   chartEmbed = new EmbedBuilder()
@@ -624,13 +624,8 @@ if (NO_CHART_PERIODS.includes(chartValue) && !search) {
     .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
     .setColor('#FFFFFF')
     .setTimestamp();
-} else {
-    chartEmbed = new EmbedBuilder()
-      .setTitle(`⏸️ [${chartLabel}] 차트 1시간부터 지원`)
-      .setDescription('시장 리스트는 아래에서 확인 가능!')
-      .setColor('#888888')
-      .setTimestamp();
-  }
+}
+
 
   const listEmbed = new EmbedBuilder()
     .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
