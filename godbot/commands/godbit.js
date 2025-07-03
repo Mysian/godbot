@@ -91,12 +91,45 @@ async function saveJson(file, data) {
 
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
-
-  const data = (info.history || []).slice(-chartRange);
-  let labels = [];
-  for (let i = 1; i <= chartRange; i++) labels.push(i.toString());
-  while (data.length < chartRange) data.unshift(0);
-
+  if (chartValue === '1m') {
+    const start = info.history.length - chartRange;
+    const data = (info.history || []).slice(start < 0 ? 0 : start);
+    const labels = [];
+    for (let i = 0; i < chartRange; i++) {
+      if (i === chartRange - 1) labels.push('현재');
+      else labels.push(`${chartRange - 1 - i}분전`);
+    }
+    while (data.length < chartRange) data.unshift(0);
+    while (labels.length < chartRange) labels.unshift('-');
+    return { data, labels };
+  }
+  const data = [];
+  const labels = [];
+  let prevTime = null;
+  let n = 0;
+  for (let i = info.history.length - 1; i >= 0; i--) {
+    const t = new Date(info.historyT[i]);
+    const kst = new Date(t.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    if (!prevTime || (prevTime - kst) >= chartInterval * 60 * 1000) {
+      data.unshift(info.history[i]);
+      let label = '-';
+      if (['10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
+        label = kst.getHours().toString().padStart(2, '0') + ':' + kst.getMinutes().toString().padStart(2, '0');
+      } else if (['1d','3d','7d','15d','30d'].includes(chartValue)) {
+        label = (kst.getMonth()+1).toString().padStart(2,'0') + '.' + kst.getDate().toString().padStart(2,'0');
+      } else if (chartValue === '1y') {
+        label = kst.getFullYear().toString();
+      }
+      labels.unshift(label);
+      prevTime = kst;
+      n++;
+      if (n >= chartRange) break;
+    }
+  }
+  while (data.length < chartRange) {
+    data.unshift(0);
+    labels.unshift('-');
+  }
   return { data, labels };
 }
 
@@ -516,6 +549,13 @@ module.exports = {
         const wallets = await loadJson(walletsPath, {});
         let allAlive = Object.entries(coins)
           .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
+
+        if (chartFilter === '1m' && !search) {
+          await interaction.editReply({
+            content: `❌ 1분 주기 시장 전체 차트는 데이터가 너무 많아 지원하지 않습니다.\n코인명을 입력해서 단일 코인 차트만 확인해 주세요!`
+          });
+          return 0;
+        }
 
         if (search) {
           allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
