@@ -663,8 +663,15 @@ const adventureRank = require('./commands/adventure-rank.js');
 const botPull = require('./commands/bot-pull.js');
 const botDeployCommands = require('./commands/bot-deploy-commands.js');
 const botRestart = require('./commands/bot-restart.js');
+const godbitSimple = require('./commands/godbit-simple.js');
 
 client.on(Events.InteractionCreate, async interaction => {
+  // === 0. 갓비트 시세 요약 버튼 처리 (제일 먼저) ===
+  if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
+    await godbitSimple.execute(interaction);
+    return;
+  }
+
   // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
 
