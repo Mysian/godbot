@@ -15,15 +15,21 @@ module.exports = {
     const config = loadConfig();
     const fromBalance = getBE(interaction.user.id);
     if (fromBalance < amount) return interaction.reply({ content: '잔액이 부족합니다.', ephemeral: true });
-    // [수정] transferBE에 await 추가!
+
     const { ok, fee, sendAmount, reason } = await transferBE(interaction.user.id, to.id, amount, config.fee || 0);
     if (!ok) return interaction.reply({ content: `송금 실패: ${reason}`, ephemeral: true });
+
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setTitle('파랑 정수 송금')
-          .setDescription(`**${amount} BE**를 <@${to.id}>에게 송금 완료!\n수수료: **${fee} BE**\n실제 입금액: **${sendAmount} BE**`)
+          .setTitle('🔷 파랑 정수 송금')
+          .setDescription([
+            `**${amount} 🔷 BE**를 <@${to.id}>에게 송금 완료!`,
+            `수수료: **${fee} 🔷 BE**`,
+            `실제 입금액: **${sendAmount} 🔷 BE**`
+          ].join('\n'))
           .setColor(0x3399ff)
+          .setTimestamp()
       ]
     });
   }
