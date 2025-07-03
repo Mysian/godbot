@@ -384,7 +384,6 @@ async function autoMarketUpdate(members, client = global.client) {
   }
 
   // 코인 가격 업데이트(기존대로)
-  let corrQueue = [];
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
