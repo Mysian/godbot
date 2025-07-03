@@ -656,6 +656,10 @@ const serverRules = require('./commands/server-rules.js');
 const levelGuide = require('./commands/level-guide.js');
 const profileRegister = require('./commands/profile-register.js');
 const profileEdit = require('./commands/profile-edit.js');
+const genji = require('./commands/genji.js');
+const adventure = require('./commands/adventure.js');
+const genjiRank = require('./commands/genji-rank.js');
+const adventureRank = require('./commands/adventure-rank.js');
 
 client.on(Events.InteractionCreate, async interaction => {
   // 버튼만 처리, 나머지는 무시
@@ -682,6 +686,12 @@ client.on(Events.InteractionCreate, async interaction => {
       // 4. 프로필 관리 세트
       if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
       if (interaction.customId === 'profile_edit_open') return await profileEdit.execute(interaction);
+
+      // 5. 겐지/모험/랭킹 세트
+      if (interaction.customId === 'genji_open') return await genji.execute(interaction);
+      if (interaction.customId === 'adventure_open') return await adventure.execute(interaction);
+      if (interaction.customId === 'genji_rank_open') return await genjiRank.execute(interaction);
+      if (interaction.customId === 'adventure_rank_open') return await adventureRank.execute(interaction);
 
       if (interaction.customId === 'prev' || interaction.customId === 'next') return;
       // ================================
