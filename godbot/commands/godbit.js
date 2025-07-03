@@ -611,14 +611,20 @@ module.exports = {
 
         
          const NO_CHART_PERIODS = ['1m', '10m', '30m'];
-  let chartEmbed = null;
-  if (!NO_CHART_PERIODS.includes(chartValue)) {
-    chartEmbed = new EmbedBuilder()
-      .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
-      .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
-      .setColor('#FFFFFF')
-      .setTimestamp();
-  } else {
+let chartEmbed = null;
+if (NO_CHART_PERIODS.includes(chartValue) && !search) {
+  chartEmbed = new EmbedBuilder()
+    .setTitle(`⏸️ [${chartLabel}] 차트는 단일 코인 검색이나 1시간 필터부터 조회 가능`)
+    .setDescription('시장 리스트는 아래에서 확인 가능!')
+    .setColor('#888888')
+    .setTimestamp();
+} else {
+  chartEmbed = new EmbedBuilder()
+    .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
+    .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
+    .setColor('#FFFFFF')
+    .setTimestamp();
+} else {
     chartEmbed = new EmbedBuilder()
       .setTitle(`⏸️ [${chartLabel}] 차트 1시간부터 지원`)
       .setDescription('시장 리스트는 아래에서 확인 가능!')
