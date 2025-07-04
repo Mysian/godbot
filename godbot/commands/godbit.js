@@ -56,7 +56,6 @@ function applyWallEffect(price, delta, volume = 0) {
 
 // 차트 기간 옵션 (label, value, points, interval(분))
 const CHART_FILTERS = [
-  { label: "1분",   value: "1m",   points: 20, interval: 1 },
   { label: "10분",  value: "10m",  points: 20, interval: 10 },
   { label: "30분",  value: "30m",  points: 24, interval: 30 },
   { label: "1시간", value: "1h",   points: 24, interval: 60 },
@@ -513,7 +512,6 @@ module.exports = {
             .setDescription('차트 주기')
             .setRequired(true)
             .addChoices(
-              { name: '1분', value: '1m' },
               { name: '10분', value: '10m' },
               { name: '30분', value: '30m' },
               { name: '1시간', value: '1h' },
@@ -639,7 +637,7 @@ module.exports = {
         };
 
         
-      const NO_CHART_PERIODS = ['1m', '10m', '30m'];
+      const NO_CHART_PERIODS = ['10m', '30m'];
 let chartEmbed = null;
 if (NO_CHART_PERIODS.includes(chartValue) && !search) {
   chartEmbed = new EmbedBuilder()
