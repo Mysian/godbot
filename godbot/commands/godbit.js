@@ -23,6 +23,28 @@ const MAX_AUTO_COINS = 20;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
 
+// ==== 가격 벽 효과 함수 ====
+const WALLS = [
+  5000, 10000, 20000, 50000, 100000, 20000, 500000, 80000, 1000000, 1500000, 2000000, 3000000, 4000000, 5000000, 7500000, 10000000, 12000000
+];
+function applyWallEffect(price, delta, volume = 0) {
+  // (벽의 강도 및 구간은 자유 조절 가능)
+  let result = delta;
+  for (const wall of WALLS) {
+    const near = Math.abs(price - wall) < wall * 0.07; // 벽 앞뒤 7%에서만 효과 적용
+    if (near) {
+      // 기본적으로 벽에서 변동폭을 0.45배로 축소 (매수/매도량 많으면 일부 완화)
+      let power = 0.45;
+      // 거래량 100 이상이면 0.6, 300 이상이면 0.75, 1000 이상이면 무시
+      if (volume > 1000) power = 1.0;
+      else if (volume > 300) power = 0.75;
+      else if (volume > 100) power = 0.6;
+      result *= power;
+    }
+  }
+  return result;
+}
+
 // 차트 기간 옵션 (label, value, points, interval(분))
 const CHART_FILTERS = [
   { label: "1분",   value: "1m",   points: 20, interval: 1 },
@@ -443,6 +465,7 @@ if (totalAvailable > 0) {
         if (name === a || name === b) corrQueue.push([a, b, delta]);
       }
       delta = Math.max(-0.5, Math.min(delta, 0.5));
+      delta = applyWallEffect(info.price, delta, lastVolume[name] || 0);
       const p = Math.max(1, Math.floor(info.price * (1 + delta)));
       info.price = p;
       info.history = info.history || [];
