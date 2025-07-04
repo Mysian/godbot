@@ -704,27 +704,39 @@ if (sub === '코인차트') {
 
       // 차트 보기!
       else if (btn.customId === 'show_chart') {
-        let chartEmbed = null;
-        try {
-          const res = await fetch(chartUrl, { method: 'GET', timeout: 7000 });
-          if (!res.ok || !res.headers.get('content-type') || !res.headers.get('content-type').startsWith('image')) {
-            throw new Error('이미지 생성 실패');
-          }
-          chartEmbed = new EmbedBuilder()
-            .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
-            .setImage(chartUrl)
-            .setColor('#FFFFFF')
-            .setTimestamp();
-        } catch (e) {
-          chartEmbed = new EmbedBuilder()
-            .setTitle('🚫 처리할 데이터가 많아 그래프는 보여지지 않습니다!')
-            .setDescription(`시간 주기를 늘리시거나 **'단일 코인 종목'**으로 검색해보세요!`)
-            .setColor('#e74c3c')
-            .setTimestamp();
-        }
-        await btn.followUp({ embeds: [chartEmbed], ephemeral: true });
-        return;
-      }
+  let chartEmbed = null;
+  // 1. URL 길이 체크 먼저
+  if (chartUrl.length > 2048) {
+    chartEmbed = new EmbedBuilder()
+      .setTitle('🚫 차트 데이터가 너무 많아 이미지를 생성할 수 없습니다!')
+      .setDescription(`단일 코인 종목만 차트로 확인해보세요!`)
+      .setColor('#e74c3c')
+      .setTimestamp();
+    await btn.followUp({ embeds: [chartEmbed], ephemeral: true });
+    return;
+  }
+  // 2. 실제 fetch
+  try {
+    const res = await fetch(chartUrl, { method: 'GET', timeout: 7000 });
+    if (!res.ok || !res.headers.get('content-type') || !res.headers.get('content-type').startsWith('image')) {
+      throw new Error('이미지 생성 실패');
+    }
+    chartEmbed = new EmbedBuilder()
+      .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
+      .setImage(chartUrl)
+      .setColor('#FFFFFF')
+      .setTimestamp();
+  } catch (e) {
+    chartEmbed = new EmbedBuilder()
+      .setTitle('🚫 처리할 데이터가 많아 그래프는 보여지지 않습니다!')
+      .setDescription(`시간 주기를 늘리시거나 **'단일 코인 종목'**으로 검색해보세요!`)
+      .setColor('#e74c3c')
+      .setTimestamp();
+  }
+  await btn.followUp({ embeds: [chartEmbed], ephemeral: true });
+  return;
+}
+
 
       // 페이지 이동/새로고침 처리
       if (['first','prev','next','last','refresh'].includes(btn.customId)) {
