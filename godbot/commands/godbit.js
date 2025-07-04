@@ -18,7 +18,7 @@ const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const PAGE_SIZE   = 5;
 const HISTORY_PAGE = 20;
-const HISTORY_MAX = 100;
+const HISTORY_MAX = 10000;
 const MAX_AUTO_COINS = 20;
 const COLORS      = ['red','blue','green','orange','purple','cyan','magenta','brown','gray','teal'];
 const EMOJIS      = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣'];
@@ -66,9 +66,6 @@ const CHART_FILTERS = [
   { label: "1일",   value: "1d",   points: 20, interval: 1440 },
   { label: "3일",   value: "3d",   points: 20, interval: 1440*3 },
   { label: "일주일",value: "7d",   points: 20, interval: 1440*7 },
-  { label: "보름",  value: "15d",  points: 15, interval: 1440*15 },
-  { label: "30일",  value: "30d",  points: 30, interval: 1440*30 },
-  { label: "1년",   value: "1y",   points: 12, interval: 1440*30 },
 ];
 
 // ==== 코인 상관관계 쌍 ====
