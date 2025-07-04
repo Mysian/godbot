@@ -14,7 +14,6 @@ const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const EMOJIS = ['🟥','🟦','🟩','🟧','🟪','🟨','🟫','⬜','⚫','🟣','🦋','🦄','🐍','🦜','🦖','🐲','🦩','🐬','🦧','🦢','🦉'];
 
 const CHART_FILTERS = [
-  { label: "1분",   value: "1m",   interval: 1 },
   { label: "10분",  value: "10m",  interval: 10 },
   { label: "30분",  value: "30m",  interval: 30 },
   { label: "1시간", value: "1h",   interval: 60 },
