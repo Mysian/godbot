@@ -56,15 +56,15 @@ function applyWallEffect(price, delta, volume = 0) {
 
 // 차트 기간 옵션 (label, value, points, interval(분))
 const CHART_FILTERS = [
-  { label: "10분",  value: "10m",  points: 20, interval: 10 },
-  { label: "30분",  value: "30m",  points: 24, interval: 30 },
-  { label: "1시간", value: "1h",   points: 24, interval: 60 },
-  { label: "3시간", value: "3h",   points: 24, interval: 180 },
-  { label: "6시간", value: "6h",   points: 24, interval: 360 },
-  { label: "12시간",value: "12h",  points: 24, interval: 720 },
-  { label: "1일",   value: "1d",   points: 20, interval: 1440 },
-  { label: "3일",   value: "3d",   points: 20, interval: 1440*3 },
-  { label: "일주일",value: "7d",   points: 20, interval: 1440*7 },
+  { label: "10분",  value: "10m",  points: 6, interval: 10 },
+  { label: "30분",  value: "30m",  points: 12, interval: 30 },
+  { label: "1시간", value: "1h",   points: 12, interval: 60 },
+  { label: "3시간", value: "3h",   points: 12, interval: 180 },
+  { label: "6시간", value: "6h",   points: 12, interval: 360 },
+  { label: "12시간",value: "12h",  points: 12, interval: 720 },
+  { label: "1일",   value: "1d",   points: 15, interval: 1440 },
+  { label: "3일",   value: "3d",   points: 10, interval: 1440*3 },
+  { label: "일주일",value: "7d",   points: 10, interval: 1440*7 },
 ];
 
 // ==== 코인 상관관계 쌍 ====
