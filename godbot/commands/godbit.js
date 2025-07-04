@@ -360,35 +360,35 @@ if (totalAvailable > 0) {
     const now = new Date().toISOString();
     const types = [
   // 1. 초안정(테더급)
-  { coinType: 'verystable', volatility: { min: -0.0005, max: 0.0005 }, trend: 0.0001 },
+  { coinType: 'verystable', volatility: { min: -0.00015, max: 0.00015 }, trend: 0.00003 },
   // 2. 완전 미친놈(도박, 펌핑/덤핑)
-  { coinType: 'chaotic',    volatility: { min: -0.02,   max: 0.02   }, trend: 0.001 },
+  { coinType: 'chaotic',    volatility: { min: -0.004,   max: 0.004   }, trend: 0.00012 },
   // 3. 죽은코인(하락세)
-  { coinType: 'dead',       volatility: { min: -0.0005, max: 0.0005 }, trend: -0.0001 },
+  { coinType: 'dead',       volatility: { min: -0.0002, max: 0.00015 }, trend: -0.00005 },
   // 4. 보통(시장평균)
-  { coinType: 'neutral',    volatility: { min: -0.003,  max: 0.003  }, trend: 0 },
+  { coinType: 'neutral',    volatility: { min: -0.0006,  max: 0.0007  }, trend: 0 },
   // 5. 장기 우상향(우량 성장주)
-  { coinType: 'long',       volatility: { min: -0.001,  max: 0.008  }, trend: 0.0002 },
+  { coinType: 'long',       volatility: { min: -0.0002,  max: 0.002  }, trend: 0.00008 },
   // 6. 단타(진폭큼)
-  { coinType: 'short',      volatility: { min: -0.005,  max: 0.01   }, trend: 0.00015 },
+  { coinType: 'short',      volatility: { min: -0.001,  max: 0.002   }, trend: 0.00005 },
   // 7. 박스권(움직이긴 함, 장기적으로는 평평)
-  { coinType: 'boxer',      volatility: { min: -0.001,  max: 0.001  }, trend: 0 },
+  { coinType: 'boxer',      volatility: { min: -0.0003,  max: 0.00025  }, trend: 0 },
   // 8. 슬로우불(느린 우상향, 적금느낌)
-  { coinType: 'slowbull',   volatility: { min: -0.0004, max: 0.0012 }, trend: 0.00015 },
+  { coinType: 'slowbull',   volatility: { min: -0.0001, max: 0.0004 }, trend: 0.00007 },
   // 9. 한방 폭발(가끔 대형 펌핑)
-  { coinType: 'explodebox', volatility: { min: -0.001,  max: 0.018  }, trend: 0.0003 },
+  { coinType: 'explodebox', volatility: { min: -0.0003,  max: 0.003  }, trend: 0.00013 },
   // 10. 성장주(꾸준한 상승)
-  { coinType: 'growth',     volatility: { min: -0.002,  max: 0.009  }, trend: 0.0006 },
+  { coinType: 'growth',     volatility: { min: -0.0004,  max: 0.0018  }, trend: 0.00023 },
   // 11. 롤러코스터(급락/급등 반복)
-  { coinType: 'roller',     volatility: { min: -0.015,  max: 0.016  }, trend: 0.0002 },
+  { coinType: 'roller',     volatility: { min: -0.0025,  max: 0.0025  }, trend: 0.00008 },
   // 12. 좀비(만년 약세, 서서히 죽음)
-  { coinType: 'zombie',     volatility: { min: -0.002,  max: 0.001  }, trend: -0.0002 },
+  { coinType: 'zombie',     volatility: { min: -0.0007,  max: 0.00015  }, trend: -0.00006 },
   // 13. 일확천금(하루 한 번씩 튐)
-  { coinType: 'dailyboom',  volatility: { min: -0.001,  max: 0.022  }, trend: 0 },
+  { coinType: 'dailyboom',  volatility: { min: -0.0001,  max: 0.004  }, trend: 0 },
   // 14. 버블(초반 펌핑, 후반 급락)
-  { coinType: 'bubble',     volatility: { min: -0.02,   max: 0.025  }, trend: 0.0006 },
+  { coinType: 'bubble',     volatility: { min: -0.004,   max: 0.006  }, trend: 0.00015 },
   // 15. 공포(악재에 민감, 하락성향)
-  { coinType: 'fear',       volatility: { min: -0.012,  max: 0.004  }, trend: -0.0003 },
+  { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011 },
 ];
     const pick = pickRandom(types);
 
