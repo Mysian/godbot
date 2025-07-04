@@ -10,21 +10,21 @@ const lockfile = require('proper-lockfile');
 
 // ==== 15종 코인 타입(변동성/설명/트렌드) ====
 const COIN_TYPES = [
-  { coinType: 'verystable', volatility: { min: -0.0005, max: 0.0005 }, trend: 0.0001, desc: '국가채권급 초안정' },
-  { coinType: 'chaotic',    volatility: { min: -0.02,   max: 0.02   }, trend: 0.001,  desc: '초미친 도박, 하루에 2배' },
-  { coinType: 'dead',       volatility: { min: -0.0005, max: 0.0005 }, trend: -0.0001,desc: '서서히 녹는 죽은코인' },
-  { coinType: 'neutral',    volatility: { min: -0.003,  max: 0.003  }, trend: 0,       desc: '시장평균 일반코인' },
-  { coinType: 'long',       volatility: { min: -0.001,  max: 0.008  }, trend: 0.0002, desc: '장기 우상향' },
-  { coinType: 'short',      volatility: { min: -0.005,  max: 0.01   }, trend: 0.00015,desc: '단타, 진폭큼' },
-  { coinType: 'boxer',      volatility: { min: -0.001,  max: 0.001  }, trend: 0,      desc: '박스권, 평평' },
-  { coinType: 'slowbull',   volatility: { min: -0.0004, max: 0.0012 }, trend: 0.00015,desc: '느린 우상향 적금' },
-  { coinType: 'explodebox', volatility: { min: -0.001,  max: 0.018  }, trend: 0.0003, desc: '가끔 펌핑' },
-  { coinType: 'growth',     volatility: { min: -0.002,  max: 0.009  }, trend: 0.0006, desc: '성장주 우상향' },
-  { coinType: 'roller',     volatility: { min: -0.015,  max: 0.016  }, trend: 0.0002, desc: '롤러코스터' },
-  { coinType: 'zombie',     volatility: { min: -0.002,  max: 0.001  }, trend: -0.0002,desc: '만년 약세' },
-  { coinType: 'dailyboom',  volatility: { min: -0.001,  max: 0.022  }, trend: 0,      desc: '일확천금' },
-  { coinType: 'bubble',     volatility: { min: -0.02,   max: 0.025  }, trend: 0.0006, desc: '초반 급등 후 폭락' },
-  { coinType: 'fear',       volatility: { min: -0.012,  max: 0.004  }, trend: -0.0003,desc: '악재 민감, 하락' },
+  { coinType: 'verystable', volatility: { min: -0.00015, max: 0.00015 }, trend: 0.00003, desc: '국가채권급 초안정' },
+  { coinType: 'chaotic',    volatility: { min: -0.004,   max: 0.004   }, trend: 0.00012, desc: '초미친 도박, 하루에 2배' },
+  { coinType: 'dead',       volatility: { min: -0.0002, max: 0.00015 }, trend: -0.00005,desc: '서서히 녹는 죽은코인' },
+  { coinType: 'neutral',    volatility: { min: -0.0006,  max: 0.0007  }, trend: 0,       desc: '시장평균 일반코인' },
+  { coinType: 'long',       volatility: { min: -0.0002,  max: 0.002  }, trend: 0.00008, desc: '장기 우상향' },
+  { coinType: 'short',      volatility: { min: -0.001,  max: 0.002   }, trend: 0.00005,desc: '단타, 진폭큼' },
+  { coinType: 'boxer',      volatility: { min: -0.0003,  max: 0.00025  }, trend: 0,      desc: '박스권, 평평' },
+  { coinType: 'slowbull',   volatility: { min: -0.0001, max: 0.0004 }, trend: 0.00007,desc: '느린 우상향 적금' },
+  { coinType: 'explodebox', volatility: { min: -0.0003,  max: 0.003  }, trend: 0.00013, desc: '가끔 펌핑' },
+  { coinType: 'growth',     volatility: { min: -0.0004,  max: 0.0018  }, trend: 0.00023, desc: '성장주 우상향' },
+  { coinType: 'roller',     volatility: { min: -0.0025,  max: 0.0025  }, trend: 0.00008, desc: '롤러코스터' },
+  { coinType: 'zombie',     volatility: { min: -0.0007,  max: 0.00015  }, trend: -0.00006,desc: '만년 약세' },
+  { coinType: 'dailyboom',  volatility: { min: -0.0001,  max: 0.004  }, trend: 0,      desc: '일확천금' },
+  { coinType: 'bubble',     volatility: { min: -0.004,   max: 0.006  }, trend: 0.00015, desc: '초반 급등 후 폭락' },
+  { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011,desc: '악재 민감, 하락' },
 ];
 
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
@@ -195,9 +195,23 @@ module.exports = {
         .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
     )
     .addSubcommand(sub =>
+      sub.setName('이벤트')
+        .setDescription('시장 이벤트(특정 코인 강제 펌핑/덤핑/평균화)')
+        .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
+        .addStringOption(opt =>
+          opt.setName('종류').setDescription('이벤트 종류').setRequired(true)
+            .addChoices(
+              { name: '펌핑', value: 'pump' },
+              { name: '덤핑', value: 'dump' },
+              { name: '평균화', value: 'normalize' }
+            )
+        )
+    )
+    .addSubcommand(sub =>
       sub.setName('상태')
         .setDescription('갓비트 코인 시스템 전체 현황/세팅 상태를 확인')
-    ),
+    )
+  ,
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -221,17 +235,19 @@ module.exports = {
 
     // ========== 2. 타입 변경 ==========
     if (sub === '타입변경') {
-      const coin = interaction.options.getString('코인명');
-      const type = interaction.options.getString('타입');
-      if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
-      const target = COIN_TYPES.find(t => t.coinType === type);
-      if (!target) return interaction.reply({ content: `❌ 지원하지 않는 타입입니다.`, ephemeral: true });
-      coins[coin].coinType = type;
-      coins[coin].volatility = target.volatility;
-      coins[coin].trend = target.trend;
-      await saveJson(coinsPath, coins);
-      return interaction.reply({ content: `✅ [${coin}] 타입을 **${type}**으로 변경 완료!`, ephemeral: true });
-    }
+  const coin = interaction.options.getString('코인명');
+  const type = interaction.options.getString('타입');
+  if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
+  const prevType = coins[coin].coinType ?? '-';
+  const target = COIN_TYPES.find(t => t.coinType === type);
+  if (!target) return interaction.reply({ content: `❌ 지원하지 않는 타입입니다.`, ephemeral: true });
+  coins[coin].coinType = type;
+  coins[coin].volatility = target.volatility;
+  coins[coin].trend = target.trend;
+  await saveJson(coinsPath, coins);
+  return interaction.reply({ content: `✅ [${coin}] 타입을 **${prevType} → ${type}**(으)로 변경 완료!`, ephemeral: true });
+}
+
 
     // ========== 3. 타입 랜덤 재배정 ==========
     if (sub === '타입랜덤') {
@@ -404,27 +420,66 @@ module.exports = {
       return interaction.reply({ content: `🚀 [${coin}] ${sub==='떡상'?'떡상':'떡락'} 완료!`, ephemeral: true });
     }
 
-    // ========== 13. 상태 ==========
-    if (sub === '상태') {
-      let live = 0, delisted = 0;
-      let types = {};
-      for (const [name, info] of Object.entries(coins)) {
-        if (name.startsWith('_')) continue;
-        if (info.delistedAt) delisted++; else live++;
-        types[info.coinType] = (types[info.coinType] || 0) + 1;
-      }
-      const embed = new EmbedBuilder()
-        .setTitle('⚡️ 갓비트 시장 상태')
-        .addFields(
-          { name: '상장 코인', value: `${live}개`, inline: true },
-          { name: '상장폐지', value: `${delisted}개`, inline: true },
-          { name: '코인 타입 분포', value: Object.entries(types).map(([k,v])=>`${k}: ${v}개`).join(', '), inline: false },
-        )
-        .setColor('#00c896')
-        .setTimestamp();
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-      return;
+    // ========== 13. 이벤트 ==========
+    if (sub === '이벤트') {
+  const coin = interaction.options.getString('코인명');
+  const kind = interaction.options.getString('종류');
+  if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
+
+  let oldPrice = coins[coin].price;
+  let newPrice = oldPrice;
+  if (kind === 'pump') {
+    const pct = 0.2 + Math.random() * 0.8; // 20~100% 상승
+    newPrice = Math.round(oldPrice * (1 + pct));
+  } else if (kind === 'dump') {
+    const pct = 0.2 + Math.random() * 0.7; // 20~90% 하락
+    newPrice = Math.max(1, Math.round(oldPrice * (1 - pct)));
+  } else if (kind === 'normalize') {
+    // 시장 평균으로 보정
+    let total = 0, count = 0;
+    for (const [n, info] of Object.entries(coins)) {
+      if (n.startsWith('_') || info.delistedAt) continue;
+      total += info.price ?? 0;
+      count++;
     }
+    newPrice = count ? Math.round(total / count) : oldPrice;
+  }
+  coins[coin].price = newPrice;
+  coins[coin].history = coins[coin].history || [];
+  coins[coin].historyT = coins[coin].historyT || [];
+  coins[coin].history.push(newPrice);
+  coins[coin].historyT.push(new Date().toISOString());
+  await saveJson(coinsPath, coins);
+  return interaction.reply({ content: `🌊 [${coin}] ${kind === 'pump' ? '펌핑' : kind === 'dump' ? '덤핑' : '평균화'} 이벤트 적용됨! (${oldPrice} → ${newPrice} BE)`, ephemeral: true });
+}
+
+
+    // ========== 14. 상태 ==========
+    if (sub === '상태') {
+  let live = 0, delisted = 0;
+  let types = {};
+  let desc = '';
+  for (const [name, info] of Object.entries(coins)) {
+    if (name.startsWith('_')) continue;
+    if (info.delistedAt) delisted++; else live++;
+    types[info.coinType] = (types[info.coinType] || 0) + 1;
+    if (!info.delistedAt) {
+      desc += `• ${name} | ${info.price?.toLocaleString() ?? '-'} BE | ${info.coinType}\n`;
+    }
+  }
+  const embed = new EmbedBuilder()
+    .setTitle('⚡️ 갓비트 시장 상태')
+    .addFields(
+      { name: '상장 코인', value: `${live}개`, inline: true },
+      { name: '상장폐지', value: `${delisted}개`, inline: true },
+      { name: '코인 타입 분포', value: Object.entries(types).map(([k,v])=>`${k}: ${v}개`).join(', '), inline: false },
+      { name: '코인별 타입', value: desc.length ? desc : '상장 코인 없음', inline: false },
+    )
+    .setColor('#00c896')
+    .setTimestamp();
+  await interaction.reply({ embeds: [embed], ephemeral: true });
+  return;
+}
   }
 };
 
