@@ -67,7 +67,7 @@ if (fs.existsSync(eventsPath)) {
   }
 }
 
-// === 갓비트 신규상장 자동갱신: 1분마다 ===
+// === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
 const GUILD_ID = process.env.GUILD_ID || '785841387396005948';
 
@@ -80,7 +80,7 @@ setInterval(async () => {
   } catch (e) {
     console.error('갓비트 자동상장 오류:', e);
   }
-}, 60_000);
+}, 600_000);
 
 // ✅ 봇 준비 완료 시 로그 전송 + 활동 상태 번갈아 표시
 client.once(Events.ClientReady, async () => {
