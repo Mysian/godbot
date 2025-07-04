@@ -5,9 +5,11 @@ const {
   ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 
+
 const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
+const fetch = require('node-fetch');
 const { addBE, getBE } = require('./be-util.js');
 
 // 공지 채널 ID, 이벤트 로그 채널 ID
@@ -637,17 +639,22 @@ module.exports = {
         };
 
         
-      const NO_CHART_PERIODS = ['10m', '30m'];
 let chartEmbed = null;
+const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`;
+
 try {
-  // 차트 이미지 생성 시도 (항상 시도)
+  // 실제 이미지 URL을 fetch로 검사!
+  const res = await fetch(chartUrl, { method: 'GET', timeout: 7000 }); // 7초 타임아웃
+  // 이미지가 정상적으로 생성됐는지 확인
+  if (!res.ok || !res.headers.get('content-type') || !res.headers.get('content-type').startsWith('image')) {
+    throw new Error('이미지 생성 실패');
+  }
   chartEmbed = new EmbedBuilder()
     .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
-    .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
+    .setImage(chartUrl)
     .setColor('#FFFFFF')
     .setTimestamp();
 } catch (e) {
-  // 실패시 대체 안내
   chartEmbed = new EmbedBuilder()
     .setTitle('🚫 처리할 데이터가 많아 그래프는 보여지지 않습니다!')
     .setDescription(`시간 주기를 늘리시거나 **'단일 코인 종목'**으로 검색해보세요!`)
