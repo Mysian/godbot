@@ -37,14 +37,11 @@ const WALLS = [
 ];
 
 function applyWallEffect(price, delta, volume = 0) {
-  // (벽의 강도 및 구간은 자유 조절 가능)
   let result = delta;
   for (const wall of WALLS) {
-    const near = Math.abs(price - wall) < wall * 0.07; // 벽 앞뒤 7%에서만 효과 적용
+    const near = Math.abs(price - wall) < wall * 0.07;
     if (near) {
-      // 기본적으로 벽에서 변동폭을 0.45배로 축소 (매수/매도량 많으면 일부 완화)
       let power = 0.45;
-      // 거래량 100 이상이면 0.6, 300 이상이면 0.75, 1000 이상이면 무시
       if (volume > 1000) power = 1.0;
       else if (volume > 300) power = 0.75;
       else if (volume > 100) power = 0.6;
@@ -54,7 +51,6 @@ function applyWallEffect(price, delta, volume = 0) {
   return result;
 }
 
-// 차트 기간 옵션 (label, value, points, interval(분))
 const CHART_FILTERS = [
   { label: "10분",  value: "10m",  points: 6, interval: 10 },
   { label: "30분",  value: "30m",  points: 12, interval: 30 },
@@ -67,7 +63,6 @@ const CHART_FILTERS = [
   { label: "일주일",value: "7d",   points: 10, interval: 1440*7 },
 ];
 
-// ==== 코인 상관관계 쌍 ====
 const CORR_PAIRS = [
   ["까리코인", "영갓코인"],
   ["추경코인", "도롱코인"],
@@ -243,8 +238,10 @@ async function postEventMsg(type, coinName, percent, client) {
 function getMinutesAgo(dateStr) {
   const now = Date.now();
   const date = new Date(dateStr).getTime();
-  return Math.floor((now - date) / 60000); // 분 단위 반환
+  return Math.floor((now - date) / 60000);
 }
+
+let lastEventLogTime = {};
 
 // ⭐️ 1분마다 시세/이벤트성 폐지/신규상장/부활/폭등폭락 알림!
 async function autoMarketUpdate(members, client = global.client) {
@@ -254,7 +251,7 @@ async function autoMarketUpdate(members, client = global.client) {
   // === 까리코인 시세 (최소 1000원 보장) ===
   const base = coins['까리코인'];
   const deltaBase = (Math.random() * 0.2) - 0.1;
-  const newBase = Math.max(1000, Math.floor(base.price * (1 + deltaBase)));
+  const newBase = Math.max(1000, Number((base.price * (1 + deltaBase)).toFixed(3)));
   base.price = newBase;
   base.history.push(newBase);
   base.historyT = base.historyT || [];
@@ -263,44 +260,41 @@ async function autoMarketUpdate(members, client = global.client) {
   while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
 
   // === 폭등/폭락 감지 (최근 60분 내만, 중복 없음!) ===
-for (const [name, info] of Object.entries(coins)) {
-  if (name === '까리코인' || name.startsWith('_')) continue;
-  if (!info.history || !info.historyT) continue;
-  if (!info.listedAt || getMinutesAgo(info.listedAt) < 1440) continue; // 상장 후 24시간 지난 코인만!
+  for (const [name, info] of Object.entries(coins)) {
+    if (name === '까리코인' || name.startsWith('_')) continue;
+    if (!info.history || !info.historyT) continue;
+    if (!info.listedAt || getMinutesAgo(info.listedAt) < 1440) continue;
 
-  const h = info.history;
-  const ht = info.historyT;
-  const nowIdx = h.length - 1;
-
-  // 최근 60분 전 인덱스 찾기
-  let idx = -1;
-  for (let i = nowIdx; i >= 0; i--) {
-    if (getMinutesAgo(ht[i]) >= 60) { idx = i; break; }
-  }
-  if (idx >= 0 && idx < nowIdx) {
-    const old = h[idx];
-    const curr = h[nowIdx];
-    if (!old || !curr) continue;
-    const pct = ((curr - old) / old) * 100;
-    let eventType = pct <= -30 ? 'crash' : pct >= 30 ? 'soar' : null;
-    if (eventType) {
-      const key = `${name}_${eventType}`;
-      const nowMin = Math.floor(Date.now() / 60000);
-      const lastMin = lastEventLogTime[key] || 0;
-      if (nowMin - lastMin >= 360) { // 6시간(360분) 이상 지난 경우만 알림
-        postEventMsg(eventType, name, pct, client);
-        lastEventLogTime[key] = nowMin;
+    const h = info.history;
+    const ht = info.historyT;
+    const nowIdx = h.length - 1;
+    let idx = -1;
+    for (let i = nowIdx; i >= 0; i--) {
+      if (getMinutesAgo(ht[i]) >= 60) { idx = i; break; }
+    }
+    if (idx >= 0 && idx < nowIdx) {
+      const old = h[idx];
+      const curr = h[nowIdx];
+      if (!old || !curr) continue;
+      const pct = ((curr - old) / old) * 100;
+      let eventType = pct <= -30 ? 'crash' : pct >= 30 ? 'soar' : null;
+      if (eventType) {
+        const key = `${name}_${eventType}`;
+        const nowMin = Math.floor(Date.now() / 60000);
+        const lastMin = lastEventLogTime[key] || 0;
+        if (nowMin - lastMin >= 360) {
+          postEventMsg(eventType, name, pct, client);
+          lastEventLogTime[key] = nowMin;
+        }
       }
     }
   }
-}
 
   // === 이벤트 확률 상폐 (까리코인 예외, 상장 후 5일~만) ===
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
     if (info.delistedAt) continue;
-    // 상장일 5일(7200분) 미만이면 상폐 불가
     const listedAt = info.listedAt;
     if (!listedAt || getMinutesAgo(listedAt) < 7200) continue;
 
@@ -354,91 +348,75 @@ for (const [name, info] of Object.entries(coins)) {
     .map(([name]) => name);
 
   let numListed = 0;
-if (totalAvailable > 0) {
-  // ===== 확률적 신규상장/부활 =====
-  // 1. 먼저 부활 기회(상폐 7일 경과 코인) 0.1% 확률 (부활 후보 있으면만!)
-  if (delistedCoins.length > 0 && Math.random() < 0.001) { // 0.1%
-    const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
-    const now = new Date().toISOString();
-    const types = [
-      { coinType: 'verystable', volatility: { min: -0.01, max: 0.01 }, trend: 0.001 },
-      { coinType: 'chaotic', volatility: { min: -0.35, max: 0.35 }, trend: 0.02 },
-      { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
-      { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
-      { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
-      { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
-    ];
-    const pick = pickRandom(types);
-    coins[reviveName].coinType = pick.coinType;
-    coins[reviveName].volatility = pick.volatility;
-    coins[reviveName].trend = pick.trend;
-    coins[reviveName].delistedAt = null;
-    coins[reviveName]._alreadyRevived = true;
-    coins[reviveName].listedAt = now;
-    revivedListed = { name: reviveName, time: now };
-    await postLogMsg('revive', reviveName, client);
-    numListed++;
-  }
+  if (totalAvailable > 0) {
+    // ===== 확률적 신규상장/부활 =====
+    // 1. 먼저 부활 기회(상폐 7일 경과 코인) 0.1% 확률 (부활 후보 있으면만!)
+    if (delistedCoins.length > 0 && Math.random() < 0.001) {
+      const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
+      const now = new Date().toISOString();
+      const types = [
+        { coinType: 'verystable', volatility: { min: -0.01, max: 0.01 }, trend: 0.001 },
+        { coinType: 'chaotic', volatility: { min: -0.35, max: 0.35 }, trend: 0.02 },
+        { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
+        { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
+        { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
+        { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
+      ];
+      const pick = pickRandom(types);
+      coins[reviveName].coinType = pick.coinType;
+      coins[reviveName].volatility = pick.volatility;
+      coins[reviveName].trend = pick.trend;
+      coins[reviveName].delistedAt = null;
+      coins[reviveName]._alreadyRevived = true;
+      coins[reviveName].listedAt = now;
+      revivedListed = { name: reviveName, time: now };
+      await postLogMsg('revive', reviveName, client);
+      numListed++;
+    }
 
-  // 2. 그 외엔 0.5% 확률로만 신규 상장 (후보가 있을 때만!)
-  else if (candidateNames.length > 0 && numListed < totalAvailable && Math.random() < 0.005) { // 0.5%
-    const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
-    const newName = newNick + '코인';
-    const now = new Date().toISOString();
-    const types = [
-  // 1. 초안정(테더급)
-  { coinType: 'verystable', volatility: { min: -0.00015, max: 0.00015 }, trend: 0.00003 },
-  // 2. 완전 미친놈(도박, 펌핑/덤핑)
-  { coinType: 'chaotic',    volatility: { min: -0.004,   max: 0.004   }, trend: 0.00012 },
-  // 3. 죽은코인(하락세)
-  { coinType: 'dead',       volatility: { min: -0.0002, max: 0.00015 }, trend: -0.00005 },
-  // 4. 보통(시장평균)
-  { coinType: 'neutral',    volatility: { min: -0.0006,  max: 0.0007  }, trend: 0 },
-  // 5. 장기 우상향(우량 성장주)
-  { coinType: 'long',       volatility: { min: -0.0002,  max: 0.002  }, trend: 0.00008 },
-  // 6. 단타(진폭큼)
-  { coinType: 'short',      volatility: { min: -0.001,  max: 0.002   }, trend: 0.00005 },
-  // 7. 박스권(움직이긴 함, 장기적으로는 평평)
-  { coinType: 'boxer',      volatility: { min: -0.0003,  max: 0.00025  }, trend: 0 },
-  // 8. 슬로우불(느린 우상향, 적금느낌)
-  { coinType: 'slowbull',   volatility: { min: -0.0001, max: 0.0004 }, trend: 0.00007 },
-  // 9. 한방 폭발(가끔 대형 펌핑)
-  { coinType: 'explodebox', volatility: { min: -0.0003,  max: 0.003  }, trend: 0.00013 },
-  // 10. 성장주(꾸준한 상승)
-  { coinType: 'growth',     volatility: { min: -0.0004,  max: 0.0018  }, trend: 0.00023 },
-  // 11. 롤러코스터(급락/급등 반복)
-  { coinType: 'roller',     volatility: { min: -0.0025,  max: 0.0025  }, trend: 0.00008 },
-  // 12. 좀비(만년 약세, 서서히 죽음)
-  { coinType: 'zombie',     volatility: { min: -0.0007,  max: 0.00015  }, trend: -0.00006 },
-  // 13. 일확천금(하루 한 번씩 튐)
-  { coinType: 'dailyboom',  volatility: { min: -0.0001,  max: 0.004  }, trend: 0 },
-  // 14. 버블(초반 펌핑, 후반 급락)
-  { coinType: 'bubble',     volatility: { min: -0.004,   max: 0.006  }, trend: 0.00015 },
-  // 15. 공포(악재에 민감, 하락성향)
-  { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011 },
-];
-    const pick = pickRandom(types);
+    // 2. 그 외엔 0.5% 확률로만 신규 상장 (후보가 있을 때만!)
+    else if (candidateNames.length > 0 && numListed < totalAvailable && Math.random() < 0.005) {
+      const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
+      const newName = newNick + '코인';
+      const now = new Date().toISOString();
+      const types = [
+        { coinType: 'verystable', volatility: { min: -0.00015, max: 0.00015 }, trend: 0.00003 },
+        { coinType: 'chaotic',    volatility: { min: -0.004,   max: 0.004   }, trend: 0.00012 },
+        { coinType: 'dead',       volatility: { min: -0.0002, max: 0.00015 }, trend: -0.00005 },
+        { coinType: 'neutral',    volatility: { min: -0.0006,  max: 0.0007  }, trend: 0 },
+        { coinType: 'long',       volatility: { min: -0.0002,  max: 0.002  }, trend: 0.00008 },
+        { coinType: 'short',      volatility: { min: -0.001,  max: 0.002   }, trend: 0.00005 },
+        { coinType: 'boxer',      volatility: { min: -0.0003,  max: 0.00025  }, trend: 0 },
+        { coinType: 'slowbull',   volatility: { min: -0.0001, max: 0.0004 }, trend: 0.00007 },
+        { coinType: 'explodebox', volatility: { min: -0.0003,  max: 0.003  }, trend: 0.00013 },
+        { coinType: 'growth',     volatility: { min: -0.0004,  max: 0.0018  }, trend: 0.00023 },
+        { coinType: 'roller',     volatility: { min: -0.0025,  max: 0.0025  }, trend: 0.00008 },
+        { coinType: 'zombie',     volatility: { min: -0.0007,  max: 0.00015  }, trend: -0.00006 },
+        { coinType: 'dailyboom',  volatility: { min: -0.0001,  max: 0.004  }, trend: 0 },
+        { coinType: 'bubble',     volatility: { min: -0.004,   max: 0.006  }, trend: 0.00015 },
+        { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011 },
+      ];
+      const pick = pickRandom(types);
 
-    let info = {
-      price: Math.floor(1000 + Math.random() * 49000),
-      history: [],
-      historyT: [],
-      listedAt: now,
-      delistedAt: null,
-      volatility: pick.volatility,
-      trend: pick.trend,
-      coinType: pick.coinType
-    };
-    info.history.push(info.price);
-    info.historyT.push(now);
-    coins[newName] = info;
-    newlyListed = { name: newName, time: now };
-    await postLogMsg('new', newName, client);
-    numListed++;
+      let info = {
+        price: Number((1000 + Math.random() * 49000).toFixed(3)),
+        history: [],
+        historyT: [],
+        listedAt: now,
+        delistedAt: null,
+        volatility: pick.volatility,
+        trend: pick.trend,
+        coinType: pick.coinType
+      };
+      info.history.push(info.price);
+      info.historyT.push(now);
+      coins[newName] = info;
+      newlyListed = { name: newName, time: now };
+      await postLogMsg('new', newName, client);
+      numListed++;
+    }
+    await saveJson(coinsPath, coins);
   }
-  // 확률 둘 다 안 되면 이번 턴엔 아무 일 없음!
-  await saveJson(coinsPath, coins);
-}
 
   // 코인 가격 업데이트(기존대로)
   for (const [name, info] of Object.entries(coins)) {
@@ -471,7 +449,7 @@ if (totalAvailable > 0) {
       }
       delta = Math.max(-0.5, Math.min(delta, 0.5));
       delta = applyWallEffect(info.price, delta, lastVolume[name] || 0);
-      const p = Math.max(1, Math.floor(info.price * (1 + delta)));
+      const p = Math.max(0.001, Number((info.price * (1 + delta)).toFixed(3)));
       info.price = p;
       info.history = info.history || [];
       info.historyT = info.historyT || [];
@@ -485,7 +463,7 @@ if (totalAvailable > 0) {
   // 코인 상관관계(같은 방향 적용)
   for (const [a, b, lastDelta] of corrQueue) {
     if (coins[a] && coins[b]) {
-      coins[b].price = Math.max(1, Math.floor(coins[b].price * (1 + (lastDelta || 0))));
+      coins[b].price = Math.max(0.001, Number((coins[b].price * (1 + (lastDelta || 0))).toFixed(3)));
       coins[b].history = coins[b].history || [];
       coins[b].historyT = coins[b].historyT || [];
       coins[b].history.push(coins[b].price);
@@ -636,54 +614,52 @@ module.exports = {
           }
         };
 
-        
         const chartEmbed = new EmbedBuilder()
-      .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
-      .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
-      .setColor('#FFFFFF')
-      .setTimestamp();
+          .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
+          .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
+          .setColor('#FFFFFF')
+          .setTimestamp();
 
+        const listEmbed = new EmbedBuilder()
+          .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
+          .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
+          .setColor('#FFFFFF');
 
-  const listEmbed = new EmbedBuilder()
-    .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
-    .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
-    .setColor('#FFFFFF');
+        slice.forEach((item, i) => {
+          const emoji = EMOJIS[i % EMOJIS.length];
+          const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
+          const maxBuy = Math.floor(userBE / (item.now||1));
+          listEmbed.addFields({
+            name: `${emoji} ${item.name}`,
+            value: `${Number(item.now).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
+            inline: false
+          });
+        });
 
-  slice.forEach((item, i) => {
-    const emoji = EMOJIS[i % EMOJIS.length];
-    const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
-    const maxBuy = Math.floor(userBE / (item.now||1));
-    listEmbed.addFields({
-      name: `${emoji} ${item.name}`,
-      value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
-      inline: false
-    });
-  });
+        listEmbed.setFooter({
+          text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
+        });
 
-  listEmbed.setFooter({
-    text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
-  });
+        // 첫줄: 페이지 버튼
+        const navRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
+          new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
+          new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
+          new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(page===totalPages-1)
+        );
+        // 둘째줄: 매수/매도/내코인 버튼
+        const actionRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
+        );
 
-  // 첫줄: 페이지 버튼
-  const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
-    new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
-    new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
-    new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(page===totalPages-1)
-  );
-  // 둘째줄: 매수/매도/내코인 버튼
-  const actionRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
-  );
+        await interaction.editReply({
+          embeds: [chartEmbed, listEmbed],
+          components: [navRow, actionRow]
+        });
 
-  await interaction.editReply({
-    embeds: [chartEmbed, listEmbed],
-    components: [navRow, actionRow]
-  });
-
-  return page;
-}
+        return page;
+      }
 
       let page = 0;
       page = await renderChartPage(page);
@@ -727,15 +703,15 @@ module.exports = {
               totalBuy += buyCost;
               totalProfit += profit;
               detailLines.push(
-                `**${c}**\n• 보유: ${q}개\n• 누적매수: ${buyCost.toLocaleString()} BE\n• 평가액: ${evalPrice.toLocaleString()} BE\n• 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
+                `**${c}**\n• 보유: ${q}개\n• 누적매수: ${Number(buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\n• 평가액: ${Number(evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\n• 손익: ${profit>=0?`+${Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
               );
             }
             const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
             e.setDescription(detailLines.join('\n\n'));
             e.addFields(
-              { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
-              { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
-              { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+              { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+              { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+              { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
             );
           }
           await btn.followUp({ embeds: [e], ephemeral: true });
@@ -782,7 +758,7 @@ module.exports = {
           let emoji = '⏸️';
           if (diff > 0) emoji = '🔺';
           else if (diff < 0) emoji = '🔻';
-          return `${start+idx+1}. ${emoji} ${p.toLocaleString()} BE  |  ${toKSTString(timeList[idx])}`;
+          return `${start+idx+1}. ${emoji} ${Number(p).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE  |  ${toKSTString(timeList[idx])}`;
         });
 
         const embed = new EmbedBuilder()
@@ -840,7 +816,7 @@ module.exports = {
       if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
 
       const price = coins[coin].price;
-      const total = price * amount;
+      const total = Number((price * amount).toFixed(3));
       const fee = 0;
       const needBE = total;
       const bal = getBE(interaction.user.id);
@@ -849,7 +825,7 @@ module.exports = {
       wallets[interaction.user.id] = wallets[interaction.user.id] || {};
       wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
       wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
-      wallets[interaction.user.id + "_buys"][coin] = (wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount);
+      wallets[interaction.user.id + "_buys"][coin] = Number(((wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount)).toFixed(3));
 
       await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
       await saveJson(walletsPath, wallets);
@@ -860,8 +836,8 @@ module.exports = {
       recordVolume(coin, amount);
 
       return interaction.editReply({
-  content: `✅ ${coin} ${amount}개 매수 완료! (개당 ${price} BE, 총 ${total} BE 소모, 수수료 ${fee} BE)`
-});
+        content: `✅ ${coin} ${amount}개 매수 완료! (개당 ${Number(price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(total).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모, 수수료 ${fee} BE)`
+      });
 
     }
 
@@ -877,14 +853,14 @@ module.exports = {
 
       const have = wallets[interaction.user.id]?.[coin] || 0;
       if (have < amount) return interaction.editReply({ content: `❌ 보유 부족: ${have}` });
-      const gross = coins[coin].price * amount;
-      const fee = Math.floor(gross * 0.3);
-      const net = gross - fee;
+      const gross = Number((coins[coin].price * amount).toFixed(3));
+      const fee = Number((gross * 0.3).toFixed(3));
+      const net = Number((gross - fee).toFixed(3));
       wallets[interaction.user.id][coin] -= amount;
       if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
       await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
       wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
-      wallets[interaction.user.id + "_realized"][coin] = (wallets[interaction.user.id + "_realized"][coin] || 0) + net;
+      wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
       await saveJson(walletsPath, wallets);
 
       await addHistory(coins[coin], coins[coin].price);
@@ -893,90 +869,87 @@ module.exports = {
       recordVolume(coin, amount);
 
       return interaction.editReply({
-  content: `✅ ${coin} ${amount}개 매도 완료! (개당 ${coins[coin].price} BE, 총 ${gross} BE, 수수료 ${fee} BE, 실수령 ${net} BE)`
-});
+        content: `✅ ${coin} ${amount}개 매도 완료! (개당 ${Number(coins[coin].price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(gross).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 수수료 ${Number(fee).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 실수령 ${Number(net).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)`
+      });
 
     }
 
-    // 5. 내코인
-if (sub === '내코인') {
-  await interaction.deferReply({ ephemeral: true });
-  const coins = await loadJson(coinsPath, {});
-  const wallets = await loadJson(walletsPath, {});
-  const userW = wallets[interaction.user.id] || {};
-  const userBuys = wallets[interaction.user.id + "_buys"] || {};
+      // 5. 내코인
+    if (sub === '내코인') {
+      await interaction.deferReply({ ephemeral: true });
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
+      const userW = wallets[interaction.user.id] || {};
+      const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
-  const buildMyCoinEmbed = () => {
-    let totalEval = 0, totalBuy = 0, totalProfit = 0;
-    const embed = new EmbedBuilder()
-      .setTitle('💼 내 코인 평가/수익 현황')
-      .setColor('#2ecc71')
-      .setTimestamp();
+      const buildMyCoinEmbed = () => {
+        let totalEval = 0, totalBuy = 0, totalProfit = 0;
+        const embed = new EmbedBuilder()
+          .setTitle('💼 내 코인 평가/수익 현황')
+          .setColor('#2ecc71')
+          .setTimestamp();
 
-    if (!Object.keys(userW).length) {
-      embed.setDescription('보유 코인이 없습니다.');
-    } else {
-      let detailLines = [];
-      for (const [c, q] of Object.entries(userW)) {
-        if (!coins[c] || coins[c].delistedAt) continue;
-        const nowPrice = coins[c]?.price || 0;
-        const buyCost = userBuys[c] || 0;
-        const evalPrice = nowPrice * q;
-        const profit = evalPrice - buyCost;
-        const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-        totalEval += evalPrice;
-        totalBuy += buyCost;
-        totalProfit += profit;
-        detailLines.push(
-          `**${c}**
+        if (!Object.keys(userW).length) {
+          embed.setDescription('보유 코인이 없습니다.');
+        } else {
+          let detailLines = [];
+          for (const [c, q] of Object.entries(userW)) {
+            if (!coins[c] || coins[c].delistedAt) continue;
+            const nowPrice = coins[c]?.price || 0;
+            const buyCost = userBuys[c] || 0;
+            const evalPrice = nowPrice * q;
+            const profit = evalPrice - buyCost;
+            const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+            totalEval += evalPrice;
+            totalBuy += buyCost;
+            totalProfit += profit;
+            detailLines.push(
+              `**${c}**
 • 보유: ${q}개
-• 누적매수: ${buyCost.toLocaleString()} BE
-• 평가액: ${evalPrice.toLocaleString()} BE
-• 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
-        );
-      }
-      const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-      embed.setDescription(detailLines.join('\n\n'));
-      embed.addFields(
-        { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
-        { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
-        { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-      );
+• 누적매수: ${Number(buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
+• 평가액: ${Number(evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
+• 손익: ${profit>=0?`+${Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
+            );
+          }
+          const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+          embed.setDescription(detailLines.join('\n\n'));
+          embed.addFields(
+            { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+            { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+            { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+          );
+        }
+        return embed;
+      };
+
+      const e = buildMyCoinEmbed();
+      const refreshButton = new ButtonBuilder()
+        .setCustomId('refresh_mycoin')
+        .setLabel('🔄 새로고침')
+        .setStyle(ButtonStyle.Success);
+      const row = new ActionRowBuilder().addComponents(refreshButton);
+
+      await interaction.editReply({ embeds: [e], components: [row] });
+
+      const msg = await interaction.fetchReply();
+      const collector = msg.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 600_000,
+        filter: btn => btn.user.id === interaction.user.id && btn.customId === 'refresh_mycoin'
+      });
+      collector.on('collect', async btn => {
+        await btn.deferUpdate();
+        const coins = await loadJson(coinsPath, {});
+        const wallets = await loadJson(walletsPath, {});
+        const userW = wallets[interaction.user.id] || {};
+        const userBuys = wallets[interaction.user.id + "_buys"] || {};
+
+        const updatedEmbed = buildMyCoinEmbed(coins, userW, userBuys);
+        await interaction.editReply({ embeds: [updatedEmbed], components: [row] });
+      });
+
+      return;
     }
-    return embed;
-  };
-
-  const e = buildMyCoinEmbed();
-  const refreshButton = new ButtonBuilder()
-    .setCustomId('refresh_mycoin')
-    .setLabel('🔄 새로고침')
-    .setStyle(ButtonStyle.Success);
-  const row = new ActionRowBuilder().addComponents(refreshButton);
-
-  await interaction.editReply({ embeds: [e], components: [row] });
-
-  const msg = await interaction.fetchReply();
-  const collector = msg.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 600_000,
-    filter: btn => btn.user.id === interaction.user.id && btn.customId === 'refresh_mycoin'
-  });
-  collector.on('collect', async btn => {
-  await btn.deferUpdate();
-  // 최신 데이터 다시 로드
-  const coins = await loadJson(coinsPath, {});
-  const wallets = await loadJson(walletsPath, {});
-  const userW = wallets[interaction.user.id] || {};
-  const userBuys = wallets[interaction.user.id + "_buys"] || {};
-
-  // 최신 데이터 기반으로 embed 재생성
-  const updatedEmbed = buildMyCoinEmbed(coins, userW, userBuys);
-  await interaction.editReply({ embeds: [updatedEmbed], components: [row] });
-});
-
-  return;
-}
-
 
     // 6. 순위
     if (sub === '순위') {
@@ -1016,7 +989,7 @@ if (sub === '내코인') {
         .setDescription(
           realizedRank.length
             ? realizedRank.map(([uid, val], i) =>
-                `**${i+1}. <@${uid}>**  \`${val.toLocaleString()} 파랑 정수\``).join('\n')
+                `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
             : '데이터 없음'
         )
         .setFooter({ text: '실현수익: 코인 매도를 통한 누적 손익 합산' });
@@ -1027,7 +1000,7 @@ if (sub === '내코인') {
         .setDescription(
           holdingsRank.length
             ? holdingsRank.map(([uid, val], i) =>
-                `**${i+1}. <@${uid}>**  \`${val.toLocaleString()} 파랑 정수\``).join('\n')
+                `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
             : '데이터 없음'
         )
         .setFooter({ text: '자산평가: 현재 보유 코인의 시세 기준 합산' });
