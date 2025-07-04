@@ -639,20 +639,21 @@ module.exports = {
         
       const NO_CHART_PERIODS = ['10m', '30m'];
 let chartEmbed = null;
-if (NO_CHART_PERIODS.includes(chartValue) && !search) {
-  chartEmbed = new EmbedBuilder()
-    .setTitle(`⏸️ [${chartLabel}] 차트는 단일 코인 검색이나 1시간 필터부터 조회 가능`)
-    .setDescription('시장 리스트는 아래에서 확인 가능!')
-    .setColor('#888888')
-    .setTimestamp();
-} else {
+try {
+  // 차트 이미지 생성 시도 (항상 시도)
   chartEmbed = new EmbedBuilder()
     .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
     .setImage(`https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`)
     .setColor('#FFFFFF')
     .setTimestamp();
+} catch (e) {
+  // 실패시 대체 안내
+  chartEmbed = new EmbedBuilder()
+    .setTitle('🚫 처리할 데이터가 많아 그래프는 보여지지 않습니다!')
+    .setDescription(`시간 주기를 늘리시거나 **'단일 코인 종목'**으로 검색해보세요!`)
+    .setColor('#e74c3c')
+    .setTimestamp();
 }
-
 
   const listEmbed = new EmbedBuilder()
     .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
