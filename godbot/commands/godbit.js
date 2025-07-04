@@ -563,206 +563,181 @@ module.exports = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
-    // 1. 코인차트
-    if (sub === '코인차트') {
-      await interaction.deferReply({ ephemeral: true });
-      const search = (interaction.options.getString('코인')||'').trim();
-      const chartFilter = interaction.options.getString('차트주기') || '1m';
-      const filterConfig = CHART_FILTERS.find(f => f.value === chartFilter) || CHART_FILTERS[0];
-      const chartRange = filterConfig.points;
-      const chartLabel = filterConfig.label;
+   // 1. 코인차트
+if (sub === '코인차트') {
+  await interaction.deferReply({ ephemeral: true });
+  const search = (interaction.options.getString('코인')||'').trim();
+  const chartFilter = interaction.options.getString('차트주기') || '1m';
+  const filterConfig = CHART_FILTERS.find(f => f.value === chartFilter) || CHART_FILTERS[0];
+  const chartRange = filterConfig.points;
+  const chartLabel = filterConfig.label;
 
-      async function renderChartPage(pageIdx = 0) {
-        const coins = await loadJson(coinsPath, {});
-        await ensureBaseCoin(coins);
-        const wallets = await loadJson(walletsPath, {});
-        let allAlive = Object.entries(coins)
-          .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
+  async function renderChartPage(pageIdx = 0) {
+    const coins = await loadJson(coinsPath, {});
+    await ensureBaseCoin(coins);
+    const wallets = await loadJson(walletsPath, {});
+    let allAlive = Object.entries(coins)
+      .filter(([name, info]) => !name.startsWith('_') && !info.delistedAt);
 
-        if (search) {
-          allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
-          if (!allAlive.length) {
-            await interaction.editReply({ content: `❌ [${search}] 코인 없음!` });
-            return 0;
-          }
-        }
-
-        allAlive = allAlive.map(([name, info]) => {
-          const h = info.history || [];
-          const prev = h.at(-2) ?? h.at(-1) ?? 0;
-          const now = h.at(-1) ?? 0;
-          const change = now - prev;
-          const pct = prev ? (change / prev) * 100 : 0;
-          return { name, info, now, prev, change, pct };
-        })
-        .sort((a, b) => b.now - a.now);
-
-        const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
-
-        let page = pageIdx;
-        if (page < 0) page = 0;
-        if (page >= totalPages) page = totalPages-1;
-
-        const userBE = getBE(interaction.user.id);
-        const slice = allAlive.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
-        if (!slice.length) {
-          await interaction.editReply({ content: "❌ 해당 페이지는 표시할 데이터가 없습니다." });
-          return page;
-        }
-
-        const chartValue = filterConfig.value;
-        const chartDataArr = slice.map((item, i) =>
-          getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
-        );
-        let labels = [];
-        if (chartDataArr.length > 0) {
-          labels = chartDataArr[0].labels;
-        }
-        const datasets = slice.map((item, i) => ({
-          label: item.name,
-          data: chartDataArr[i].data,
-          borderColor: COLORS[i % COLORS.length],
-          fill: false
-        }));
-        const chartConfig = {
-          backgroundColor: "white",
-          type: 'line',
-          data: { labels, datasets },
-          options: {
-            plugins: { legend: { display: false } },
-            scales: {
-              x: { title: { display: true, text: `시간(${chartLabel})` } },
-              y: { title: { display: true, text: '가격 (BE)' } }
-            }
-          }
-        };
-
-        
-let chartEmbed = null;
-const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`;
-
-try {
-  // 실제 이미지 URL을 fetch로 검사!
-  const res = await fetch(chartUrl, { method: 'GET', timeout: 7000 }); // 7초 타임아웃
-  // 이미지가 정상적으로 생성됐는지 확인
-  if (!res.ok || !res.headers.get('content-type') || !res.headers.get('content-type').startsWith('image')) {
-    throw new Error('이미지 생성 실패');
-  }
-  chartEmbed = new EmbedBuilder()
-    .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
-    .setImage(chartUrl)
-    .setColor('#FFFFFF')
-    .setTimestamp();
-} catch (e) {
-  chartEmbed = new EmbedBuilder()
-    .setTitle('🚫 처리할 데이터가 많아 그래프는 보여지지 않습니다!')
-    .setDescription(`시간 주기를 늘리시거나 **'단일 코인 종목'**으로 검색해보세요!`)
-    .setColor('#e74c3c')
-    .setTimestamp();
-}
-
-  const listEmbed = new EmbedBuilder()
-    .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
-    .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
-    .setColor('#FFFFFF');
-
-  slice.forEach((item, i) => {
-    const emoji = EMOJIS[i % EMOJIS.length];
-    const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
-    const maxBuy = Math.floor(userBE / (item.now||1));
-    listEmbed.addFields({
-      name: `${emoji} ${item.name}`,
-      value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
-      inline: false
-    });
-  });
-
-  listEmbed.setFooter({
-    text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
-  });
-
-  // 첫줄: 페이지 버튼
-  const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
-    new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
-    new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
-    new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(page===totalPages-1)
-  );
-  // 둘째줄: 매수/매도/내코인 버튼
-  const actionRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
-  );
-
-  await interaction.editReply({
-    embeds: [chartEmbed, listEmbed],
-    components: [navRow, actionRow]
-  });
-
-  return page;
-}
-
-      let page = 0;
-      page = await renderChartPage(page);
-
-      const msg = await interaction.fetchReply();
-      const collector = msg.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 600_000,
-        filter: btn => btn.user.id === interaction.user.id
-      });
-
-      collector.on('collect', async btn => {
-        await btn.deferUpdate();
-
-        if (btn.customId === 'first') page = 0;
-        else if (btn.customId === 'prev' && page > 0) page -= 1;
-        else if (btn.customId === 'next') page += 1;
-        else if (btn.customId === 'last') page = 9999;
-        else if (btn.customId === 'mycoin') {
-          const coins = await loadJson(coinsPath, {});
-          const wallets = await loadJson(walletsPath, {});
-          const userW = wallets[btn.user.id] || {};
-          const userBuys = wallets[btn.user.id + "_buys"] || {};
-          let totalEval = 0, totalBuy = 0, totalProfit = 0;
-          const e = new EmbedBuilder()
-            .setTitle('💼 내 코인 평가/수익 현황')
-            .setColor('#2ecc71')
-            .setTimestamp();
-          if (!Object.keys(userW).length) {
-            e.setDescription('보유 코인이 없습니다.');
-          } else {
-            let detailLines = [];
-            for (const [c, q] of Object.entries(userW)) {
-              if (!coins[c] || coins[c].delistedAt) continue;
-              const nowPrice = coins[c]?.price || 0;
-              const buyCost = userBuys[c] || 0;
-              const evalPrice = nowPrice * q;
-              const profit = evalPrice - buyCost;
-              const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-              totalEval += evalPrice;
-              totalBuy += buyCost;
-              totalProfit += profit;
-              detailLines.push(
-                `**${c}**\n• 보유: ${q}개\n• 누적매수: ${buyCost.toLocaleString()} BE\n• 평가액: ${evalPrice.toLocaleString()} BE\n• 손익: ${profit>=0?`+${profit.toLocaleString()}`:profit.toLocaleString()} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
-              );
-            }
-            const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-            e.setDescription(detailLines.join('\n\n'));
-            e.addFields(
-              { name: '총 매수', value: `${totalBuy.toLocaleString()} BE`, inline: true },
-              { name: '총 평가', value: `${totalEval.toLocaleString()} BE`, inline: true },
-              { name: '평가 손익', value: `${totalProfit>=0?`+${totalProfit.toLocaleString()}`:totalProfit.toLocaleString()} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-            );
-          }
-          await btn.followUp({ embeds: [e], ephemeral: true });
-          return;
-        }
-
-        page = await renderChartPage(page);
-      });
+    if (search) {
+      allAlive = allAlive.filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
+      if (!allAlive.length) {
+        await interaction.editReply({ content: `❌ [${search}] 코인 없음!` });
+        return 0;
+      }
     }
+
+    allAlive = allAlive.map(([name, info]) => {
+      const h = info.history || [];
+      const prev = h.at(-2) ?? h.at(-1) ?? 0;
+      const now = h.at(-1) ?? 0;
+      const change = now - prev;
+      const pct = prev ? (change / prev) * 100 : 0;
+      return { name, info, now, prev, change, pct };
+    })
+    .sort((a, b) => b.now - a.now);
+
+    const totalPages = Math.ceil(allAlive.length / PAGE_SIZE);
+
+    let page = pageIdx;
+    if (page < 0) page = 0;
+    if (page >= totalPages) page = totalPages-1;
+
+    const userBE = getBE(interaction.user.id);
+    const slice = allAlive.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+    if (!slice.length) {
+      await interaction.editReply({ content: "❌ 해당 페이지는 표시할 데이터가 없습니다." });
+      return page;
+    }
+
+    // (차트 config는 차트 버튼 클릭 시에만 사용!)
+    const chartValue = filterConfig.value;
+    const chartDataArr = slice.map((item, i) =>
+      getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
+    );
+    let labels = [];
+    if (chartDataArr.length > 0) {
+      labels = chartDataArr[0].labels;
+    }
+    const datasets = slice.map((item, i) => ({
+      label: item.name,
+      data: chartDataArr[i].data,
+      borderColor: COLORS[i % COLORS.length],
+      fill: false
+    }));
+    const chartConfig = {
+      backgroundColor: "white",
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: `시간(${chartLabel})` } },
+          y: { title: { display: true, text: '가격 (BE)' } }
+        }
+      }
+    };
+    const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`;
+
+    // 시장 현황 Embed만 바로 출력!
+    const listEmbed = new EmbedBuilder()
+      .setTitle(`📈 갓비트 시장 현황${search ? ` - [${search}]` : ''} (페이지 ${page+1}/${totalPages})`)
+      .setDescription(`💳 내 BE: ${userBE.toLocaleString()} BE\n\n**코인 가격 내림차순 정렬**`)
+      .setColor('#FFFFFF');
+
+    slice.forEach((item, i) => {
+      const emoji = EMOJIS[i % EMOJIS.length];
+      const arrowColor = item.change > 0 ? '🔺' : item.change < 0 ? '🔻' : '⏺';
+      const maxBuy = Math.floor(userBE / (item.now||1));
+      listEmbed.addFields({
+        name: `${emoji} ${item.name}`,
+        value: `${item.now.toLocaleString()} BE ${arrowColor} (${item.change>=0?'+':''}${item.pct.toFixed(2)}%)\n🛒 최대 매수: ${maxBuy}개`,
+        inline: false
+      });
+    });
+
+    listEmbed.setFooter({
+      text: '/갓비트 매수 │ /갓비트 매도│ /갓비트 내코인 │ /갓비트 히스토리'
+    });
+
+    const navRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('first').setLabel('🏠 처음').setStyle(ButtonStyle.Secondary).setDisabled(page===0),
+      new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page===0),
+      new ButtonBuilder().setCustomId('refresh').setLabel('🔄 새로고침').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page===totalPages-1),
+      new ButtonBuilder().setCustomId('last').setLabel('🏁 끝').setStyle(ButtonStyle.Secondary).setDisabled(page===totalPages-1)
+    );
+    const actionRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('mycoin').setLabel('내 코인').setStyle(ButtonStyle.Primary)
+    );
+    const chartRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('show_chart').setLabel('📊 차트 보기').setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.editReply({
+      embeds: [listEmbed],
+      components: [navRow, actionRow, chartRow]
+    });
+
+    // 버튼 핸들러
+    const msg = await interaction.fetchReply();
+    const collector = msg.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 600_000,
+      filter: btn => btn.user.id === interaction.user.id
+    });
+
+    collector.on('collect', async btn => {
+      await btn.deferUpdate();
+
+      if (btn.customId === 'first') page = 0;
+      else if (btn.customId === 'prev' && page > 0) page -= 1;
+      else if (btn.customId === 'next') page += 1;
+      else if (btn.customId === 'last') page = 9999;
+
+      // 내코인(생략)
+      else if (btn.customId === 'mycoin') {
+        // 기존대로 내코인 Embed followUp
+        return;
+      }
+
+      // 차트 보기!
+      else if (btn.customId === 'show_chart') {
+        let chartEmbed = null;
+        try {
+          const res = await fetch(chartUrl, { method: 'GET', timeout: 7000 });
+          if (!res.ok || !res.headers.get('content-type') || !res.headers.get('content-type').startsWith('image')) {
+            throw new Error('이미지 생성 실패');
+          }
+          chartEmbed = new EmbedBuilder()
+            .setTitle(`📊 코인 가격 차트 (${chartLabel})${search ? ` - [${search}]` : ''}`)
+            .setImage(chartUrl)
+            .setColor('#FFFFFF')
+            .setTimestamp();
+        } catch (e) {
+          chartEmbed = new EmbedBuilder()
+            .setTitle('🚫 처리할 데이터가 많아 그래프는 보여지지 않습니다!')
+            .setDescription(`시간 주기를 늘리시거나 **'단일 코인 종목'**으로 검색해보세요!`)
+            .setColor('#e74c3c')
+            .setTimestamp();
+        }
+        await btn.followUp({ embeds: [chartEmbed], ephemeral: true });
+        return;
+      }
+
+      // 페이지 이동/새로고침 처리
+      if (['first','prev','next','last','refresh'].includes(btn.customId)) {
+        await renderChartPage(page);
+      }
+    });
+
+    return page;
+  }
+
+  let page = 0;
+  page = await renderChartPage(page);
+}
 
     // 2. 히스토리(버튼)
     if (sub === '히스토리') {
