@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const activityTracker = require('../utils/activity-tracker');
 const client = require('../index').client;
 const { EmbedBuilder } = require('discord.js');
-const { addBE } = require('./be-util.js'); // 추가
+const { addBE } = require('../commands/be-util.js'); // 추가
 
 const TARGET_CHANNEL_ID = "1202425624061415464";
 const SERVER_ICON_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389194104424108223/2D.png?ex=6863bb54&is=686269d4&hm=59f7fbfb39d474b2577fbc87765daa533f636fa3e702285c24eda0fd51aebaa3&=&format=webp&quality=lossless";
