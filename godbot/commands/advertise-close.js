@@ -1,5 +1,6 @@
-// ==== commands/advertise-close.js ====
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+const CLOSED_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391814250963402832/----001_1.png?ex=686d4388&is=686bf208&hm=a4289368a5fc7aa23f57d06c66d0e9e2ff3f62dd4cb21001132f74ee0ade60ac&=&format=webp&quality=lossless';
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,6 +25,9 @@ module.exports = {
         return await interaction.reply({ content: '❌ 모집글 작성자만 종료할 수 있습니다.', ephemeral: true });
       }
 
+      // 취소선 및 [마감되었습니다.] 적용
+      const prevContent = embed.data.description || '';
+      embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
       embed.setFields(
         embed.data.fields.map(f =>
           f.name === '마감까지'
@@ -31,6 +35,8 @@ module.exports = {
             : f
         )
       );
+      embed.setImage(CLOSED_IMG);
+
       // 버튼 비활성화
       const disabledRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
