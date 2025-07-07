@@ -1,3 +1,4 @@
+// ==== commands/advertise.js ====
 const { 
   SlashCommandBuilder, 
   EmbedBuilder, 
@@ -6,6 +7,8 @@ const {
   ButtonStyle,
   ComponentType 
 } = require("discord.js");
+
+const DEFAULT_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391812043044163635/----001.png?ex=686d4179&is=686beff9&hm=2481678a47e56ca5b5d3a5c03d0baf47a23df8051da0bec166f8d253e96e32d2&=&format=webp&quality=lossless';
 
 function isImageUrl(url) {
   return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
@@ -109,9 +112,12 @@ module.exports = {
       .setColor(0x57c3ff)
       .setTimestamp();
 
+    // 이미지 URL 자동 대체 (입력 안했거나, 이상하면 기본 이미지)
+    let imgUrl = DEFAULT_IMG;
     if (imageUrl && isImageUrl(imageUrl)) {
-      embed.setImage(imageUrl);
+      imgUrl = imageUrl;
     }
+    embed.setImage(imgUrl);
 
     const 모집채널 = await interaction.guild.channels.fetch(
       "1209147973255036959",
