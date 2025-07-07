@@ -9,6 +9,7 @@ const {
 } = require("discord.js");
 
 const DEFAULT_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391812043044163635/----001.png?ex=686d4179&is=686beff9&hm=2481678a47e56ca5b5d3a5c03d0baf47a23df8051da0bec166f8d253e96e32d2&=&format=webp&quality=lossless';
+const CLOSED_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391814250963402832/----001_1.png?ex=686d4388&is=686bf208&hm=a4289368a5fc7aa23f57d06c66d0e9e2ff3f62dd4cb21001132f74ee0ade60ac&=&format=webp&quality=lossless';
 
 function isImageUrl(url) {
   return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
@@ -149,69 +150,49 @@ module.exports = {
     // 마감시간 이후 버튼 비활성화
     if (voiceId) {
       setTimeout(async () => {
-        try {
-          const fields = embed.data.fields.map(f =>
-            f.name === "마감까지"
-              ? { name: "마감까지", value: "마감됨", inline: true }
-              : f
-          );
-          embed.setFields(fields);
-          const disabledRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`disabled2`)
-              .setLabel("참여 의사 밝히기")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          );
-          await msg.edit({ embeds: [embed], components: [disabledRow] });
-        } catch (err) {}
-      }, closeMs);
-    }
+  try {
+    const prevContent = embed.data.description || '';
+    embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
+    const fields = embed.data.fields.map(f =>
+      f.name === "마감까지"
+        ? { name: "마감까지", value: "마감됨", inline: true }
+        : f
+    );
+    embed.setFields(fields);
+    embed.setImage(CLOSED_IMG);
+    const disabledRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`disabled2`)
+        .setLabel("참여 의사 밝히기")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true)
+    );
+    await msg.edit({ embeds: [embed], components: [disabledRow] });
+  } catch (err) {}
+}, closeMs);
 
-    if (voiceId) {
-      const collector = msg.createMessageComponentCollector({ 
-        componentType: ComponentType.Button, 
-        time: closeMs
-      });
-
-      collector.on('collect', async btnInt => {
-        try {
-          if (btnInt.customId.startsWith('joinintent_')) {
-            await btnInt.deferReply({ ephemeral: true });
-            try {
-              const channel = await btnInt.guild.channels.fetch(voiceId);
-              if (channel && channel.isTextBased()) {
-                await channel.send(
-                  `<@${recruiterId}> 님, <@${btnInt.user.id}> 님께서 참여를 희망하십니다.`
-                );
-              }
-            } catch {}
-            await btnInt.editReply({ content: `참여 의사가 전달되었습니다!` });
-          }
-        } catch (e) {
-          await btnInt.editReply({ content: "⚠️ 처리에 실패했습니다!" });
-        }
-      });
-
-      collector.on('end', async () => {
-        // 마감 "마감됨"으로 갱신
-        const fields = embed.data.fields.map(f =>
-          f.name === "마감까지"
-            ? { name: "마감까지", value: "마감됨", inline: true }
-            : f
-        );
-        embed.setFields(fields);
-        try {
-          const disabledRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`disabled2`)
-              .setLabel("참여 의사 밝히기")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          );
-          await msg.edit({ embeds: [embed], components: [disabledRow] });
-        } catch (e) {}
-      });
+// collector.on('end')
+collector.on('end', async () => {
+  const prevContent = embed.data.description || '';
+  embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
+  const fields = embed.data.fields.map(f =>
+    f.name === "마감까지"
+      ? { name: "마감까지", value: "마감됨", inline: true }
+      : f
+  );
+  embed.setFields(fields);
+  embed.setImage(CLOSED_IMG);
+  try {
+    const disabledRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`disabled2`)
+        .setLabel("참여 의사 밝히기")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true)
+    );
+    await msg.edit({ embeds: [embed], components: [disabledRow] });
+  } catch (e) {}
+});
     }
 
     await interaction.reply({
