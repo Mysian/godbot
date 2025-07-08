@@ -7,6 +7,8 @@ const ALLOWED_CATEGORY_IDS = [
 ];
 const EXCEPT_CHANNEL_ID = "1202971727915651092";
 
+const warnCounts = new Map();
+
 const timers = new Map(); // userId: {solo, soloWarn, mute, muteWarn, warnState}
 const lastActivity = new Map();
 
