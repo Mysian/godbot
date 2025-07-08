@@ -140,16 +140,15 @@ module.exports = {
   },
 
   async handleModal(interaction) {
-    // 모달 상태명 변경
-    if (interaction.customId.startsWith("remote_modal_topic_")) {
-      const channelId = interaction.customId.replace("remote_modal_topic_", "");
-      const newTopic = interaction.fields.getTextInputValue("new_topic");
-      const channel = interaction.guild.channels.cache.get(channelId);
-      if (!channel) {
-        return interaction.reply({ content: "채널을 찾을 수 없습니다.", ephemeral: true });
-      }
-      await channel.setTopic(newTopic);
-      return interaction.reply({ content: `\`${channel.name}\`의 상태명이 \`${newTopic}\`(으)로 변경됨!`, ephemeral: true });
+  if (interaction.customId.startsWith("remote_modal_topic_")) {
+    const channelId = interaction.customId.replace("remote_modal_topic_", "");
+    const newTopic = interaction.fields.getTextInputValue("new_topic");
+    const channel = interaction.guild.channels.cache.get(channelId);
+    if (!channel) {
+      return interaction.reply({ content: "채널을 찾을 수 없습니다.", ephemeral: true });
     }
+    await channel.edit({ topic: newTopic }); // ← 요렇게!
+    return interaction.reply({ content: `\`${channel.name}\`의 상태명이 \`${newTopic}\`(으)로 변경됨!`, ephemeral: true });
   }
+}
 };
