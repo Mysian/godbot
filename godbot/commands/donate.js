@@ -13,7 +13,7 @@ const {
 
 const DONATION_LOG_CHANNEL = '1385860310753087549';
 const DONATION_THANKS_CHANNEL = '1264514955269640252';
-const DONATE_ACCOUNT = '지역농협 3521075112463 이*민';
+const DONATE_ACCOUNT = '지역농협 3521075112463 예금주:이O민';
 
 function getKSTDateString() {
   return new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
