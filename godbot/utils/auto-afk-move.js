@@ -135,18 +135,32 @@ module.exports = function setupAutoAfkMove(client) {
 
     // 3. 상태명(topic) 공란 → 30분마다 경고 메시지 (잠수방 이동 없음)
     if (isStateEmpty(channel)) {
-      timerSet.warnState = setInterval(async () => {
-        if (!isStateEmpty(channel) || !channel.members.has(userId)) {
-          clearAllTimers(userId);
-          return;
-        }
-        try {
-          const textChannel = await client.channels.fetch(channel.id).catch(() => null);
-          if (textChannel) await textChannel.send(`-# 🫠 음성채널 상태명이 비어있습니다. 채널 상태명을 입력해주세요!`);
-        } catch {}
-      }, 30 * 60 * 1000);
-    }
-
-    timers.set(userId, timerSet);
+    warnCounts.set(channel.id, 0); // 채널별 경고 카운트 관리(또는 userId 대신 channel.id로)
+    timerSet.warnState = setInterval(async () => {
+      if (!isStateEmpty(channel) || !channel.members.has(userId)) {
+        warnCounts.delete(channel.id);
+        clearAllTimers(userId);
+        return;
+      }
+      const warnCount = warnCounts.get(channel.id) || 0;
+      let msg;
+      if (warnCount === 0) {
+        msg = `-# 🫠 음성채널 상태명이 비어있습니다. 채널 상태명을 입력해주세요!`;
+      } else {
+        // 2번째부터는 모든 유저 mention
+        const userMentions = channel.members
+          .filter(m => !m.user.bot)
+          .map(m => `<@${m.id}>`).join(" ");
+        msg = `${userMentions}\n-# 🫠 음성채널 상태명이 아직도 비어있어요. 아무나 채널 상태명을 입력해주세요!`;
+      }
+      try {
+        const textChannel = await client.channels.fetch(channel.id).catch(() => null);
+        if (textChannel) await textChannel.send(msg);
+      } catch {}
+      warnCounts.set(channel.id, warnCount + 1);
+    }, 30 * 60 * 1000);
   }
+
+  timers.set(userId, timerSet);
+}
 };
