@@ -325,7 +325,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     await remoteCmd.handleModal(interaction);
     return;
   }
-});
 
   // 2. 모달 통합 처리 (여기만 바뀜!)
   if (interaction.isModalSubmit()) {
