@@ -305,24 +305,8 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   }
 
   // 리모콘 음성채널 상태 변경 및 빠른 이동 관련
-  if (interaction.isButton() && remoteCmd && [
-    "remote_set_topic", "remote_quick_move"
-  ].includes(interaction.customId)) {
-    await remoteCmd.handleButton(interaction);
-    return;
-  }
   if (interaction.isButton() && remoteCmd && interaction.customId.startsWith("remote_move_")) {
     await remoteCmd.handleButton(interaction);
-    return;
-  }
-  // 2. 셀렉트 핸들링
-  if (interaction.isStringSelectMenu() && remoteCmd && interaction.customId === "remote_select_channel_for_topic") {
-    await remoteCmd.handleSelect(interaction);
-    return;
-  }
-  // 3. 모달 핸들링
-  if (interaction.isModalSubmit() && remoteCmd && interaction.customId.startsWith("remote_modal_topic_")) {
-    await remoteCmd.handleModal(interaction);
     return;
   }
 
