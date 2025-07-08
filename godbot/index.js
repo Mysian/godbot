@@ -228,6 +228,7 @@ const modalHandlers = new Map([
 const warnCmd = client.commands.get("경고");
 const unwarnCmd = client.commands.get("경고취소");
 const champBattle = require('./commands/champ-battle');
+const remoteCmd = client.commands.get("리모콘");
 
 client.on(Events.InteractionCreate, async interaction => {
 
@@ -302,6 +303,29 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     }
     return;
   }
+
+  // 리모콘 음성채널 상태 변경 및 빠른 이동 관련
+  if (interaction.isButton() && remoteCmd && [
+    "remote_set_topic", "remote_quick_move"
+  ].includes(interaction.customId)) {
+    await remoteCmd.handleButton(interaction);
+    return;
+  }
+  if (interaction.isButton() && remoteCmd && interaction.customId.startsWith("remote_move_")) {
+    await remoteCmd.handleButton(interaction);
+    return;
+  }
+  // 2. 셀렉트 핸들링
+  if (interaction.isStringSelectMenu() && remoteCmd && interaction.customId === "remote_select_channel_for_topic") {
+    await remoteCmd.handleSelect(interaction);
+    return;
+  }
+  // 3. 모달 핸들링
+  if (interaction.isModalSubmit() && remoteCmd && interaction.customId.startsWith("remote_modal_topic_")) {
+    await remoteCmd.handleModal(interaction);
+    return;
+  }
+});
 
   // 2. 모달 통합 처리 (여기만 바뀜!)
   if (interaction.isModalSubmit()) {
