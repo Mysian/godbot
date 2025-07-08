@@ -1,107 +1,76 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 
-// === [필수] 음성채널 카테고리 ID를 여기에 맞게! ===
+// 음성채널 카테고리 ID
 const CATEGORY_ID = "1207980297854124032";
+
+function getSortedChannels(channels) {
+  // 채널명 기준: 숫자 시작 우선, 이후 가나다순
+  const numFirst = [];
+  const charFirst = [];
+  for (const ch of channels.values()) {
+    const first = ch.name.trim()[0];
+    if (first >= '0' && first <= '9') {
+      numFirst.push(ch);
+    } else {
+      charFirst.push(ch);
+    }
+  }
+  // 각각 오름차순 정렬
+  numFirst.sort((a, b) => a.name.localeCompare(b.name, 'ko-KR', { numeric: true }));
+  charFirst.sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'));
+  return [...numFirst, ...charFirst];
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("리모콘")
-    .setDescription("음성채널 상태 입력/수정, 빠른 이동 리모콘"),
+    .setDescription("누구나 상시 클릭해서 이동할 수 있는 음성채널 이동 리모콘"),
   async execute(interaction) {
     // 카테고리 내 음성채널 목록
     const channels = interaction.guild.channels.cache
       .filter(ch => ch.parentId === CATEGORY_ID && ch.type === 2);
+
     if (!channels.size) {
-      return interaction.reply({ content: "해당 카테고리 내 음성채널이 없어요!", ephemeral: true });
+      return interaction.reply({ content: "해당 카테고리 내 음성채널이 없어요!", ephemeral: false });
     }
+
+    // 정렬된 배열 반환
+    const sorted = getSortedChannels(channels);
 
     const embed = new EmbedBuilder()
-      .setTitle("🎛️ 음성채널 리모콘")
-      .setDescription([
-        "원하는 기능을 아래 버튼으로 사용할 수 있습니다.",
-        "",
-        "1️⃣ **음성채널 상태명 입력/수정**",
-        "2️⃣ **음성채널 빠른 이동**",
-      ].join("\n"))
+      .setTitle("🎛️ 음성채널 빠른 이동 리모콘")
+      .setDescription("이동하고 싶은 음성채널을 클릭하세요!\n(누구나 상시 클릭 가능)")
       .setColor("#4f8cff");
 
-    const row = new ActionRowBuilder()
-      .addComponents(
+    // 5개씩 버튼 줄로 생성
+    const rows = [];
+    let row = new ActionRowBuilder();
+    let count = 0;
+    for (const channel of sorted) {
+      if (count === 5) {
+        rows.push(row);
+        row = new ActionRowBuilder();
+        count = 0;
+      }
+      row.addComponents(
         new ButtonBuilder()
-          .setCustomId("remote_set_topic")
-          .setLabel("음성채널 상태명 입력/수정")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId("remote_quick_move")
-          .setLabel("음성채널 빠른 이동")
-          .setStyle(ButtonStyle.Success)
+          .setCustomId(`remote_move_${channel.id}`)
+          .setLabel(channel.name)
+          .setStyle(ButtonStyle.Secondary)
       );
+      count++;
+    }
+    if (row.components.length) rows.push(row);
 
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    // 전체에게 공개, 항상 채널에 남게!
+    await interaction.reply({
+      embeds: [embed],
+      components: rows,
+      ephemeral: false
+    });
   },
 
-  // === 버튼/모달/이동 핸들러 ===
   async handleButton(interaction) {
-    // 1. 상태명 입력/수정
-    if (interaction.customId === "remote_set_topic") {
-      // 음성채널 드롭다운 (모달에 직접 입력해도 되고, 여기선 드롭다운 우선)
-      const channels = interaction.guild.channels.cache
-        .filter(ch => ch.parentId === CATEGORY_ID && ch.type === 2);
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId("remote_select_channel_for_topic")
-        .setPlaceholder("상태명을 수정할 음성채널을 선택하세요.")
-        .setMinValues(1)
-        .setMaxValues(1)
-        .addOptions(
-          Array.from(channels.values()).map(c => ({
-            label: c.name,
-            value: c.id
-          }))
-        );
-
-      return interaction.reply({
-        content: "상태명을 수정할 음성채널을 선택하세요.",
-        components: [new ActionRowBuilder().addComponents(select)],
-        ephemeral: true
-      });
-    }
-
-    // 2. 빠른 이동
-    if (interaction.customId === "remote_quick_move") {
-      const channels = interaction.guild.channels.cache
-        .filter(ch => ch.parentId === CATEGORY_ID && ch.type === 2);
-      if (!channels.size) {
-        return interaction.reply({ content: "음성채널 없음!", ephemeral: true });
-      }
-      // 버튼이 5개 이상이면 페이지네이션(간단화)
-      const rows = [];
-      let row = new ActionRowBuilder();
-      let count = 0;
-      for (const channel of channels.values()) {
-        if (count === 5) {
-          rows.push(row);
-          row = new ActionRowBuilder();
-          count = 0;
-        }
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`remote_move_${channel.id}`)
-            .setLabel(channel.name)
-            .setStyle(ButtonStyle.Secondary)
-        );
-        count++;
-      }
-      if (row.components.length) rows.push(row);
-
-      return interaction.reply({
-        content: "이동할 음성채널을 선택하세요!",
-        components: rows,
-        ephemeral: true
-      });
-    }
-
-    // 3. 음성채널 이동 버튼
     if (interaction.customId.startsWith("remote_move_")) {
       const channelId = interaction.customId.replace("remote_move_", "");
       if (!interaction.member.voice.channel) {
@@ -114,41 +83,5 @@ module.exports = {
         return interaction.reply({ content: "이동 실패! 권한/상태를 확인해줘!", ephemeral: true });
       }
     }
-  },
-
-  async handleSelect(interaction) {
-    // 상태명 입력 모달로
-    if (interaction.customId === "remote_select_channel_for_topic") {
-      const channelId = interaction.values[0];
-      // 모달
-      const modal = new ModalBuilder()
-        .setCustomId(`remote_modal_topic_${channelId}`)
-        .setTitle("상태명 입력/수정")
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId("new_topic")
-              .setLabel("새로운 상태/설명 입력")
-              .setStyle(TextInputStyle.Short)
-              .setMaxLength(100)
-              .setPlaceholder("예: 자유롭게 대화중!")
-              .setRequired(true)
-          )
-        );
-      return interaction.showModal(modal);
-    }
-  },
-
-  async handleModal(interaction) {
-  if (interaction.customId.startsWith("remote_modal_topic_")) {
-    const channelId = interaction.customId.replace("remote_modal_topic_", "");
-    const newTopic = interaction.fields.getTextInputValue("new_topic");
-    const channel = interaction.guild.channels.cache.get(channelId);
-    if (!channel) {
-      return interaction.reply({ content: "채널을 찾을 수 없습니다.", ephemeral: true });
-    }
-    await channel.edit({ topic: newTopic }); // ← 요렇게!
-    return interaction.reply({ content: `\`${channel.name}\`의 상태명이 \`${newTopic}\`(으)로 변경됨!`, ephemeral: true });
   }
-}
 };
