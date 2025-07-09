@@ -170,7 +170,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setTitle("🛒 아이템 상점")
             .setDescription(
-              `🔷 내 파랑 정수: ${curBe} BE\n` +
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
               showItems.map((item, i) =>
                 `#${i + 1 + _page * ITEMS_PER_PAGE} | ${item.icon || ""} **${item.name}** (${numFmt(item.price)} BE)\n${item.desc}`
               ).join("\n\n"))
