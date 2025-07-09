@@ -307,35 +307,37 @@ if (kind === 'nickname') {
   const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
   let member = await interaction.guild.members.fetch(interaction.user.id);
 
-  const getEmbedsAndRows = (_page, curBe) => {
+  // 색상 코드 → 이미지 URL 변환 함수
+  const hexToImgUrl = (hex) =>
+    `https://singlecolorimage.com/get/220x40/${hex.replace('#', '')}/ffffff`;
+
+  const getEmbedAndRows = (_page, curBe) => {
     const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
 
-    // [1] 프리뷰 Embed들 (각 색상 하나씩)
-    const previewEmbeds = showRoles.map(role =>
-      new EmbedBuilder()
-        .setTitle(`【미리보기】${role.name}`)
-        .setDescription(role.desc)
-        .setColor(role.color || '#2f3136')
-        .setFooter({ text: role.color ? `색상코드: ${role.color}` : '' })
-    );
-
-    // [2] 메인 Embed (리스트/설명)
-    const mainEmbed = new EmbedBuilder()
+    // 임베드 생성
+    const embed = new EmbedBuilder()
       .setTitle('🎨 닉네임 색상 상점')
-      .setDescription(
-        `🔷 내 파랑 정수: ${curBe} BE\n` +
-        showRoles.map((role, i) => {
-          let owned = member.roles.cache.has(role.roleId);
-          let preview = role.color ? `\`색상코드:\` ${role.color}` : '';
-          return `#${i+1+_page*ROLES_PER_PAGE} | ${role.emoji||''} **${role.name}** (${role.price} BE)
-${role.desc}
-${preview}
-> ${owned ? '**[보유중]**' : ''}`;
-        }).join('\n\n')
-      )
+      .setDescription(`🔷 내 파랑 정수: ${curBe} BE`)
       .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
 
-    if (showRoles[0]?.color) mainEmbed.setColor(showRoles[0].color);
+    // (선택) 첫 번째 색상 이미지를 메인 임베드 이미지로 노출
+    if (showRoles[0]?.color)
+      embed.setImage(hexToImgUrl(showRoles[0].color));
+
+    // 4개 색상 모두 필드로 추가
+    showRoles.forEach((role, idx) => {
+      embed.addFields({
+        name: `${role.emoji || ''} ${role.name} (${role.price} BE)`,
+        value:
+          `${role.desc}\n` +
+          (role.color
+            ? `\`색상코드:\` ${role.color}\n[컬러 박스 미리보기](${hexToImgUrl(role.color)})`
+            : ''
+          ) +
+          (member.roles.cache.has(role.roleId) ? '\n**[보유중]**' : ''),
+        inline: false,
+      });
+    });
 
     // 버튼
     const row = new ActionRowBuilder();
@@ -354,24 +356,23 @@ ${preview}
       new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
       new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
     );
-    // embeds: [프리뷰Embed들..., 메인Embed]
-    return { embeds: [...previewEmbeds, mainEmbed], rows: [row, rowPage] };
+    return { embed, rows: [row, rowPage] };
   };
 
-  let { embeds, rows } = getEmbedsAndRows(page, userBe);
+  let { embed, rows } = getEmbedAndRows(page, userBe);
 
   const shopMsg = await interaction.editReply({
     content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-    embeds,
+    embeds: [embed],
     components: rows
   });
 
   interval = setInterval(async () => {
     try {
-      const { embeds: newEmbeds, rows: newRows } = getEmbedsAndRows(page, userBe);
+      const { embed: newEmbed, rows: newRows } = getEmbedAndRows(page, userBe);
       await interaction.editReply({
         content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-        embeds: newEmbeds,
+        embeds: [newEmbed],
         components: newRows
       });
     } catch {}
@@ -390,10 +391,10 @@ ${preview}
     if (i.customId === 'nick_next' && (page+1)*ROLES_PER_PAGE < roleList.length) { page++; updated = true; }
     if (i.customId === 'nick_refresh') { updated = true; }
     if (updated) {
-      ({ embeds, rows } = getEmbedsAndRows(page, userBe));
+      ({ embed, rows } = getEmbedAndRows(page, userBe));
       await i.update({
         content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-        embeds,
+        embeds: [embed],
         components: rows
       });
       return;
