@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
@@ -7,17 +7,10 @@ const lockPath = path.join(__dirname, '../data/earn-lock.json');
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
 
-function loadJson(p) {
-  if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
-function saveJson(p, data) {
-  fs.writeFileSync(p, JSON.stringify(data, null, 2));
-}
-function getUserBe(userId) {
-  const be = loadJson(bePath);
-  return be[userId]?.amount || 0;
-}
+// ===== 유틸 =====
+function loadJson(p) { if (!fs.existsSync(p)) fs.writeFileSync(p, "{}"); return JSON.parse(fs.readFileSync(p, 'utf8')); }
+function saveJson(p, data) { fs.writeFileSync(p, JSON.stringify(data, null, 2)); }
+function getUserBe(userId) { const be = loadJson(bePath); return be[userId]?.amount || 0; }
 function setUserBe(userId, diff, reason = "") {
   const be = loadJson(bePath);
   be[userId] = be[userId] || { amount: 0, history: [] };
@@ -25,10 +18,7 @@ function setUserBe(userId, diff, reason = "") {
   be[userId].history.push({ type: diff > 0 ? "earn" : "lose", amount: Math.abs(diff), reason, timestamp: Date.now() });
   saveJson(bePath, be);
 }
-function getCooldown(userId, type) {
-  const data = loadJson(earnCooldownPath);
-  return data[userId]?.[type] || 0;
-}
+function getCooldown(userId, type) { const data = loadJson(earnCooldownPath); return data[userId]?.[type] || 0; }
 function setCooldown(userId, type, ms, midnight = false) {
   const data = loadJson(earnCooldownPath);
   data[userId] = data[userId] || {};
@@ -43,39 +33,17 @@ function nextMidnightKR() {
 function lock(userId) {
   const data = loadJson(lockPath);
   if (data[userId] && Date.now() < data[userId]) return false;
-  data[userId] = Date.now() + 120000; // 2분 lock
+  data[userId] = Date.now() + 190000;
   saveJson(lockPath, data);
   return true;
 }
-function unlock(userId) {
-  const data = loadJson(lockPath);
-  if (data[userId]) delete data[userId];
-  saveJson(lockPath, data);
-}
-function hasProfile(userId) {
-  if (!fs.existsSync(profilesPath)) return false;
-  const profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
-  return !!profiles[userId];
-}
-// 콤마 표기
-function comma(n) {
-  return n.toLocaleString('ko-KR');
-}
+function unlock(userId) { const data = loadJson(lockPath); if (data[userId]) delete data[userId]; saveJson(lockPath, data); }
+function hasProfile(userId) { if (!fs.existsSync(profilesPath)) return false; const profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')); return !!profiles[userId]; }
+function comma(n) { return n.toLocaleString('ko-KR'); }
 
-// === 도박 단계별 실패확률(기존) ===
-const GO_FAIL_RATE = [0.50, 0.55, 0.60, 0.70, 0.80];
-
-// === 가위바위보 확률 ===
-const RPS_RATE = [
-  { result: 'win', prob: 0.29 },
-  { result: 'draw', prob: 0.31 },
-  { result: 'lose', prob: 0.40 }
-];
-
-// === 블랙잭 함수 ===
+// ===== 카드/블랙잭 유틸 =====
 function blackjackValue(hand) {
-  let sum = 0;
-  let aces = 0;
+  let sum = 0, aces = 0;
   for (let card of hand) {
     if (card.value >= 10) sum += 10;
     else if (card.value === 1) { sum += 11; aces++; }
@@ -89,8 +57,11 @@ function drawCard(deck) {
   return deck.splice(idx, 1)[0];
 }
 function cardStr(card) {
+  const suitEmojis = { '♠': '♠️', '♥': '♥️', '♦': '♦️', '♣': '♣️' };
   const n = card.value === 1 ? "A" : card.value === 11 ? "J" : card.value === 12 ? "Q" : card.value === 13 ? "K" : card.value;
-  return `${card.suit}${n}`;
+  let colorWrap = s => s;
+  if (card.suit === '♥' || card.suit === '♦') colorWrap = s => `**${s}**`; // 빨간색 계열은 볼드
+  return colorWrap(`[${suitEmojis[card.suit] || card.suit}${n}]`);
 }
 function deckInit() {
   const suits = ['♠', '♥', '♦', '♣'];
@@ -99,34 +70,27 @@ function deckInit() {
   return deck;
 }
 
+// ===== 명령어 모듈 =====
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수획득')
-    .setDescription('파랑 정수(BE) 획득: 출석, 알바, 도박, 가위바위보, 블랙잭')
+    .setDescription('파랑 정수(BE) 획득: 블랙잭')
     .addStringOption(option =>
-      option
-        .setName('종류')
+      option.setName('종류')
         .setDescription('정수를 획득할 방법을 선택하세요.')
         .setRequired(true)
         .addChoices(
-          { name: '출석', value: 'attendance' },
-          { name: '알바', value: 'alba' },
-          { name: '도박', value: 'gamble' },
-          { name: '가위바위보', value: 'rps' },
           { name: '블랙잭', value: 'blackjack' }
         )
     ),
 
-  // --- 슬래시 명령어 (execute) ---
+  // ===== execute =====
   async execute(interaction) {
     if (!interaction.isChatInputCommand()) return;
     const kind = interaction.options.getString('종류');
     const userId = interaction.user.id;
     if (!hasProfile(userId)) {
-      await interaction.reply({
-        content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.",
-        ephemeral: true
-      });
+      await interaction.reply({ content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.", ephemeral: true });
       return;
     }
 
@@ -484,7 +448,6 @@ module.exports = {
         await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
       }
       setTimeout(unlock, 190000, userId);
-      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
       const modal = new ModalBuilder()
         .setCustomId('blackjack_bet_modal')
         .setTitle('블랙잭 배팅금 입력');
@@ -493,9 +456,7 @@ module.exports = {
         .setLabel('배팅할 금액 (100~10,000,000 BE)')
         .setStyle(TextInputStyle.Short)
         .setMinLength(1).setMaxLength(10).setPlaceholder('예: 50000');
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(betInput)
-      );
+      modal.addComponents(new ActionRowBuilder().addComponents(betInput));
       await interaction.showModal(modal);
       return;
     }
@@ -580,97 +541,152 @@ module.exports = {
 
     // === 블랙잭 모달 submit ===
     if (interaction.customId === 'blackjack_bet_modal') {
-      const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
-      const bet = Math.floor(Number(raw));
-      if (isNaN(bet) || bet < 100 || bet > 10000000) {
-        await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (100~10,000,000 BE)", ephemeral: true });
-        unlock(userId); return;
-      }
-      if (getUserBe(userId) < bet) {
-        await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
-        unlock(userId); return;
-      }
-      let deck = deckInit();
-      let userHand = [drawCard(deck), drawCard(deck)];
-      let dealerHand = [drawCard(deck), drawCard(deck)];
-      let gameOver = false;
-      let msgStr = () => {
-        return `**딜러**: ${cardStr(dealerHand[0])} [ ? ]\n**나**: ${userHand.map(cardStr).join(' ')} (합계: ${blackjackValue(userHand)})`;
-      };
-      let gameStep = async (intr, isFirst = false) => {
-        if (gameOver) return;
-        const userVal = blackjackValue(userHand);
-        if (userVal > 21) {
-          setUserBe(userId, -bet, '블랙잭 패배(버스트)');
-          await intr.update({
-            embeds: [new EmbedBuilder()
-              .setTitle('🃏 블랙잭')
-              .setDescription(`${msgStr()}\n\n💥 **BUST! 21 초과!**\n패배! 배팅금 ${comma(bet)} BE 소멸!`)
-            ], components: [], ephemeral: true
-          });
-          unlock(userId); gameOver = true; return;
-        }
-        if (userVal === 21 && isFirst) {
-          setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리(첫 두장 21)');
-          await intr.update({
-            embeds: [new EmbedBuilder()
-              .setTitle('🃏 블랙잭')
-              .setDescription(`${msgStr()}\n\n🎉 **블랙잭! (21)**\n**${comma(Math.floor(bet * 1.9))} BE** 획득!`)
-            ], components: [], ephemeral: true
-          });
-          unlock(userId); gameOver = true; return;
-        }
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('bj_hit').setLabel('HIT(카드)').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId('bj_stand').setLabel('STAND(그만)').setStyle(ButtonStyle.Danger)
-        );
-        await intr[isFirst ? 'reply' : 'update']({
-          embeds: [new EmbedBuilder()
-            .setTitle('🃏 블랙잭')
-            .setDescription(`${msgStr()}\n\n카드를 더 받거나(히트), 멈출 수 있음!`)
-          ], components: [row], ephemeral: true
-        });
-        const filter = i => i.user.id === userId && (i.customId === 'bj_hit' || i.customId === 'bj_stand');
-        interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 60000 })
-          .on('collect', async i2 => {
-            if (i2.customId === 'bj_hit') {
-              userHand.push(drawCard(deck));
-              gameStep(i2, false);
-            } else { // stand
-              while (blackjackValue(dealerHand) < 17) {
-                dealerHand.push(drawCard(deck));
-              }
-              const dealerVal = blackjackValue(dealerHand);
-              const userVal = blackjackValue(userHand);
-              let dealerStr = dealerHand.map(cardStr).join(' ');
-              let resultMsg = `**딜러**: ${dealerStr} (합계: ${dealerVal})\n**나**: ${userHand.map(cardStr).join(' ')} (합계: ${userVal})\n\n`;
-              if (dealerVal > 21 || userVal > dealerVal) {
-                setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리');
-                resultMsg += `🎉 **승리! ${comma(Math.floor(bet * 1.9))} BE** 획득!`;
-              } else if (dealerVal === userVal) {
-                resultMsg += `🤝 **무승부!** 배팅금 반환!`;
-              } else {
-                setUserBe(userId, -bet, '블랙잭 패배');
-                resultMsg += `💀 **패배! 배팅금 ${comma(bet)} BE 소멸!**`;
-              }
-              await i2.update({
-                embeds: [new EmbedBuilder().setTitle('🃏 블랙잭').setDescription(resultMsg)],
-                components: [], ephemeral: true
-              });
-              unlock(userId); gameOver = true; return;
-            }
-          })
-          .on('end', async (_, reason) => {
-            if (!gameOver && reason === 'time') {
-              setUserBe(userId, -Math.floor(bet * 0.25), '블랙잭 시간초과/도중포기(25%만 소멸)');
-              await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
-              unlock(userId);
-              gameOver = true;
-            }
-          });
-      };
-      gameStep(interaction, true);
-      return;
+  const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
+  const bet = Math.floor(Number(raw));
+  if (isNaN(bet) || bet < 100 || bet > 10000000) {
+    await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (100~10,000,000 BE)", ephemeral: true });
+    unlock(userId); return;
+  }
+  if (getUserBe(userId) < bet) {
+    await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
+    unlock(userId); return;
+  }
+  let deck = deckInit();
+  let userHand = [drawCard(deck), drawCard(deck)];
+  let dealerHand = [drawCard(deck), drawCard(deck)];
+  let gameOver = false;
+
+  // 카드 이모지 변환 함수 (색상 강조)
+  function cardStr(card) {
+    const suitEmojis = { '♠': '♠️', '♥': '♥️', '♦': '♦️', '♣': '♣️' };
+    const n = card.value === 1 ? "A" : card.value === 11 ? "J" : card.value === 12 ? "Q" : card.value === 13 ? "K" : card.value;
+    let colorWrap = s => s;
+    if (card.suit === '♥' || card.suit === '♦') colorWrap = s => `**${s}**`;
+    return colorWrap(`[${suitEmojis[card.suit] || card.suit}${n}]`);
+  }
+
+  // 임베드 빌더: 상태별 색상/메시지/오픈카드 구분
+  function getEmbed(state) {
+    const colorMap = {
+      'start': 0x3399ff, 'playing': 0x3399ff,
+      'bj': 0x44dd66, 'win': 0x44dd66,
+      'draw': 0xaaaacc, 'lose': 0xff3333, 'bust': 0xff3333
+    };
+    const titleMap = {
+      'start': "🃏 블랙잭",
+      'playing': "🃏 블랙잭",
+      'bj': "🂡 블랙잭!!",
+      'win': "🎉 블랙잭 승리!",
+      'lose': "💀 블랙잭 패배!",
+      'draw': "🤝 블랙잭 무승부!",
+      'bust': "💥 버스트!"
+    };
+    // 딜러 패 오픈 여부
+    let dealerCards = (state === 'playing' || state === 'start')
+      ? `${cardStr(dealerHand[0])} [ ? ]`
+      : dealerHand.map(cardStr).join(' ');
+    let dealerSum = (state === 'playing' || state === 'start')
+      ? ''
+      : ` (합계: ${blackjackValue(dealerHand)})`;
+    let userCards = userHand.map(cardStr).join(' ');
+    let userSum = ` (합계: ${blackjackValue(userHand)})`;
+
+    let desc = `**딜러**: ${dealerCards}${dealerSum}\n**나**: ${userCards}${userSum}\n`;
+
+    // 추가 안내
+    if (state === 'playing' || state === 'start')
+      desc += `\n카드를 더 받거나(히트), 멈출 수 있음!`;
+    else if (state === 'bj')
+      desc += `\n\n🂡 **블랙잭! (첫 두 장 21)**\n**${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+    else if (state === 'win')
+      desc += `\n\n🎉 **승리! ${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+    else if (state === 'draw')
+      desc += `\n\n🤝 **무승부!** 배팅금 반환!`;
+    else if (state === 'bust')
+      desc += `\n\n💥 **BUST! 21 초과!**\n패배! 배팅금 ${comma(bet)} BE 소멸!`;
+    else if (state === 'lose')
+      desc += `\n\n💀 **패배! 배팅금 ${comma(bet)} BE 소멸!**`;
+
+    return new EmbedBuilder()
+      .setTitle(titleMap[state] || "🃏 블랙잭")
+      .setColor(colorMap[state] || 0x3399ff)
+      .setDescription(desc);
+  }
+
+  // 게임 진행 함수
+  let gameStep = async (intr, isFirst = false) => {
+    if (gameOver) return;
+    const userVal = blackjackValue(userHand);
+
+    // 버스트(패배)
+    if (userVal > 21) {
+      setUserBe(userId, -bet, '블랙잭 패배(버스트)');
+      await intr.update({
+        embeds: [getEmbed('bust')], components: [], ephemeral: true
+      });
+      unlock(userId); gameOver = true; return;
     }
+
+    // 첫 두장 블랙잭
+    if (userVal === 21 && isFirst) {
+      setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리(첫 두장 21)');
+      await intr.update({
+        embeds: [getEmbed('bj')], components: [], ephemeral: true
+      });
+      unlock(userId); gameOver = true; return;
+    }
+
+    // HIT/STAND 버튼
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('bj_hit').setLabel('HIT(카드)').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('bj_stand').setLabel('STAND(그만)').setStyle(ButtonStyle.Danger)
+    );
+    await intr[isFirst ? 'reply' : 'update']({
+      embeds: [getEmbed('playing')], components: [row], ephemeral: true
+    });
+
+    // 버튼 클릭 수집기
+    const filter = i => i.user.id === userId && (i.customId === 'bj_hit' || i.customId === 'bj_stand');
+    interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 60000 })
+      .on('collect', async i2 => {
+        if (i2.customId === 'bj_hit') {
+          userHand.push(drawCard(deck));
+          gameStep(i2, false);
+        } else { // stand
+          while (blackjackValue(dealerHand) < 17) dealerHand.push(drawCard(deck));
+          const dealerVal = blackjackValue(dealerHand);
+          const userVal = blackjackValue(userHand);
+
+          // 승/무/패
+          let state = 'lose';
+          if (dealerVal > 21 || userVal > dealerVal) {
+            setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리');
+            state = 'win';
+          } else if (dealerVal === userVal) {
+            state = 'draw';
+          } else {
+            setUserBe(userId, -bet, '블랙잭 패배');
+            state = 'lose';
+          }
+          await i2.update({
+            embeds: [getEmbed(state)],
+            components: [], ephemeral: true
+          });
+          unlock(userId); gameOver = true; return;
+        }
+      })
+      .on('end', async (_, reason) => {
+        if (!gameOver && reason === 'time') {
+          setUserBe(userId, -Math.floor(bet * 0.25), '블랙잭 시간초과/도중포기(25%만 소멸)');
+          await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
+          unlock(userId); gameOver = true;
+        }
+      });
+  };
+
+  // 게임 시작
+  gameStep(interaction, true);
+  return;
+   }
   }
 };
