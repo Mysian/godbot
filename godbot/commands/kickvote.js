@@ -90,7 +90,6 @@ module.exports = {
     const voters = new Set();
     let votingFinished = false;
     let kickScheduled = false;
-    let kickTimeout = null;
     let leftSeconds = 30;
 
     activeVotes.set(voteKey, true); // 투표 시작 기록
@@ -145,9 +144,10 @@ module.exports = {
       if (totalUsers < 2) {
         collector.stop("not_enough_members");
       }
-      // 남은 시간 0이면 종료
+      // 남은 시간 0이면 종료. (이 시점에서 과반이면 success, 아니면 fail)
       if (leftSeconds <= 0) {
-        collector.stop("timeout");
+        if (yesCount >= requiredVotes) collector.stop("success");
+        else collector.stop("fail");
       }
     }, 1000);
 
@@ -194,20 +194,16 @@ module.exports = {
       await i.reply({ content: `투표 완료: ${i.customId === "vote_yes" ? "찬성" : "반대"}`, ephemeral: true });
       await updateEmbed();
 
-      // 찬성표 모두 모였는지 체크
+      // 찬성 과반 도달 시 10초 보장 + 임박 안내 (한 번만)
       if (yesCount >= requiredVotes && !kickScheduled) {
         kickScheduled = true;
-        leftSeconds = 10;
-        // 임박 안내 + 10초 보장
+        leftSeconds = 10; // 무조건 10초로 재설정
         embed.setFooter({ text: "추방 임박! 반대표가 있으면 10초 안에 투표하세요." });
         await message.edit({
           content: `⏰ 남은 시간: **${leftSeconds}초**`,
           embeds: [embed],
           components: [row]
         }).catch(() => {});
-        kickTimeout = setTimeout(() => {
-          if (!votingFinished) collector.stop("success");
-        }, Math.max(0, Math.min(10000, leftSeconds * 1000))); // 남은시간이 10초 이하면 그만큼만 대기
       }
       // 반대표도 과반이면 즉시 종료
       if (noCount >= requiredVotes && !votingFinished) {
@@ -218,26 +214,25 @@ module.exports = {
     collector.on("end", async (endReason) => {
       votingFinished = true;
       clearInterval(interval);
-      if (kickTimeout) clearTimeout(kickTimeout);
       interaction.client.removeListener("voiceStateUpdate", voiceStateListener);
       activeVotes.delete(voteKey); // 멀티 투표 해제
 
       await message.delete().catch(() => {});
 
       // 사유별 안내
-      if (reason === "target_left") {
+      if (endReason === "target_left") {
         return interaction.followUp({
           content: "❌ 투표 대상이 음성채널에서 나가 투표가 종료되었습니다.",
           ephemeral: true,
         });
       }
-      if (reason === "not_enough_members") {
+      if (endReason === "not_enough_members") {
         return interaction.followUp({
           content: "❗ 인원 부족으로 투표가 종료되었습니다.",
           ephemeral: true,
         });
       }
-      if (reason === "fail") {
+      if (endReason === "fail") {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
           .setDescription(`반대표가 과반을 넘어 투표가 즉시 종료되었습니다.`)
@@ -245,10 +240,10 @@ module.exports = {
           .setColor(0xff0000);
         return interaction.followUp({ embeds: [failEmbed] });
       }
-      if (reason === "timeout") {
+      if (endReason === "timeout") {
         // 일반 타임아웃
         if (yesCount >= requiredVotes) {
-          reason = "success";
+          endReason = "success";
         }
       }
       if (yesCount >= requiredVotes) {
