@@ -91,6 +91,7 @@ module.exports = {
     let votingFinished = false;
     let kickScheduled = false;
     let kickTimeout = null;
+    let leftSeconds = 30;
 
     activeVotes.set(voteKey, true); // 투표 시작 기록
 
@@ -109,15 +110,22 @@ module.exports = {
       new ButtonBuilder().setCustomId("vote_no").setLabel("반대 👎").setStyle(ButtonStyle.Danger)
     );
 
-    await submitted.reply({ embeds: [embed], components: [row], fetchReply: true });
+    // 투표 시작(남은시간 메시지와 함께)
+    await submitted.reply({
+      content: `⏰ 남은 시간: **${leftSeconds}초**`,
+      embeds: [embed],
+      components: [row],
+      fetchReply: true
+    });
     const message = await submitted.fetchReply();
 
     // 투표 메인 collector
     const collector = message.createMessageComponentCollector({ time: 30000 });
 
-    // 실시간 인원 체크 (1초마다)
+    // 실시간 인원 체크 + 남은 시간 카운터 (1초마다)
     const interval = setInterval(async () => {
       if (votingFinished) return;
+      leftSeconds -= 1;
       usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
       totalUsers = usersInChannel.size;
       const newRequiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
@@ -125,9 +133,21 @@ module.exports = {
         requiredVotes = newRequiredVotes;
         await updateEmbed();
       }
+      // 남은 시간 표시 content 업데이트
+      if (leftSeconds >= 0) {
+        await message.edit({
+          content: `⏰ 남은 시간: **${leftSeconds}초**`,
+          embeds: [embed],
+          components: [row]
+        }).catch(() => {});
+      }
       // 인원이 1명 이하가 되면 투표 종료
       if (totalUsers < 2) {
         collector.stop("not_enough_members");
+      }
+      // 남은 시간 0이면 종료
+      if (leftSeconds <= 0) {
+        collector.stop("timeout");
       }
     }, 1000);
 
@@ -147,7 +167,11 @@ module.exports = {
     async function updateEmbed(extraMsg) {
       embed.setDescription(makeDescription());
       if (extraMsg) embed.setFooter({ text: extraMsg });
-      await message.edit({ embeds: [embed] }).catch(() => {});
+      await message.edit({
+        content: `⏰ 남은 시간: **${leftSeconds}초**`,
+        embeds: [embed],
+        components: [row]
+      }).catch(() => {});
     }
 
     // collector.on collect
@@ -175,10 +199,18 @@ module.exports = {
         kickScheduled = true;
         // 임박 안내 + 10초 보장
         embed.setFooter({ text: "추방 임박! 반대표가 있으면 10초 안에 투표하세요." });
-        await message.edit({ embeds: [embed] }).catch(() => {});
+        await message.edit({
+          content: `⏰ 남은 시간: **${leftSeconds}초**`,
+          embeds: [embed],
+          components: [row]
+        }).catch(() => {});
         kickTimeout = setTimeout(() => {
           if (!votingFinished) collector.stop("success");
-        }, 10000);
+        }, Math.max(0, Math.min(10000, leftSeconds * 1000))); // 남은시간이 10초 이하면 그만큼만 대기
+      }
+      // 반대표도 과반이면 즉시 종료
+      if (noCount >= requiredVotes && !votingFinished) {
+        collector.stop("fail");
       }
     });
 
@@ -204,7 +236,20 @@ module.exports = {
           ephemeral: true,
         });
       }
-
+      if (reason === "fail") {
+        const failEmbed = new EmbedBuilder()
+          .setTitle("🛑 강퇴 투표 종료")
+          .setDescription(`반대표가 과반을 넘어 투표가 즉시 종료되었습니다.`)
+          .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+          .setColor(0xff0000);
+        return interaction.followUp({ embeds: [failEmbed] });
+      }
+      if (reason === "timeout") {
+        // 일반 타임아웃
+        if (yesCount >= requiredVotes) {
+          reason = "success";
+        }
+      }
       if (yesCount >= requiredVotes) {
         const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
         const afkChannel = interaction.guild.channels.cache.get(AFK_CHANNEL_ID);
