@@ -85,9 +85,15 @@ module.exports = {
     let totalUsers = usersInChannel.size;
     let requiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
 
-    let yesCount = 0;
+    // 투표 결과 관리(아이디→"yes"|"no")
+    const voterChoices = {};
+    // 명령어 입력자는 자동 찬성 처리
+    voterChoices[interaction.user.id] = "yes";
+
+    // 투표자 수 집계
+    let yesCount = 1;
     let noCount = 0;
-    const voters = new Set();
+
     let votingFinished = false;
     let kickScheduled = false;
     let leftSeconds = 30;
@@ -96,13 +102,13 @@ module.exports = {
 
     const makeDescription = () =>
       `**<@${target.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
-      `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n현재: 👍 ${yesCount} / 👎 ${noCount}\n\n버튼을 눌러 투표하세요. (최대 30초)`;
+      `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n현재: 👍 ${yesCount} / 👎 ${noCount}\n\n버튼을 눌러 투표(변경)하세요. (최대 30초)`;
 
     const embed = new EmbedBuilder()
       .setTitle("⚠️ 강퇴 투표 시작")
       .setDescription(makeDescription())
       .setColor(0xff4444)
-      .setFooter({ text: "투표는 한 번만 가능하며, 최대 30초 뒤 자동 종료됩니다." });
+      .setFooter({ text: "투표는 30초 내 언제든 수정 가능하며, 최대 30초 뒤 자동 종료됩니다." });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("vote_yes").setLabel("찬성 👍").setStyle(ButtonStyle.Success),
@@ -144,9 +150,9 @@ module.exports = {
       if (totalUsers < 2) {
         collector.stop("not_enough_members");
       }
-      // 남은 시간 0이면 종료. (이 시점에서 과반이면 success, 아니면 fail)
+      // 남은 시간 0이면 종료. (이 시점에서 yes/no 비교)
       if (leftSeconds <= 0) {
-        if (yesCount >= requiredVotes) collector.stop("success");
+        if (yesCount > noCount && yesCount >= requiredVotes) collector.stop("success");
         else collector.stop("fail");
       }
     }, 1000);
@@ -178,6 +184,7 @@ module.exports = {
     collector.on("collect", async (i) => {
       if (i.user.bot) return;
       const voterMember = await interaction.guild.members.fetch(i.user.id);
+
       // 인원 변화 체크
       if (!voterMember.voice.channel || voterMember.voice.channel.id !== voiceChannel.id) {
         return i.reply({
@@ -185,19 +192,34 @@ module.exports = {
           ephemeral: true,
         });
       }
-      if (voters.has(i.user.id)) {
-        return i.reply({ content: "❗ 이미 투표하셨습니다.", ephemeral: true });
+
+      // 투표(중복/번복 허용)
+      const prev = voterChoices[i.user.id] || null;
+      if (i.customId === "vote_yes") {
+        if (prev === "yes") {
+          await i.reply({ content: "이미 찬성으로 투표하셨습니다.", ephemeral: true });
+          return;
+        }
+        if (prev === "no") noCount--;
+        voterChoices[i.user.id] = "yes";
+        yesCount++;
+        await i.reply({ content: "찬성(👍)으로 투표가 반영되었습니다.", ephemeral: true });
+      } else if (i.customId === "vote_no") {
+        if (prev === "no") {
+          await i.reply({ content: "이미 반대로 투표하셨습니다.", ephemeral: true });
+          return;
+        }
+        if (prev === "yes") yesCount--;
+        voterChoices[i.user.id] = "no";
+        noCount++;
+        await i.reply({ content: "반대(👎)로 투표가 반영되었습니다.", ephemeral: true });
       }
-      voters.add(i.user.id);
-      if (i.customId === "vote_yes") yesCount++;
-      if (i.customId === "vote_no") noCount++;
-      await i.reply({ content: `투표 완료: ${i.customId === "vote_yes" ? "찬성" : "반대"}`, ephemeral: true });
       await updateEmbed();
 
-      // 찬성 과반 도달 시 10초 보장 + 임박 안내 (한 번만)
+      // 추방 임박(찬성 과반) 도달 시 10초 보장 (한 번만)
       if (yesCount >= requiredVotes && !kickScheduled) {
         kickScheduled = true;
-        leftSeconds = 10; // 무조건 10초로 재설정
+        leftSeconds = 10;
         embed.setFooter({ text: "추방 임박! 반대표가 있으면 10초 안에 투표하세요." });
         await message.edit({
           content: `⏰ 남은 시간: **${leftSeconds}초**`,
@@ -205,8 +227,8 @@ module.exports = {
           components: [row]
         }).catch(() => {});
       }
-      // 반대표도 과반이면 즉시 종료
-      if (noCount >= requiredVotes && !votingFinished) {
+      // 반대표도 과반이면 즉시 종료 (동점은 이동X)
+      if (noCount > yesCount && noCount >= requiredVotes && !votingFinished) {
         collector.stop("fail");
       }
     });
@@ -235,18 +257,20 @@ module.exports = {
       if (endReason === "fail") {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
-          .setDescription(`반대표가 과반을 넘어 투표가 즉시 종료되었습니다.`)
+          .setDescription(`동점 또는 반대표가 더 많아 이동되지 않았습니다.`)
           .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
           .setColor(0xff0000);
         return interaction.followUp({ embeds: [failEmbed] });
       }
       if (endReason === "timeout") {
         // 일반 타임아웃
-        if (yesCount >= requiredVotes) {
+        if (yesCount > noCount && yesCount >= requiredVotes) {
           endReason = "success";
+        } else {
+          endReason = "fail";
         }
       }
-      if (yesCount >= requiredVotes) {
+      if (endReason === "success" && yesCount > noCount) {
         const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
         const afkChannel = interaction.guild.channels.cache.get(AFK_CHANNEL_ID);
         if (!afkChannel?.isVoiceBased()) {
@@ -284,6 +308,8 @@ module.exports = {
             });
           }
         }
+      } else if (endReason === "fail") {
+        // 이미 위에서 fail 안내
       } else {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
