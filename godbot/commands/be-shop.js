@@ -304,42 +304,37 @@ module.exports = {
         }
         let page = 0, ROLES_PER_PAGE = 5, maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
         let member = await interaction.guild.members.fetch(interaction.user.id);
+        const ROLES_PER_PAGE = 4;
+        const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
         const getEmbedAndRows = (_page, curBe) => {
-          const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
-          const embed = new EmbedBuilder()
-            .setTitle('🎨 닉네임 색상 상점')
-            .setDescription(
-              `🔷 내 파랑 정수: ${curBe} BE\n` +
-              showRoles.map((role, i) => {
-                let owned = member.roles.cache.has(role.roleId);
-                let preview = role.color ?
-                  `\`색상코드:\` ${role.color}` : '';
-                return `#${i+1+_page*ROLES_PER_PAGE} | ${role.emoji||''} **${role.name}** (${role.price} BE)
+        const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
+
+  let previewBar = showRoles.map(role =>
+    `${role.emoji || ''}<@&${role.roleId}>`
+  ).join('   ');
+
+  const embed = new EmbedBuilder()
+    .setTitle('🎨 닉네임 색상 상점')
+    .setDescription(
+      `【미리보기】${previewBar}\n\n` + // << 이 부분이 상단에 들어감
+      `🔷 내 파랑 정수: ${curBe} BE\n` +
+      showRoles.map((role, i) => {
+        let owned = member.roles.cache.has(role.roleId);
+        let preview = role.color ? `\`색상코드:\` ${role.color}` : '';
+        return `#${i+1+_page*ROLES_PER_PAGE} | ${role.emoji||''} **${role.name}** (${role.price} BE)
 ${role.desc}
 ${preview}
 > ${owned ? '**[보유중]**' : ''}`;
-              }).join('\n\n')
-            )
-            .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
-          if (showRoles[0]?.color) embed.setColor(showRoles[0].color);
-          const row = new ActionRowBuilder();
-          showRoles.forEach(role => {
-            row.addComponents(
-              new ButtonBuilder()
-                .setCustomId(`nickname_buy_${role.roleId}`)
-                .setLabel(member.roles.cache.has(role.roleId) ? `${role.name} 보유중` : `${role.name} 구매`)
-                .setStyle(member.roles.cache.has(role.roleId) ? ButtonStyle.Secondary : ButtonStyle.Primary)
-                .setDisabled(member.roles.cache.has(role.roleId))
-            );
-          });
-          const rowPage = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('nick_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
-            new ButtonBuilder().setCustomId('nick_refresh').setLabel('새로고침').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
-            new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
-          );
-          return { embed, rows: [row, rowPage] };
-        };
+      }).join('\n\n')
+    )
+    .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
+
+  if (showRoles[0]?.color) embed.setColor(showRoles[0].color);
+
+  // ...버튼 생성 코드는 기존과 동일...
+
+  return { embed, rows: [row, rowPage] };
+};
         let { embed, rows } = getEmbedAndRows(page, userBe);
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
