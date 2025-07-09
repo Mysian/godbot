@@ -218,7 +218,7 @@ module.exports = {
   setUserBe(userId, reward, `출석 보상 (음성:${voiceBE} + 채팅:${chatBE} ×랜덤 ${randRate.toFixed(2)}, 연속${streak}일 보너스${bonus})`);
   setCooldown(userId, 'attendance', 0, true);
 
-  let effectMsg = `음성 ${voiceBE} + 채팅 ${chatBE} ×랜덤(${randRate.toFixed(2)}) + 연속출석(${streak}일, ${bonus} BE)`;
+  let effectMsg = `음성 ${comma(voiceBE)} + 채팅 ${comma(chatBE)} ×(${randRate.toFixed(2)}) + 연속출석(${streak}일, ${comma(bonus)} BE)`;
   await interaction.reply({
     embeds: [new EmbedBuilder()
       .setTitle("📅 출석 완료!")
