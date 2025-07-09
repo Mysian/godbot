@@ -1,6 +1,4 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const fsP = require('fs').promises;
-const lockfile = require('proper-lockfile');
 const fs = require('fs');
 const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
@@ -12,113 +10,50 @@ const attendancePath = path.join(__dirname, '../data/attendance-data.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
 
 
-// 1. 비동기 JSON 읽기
-async function loadJsonAsync(p) {
-  try {
-    await fsP.access(p).catch(() => fs.writeFileSync(p, "{}"));
-    return JSON.parse(await fsP.readFile(p, 'utf8'));
-  } catch (e) {
-    return {};
-  }
+function loadJson(p) {
+  if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
-
-// 2. 비동기 JSON 저장 (락 적용)
-async function saveJsonAsync(p, data) {
-  let release;
-  try {
-    release = await lockfile.lock(p, { retries: 5, realpath: false, stale: 3000 });
-    await fsP.writeFile(p, JSON.stringify(data, null, 2));
-    await release();
-  } catch (e) {
-    if (release) await release();
-    throw e;
-  }
-}
-
-// 3. BE 유저 값 변경
-async function setUserBe(userId, diff, reason = "") {
-  let release;
-  try {
-    release = await lockfile.lock(bePath, { retries: 5, realpath: false, stale: 3000 });
-    let be = await loadJsonAsync(bePath);
-    be[userId] = be[userId] || { amount: 0, history: [] };
-    be[userId].amount += diff;
-    be[userId].history.push({
-      type: diff > 0 ? "earn" : "lose",
-      amount: Math.abs(diff),
-      reason,
-      timestamp: Date.now()
-    });
-    await fsP.writeFile(bePath, JSON.stringify(be, null, 2));
-    await release();
-  } catch (e) {
-    if (release) await release();
-    throw e;
-  }
-}
-
-// 4. 쿨타임 설정
-async function setCooldown(userId, type, ms, midnight = false) {
-  let release;
-  try {
-    release = await lockfile.lock(earnCooldownPath, { retries: 5, realpath: false, stale: 3000 });
-    let data = await loadJsonAsync(earnCooldownPath);
-    data[userId] = data[userId] || {};
-    data[userId][type] = midnight ? nextMidnightKR() : Date.now() + ms;
-    await fsP.writeFile(earnCooldownPath, JSON.stringify(data, null, 2));
-    await release();
-  } catch (e) {
-    if (release) await release();
-    throw e;
-  }
-}
-
-// 5. 언락
-async function unlock(userId) {
-  let release;
-  try {
-    release = await lockfile.lock(lockPath, { retries: 5, realpath: false, stale: 3000 });
-    let data = await loadJsonAsync(lockPath);
-    if (data[userId]) delete data[userId];
-    await fsP.writeFile(lockPath, JSON.stringify(data, null, 2));
-    await release();
-  } catch (e) {
-    if (release) await release();
-    throw e;
-  }
-}
-
-// 6. 락 (진입 가능 여부 반환)
-async function lock(userId) {
-  let release;
-  try {
-    release = await lockfile.lock(lockPath, { retries: 5, realpath: false, stale: 3000 });
-    let data = await loadJsonAsync(lockPath);
-    if (data[userId] && Date.now() < data[userId]) {
-      await release();
-      return false;
-    }
-    data[userId] = Date.now() + 120000; // 2분 lock
-    await fsP.writeFile(lockPath, JSON.stringify(data, null, 2));
-    await release();
-    return true;
-  } catch (e) {
-    if (release) await release();
-    throw e;
-  }
+function saveJson(p, data) {
+  fs.writeFileSync(p, JSON.stringify(data, null, 2));
 }
 function getUserBe(userId) {
   const be = loadJson(bePath);
   return be[userId]?.amount || 0;
 }
+function setUserBe(userId, diff, reason = "") {
+  const be = loadJson(bePath);
+  be[userId] = be[userId] || { amount: 0, history: [] };
+  be[userId].amount += diff;
+  be[userId].history.push({ type: diff > 0 ? "earn" : "lose", amount: Math.abs(diff), reason, timestamp: Date.now() });
+  saveJson(bePath, be);
+}
 function getCooldown(userId, type) {
   const data = loadJson(earnCooldownPath);
   return data[userId]?.[type] || 0;
+}
+function setCooldown(userId, type, ms, midnight = false) {
+  const data = loadJson(earnCooldownPath);
+  data[userId] = data[userId] || {};
+  data[userId][type] = midnight ? nextMidnightKR() : Date.now() + ms;
+  saveJson(earnCooldownPath, data);
 }
 function nextMidnightKR() {
   const now = new Date(Date.now() + koreaTZ);
   now.setHours(0, 0, 0, 0);
   return now.getTime() - koreaTZ + 24 * 60 * 60 * 1000;
+}
+function lock(userId) {
+  const data = loadJson(lockPath);
+  if (data[userId] && Date.now() < data[userId]) return false;
+  data[userId] = Date.now() + 120000; // 2분 lock
+  saveJson(lockPath, data);
+  return true;
+}
+function unlock(userId) {
+  const data = loadJson(lockPath);
+  if (data[userId]) delete data[userId];
+  saveJson(lockPath, data);
 }
 function hasProfile(userId) {
   if (!fs.existsSync(profilesPath)) return false;
