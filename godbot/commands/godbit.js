@@ -227,8 +227,8 @@ async function postLogMsg(type, coinName, client) {
 }
 async function postEventMsg(type, coinName, percent, client) {
   let msg;
-  if (type === 'crash') msg = `📉 [폭락!] ${coinName}코인이 ${percent.toFixed(1)}% 폭락 추이를 보입니다!`;
-  if (type === 'soar')  msg = `📈 [폭등!] ${coinName}코인이 ${percent.toFixed(1)}% 폭등 추이를 보입니다!`;
+  if (type === 'crash') msg = `📉 [폭락!] ${coinName}이 ${percent.toFixed(1)}% 폭락 추이를 보입니다!`;
+  if (type === 'soar')  msg = `📈 [폭등!] ${coinName}이 ${percent.toFixed(1)}% 폭등 추이를 보입니다!`;
   try {
     const ch = await client.channels.fetch(LOG_CHANNEL_ID);
     if (ch) ch.send(msg);
