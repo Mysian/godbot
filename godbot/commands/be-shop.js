@@ -60,14 +60,14 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      // 상점 여러 개 동시 진입 방지
       if (userShopOpen[interaction.user.id]) {
         await interaction.reply({ content: '이미 상점 창이 열려있습니다. 먼저 기존 상점을 종료해주세요!', ephemeral: true });
         return;
       }
       userShopOpen[interaction.user.id] = true;
 
-      await interaction.deferReply({ ephemeral: true });
+      // 모두 공개
+      await interaction.deferReply({ ephemeral: false });
 
       const kind = interaction.options.getString('종류');
       const be = await loadJson(bePath);
@@ -88,7 +88,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setTitle("🛒 아이템 상점")
             .setDescription(
-              myBeLine +
+              `🔷 내 파랑 정수: ${curBe} BE\n` +
               showItems.map((item, i) =>
                 `#${i + 1 + _page * ITEMS_PER_PAGE} | ${item.icon || ""} **${item.name}** (${item.price} BE)\n${item.desc}`
               ).join("\n\n"))
@@ -98,6 +98,7 @@ module.exports = {
             new ButtonBuilder().setCustomId("item_prev").setLabel("이전 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page === 0),
             new ButtonBuilder().setCustomId("item_refresh").setLabel("새로고침").setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId("item_next").setLabel("다음 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page + 1 >= maxPage),
+            new ButtonBuilder().setCustomId("shop_close").setLabel("상점 닫기").setStyle(ButtonStyle.Danger)
           );
           const rowBuy = new ActionRowBuilder();
           showItems.forEach(item => {
@@ -112,12 +113,17 @@ module.exports = {
         };
 
         let { embed, rows } = getEmbedAndRows(page, userBe);
-        await interaction.editReply({ embeds: [embed], components: rows });
+        const shopMsg = await interaction.editReply({ embeds: [embed], components: rows });
 
-        const filter = i => i.user.id === interaction.user.id && !i.customId.startsWith('shop_close');
-        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: 90000 });
 
         collector.on('collect', async i => {
+          if (i.customId === "shop_close") {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
           let updated = false;
           if (i.customId === "item_prev" && page > 0) { page--; updated = true; }
           if (i.customId === "item_next" && (page + 1) * ITEMS_PER_PAGE < sorted.length) { page++; updated = true; }
@@ -177,13 +183,15 @@ module.exports = {
           }
         });
 
-        collector.on('end', async () => {
-          try {
-            await interaction.editReply({
-              components: [],
-              content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!'
-            });
-          } catch (e) {}
+        collector.on('end', async (collected, reason) => {
+          if (reason !== "user") {
+            try {
+              await interaction.editReply({
+                content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!',
+                embeds: [], components: []
+              });
+            } catch (e) {}
+          }
           userBuying[interaction.user.id] = false;
           userShopOpen[interaction.user.id] = false;
         });
@@ -204,7 +212,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setTitle("📚 스킬 상점")
             .setDescription(
-              myBeLine +
+              `🔷 내 파랑 정수: ${curBe} BE\n` +
               showSkills.map((skill, i) =>
                 `#${i + 1 + _page * SKILLS_PER_PAGE} | ${skill.icon || ""} **${skill.name}** (${skill.price} BE)\n${skill.desc}`
               ).join("\n\n"))
@@ -214,6 +222,7 @@ module.exports = {
             new ButtonBuilder().setCustomId("skill_prev").setLabel("이전 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page === 0),
             new ButtonBuilder().setCustomId("skill_refresh").setLabel("새로고침").setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId("skill_next").setLabel("다음 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page + 1 >= maxPage),
+            new ButtonBuilder().setCustomId("shop_close").setLabel("상점 닫기").setStyle(ButtonStyle.Danger)
           );
           const rowBuy = new ActionRowBuilder();
           showSkills.forEach(skill => {
@@ -228,12 +237,17 @@ module.exports = {
         };
 
         let { embed, rows } = getEmbedAndRows(page, userBe);
-        await interaction.editReply({ embeds: [embed], components: rows });
+        const shopMsg = await interaction.editReply({ embeds: [embed], components: rows });
 
-        const filter = i => i.user.id === interaction.user.id && !i.customId.startsWith('shop_close');
-        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: 90000 });
 
         collector.on('collect', async i => {
+          if (i.customId === "shop_close") {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
           let updated = false;
           if (i.customId === "skill_prev" && page > 0) { page--; updated = true; }
           if (i.customId === "skill_next" && (page + 1) * SKILLS_PER_PAGE < sorted.length) { page++; updated = true; }
@@ -292,13 +306,15 @@ module.exports = {
           }
         });
 
-        collector.on('end', async () => {
-          try {
-            await interaction.editReply({
-              components: [],
-              content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!'
-            });
-          } catch (e) {}
+        collector.on('end', async (collected, reason) => {
+          if (reason !== "user") {
+            try {
+              await interaction.editReply({
+                content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!',
+                embeds: [], components: []
+              });
+            } catch (e) {}
+          }
           userBuying[interaction.user.id] = false;
           userShopOpen[interaction.user.id] = false;
         });
@@ -311,7 +327,7 @@ module.exports = {
         const embed = new EmbedBuilder()
           .setTitle("🪄 강화 아이템 상점 (역할 상품)")
           .setDescription(
-            myBeLine +
+            `🔷 내 파랑 정수: ${beLive} BE\n` +
             강화ITEMS.map((item, i) =>
               `#${i + 1} | ${item.emoji} **${item.name}** (${item.price} BE)\n${item.desc}\n`
             ).join("\n")
@@ -327,13 +343,24 @@ module.exports = {
               .setStyle(ButtonStyle.Primary)
           );
         });
+        rowBuy.addComponents(
+          new ButtonBuilder()
+            .setCustomId("shop_close")
+            .setLabel("상점 닫기")
+            .setStyle(ButtonStyle.Danger)
+        );
 
-        await interaction.editReply({ embeds: [embed], components: [rowBuy] });
+        const shopMsg = await interaction.editReply({ embeds: [embed], components: [rowBuy] });
 
-        const filter = i => i.user.id === interaction.user.id && !i.customId.startsWith('shop_close');
-        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 90000 });
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: 90000 });
 
         collector.on('collect', async i => {
+          if (i.customId === "shop_close") {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
           if (userBuying[i.user.id]) {
             await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
             return;
@@ -355,9 +382,7 @@ module.exports = {
               return;
             }
 
-            // 롤백 대비 BE 백업
             const beBackup = JSON.stringify(be);
-
             be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
             be[i.user.id].amount -= btnItem.price;
             be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
@@ -366,12 +391,10 @@ module.exports = {
             try {
               await member.roles.add(btnItem.roleId, "강화 아이템 구매");
             } catch (err) {
-              // 롤백
               await saveJson(bePath, JSON.parse(beBackup));
               await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류 / BE 차감 취소됨)`, ephemeral: true });
               return;
             }
-
             await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
           } catch (e) {
             await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
@@ -380,13 +403,15 @@ module.exports = {
           }
         });
 
-        collector.on('end', async () => {
-          try {
-            await interaction.editReply({
-              components: [],
-              content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!'
-            });
-          } catch (e) {}
+        collector.on('end', async (collected, reason) => {
+          if (reason !== "user") {
+            try {
+              await interaction.editReply({
+                content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!',
+                embeds: [], components: []
+              });
+            } catch (e) {}
+          }
           userBuying[interaction.user.id] = false;
           userShopOpen[interaction.user.id] = false;
         });
