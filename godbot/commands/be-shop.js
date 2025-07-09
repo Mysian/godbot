@@ -59,6 +59,10 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // 💡 **항상 상점 진입시 플래그 초기화**
+    userShopOpen[interaction.user.id] = false;
+    userBuying[interaction.user.id] = false;
+
     try {
       // 상점 여러 개 동시 진입 방지
       if (userShopOpen[interaction.user.id]) {
