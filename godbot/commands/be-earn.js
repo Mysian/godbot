@@ -7,33 +7,15 @@ const lockPath = path.join(__dirname, '../data/earn-lock.json');
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 const activityTracker = require('../utils/activity-tracker');
 const attendancePath = path.join(__dirname, '../data/attendance-data.json');
-const lockfile = require('proper-lockfile');
 const koreaTZ = 9 * 60 * 60 * 1000;
 
 
 function loadJson(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
-  let release;
-  try {
-    release = lockfile.lockSync(p, { retries: 5, realpath: false, stale: 3000 });
-    const json = JSON.parse(fs.readFileSync(p, 'utf8'));
-    release();
-    return json;
-  } catch (e) {
-    if (release) release();
-    throw e;
-  }
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 function saveJson(p, data) {
-  let release;
-  try {
-    release = lockfile.lockSync(p, { retries: 5, realpath: false, stale: 3000 });
-    fs.writeFileSync(p, JSON.stringify(data, null, 2));
-    release();
-  } catch (e) {
-    if (release) release();
-    throw e;
-  }
+  fs.writeFileSync(p, JSON.stringify(data, null, 2));
 }
 function getUserBe(userId) {
   const be = loadJson(bePath);
