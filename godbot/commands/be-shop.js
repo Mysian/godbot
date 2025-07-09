@@ -351,7 +351,6 @@ if (kind === 'nickname') {
     });
     const rowPage = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('nick_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
-      new ButtonBuilder().setCustomId('nick_refresh').setLabel('새로고침').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
       new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
     );
@@ -388,7 +387,6 @@ if (kind === 'nickname') {
     let updated = false;
     if (i.customId === 'nick_prev' && page > 0) { page--; updated = true; }
     if (i.customId === 'nick_next' && (page+1)*ROLES_PER_PAGE < roleList.length) { page++; updated = true; }
-    if (i.customId === 'nick_refresh') { updated = true; }
     if (updated) {
       ({ embed, rows } = getEmbedAndRows(page, userBe));
       await i.update({
