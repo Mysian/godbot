@@ -87,7 +87,7 @@ const userShopOpen = {};
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('정수상점')
+    .setName('상점')
     .setDescription('파랑 정수(BE)로 아이템·스킬·강화아이템을 구매할 수 있는 통합 상점입니다.')
     .addStringOption(option =>
       option
@@ -95,9 +95,9 @@ module.exports = {
         .setDescription('구매할 상점 종류를 선택하세요.')
         .setRequired(true)
         .addChoices(
-          { name: '아이템 상점', value: 'item' },
-          { name: '스킬 상점', value: 'skill' },
-          { name: '강화 아이템', value: 'upgrade' }
+          { name: '챔피언 강화 아이템', value: 'upgrade' },
+          { name: '배틀 아이템', value: 'item' },
+          { name: '배틀 스킬', value: 'skill' },
         )
     ),
 
