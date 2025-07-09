@@ -7,23 +7,67 @@ const bePath = path.join(__dirname, '../data/BE.json');
 const itemsPath = path.join(__dirname, '../data/items.json');
 const skillsPath = path.join(__dirname, '../data/skills.json');
 
+// === 강화 아이템 실시간 품절 관리용 메모리 플래그 ===
+const memorySold = { soul: 0, legendary: 0 };
+
+// === 강화 아이템 설정 ===
 const 강화ITEMS = [
   {
     name: '불굴의 영혼',
     roleId: '1382169247538745404',
     price: 10000,
-    desc: '챔피언 단일 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]',
-    emoji: '🧿'
+    desc: '챔피언 단일 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 매 정각(1시간)마다 재고 1개 충전',
+    emoji: '🧿',
+    key: 'soul',
+    period: 1 // 시간 단위
   },
   {
     name: '불굴의 영혼 (전설)',
     roleId: '1382665471605870592',
     price: 50000,
-    desc: '챔피언 한방 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]',
-    emoji: '🌟'
+    desc: '챔피언 한방 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 매 3시간마다 재고 1개 충전',
+    emoji: '🌟',
+    key: 'legendary',
+    period: 3 // 시간 단위
   }
 ];
 
+// === 강화 아이템 재고/충전 체크 ===
+function checkStock(item) {
+  const now = new Date();
+  if (item.key === 'soul') {
+    if (now.getMinutes() === 0 && now.getSeconds() < 2) memorySold.soul = 0; // 정각 2초 이내 강제 리셋
+    if (memorySold.soul) return false;
+    return now.getMinutes() === 0;
+  }
+  if (item.key === 'legendary') {
+    if (now.getHours() % 3 === 0 && now.getMinutes() === 0 && now.getSeconds() < 2) memorySold.legendary = 0;
+    if (memorySold.legendary) return false;
+    return now.getHours() % 3 === 0 && now.getMinutes() === 0;
+  }
+  return false;
+}
+function nextRestock(item) {
+  const now = new Date();
+  if (item.key === 'soul') {
+    const next = new Date(now);
+    next.setHours(now.getMinutes() === 0 ? now.getHours() + 1 : now.getHours());
+    next.setMinutes(0, 0, 0);
+    let left = (next - now) / 1000;
+    return left < 0 ? 0 : Math.floor(left);
+  }
+  if (item.key === 'legendary') {
+    const h = now.getHours();
+    const nextHour = Math.ceil((h + 1) / 3) * 3;
+    const next = new Date(now);
+    next.setHours(nextHour, 0, 0, 0);
+    let left = (next - now) / 1000;
+    return left < 0 ? 0 : Math.floor(left);
+  }
+  return 0;
+}
+
+// === 파일 IO ===
 async function loadJson(p, isArray = false) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, isArray ? "[]" : "{}");
   const release = await lockfile.lock(p, { retries: 3 });
@@ -37,6 +81,7 @@ async function saveJson(p, data) {
   await release();
 }
 
+// === 메모리 플래그 ===
 const userBuying = {};
 const userShopOpen = {};
 
@@ -357,25 +402,39 @@ module.exports = {
 
       // ---- 강화 아이템 상점(역할) ----
       if (kind === 'upgrade') {
-        const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
         const getEmbedAndRows = (curBe) => {
           const embed = new EmbedBuilder()
             .setTitle("🪄 강화 아이템 상점 (역할 상품)")
             .setDescription(
               `🔷 내 파랑 정수: ${curBe} BE\n` +
-              강화ITEMS.map((item, i) =>
-                `#${i + 1} | ${item.emoji} **${item.name}** (${item.price} BE)\n${item.desc}\n`
-              ).join("\n")
+              강화ITEMS.map((item, i) => {
+                const stock = checkStock(item);
+                let msg = '';
+                if (!stock) {
+                  const left = nextRestock(item);
+                  if (left > 0) {
+                    const h = Math.floor(left / 3600);
+                    const m = Math.floor((left % 3600) / 60);
+                    const s = left % 60;
+                    msg = `\n> **[품절]** 충전까지 ${h ? `${h}시간 ` : ''}${m ? `${m}분 ` : ''}${s}초 남음`;
+                  } else {
+                    msg = `\n> **[품절]**`;
+                  }
+                }
+                return `#${i + 1} | ${item.emoji} **${item.name}** (${item.price} BE)\n${item.desc}${msg}\n`
+              }).join("\n")
             )
             .setFooter({ text: `고유상품: 1회성 역할 아이템 | 구매시 즉시 지급` });
 
           const rowBuy = new ActionRowBuilder();
           강화ITEMS.forEach(item => {
+            const stock = checkStock(item);
             rowBuy.addComponents(
               new ButtonBuilder()
                 .setCustomId(`upgrade_buy_${item.roleId}`)
-                .setLabel(`${item.name} 구매`)
-                .setStyle(ButtonStyle.Primary)
+                .setLabel(stock ? `${item.name} 구매` : `${item.name} 품절`)
+                .setStyle(stock ? ButtonStyle.Primary : ButtonStyle.Secondary)
+                .setDisabled(!stock)
             );
           });
           rowBuy.addComponents(
@@ -387,7 +446,7 @@ module.exports = {
           return { embed, rows: [rowBuy] };
         };
 
-        let { embed, rows } = getEmbedAndRows(beLive);
+        let { embed, rows } = getEmbedAndRows(userBe);
 
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
@@ -397,6 +456,7 @@ module.exports = {
 
         interval = setInterval(async () => {
           try {
+            ({ embed, rows } = getEmbedAndRows(userBe));
             await interaction.editReply({
               content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
               embeds: [embed],
@@ -414,45 +474,51 @@ module.exports = {
             try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
             return;
           }
-          if (userBuying[i.user.id]) {
-            await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
-            return;
-          }
-          userBuying[i.user.id] = true;
-          try {
-            const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
-            if (!btnItem) return;
-
-            const member = await i.guild.members.fetch(i.user.id);
-            if (member.roles.cache.has(btnItem.roleId)) {
-              await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
+          const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
+          if (btnItem) {
+            if (!checkStock(btnItem)) {
+              await i.reply({ content: `❌ [${btnItem.name}] 품절입니다.`, ephemeral: true });
               return;
             }
-            const be = await loadJson(bePath);
-            const userBe = be[i.user.id]?.amount || 0;
-            if (userBe < btnItem.price) {
-              await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+            if (userBuying[i.user.id]) {
+              await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
               return;
             }
-
-            const beBackup = JSON.stringify(be);
-            be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-            be[i.user.id].amount -= btnItem.price;
-            be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
-            await saveJson(bePath, be);
-
+            userBuying[i.user.id] = true;
             try {
-              await member.roles.add(btnItem.roleId, "강화 아이템 구매");
-            } catch (err) {
-              await saveJson(bePath, JSON.parse(beBackup));
-              await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류 / BE 차감 취소됨)`, ephemeral: true });
-              return;
+              const member = await i.guild.members.fetch(i.user.id);
+              if (member.roles.cache.has(btnItem.roleId)) {
+                await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
+                return;
+              }
+              const be = await loadJson(bePath);
+              const userBe = be[i.user.id]?.amount || 0;
+              if (userBe < btnItem.price) {
+                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+                return;
+              }
+              // 메모리상 품절 처리(정각까지)
+              memorySold[btnItem.key] = 1;
+
+              const beBackup = JSON.stringify(be);
+              be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+              be[i.user.id].amount -= btnItem.price;
+              be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
+              await saveJson(bePath, be);
+
+              try {
+                await member.roles.add(btnItem.roleId, "강화 아이템 구매");
+              } catch (err) {
+                await saveJson(bePath, JSON.parse(beBackup));
+                await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류 / BE 차감 취소됨)`, ephemeral: true });
+                return;
+              }
+              await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
+            } catch (e) {
+              await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
+            } finally {
+              userBuying[i.user.id] = false;
             }
-            await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
-          } catch (e) {
-            await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
-          } finally {
-            userBuying[i.user.id] = false;
           }
         });
 
