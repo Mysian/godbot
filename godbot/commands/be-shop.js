@@ -303,7 +303,7 @@ if (kind === 'nickname') {
     return;
   }
   let page = 0;
-  const ROLES_PER_PAGE = 4;
+  const ROLES_PER_PAGE = 1;
   const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
   let member = await interaction.guild.members.fetch(interaction.user.id);
 
