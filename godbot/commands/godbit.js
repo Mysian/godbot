@@ -259,25 +259,41 @@ async function autoMarketUpdate(members, client = global.client) {
   while (base.history.length > HISTORY_MAX) base.history.shift();
   while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
 
-  // === 폭등/폭락 감지 (최근 60분 내만, 중복 없음!) ===
-  for (const [name, info] of Object.entries(coins)) {
-    if (name === '까리코인' || name.startsWith('_')) continue;
-    if (!info.history || !info.historyT) continue;
-    if (!info.listedAt || getMinutesAgo(info.listedAt) < 1440) continue;
+  // === 폭등/폭락 감지 (최근 60분 내, 연속적 변화 필요) ===
+for (const [name, info] of Object.entries(coins)) {
+  if (name === '까리코인' || name.startsWith('_')) continue;
+  if (!info.history || !info.historyT) continue;
+  if (!info.listedAt || getMinutesAgo(info.listedAt) < 1440) continue;
 
-    const h = info.history;
-    const ht = info.historyT;
-    const nowIdx = h.length - 1;
-    let idx = -1;
-    for (let i = nowIdx; i >= 0; i--) {
-      if (getMinutesAgo(ht[i]) >= 60) { idx = i; break; }
-    }
-    if (idx >= 0 && idx < nowIdx) {
-      const old = h[idx];
+  const h = info.history;
+  const ht = info.historyT;
+  const nowIdx = h.length - 1;
+
+  // 최근 60분 내 데이터 구간 찾기
+  let idx = -1;
+  for (let i = nowIdx; i >= 0; i--) {
+    if (getMinutesAgo(ht[i]) >= 60) { idx = i; break; }
+  }
+  if (idx >= 0 && idx < nowIdx) {
+    // === 추가: 최근 5틱(혹은 5회) 연속 변동 체크 ===
+    const recentTicks = 5;
+    if (nowIdx - idx >= recentTicks) {
+      let up = 0, down = 0;
+      for (let i = nowIdx - recentTicks + 1; i < nowIdx; i++) {
+        if (h[i + 1] > h[i]) up++;
+        else if (h[i + 1] < h[i]) down++;
+      }
+      const old = h[nowIdx - recentTicks + 1]; // 5틱 전 가격
       const curr = h[nowIdx];
       if (!old || !curr) continue;
       const pct = ((curr - old) / old) * 100;
-      let eventType = pct <= -30 ? 'crash' : pct >= 30 ? 'soar' : null;
+
+      let eventType = null;
+      // 4회 이상 연속 상승 & +20% 이상 → 폭등
+      if (up >= 4 && pct >= 20) eventType = 'soar';
+      // 4회 이상 연속 하락 & -20% 이하 → 폭락
+      else if (down >= 4 && pct <= -20) eventType = 'crash';
+
       if (eventType) {
         const key = `${name}_${eventType}`;
         const nowMin = Math.floor(Date.now() / 60000);
@@ -289,6 +305,8 @@ async function autoMarketUpdate(members, client = global.client) {
       }
     }
   }
+}
+
 
   // === 이벤트 확률 상폐  (까리코인 예외, 상장 후 5일~만) ===
   for (const [name, info] of Object.entries(coins)) {
