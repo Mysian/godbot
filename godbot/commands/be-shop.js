@@ -294,133 +294,154 @@ module.exports = {
       }
 
       // ---- 닉네임 색상 역할 상점 ----
-      if (kind === 'nickname') {
-        const ROLES = await loadJson(nicknameRolesPath);
-        const roleList = Object.values(ROLES);
-        if (roleList.length === 0) {
-          await interaction.editReply('등록된 색상 역할이 없습니다.');
-          userShopOpen[interaction.user.id] = false;
-          return;
-        }
-        let page = 0, ROLES_PER_PAGE = 5, maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
-        let member = await interaction.guild.members.fetch(interaction.user.id);
-        const ROLES_PER_PAGE = 4;
-        const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
-        const getEmbedAndRows = (_page, curBe) => {
-        const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
+if (kind === 'nickname') {
+  const ROLES = await loadJson(nicknameRolesPath);
+  const roleList = Object.values(ROLES);
+  if (roleList.length === 0) {
+    await interaction.editReply('등록된 색상 역할이 없습니다.');
+    userShopOpen[interaction.user.id] = false;
+    return;
+  }
+  let page = 0;
+  const ROLES_PER_PAGE = 4;
+  const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
+  let member = await interaction.guild.members.fetch(interaction.user.id);
 
-  let previewBar = showRoles.map(role =>
-    `${role.emoji || ''}<@&${role.roleId}>`
-  ).join('   ');
+  const getEmbedAndRows = (_page, curBe) => {
+    const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
 
-  const embed = new EmbedBuilder()
-    .setTitle('🎨 닉네임 색상 상점')
-    .setDescription(
-      `【미리보기】${previewBar}\n\n` + // << 이 부분이 상단에 들어감
-      `🔷 내 파랑 정수: ${curBe} BE\n` +
-      showRoles.map((role, i) => {
-        let owned = member.roles.cache.has(role.roleId);
-        let preview = role.color ? `\`색상코드:\` ${role.color}` : '';
-        return `#${i+1+_page*ROLES_PER_PAGE} | ${role.emoji||''} **${role.name}** (${role.price} BE)
+    // 미리보기 바 (이모지+역할이름)
+    let previewBar = showRoles.map(role =>
+      `${role.emoji || ''}${role.name}`
+    ).join('   ');
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎨 닉네임 색상 상점')
+      .setDescription(
+        `【미리보기】${previewBar}\n\n` +
+        `🔷 내 파랑 정수: ${curBe} BE\n` +
+        showRoles.map((role, i) => {
+          let owned = member.roles.cache.has(role.roleId);
+          let preview = role.color ? `\`색상코드:\` ${role.color}` : '';
+          return `#${i+1+_page*ROLES_PER_PAGE} | ${role.emoji||''} **${role.name}** (${role.price} BE)
 ${role.desc}
 ${preview}
 > ${owned ? '**[보유중]**' : ''}`;
-      }).join('\n\n')
-    )
-    .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
+        }).join('\n\n')
+      )
+      .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
 
-  if (showRoles[0]?.color) embed.setColor(showRoles[0].color);
+    if (showRoles[0]?.color) embed.setColor(showRoles[0].color);
 
-  // ...버튼 생성 코드는 기존과 동일...
+    // 버튼
+    const row = new ActionRowBuilder();
+    showRoles.forEach(role => {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`nickname_buy_${role.roleId}`)
+          .setLabel(member.roles.cache.has(role.roleId) ? `${role.name} 보유중` : `${role.name} 구매`)
+          .setStyle(member.roles.cache.has(role.roleId) ? ButtonStyle.Secondary : ButtonStyle.Primary)
+          .setDisabled(member.roles.cache.has(role.roleId))
+      );
+    });
+    const rowPage = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nick_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
+      new ButtonBuilder().setCustomId('nick_refresh').setLabel('새로고침').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
+      new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+    );
+    return { embed, rows: [row, rowPage] };
+  };
 
-  return { embed, rows: [row, rowPage] };
-};
-        let { embed, rows } = getEmbedAndRows(page, userBe);
-        const shopMsg = await interaction.editReply({
-          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-          embeds: [embed],
-          components: rows
-        });
-        interval = setInterval(async () => {
-          try {
-            const { embed: newEmbed, rows: newRows } = getEmbedAndRows(page, userBe);
-            await interaction.editReply({
-              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-              embeds: [newEmbed],
-              components: newRows
-            });
-          } catch {}
-        }, 1000);
-        const filter = i => i.user.id === interaction.user.id;
-        const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
-        collector.on('collect', async i => {
-          if (i.customId === 'shop_close') {
-            collector.stop("user");
-            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
-            return;
-          }
-          let updated = false;
-          if (i.customId === 'nick_prev' && page > 0) { page--; updated = true; }
-          if (i.customId === 'nick_next' && (page+1)*ROLES_PER_PAGE < roleList.length) { page++; updated = true; }
-          if (i.customId === 'nick_refresh') { updated = true; }
-          if (updated) {
-            ({ embed, rows } = getEmbedAndRows(page, userBe));
-            await i.update({
-              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-              embeds: [embed],
-              components: rows
-            });
-            return;
-          }
-          if (i.customId.startsWith('nickname_buy_')) {
-            const roleId = i.customId.replace('nickname_buy_', '');
-            const roleData = roleList.find(x => x.roleId === roleId);
-            if (!roleData) {
-              await i.reply({ content: "해당 역할을 찾을 수 없습니다.", ephemeral: true });
-              return;
-            }
-            if (member.roles.cache.has(roleId)) {
-              await i.reply({ content: `이미 [${roleData.name}] 색상 역할을 보유 중입니다!`, ephemeral: true });
-              return;
-            }
-            if (userBuying[i.user.id]) {
-              await i.reply({ content: '이미 구매 처리 중입니다.', ephemeral: true });
-              return;
-            }
-            userBuying[i.user.id] = true;
-            try {
-              const be = await loadJson(bePath);
-              const userBe = be[i.user.id]?.amount || 0;
-              if (userBe < roleData.price) {
-                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
-                return;
-              }
-              // 한 명당 1개만 소유(다른 색상 있으면 제거)
-              if (NICKNAME_ROLE_PER_USER > 0) {
-                const allRoleIds = roleList.map(x => x.roleId);
-                for (const rId of allRoleIds) {
-                  if (member.roles.cache.has(rId)) await member.roles.remove(rId, '색상 중복 방지');
-                }
-              }
-              await member.roles.add(roleId, '닉네임 색상 구매');
-              be[i.user.id].amount -= roleData.price;
-              be[i.user.id].history.push({ type: "spend", amount: roleData.price, reason: `${roleData.name} 색상 역할 구매`, timestamp: Date.now() });
-              await saveJson(bePath, be);
-              await i.reply({ content: `✅ [${roleData.name}] 색상 역할을 ${roleData.price} BE에 구매 완료!`, ephemeral: true });
-            } catch (e) {
-              await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
-            } finally { userBuying[i.user.id] = false; }
-            return;
-          }
-        });
-        collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
-        });
+  let { embed, rows } = getEmbedAndRows(page, userBe);
+
+  const shopMsg = await interaction.editReply({
+    content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+    embeds: [embed],
+    components: rows
+  });
+  interval = setInterval(async () => {
+    try {
+      const { embed: newEmbed, rows: newRows } = getEmbedAndRows(page, userBe);
+      await interaction.editReply({
+        content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+        embeds: [newEmbed],
+        components: newRows
+      });
+    } catch {}
+  }, 1000);
+
+  const filter = i => i.user.id === interaction.user.id;
+  const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+  collector.on('collect', async i => {
+    if (i.customId === 'shop_close') {
+      collector.stop("user");
+      try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+      return;
+    }
+    let updated = false;
+    if (i.customId === 'nick_prev' && page > 0) { page--; updated = true; }
+    if (i.customId === 'nick_next' && (page+1)*ROLES_PER_PAGE < roleList.length) { page++; updated = true; }
+    if (i.customId === 'nick_refresh') { updated = true; }
+    if (updated) {
+      ({ embed, rows } = getEmbedAndRows(page, userBe));
+      await i.update({
+        content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+        embeds: [embed],
+        components: rows
+      });
+      return;
+    }
+    if (i.customId.startsWith('nickname_buy_')) {
+      const roleId = i.customId.replace('nickname_buy_', '');
+      const roleData = roleList.find(x => x.roleId === roleId);
+      if (!roleData) {
+        await i.reply({ content: "해당 역할을 찾을 수 없습니다.", ephemeral: true });
         return;
       }
+      if (member.roles.cache.has(roleId)) {
+        await i.reply({ content: `이미 [${roleData.name}] 색상 역할을 보유 중입니다!`, ephemeral: true });
+        return;
+      }
+      if (userBuying[i.user.id]) {
+        await i.reply({ content: '이미 구매 처리 중입니다.', ephemeral: true });
+        return;
+      }
+      userBuying[i.user.id] = true;
+      try {
+        const be = await loadJson(bePath);
+        const userBe = be[i.user.id]?.amount || 0;
+        if (userBe < roleData.price) {
+          await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+          return;
+        }
+        // 한 명당 1개만 소유(다른 색상 있으면 제거)
+        if (NICKNAME_ROLE_PER_USER > 0) {
+          const allRoleIds = roleList.map(x => x.roleId);
+          for (const rId of allRoleIds) {
+            if (member.roles.cache.has(rId)) await member.roles.remove(rId, '색상 중복 방지');
+          }
+        }
+        await member.roles.add(roleId, '닉네임 색상 구매');
+        be[i.user.id].amount -= roleData.price;
+        be[i.user.id].history.push({ type: "spend", amount: roleData.price, reason: `${roleData.name} 색상 역할 구매`, timestamp: Date.now() });
+        await saveJson(bePath, be);
+        await i.reply({ content: `✅ [${roleData.name}] 색상 역할을 ${roleData.price} BE에 구매 완료!`, ephemeral: true });
+      } catch (e) {
+        await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
+      } finally { userBuying[i.user.id] = false; }
+      return;
+    }
+  });
+  collector.on('end', async () => {
+    clearInterval(interval);
+    try { await interaction.deleteReply(); } catch {}
+    userBuying[interaction.user.id] = false;
+    userShopOpen[interaction.user.id] = false;
+  });
+  return;
+}
+
 
       // ---- 개인채널 계약금 상점 ----
       if (kind === 'channel') {
