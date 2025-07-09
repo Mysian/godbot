@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
 
+
+
 // 파일 경로
 const nicknameRolesPath = path.join(__dirname, '../data/nickname-roles.json');
 const titlesPath = path.join(__dirname, '../data/limited-titles.json');
@@ -18,6 +20,11 @@ async function saveJson(p, data) {
   const release = await lockfile.lock(p, { retries: 3 });
   fs.writeFileSync(p, JSON.stringify(data, null, 2));
   await release();
+}
+
+function isEmptyDesc(str) {
+  if (!str) return false;
+  return ['없음', '없음.'].includes(str.trim().replace(/\.$/, '').toLowerCase());
 }
 
 module.exports = {
@@ -95,30 +102,30 @@ module.exports = {
 
     // 닉네임 색상
     if (type === 'nickname') {
-      let roles = await loadJson(nicknameRolesPath);
-      if (op === 'add') {
-        if (roles[roleId]) return await interaction.reply({ content: '이미 존재하는 역할ID입니다.', ephemeral: true });
-        roles[roleId] = {
-          roleId,
-          name: name || '',
-          emoji: emoji || '',
-          price: price || 0,
-          desc: desc || '',
-          color: color || null
-        };
-        await saveJson(nicknameRolesPath, roles);
-        return await interaction.reply({ content: `[닉네임색상] 추가 완료: ${roleId}`, ephemeral: true });
-      }
-      if (op === 'edit') {
-        if (!roles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
-        if (name) roles[roleId].name = name;
-        if (emoji) roles[roleId].emoji = emoji;
-        if (price != null) roles[roleId].price = price;
-        if (desc) roles[roleId].desc = desc;
-        if (color) roles[roleId].color = color;
-        await saveJson(nicknameRolesPath, roles);
-        return await interaction.reply({ content: `[닉네임색상] 수정 완료: ${roleId}`, ephemeral: true });
-      }
+  let roles = await loadJson(nicknameRolesPath);
+  if (op === 'add') {
+    if (roles[roleId]) return await interaction.reply({ content: '이미 존재하는 역할ID입니다.', ephemeral: true });
+    roles[roleId] = {
+      roleId,
+      name: name || '',
+      emoji: emoji || '',
+      price: price || 0,
+      desc: isEmptyDesc(desc) ? '' : (desc || ''),
+      color: color || null
+    };
+    await saveJson(nicknameRolesPath, roles);
+    return await interaction.reply({ content: `[닉네임색상] 추가 완료: ${roleId}`, ephemeral: true });
+  }
+  if (op === 'edit') {
+    if (!roles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
+    if (name) roles[roleId].name = name;
+    if (emoji) roles[roleId].emoji = emoji;
+    if (price != null) roles[roleId].price = price;
+    if (desc !== undefined) roles[roleId].desc = isEmptyDesc(desc) ? '' : desc;
+    if (color) roles[roleId].color = color;
+    await saveJson(nicknameRolesPath, roles);
+    return await interaction.reply({ content: `[닉네임색상] 수정 완료: ${roleId}`, ephemeral: true });
+  }
       if (op === 'remove') {
         if (!roles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
         delete roles[roleId];
@@ -128,30 +135,30 @@ module.exports = {
     }
     // 한정판 칭호
     if (type === 'title') {
-      let titles = await loadJson(titlesPath);
-      if (op === 'add') {
-        if (titles[roleId]) return await interaction.reply({ content: '이미 존재하는 역할ID입니다.', ephemeral: true });
-        titles[roleId] = {
-          roleId,
-          name: name || '',
-          emoji: emoji || '',
-          price: price || 0,
-          desc: desc || '',
-          stock: stock != null ? stock : null
-        };
-        await saveJson(titlesPath, titles);
-        return await interaction.reply({ content: `[한정칭호] 추가 완료: ${roleId}`, ephemeral: true });
-      }
-      if (op === 'edit') {
-        if (!titles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
-        if (name) titles[roleId].name = name;
-        if (emoji) titles[roleId].emoji = emoji;
-        if (price != null) titles[roleId].price = price;
-        if (desc) titles[roleId].desc = desc;
-        if (stock != null) titles[roleId].stock = stock;
-        await saveJson(titlesPath, titles);
-        return await interaction.reply({ content: `[한정칭호] 수정 완료: ${roleId}`, ephemeral: true });
-      }
+  let titles = await loadJson(titlesPath);
+  if (op === 'add') {
+    if (titles[roleId]) return await interaction.reply({ content: '이미 존재하는 역할ID입니다.', ephemeral: true });
+    titles[roleId] = {
+      roleId,
+      name: name || '',
+      emoji: emoji || '',
+      price: price || 0,
+      desc: isEmptyDesc(desc) ? '' : (desc || ''),
+      stock: stock != null ? stock : null
+    };
+    await saveJson(titlesPath, titles);
+    return await interaction.reply({ content: `[한정칭호] 추가 완료: ${roleId}`, ephemeral: true });
+  }
+  if (op === 'edit') {
+    if (!titles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
+    if (name) titles[roleId].name = name;
+    if (emoji) titles[roleId].emoji = emoji;
+    if (price != null) titles[roleId].price = price;
+    if (desc !== undefined) titles[roleId].desc = isEmptyDesc(desc) ? '' : desc;
+    if (stock != null) titles[roleId].stock = stock;
+    await saveJson(titlesPath, titles);
+    return await interaction.reply({ content: `[한정칭호] 수정 완료: ${roleId}`, ephemeral: true });
+  }
       if (op === 'remove') {
         if (!titles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
         delete titles[roleId];
