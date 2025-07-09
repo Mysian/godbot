@@ -55,7 +55,7 @@ module.exports = {
           { name: "❤️ /호감도지급 [유저]", value: "다른 유저에게 호감도 지급 (대상마다 하루 1회)", inline: true },
           { name: "💔 /호감도차감 [유저]", value: "다른 유저의 호감도 차감 (대상마다 하루 1회)", inline: true },
           { name: "💼 /인벤토리", value: "내 정수 아이템(소모품/스킬/강화) 확인", inline: true },
-          { name: "🛒 /정수상점", value: "파랑 정수(BE)로 아이템 구매", inline: true },
+          { name: "🛒 /상점", value: "파랑 정수(BE)로 아이템 구매", inline: true },
           { name: "💸 /정수송금 [유저] [금액]", value: "유저에게 정수 송금 (수수료 10%)", inline: true },
           { name: "🔝 /정수순위", value: "정수 보유 랭킹 TOP 확인", inline: true },
           { name: "🔍 /정수조회 [유저]", value: "정수/가계부 내역 조회", inline: true },
