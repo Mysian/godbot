@@ -132,7 +132,7 @@ module.exports = {
         interval = setInterval(async () => {
           try {
             await interaction.editReply({
-              content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
               embeds: [embed],
               components: rows
             });
@@ -157,7 +157,7 @@ module.exports = {
             const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
             ({ embed, rows } = getEmbedAndRows(page, beLive));
             await i.update({
-              content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
               embeds: [embed],
               components: rows
             });
@@ -269,7 +269,7 @@ module.exports = {
 
         // 최초 메시지
         const shopMsg = await interaction.editReply({
-          content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
           embeds: [embed],
           components: rows
         });
@@ -278,7 +278,7 @@ module.exports = {
         interval = setInterval(async () => {
           try {
             await interaction.editReply({
-              content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
               embeds: [embed],
               components: rows
             });
@@ -303,7 +303,7 @@ module.exports = {
             const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
             ({ embed, rows } = getEmbedAndRows(page, beLive));
             await i.update({
-              content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
               embeds: [embed],
               components: rows
             });
@@ -408,7 +408,7 @@ module.exports = {
 
         // 최초 메시지
         const shopMsg = await interaction.editReply({
-          content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
           embeds: [embed],
           components: rows
         });
@@ -417,7 +417,7 @@ module.exports = {
         interval = setInterval(async () => {
           try {
             await interaction.editReply({
-              content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
               embeds: [embed],
               components: rows
             });
