@@ -523,51 +523,74 @@ if (kind === 'nickname') {
       }
 
       // ---- 한정판 칭호 상점 ----
-      if (kind === 'title') {
-        const TITLES = await loadJson(titlesPath);
-        const titleList = Object.values(TITLES);
-        if (titleList.length === 0) {
-          await interaction.editReply('등록된 한정판 칭호가 없습니다.');
-          userShopOpen[interaction.user.id] = false;
-          return;
-        }
-        let page = 0, TITLE_PER_PAGE = 5, maxPage = Math.ceil(titleList.length / TITLE_PER_PAGE);
-        let member = await interaction.guild.members.fetch(interaction.user.id);
-        const getEmbedAndRows = (_page, curBe) => {
-          const showTitles = titleList.slice(_page * TITLE_PER_PAGE, (_page + 1) * TITLE_PER_PAGE);
-          const embed = new EmbedBuilder()
-            .setTitle('🏅 한정판 칭호 상점')
-            .setDescription(
-              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
-              showTitles.map((t, i) => {
-                let owned = member.roles.cache.has(t.roleId);
-                let stockMsg = (t.stock === undefined || t.stock === null) ? '' : (t.stock <= 0 ? '\n> [품절]' : `\n> [남은 수량: ${t.stock}개]`);
-                return `#${i+1+_page*TITLE_PER_PAGE} | ${t.emoji||''} **${t.name}** (${numFmt(t.price)} BE)
+if (kind === 'title') {
+  const TITLES = await loadJson(titlesPath);
+  const titleList = Object.values(TITLES);
+  if (titleList.length === 0) {
+    await interaction.editReply('등록된 한정판 칭호가 없습니다.');
+    userShopOpen[interaction.user.id] = false;
+    return;
+  }
+  let page = 0, TITLE_PER_PAGE = 1, maxPage = Math.ceil(titleList.length / TITLE_PER_PAGE);
+  let member = await interaction.guild.members.fetch(interaction.user.id);
+
+  // [핵심] HEX or 이미지 구분 함수
+  const getImageIfUrl = (color) => {
+    if (color && typeof color === 'string' && color.startsWith('http')) return color;
+    return null;
+  };
+  const getColorIfHex = (color) => {
+    if (color && typeof color === 'string' && /^#?[0-9a-fA-F]{6}$/.test(color.replace('#',''))) return color;
+    return null;
+  };
+
+  const getEmbedAndRows = (_page, curBe) => {
+    const showTitles = titleList.slice(_page * TITLE_PER_PAGE, (_page + 1) * TITLE_PER_PAGE);
+    const embed = new EmbedBuilder()
+      .setTitle('🏅 한정판 칭호 상점')
+      .setDescription(
+        `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
+        showTitles.map((t, i) => {
+          let owned = member.roles.cache.has(t.roleId);
+          let stockMsg = (t.stock === undefined || t.stock === null) ? '' : (t.stock <= 0 ? '\n> [품절]' : `\n> [남은 수량: ${t.stock}개]`);
+          return `#${i+1+_page*TITLE_PER_PAGE} | ${t.emoji||''} **${t.name}** (${numFmt(t.price)} BE)
 ${t.desc}
 ${stockMsg}
 > ${owned ? '**[보유중]**' : ''}`;
-              }).join('\n\n')
-            )
-            .setFooter({ text: `총 칭호: ${titleList.length} | 페이지 ${_page + 1}/${maxPage}` });
-          const row = new ActionRowBuilder();
-          showTitles.forEach(t => {
-            let owned = member.roles.cache.has(t.roleId);
-            row.addComponents(
-              new ButtonBuilder()
-                .setCustomId(`title_buy_${t.roleId}`)
-                .setLabel(owned ? `${t.name} 보유중` : `${t.name} 구매`)
-                .setStyle(owned || (t.stock!==undefined&&t.stock<=0) ? ButtonStyle.Secondary : ButtonStyle.Primary)
-                .setDisabled(owned || (t.stock!==undefined&&t.stock<=0))
-            );
-          });
-          const rowPage = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('title_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
-            new ButtonBuilder().setCustomId('title_refresh').setLabel('새로고침').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('title_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
-            new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
-          );
-          return { embed, rows: [row, rowPage] };
-        };
+        }).join('\n\n')
+      )
+      .setFooter({ text: `총 칭호: ${titleList.length} | 페이지 ${_page + 1}/${maxPage}` });
+
+    // 미리보기 이미지/색상 지원
+    if (showTitles[0]?.color) {
+      const imgUrl = getImageIfUrl(showTitles[0].color);
+      if (imgUrl) {
+        embed.setImage(imgUrl);
+      } else {
+        const hexColor = getColorIfHex(showTitles[0].color);
+        if (hexColor) embed.setColor(hexColor);
+      }
+    }
+
+    const row = new ActionRowBuilder();
+    showTitles.forEach(t => {
+      let owned = member.roles.cache.has(t.roleId);
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`title_buy_${t.roleId}`)
+          .setLabel(owned ? `${t.name} 보유중` : `${t.name} 구매`)
+          .setStyle(owned || (t.stock!==undefined&&t.stock<=0) ? ButtonStyle.Secondary : ButtonStyle.Primary)
+          .setDisabled(owned || (t.stock!==undefined&&t.stock<=0))
+      );
+    });
+    const rowPage = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('title_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
+      new ButtonBuilder().setCustomId('title_refresh').setLabel('새로고침').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('title_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
+      new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+    );
+    return { embed, rows: [row, rowPage] };
+  };
         let { embed, rows } = getEmbedAndRows(page, userBe);
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
