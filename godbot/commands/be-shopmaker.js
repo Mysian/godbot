@@ -134,7 +134,7 @@ module.exports = {
       }
     }
     // 한정판 칭호
-    if (type === 'title') {
+if (type === 'title') {
   let titles = await loadJson(titlesPath);
   if (op === 'add') {
     if (titles[roleId]) return await interaction.reply({ content: '이미 존재하는 역할ID입니다.', ephemeral: true });
@@ -144,6 +144,7 @@ module.exports = {
       emoji: emoji || '',
       price: price || 0,
       desc: isEmptyDesc(desc) ? '' : (desc || ''),
+      color: color || null,      // <-- 이 라인 추가!
       stock: stock != null ? stock : null
     };
     await saveJson(titlesPath, titles);
@@ -155,17 +156,18 @@ module.exports = {
     if (emoji) titles[roleId].emoji = emoji;
     if (price != null) titles[roleId].price = price;
     if (desc !== undefined) titles[roleId].desc = isEmptyDesc(desc) ? '' : desc;
+    if (color !== undefined) titles[roleId].color = color; // <-- 이 라인 추가!
     if (stock != null) titles[roleId].stock = stock;
     await saveJson(titlesPath, titles);
     return await interaction.reply({ content: `[한정칭호] 수정 완료: ${roleId}`, ephemeral: true });
   }
-      if (op === 'remove') {
-        if (!titles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
-        delete titles[roleId];
-        await saveJson(titlesPath, titles);
-        return await interaction.reply({ content: `[한정칭호] 삭제 완료: ${roleId}`, ephemeral: true });
-      }
-    }
+  if (op === 'remove') {
+    if (!titles[roleId]) return await interaction.reply({ content: '해당 역할ID가 없습니다.', ephemeral: true });
+    delete titles[roleId];
+    await saveJson(titlesPath, titles);
+    return await interaction.reply({ content: `[한정칭호] 삭제 완료: ${roleId}`, ephemeral: true });
+  }
+}
     await interaction.reply({ content: '잘못된 옵션.', ephemeral: true });
   }
 };
