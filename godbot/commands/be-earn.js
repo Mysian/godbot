@@ -727,6 +727,8 @@ module.exports = {
   };
 
   // 게임 시작
-  gameStep(interaction, true);
-  return;
-}
+      gameStep(interaction, true);
+      return;
+    }
+  }
+};
