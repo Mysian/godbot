@@ -564,9 +564,10 @@ module.exports = {
               await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
               unlock(userId);
             } else { // draw
-              msg += `🤝 무승부! 다시 한 번 도전해!`;
+              msg += `🤝 무승부! 배팅금 **${comma(bet)} BE** 반환!`;
+              setUserBe(userId, bet, '가위바위보 무승부 환불');
               await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-              setTimeout(() => rpsGame(), 2000);
+              unlock(userId);
             }
           })
           .on('end', async (_, reason) => {
