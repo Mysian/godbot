@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const lockfile = require('proper-lockfile');
 const fs = require('fs');
 const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
@@ -15,45 +16,88 @@ function loadJson(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 function saveJson(p, data) {
-  fs.writeFileSync(p, JSON.stringify(data, null, 2));
+  let release;
+  try {
+    release = lockfile.lockSync(p, { retries: 5, realpath: false, stale: 3000 });
+    fs.writeFileSync(p, JSON.stringify(data, null, 2));
+    release();
+  } catch (e) {
+    if (release) release();
+    throw e;
+  }
+}
+function setUserBe(userId, diff, reason = "") {
+  let release;
+  try {
+    release = lockfile.lockSync(bePath, { retries: 5, realpath: false, stale: 3000 });
+    const be = loadJson(bePath);
+    be[userId] = be[userId] || { amount: 0, history: [] };
+    be[userId].amount += diff;
+    be[userId].history.push({ type: diff > 0 ? "earn" : "lose", amount: Math.abs(diff), reason, timestamp: Date.now() });
+    fs.writeFileSync(bePath, JSON.stringify(be, null, 2));
+    release();
+  } catch (e) {
+    if (release) release();
+    throw e;
+  }
+}
+function setCooldown(userId, type, ms, midnight = false) {
+  let release;
+  try {
+    release = lockfile.lockSync(earnCooldownPath, { retries: 5, realpath: false, stale: 3000 });
+    const data = loadJson(earnCooldownPath);
+    data[userId] = data[userId] || {};
+    data[userId][type] = midnight ? nextMidnightKR() : Date.now() + ms;
+    fs.writeFileSync(earnCooldownPath, JSON.stringify(data, null, 2));
+    release();
+  } catch (e) {
+    if (release) release();
+    throw e;
+  }
+}
+function unlock(userId) {
+  let release;
+  try {
+    release = lockfile.lockSync(lockPath, { retries: 5, realpath: false, stale: 3000 });
+    const data = loadJson(lockPath);
+    if (data[userId]) delete data[userId];
+    fs.writeFileSync(lockPath, JSON.stringify(data, null, 2));
+    release();
+  } catch (e) {
+    if (release) release();
+    throw e;
+  }
+}
+function lock(userId) {
+  let release;
+  try {
+    release = lockfile.lockSync(lockPath, { retries: 5, realpath: false, stale: 3000 });
+    const data = loadJson(lockPath);
+    if (data[userId] && Date.now() < data[userId]) {
+      release();
+      return false;
+    }
+    data[userId] = Date.now() + 120000; // 2분 lock
+    fs.writeFileSync(lockPath, JSON.stringify(data, null, 2));
+    release();
+    return true;
+  } catch (e) {
+    if (release) release();
+    throw e;
+  }
 }
 function getUserBe(userId) {
   const be = loadJson(bePath);
   return be[userId]?.amount || 0;
 }
-function setUserBe(userId, diff, reason = "") {
-  const be = loadJson(bePath);
-  be[userId] = be[userId] || { amount: 0, history: [] };
-  be[userId].amount += diff;
-  be[userId].history.push({ type: diff > 0 ? "earn" : "lose", amount: Math.abs(diff), reason, timestamp: Date.now() });
-  saveJson(bePath, be);
-}
 function getCooldown(userId, type) {
   const data = loadJson(earnCooldownPath);
   return data[userId]?.[type] || 0;
-}
-function setCooldown(userId, type, ms, midnight = false) {
-  const data = loadJson(earnCooldownPath);
-  data[userId] = data[userId] || {};
-  data[userId][type] = midnight ? nextMidnightKR() : Date.now() + ms;
-  saveJson(earnCooldownPath, data);
 }
 function nextMidnightKR() {
   const now = new Date(Date.now() + koreaTZ);
   now.setHours(0, 0, 0, 0);
   return now.getTime() - koreaTZ + 24 * 60 * 60 * 1000;
-}
-function lock(userId) {
-  const data = loadJson(lockPath);
-  if (data[userId] && Date.now() < data[userId]) return false;
-  data[userId] = Date.now() + 120000; // 2분 lock
-  saveJson(lockPath, data);
-  return true;
-}
-function unlock(userId) {
-  const data = loadJson(lockPath);
-  if (data[userId]) delete data[userId];
-  saveJson(lockPath, data);
 }
 function hasProfile(userId) {
   if (!fs.existsSync(profilesPath)) return false;
