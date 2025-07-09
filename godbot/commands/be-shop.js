@@ -262,7 +262,7 @@ module.exports = {
               const be = await loadJson(bePath);
               const userBe = be[i.user.id]?.amount || 0;
               if (userBe < item.price) {
-                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
                 return;
               }
               be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
@@ -418,7 +418,7 @@ if (kind === 'nickname') {
         const be = await loadJson(bePath);
         const userBe = be[i.user.id]?.amount || 0;
         if (userBe < roleData.price) {
-          await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+          await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
           return;
         }
         // 한 명당 1개만 소유(다른 색상 있으면 제거)
@@ -499,7 +499,7 @@ if (kind === 'nickname') {
               const be = await loadJson(bePath);
               const userBe = be[i.user.id]?.amount || 0;
               if (userBe < CHANNEL_ROLE_PRICE) {
-                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
                 return;
               }
               await member.roles.add(CHANNEL_ROLE_ID, '개인채널 계약금 구매');
@@ -629,7 +629,7 @@ ${stockMsg}
               const be = await loadJson(bePath);
               const userBe = be[i.user.id]?.amount || 0;
               if (userBe < titleData.price) {
-                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
                 return;
               }
               await member.roles.add(roleId, '한정판 칭호 구매');
@@ -766,7 +766,7 @@ ${stockMsg}
               const be = await loadJson(bePath);
               const userBe = be[i.user.id]?.amount || 0;
               if (userBe < skill.price) {
-                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
                 return;
               }
               be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
@@ -900,7 +900,7 @@ ${stockMsg}
               const be = await loadJson(bePath);
               const userBe = be[i.user.id]?.amount || 0;
               if (userBe < btnItem.price) {
-                await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
                 return;
               }
               await decreaseStock(btnItem); // ★구매 성공 시 재고 차감
