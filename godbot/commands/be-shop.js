@@ -6,9 +6,7 @@ const lockfile = require('proper-lockfile');
 const bePath = path.join(__dirname, '../data/BE.json');
 const itemsPath = path.join(__dirname, '../data/items.json');
 const skillsPath = path.join(__dirname, '../data/skills.json');
-
-// === 강화 아이템 실시간 품절 관리용 메모리 플래그 ===
-const memorySold = { soul: 0, legendary: 0 };
+const stockPath = path.join(__dirname, '../data/upgrade-stock.json');
 
 // === 강화 아이템 설정 ===
 const 강화ITEMS = [
@@ -16,7 +14,7 @@ const 강화ITEMS = [
     name: '불굴의 영혼',
     roleId: '1382169247538745404',
     price: 10000,
-    desc: '챔피언 단일 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 매 정각(1시간)마다 재고 1개 충전',
+    desc: '챔피언 단일 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 1시간마다 재고 1개 충전 [최대 10개]',
     emoji: '🧿',
     key: 'soul',
     period: 1 // 시간 단위
@@ -25,47 +23,13 @@ const 강화ITEMS = [
     name: '불굴의 영혼 (전설)',
     roleId: '1382665471605870592',
     price: 50000,
-    desc: '챔피언 한방 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 매 3시간마다 재고 1개 충전',
+    desc: '챔피언 한방 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 3시간마다 재고 1개 충전 [최대 5개]',
     emoji: '🌟',
     key: 'legendary',
     period: 3 // 시간 단위
   }
 ];
-
-// === 강화 아이템 재고/충전 체크 ===
-function checkStock(item) {
-  const now = new Date();
-  if (item.key === 'soul') {
-    if (now.getMinutes() === 0 && now.getSeconds() < 2) memorySold.soul = 0; // 정각 2초 이내 강제 리셋
-    if (memorySold.soul) return false;
-    return now.getMinutes() === 0;
-  }
-  if (item.key === 'legendary') {
-    if (now.getHours() % 3 === 0 && now.getMinutes() === 0 && now.getSeconds() < 2) memorySold.legendary = 0;
-    if (memorySold.legendary) return false;
-    return now.getHours() % 3 === 0 && now.getMinutes() === 0;
-  }
-  return false;
-}
-function nextRestock(item) {
-  const now = new Date();
-  if (item.key === 'soul') {
-    const next = new Date(now);
-    next.setHours(now.getMinutes() === 0 ? now.getHours() + 1 : now.getHours());
-    next.setMinutes(0, 0, 0);
-    let left = (next - now) / 1000;
-    return left < 0 ? 0 : Math.floor(left);
-  }
-  if (item.key === 'legendary') {
-    const h = now.getHours();
-    const nextHour = Math.ceil((h + 1) / 3) * 3;
-    const next = new Date(now);
-    next.setHours(nextHour, 0, 0, 0);
-    let left = (next - now) / 1000;
-    return left < 0 ? 0 : Math.floor(left);
-  }
-  return 0;
-}
+const MAX_STOCK = { soul: 10, legendary: 5 };
 
 // === 파일 IO ===
 async function loadJson(p, isArray = false) {
@@ -79,6 +43,71 @@ async function saveJson(p, data) {
   const release = await lockfile.lock(p, { retries: 3 });
   fs.writeFileSync(p, JSON.stringify(data, null, 2));
   await release();
+}
+
+// === 강화 아이템 재고 IO ===
+async function loadStock() {
+  if (!fs.existsSync(stockPath)) fs.writeFileSync(stockPath, '{}');
+  const release = await lockfile.lock(stockPath, { retries: 3 });
+  const data = JSON.parse(fs.readFileSync(stockPath, 'utf8'));
+  await release();
+  return data;
+}
+async function saveStock(data) {
+  const release = await lockfile.lock(stockPath, { retries: 3 });
+  fs.writeFileSync(stockPath, JSON.stringify(data, null, 2));
+  await release();
+}
+
+// === 강화 아이템 재고 관리 ===
+async function checkAndRestock(item) {
+  const stock = await loadStock();
+  const now = Date.now();
+  if (!stock[item.key]) stock[item.key] = { stock: 0, last: 0 };
+
+  let changed = false;
+  let periodMs = item.period * 60 * 60 * 1000;
+  let last = stock[item.key].last || 0;
+  let currentStock = stock[item.key].stock || 0;
+
+  // 필요하면 자동충전
+  if (now - last >= periodMs) {
+    const addCount = Math.floor((now - last) / periodMs);
+    if (currentStock < MAX_STOCK[item.key]) {
+      currentStock = Math.min(MAX_STOCK[item.key], currentStock + addCount);
+      stock[item.key].stock = currentStock;
+      stock[item.key].last = last + addCount * periodMs;
+      changed = true;
+    } else if (stock[item.key].last < now - periodMs) {
+      // 최대치에서 last 포인트만 갱신 (정각 표기용)
+      stock[item.key].last = now - (now - last) % periodMs;
+      changed = true;
+    }
+  }
+  if (changed) await saveStock(stock);
+  return currentStock;
+}
+async function checkStock(item) {
+  const stock = await checkAndRestock(item);
+  return stock > 0;
+}
+async function decreaseStock(item) {
+  const stock = await loadStock();
+  if (!stock[item.key]) stock[item.key] = { stock: 0, last: 0 };
+  stock[item.key].stock = Math.max(0, (stock[item.key].stock || 0) - 1);
+  await saveStock(stock);
+}
+
+// === 남은 충전시간 계산 ===
+async function nextRestock(item) {
+  const stock = await loadStock();
+  const now = Date.now();
+  if (!stock[item.key]) stock[item.key] = { stock: 0, last: 0 };
+  let periodMs = item.period * 60 * 60 * 1000;
+  let last = stock[item.key].last || 0;
+  let nextTime = last + periodMs;
+  if (stock[item.key].stock >= MAX_STOCK[item.key]) return 0; // 최대치면 0 반환
+  return Math.max(0, Math.floor((nextTime - now) / 1000));
 }
 
 // === 메모리 플래그 ===
@@ -400,18 +429,23 @@ module.exports = {
         return;
       }
 
-      // ---- 강화 아이템 상점(역할) ----
+      // ---- 강화 아이템 상점(역할, json 기반 재고 관리) ----
       if (kind === 'upgrade') {
-        const getEmbedAndRows = (curBe) => {
+        const getEmbedAndRows = async (curBe) => {
+          // 각각의 현재 재고 동적으로 불러옴
+          const stocks = {};
+          for (const item of 강화ITEMS) {
+            stocks[item.key] = await checkAndRestock(item);
+          }
           const embed = new EmbedBuilder()
             .setTitle("🪄 강화 아이템 상점 (역할 상품)")
             .setDescription(
               `🔷 내 파랑 정수: ${curBe} BE\n` +
-              강화ITEMS.map((item, i) => {
-                const stock = checkStock(item);
+              await Promise.all(강화ITEMS.map(async (item, i) => {
+                const stock = stocks[item.key];
                 let msg = '';
-                if (!stock) {
-                  const left = nextRestock(item);
+                if (stock <= 0) {
+                  const left = await nextRestock(item);
                   if (left > 0) {
                     const h = Math.floor(left / 3600);
                     const m = Math.floor((left % 3600) / 60);
@@ -420,21 +454,23 @@ module.exports = {
                   } else {
                     msg = `\n> **[품절]**`;
                   }
+                } else {
+                  msg = `\n> **[남은 재고: ${stock}개]**`;
                 }
                 return `#${i + 1} | ${item.emoji} **${item.name}** (${item.price} BE)\n${item.desc}${msg}\n`
-              }).join("\n")
+              })).then(lines => lines.join("\n"))
             )
             .setFooter({ text: `고유상품: 1회성 역할 아이템 | 구매시 즉시 지급` });
 
           const rowBuy = new ActionRowBuilder();
           강화ITEMS.forEach(item => {
-            const stock = checkStock(item);
+            const stock = stocks[item.key];
             rowBuy.addComponents(
               new ButtonBuilder()
                 .setCustomId(`upgrade_buy_${item.roleId}`)
-                .setLabel(stock ? `${item.name} 구매` : `${item.name} 품절`)
-                .setStyle(stock ? ButtonStyle.Primary : ButtonStyle.Secondary)
-                .setDisabled(!stock)
+                .setLabel(stock > 0 ? `${item.name} 구매` : `${item.name} 품절`)
+                .setStyle(stock > 0 ? ButtonStyle.Primary : ButtonStyle.Secondary)
+                .setDisabled(stock <= 0)
             );
           });
           rowBuy.addComponents(
@@ -446,7 +482,7 @@ module.exports = {
           return { embed, rows: [rowBuy] };
         };
 
-        let { embed, rows } = getEmbedAndRows(userBe);
+        let { embed, rows } = await getEmbedAndRows(userBe);
 
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
@@ -456,11 +492,11 @@ module.exports = {
 
         interval = setInterval(async () => {
           try {
-            ({ embed, rows } = getEmbedAndRows(userBe));
+            const { embed: newEmbed, rows: newRows } = await getEmbedAndRows(userBe);
             await interaction.editReply({
               content: `⏳ 상점 유효 시간: ${expireSec}초 (남은 시간: ${getRemainSec()}초)`,
-              embeds: [embed],
-              components: rows
+              embeds: [newEmbed],
+              components: newRows
             });
           } catch (e) {}
         }, 1000);
@@ -476,7 +512,7 @@ module.exports = {
           }
           const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
           if (btnItem) {
-            if (!checkStock(btnItem)) {
+            if (!(await checkStock(btnItem))) {
               await i.reply({ content: `❌ [${btnItem.name}] 품절입니다.`, ephemeral: true });
               return;
             }
@@ -497,8 +533,7 @@ module.exports = {
                 await i.reply({ content: `파랑 정수 부족! (보유: ${userBe} BE)`, ephemeral: true });
                 return;
               }
-              // 메모리상 품절 처리(정각까지)
-              memorySold[btnItem.key] = 1;
+              await decreaseStock(btnItem); // ★구매 성공 시 재고 차감
 
               const beBackup = JSON.stringify(be);
               be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
