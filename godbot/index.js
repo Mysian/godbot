@@ -396,31 +396,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
-  
-  // 정수 획득
-  if (interaction.isChatInputCommand() && interaction.commandName === "정수획득") {
-  await sendCommandLog(interaction);
-  try {
-    const beEarn = require('./commands/be-earn.js'); // 또는 정수획득.js
-    await beEarn.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({
-        content: "❌ 정수획득 명령어 실행 중 오류가 발생했습니다.",
-        ephemeral: true
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: "❌ 정수획득 명령어 실행 중 오류가 발생했습니다.",
-        ephemeral: true
-      }).catch(() => {});
-    }
-  }
-  return;
-}
-
-  
   // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
