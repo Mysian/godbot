@@ -395,6 +395,7 @@ module.exports = {
           await i.deferUpdate();
           let kicked = 0;
           for (const u of userList) {
+            if (!u.warned) continue;
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
               if (m) await m.kick(`고급관리 - ${title} 일괄 추방`);
