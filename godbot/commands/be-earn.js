@@ -117,7 +117,9 @@ module.exports = {
         )
     ),
 
+  // --- 슬래시 명령어 (execute) ---
   async execute(interaction) {
+    if (!interaction.isChatInputCommand()) return;
     const kind = interaction.options.getString('종류');
     const userId = interaction.user.id;
     if (!hasProfile(userId)) {
@@ -125,244 +127,6 @@ module.exports = {
         content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.",
         ephemeral: true
       });
-      return;
-    }
-
-    // --- (기존 출석, 알바, 도박 코드 생략) ---
-
-    // 3. 가위바위보
-    if (kind === 'rps') {
-      if (!lock(userId)) {
-        await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
-      }
-      setTimeout(unlock, 130000, userId); // 안전타임
-
-      // 1. 배팅금 입력 (모달)
-      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-      const modal = new ModalBuilder()
-        .setCustomId('rps_bet_modal')
-        .setTitle('가위바위보 배팅금 입력');
-      const betInput = new TextInputBuilder()
-        .setCustomId('rps_bet')
-        .setLabel('배팅할 금액 (10~1,000,000 BE)')
-        .setStyle(TextInputStyle.Short)
-        .setMinLength(1).setMaxLength(10).setPlaceholder('예: 5000');
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(betInput)
-      );
-      await interaction.showModal(modal);
-
-      const modalFilter = i => i.user.id === userId && i.customId === 'rps_bet_modal';
-      interaction.channel.awaitModalSubmit({ filter: modalFilter, time: 30000 })
-        .then(async (modalIntr) => {
-          const raw = modalIntr.fields.getTextInputValue('rps_bet').replace(/,/g, '');
-          const bet = Math.floor(Number(raw));
-          if (isNaN(bet) || bet < 10 || bet > 1000000) {
-            await modalIntr.reply({ content: "⚠️ 잘못된 배팅금액이야. (10~1,000,000 BE)", ephemeral: true });
-            unlock(userId); return;
-          }
-          if (getUserBe(userId) < bet) {
-            await modalIntr.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
-            unlock(userId); return;
-          }
-
-          let rpsGame = async () => {
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('rps_0').setLabel('✌️ 가위').setStyle(ButtonStyle.Primary),
-              new ButtonBuilder().setCustomId('rps_1').setLabel('✊ 바위').setStyle(ButtonStyle.Primary),
-              new ButtonBuilder().setCustomId('rps_2').setLabel('✋ 보').setStyle(ButtonStyle.Primary)
-            );
-            await modalIntr.reply({
-              embeds: [new EmbedBuilder()
-                .setTitle('✂️ 가위바위보')
-                .setDescription(`배팅금: **${comma(bet)} BE**\n가위/바위/보 중 하나를 골라!`)
-              ],
-              components: [row], ephemeral: true
-            });
-
-            const filter = i => i.user.id === userId && i.customId.startsWith('rps_');
-            interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 30000 })
-              .on('collect', async i2 => {
-                // 승/무/패 랜덤 확정
-                const rnd = Math.random();
-                let acc = 0, result = null;
-                for (let r of RPS_RATE) {
-                  acc += r.prob;
-                  if (rnd <= acc) { result = r.result; break; }
-                }
-                if (!result) result = 'lose';
-
-                let userPick = ['가위', '바위', '보'][parseInt(i2.customId.split('_')[1])];
-                let botPick = null;
-                if (result === 'draw') {
-                  botPick = userPick;
-                } else if (result === 'win') {
-                  botPick = ['바위', '보', '가위'][parseInt(i2.customId.split('_')[1])];
-                } else {
-                  botPick = ['보', '가위', '바위'][parseInt(i2.customId.split('_')[1])];
-                }
-                let msg = `너: **${userPick}**\n상대: **${botPick}**\n\n`;
-
-                if (result === 'win') {
-                  setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
-                  msg += `🎉 승리! **${comma(Math.floor(bet * 1.9))} BE** 획득!`;
-                  await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-                  unlock(userId);
-                } else if (result === 'lose') {
-                  setUserBe(userId, -bet, '가위바위보 패배');
-                  msg += `💀 패배! 배팅금 **${comma(bet)} BE** 소멸!`;
-                  await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-                  unlock(userId);
-                } else { // draw
-                  msg += `🤝 무승부! 다시 한 번 도전해!`;
-                  await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-                  setTimeout(() => rpsGame(), 2000); // 2초 후 재진행
-                }
-              })
-              .on('end', async (_, reason) => {
-                if (reason === 'time') {
-                  setUserBe(userId, -Math.floor(bet * 0.25), '가위바위보 시간초과/도중포기(25%만 소멸)');
-                  await modalIntr.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
-                  unlock(userId);
-                }
-              });
-          };
-          rpsGame();
-        })
-        .catch(async () => {
-          unlock(userId);
-        });
-      return;
-    }
-
-    // 4. 블랙잭
-    if (kind === 'blackjack') {
-      if (!lock(userId)) {
-        await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
-      }
-      setTimeout(unlock, 190000, userId); // 안전타임
-
-      // 1. 배팅금 입력 (모달)
-      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-      const modal = new ModalBuilder()
-        .setCustomId('blackjack_bet_modal')
-        .setTitle('블랙잭 배팅금 입력');
-      const betInput = new TextInputBuilder()
-        .setCustomId('blackjack_bet')
-        .setLabel('배팅할 금액 (100~10,000,000 BE)')
-        .setStyle(TextInputStyle.Short)
-        .setMinLength(1).setMaxLength(10).setPlaceholder('예: 50000');
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(betInput)
-      );
-      await interaction.showModal(modal);
-
-      const modalFilter = i => i.user.id === userId && i.customId === 'blackjack_bet_modal';
-      interaction.channel.awaitModalSubmit({ filter: modalFilter, time: 30000 })
-        .then(async (modalIntr) => {
-          const raw = modalIntr.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
-          const bet = Math.floor(Number(raw));
-          if (isNaN(bet) || bet < 100 || bet > 10000000) {
-            await modalIntr.reply({ content: "⚠️ 잘못된 배팅금액이야. (100~10,000,000 BE)", ephemeral: true });
-            unlock(userId); return;
-          }
-          if (getUserBe(userId) < bet) {
-            await modalIntr.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
-            unlock(userId); return;
-          }
-
-          // 블랙잭 진행
-          let deck = deckInit();
-          let userHand = [drawCard(deck), drawCard(deck)];
-          let dealerHand = [drawCard(deck), drawCard(deck)];
-          let gameOver = false;
-
-          // 첫 화면
-          let msgStr = () => {
-            return `**딜러**: ${cardStr(dealerHand[0])} [ ? ]\n**나**: ${userHand.map(cardStr).join(' ')} (합계: ${blackjackValue(userHand)})`;
-          };
-
-          let gameStep = async (intr, isFirst = false) => {
-            if (gameOver) return;
-            const userVal = blackjackValue(userHand);
-            if (userVal > 21) {
-              setUserBe(userId, -bet, '블랙잭 패배(버스트)');
-              await intr.update({
-                embeds: [new EmbedBuilder()
-                  .setTitle('🃏 블랙잭')
-                  .setDescription(`${msgStr()}\n\n💥 **BUST! 21 초과!**\n패배! 배팅금 ${comma(bet)} BE 소멸!`)
-                ], components: [], ephemeral: true
-              });
-              unlock(userId); gameOver = true; return;
-            }
-            if (userVal === 21 && isFirst) {
-              setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리(첫 두장 21)');
-              await intr.update({
-                embeds: [new EmbedBuilder()
-                  .setTitle('🃏 블랙잭')
-                  .setDescription(`${msgStr()}\n\n🎉 **블랙잭! (21)**\n**${comma(Math.floor(bet * 1.9))} BE** 획득!`)
-                ], components: [], ephemeral: true
-              });
-              unlock(userId); gameOver = true; return;
-            }
-            // 버튼
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('bj_hit').setLabel('HIT(카드)').setStyle(ButtonStyle.Primary),
-              new ButtonBuilder().setCustomId('bj_stand').setLabel('STAND(그만)').setStyle(ButtonStyle.Danger)
-            );
-            await intr[isFirst ? 'reply' : 'update']({
-              embeds: [new EmbedBuilder()
-                .setTitle('🃏 블랙잭')
-                .setDescription(`${msgStr()}\n\n카드를 더 받거나(히트), 멈출 수 있음!`)
-              ], components: [row], ephemeral: true
-            });
-            // 콜렉터
-            const filter = i => i.user.id === userId && (i.customId === 'bj_hit' || i.customId === 'bj_stand');
-            interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 60000 })
-              .on('collect', async i2 => {
-                if (i2.customId === 'bj_hit') {
-                  userHand.push(drawCard(deck));
-                  gameStep(i2, false);
-                } else { // stand
-                  // 딜러 진행
-                  while (blackjackValue(dealerHand) < 17) {
-                    dealerHand.push(drawCard(deck));
-                  }
-                  const dealerVal = blackjackValue(dealerHand);
-                  const userVal = blackjackValue(userHand);
-
-                  let dealerStr = dealerHand.map(cardStr).join(' ');
-                  let resultMsg = `**딜러**: ${dealerStr} (합계: ${dealerVal})\n**나**: ${userHand.map(cardStr).join(' ')} (합계: ${userVal})\n\n`;
-                  if (dealerVal > 21 || userVal > dealerVal) {
-                    setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리');
-                    resultMsg += `🎉 **승리! ${comma(Math.floor(bet * 1.9))} BE** 획득!`;
-                  } else if (dealerVal === userVal) {
-                    resultMsg += `🤝 **무승부!** 배팅금 반환!`;
-                  } else {
-                    setUserBe(userId, -bet, '블랙잭 패배');
-                    resultMsg += `💀 **패배! 배팅금 ${comma(bet)} BE 소멸!**`;
-                  }
-                  await i2.update({
-                    embeds: [new EmbedBuilder().setTitle('🃏 블랙잭').setDescription(resultMsg)],
-                    components: [], ephemeral: true
-                  });
-                  unlock(userId); gameOver = true; return;
-                }
-              })
-              .on('end', async (_, reason) => {
-                if (!gameOver && reason === 'time') {
-                  setUserBe(userId, -Math.floor(bet * 0.25), '블랙잭 시간초과/도중포기(25%만 소멸)');
-                  await intr.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
-                  unlock(userId);
-                  gameOver = true;
-                }
-              });
-          };
-          gameStep(modalIntr, true);
-        })
-        .catch(async () => {
-          unlock(userId);
-        });
       return;
     }
 
@@ -409,148 +173,145 @@ module.exports = {
       return;
     }
 
-            // 1. 알바 (색찾기 5연속 미니게임)
+    // 1. 알바 (색찾기 5연속 미니게임)
     if (kind === 'alba') {
-  try {
-    const MAX_ROUND = 5;
-    const TIME_LIMIT = 30 * 1000; // 30초
-    const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
-    const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
-    const BE_EMOJI = '🔷';
-
-    // 버튼 9개 중 하나만 색 다름(그 위치엔 이모지 포함)
-    function makeBoard() {
-      const base = colorList[Math.floor(Math.random() * colorList.length)];
-      let arr = Array(9).fill(base);
-      let diffIdx = Math.floor(Math.random() * 9);
-      let diff;
-      do {
-        diff = colorList[Math.floor(Math.random() * colorList.length)];
-      } while (diff === base);
-      arr[diffIdx] = diff;
-      return { arr, answer: diffIdx, base, diff };
-    }
-
-    let round = 1;
-    let state = { round: 1, correct: 0 };
-    let { arr, answer, base, diff } = makeBoard();
-
-    function buttonRows(arr, answerIdx) {
-      // 9개 → 3개씩 3줄
-      const rows = [];
-      for (let r = 0; r < 3; r++) {
-        rows.push(
-          new ActionRowBuilder().addComponents(
-            ...arr.slice(r * 3, r * 3 + 3).map((c, idx) => {
-              const realIdx = r * 3 + idx;
-              const isAnswer = realIdx === answerIdx;
-              return new ButtonBuilder()
-                .setCustomId(`alba_${state.round}_${realIdx}_${c}_${isAnswer ? 1 : 0}`)
-                .setStyle(ButtonStyle[c])
-                .setLabel(isAnswer ? `${BE_EMOJI}` : `${realIdx + 1}`);
-            })
-          )
-        );
-      }
-      return rows;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("💼 알바 미니게임 1/5")
-      .setDescription(
-        `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n` +
-        `시간 제한: 30초`
-      )
-      .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
-
-    await interaction.reply({ embeds: [embed], components: buttonRows(arr, answer), ephemeral: true });
-
-    const filter = i => i.user.id === interaction.user.id;
-    const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
-
-    collector.on('collect', async i => {
       try {
-        await i.deferUpdate();
-        const [_, r, idx, c, isAnswer] = i.customId.split('_');
-        if (parseInt(r) !== state.round) return;
-        if (parseInt(isAnswer) === 1) {
-          state.correct++;
-          if (state.round === MAX_ROUND) {
-            setUserBe(userId, 300, "알바(미니게임) 성공");
+        const MAX_ROUND = 5;
+        const TIME_LIMIT = 30 * 1000; // 30초
+        const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
+        const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
+        const BE_EMOJI = '🔷';
+
+        function makeBoard() {
+          const base = colorList[Math.floor(Math.random() * colorList.length)];
+          let arr = Array(9).fill(base);
+          let diffIdx = Math.floor(Math.random() * 9);
+          let diff;
+          do {
+            diff = colorList[Math.floor(Math.random() * colorList.length)];
+          } while (diff === base);
+          arr[diffIdx] = diff;
+          return { arr, answer: diffIdx, base, diff };
+        }
+
+        let round = 1;
+        let state = { round: 1, correct: 0 };
+        let { arr, answer, base, diff } = makeBoard();
+
+        function buttonRows(arr, answerIdx) {
+          const rows = [];
+          for (let r = 0; r < 3; r++) {
+            rows.push(
+              new ActionRowBuilder().addComponents(
+                ...arr.slice(r * 3, r * 3 + 3).map((c, idx) => {
+                  const realIdx = r * 3 + idx;
+                  const isAnswer = realIdx === answerIdx;
+                  return new ButtonBuilder()
+                    .setCustomId(`alba_${state.round}_${realIdx}_${c}_${isAnswer ? 1 : 0}`)
+                    .setStyle(ButtonStyle[c])
+                    .setLabel(isAnswer ? `${BE_EMOJI}` : `${realIdx + 1}`);
+                })
+              )
+            );
+          }
+          return rows;
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle("💼 알바 미니게임 1/5")
+          .setDescription(
+            `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n` +
+            `시간 제한: 30초`
+          )
+          .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
+
+        await interaction.reply({ embeds: [embed], components: buttonRows(arr, answer), ephemeral: true });
+
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
+
+        collector.on('collect', async i => {
+          try {
+            await i.deferUpdate();
+            const [_, r, idx, c, isAnswer] = i.customId.split('_');
+            if (parseInt(r) !== state.round) return;
+            if (parseInt(isAnswer) === 1) {
+              state.correct++;
+              if (state.round === MAX_ROUND) {
+                setUserBe(userId, 300, "알바(미니게임) 성공");
+                await interaction.editReply({
+                  embeds: [
+                    new EmbedBuilder()
+                      .setTitle("💼 알바 성공!")
+                      .setDescription("모든 라운드 성공! **300 BE** 지급 🎉")
+                  ],
+                  components: [],
+                  ephemeral: true
+                }).catch(() => {});
+                collector.stop('done');
+              } else {
+                state.round++;
+                let { arr, answer, base, diff } = makeBoard();
+                await interaction.editReply({
+                  embeds: [
+                    new EmbedBuilder()
+                      .setTitle(`💼 알바 미니게임 ${state.round}/5`)
+                      .setDescription(
+                        `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n시간 제한: 30초`
+                      )
+                      .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
+                      )
+                  ],
+                  components: buttonRows(arr, answer),
+                  ephemeral: true
+                }).catch(() => {});
+              }
+            } else {
+              await interaction.editReply({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle("💤 알바 실패!")
+                    .setDescription(`틀렸어! **0 BE**\n(처음부터 다시 도전 가능)`)
+                ],
+                components: [],
+                ephemeral: true
+              }).catch(() => {});
+              collector.stop('fail');
+            }
+          } catch (e) {
+            console.error(e);
+            await interaction.editReply({
+              content: "❌ 예기치 못한 오류가 발생했습니다.",
+              components: [],
+              ephemeral: true
+            }).catch(() => {});
+            collector.stop('fail');
+          }
+        });
+
+        collector.on('end', async (_, reason) => {
+          if (reason !== 'done' && reason !== 'fail') {
             await interaction.editReply({
               embeds: [
                 new EmbedBuilder()
-                  .setTitle("💼 알바 성공!")
-                  .setDescription("모든 라운드 성공! **300 BE** 지급 🎉")
+                  .setTitle("⏰ 알바 시간초과!")
+                  .setDescription("30초 내에 5라운드를 모두 성공하지 못했어! **0 BE**")
               ],
               components: [],
               ephemeral: true
             }).catch(() => {});
-            collector.stop('done');
-          } else {
-            state.round++;
-            let { arr, answer, base, diff } = makeBoard();
-            await interaction.editReply({
-              embeds: [
-                new EmbedBuilder()
-                  .setTitle(`💼 알바 미니게임 ${state.round}/5`)
-                  .setDescription(
-                    `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n시간 제한: 30초`
-                  )
-                  .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
-                  )
-              ],
-              components: buttonRows(arr, answer),
-              ephemeral: true
-            }).catch(() => {});
           }
-        } else {
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("💤 알바 실패!")
-                .setDescription(`틀렸어! **0 BE**\n(처음부터 다시 도전 가능)`)
-            ],
-            components: [],
-            ephemeral: true
-          }).catch(() => {});
-          collector.stop('fail');
-        }
+        });
+        return;
       } catch (e) {
         console.error(e);
-        await interaction.editReply({
-          content: "❌ 예기치 못한 오류가 발생했습니다.",
-          components: [],
+        await interaction.reply({
+          content: '❌ 알바 미니게임 중 오류가 발생했습니다.',
           ephemeral: true
         }).catch(() => {});
-        collector.stop('fail');
+        return;
       }
-    });
-
-    collector.on('end', async (_, reason) => {
-      if (reason !== 'done' && reason !== 'fail') {
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("⏰ 알바 시간초과!")
-              .setDescription("30초 내에 5라운드를 모두 성공하지 못했어! **0 BE**")
-          ],
-          components: [],
-          ephemeral: true
-        }).catch(() => {});
-      }
-    });
-    return;
-  } catch (e) {
-    console.error(e);
-    await interaction.reply({
-      content: '❌ 알바 미니게임 중 오류가 발생했습니다.',
-      ephemeral: true
-    }).catch(() => {});
-    return;
-  }
-}
-
+    }
 
     // 2. 도박
     if (kind === 'gamble') {
@@ -559,7 +320,6 @@ module.exports = {
       }
       const myBe = getUserBe(userId);
       const amounts = [10, 100, 500, 1000, 5000, 10000];
-      // 소유 BE보다 많은 금액 버튼은 비활성화
       const coins = amounts.slice(0,3);
       const bills = amounts.slice(3,6);
 
@@ -599,7 +359,6 @@ module.exports = {
           return;
         }
 
-        // 베팅금 차감 후 GO/STOP 인터페이스
         setUserBe(userId, -bet, "도박 베팅 시작");
         let total = bet;
         let stage = 0;
@@ -655,7 +414,6 @@ module.exports = {
             collector.stop();
             return;
           }
-          // GO!
           if (Math.random() < GO_FAIL_RATE[currentStage]) {
             await i2.update({
               embeds: [new EmbedBuilder()
@@ -670,7 +428,6 @@ module.exports = {
             collector.stop();
             return;
           }
-          // 성공시 금액 증가
           const rate = Math.random() * 0.7 + 1.3;
           currentTotal = Math.round(currentTotal * rate);
           currentStage++;
@@ -689,15 +446,230 @@ module.exports = {
             collector.stop();
             return;
           }
-          // 다음 단계 계속
           await goGamble(i2, currentTotal, currentStage);
         });
 
         goCollector.on('end', () => { unlock(userId); });
-
         collector.stop();
       });
       collector.on('end', () => { unlock(userId); });
+      return;
+    }
+
+    // 3. 가위바위보 - 모달만 띄우고 본 게임은 아래 modal()에서 처리!
+    if (kind === 'rps') {
+      if (!lock(userId)) {
+        await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
+      }
+      setTimeout(unlock, 130000, userId);
+      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+      const modal = new ModalBuilder()
+        .setCustomId('rps_bet_modal')
+        .setTitle('가위바위보 배팅금 입력');
+      const betInput = new TextInputBuilder()
+        .setCustomId('rps_bet')
+        .setLabel('배팅할 금액 (10~1,000,000 BE)')
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(1).setMaxLength(10).setPlaceholder('예: 5000');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(betInput)
+      );
+      await interaction.showModal(modal);
+      return;
+    }
+
+    // 4. 블랙잭 - 모달만 띄우고 본 게임은 아래 modal()에서 처리!
+    if (kind === 'blackjack') {
+      if (!lock(userId)) {
+        await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
+      }
+      setTimeout(unlock, 190000, userId);
+      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+      const modal = new ModalBuilder()
+        .setCustomId('blackjack_bet_modal')
+        .setTitle('블랙잭 배팅금 입력');
+      const betInput = new TextInputBuilder()
+        .setCustomId('blackjack_bet')
+        .setLabel('배팅할 금액 (100~10,000,000 BE)')
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(1).setMaxLength(10).setPlaceholder('예: 50000');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(betInput)
+      );
+      await interaction.showModal(modal);
+      return;
+    }
+  },
+
+  // --- 모달 submit (modal) ---
+  async modal(interaction) {
+    const userId = interaction.user.id;
+
+    // === 가위바위보 모달 submit ===
+    if (interaction.customId === 'rps_bet_modal') {
+      const raw = interaction.fields.getTextInputValue('rps_bet').replace(/,/g, '');
+      const bet = Math.floor(Number(raw));
+      if (isNaN(bet) || bet < 10 || bet > 1000000) {
+        await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (10~1,000,000 BE)", ephemeral: true });
+        unlock(userId); return;
+      }
+      if (getUserBe(userId) < bet) {
+        await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
+        unlock(userId); return;
+      }
+      let rpsGame = async () => {
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('rps_0').setLabel('✌️ 가위').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('rps_1').setLabel('✊ 바위').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('rps_2').setLabel('✋ 보').setStyle(ButtonStyle.Primary)
+        );
+        await interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setTitle('✂️ 가위바위보')
+            .setDescription(`배팅금: **${comma(bet)} BE**\n가위/바위/보 중 하나를 골라!`)
+          ],
+          components: [row], ephemeral: true
+        });
+        const filter = i => i.user.id === userId && i.customId.startsWith('rps_');
+        interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 30000 })
+          .on('collect', async i2 => {
+            const rnd = Math.random();
+            let acc = 0, result = null;
+            for (let r of RPS_RATE) {
+              acc += r.prob;
+              if (rnd <= acc) { result = r.result; break; }
+            }
+            if (!result) result = 'lose';
+            let userPick = ['가위', '바위', '보'][parseInt(i2.customId.split('_')[1])];
+            let botPick = null;
+            if (result === 'draw') {
+              botPick = userPick;
+            } else if (result === 'win') {
+              botPick = ['바위', '보', '가위'][parseInt(i2.customId.split('_')[1])];
+            } else {
+              botPick = ['보', '가위', '바위'][parseInt(i2.customId.split('_')[1])];
+            }
+            let msg = `너: **${userPick}**\n상대: **${botPick}**\n\n`;
+            if (result === 'win') {
+              setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
+              msg += `🎉 승리! **${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+              await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+              unlock(userId);
+            } else if (result === 'lose') {
+              setUserBe(userId, -bet, '가위바위보 패배');
+              msg += `💀 패배! 배팅금 **${comma(bet)} BE** 소멸!`;
+              await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+              unlock(userId);
+            } else { // draw
+              msg += `🤝 무승부! 다시 한 번 도전해!`;
+              await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+              setTimeout(() => rpsGame(), 2000);
+            }
+          })
+          .on('end', async (_, reason) => {
+            if (reason === 'time') {
+              setUserBe(userId, -Math.floor(bet * 0.25), '가위바위보 시간초과/도중포기(25%만 소멸)');
+              await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
+              unlock(userId);
+            }
+          });
+      };
+      rpsGame();
+      return;
+    }
+
+    // === 블랙잭 모달 submit ===
+    if (interaction.customId === 'blackjack_bet_modal') {
+      const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
+      const bet = Math.floor(Number(raw));
+      if (isNaN(bet) || bet < 100 || bet > 10000000) {
+        await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (100~10,000,000 BE)", ephemeral: true });
+        unlock(userId); return;
+      }
+      if (getUserBe(userId) < bet) {
+        await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
+        unlock(userId); return;
+      }
+      let deck = deckInit();
+      let userHand = [drawCard(deck), drawCard(deck)];
+      let dealerHand = [drawCard(deck), drawCard(deck)];
+      let gameOver = false;
+      let msgStr = () => {
+        return `**딜러**: ${cardStr(dealerHand[0])} [ ? ]\n**나**: ${userHand.map(cardStr).join(' ')} (합계: ${blackjackValue(userHand)})`;
+      };
+      let gameStep = async (intr, isFirst = false) => {
+        if (gameOver) return;
+        const userVal = blackjackValue(userHand);
+        if (userVal > 21) {
+          setUserBe(userId, -bet, '블랙잭 패배(버스트)');
+          await intr.update({
+            embeds: [new EmbedBuilder()
+              .setTitle('🃏 블랙잭')
+              .setDescription(`${msgStr()}\n\n💥 **BUST! 21 초과!**\n패배! 배팅금 ${comma(bet)} BE 소멸!`)
+            ], components: [], ephemeral: true
+          });
+          unlock(userId); gameOver = true; return;
+        }
+        if (userVal === 21 && isFirst) {
+          setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리(첫 두장 21)');
+          await intr.update({
+            embeds: [new EmbedBuilder()
+              .setTitle('🃏 블랙잭')
+              .setDescription(`${msgStr()}\n\n🎉 **블랙잭! (21)**\n**${comma(Math.floor(bet * 1.9))} BE** 획득!`)
+            ], components: [], ephemeral: true
+          });
+          unlock(userId); gameOver = true; return;
+        }
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('bj_hit').setLabel('HIT(카드)').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('bj_stand').setLabel('STAND(그만)').setStyle(ButtonStyle.Danger)
+        );
+        await intr[isFirst ? 'reply' : 'update']({
+          embeds: [new EmbedBuilder()
+            .setTitle('🃏 블랙잭')
+            .setDescription(`${msgStr()}\n\n카드를 더 받거나(히트), 멈출 수 있음!`)
+          ], components: [row], ephemeral: true
+        });
+        const filter = i => i.user.id === userId && (i.customId === 'bj_hit' || i.customId === 'bj_stand');
+        interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 60000 })
+          .on('collect', async i2 => {
+            if (i2.customId === 'bj_hit') {
+              userHand.push(drawCard(deck));
+              gameStep(i2, false);
+            } else { // stand
+              while (blackjackValue(dealerHand) < 17) {
+                dealerHand.push(drawCard(deck));
+              }
+              const dealerVal = blackjackValue(dealerHand);
+              const userVal = blackjackValue(userHand);
+              let dealerStr = dealerHand.map(cardStr).join(' ');
+              let resultMsg = `**딜러**: ${dealerStr} (합계: ${dealerVal})\n**나**: ${userHand.map(cardStr).join(' ')} (합계: ${userVal})\n\n`;
+              if (dealerVal > 21 || userVal > dealerVal) {
+                setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리');
+                resultMsg += `🎉 **승리! ${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+              } else if (dealerVal === userVal) {
+                resultMsg += `🤝 **무승부!** 배팅금 반환!`;
+              } else {
+                setUserBe(userId, -bet, '블랙잭 패배');
+                resultMsg += `💀 **패배! 배팅금 ${comma(bet)} BE 소멸!**`;
+              }
+              await i2.update({
+                embeds: [new EmbedBuilder().setTitle('🃏 블랙잭').setDescription(resultMsg)],
+                components: [], ephemeral: true
+              });
+              unlock(userId); gameOver = true; return;
+            }
+          })
+          .on('end', async (_, reason) => {
+            if (!gameOver && reason === 'time') {
+              setUserBe(userId, -Math.floor(bet * 0.25), '블랙잭 시간초과/도중포기(25%만 소멸)');
+              await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
+              unlock(userId);
+              gameOver = true;
+            }
+          });
+      };
+      gameStep(interaction, true);
       return;
     }
   }
