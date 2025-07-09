@@ -197,6 +197,7 @@ module.exports = {
       // 찬성표 모두 모였는지 체크
       if (yesCount >= requiredVotes && !kickScheduled) {
         kickScheduled = true;
+        leftSeconds = 10;
         // 임박 안내 + 10초 보장
         embed.setFooter({ text: "추방 임박! 반대표가 있으면 10초 안에 투표하세요." });
         await message.edit({
@@ -214,7 +215,7 @@ module.exports = {
       }
     });
 
-    collector.on("end", async (reason) => {
+    collector.on("end", async (endReason) => {
       votingFinished = true;
       clearInterval(interval);
       if (kickTimeout) clearTimeout(kickTimeout);
