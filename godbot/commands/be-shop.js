@@ -69,14 +69,12 @@ module.exports = {
       const sessionExpireAt = Date.now() + expireSec * 1000;
       let interval;
 
-      // 모두 공개
       await interaction.deferReply({ ephemeral: false });
 
       const kind = interaction.options.getString('종류');
       const be = await loadJson(bePath);
       const userBe = be[interaction.user.id]?.amount || 0;
 
-      // ======= 임베드 생성 함수들 =======
       function getRemainSec() {
         return Math.max(0, Math.floor((sessionExpireAt - Date.now()) / 1000));
       }
@@ -121,14 +119,12 @@ module.exports = {
 
         let { embed, rows } = getEmbedAndRows(page, userBe);
 
-        // 최초 메시지
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
           embeds: [embed],
           components: rows
         });
 
-        // 실시간 남은 시간 갱신
         interval = setInterval(async () => {
           try {
             await interaction.editReply({
@@ -211,16 +207,11 @@ module.exports = {
           }
         });
 
-        collector.on('end', async (collected, reason) => {
+        collector.on('end', async () => {
           clearInterval(interval);
-          if (reason !== "user") {
-            try {
-              await interaction.editReply({
-                content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!',
-                embeds: [], components: []
-              });
-            } catch (e) {}
-          }
+          try {
+            await interaction.editReply({ content: " ", embeds: [], components: [] });
+          } catch (e) {}
           userBuying[interaction.user.id] = false;
           userShopOpen[interaction.user.id] = false;
         });
@@ -267,14 +258,12 @@ module.exports = {
 
         let { embed, rows } = getEmbedAndRows(page, userBe);
 
-        // 최초 메시지
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
           embeds: [embed],
           components: rows
         });
 
-        // 실시간 남은 시간 갱신
         interval = setInterval(async () => {
           try {
             await interaction.editReply({
@@ -356,16 +345,11 @@ module.exports = {
           }
         });
 
-        collector.on('end', async (collected, reason) => {
+        collector.on('end', async () => {
           clearInterval(interval);
-          if (reason !== "user") {
-            try {
-              await interaction.editReply({
-                content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!',
-                embeds: [], components: []
-              });
-            } catch (e) {}
-          }
+          try {
+            await interaction.editReply({ content: " ", embeds: [], components: [] });
+          } catch (e) {}
           userBuying[interaction.user.id] = false;
           userShopOpen[interaction.user.id] = false;
         });
@@ -406,14 +390,12 @@ module.exports = {
 
         let { embed, rows } = getEmbedAndRows(beLive);
 
-        // 최초 메시지
         const shopMsg = await interaction.editReply({
           content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
           embeds: [embed],
           components: rows
         });
 
-        // 실시간 남은 시간 갱신
         interval = setInterval(async () => {
           try {
             await interaction.editReply({
@@ -475,16 +457,11 @@ module.exports = {
           }
         });
 
-        collector.on('end', async (collected, reason) => {
+        collector.on('end', async () => {
           clearInterval(interval);
-          if (reason !== "user") {
-            try {
-              await interaction.editReply({
-                content: '⏳ 상점 세션이 만료되었습니다. 명령어로 다시 열어주세요!',
-                embeds: [], components: []
-              });
-            } catch (e) {}
-          }
+          try {
+            await interaction.editReply({ content: " ", embeds: [], components: [] });
+          } catch (e) {}
           userBuying[interaction.user.id] = false;
           userShopOpen[interaction.user.id] = false;
         });
