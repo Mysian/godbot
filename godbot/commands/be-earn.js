@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const fsP = require('fs').promises;
 const lockfile = require('proper-lockfile');
 const fs = require('fs');
 const path = require('path');
@@ -11,78 +12,98 @@ const attendancePath = path.join(__dirname, '../data/attendance-data.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
 
 
-function loadJson(p) {
-  if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+// 1. 비동기 JSON 읽기
+async function loadJsonAsync(p) {
+  try {
+    await fsP.access(p).catch(() => fs.writeFileSync(p, "{}"));
+    return JSON.parse(await fsP.readFile(p, 'utf8'));
+  } catch (e) {
+    return {};
+  }
 }
-function saveJson(p, data) {
+
+// 2. 비동기 JSON 저장 (락 적용)
+async function saveJsonAsync(p, data) {
   let release;
   try {
-    release = lockfile.lockSync(p, { retries: 5, realpath: false, stale: 3000 });
-    fs.writeFileSync(p, JSON.stringify(data, null, 2));
-    release();
+    release = await lockfile.lock(p, { retries: 5, realpath: false, stale: 3000 });
+    await fsP.writeFile(p, JSON.stringify(data, null, 2));
+    await release();
   } catch (e) {
-    if (release) release();
+    if (release) await release();
     throw e;
   }
 }
-function setUserBe(userId, diff, reason = "") {
+
+// 3. BE 유저 값 변경
+async function setUserBe(userId, diff, reason = "") {
   let release;
   try {
-    release = lockfile.lockSync(bePath, { retries: 5, realpath: false, stale: 3000 });
-    const be = loadJson(bePath);
+    release = await lockfile.lock(bePath, { retries: 5, realpath: false, stale: 3000 });
+    let be = await loadJsonAsync(bePath);
     be[userId] = be[userId] || { amount: 0, history: [] };
     be[userId].amount += diff;
-    be[userId].history.push({ type: diff > 0 ? "earn" : "lose", amount: Math.abs(diff), reason, timestamp: Date.now() });
-    fs.writeFileSync(bePath, JSON.stringify(be, null, 2));
-    release();
+    be[userId].history.push({
+      type: diff > 0 ? "earn" : "lose",
+      amount: Math.abs(diff),
+      reason,
+      timestamp: Date.now()
+    });
+    await fsP.writeFile(bePath, JSON.stringify(be, null, 2));
+    await release();
   } catch (e) {
-    if (release) release();
+    if (release) await release();
     throw e;
   }
 }
-function setCooldown(userId, type, ms, midnight = false) {
+
+// 4. 쿨타임 설정
+async function setCooldown(userId, type, ms, midnight = false) {
   let release;
   try {
-    release = lockfile.lockSync(earnCooldownPath, { retries: 5, realpath: false, stale: 3000 });
-    const data = loadJson(earnCooldownPath);
+    release = await lockfile.lock(earnCooldownPath, { retries: 5, realpath: false, stale: 3000 });
+    let data = await loadJsonAsync(earnCooldownPath);
     data[userId] = data[userId] || {};
     data[userId][type] = midnight ? nextMidnightKR() : Date.now() + ms;
-    fs.writeFileSync(earnCooldownPath, JSON.stringify(data, null, 2));
-    release();
+    await fsP.writeFile(earnCooldownPath, JSON.stringify(data, null, 2));
+    await release();
   } catch (e) {
-    if (release) release();
+    if (release) await release();
     throw e;
   }
 }
-function unlock(userId) {
+
+// 5. 언락
+async function unlock(userId) {
   let release;
   try {
-    release = lockfile.lockSync(lockPath, { retries: 5, realpath: false, stale: 3000 });
-    const data = loadJson(lockPath);
+    release = await lockfile.lock(lockPath, { retries: 5, realpath: false, stale: 3000 });
+    let data = await loadJsonAsync(lockPath);
     if (data[userId]) delete data[userId];
-    fs.writeFileSync(lockPath, JSON.stringify(data, null, 2));
-    release();
+    await fsP.writeFile(lockPath, JSON.stringify(data, null, 2));
+    await release();
   } catch (e) {
-    if (release) release();
+    if (release) await release();
     throw e;
   }
 }
-function lock(userId) {
+
+// 6. 락 (진입 가능 여부 반환)
+async function lock(userId) {
   let release;
   try {
-    release = lockfile.lockSync(lockPath, { retries: 5, realpath: false, stale: 3000 });
-    const data = loadJson(lockPath);
+    release = await lockfile.lock(lockPath, { retries: 5, realpath: false, stale: 3000 });
+    let data = await loadJsonAsync(lockPath);
     if (data[userId] && Date.now() < data[userId]) {
-      release();
+      await release();
       return false;
     }
     data[userId] = Date.now() + 120000; // 2분 lock
-    fs.writeFileSync(lockPath, JSON.stringify(data, null, 2));
-    release();
+    await fsP.writeFile(lockPath, JSON.stringify(data, null, 2));
+    await release();
     return true;
   } catch (e) {
-    if (release) release();
+    if (release) await release();
     throw e;
   }
 }
