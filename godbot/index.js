@@ -143,17 +143,13 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 // === 모달 커스텀ID 핸들러 등록 (한 곳에서)
 const modalHandlers = new Map([
   ["rps_bet_modal", async (interaction) => {
-    const cmd = client.commands.get("정수획득");
-    if (cmd && typeof cmd.execute === "function") {
-      await cmd.execute(interaction);
-    }
-  }],
-  ["blackjack_bet_modal", async (interaction) => {
-    const cmd = client.commands.get("정수획득");
-    if (cmd && typeof cmd.execute === "function") {
-      await cmd.execute(interaction);
-    }
-  }],
+  const cmd = client.commands.get("정수획득");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["blackjack_bet_modal", async (interaction) => {
+  const cmd = client.commands.get("정수획득");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   ["set_channel_modal", async (interaction) => {
     const cmd = client.commands.get("공지하기");
     if (cmd?.modal) return cmd.modal(interaction);
