@@ -5,7 +5,10 @@ const bePath = path.join(__dirname, '../data/BE.json');
 const earnCooldownPath = path.join(__dirname, '../data/earn-cooldown.json');
 const lockPath = path.join(__dirname, '../data/earn-lock.json');
 const profilesPath = path.join(__dirname, '../data/profiles.json');
+const activityTracker = require('../utils/activity-tracker');
+const attendancePath = path.join(__dirname, '../data/attendance-data.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
+
 
 function loadJson(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
@@ -135,46 +138,96 @@ module.exports = {
 
     // 0. 출석
     if (kind === 'attendance') {
-      const now = Date.now();
-      const next = getCooldown(userId, 'attendance');
-      if (next > now) {
-        const remain = Math.ceil((next - now) / 1000 / 60);
-        await interaction.reply({ content: `⏰ 이미 출석했어! 다음 출석 가능까지 약 ${remain}분 남음.`, ephemeral: true });
-        return;
-      }
-      // 100~2,000 BE, 고액일수록 희박(가중치)
-      const probTable = [
-        ...Array(100).fill(1),   // 100~299: 100
-        ...Array(50).fill(2),    // 300~499: 50
-        ...Array(25).fill(3),    // 500~999: 25
-        ...Array(5).fill(4),     // 1,000~1,499: 5
-        ...Array(2).fill(5),     // 1,500~1,999: 2
-        6                       // 2,000: 1
-      ];
-      const selected = probTable[Math.floor(Math.random() * probTable.length)];
-      let reward = 100;
-      if (selected === 1) reward = Math.floor(Math.random() * 200) + 100;
-      else if (selected === 2) reward = Math.floor(Math.random() * 200) + 300;
-      else if (selected === 3) reward = Math.floor(Math.random() * 500) + 500;
-      else if (selected === 4) reward = Math.floor(Math.random() * 500) + 1000;
-      else if (selected === 5) reward = Math.floor(Math.random() * 500) + 1500;
-      else if (selected === 6) reward = 2000;
+  const now = Date.now();
+  const todayKST = new Date(Date.now() + koreaTZ).toISOString().slice(0,10);
 
-      setUserBe(userId, reward, "출석 보상");
-      setCooldown(userId, 'attendance', 0, true);
+  // 어제 날짜 구하기 (KST)
+  function getYesterdayKST() {
+    const now = new Date(Date.now() + koreaTZ);
+    now.setDate(now.getDate() - 1);
+    now.setHours(0, 0, 0, 0);
+    return now.toISOString().slice(0, 10);
+  }
 
-      // 고액 이펙트
-      let effectMsg = "";
-      if (reward >= 1500) effectMsg = `\n\n🎉 **대박! 고액 출석 보상  (${reward} BE 🔷)** 🎉\n✨✨✨✨✨`;
-      await interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setTitle("📅 출석 완료!")
-          .setDescription(`오늘의 출석 보상: **${reward} BE**\n(내일 자정 이후 다시 출석 가능!)${effectMsg}`)
-        ],
-        ephemeral: true
-      });
-      return;
-    }
+  // 유저 활동 데이터 가져오기 (음성/채팅)
+  function getUserActivity(userId, date) {
+    try {
+      const stats = activityTracker.getStats({from: date, to: date});
+      return stats.find(s => s.userId === userId) || { voice: 0, message: 0 };
+    } catch { return { voice: 0, message: 0 }; }
+  }
+
+  // 연속 출석 일수 체크
+  function getConsecutiveDays(userId, data, today) {
+    const info = data[userId];
+    if (!info) return 1;
+    const lastDate = info.lastDate || null;
+    const lastStreak = info.streak || 1;
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yyyymmdd = yesterday.toISOString().slice(0, 10);
+    if (lastDate === yyyymmdd) return Math.min(lastStreak + 1, 1000);
+    return 1;
+  }
+
+  // 출석 json load/save
+  function loadAttendance() {
+    if (!fs.existsSync(attendancePath)) fs.writeFileSync(attendancePath, "{}");
+    return JSON.parse(fs.readFileSync(attendancePath, 'utf8'));
+  }
+  function saveAttendance(data) {
+    fs.writeFileSync(attendancePath, JSON.stringify(data, null, 2));
+  }
+
+  const next = getCooldown(userId, 'attendance');
+  if (next > now) {
+    const remain = Math.ceil((next - now) / 1000 / 60);
+    await interaction.reply({ content: `⏰ 이미 출석했어! 다음 출석 가능까지 약 ${remain}분 남음.`, ephemeral: true });
+    return;
+  }
+
+  // === 활동량 불러오기 ===
+  const yesterdayKST = getYesterdayKST();
+  const activity = getUserActivity(userId, yesterdayKST);
+  const voiceSec = Math.min(activity.voice || 0, 72000);  // 최대 20시간(72,000초)
+  const msgCnt = Math.min(activity.message || 0, 10000);  // 최대 10,000개
+
+  // === 기본 보상 산정 ===
+  let voiceBE = Math.floor(voiceSec / 72000 * 30000);
+  let chatBE = Math.floor(msgCnt / 10000 * 20000);
+
+  // === 랜덤 가중치 (0.7 ~ 1.5배) ===
+  let baseBE = voiceBE + chatBE;
+  let randRate = Math.random() * 0.8 + 0.7; // 0.7 ~ 1.5
+  let reward = Math.floor(baseBE * randRate);
+
+  // === 연속 출석 보너스 ===
+  let attendanceData = loadAttendance();
+  let streak = getConsecutiveDays(userId, attendanceData, todayKST);
+  let bonus = Math.min(streak * 50, 50000);
+
+  reward += bonus;
+
+  // === 기록 저장 ===
+  attendanceData[userId] = {
+    lastDate: todayKST,
+    streak: streak
+  };
+  saveAttendance(attendanceData);
+
+  setUserBe(userId, reward, `출석 보상 (음성:${voiceBE} + 채팅:${chatBE} ×랜덤 ${randRate.toFixed(2)}, 연속${streak}일 보너스${bonus})`);
+  setCooldown(userId, 'attendance', 0, true);
+
+  let effectMsg = `음성 ${voiceBE} + 채팅 ${chatBE} ×랜덤(${randRate.toFixed(2)}) + 연속출석(${streak}일, ${bonus} BE)`;
+  await interaction.reply({
+    embeds: [new EmbedBuilder()
+      .setTitle("📅 출석 완료!")
+      .setDescription(`오늘의 출석 보상: **${comma(reward)} BE**\n${effectMsg}\n(내일 자정 이후 다시 출석 가능!)`)
+    ],
+    ephemeral: true
+  });
+  return;
+}
 
     // 1. 알바 (색찾기 5연속 미니게임)
     if (kind === 'alba') {
