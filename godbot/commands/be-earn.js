@@ -229,13 +229,13 @@ module.exports = {
   return;
 }
 
-    // 1. 알바 (색찾기 5연속 미니게임)
+// 1. 알바 (색찾기 미니게임)
 if (kind === 'alba') {
   try {
     // === [라운드 개수 동적 결정] ===
     let MAX_ROUND = 5;
     for (let i = 6; i <= 20; i++) {
-      if (Math.random() < 0.3) MAX_ROUND++; // 각 라운드 30% 확률로 추가
+      if (Math.random() < 0.3) MAX_ROUND++;
       else break;
     }
 
@@ -252,7 +252,11 @@ if (kind === 'alba') {
       return { reward: Math.floor(reward * randomRate), randomRate };
     }
 
-    const TIME_LIMIT = 30 * 1000; // 30초
+    const TOTAL_TIME = 30;
+    let remainTime = TOTAL_TIME;
+    let intervalId = null;
+    let ended = false;
+
     const colorList = ['Primary', 'Secondary', 'Success', 'Danger'];
     const colorName = { 'Primary': '파랑', 'Secondary': '회색', 'Success': '초록', 'Danger': '빨강' };
     const BE_EMOJI = '🔷';
@@ -291,18 +295,48 @@ if (kind === 'alba') {
       return rows;
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle(`💼 알바 미니게임 1/${MAX_ROUND}`)
-      .setDescription(
-        `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n` +
-        `총 라운드: **${MAX_ROUND}**\n시간 제한: 30초`
-      )
-      .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` });
+    await interaction.reply({
+      content: `⏳ 남은 시간: **${remainTime}**초`,
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`💼 알바 미니게임 1/${MAX_ROUND}`)
+          .setDescription(
+            `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n총 라운드: **${MAX_ROUND}**\n시간 제한: 30초`
+          )
+          .setFooter({ text: `1단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` })
+      ],
+      components: buttonRows(arr, answer),
+      ephemeral: true
+    });
 
-    await interaction.reply({ embeds: [embed], components: buttonRows(arr, answer), ephemeral: true });
+    // 실시간 타이머 (전체 30초)
+    intervalId = setInterval(async () => {
+      if (ended) return clearInterval(intervalId);
+      remainTime--;
+      if (remainTime >= 0) {
+        await interaction.editReply({
+          content: `⏳ 남은 시간: **${remainTime}**초`
+        }).catch(()=>{});
+      }
+      if (remainTime <= 0) {
+        ended = true;
+        clearInterval(intervalId);
+        await interaction.editReply({
+          content: '',
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("⏰ 알바 시간초과!")
+              .setDescription(`30초 내에 ${MAX_ROUND}라운드를 모두 성공하지 못했어! **0 BE**`)
+          ],
+          components: [],
+          ephemeral: true
+        }).catch(() => {});
+        collector.stop('fail');
+      }
+    }, 1000);
 
     const filter = i => i.user.id === interaction.user.id;
-    const collector = interaction.channel.createMessageComponentCollector({ filter, time: TIME_LIMIT });
+    const collector = interaction.channel.createMessageComponentCollector({ filter, time: TOTAL_TIME * 1000 });
 
     collector.on('collect', async i => {
       try {
@@ -312,10 +346,12 @@ if (kind === 'alba') {
         if (parseInt(isAnswer) === 1) {
           state.correct++;
           if (state.round === MAX_ROUND) {
-            // === [최종 보상 계산] ===
+            ended = true;
+            clearInterval(intervalId);
             const { reward, randomRate } = calcReward(MAX_ROUND);
             setUserBe(userId, reward, `알바(미니게임) 성공: ${MAX_ROUND}라운드, 보상 변동 ${Math.round(randomRate*1000)/10}%`);
             await interaction.editReply({
+              content: '',
               embeds: [
                 new EmbedBuilder()
                   .setTitle("💼 알바 성공!")
@@ -333,21 +369,24 @@ if (kind === 'alba') {
             state.round++;
             let { arr, answer, base, diff } = makeBoard();
             await interaction.editReply({
+              content: `⏳ 남은 시간: **${remainTime}**초`,
               embeds: [
                 new EmbedBuilder()
                   .setTitle(`💼 알바 미니게임 ${state.round}/${MAX_ROUND}`)
                   .setDescription(
                     `아래 9개 버튼 중에서, **색이 다른 버튼**(🔷)을 클릭해!\n총 라운드: **${MAX_ROUND}**\n시간 제한: 30초`
                   )
-                  .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` }
-                  )
+                  .setFooter({ text: `${state.round}단계 - ${colorName[base]} 버튼 중 ${colorName[diff]} 버튼을 찾아라!` })
               ],
               components: buttonRows(arr, answer),
               ephemeral: true
             }).catch(() => {});
           }
         } else {
+          ended = true;
+          clearInterval(intervalId);
           await interaction.editReply({
+            content: '',
             embeds: [
               new EmbedBuilder()
                 .setTitle("💤 알바 실패!")
@@ -359,6 +398,8 @@ if (kind === 'alba') {
           collector.stop('fail');
         }
       } catch (e) {
+        ended = true;
+        clearInterval(intervalId);
         console.error(e);
         await interaction.editReply({
           content: "❌ 예기치 못한 오류가 발생했습니다.",
@@ -371,7 +412,10 @@ if (kind === 'alba') {
 
     collector.on('end', async (_, reason) => {
       if (reason !== 'done' && reason !== 'fail') {
+        ended = true;
+        clearInterval(intervalId);
         await interaction.editReply({
+          content: '',
           embeds: [
             new EmbedBuilder()
               .setTitle("⏰ 알바 시간초과!")
@@ -392,7 +436,6 @@ if (kind === 'alba') {
     return;
   }
 }
-
 
     // 2. 도박
     if (kind === 'gamble') {
