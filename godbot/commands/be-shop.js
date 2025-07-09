@@ -318,7 +318,7 @@ if (kind === 'nickname') {
     // 임베드 생성
     const embed = new EmbedBuilder()
       .setTitle('🎨 닉네임 색상 상점')
-      .setDescription(`🔷 내 파랑 정수: ${curBe} BE`)
+      .setDescription(`🔷 내 파랑 정수: ${numFmt(curBe)} BE`)
       .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
 
     // (선택) 첫 번째 색상 이미지를 메인 임베드 이미지로 노출
@@ -538,7 +538,7 @@ if (kind === 'nickname') {
           const embed = new EmbedBuilder()
             .setTitle('🏅 한정판 칭호 상점')
             .setDescription(
-              `🔷 내 파랑 정수: ${curBe} BE\n` +
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
               showTitles.map((t, i) => {
                 let owned = member.roles.cache.has(t.roleId);
                 let stockMsg = (t.stock === undefined || t.stock === null) ? '' : (t.stock <= 0 ? '\n> [품절]' : `\n> [남은 수량: ${t.stock}개]`);
@@ -675,7 +675,7 @@ ${stockMsg}
           const embed = new EmbedBuilder()
             .setTitle("📚 스킬 상점")
             .setDescription(
-              `🔷 내 파랑 정수: ${curBe} BE\n` +
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
               showSkills.map((skill, i) =>
                 `#${i + 1 + _page * SKILLS_PER_PAGE} | ${skill.icon || ""} **${skill.name}** (${numFmt(skill.price)} BE)\n${skill.desc}`
               ).join("\n\n"))
@@ -810,7 +810,7 @@ ${stockMsg}
           const embed = new EmbedBuilder()
             .setTitle("🪄 강화 아이템 상점 (역할 상품)")
             .setDescription(
-              `🔷 내 파랑 정수: ${curBe} BE\n` +
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
               await Promise.all(강화ITEMS.map(async (item, i) => {
                 const stock = stocks[item.key];
                 let msg = '';
