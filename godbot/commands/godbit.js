@@ -290,7 +290,7 @@ async function autoMarketUpdate(members, client = global.client) {
     }
   }
 
-  // === 이벤트 확률 상폐 (까리코인 예외, 상장 후 5일~만) ===
+  // === 이벤트 확률 상폐  (까리코인 예외, 상장 후 5일~만) ===
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
@@ -305,8 +305,8 @@ async function autoMarketUpdate(members, client = global.client) {
       const now = h.at(-1);
       if (prev > 0) pct = ((now - prev) / prev) * 100;
     }
-    let delistProb = 0.008;
-    if (pct >= 50 || pct <= -50) delistProb = 0.02;
+    let delistProb = 0.002; // 상장 폐지 확률
+    if (pct >= 50 || pct <= -50) delistProb = 0.008; // 급등락시 상장 폐지 확률
     if (Math.random() < delistProb) {
       info.delistedAt = new Date().toISOString();
       await postLogMsg('delist', name, client);
@@ -350,8 +350,8 @@ async function autoMarketUpdate(members, client = global.client) {
   let numListed = 0;
   if (totalAvailable > 0) {
     // ===== 확률적 신규상장/부활 =====
-    // 1. 먼저 부활 기회(상폐 7일 경과 코인) 0.1% 확률 (부활 후보 있으면만!)
-    if (delistedCoins.length > 0 && Math.random() < 0.001) {
+    // 1. 먼저 부활 기회(상폐 7일 경과 코인) 0.2% 확률 (부활 후보 있으면만!)
+    if (delistedCoins.length > 0 && Math.random() < 0.002) { // 부활 상장 확률
       const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
       const now = new Date().toISOString();
       const types = [
@@ -375,7 +375,7 @@ async function autoMarketUpdate(members, client = global.client) {
     }
 
     // 2. 그 외엔 0.5% 확률로만 신규 상장 (후보가 있을 때만!)
-    else if (candidateNames.length > 0 && numListed < totalAvailable && Math.random() < 0.005) {
+    else if (candidateNames.length > 0 && numListed < totalAvailable && Math.random() < 0.005) { // 신규 상장 확률
       const newNick = candidateNames[Math.floor(Math.random() * candidateNames.length)];
       const newName = newNick + '코인';
       const now = new Date().toISOString();
