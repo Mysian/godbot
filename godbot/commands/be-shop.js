@@ -561,6 +561,9 @@ ${stockMsg}
       )
       .setFooter({ text: `총 칭호: ${titleList.length} | 페이지 ${_page + 1}/${maxPage}` });
 
+    if (showTitles[0]?.color && showTitles[0].color.startsWith('http'))
+    embed.setImage(showTitles[0].color);
+
     // 미리보기 이미지/색상 지원
     if (showTitles[0]?.color) {
       const imgUrl = getImageIfUrl(showTitles[0].color);
