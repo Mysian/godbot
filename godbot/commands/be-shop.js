@@ -309,8 +309,7 @@ if (kind === 'nickname') {
 
   // 색상 코드 → 이미지 URL 변환 함수
   const hexToImgUrl = (hex) =>
-    `https://singlecolorimage.com/get/220x40/${hex.replace('#', '')}/ffffff`;
-
+    `https://singlecolorimage.com/get/${hex.replace('#', '')}/100x100`;
   const getEmbedAndRows = (_page, curBe) => {
     const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
 
