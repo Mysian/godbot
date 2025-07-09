@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
@@ -7,10 +7,17 @@ const lockPath = path.join(__dirname, '../data/earn-lock.json');
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
 
-// ===== 유틸 =====
-function loadJson(p) { if (!fs.existsSync(p)) fs.writeFileSync(p, "{}"); return JSON.parse(fs.readFileSync(p, 'utf8')); }
-function saveJson(p, data) { fs.writeFileSync(p, JSON.stringify(data, null, 2)); }
-function getUserBe(userId) { const be = loadJson(bePath); return be[userId]?.amount || 0; }
+function loadJson(p) {
+  if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+function saveJson(p, data) {
+  fs.writeFileSync(p, JSON.stringify(data, null, 2));
+}
+function getUserBe(userId) {
+  const be = loadJson(bePath);
+  return be[userId]?.amount || 0;
+}
 function setUserBe(userId, diff, reason = "") {
   const be = loadJson(bePath);
   be[userId] = be[userId] || { amount: 0, history: [] };
@@ -18,7 +25,10 @@ function setUserBe(userId, diff, reason = "") {
   be[userId].history.push({ type: diff > 0 ? "earn" : "lose", amount: Math.abs(diff), reason, timestamp: Date.now() });
   saveJson(bePath, be);
 }
-function getCooldown(userId, type) { const data = loadJson(earnCooldownPath); return data[userId]?.[type] || 0; }
+function getCooldown(userId, type) {
+  const data = loadJson(earnCooldownPath);
+  return data[userId]?.[type] || 0;
+}
 function setCooldown(userId, type, ms, midnight = false) {
   const data = loadJson(earnCooldownPath);
   data[userId] = data[userId] || {};
@@ -33,17 +43,39 @@ function nextMidnightKR() {
 function lock(userId) {
   const data = loadJson(lockPath);
   if (data[userId] && Date.now() < data[userId]) return false;
-  data[userId] = Date.now() + 190000;
+  data[userId] = Date.now() + 120000; // 2분 lock
   saveJson(lockPath, data);
   return true;
 }
-function unlock(userId) { const data = loadJson(lockPath); if (data[userId]) delete data[userId]; saveJson(lockPath, data); }
-function hasProfile(userId) { if (!fs.existsSync(profilesPath)) return false; const profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8')); return !!profiles[userId]; }
-function comma(n) { return n.toLocaleString('ko-KR'); }
+function unlock(userId) {
+  const data = loadJson(lockPath);
+  if (data[userId]) delete data[userId];
+  saveJson(lockPath, data);
+}
+function hasProfile(userId) {
+  if (!fs.existsSync(profilesPath)) return false;
+  const profiles = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
+  return !!profiles[userId];
+}
+// 콤마 표기
+function comma(n) {
+  return n.toLocaleString('ko-KR');
+}
 
-// ===== 카드/블랙잭 유틸 =====
+// === 도박 단계별 실패확률(기존) ===
+const GO_FAIL_RATE = [0.50, 0.55, 0.60, 0.70, 0.80];
+
+// === 가위바위보 확률 ===
+const RPS_RATE = [
+  { result: 'win', prob: 0.29 },
+  { result: 'draw', prob: 0.31 },
+  { result: 'lose', prob: 0.40 }
+];
+
+// === 블랙잭 함수 ===
 function blackjackValue(hand) {
-  let sum = 0, aces = 0;
+  let sum = 0;
+  let aces = 0;
   for (let card of hand) {
     if (card.value >= 10) sum += 10;
     else if (card.value === 1) { sum += 11; aces++; }
@@ -70,27 +102,34 @@ function deckInit() {
   return deck;
 }
 
-// ===== 명령어 모듈 =====
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수획득')
-    .setDescription('파랑 정수(BE) 획득: 블랙잭')
+    .setDescription('파랑 정수(BE) 획득: 출석, 알바, 도박, 가위바위보, 블랙잭')
     .addStringOption(option =>
-      option.setName('종류')
+      option
+        .setName('종류')
         .setDescription('정수를 획득할 방법을 선택하세요.')
         .setRequired(true)
         .addChoices(
+          { name: '출석', value: 'attendance' },
+          { name: '알바', value: 'alba' },
+          { name: '도박', value: 'gamble' },
+          { name: '가위바위보', value: 'rps' },
           { name: '블랙잭', value: 'blackjack' }
         )
     ),
 
-  // ===== execute =====
+  // --- 슬래시 명령어 (execute) ---
   async execute(interaction) {
     if (!interaction.isChatInputCommand()) return;
     const kind = interaction.options.getString('종류');
     const userId = interaction.user.id;
     if (!hasProfile(userId)) {
-      await interaction.reply({ content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.", ephemeral: true });
+      await interaction.reply({
+        content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.",
+        ephemeral: true
+      });
       return;
     }
 
@@ -448,6 +487,7 @@ module.exports = {
         await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
       }
       setTimeout(unlock, 190000, userId);
+      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
       const modal = new ModalBuilder()
         .setCustomId('blackjack_bet_modal')
         .setTitle('블랙잭 배팅금 입력');
@@ -456,7 +496,9 @@ module.exports = {
         .setLabel('배팅할 금액 (100~10,000,000 BE)')
         .setStyle(TextInputStyle.Short)
         .setMinLength(1).setMaxLength(10).setPlaceholder('예: 50000');
-      modal.addComponents(new ActionRowBuilder().addComponents(betInput));
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(betInput)
+      );
       await interaction.showModal(modal);
       return;
     }
@@ -687,6 +729,4 @@ module.exports = {
   // 게임 시작
   gameStep(interaction, true);
   return;
-   }
-  }
-};
+}
