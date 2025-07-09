@@ -15,6 +15,8 @@ const NICKNAME_ROLE_PER_USER = 1; // 한 명당 1개만 허용(수정가능)
 const CHANNEL_ROLE_ID = '1352582997400092755';
 const CHANNEL_ROLE_PRICE = 3000000;
 
+function numFmt(num) { return num.toLocaleString(); }
+
 // === 강화 아이템 설정 ===
 const 강화ITEMS = [
   {
@@ -170,7 +172,7 @@ module.exports = {
             .setDescription(
               `🔷 내 파랑 정수: ${curBe} BE\n` +
               showItems.map((item, i) =>
-                `#${i + 1 + _page * ITEMS_PER_PAGE} | ${item.icon || ""} **${item.name}** (${item.price} BE)\n${item.desc}`
+                `#${i + 1 + _page * ITEMS_PER_PAGE} | ${item.icon || ""} **${item.name}** (${numFmt(item.price)} BE)\n${item.desc}`
               ).join("\n\n"))
             .setFooter({ text: `총 아이템: ${ITEM_LIST.length} | 페이지 ${_page + 1}/${maxPage}` });
 
@@ -272,7 +274,7 @@ module.exports = {
               items[i.user.id][item.name] = myItem;
               await saveJson(itemsPath, items);
 
-              await i.reply({ content: `✅ [${item.name}]을(를) ${item.price} BE에 구매 완료! (최대 99개까지 소지 가능)`, ephemeral: true });
+              await i.reply({ content: `✅ [${item.name}]을(를) ${numFmt(item.price)} BE에 구매 완료! (최대 99개까지 소지 가능)`, ephemeral: true });
             } catch (e) {
               await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
             } finally {
@@ -326,7 +328,7 @@ if (kind === 'nickname') {
     // 4개 색상 모두 필드로 추가
     showRoles.forEach((role, idx) => {
       embed.addFields({
-        name: `${role.emoji || ''} ${role.name} (${role.price} BE)`,
+        name: `${role.emoji || ''} ${role.name} (${numFmt(role.price)} BE)`,
         value:
           `${role.desc}\n` +
           (role.color
@@ -430,7 +432,7 @@ if (kind === 'nickname') {
         be[i.user.id].amount -= roleData.price;
         be[i.user.id].history.push({ type: "spend", amount: roleData.price, reason: `${roleData.name} 색상 역할 구매`, timestamp: Date.now() });
         await saveJson(bePath, be);
-        await i.reply({ content: `✅ [${roleData.name}] 색상 역할을 ${roleData.price} BE에 구매 완료!`, ephemeral: true });
+        await i.reply({ content: `✅ [${roleData.name}] 색상 역할을 ${numFmt(roleData.price)} BE에 구매 완료!`, ephemeral: true });
       } catch (e) {
         await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
       } finally { userBuying[i.user.id] = false; }
@@ -540,7 +542,7 @@ if (kind === 'nickname') {
               showTitles.map((t, i) => {
                 let owned = member.roles.cache.has(t.roleId);
                 let stockMsg = (t.stock === undefined || t.stock === null) ? '' : (t.stock <= 0 ? '\n> [품절]' : `\n> [남은 수량: ${t.stock}개]`);
-                return `#${i+1+_page*TITLE_PER_PAGE} | ${t.emoji||''} **${t.name}** (${t.price} BE)
+                return `#${i+1+_page*TITLE_PER_PAGE} | ${t.emoji||''} **${t.name}** (${numFmt(t.price)} BE)
 ${t.desc}
 ${stockMsg}
 > ${owned ? '**[보유중]**' : ''}`;
@@ -643,7 +645,7 @@ ${stockMsg}
                   await saveJson(titlesPath, TITLES2);
                 }
               }
-              await i.reply({ content: `✅ [${titleData.name}] 칭호 역할을 ${titleData.price} BE에 구매 완료!`, ephemeral: true });
+              await i.reply({ content: `✅ [${titleData.name}] 칭호 역할을 ${numFmt(titleData.price)} BE에 구매 완료!`, ephemeral: true });
             } catch (e) {
               await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
             } finally { userBuying[i.user.id] = false; }
@@ -675,7 +677,7 @@ ${stockMsg}
             .setDescription(
               `🔷 내 파랑 정수: ${curBe} BE\n` +
               showSkills.map((skill, i) =>
-                `#${i + 1 + _page * SKILLS_PER_PAGE} | ${skill.icon || ""} **${skill.name}** (${skill.price} BE)\n${skill.desc}`
+                `#${i + 1 + _page * SKILLS_PER_PAGE} | ${skill.icon || ""} **${skill.name}** (${numFmt(skill.price)} BE)\n${skill.desc}`
               ).join("\n\n"))
             .setFooter({ text: `총 스킬: ${SKILL_LIST.length} | 페이지 ${_page + 1}/${maxPage}` });
 
@@ -776,7 +778,7 @@ ${stockMsg}
               skills[i.user.id][skill.name] = { desc: skill.desc };
               await saveJson(skillsPath, skills);
 
-              await i.reply({ content: `✅ [${skill.name}] 스킬을 ${skill.price} BE에 구매 완료! (동일 스킬 중복 보유 불가)`, ephemeral: true });
+              await i.reply({ content: `✅ [${skill.name}] 스킬을 ${numFmt(skill.price)} BE에 구매 완료! (동일 스킬 중복 보유 불가)`, ephemeral: true });
             } catch (e) {
               await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
             } finally {
@@ -825,7 +827,7 @@ ${stockMsg}
                 } else {
                   msg = `\n> **[남은 재고: ${stock}개]**`;
                 }
-                return `#${i + 1} | ${item.emoji} **${item.name}** (${item.price} BE)\n${item.desc}${msg}\n`
+                return `#${i + 1} | ${item.emoji} **${item.name}** (${numFmt(item.price)} BE)\n${item.desc}${msg}\n`
               })).then(lines => lines.join("\n"))
             )
             .setFooter({ text: `고유상품: 1회성 역할 아이템 | 구매시 즉시 지급` });
@@ -916,7 +918,7 @@ ${stockMsg}
                 await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류 / BE 차감 취소됨)`, ephemeral: true });
                 return;
               }
-              await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${btnItem.price} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
+              await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${numFmt(btnItem.price)} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
             } catch (e) {
               await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
             } finally {
