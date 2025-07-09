@@ -307,18 +307,22 @@ if (kind === 'nickname') {
   const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
   let member = await interaction.guild.members.fetch(interaction.user.id);
 
-  const getEmbedAndRows = (_page, curBe) => {
+  const getEmbedsAndRows = (_page, curBe) => {
     const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
 
-    // 미리보기 바 (이모지+역할이름)
-    let previewBar = showRoles.map(role =>
-      `${role.emoji || ''}${role.name}`
-    ).join('   ');
+    // [1] 프리뷰 Embed들 (각 색상 하나씩)
+    const previewEmbeds = showRoles.map(role =>
+      new EmbedBuilder()
+        .setTitle(`【미리보기】${role.name}`)
+        .setDescription(role.desc)
+        .setColor(role.color || '#2f3136')
+        .setFooter({ text: role.color ? `색상코드: ${role.color}` : '' })
+    );
 
-    const embed = new EmbedBuilder()
+    // [2] 메인 Embed (리스트/설명)
+    const mainEmbed = new EmbedBuilder()
       .setTitle('🎨 닉네임 색상 상점')
       .setDescription(
-        `【미리보기】${previewBar}\n\n` +
         `🔷 내 파랑 정수: ${curBe} BE\n` +
         showRoles.map((role, i) => {
           let owned = member.roles.cache.has(role.roleId);
@@ -331,7 +335,7 @@ ${preview}
       )
       .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
 
-    if (showRoles[0]?.color) embed.setColor(showRoles[0].color);
+    if (showRoles[0]?.color) mainEmbed.setColor(showRoles[0].color);
 
     // 버튼
     const row = new ActionRowBuilder();
@@ -350,22 +354,24 @@ ${preview}
       new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
       new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
     );
-    return { embed, rows: [row, rowPage] };
+    // embeds: [프리뷰Embed들..., 메인Embed]
+    return { embeds: [...previewEmbeds, mainEmbed], rows: [row, rowPage] };
   };
 
-  let { embed, rows } = getEmbedAndRows(page, userBe);
+  let { embeds, rows } = getEmbedsAndRows(page, userBe);
 
   const shopMsg = await interaction.editReply({
     content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-    embeds: [embed],
+    embeds,
     components: rows
   });
+
   interval = setInterval(async () => {
     try {
-      const { embed: newEmbed, rows: newRows } = getEmbedAndRows(page, userBe);
+      const { embeds: newEmbeds, rows: newRows } = getEmbedsAndRows(page, userBe);
       await interaction.editReply({
         content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-        embeds: [newEmbed],
+        embeds: newEmbeds,
         components: newRows
       });
     } catch {}
@@ -384,10 +390,10 @@ ${preview}
     if (i.customId === 'nick_next' && (page+1)*ROLES_PER_PAGE < roleList.length) { page++; updated = true; }
     if (i.customId === 'nick_refresh') { updated = true; }
     if (updated) {
-      ({ embed, rows } = getEmbedAndRows(page, userBe));
+      ({ embeds, rows } = getEmbedsAndRows(page, userBe));
       await i.update({
         content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
-        embeds: [embed],
+        embeds,
         components: rows
       });
       return;
@@ -441,7 +447,6 @@ ${preview}
   });
   return;
 }
-
 
       // ---- 개인채널 계약금 상점 ----
       if (kind === 'channel') {
