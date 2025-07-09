@@ -235,7 +235,7 @@ if (kind === 'alba') {
     // === [라운드 개수 동적 결정] ===
     let MAX_ROUND = 5;
     for (let i = 6; i <= 20; i++) {
-      if (Math.random() < 0.3) MAX_ROUND++;
+      if (Math.random() < 0.5) MAX_ROUND++;
       else break;
     }
 
