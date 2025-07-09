@@ -457,6 +457,24 @@ function getKSTDateString() {
   return now.toISOString().split('T')[0]; // "2025-06-12"
 }
 
+// 운세 보상 로직 (금액/확률/이모지 커스텀)
+function getFortuneReward() {
+  const rand = Math.random() * 100;
+  if (rand < 0.5) { // 0.5%
+    return { amount: 50000, emoji: "👑" };
+  } else if (rand < 2) { // 1.5%
+    return { amount: Math.floor(Math.random() * 10000) + 40000, emoji: "🌈" };
+  } else if (rand < 5) { // 3%
+    return { amount: Math.floor(Math.random() * 10000) + 30000, emoji: "🦄" };
+  } else if (rand < 15) { // 10%
+    return { amount: Math.floor(Math.random() * 10000) + 20000, emoji: "💎" };
+  } else if (rand < 40) { // 25%
+    return { amount: Math.floor(Math.random() * 10000) + 10000, emoji: "🪙" };
+  } else {
+    return { amount: Math.floor(Math.random() * 5000) + 5000, emoji: "🍀" };
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('오늘의운세')
@@ -482,20 +500,20 @@ module.exports = {
 
     // 운세 랜덤 선택
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
+    const rewardObj = getFortuneReward();
     const result = `<@${userId}> 님, ${fortune}`;
 
-    // 파랑 정수 5~50 지급
-    const reward = Math.floor(Math.random() * 46) + 5;
-    addBE(userId, reward, "오늘의 운세 보상");
+    // 파랑 정수 지급
+    addBE(userId, rewardObj.amount, "오늘의 운세 보상");
 
     // 데이터 저장 (오늘 날짜로 기록)
     userData[userId] = today;
     saveUserData(userData);
 
-    // 임베드 생성 (BE 획득 안내 포함)
+    // 임베드 생성 (이모지/금액 커스텀)
     const embed = new EmbedBuilder()
       .setTitle('오늘의 운세')
-      .setDescription(`${result}\n\n🎁 파랑 정수 ${reward} BE를 획득했습니다!`)
+      .setDescription(`${result}\n\n${rewardObj.emoji} 파랑 정수 ${rewardObj.amount.toLocaleString()} BE를 획득했습니다!`)
       .setColor(0x57D9A3)
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
