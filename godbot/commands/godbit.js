@@ -340,6 +340,7 @@ for (const [name, info] of Object.entries(coins)) {
   } else {
     info.delistedAt = new Date().toISOString(); // 상장폐지 처리
     await postLogMsg('delist', name, client);   // 상장폐지 메시지
+    }
   }
 }
 
