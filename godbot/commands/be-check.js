@@ -52,6 +52,7 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
     )
     .setColor(0x3399ff)
     .setImage(EMBED_IMAGE);
+    .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 }));
 
   if (filter === FILTERS.SEARCH && searchTerm)
     embed.setFooter({ text: `검색어: "${searchTerm}"` });
