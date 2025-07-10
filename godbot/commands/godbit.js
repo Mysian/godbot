@@ -905,44 +905,45 @@ module.exports = {
       const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
       const buildMyCoinEmbed = () => {
-        let totalEval = 0, totalBuy = 0, totalProfit = 0;
-        const embed = new EmbedBuilder()
-          .setTitle('💼 내 코인 평가/수익 현황')
-          .setColor('#2ecc71')
-          .setTimestamp();
+  let totalEval = 0, totalBuy = 0, totalProfit = 0;
+  const embed = new EmbedBuilder()
+    .setTitle('💼 내 코인 평가/수익 현황')
+    .setColor('#2ecc71')
+    .setTimestamp()
+    .setImage('https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp'); // <= 이 라인 추가
 
-        if (!Object.keys(userW).length) {
-          embed.setDescription('보유 코인이 없습니다.');
-        } else {
-          let detailLines = [];
-          for (const [c, q] of Object.entries(userW)) {
-            if (!coins[c] || coins[c].delistedAt) continue;
-            const nowPrice = coins[c]?.price || 0;
-            const buyCost = userBuys[c] || 0;
-            const evalPrice = nowPrice * q;
-            const profit = evalPrice - buyCost;
-            const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-            totalEval += evalPrice;
-            totalBuy += buyCost;
-            totalProfit += profit;
-            detailLines.push(
-              `**${c}**
+  if (!Object.keys(userW).length) {
+    embed.setDescription('보유 코인이 없습니다.');
+  } else {
+    let detailLines = [];
+    for (const [c, q] of Object.entries(userW)) {
+      if (!coins[c] || coins[c].delistedAt) continue;
+      const nowPrice = coins[c]?.price || 0;
+      const buyCost = userBuys[c] || 0;
+      const evalPrice = nowPrice * q;
+      const profit = evalPrice - buyCost;
+      const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+      totalEval += evalPrice;
+      totalBuy += buyCost;
+      totalProfit += profit;
+      detailLines.push(
+        `**${c}**
 • 보유: ${q}개
 • 누적매수: ${Number(buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
 • 평가액: ${Number(evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
 • 손익: ${profit>=0?`+${Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
-            );
-          }
-          const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-          embed.setDescription(detailLines.join('\n\n'));
-          embed.addFields(
-            { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-            { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-            { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-          );
-        }
-        return embed;
-      };
+      );
+    }
+    const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+    embed.setDescription(detailLines.join('\n\n'));
+    embed.addFields(
+      { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+      { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+      { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+    );
+  }
+  return embed;
+};
 
       const e = buildMyCoinEmbed();
       const refreshButton = new ButtonBuilder()
