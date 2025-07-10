@@ -1,11 +1,9 @@
-// ==== commands/advertise.js ====
 const { 
   SlashCommandBuilder, 
   EmbedBuilder, 
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  ComponentType 
+  ButtonStyle
 } = require("discord.js");
 
 const DEFAULT_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391812043044163635/----001.png?ex=686d4179&is=686beff9&hm=2481678a47e56ca5b5d3a5c03d0baf47a23df8051da0bec166f8d253e96e32d2&=&format=webp&quality=lossless';
@@ -108,21 +106,19 @@ module.exports = {
           ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }]
           : []),
         { name: "모집자", value: `<@${recruiterId}>`, inline: true },
-        { name: "마감까지", value: `<t:${closeTimestamp}:R>`, inline: true }, // ex: "1시간 후"
+        { name: "마감까지", value: `<t:${closeTimestamp}:R>`, inline: true },
       )
       .setColor(0x57c3ff)
-      .setTimestamp();
+      .setTimestamp()
+      .setThumbnail(interaction.user.displayAvatarURL({ size: 128, extension: "png" }));
 
-    // 이미지 URL 자동 대체 (입력 안했거나, 이상하면 기본 이미지)
     let imgUrl = DEFAULT_IMG;
     if (imageUrl && isImageUrl(imageUrl)) {
       imgUrl = imageUrl;
     }
     embed.setImage(imgUrl);
 
-    const 모집채널 = await interaction.guild.channels.fetch(
-      "1209147973255036959",
-    );
+    const 모집채널 = await interaction.guild.channels.fetch("1209147973255036959");
 
     if (!모집채널 || !모집채널.isTextBased()) {
       return await interaction.reply({
@@ -135,69 +131,47 @@ module.exports = {
     let msgOptions = { embeds: [embed] };
 
     if (voiceId) {
-      row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`joinintent_${voiceId}_${Date.now()}`)
-          .setLabel("참여 의사 밝히기")
-          .setStyle(ButtonStyle.Success)
-      );
-      msgOptions.components = [row];
-    }
+  const customId = `joinintent_${voiceId}_${closeAt}`;
+  console.log("[DEBUG] 생성되는 버튼 customId:", customId);
+  row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(customId)
+      .setLabel("참여 의사 밝히기")
+      .setStyle(ButtonStyle.Success)
+  );
+  msgOptions.components = [row];
+}
     if (mentionRole) msgOptions.content = `${mentionRole}`;
 
     const msg = await 모집채널.send(msgOptions);
 
-    // 마감시간 이후 버튼 비활성화
     if (voiceId) {
       setTimeout(async () => {
-  try {
-    const prevContent = embed.data.description || '';
-    embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
-    const fields = embed.data.fields.map(f =>
-      f.name === "마감까지"
-        ? { name: "마감까지", value: "마감됨", inline: true }
-        : f
-    );
-    embed.setFields(fields);
-    embed.setImage(CLOSED_IMG);
-    const disabledRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`disabled2`)
-        .setLabel("참여 의사 밝히기")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true)
-    );
-    await msg.edit({ embeds: [embed], components: [disabledRow] });
-  } catch (err) {}
-}, closeMs);
-
-// collector.on('end')
-collector.on('end', async () => {
-  const prevContent = embed.data.description || '';
-  embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
-  const fields = embed.data.fields.map(f =>
-    f.name === "마감까지"
-      ? { name: "마감까지", value: "마감됨", inline: true }
-      : f
-  );
-  embed.setFields(fields);
-  embed.setImage(CLOSED_IMG);
-  try {
-    const disabledRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`disabled2`)
-        .setLabel("참여 의사 밝히기")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true)
-    );
-    await msg.edit({ embeds: [embed], components: [disabledRow] });
-  } catch (e) {}
-});
+        try {
+          const prevContent = embed.data.description || '';
+          embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
+          const fields = embed.data.fields.map(f =>
+            f.name === "마감까지"
+              ? { name: "마감까지", value: "마감됨", inline: true }
+              : f
+          );
+          embed.setFields(fields);
+          embed.setImage(CLOSED_IMG);
+          const disabledRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`disabled2`)
+              .setLabel("참여 의사 밝히기")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true)
+          );
+          await msg.edit({ embeds: [embed], components: [disabledRow] });
+        } catch (err) {}
+      }, closeMs);
     }
 
     await interaction.reply({
       content: "✅ 모집 글이 전용 채널에 정상적으로 게시되었어요!",
       ephemeral: true,
     });
-  },
-};
+  }
+}
