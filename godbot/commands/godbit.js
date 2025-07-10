@@ -929,21 +929,18 @@ module.exports = {
 
   // 투자 규모
 function getAmountLabel(val) {
-  if (val < 1) return "극미량";
-  if (val < 5) return "초소량";
-  if (val < 10) return "소량";
-  if (val < 30) return "준소량";
-  if (val < 50) return "중소량";
-  if (val < 100) return "중량";
-  if (val < 300) return "중대량";
-  if (val < 1_000) return "다량";
-  if (val < 10_000) return "대량";
-  if (val < 100_000) return "초대량";
-  if (val < 1_000_000) return "극대량";
-  if (val < 10_000_000) return "엄청난 양";
-  if (val < 100_000_000) return "폭주";
-  if (val < 1_000_000_000) return "천문학적";
-  return "무한대";
+  if (val < 1) return " [투자 규모: 극소량]";
+  if (val < 10) return " [투자 규모: 소량]";
+  if (val < 100) return " [투자 규모: 적은편]";
+  if (val < 1_000) return " [투자 규모: 보통 이하]";
+  if (val < 10_000) return " [투자 규모: 보통]";
+  if (val < 100_000) return " [투자 규모: 조금 많은 편]";
+  if (val < 1_000_000) return " [투자 규모: 많은 편]";
+  if (val < 10_000_000) return " [투자 규모: 상당히 많은 편]";
+  if (val < 100_000_000) return " [투자 규모: 매우 많은 편]";
+  if (val < 1_000_000_000) return " [투자 규모: 거대 규모]";
+  if (val < 10_000_000_000) return " [투자 규모: 초거대 규모]";
+  return " [투자 규모: 천문학적 규모]";
 }
 
      // 한줄평 생성
