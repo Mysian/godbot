@@ -931,10 +931,12 @@ module.exports = {
   const userW = wallets[interaction.user.id] || {};
   const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
-  function getSortedMyCoins(_coins = coins, _userW = userW, _userBuys = userBuys) {
+  function getSortedMyCoins(_coins = coins, _userW = userW, _userBuys = userBuys, showDelisted = false) {
     return Object.entries(_userW)
       .map(([c, q]) => {
-        if (!_coins[c] || _coins[c].delistedAt) return null;
+        if (!_coins[c]) return null;
+        if (!showDelisted && _coins[c].delistedAt) return null;
+        if (showDelisted && !_coins[c].delistedAt) return null;
         const nowPrice = _coins[c]?.price || 0;
         const buyCost = _userBuys[c] || 0;
         const evalPrice = nowPrice * q;
@@ -1114,19 +1116,25 @@ function getAmountLabel(val) {
 }
     
 
-  function renderEmbed(page) {
+  function renderEmbed(page, showDelisted) {
+    let allMyCoins = getSortedMyCoins(coins, userW, userBuys, showDelisted);
+    const PAGE_SIZE = 5;
+    let totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
     if (page < 0) page = 0;
     if (page >= totalPages) page = totalPages - 1;
     const slice = allMyCoins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
     const embed = new EmbedBuilder()
-      .setTitle('💼 내 코인 평가/수익 현황')
-      .setColor('#2ecc71')
+      .setTitle(showDelisted ? '🚫 폐지된 내 코인 목록' : '💼 내 코인 평가/수익 현황')
+      .setColor(showDelisted ? '#888888' : '#2ecc71')
       .setTimestamp()
-      .setImage('https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp');
+      .setImage(showDelisted
+        ? undefined
+        : 'https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp'
+      );
 
     if (!slice.length) {
-      embed.setDescription('보유 코인이 없습니다.');
+      embed.setDescription(showDelisted ? '폐지된 코인이 없습니다.' : '보유 코인이 없습니다.');
     } else {
       let detailLines = [];
       let totalEval = 0, totalBuy = 0, totalProfit = 0;
@@ -1138,7 +1146,6 @@ function getAmountLabel(val) {
         let profitEmoji = '⏺️';
         if (c.profit > 0) profitEmoji = '🔺';
         else if (c.profit < 0) profitEmoji = '🔻';
-
         // 수익률 컬러 이모지
         let yieldColor = '⚪️';
         if (c.yieldPct >= 10) yieldColor = '🟢';
@@ -1147,8 +1154,10 @@ function getAmountLabel(val) {
         detailLines.push(
           `${profitEmoji} **${c.name}** (${yieldColor}${c.yieldPct>=0?'+':''}${c.yieldPct.toFixed(2)}%)
 보유: \`${c.q}\`개 ｜ 누적매수: \`${Number(c.buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`
-평가액: \`${Number(c.evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`
-손익: \`${c.profit>=0?'+':''}${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\``
+${showDelisted
+  ? `폐지 시세: \`${Number(c.nowPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`\n손익: \`${c.profit>=0?'+':''}${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`\n폐지일: ${coins[c.name]?.delistedAt ? toKSTString(coins[c.name].delistedAt) : '-'}`
+  : `평가액: \`${Number(c.evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`\n손익: \`${c.profit>=0?'+':''}${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\``
+}`
         );
       });
       // 전체 합산
@@ -1156,72 +1165,84 @@ function getAmountLabel(val) {
       embed.setDescription(detailLines.join('\n\n'));
       embed.addFields(
         { name: '💸 총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-        { name: '🏦 총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+        { name: showDelisted ? '폐지 시 평가' : '🏦 총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
         { 
-          name: `${totalProfit > 0 ? '📈' : totalProfit < 0 ? '📉' : '🎯'} 평가 손익`, 
+          name: `${totalProfit > 0 ? '📈' : totalProfit < 0 ? '📉' : '🎯'} 손익`, 
           value: `${totalProfit>=0?'+':''}${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, 
           inline: true 
         }
       );
-      // 하단에 한줄평 추가!
-      embed.addFields({
-        name: '💬 투자 한줄평',
-        value: getOneLineReview(totalYield, totalEval),
-        inline: false
-      });
+      if (!showDelisted) {
+        // 하단에 한줄평(폐지모드에선 X)
+        embed.addFields({
+          name: '💬 투자 한줄평',
+          value: getOneLineReview(totalYield, totalEval),
+          inline: false
+        });
+      }
     }
-    embed.setFooter({ text: `페이지 ${page+1}/${totalPages}` });
+    embed.setFooter({ text: `페이지 ${page+1}/${Math.max(1, Math.ceil(getSortedMyCoins(coins, userW, userBuys, showDelisted).length / 5))}` });
     return embed;
   }
 
-  // 버튼 ActionRow
-  const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('prev')
-      .setLabel('◀️ 이전')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(page === 0),
-    new ButtonBuilder()
-      .setCustomId('next')
-      .setLabel('▶️ 다음')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(page >= totalPages - 1),
-    new ButtonBuilder()
-      .setCustomId('refresh_mycoin')
-      .setLabel('🔄 새로고침')
-      .setStyle(ButtonStyle.Success)
-  );
+  let page = 0;
+  let showDelisted = false;
 
-  await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
+  function getTotalPages() {
+    return Math.max(1, Math.ceil(getSortedMyCoins(coins, userW, userBuys, showDelisted).length / 5));
+  }
+
+  function makeNavRow() {
+    const totalPages = getTotalPages();
+    return new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('prev')
+        .setLabel('◀️ 이전')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId('next')
+        .setLabel('▶️ 다음')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page >= totalPages - 1),
+      new ButtonBuilder()
+        .setCustomId('refresh_mycoin')
+        .setLabel('🔄 새로고침')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('toggle_delisted')
+        .setLabel(showDelisted ? '보유 코인 보기' : '폐지된 코인 보기')
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
+  await interaction.editReply({
+    embeds: [await renderEmbed(page, showDelisted)],
+    components: [makeNavRow()]
+  });
 
   const msg = await interaction.fetchReply();
   const collector = msg.createMessageComponentCollector({
     componentType: ComponentType.Button,
     time: 600_000,
-    filter: btn => btn.user.id === interaction.user.id && ['prev', 'next', 'refresh_mycoin'].includes(btn.customId)
+    filter: btn => btn.user.id === interaction.user.id && ['prev', 'next', 'refresh_mycoin', 'toggle_delisted'].includes(btn.customId)
   });
 
   collector.on('collect', async btn => {
-    if (btn.customId === 'refresh_mycoin') {
-      await btn.deferUpdate();
-      const coinsNew = await loadJson(coinsPath, {});
-      const walletsNew = await loadJson(walletsPath, {});
-      const userWNew = walletsNew[interaction.user.id] || {};
-      const userBuysNew = walletsNew[interaction.user.id + "_buys"] || {};
-      allMyCoins = getSortedMyCoins(coinsNew, userWNew, userBuysNew);
-      totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
-      if (page >= totalPages) page = totalPages - 1;
-      navRow.components[0].setDisabled(page === 0);
-      navRow.components[1].setDisabled(page >= totalPages - 1);
-      await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
-      return;
-    }
     await btn.deferUpdate();
+    if (btn.customId === 'refresh_mycoin') {
+      // 그냥 다시 렌더 (최신 데이터 로드 원하면 이 부분에서 재로딩)
+    }
     if (btn.customId === 'prev') page = Math.max(0, page - 1);
-    if (btn.customId === 'next') page = Math.min(totalPages - 1, page + 1);
-    navRow.components[0].setDisabled(page === 0);
-    navRow.components[1].setDisabled(page >= totalPages - 1);
-    await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
+    if (btn.customId === 'next') page = Math.min(getTotalPages() - 1, page + 1);
+    if (btn.customId === 'toggle_delisted') {
+      showDelisted = !showDelisted;
+      page = 0;
+    }
+    await interaction.editReply({
+      embeds: [await renderEmbed(page, showDelisted)],
+      components: [makeNavRow()]
+    });
   });
 
   collector.on('end', async () => {
