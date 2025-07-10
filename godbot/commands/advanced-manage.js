@@ -255,18 +255,26 @@ module.exports = {
           await interaction.followUp({ content: `${kicked}명 추방 완료!`, ephemeral: true });
         } else if (i.customId === 'warn') {
           await i.deferUpdate();
-          let warned = 0;
+          let warned = 0, failed = [];
           warnedObj = readWarnHistory();
+          let total = 0;
           for (const u of userList) {
             if (warnedObj[u.id]) continue;
+            total++;
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
               if (m) {
-                await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`).catch(() => null);
+                await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`)
+                  .catch(e => {
+                    failed.push({ id: u.id, reason: e.message });
+                  });
                 warnedObj[u.id] = { ts: Date.now() };
                 warned++;
+                await new Promise(res => setTimeout(res, 1200));
               }
-            } catch { }
+            } catch (e) {
+              failed.push({ id: u.id, reason: e.message });
+            }
           }
           saveWarnHistory(warnedObj);
           if (option === 'long') {
@@ -275,7 +283,13 @@ module.exports = {
             userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
-          await interaction.followUp({ content: `${warned}명에게 DM 발송 완료!`, ephemeral: true });
+
+          let resultMsg = `✅ DM 발송: ${warned}명 / 실패: ${failed.length}명`;
+          if (failed.length > 0) {
+            resultMsg += "\n\n❌ 실패 id:\n";
+            resultMsg += failed.map(f => `• ${f.id} (${f.reason || '알 수 없음'})`).join('\n');
+          }
+          await interaction.followUp({ content: resultMsg, ephemeral: true });
           await msg.edit({ embeds, components: [makeRow(true), makePeriodRow(true)] });
         }
         embeds = getEmbeds(userList, page, title, selectedDays);
