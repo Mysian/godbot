@@ -142,6 +142,10 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
 
 // === 모달 커스텀ID 핸들러 등록 (한 곳에서)
 const modalHandlers = new Map([
+  ["be_search_modal", async (interaction) => {
+  const cmd = client.commands.get("정수조회");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   ["rps_bet_modal", async (interaction) => {
   const cmd = client.commands.get("정수획득");
   if (cmd?.modal) return cmd.modal(interaction);
