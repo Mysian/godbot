@@ -154,6 +154,10 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("강퇴투표");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
+  ["be_search_modal", async (interaction) => {
+    const cmd = client.commands.get("정수조회");
+    if (cmd?.modal) return cmd.modal(interaction);
+  }],
   ["set_channel_modal", async (interaction) => {
     const cmd = client.commands.get("공지하기");
     if (cmd?.modal) return cmd.modal(interaction);
