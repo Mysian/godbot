@@ -53,7 +53,6 @@ function getMostRecentDate(obj) {
   return latest;
 }
 
-// 유저 닉네임(ID) 리스트 (최대 30, 초과시 외 N명)
 function getUserDisplay(arr) {
   if (!arr.length) return '없음';
   if (arr.length <= 30) return arr.map(u => `${u.nickname} (\`${u.id}\`)`).join('\n');
@@ -264,12 +263,20 @@ module.exports = {
               }
             } catch { }
           }
-          // 로그 채널
+          // 추방 로그 타이틀/설명
+          const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
+          const kickDesc =
+            `관리자: <@${interaction.user.id}>\n` +
+            `기준: ${option === 'long' ? '장기 미접속 유저' : '비활동 신규 유저'}\n` +
+            `비활동 일수: ${selectedDays}일\n` +
+            `전체 대상: ${userList.filter(u => u.warned).length}명\n` +
+            `추방 성공: ${kicked}명`;
+
           const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
           if (logChannel) {
             const logEmbed = new EmbedBuilder()
-              .setTitle('일괄 추방 처리')
-              .setDescription(`관리자: <@${interaction.user.id}>\n대상: ${userList.filter(u => u.warned).length}명\n추방 성공: ${kicked}명`)
+              .setTitle(kickTitle)
+              .setDescription(kickDesc)
               .setColor('#c0392b')
               .setTimestamp();
             if (kickedList.length)
@@ -309,12 +316,20 @@ module.exports = {
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
 
-          // 로그 채널
+          // 경고 로그 타이틀/설명
+          const warnTitle = option === 'long' ? '장기 미접속 유저 경고 DM' : '비활동 신규 유저 경고 DM';
+          const warnDesc =
+            `관리자: <@${interaction.user.id}>\n` +
+            `기준: ${option === 'long' ? '장기 미접속 유저' : '비활동 신규 유저'}\n` +
+            `비활동 일수: ${selectedDays}일\n` +
+            `전체 대상: ${warned + failed.length}명\n` +
+            `DM 성공: ${warned}명 / 실패: ${failed.length}명`;
+
           const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
           if (logChannel) {
             const logEmbed = new EmbedBuilder()
-              .setTitle('경고 DM 일괄 전송')
-              .setDescription(`관리자: <@${interaction.user.id}>\n대상: ${warned + failed.length}명\n성공: ${warned}명 / 실패: ${failed.length}명`)
+              .setTitle(warnTitle)
+              .setDescription(warnDesc)
               .setColor('#e67e22')
               .setTimestamp();
             if (warnedList.length)
