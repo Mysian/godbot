@@ -898,81 +898,117 @@ module.exports = {
 
       // 5. 내코인
     if (sub === '내코인') {
-      await interaction.deferReply({ ephemeral: true });
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
-      const userW = wallets[interaction.user.id] || {};
-      const userBuys = wallets[interaction.user.id + "_buys"] || {};
+  await interaction.deferReply({ ephemeral: true });
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  const userW = wallets[interaction.user.id] || {};
+  const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
-      const buildMyCoinEmbed = () => {
-  let totalEval = 0, totalBuy = 0, totalProfit = 0;
-  const embed = new EmbedBuilder()
-    .setTitle('💼 내 코인 평가/수익 현황')
-    .setColor('#2ecc71')
-    .setTimestamp()
-    .setImage('https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp'); // <= 이 라인 추가
-
-  if (!Object.keys(userW).length) {
-    embed.setDescription('보유 코인이 없습니다.');
-  } else {
-    let detailLines = [];
-    for (const [c, q] of Object.entries(userW)) {
-      if (!coins[c] || coins[c].delistedAt) continue;
+  // 1. 코인 배열 생성 및 수익률로 정렬
+  const allMyCoins = Object.entries(userW)
+    .map(([c, q]) => {
+      if (!coins[c] || coins[c].delistedAt) return null;
       const nowPrice = coins[c]?.price || 0;
       const buyCost = userBuys[c] || 0;
       const evalPrice = nowPrice * q;
       const profit = evalPrice - buyCost;
       const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-      totalEval += evalPrice;
-      totalBuy += buyCost;
-      totalProfit += profit;
-      detailLines.push(
-        `**${c}**
-• 보유: ${q}개
-• 누적매수: ${Number(buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
-• 평가액: ${Number(evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
-• 손익: ${profit>=0?`+${Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${yieldPct>=0?'+':''}${yieldPct.toFixed(2)}%)`
+      return {
+        name: c,
+        q,
+        nowPrice,
+        buyCost,
+        evalPrice,
+        profit,
+        yieldPct,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.yieldPct - a.yieldPct); // 손익 % 내림차순
+
+  const PAGE_SIZE = 5;
+  let page = 0;
+  const totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
+
+  function renderEmbed(page) {
+    // 페이지 범위 체크
+    if (page < 0) page = 0;
+    if (page >= totalPages) page = totalPages - 1;
+    const slice = allMyCoins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+    const embed = new EmbedBuilder()
+      .setTitle('💼 내 코인 평가/수익 현황')
+      .setColor('#2ecc71')
+      .setTimestamp()
+      .setImage('https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp');
+
+    if (!slice.length) {
+      embed.setDescription('보유 코인이 없습니다.');
+    } else {
+      let detailLines = [];
+      let totalEval = 0, totalBuy = 0, totalProfit = 0;
+      slice.forEach((c) => {
+        totalEval += c.evalPrice;
+        totalBuy += c.buyCost;
+        totalProfit += c.profit;
+        detailLines.push(
+          `**${c.name}**
+• 보유: ${c.q}개
+• 누적매수: ${Number(c.buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
+• 평가액: ${Number(c.evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
+• 손익: ${c.profit>=0?`+${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${c.yieldPct>=0?'+':''}${c.yieldPct.toFixed(2)}%)`
+        );
+      });
+      const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+      embed.setDescription(detailLines.join('\n\n'));
+      embed.addFields(
+        { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+        { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+        { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
       );
     }
-    const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-    embed.setDescription(detailLines.join('\n\n'));
-    embed.addFields(
-      { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-      { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-      { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-    );
+    embed.setFooter({ text: `페이지 ${page+1}/${totalPages}` });
+    return embed;
   }
-  return embed;
-};
 
-      const e = buildMyCoinEmbed();
-      const refreshButton = new ButtonBuilder()
-        .setCustomId('refresh_mycoin')
-        .setLabel('🔄 새로고침')
-        .setStyle(ButtonStyle.Success);
-      const row = new ActionRowBuilder().addComponents(refreshButton);
+  const navRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('prev')
+      .setLabel('◀️ 이전')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page === 0),
+    new ButtonBuilder()
+      .setCustomId('next')
+      .setLabel('▶️ 다음')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page >= totalPages - 1)
+  );
 
-      await interaction.editReply({ embeds: [e], components: [row] });
+  await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
 
-      const msg = await interaction.fetchReply();
-      const collector = msg.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 600_000,
-        filter: btn => btn.user.id === interaction.user.id && btn.customId === 'refresh_mycoin'
-      });
-      collector.on('collect', async btn => {
-        await btn.deferUpdate();
-        const coins = await loadJson(coinsPath, {});
-        const wallets = await loadJson(walletsPath, {});
-        const userW = wallets[interaction.user.id] || {};
-        const userBuys = wallets[interaction.user.id + "_buys"] || {};
+  const msg = await interaction.fetchReply();
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 600_000,
+    filter: btn => btn.user.id === interaction.user.id && ['prev', 'next'].includes(btn.customId)
+  });
 
-        const updatedEmbed = buildMyCoinEmbed(coins, userW, userBuys);
-        await interaction.editReply({ embeds: [updatedEmbed], components: [row] });
-      });
+  collector.on('collect', async btn => {
+    await btn.deferUpdate();
+    if (btn.customId === 'prev') page = Math.max(0, page - 1);
+    if (btn.customId === 'next') page = Math.min(totalPages - 1, page + 1);
+    // 버튼 다시 업데이트
+    navRow.components[0].setDisabled(page === 0);
+    navRow.components[1].setDisabled(page >= totalPages - 1);
+    await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
+  });
 
-      return;
-    }
+  collector.on('end', async () => {
+    try { await interaction.editReply({ components: [] }); } catch {}
+  });
+
+  return;
+}
 
     // 6. 순위
     if (sub === '순위') {
