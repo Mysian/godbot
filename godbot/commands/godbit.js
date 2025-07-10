@@ -999,19 +999,47 @@ module.exports = {
 }
 
       // === 버튼/컨트롤 ===
-      function buildNavRow(page, filter, totalLen) {
+      function buildNavRows(page, filter, totalLen) {
   let showLen = totalLen;
   if (filter) showLen = 1;
   const totalPages = Math.max(1, Math.ceil(Math.max(showLen,1) / PAGE_SIZE));
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0 || filter != null || totalPages <= 1),
-    new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages-1 || filter != null || totalPages <= 1),
-    new ButtonBuilder().setCustomId('filter_most').setLabel('최다 보유').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('filter_mosteval').setLabel('평가액 ↑').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('filter_leasteval').setLabel('평가액 ↓').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('filter_all').setLabel('전체').setStyle(ButtonStyle.Success).setDisabled(!filter)
+  
+  // 첫째 줄: 이전/다음
+  const navRow1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('prev')
+      .setLabel('◀️ 이전')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page === 0 || filter != null || totalPages <= 1),
+    new ButtonBuilder()
+      .setCustomId('next')
+      .setLabel('▶️ 다음')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page >= totalPages-1 || filter != null || totalPages <= 1)
   );
+  // 둘째 줄: 필터
+  const navRow2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('filter_most')
+      .setLabel('최다 보유')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('filter_mosteval')
+      .setLabel('평가액 ↑')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('filter_leasteval')
+      .setLabel('평가액 ↓')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('filter_all')
+      .setLabel('전체')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!filter)
+  );
+  return [navRow1, navRow2];
 }
+
 
       let currentEmbed = renderEmbed(page, filter);
       let navRow = buildNavRow(page, filter, allMyCoins.length);
