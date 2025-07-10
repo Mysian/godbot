@@ -373,7 +373,7 @@ module.exports = {
 
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id,
-        time: 60 * 1000,
+        time: 300 * 1000,
       });
 
       collector.on("collect", async (i) => {
