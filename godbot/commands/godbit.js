@@ -948,7 +948,7 @@ function getAmountLabel(val) {
 
      // 한줄평 생성
   function getOneLineReview(totalYield, totalEval) {
-  let scale = getScale(totalEval);
+  let scale = getAmountLabel(totalEval);
      // 초마이너스 구간 (10~50% 단위, -2000%까지)
   if (totalYield <= -2000) return `🕳️ "이쯤 되면… 코인판 흑역사. 지갑도 마음도 비워짐"${scale}`;
   if (totalYield <= -1950) return `🌑 내 인생이 여기서 끝날 줄은 몰랐다${scale}`;
