@@ -1,4 +1,14 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ComponentType } = require('discord.js');
+const { 
+  SlashCommandBuilder, 
+  EmbedBuilder, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  ModalBuilder, 
+  TextInputBuilder, 
+  TextInputStyle, 
+  ComponentType 
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
@@ -152,9 +162,9 @@ module.exports = {
         page = 1;
       }
       if (i.customId === 'search') {
-        // 모달 열기
+        // 모달 customId에 유저ID 포함
         const modal = new ModalBuilder()
-          .setCustomId('be_search_modal')
+          .setCustomId(`be_search_modal_${targetUser.id}`)
           .setTitle('거래내역 검색');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
@@ -167,23 +177,6 @@ module.exports = {
           )
         );
         await i.showModal(modal);
-
-        // 모달 입력 대기
-        const submitted = await i.awaitModalSubmit({ time: 30_000 }).catch(() => null);
-        if (submitted) {
-          searchTerm = submitted.fields.getTextInputValue('searchTerm').trim();
-          filter = FILTERS.SEARCH;
-          page = 1;
-          historyList = (freshBE[targetUser.id]?.history || []);
-          filteredHistory = historyList.filter(h =>
-            (h.reason && h.reason.includes(searchTerm)) ||
-            String(h.amount).includes(searchTerm)
-          );
-          maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
-          const embedSearched = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm);
-          const rowSearched = buildRow(page, maxPage, filter);
-          await submitted.update({ embeds: [embedSearched], components: [rowSearched] });
-        }
         return;
       }
 
@@ -212,11 +205,20 @@ module.exports = {
       } catch (e) { }
     });
   }
-  module.exports.modal = async function(interaction) {
-  const userId = interaction.user.id;
-  const targetUser = interaction.user;
+};
+
+// ==== 모달 핸들러 (본인/타인 모두 지원) ====
+module.exports.modal = async function(interaction) {
+  // customId: be_search_modal_유저ID
+  let userId = interaction.user.id;
+  let targetUser = interaction.user;
+  const idFromCustomId = interaction.customId.split("_")[3];
+  if (idFromCustomId) {
+    userId = idFromCustomId;
+    targetUser = await interaction.client.users.fetch(userId);
+  }
   const be = loadBE();
-  const data = be[targetUser.id];
+  const data = be[userId];
 
   let searchTerm = interaction.fields.getTextInputValue('searchTerm').trim();
   let historyList = (data?.history || []);
