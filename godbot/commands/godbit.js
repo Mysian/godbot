@@ -826,7 +826,9 @@ module.exports = {
     // 3. 매수
     if (sub === '매수') {
       await interaction.deferReply({ ephemeral: true });
-      const coin = interaction.options.getString('코인');
+      const rawInput = interaction.options.getString('코인');
+      let coin = rawInput.trim();
+      if (!coin.endsWith('코인')) coin += '코인';
       const amount = interaction.options.getInteger('수량');
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
@@ -862,7 +864,9 @@ module.exports = {
     // 4. 매도
     if (sub === '매도') {
       await interaction.deferReply({ ephemeral: true });
-      const coin = interaction.options.getString('코인');
+      const rawInput = interaction.options.getString('코인');
+      let coin = rawInput.trim();
+      if (!coin.endsWith('코인')) coin += '코인';
       const amount = interaction.options.getInteger('수량');
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
