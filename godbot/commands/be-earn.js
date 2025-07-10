@@ -105,6 +105,41 @@ function deckInit() {
   return deck;
 }
 
+async function handleUpdownStart(interaction) {
+  const userId = interaction.user.id;
+  const bet = 3000;
+  if (!hasProfile(userId)) {
+    await interaction.reply({
+      content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.",
+      ephemeral: true
+    });
+    return;
+  }
+  if (getUserBe(userId) < bet) {
+    await interaction.reply({ content: '❌ BE가 부족합니다! (필요: 3,000 BE)', ephemeral: true });
+    return;
+  }
+  setUserBe(userId, -bet, '업다운 베팅금 소멸(시작)');
+  const answer = Math.floor(Math.random() * 100) + 1;
+  interaction.client._updown = interaction.client._updown || {};
+  interaction.client._updown[userId] = { answer, tries: [], attempt: 1, started: Date.now() };
+  const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+  const modal = new ModalBuilder()
+    .setCustomId('updown_modal')
+    .setTitle('업다운 게임')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('updown_input')
+          .setLabel(`[1/5] 1~100 숫자 입력!`)
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(1).setMaxLength(3)
+          .setPlaceholder('예: 42')
+      )
+    );
+  await interaction.showModal(modal);
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수획득')
@@ -627,7 +662,6 @@ if (kind === 'alba') {
 
   // 5. 업다운
   if (kind === 'updown') {
-  // 잠금 불필요, 안내만 출력
   const embed = new EmbedBuilder()
     .setTitle('🔢 업다운 게임')
     .setDescription(
@@ -648,7 +682,7 @@ if (kind === 'alba') {
   );
   await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
   return;
-}
+ }
 },
 
   // --- 모달 submit (modal) ---
