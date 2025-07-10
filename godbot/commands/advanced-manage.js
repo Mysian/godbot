@@ -8,6 +8,7 @@ const NEWBIE_ROLE_ID = '1295701019430227988';
 const NEWBIE_DAYS = 7;
 const PAGE_SIZE = 30;
 const EXEMPT_ROLE_IDS = ['1371476512024559756'];
+const LOG_CHANNEL_ID = '1380874052855529605';
 
 const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
 const PERIODS = [
@@ -50,6 +51,13 @@ function getMostRecentDate(obj) {
     if (!latest || dt > latest) latest = dt;
   });
   return latest;
+}
+
+// 유저 닉네임(ID) 리스트 (최대 30, 초과시 외 N명)
+function getUserDisplay(arr) {
+  if (!arr.length) return '없음';
+  if (arr.length <= 30) return arr.map(u => `${u.nickname} (\`${u.id}\`)`).join('\n');
+  return arr.slice(0, 30).map(u => `${u.nickname} (\`${u.id}\`)`).join('\n') + `\n...외 ${arr.length - 30}명`;
 }
 
 async function fetchLongInactive(guild, days, warnedObj) {
@@ -244,36 +252,53 @@ module.exports = {
         } else if (i.customId === 'kick') {
           await i.deferUpdate();
           let kicked = 0;
+          let kickedList = [];
           for (const u of userList) {
             if (!u.warned) continue;
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
-              if (m) await m.kick(`고급관리 - ${title} 일괄 추방`);
-              kicked++;
+              if (m) {
+                await m.kick(`고급관리 - ${title} 일괄 추방`);
+                kicked++;
+                kickedList.push({ nickname: u.nickname, id: u.id });
+              }
             } catch { }
+          }
+          // 로그 채널
+          const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+          if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+              .setTitle('일괄 추방 처리')
+              .setDescription(`관리자: <@${interaction.user.id}>\n대상: ${userList.filter(u => u.warned).length}명\n추방 성공: ${kicked}명`)
+              .setColor('#c0392b')
+              .setTimestamp();
+            if (kickedList.length)
+              logEmbed.addFields({
+                name: `추방 닉네임(ID) [${kickedList.length}명]`,
+                value: getUserDisplay(kickedList)
+              });
+            logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
           await interaction.followUp({ content: `${kicked}명 추방 완료!`, ephemeral: true });
         } else if (i.customId === 'warn') {
           await i.deferUpdate();
           let warned = 0, failed = [];
+          let warnedList = [];
           warnedObj = readWarnHistory();
-          let total = 0;
           for (const u of userList) {
             if (warnedObj[u.id]) continue;
-            total++;
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
               if (m) {
                 await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`)
-                  .catch(e => {
-                    failed.push({ id: u.id, reason: e.message });
-                  });
+                  .catch(() => { failed.push({ id: u.id, nickname: u.nickname }); });
                 warnedObj[u.id] = { ts: Date.now() };
                 warned++;
+                warnedList.push({ nickname: u.nickname, id: u.id });
                 await new Promise(res => setTimeout(res, 1200));
               }
-            } catch (e) {
-              failed.push({ id: u.id, reason: e.message });
+            } catch {
+              failed.push({ id: u.id, nickname: u.nickname });
             }
           }
           saveWarnHistory(warnedObj);
@@ -284,10 +309,31 @@ module.exports = {
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
 
+          // 로그 채널
+          const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+          if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+              .setTitle('경고 DM 일괄 전송')
+              .setDescription(`관리자: <@${interaction.user.id}>\n대상: ${warned + failed.length}명\n성공: ${warned}명 / 실패: ${failed.length}명`)
+              .setColor('#e67e22')
+              .setTimestamp();
+            if (warnedList.length)
+              logEmbed.addFields({
+                name: `성공 닉네임(ID) [${warnedList.length}명]`,
+                value: getUserDisplay(warnedList)
+              });
+            if (failed.length)
+              logEmbed.addFields({
+                name: `실패 닉네임(ID) [${failed.length}명]`,
+                value: getUserDisplay(failed)
+              });
+            logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+          }
+
           let resultMsg = `✅ DM 발송: ${warned}명 / 실패: ${failed.length}명`;
           if (failed.length > 0) {
-            resultMsg += "\n\n❌ 실패 id:\n";
-            resultMsg += failed.map(f => `• ${f.id} (${f.reason || '알 수 없음'})`).join('\n');
+            resultMsg += "\n\n❌ 실패 닉네임(ID):\n";
+            resultMsg += getUserDisplay(failed);
           }
           await interaction.followUp({ content: resultMsg, ephemeral: true });
           await msg.edit({ embeds, components: [makeRow(true), makePeriodRow(true)] });
