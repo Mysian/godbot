@@ -877,19 +877,34 @@ function loadStatus() {
 }
 
 // ✅ 멘션 상태 메시지 안내
+const EXCLUDED_CHANNEL_IDS = [
+  "1209147973255036959", // 제외할 채널ID
+  "1203201767085572096",
+  "1201723672495128636",
+  "1264514955269640252"
+];
+const EXCLUDED_CATEGORY_IDS = [
+  "1204329649530998794", // 제외할 카테고리ID
+  "1211601490137980988"
+];
+
 client.on("messageCreate", async msg => {
   if (!msg.guild || msg.author.bot) return;
+  // 채널ID 혹은 카테고리ID가 예외라면 리턴
+  if (
+    EXCLUDED_CHANNEL_IDS.includes(msg.channel.id) ||
+    (msg.channel.parentId && EXCLUDED_CATEGORY_IDS.includes(msg.channel.parentId))
+  ) return;
+
   const status = loadStatus();
-  // 멘션 유저 중 상태설정 된 사람 찾기
   const mentioned = msg.mentions.members?.find(u => status[u.id]);
   if (mentioned) {
     try {
       await msg.channel.send(`-# [상태] 현재 ${mentioned.displayName}님은 ${status[mentioned.id]}`);
-    } catch (e) {
-      // DM 차단 등 예외는 무시
-    }
+    } catch (e) {}
   }
 });
+
 
 // 120분 혼자 있는 경우 잠수방 이전
 require("./utils/auto-afk-move")(client);
