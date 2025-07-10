@@ -51,7 +51,7 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
       { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }
     )
     .setColor(0x3399ff)
-    .setImage(EMBED_IMAGE);
+    .setImage(EMBED_IMAGE)
     .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 }));
 
   if (filter === FILTERS.SEARCH && searchTerm)
