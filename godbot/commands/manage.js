@@ -272,22 +272,14 @@ module.exports = {
         const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
 
         let lastActiveStr = "기록 없음";
-        try {
-          const rawPath = path.join(__dirname, "../../activity-data.json");
-          if (fs.existsSync(rawPath)) {
-            const activityData = JSON.parse(fs.readFileSync(rawPath, "utf8"));
-            const userData = activityData[target.id];
-            if (userData) {
-              const timestamps = Object.keys(userData).filter(ts => !isNaN(Date.parse(ts)));
-              const lastActive = timestamps.sort().reverse()[0];
-              if (lastActive) {
-                lastActiveStr = new Date(lastActive).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-              }
-            }
-          }
-        } catch (err) {
-          console.error("📛 마지막 활동일 가져오는 중 오류:", err);
-        }
+try {
+  const lastActiveDate = activityTracker.getLastActiveDate(target.id);
+  if (lastActiveDate) {
+    lastActiveStr = lastActiveDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  }
+} catch (err) {
+  console.error("📛 마지막 활동일 가져오는 중 오류:", err);
+}
 
         const joinedAt = member.joinedAt;
         const joinedAtStr = joinedAt
