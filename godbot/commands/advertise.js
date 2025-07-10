@@ -7,10 +7,10 @@ const DEFAULT_IMG = 'https://media.discordapp.net/attachments/138872899378794091
 const CLOSED_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391814250963402832/----001_1.png?ex=686d4388&is=686bf208&hm=a4289368a5fc7aa23f57d06c66d0e9e2ff3f62dd4cb21001132f74ee0ade60ac&=&format=webp&quality=lossless';
 
 // 서버 커스텀 이모지 ID
-const EMOJI_IDS = [
-  "1361740502696726685", // F1_Join
-  "1361740471331848423", // F2_Watching
-  "1361740486561239161"  // F7_Check
+const CUSTOM_EMOJIS = [
+  { name: "F1_Join", id: "1361740502696726685" },
+  { name: "F2_Watching", id: "1361740471331848423" },
+  { name: "F7_Check", id: "1361740486561239161" }
 ];
 
 function isImageUrl(url) {
@@ -137,9 +137,11 @@ module.exports = {
     const msg = await 모집채널.send(msgOptions);
 
     // 서버 이모지 3종 자동 반응
-    for (const emojiId of EMOJI_IDS) {
-      try { await msg.react(`<:_:${emojiId}>`); } catch (e) {}
-    }
+    for (const emoji of CUSTOM_EMOJIS) {
+  try {
+    await msg.react(`<:${emoji.name}:${emoji.id}>`);
+  } catch (e) {}
+}
 
     // 마감 타이머 (무조건 실행)
     setTimeout(async () => {
