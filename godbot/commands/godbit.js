@@ -946,77 +946,72 @@ module.exports = {
       let filter = null; // null=전체, most/mosteval/leasteval 중 1개
 
       function renderEmbed(page = 0, filter = null) {
-        let showCoins = allMyCoins;
-        let filterName = '';
-        if (filter === 'most') {
-          showCoins = getMostOwned() ? [getMostOwned()] : [];
-          filterName = '최다 보유 코인';
-        } else if (filter === 'mosteval') {
-          showCoins = getMostEval() ? [getMostEval()] : [];
-          filterName = '평가액 제일 높은 코인';
-        } else if (filter === 'leasteval') {
-          showCoins = getLeastEval() ? [getLeastEval()] : [];
-          filterName = '평가액 제일 낮은 코인';
-        }
-        const totalPages = Math.max(1, Math.ceil(showCoins.length / PAGE_SIZE));
-        if (page >= totalPages) page = totalPages - 1;
-
-        const slice = showCoins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
-        const embed = new EmbedBuilder()
-          .setTitle(`💼 내 코인 평가/수익 현황${filterName ? ` (${filterName})` : ''}`)
-          .setColor('#2ecc71')
-          .setTimestamp()
-          .setThumbnail(interaction.user.displayAvatarURL())
-          .setImage('https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp');
-
-        if (!slice.length) {
-          embed.setDescription('보유 코인이 없습니다.');
-        } else {
-          let detailLines = [];
-          let totalEval = 0, totalBuy = 0, totalProfit = 0;
-          slice.forEach((c) => {
-            totalEval += c.evalPrice;
-            totalBuy  += c.buyCost;
-            totalProfit += c.profit;
-            detailLines.push(
-              `**${c.name}**
+  let showCoins = allMyCoins;
+  let filterName = '';
+  if (filter === 'most') {
+    showCoins = getMostOwned() ? [getMostOwned()] : [];
+    filterName = '최다 보유 코인';
+  } else if (filter === 'mosteval') {
+    showCoins = getMostEval() ? [getMostEval()] : [];
+    filterName = '평가액 제일 높은 코인';
+  } else if (filter === 'leasteval') {
+    showCoins = getLeastEval() ? [getLeastEval()] : [];
+    filterName = '평가액 제일 낮은 코인';
+  }
+  const totalPages = Math.max(1, Math.ceil(Math.max(showCoins.length,1) / PAGE_SIZE));
+  if (page >= totalPages) page = totalPages - 1;
+  if (page < 0) page = 0;
+  const slice = showCoins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const embed = new EmbedBuilder()
+    .setTitle(`💼 내 코인 평가/수익 현황${filterName ? ` (${filterName})` : ''}`)
+    .setColor('#2ecc71')
+    .setTimestamp()
+    .setThumbnail(interaction.user.displayAvatarURL())
+    .setImage('https://media.discordapp.net/attachments/1388728993787940914/1392703440240513075/Image_fx_1.jpg?ex=68707fa7&is=686f2e27&hm=735553683e768da9e622d19ac6398acd797aa1386bff306b6a0af94f37557601&=&format=webp');
+  if (!slice.length) {
+    embed.setDescription('보유 코인이 없습니다.');
+  } else {
+    let detailLines = [];
+    let totalEval = 0, totalBuy = 0, totalProfit = 0;
+    slice.forEach((c) => {
+      totalEval += c.evalPrice;
+      totalBuy  += c.buyCost;
+      totalProfit += c.profit;
+      detailLines.push(
+        `**${c.name}**
 • 보유: ${c.q}개
 • 누적매수: ${Number(c.buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
 • 평가액: ${Number(c.evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
 • 손익: ${c.profit>=0?`+${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${c.yieldPct>=0?'+':''}${c.yieldPct.toFixed(2)}%)`
-            );
-          });
-          embed.setDescription(detailLines.join('\n\n'));
-          const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
-          embed.addFields(
-            { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-            { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-            { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
-          );
-        }
-
-        // 푸터에 페이지 표기
-        if (!filterName) embed.setFooter({ text: `페이지 ${page+1}/${Math.max(1, Math.ceil(showCoins.length / PAGE_SIZE))}` });
-        else embed.setFooter({ text: filterName });
-
-        return embed;
-      }
+      );
+    });
+    embed.setDescription(detailLines.join('\n\n'));
+    const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
+    embed.addFields(
+      { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+      { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+      { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+    );
+  }
+  if (!filterName) embed.setFooter({ text: `페이지 ${page+1}/${totalPages}` });
+  else embed.setFooter({ text: filterName });
+  return embed;
+}
 
       // === 버튼/컨트롤 ===
       function buildNavRow(page, filter, totalLen) {
-        let showLen = totalLen;
-        if (filter) showLen = 1;
-        const totalPages = Math.max(1, Math.ceil(showLen / PAGE_SIZE));
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0 || filter!=null),
-          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages-1 || filter!=null),
-          new ButtonBuilder().setCustomId('filter_most').setLabel('최다 보유').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('filter_mosteval').setLabel('평가액 ↑').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('filter_leasteval').setLabel('평가액 ↓').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('filter_all').setLabel('전체').setStyle(ButtonStyle.Success).setDisabled(!filter)
-        );
-      }
+  let showLen = totalLen;
+  if (filter) showLen = 1;
+  const totalPages = Math.max(1, Math.ceil(Math.max(showLen,1) / PAGE_SIZE));
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0 || filter != null || totalPages <= 1),
+    new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages-1 || filter != null || totalPages <= 1),
+    new ButtonBuilder().setCustomId('filter_most').setLabel('최다 보유').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('filter_mosteval').setLabel('평가액 ↑').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('filter_leasteval').setLabel('평가액 ↓').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('filter_all').setLabel('전체').setStyle(ButtonStyle.Success).setDisabled(!filter)
+  );
+}
 
       let currentEmbed = renderEmbed(page, filter);
       let navRow = buildNavRow(page, filter, allMyCoins.length);
@@ -1030,17 +1025,18 @@ module.exports = {
       });
 
       collector.on('collect', async btn => {
-        await btn.deferUpdate();
-        if (btn.customId === 'prev') page = Math.max(0, page - 1);
-        else if (btn.customId === 'next') page += 1;
-        else if (btn.customId === 'filter_most')   { filter = 'most';   page = 0; }
-        else if (btn.customId === 'filter_mosteval') { filter = 'mosteval'; page = 0; }
-        else if (btn.customId === 'filter_leasteval') { filter = 'leasteval'; page = 0; }
-        else if (btn.customId === 'filter_all')   { filter = null;    page = 0; }
-        currentEmbed = renderEmbed(page, filter);
-        navRow = buildNavRow(page, filter, allMyCoins.length);
-        await interaction.editReply({ embeds: [currentEmbed], components: [navRow] });
-      });
+  await btn.deferUpdate();
+  const totalPages = Math.max(1, Math.ceil(Math.max((filter ? 1 : allMyCoins.length),1) / PAGE_SIZE));
+  if (btn.customId === 'prev') page = Math.max(0, page - 1);
+  else if (btn.customId === 'next') page = Math.min(totalPages-1, page + 1);
+  else if (btn.customId === 'filter_most')   { filter = 'most';   page = 0; }
+  else if (btn.customId === 'filter_mosteval') { filter = 'mosteval'; page = 0; }
+  else if (btn.customId === 'filter_leasteval') { filter = 'leasteval'; page = 0; }
+  else if (btn.customId === 'filter_all')   { filter = null;    page = 0; }
+  currentEmbed = renderEmbed(page, filter);
+  navRow = buildNavRow(page, filter, allMyCoins.length);
+  await interaction.editReply({ embeds: [currentEmbed], components: [navRow] });
+});
 
       collector.on('end', async () => {
         try { await interaction.editReply({ components: [] }); } catch {}
