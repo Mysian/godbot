@@ -383,27 +383,40 @@ for (const [name, info] of Object.entries(coins)) {
     // ===== 확률적 신규상장/부활 =====
     // 1. 먼저 부활 기회(상폐 7일 경과 코인) 0.2% 확률 (부활 후보 있으면만!)
     if (delistedCoins.length > 0 && Math.random() < 0.002) { // 부활 상장 확률
-      const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
-      const now = new Date().toISOString();
-      const types = [
-        { coinType: 'verystable', volatility: { min: -0.01, max: 0.01 }, trend: 0.001 },
-        { coinType: 'chaotic', volatility: { min: -0.35, max: 0.35 }, trend: 0.02 },
-        { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
-        { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
-        { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
-        { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
-      ];
-      const pick = pickRandom(types);
-      coins[reviveName].coinType = pick.coinType;
-      coins[reviveName].volatility = pick.volatility;
-      coins[reviveName].trend = pick.trend;
-      coins[reviveName].delistedAt = null;
-      coins[reviveName]._alreadyRevived = true;
-      coins[reviveName].listedAt = now;
-      revivedListed = { name: reviveName, time: now };
-      await postLogMsg('revive', reviveName, client);
-      numListed++;
-    }
+  const reviveName = delistedCoins[Math.floor(Math.random() * delistedCoins.length)];
+  const now = new Date().toISOString();
+  const prevPrice =
+    coins[reviveName].history?.length
+      ? coins[reviveName].history[coins[reviveName].history.length - 1]
+      : 1000;
+  const randomRatio = 0.9 + Math.random() * 0.45; // 0.90 ~ 1.35
+  const revivePrice = Number((prevPrice * randomRatio).toFixed(3));
+
+  const types = [
+    { coinType: 'verystable', volatility: { min: -0.01, max: 0.01 }, trend: 0.001 },
+    { coinType: 'chaotic', volatility: { min: -0.35, max: 0.35 }, trend: 0.02 },
+    { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
+    { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
+    { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
+    { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
+  ];
+  const pick = pickRandom(types);
+
+  coins[reviveName].coinType = pick.coinType;
+  coins[reviveName].volatility = pick.volatility;
+  coins[reviveName].trend = pick.trend;
+  coins[reviveName].delistedAt = null;
+  coins[reviveName]._alreadyRevived = true;
+  coins[reviveName].listedAt = now;
+  coins[reviveName].price = revivePrice;
+  coins[reviveName].history = [revivePrice];
+  coins[reviveName].historyT = [now];
+
+  revivedListed = { name: reviveName, time: now };
+  await postLogMsg('revive', reviveName, client);
+  numListed++;
+}
+
 
     // 2. 그 외엔 0.5% 확률로만 신규 상장 (후보가 있을 때만!)
     else if (candidateNames.length > 0 && numListed < totalAvailable && Math.random() < 0.005) { // 신규 상장 확률
