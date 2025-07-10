@@ -1,13 +1,17 @@
 const { 
   SlashCommandBuilder, 
-  EmbedBuilder, 
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
+  EmbedBuilder
 } = require("discord.js");
 
 const DEFAULT_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1392737667514634330/----001.png?ex=68709f87&is=686f4e07&hm=1449b220ca1ebd3426465560b0ec369190f24b3c761c87cc3ba6ec6c552546ba&=&format=webp&quality=lossless';
 const CLOSED_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391814250963402832/----001_1.png?ex=686d4388&is=686bf208&hm=a4289368a5fc7aa23f57d06c66d0e9e2ff3f62dd4cb21001132f74ee0ade60ac&=&format=webp&quality=lossless';
+
+// 서버 커스텀 이모지 ID
+const EMOJI_IDS = [
+  "1361740502696726685", // F1_Join
+  "1361740471331848423", // F2_Watching
+  "1361740486561239161"  // F7_Check
+];
 
 function isImageUrl(url) {
   return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
@@ -68,7 +72,7 @@ module.exports = {
     .addIntegerOption(option =>
       option
         .setName("마감시간")
-        .setDescription("버튼이 유지될 시간(단위: 시간, 1~24, 기본 24)")
+        .setDescription("모집글 유지 시간(1~24시간, 기본 1)")
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(24)
@@ -127,47 +131,30 @@ module.exports = {
       });
     }
 
-    let row = null;
     let msgOptions = { embeds: [embed] };
-
-    if (voiceId) {
-  const customId = `joinintent_${voiceId}_${closeAt}`;
-  console.log("[DEBUG] 생성되는 버튼 customId:", customId);
-  row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(customId)
-      .setLabel("참여 의사 밝히기")
-      .setStyle(ButtonStyle.Success)
-  );
-  msgOptions.components = [row];
-}
     if (mentionRole) msgOptions.content = `${mentionRole}`;
 
     const msg = await 모집채널.send(msgOptions);
 
-    if (voiceId) {
-      setTimeout(async () => {
-        try {
-          const prevContent = embed.data.description || '';
-          embed.setDescription(`[마감되었습니다.]\n~~${prevContent}~~`);
-          const fields = embed.data.fields.map(f =>
-            f.name === "마감까지"
-              ? { name: "마감까지", value: "마감됨", inline: true }
-              : f
-          );
-          embed.setFields(fields);
-          embed.setImage(CLOSED_IMG);
-          const disabledRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`disabled2`)
-              .setLabel("참여 의사 밝히기")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          );
-          await msg.edit({ embeds: [embed], components: [disabledRow] });
-        } catch (err) {}
-      }, closeMs);
+    // 서버 이모지 3종 자동 반응
+    for (const emojiId of EMOJI_IDS) {
+      try { await msg.react(`<:_:${emojiId}>`); } catch (e) {}
     }
+
+    // 마감 타이머 (무조건 실행)
+    setTimeout(async () => {
+      try {
+        embed.setDescription(`[모집 종료]\n~~${content}~~`);
+        const fields = embed.data.fields.map(f =>
+          f.name === "마감까지"
+            ? { name: "마감까지", value: "마감 종료", inline: true }
+            : f
+        );
+        embed.setFields(fields);
+        embed.setImage(CLOSED_IMG);
+        await msg.edit({ embeds: [embed] });
+      } catch (err) {}
+    }, closeMs);
 
     await interaction.reply({
       content: "✅ 모집 글이 전용 채널에 정상적으로 게시되었어요!",
