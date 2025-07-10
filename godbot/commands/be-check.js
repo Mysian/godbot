@@ -212,4 +212,24 @@ module.exports = {
       } catch (e) { }
     });
   }
+  module.exports.modal = async function(interaction) {
+  const userId = interaction.user.id;
+  const targetUser = interaction.user;
+  const be = loadBE();
+  const data = be[targetUser.id];
+
+  let searchTerm = interaction.fields.getTextInputValue('searchTerm').trim();
+  let historyList = (data?.history || []);
+  let filteredHistory = historyList.filter(h =>
+    (h.reason && h.reason.includes(searchTerm)) ||
+    String(h.amount).includes(searchTerm)
+  );
+  let page = 1;
+  let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
+  let filter = FILTERS.SEARCH;
+
+  const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
+  const row = buildRow(page, maxPage, filter);
+
+  await interaction.update({ embeds: [embed], components: [row] });
 };
