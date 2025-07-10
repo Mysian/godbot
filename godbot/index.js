@@ -406,18 +406,21 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
 
    // === advertise.js "참여 의사 밝히기" 버튼 ===
   if (
-    interaction.isButton() &&
-    interaction.customId &&
-    interaction.customId.startsWith('joinintent_')
-  ) {
-    const [_, voiceId, closeAt] = interaction.customId.split('_');
-    if (Date.now() > Number(closeAt)) {
-      await interaction.reply({ content: '⚠️ 이미 마감된 모집입니다.', ephemeral: true });
-      return;
-    }
-    await interaction.reply({ content: `✅ 참여 의사 등록 완료!`, ephemeral: true });
+  interaction.isButton() &&
+  interaction.customId &&
+  interaction.customId.startsWith('joinintent_')
+) {
+  const arr = interaction.customId.split('_');
+  console.log("[DEBUG] split 결과:", arr);
+  const closeAt = arr[2];
+  console.log("[DEBUG] closeAt 값:", closeAt, "now:", Date.now(), "남은시간(ms):", Number(closeAt) - Date.now());
+  if (Date.now() > Number(closeAt)) {
+    await interaction.reply({ content: '⚠️ 이미 마감된 모집입니다.', ephemeral: true });
     return;
   }
+  await interaction.reply({ content: `✅ 참여 의사 등록 완료!`, ephemeral: true });
+  return;
+}
 
   // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
