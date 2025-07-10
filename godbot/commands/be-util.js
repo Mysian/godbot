@@ -5,6 +5,7 @@ const lockfile = require("proper-lockfile"); // 추가
 
 const bePath = path.join(__dirname, '../data/BE.json');
 const configPath = path.join(__dirname, '../data/BE-config.json');
+const HISTORY_LIMIT = 1000; // 이력 최대 1000개
 
 function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, '{}');
@@ -40,6 +41,10 @@ async function addBE(userId, amount, reason) {
       reason,
       timestamp: Date.now()
     });
+    // 히스토리 1000개 제한
+    if (be[userId].history.length > HISTORY_LIMIT) {
+      be[userId].history = be[userId].history.slice(-HISTORY_LIMIT);
+    }
     saveBE(be);
   } finally {
     if (release) await release();
@@ -77,6 +82,13 @@ async function transferBE(fromId, toId, amount, feePercent, reasonInput) {
       reason: recvReason,
       timestamp: Date.now()
     });
+    // 히스토리 1000개 제한 (보내는 사람, 받는 사람 각각 체크)
+    if (be[fromId].history.length > HISTORY_LIMIT) {
+      be[fromId].history = be[fromId].history.slice(-HISTORY_LIMIT);
+    }
+    if (be[toId].history.length > HISTORY_LIMIT) {
+      be[toId].history = be[toId].history.slice(-HISTORY_LIMIT);
+    }
     saveBE(be);
     return { ok: true, fee, sendAmount };
   } finally {
