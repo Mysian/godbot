@@ -896,39 +896,43 @@ module.exports = {
 
     }
 
-      // 5. 내코인
-    if (sub === '내코인') {
+
+    // 5. 갓비트 내코인
+      if (sub === '내코인') {
   await interaction.deferReply({ ephemeral: true });
   const coins = await loadJson(coinsPath, {});
   const wallets = await loadJson(walletsPath, {});
   const userW = wallets[interaction.user.id] || {};
   const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
-  // 1. 코인 배열 생성 및 수익률로 정렬
-  const allMyCoins = Object.entries(userW)
-    .map(([c, q]) => {
-      if (!coins[c] || coins[c].delistedAt) return null;
-      const nowPrice = coins[c]?.price || 0;
-      const buyCost = userBuys[c] || 0;
-      const evalPrice = nowPrice * q;
-      const profit = evalPrice - buyCost;
-      const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
-      return {
-        name: c,
-        q,
-        nowPrice,
-        buyCost,
-        evalPrice,
-        profit,
-        yieldPct,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.yieldPct - a.yieldPct); // 손익 % 내림차순
+  // 정렬 함수
+  function getSortedMyCoins(_coins = coins, _userW = userW, _userBuys = userBuys) {
+    return Object.entries(_userW)
+      .map(([c, q]) => {
+        if (!_coins[c] || _coins[c].delistedAt) return null;
+        const nowPrice = _coins[c]?.price || 0;
+        const buyCost = _userBuys[c] || 0;
+        const evalPrice = nowPrice * q;
+        const profit = evalPrice - buyCost;
+        const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
+        return {
+          name: c,
+          q,
+          nowPrice,
+          buyCost,
+          evalPrice,
+          profit,
+          yieldPct,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.yieldPct - a.yieldPct); // 손익 % 내림차순
+  }
 
+  let allMyCoins = getSortedMyCoins();
   const PAGE_SIZE = 5;
   let page = 0;
-  const totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
+  let totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
 
   function renderEmbed(page) {
     // 페이지 범위 체크
@@ -971,6 +975,7 @@ module.exports = {
     return embed;
   }
 
+  // 버튼 ActionRow
   const navRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('prev')
@@ -981,7 +986,11 @@ module.exports = {
       .setCustomId('next')
       .setLabel('▶️ 다음')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(page >= totalPages - 1)
+      .setDisabled(page >= totalPages - 1),
+    new ButtonBuilder()
+      .setCustomId('refresh_mycoin')
+      .setLabel('🔄 새로고침')
+      .setStyle(ButtonStyle.Success)
   );
 
   await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
@@ -990,14 +999,28 @@ module.exports = {
   const collector = msg.createMessageComponentCollector({
     componentType: ComponentType.Button,
     time: 600_000,
-    filter: btn => btn.user.id === interaction.user.id && ['prev', 'next'].includes(btn.customId)
+    filter: btn => btn.user.id === interaction.user.id && ['prev', 'next', 'refresh_mycoin'].includes(btn.customId)
   });
 
   collector.on('collect', async btn => {
+    if (btn.customId === 'refresh_mycoin') {
+      await btn.deferUpdate();
+      // 최신 데이터 불러와서 다시 정렬
+      const coinsNew = await loadJson(coinsPath, {});
+      const walletsNew = await loadJson(walletsPath, {});
+      const userWNew = walletsNew[interaction.user.id] || {};
+      const userBuysNew = walletsNew[interaction.user.id + "_buys"] || {};
+      allMyCoins = getSortedMyCoins(coinsNew, userWNew, userBuysNew);
+      totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
+      if (page >= totalPages) page = totalPages - 1;
+      navRow.components[0].setDisabled(page === 0);
+      navRow.components[1].setDisabled(page >= totalPages - 1);
+      await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
+      return;
+    }
     await btn.deferUpdate();
     if (btn.customId === 'prev') page = Math.max(0, page - 1);
     if (btn.customId === 'next') page = Math.min(totalPages - 1, page + 1);
-    // 버튼 다시 업데이트
     navRow.components[0].setDisabled(page === 0);
     navRow.components[1].setDisabled(page >= totalPages - 1);
     await interaction.editReply({ embeds: [renderEmbed(page)], components: [navRow] });
@@ -1009,6 +1032,7 @@ module.exports = {
 
   return;
 }
+
 
     // 6. 순위
     if (sub === '순위') {
