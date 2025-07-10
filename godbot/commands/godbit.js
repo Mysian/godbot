@@ -950,11 +950,6 @@ module.exports = {
       .sort((a, b) => b.yieldPct - a.yieldPct);
   }
 
-  let allMyCoins = getSortedMyCoins();
-  const PAGE_SIZE = 5;
-  let page = 0;
-  let totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
-
   // 투자 규모
 function getAmountLabel(val) {
   if (val < 1) return " [투자 규모: 극소량]";
