@@ -166,22 +166,39 @@ module.exports = {
         page = 1;
       }
       if (i.customId === 'search') {
-        const modal = new ModalBuilder()
-          .setCustomId('be_search_modal')
-          .setTitle('거래내역 검색');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('searchTerm')
-              .setLabel('검색어(금액/사유 등)')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('예: 강화, 1000, 송금')
-              .setRequired(true)
-          )
-        );
-        await i.showModal(modal);
-        return;
-      }
+  const modal = new ModalBuilder()
+    .setCustomId('be_search_modal')
+    .setTitle('거래내역 검색');
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId('searchTerm')
+        .setLabel('검색어(금액/사유 등)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('예: 강화, 1000, 송금')
+        .setRequired(true)
+    )
+  );
+  await i.showModal(modal);
+
+  // 추가: 모달 제출 await + update로 메시지 교체!
+  const submitted = await i.awaitModalSubmit({ time: 30_000 }).catch(() => null);
+  if (submitted) {
+    searchTerm = submitted.fields.getTextInputValue('searchTerm').trim();
+    filter = FILTERS.SEARCH;
+    page = 1;
+    let filteredHistory = historyList.filter(h =>
+      (h.reason && h.reason.includes(searchTerm)) ||
+      String(h.amount).includes(searchTerm)
+    );
+    total = filteredHistory.length;
+    maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const embedSearched = buildEmbed({ targetUser, data: { ...freshData, history: filteredHistory }, page, maxPage, filter, searchTerm, total });
+    const rowSearched = buildRow({ page, maxPage, filter });
+    await submitted.update({ embeds: [embedSearched], components: [rowSearched] });
+  }
+  return;
+}
 
       let filteredHistory = historyList;
       if (filter === FILTERS.EARN) filteredHistory = filteredHistory.filter(h => h.type === "earn");
