@@ -627,41 +627,28 @@ if (kind === 'alba') {
 
   // 5. 업다운
   if (kind === 'updown') {
-  if (!lock(userId)) {
-    await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
-  }
-  const bet = 3000;
-  if (getUserBe(userId) < bet) {
-    await interaction.reply({ content: "⚠️ 소유 BE 부족! (필요: 3,000 BE)", ephemeral: true });
-    unlock(userId); return;
-  }
-  setUserBe(userId, -bet, '업다운 베팅금 소멸(시작)');
-  // 정답 및 상태 초기화
-  const answer = Math.floor(Math.random() * 100) + 1;
-  let tries = [];
-  let attempt = 1;
-  // 모달 시작
-  const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-  const modal = new ModalBuilder()
-    .setCustomId('updown_modal')
-    .setTitle('업다운 게임')
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('updown_input')
-          .setLabel(`[${attempt}/5] 1~100 숫자 입력!`)
-          .setStyle(TextInputStyle.Short)
-          .setMinLength(1).setMaxLength(3)
-          .setPlaceholder('예: 42')
-      )
+  // 잠금 불필요, 안내만 출력
+  const embed = new EmbedBuilder()
+    .setTitle('🔢 업다운 게임')
+    .setDescription(
+      `1~100 사이 랜덤 숫자를 5번 안에 맞춰봐!\n` +
+      `시도마다 [UP]/[DOWN] 안내가 나와!\n\n` +
+      `**보상표**\n` +
+      `1회: 30,000 BE\n2회: 20,000 BE\n3회: 10,000 BE\n4회: 7,500 BE\n5회: 5,000 BE\n` +
+      `실패시: 3,000 BE 소멸\n\n` +
+      `아래 [업다운 시작하기]를 눌러 시작!\n(배팅금 3,000 BE 필요)`
     );
-  // 임시 저장: interaction.client._updown = { [userId]: { answer, tries: [] } }
-  interaction.client._updown = interaction.client._updown || {};
-  interaction.client._updown[userId] = { answer, tries: [], attempt: 1, interactionId: interaction.id, started: Date.now() };
-
-  await interaction.showModal(modal);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('updown_start')
+      .setLabel('업다운 시작하기')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('🎲')
+      .setDisabled(getUserBe(userId) < 3000)
+  );
+  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
   return;
- }
+}
 },
 
   // --- 모달 submit (modal) ---
