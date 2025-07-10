@@ -404,53 +404,7 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
-   // === advertise.js "참여 의사 밝히기" 버튼 ===
-  if (
-  interaction.isButton() &&
-  interaction.customId &&
-  interaction.customId.startsWith('joinintent_')
-) {
-  const arr = interaction.customId.split('_');
-  const voiceChannelId = arr[1];
-  const closeAt = arr[2];
-  if (Date.now() > Number(closeAt)) {
-    await interaction.reply({ content: '⚠️ 이미 마감된 모집입니다.', ephemeral: true });
-    return;
-  }
-
-  // 모집자 추출 (임베드 필드에서 "모집자" 값 파싱)
-  const msg = await interaction.channel.messages.fetch(interaction.message.id);
-  const embed = EmbedBuilder.from(msg.embeds[0]);
-  let recruiter = null;
-  for (const field of embed.data.fields) {
-    if (field.name === "모집자") {
-      recruiter = field.value.match(/<@(\d+)>/)?.[1];
-      break;
-    }
-  }
-
-  let recruiterMention = recruiter ? `<@${recruiter}>` : "";
-  let userMention = `<@${interaction.user.id}>`;
-
-  // 음성채널ID로 채팅탭 텍스트 채널 불러와서 안내 멘트 전송
-  const voiceTextChannel = await interaction.guild.channels.fetch(voiceChannelId).catch(() => null);
-
-  if (voiceTextChannel && voiceTextChannel.isTextBased()) {
-    await voiceTextChannel.send({
-      content: `${recruiterMention} ${userMention}님이 참여 의사를 밝혔습니다!`
-    });
-  } else {
-    // 혹시 음성채널 채팅탭이 비활성화면 모집글이 있는 채널로 안내
-    await interaction.channel.send({
-      content: `${recruiterMention} ${userMention}님이 참여 의사를 밝혔습니다!`
-    });
-  }
-
-  await interaction.reply({ content: `✅ 참여 의사 등록 완료!`, ephemeral: true });
-  return;
-}
-
-
+  
   // 7. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
