@@ -9,12 +9,15 @@ function loadBE() {
 }
 const formatAmount = n => Number(n).toLocaleString('ko-KR');
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
+const MAX_HISTORY = 200;
 const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
 const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715b7518075715dde84f97a9976a6b7a8&=&format=webp';
 
 function buildEmbed({ targetUser, data, page, maxPage, filter, searchTerm }) {
   let historyList = data.history || [];
+  // 최근 200개만 사용
+  historyList = historyList.slice(-MAX_HISTORY);
   if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === "earn");
   if (filter === FILTERS.SPEND) historyList = historyList.filter(h => h.type === "spend");
   if (filter === FILTERS.SEARCH && searchTerm) {
@@ -38,19 +41,21 @@ function buildEmbed({ targetUser, data, page, maxPage, filter, searchTerm }) {
 
   const embed = new EmbedBuilder()
     .setTitle(`💙 ${targetUser.tag}`)
-    .setDescription(`<@${targetUser.id}>님의 🔷파랑 정수(BE) 잔액: **${formatAmount(data.amount)} BE**`)
+    .setDescription(`<@${targetUser.id}>님의 🔷파랑 정수(BE) 잔액: **${formatAmount(data.amount)} BE**\n\n**최근 거래 내역은 200개까지만 조회/검색됩니다.**`)
     .addFields(
       { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: historyText }
     )
     .setColor(0x3399ff)
-    .setImage(EMBED_IMAGE); // 여기!
+    .setImage(EMBED_IMAGE);
 
   if (filter === FILTERS.SEARCH && searchTerm) {
-    embed.setFooter({ text: `검색어: "${searchTerm}"` });
+    embed.setFooter({ text: `검색어: "${searchTerm}" | 최근 200개 내역 내에서만 검색됩니다.` });
   } else if (filter === FILTERS.EARN) {
-    embed.setFooter({ text: `이익(earn)만 표시중` });
+    embed.setFooter({ text: `이익(earn)만 표시중 | 최근 200개까지만 조회됨` });
   } else if (filter === FILTERS.SPEND) {
-    embed.setFooter({ text: `손해(spend)만 표시중` });
+    embed.setFooter({ text: `손해(spend)만 표시중 | 최근 200개까지만 조회됨` });
+  } else {
+    embed.setFooter({ text: `최근 200개까지만 조회/검색할 수 있습니다.` });
   }
   return embed;
 }
@@ -111,7 +116,8 @@ module.exports = {
     let page = 1;
     let filter = FILTERS.ALL;
     let searchTerm = '';
-    let historyList = data.history || [];
+    // 최근 200개만 집계
+    let historyList = (data.history || []).slice(-MAX_HISTORY);
     let maxPage = Math.max(1, Math.ceil(historyList.length / PAGE_SIZE));
 
     const embed = buildEmbed({ targetUser, data, page, maxPage, filter, searchTerm });
@@ -130,10 +136,10 @@ module.exports = {
     collector.on('collect', async i => {
       if (i.user.id !== interaction.user.id) return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
 
-      // 새로고침 시점에 BE 다시 로딩
+      // 새로고침 시점에 BE 다시 로딩 + 최근 200개만
       const freshBE = loadBE();
       const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
-      historyList = freshData.history || [];
+      historyList = (freshData.history || []).slice(-MAX_HISTORY);
 
       if (i.customId === 'prev') page--;
       if (i.customId === 'next') page++;
@@ -172,7 +178,7 @@ module.exports = {
           searchTerm = submitted.fields.getTextInputValue('searchTerm').trim();
           filter = FILTERS.SEARCH;
           page = 1;
-          historyList = (freshBE[targetUser.id]?.history || []);
+          historyList = (freshBE[targetUser.id]?.history || []).slice(-MAX_HISTORY);
           maxPage = Math.max(1, Math.ceil(
             historyList.filter(h =>
               (h.reason && h.reason.includes(searchTerm)) ||
