@@ -6,7 +6,7 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-const DEFAULT_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391812043044163635/----001.png?ex=686d4179&is=686beff9&hm=2481678a47e56ca5b5d3a5c03d0baf47a23df8051da0bec166f8d253e96e32d2&=&format=webp&quality=lossless';
+const DEFAULT_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1392737667514634330/----001.png?ex=68709f87&is=686f4e07&hm=1449b220ca1ebd3426465560b0ec369190f24b3c761c87cc3ba6ec6c552546ba&=&format=webp&quality=lossless';
 const CLOSED_IMG = 'https://media.discordapp.net/attachments/1388728993787940914/1391814250963402832/----001_1.png?ex=686d4388&is=686bf208&hm=a4289368a5fc7aa23f57d06c66d0e9e2ff3f62dd4cb21001132f74ee0ade60ac&=&format=webp&quality=lossless';
 
 function isImageUrl(url) {
