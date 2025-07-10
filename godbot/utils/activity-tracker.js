@@ -2,11 +2,12 @@ const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../activity-data.json");
 
-// 필터 (아래 ID만 넣으면됨)
+// === 집계 대상 필터 ===
 const includedCategoryIds = []; // 이 카테고리만 집계
 const includedChannelIds = [];
 const excludedCategoryIds = [1318529703480397954, 1318445879455125514, 1204329649530998794]; // 이 카테고리 제외
 const excludedChannelIds = [];
+
 function isTracked(channel, type = "all") {
   if (!channel) return false;
   // 메시지/음성 구분 필터
@@ -28,7 +29,7 @@ function isTracked(channel, type = "all") {
   return isTracked(channel, "message") || isTracked(channel, "voice");
 }
 
-// { [userId]: { [date]: { message: n, voice: 초 } } }
+// === 데이터 입출력 ===
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
   return JSON.parse(fs.readFileSync(dataPath));
@@ -49,10 +50,11 @@ function pruneOld(data) {
   }
 }
 
+// === 메시지/음성 기록 ===
 function addMessage(userId, channel) {
   if (!isTracked(channel, "message")) return;
   const today = new Date();
-  const dateStr = today.toISOString().slice(0,10);
+  const dateStr = today.toISOString().slice(0, 10);
   const data = loadData();
   if (!data[userId]) data[userId] = {};
   if (!data[userId][dateStr]) data[userId][dateStr] = { message: 0, voice: 0 };
@@ -60,11 +62,10 @@ function addMessage(userId, channel) {
   pruneOld(data);
   saveData(data);
 }
-
 function addVoice(userId, seconds, channel) {
   if (!isTracked(channel, "voice")) return;
   const today = new Date();
-  const dateStr = today.toISOString().slice(0,10);
+  const dateStr = today.toISOString().slice(0, 10);
   const data = loadData();
   if (!data[userId]) data[userId] = {};
   if (!data[userId][dateStr]) data[userId][dateStr] = { message: 0, voice: 0 };
@@ -73,7 +74,7 @@ function addVoice(userId, seconds, channel) {
   saveData(data);
 }
 
-// 기간 및 필터별 통계
+// === 통계 ===
 function getStats({ from, to, filterType = "all", userId = null }) {
   // filterType: "all"|"message"|"voice"
   const data = loadData();
@@ -94,9 +95,8 @@ function getStats({ from, to, filterType = "all", userId = null }) {
   return result;
 }
 
-// 역할기준 등급(채팅/음성), 예시로 바로 return
+// === 등급 ===
 function getRoleLevel({ message = 0, voice = 0 }) {
-  // 여기서 자유롭게 커스텀 (예시)
   if (voice >= 3600 * 100) return "음성채팅 고인물";
   if (voice >= 3600 * 10) return "음성 매니아";
   if (message >= 5000) return "채팅 지박령";
@@ -104,7 +104,26 @@ function getRoleLevel({ message = 0, voice = 0 }) {
   return null;
 }
 
+// === 마지막 활동일 (가장 최근 날짜) ===
+function getLastActiveDate(userId) {
+  const data = loadData();
+  const userData = data[userId];
+  if (!userData) return null;
+  const dates = Object.keys(userData).sort().reverse();
+  if (!dates.length) return null;
+  // Date 객체 반환 (시간은 00:00)
+  return new Date(dates[0]);
+}
+
 module.exports = {
-  addMessage, addVoice, getStats, getRoleLevel,
-  includedCategoryIds, includedChannelIds, excludedCategoryIds, excludedChannelIds, isTracked,
+  addMessage,
+  addVoice,
+  getStats,
+  getRoleLevel,
+  includedCategoryIds,
+  includedChannelIds,
+  excludedCategoryIds,
+  excludedChannelIds,
+  isTracked,
+  getLastActiveDate, 
 };
