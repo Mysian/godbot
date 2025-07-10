@@ -150,10 +150,6 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("정수획득");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
-["updown_modal", async (interaction) => {
-  const cmd = client.commands.get("정수획득");
-  if (cmd?.modal) return cmd.modal(interaction);
-}],
   ["kick_reason_modal", async (interaction) => {
   const cmd = client.commands.get("강퇴투표");
   if (cmd?.modal) return cmd.modal(interaction);
@@ -407,15 +403,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     }
     return;
   }
-
-  // 5. 업다운 모달
-  if (interaction.isButton() && interaction.customId === 'updown_start') {
-  const cmd = client.commands.get("정수획득");
-  if (cmd?.handleUpdownStart) {
-    await cmd.handleUpdownStart(interaction);
-  }
-  return;
-}
 
    // === advertise.js "참여 의사 밝히기" 버튼 ===
   if (
