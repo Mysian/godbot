@@ -410,40 +410,51 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
 
   // 5. 업다운 모달
   if (interaction.isButton() && interaction.customId === 'updown_start') {
-  const userId = interaction.user.id;
-  const bet = 3000;
-  const cmd = client.commands.get("정수획득");
-  if (typeof cmd.getUserBe === "function" ? cmd.getUserBe(userId) < bet : getUserBe(userId) < bet) {
-    await interaction.reply({ content: '❌ BE가 부족합니다! (필요: 3,000 BE)', ephemeral: true });
-    return;
-  }
-  if (typeof cmd.lock === "function" ? !cmd.lock(userId) : !lock(userId)) {
-    await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true });
-    return;
-  }
-  if (typeof cmd.setUserBe === "function") cmd.setUserBe(userId, -bet, '업다운 베팅금 소멸(시작)');
-  else setUserBe(userId, -bet, '업다운 베팅금 소멸(시작)');
+  try {
+    const userId = interaction.user.id;
+    const bet = 3000;
+    const cmd = client.commands.get("정수획득");
 
-  const answer = Math.floor(Math.random() * 100) + 1;
-  interaction.client._updown = interaction.client._updown || {};
-  interaction.client._updown[userId] = { answer, tries: [], attempt: 1, started: Date.now() };
-  // 모달 띄우기
-  const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-  const modal = new ModalBuilder()
-    .setCustomId('updown_modal')
-    .setTitle('업다운 게임')
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('updown_input')
-          .setLabel(`[1/5] 1~100 숫자 입력!`)
-          .setStyle(TextInputStyle.Short)
-          .setMinLength(1).setMaxLength(3)
-          .setPlaceholder('예: 42')
-      )
-    );
-  await interaction.showModal(modal);
-  return;
+    // 1. BE 잔액 체크 (cmd.getUserBe 사용)
+    if (typeof cmd.getUserBe === "function" ? cmd.getUserBe(userId) < bet : true) {
+      return interaction.reply({ content: '❌ BE가 부족합니다! (필요: 3,000 BE)', ephemeral: true });
+    }
+    // 2. lock 체크
+    if (typeof cmd.lock === "function" ? !cmd.lock(userId) : true) {
+      return interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true });
+    }
+    // 3. BE 차감
+    if (typeof cmd.setUserBe === "function") cmd.setUserBe(userId, -bet, '업다운 베팅금 소멸(시작)');
+
+    // 4. 게임 상태 저장
+    const answer = Math.floor(Math.random() * 100) + 1;
+    interaction.client._updown = interaction.client._updown || {};
+    interaction.client._updown[userId] = { answer, tries: [], attempt: 1, started: Date.now() };
+
+    // 5. 모달 띄우기 (reply/update 쓰지 않는다!)
+    const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+    const modal = new ModalBuilder()
+      .setCustomId('updown_modal')
+      .setTitle('업다운 게임')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('updown_input')
+            .setLabel(`[1/5] 1~100 숫자 입력!`)
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(1).setMaxLength(3)
+            .setPlaceholder('예: 42')
+        )
+      );
+    await interaction.showModal(modal);
+    return;
+  } catch (e) {
+    console.error(e);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 에러 발생!", ephemeral: true });
+    }
+    return;
+  }
 }
 
    // === advertise.js "참여 의사 밝히기" 버튼 ===
