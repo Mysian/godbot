@@ -12,10 +12,14 @@ const EMBED_IMAGE = 'https://media.discordapp.net/attachments/138872899378794091
 
 const PAGE_SIZE = 10;
 
-function buildEmbed(targetUser, data, page, maxPage) {
-  const total = (data.history || []).length;
+function buildEmbed(targetUser, data, page, maxPage, filter) {
+  let historyList = data.history || [];
+  if (filter === 'earn') historyList = historyList.filter(h => h.type === 'earn');
+  if (filter === 'spend') historyList = historyList.filter(h => h.type === 'spend');
+
+  const total = historyList.length;
   const offset = (page - 1) * PAGE_SIZE;
-  const history = (data.history || [])
+  const history = historyList
     .slice()
     .reverse()
     .slice(offset, offset + PAGE_SIZE)
@@ -23,7 +27,7 @@ function buildEmbed(targetUser, data, page, maxPage) {
       `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`
     ).join('\n') || "내역 없음";
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`💙 ${targetUser.tag}`)
     .setDescription(`<@${targetUser.id}>님의 🔷파랑 정수(BE) 잔액: **${formatAmount(data.amount)} BE**`)
     .addFields(
@@ -31,9 +35,14 @@ function buildEmbed(targetUser, data, page, maxPage) {
     )
     .setColor(0x3399ff)
     .setImage(EMBED_IMAGE);
+
+  if (filter === 'earn') embed.setFooter({ text: '이익(earn)만 표시중' });
+  else if (filter === 'spend') embed.setFooter({ text: '손해(spend)만 표시중' });
+
+  return embed;
 }
 
-function buildRow(page, maxPage) {
+function buildRow(page, maxPage, filter) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('prev')
@@ -44,7 +53,15 @@ function buildRow(page, maxPage) {
       .setCustomId('next')
       .setLabel('다음 ▶')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= maxPage)
+      .setDisabled(page >= maxPage),
+    new ButtonBuilder()
+      .setCustomId('earnonly')
+      .setLabel('🟦 이익만')
+      .setStyle(filter === 'earn' ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('spendonly')
+      .setLabel('🔻 손해만')
+      .setStyle(filter === 'spend' ? ButtonStyle.Danger : ButtonStyle.Secondary)
   );
 }
 
@@ -71,11 +88,15 @@ module.exports = {
     }
 
     let page = 1;
-    const total = (data.history || []).length;
-    const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    let filter = 'all';
+    let historyList = data.history || [];
+    let filteredHistory = historyList;
+    if (filter === 'earn') filteredHistory = historyList.filter(h => h.type === 'earn');
+    if (filter === 'spend') filteredHistory = historyList.filter(h => h.type === 'spend');
+    let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
 
-    const embed = buildEmbed(targetUser, data, page, maxPage);
-    const row = buildRow(page, maxPage);
+    const embed = buildEmbed(targetUser, data, page, maxPage, filter);
+    const row = buildRow(page, maxPage, filter);
 
     const msg = await interaction.reply({
       embeds: [embed],
@@ -93,9 +114,25 @@ module.exports = {
 
       if (i.customId === 'prev') page--;
       if (i.customId === 'next') page++;
+      if (i.customId === 'earnonly') {
+        filter = filter === 'earn' ? 'all' : 'earn';
+        page = 1;
+      }
+      if (i.customId === 'spendonly') {
+        filter = filter === 'spend' ? 'all' : 'spend';
+        page = 1;
+      }
 
-      const newEmbed = buildEmbed(targetUser, data, page, maxPage);
-      const newRow = buildRow(page, maxPage);
+      // 필터 적용
+      historyList = data.history || [];
+      filteredHistory = historyList;
+      if (filter === 'earn') filteredHistory = historyList.filter(h => h.type === 'earn');
+      if (filter === 'spend') filteredHistory = historyList.filter(h => h.type === 'spend');
+      maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
+      page = Math.max(1, Math.min(page, maxPage));
+
+      const newEmbed = buildEmbed(targetUser, data, page, maxPage, filter);
+      const newRow = buildRow(page, maxPage, filter);
 
       await i.update({ embeds: [newEmbed], components: [newRow] });
     });
