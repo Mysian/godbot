@@ -105,41 +105,6 @@ function deckInit() {
   return deck;
 }
 
-async function handleUpdownStart(interaction) {
-  const userId = interaction.user.id;
-  const bet = 3000;
-  if (!hasProfile(userId)) {
-    await interaction.reply({
-      content: "❌ 프로필 정보가 없습니다!\n`/프로필등록` 명령어로 먼저 프로필을 등록해 주세요.",
-      ephemeral: true
-    });
-    return;
-  }
-  if (getUserBe(userId) < bet) {
-    await interaction.reply({ content: '❌ BE가 부족합니다! (필요: 3,000 BE)', ephemeral: true });
-    return;
-  }
-  setUserBe(userId, -bet, '업다운 베팅금 소멸(시작)');
-  const answer = Math.floor(Math.random() * 100) + 1;
-  interaction.client._updown = interaction.client._updown || {};
-  interaction.client._updown[userId] = { answer, tries: [], attempt: 1, started: Date.now() };
-  const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
-  const modal = new ModalBuilder()
-    .setCustomId('updown_modal')
-    .setTitle('업다운 게임')
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('updown_input')
-          .setLabel(`[1/5] 1~100 숫자 입력!`)
-          .setStyle(TextInputStyle.Short)
-          .setMinLength(1).setMaxLength(3)
-          .setPlaceholder('예: 42')
-      )
-    );
-  await interaction.showModal(modal);
-}
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수획득')
@@ -154,8 +119,7 @@ module.exports = {
           { name: '알바', value: 'alba' },
           { name: '도박', value: 'gamble' },
           { name: '가위바위보', value: 'rps' },
-          { name: '블랙잭', value: 'blackjack' },
-          { name: '업다운', value: 'updown' }
+          { name: '블랙잭', value: 'blackjack' }
         )
     ),
 
@@ -659,31 +623,7 @@ if (kind === 'alba') {
       await interaction.showModal(modal);
       return;
     }
-
-  // 5. 업다운
-  if (kind === 'updown') {
-  const embed = new EmbedBuilder()
-    .setTitle('🔢 업다운 게임')
-    .setDescription(
-      `1~100 사이 랜덤 숫자를 5번 안에 맞춰봐!\n` +
-      `시도마다 [UP]/[DOWN] 안내가 나와!\n\n` +
-      `**보상표**\n` +
-      `1회: 30,000 BE\n2회: 20,000 BE\n3회: 10,000 BE\n4회: 7,500 BE\n5회: 5,000 BE\n` +
-      `실패시: 3,000 BE 소멸\n\n` +
-      `아래 [업다운 시작하기]를 눌러 시작!\n(배팅금 3,000 BE 필요)`
-    );
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('updown_start')
-      .setLabel('업다운 시작하기')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('🎲')
-      .setDisabled(getUserBe(userId) < 3000)
-  );
-  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-  return;
- }
-},
+  },
 
   // --- 모달 submit (modal) ---
   async modal(interaction) {
@@ -763,99 +703,6 @@ if (kind === 'alba') {
       return;
     }
 
-    
-    // === 업다운 모달 submit ===
-if (interaction.customId === 'updown_modal') {
-  const userId = interaction.user.id;
-  if (!interaction.client._updown || !interaction.client._updown[userId]) {
-    await interaction.reply({ content: "❌ 게임 정보가 없습니다. `/정수획득` → 업다운으로 다시 시도!", ephemeral: true }); unlock(userId); return;
-  }
-  let state = interaction.client._updown[userId];
-  const input = interaction.fields.getTextInputValue('updown_input').replace(/[^0-9]/g, '');
-  const num = Number(input);
-  if (isNaN(num) || num < 1 || num > 100) {
-    // 잘못 입력 시, 다시 모달
-    const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-    const modal = new ModalBuilder()
-      .setCustomId('updown_modal')
-      .setTitle('업다운 게임')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('updown_input')
-            .setLabel(`[${state.attempt}/5] 1~100 숫자 입력!`)
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(1).setMaxLength(3)
-            .setPlaceholder('예: 42')
-        )
-      );
-    await interaction.reply({ content: '⚠️ 1~100 사이의 숫자로 다시 입력해!', ephemeral: true });
-    await interaction.showModal(modal);
-    return;
-  }
-  state.tries.push(num);
-
-  let resultText = '';
-  let finished = false;
-  if (num === state.answer) {
-    // 시도 수에 따른 보상
-    const rewardTable = [30000, 20000, 10000, 7500, 5000];
-    const reward = rewardTable[state.attempt - 1];
-    setUserBe(userId, reward, `업다운 정답 ${state.attempt}번째 시도`);
-    resultText = `🎉 정답! **${state.attempt}번째 시도에 맞춤!**\n보상: **${comma(reward)} BE**`;
-    finished = true;
-  } else if (state.attempt >= 5) {
-    resultText = `💀 5번 모두 실패!\n정답: **${state.answer}**\n배팅금 3,000 BE 소멸!`;
-    finished = true;
-  } else {
-    resultText = num < state.answer ? "UP! (더 큰 숫자)" : "DOWN! (더 작은 숫자)";
-  }
-  // 시도 결과 목록
-  let history = state.tries.map((n, i) =>
-    `#${i + 1}: **${n}** → ` +
-    (n === state.answer ? "정답!" : (n < state.answer ? "UP" : "DOWN"))
-  ).join('\n');
-
-  if (finished) {
-    await interaction.reply({
-      embeds: [new EmbedBuilder()
-        .setTitle('🔢 업다운 게임 결과')
-        .setDescription(`${resultText}\n\n시도 기록:\n${history}`)
-      ],
-      ephemeral: true
-    });
-    unlock(userId);
-    delete interaction.client._updown[userId];
-  } else {
-    // 다음 시도 모달
-    state.attempt++;
-    interaction.client._updown[userId] = state;
-    const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-    const modal = new ModalBuilder()
-      .setCustomId('updown_modal')
-      .setTitle('업다운 게임')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('updown_input')
-            .setLabel(`[${state.attempt}/5] 1~100 숫자 입력!`)
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(1).setMaxLength(3)
-            .setPlaceholder('예: 42')
-        )
-      );
-    await interaction.reply({
-      embeds: [new EmbedBuilder()
-        .setTitle('🔢 업다운 게임')
-        .setDescription(`${resultText}\n\n시도 기록:\n${history}\n\n${state.attempt}번째 시도! 1~100 숫자를 입력해!`)
-      ],
-      ephemeral: true
-    });
-    await interaction.showModal(modal);
-  }
-  return;
-}
-    
     // === 블랙잭 모달 submit ===
     if (interaction.customId === 'blackjack_bet_modal') {
   const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
