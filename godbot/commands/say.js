@@ -1,5 +1,3 @@
-// commands/say.js
-
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
@@ -10,7 +8,7 @@ module.exports = {
     .addChannelOption(option =>
       option.setName('채널')
         .setDescription('메시지를 보낼 채널')
-        .setRequired(true)
+        .setRequired(false)
     )
     .addStringOption(option =>
       option.setName('내용')
@@ -33,22 +31,30 @@ module.exports = {
         .setRequired(false)
     ),
   async execute(interaction) {
-    const channel = interaction.options.getChannel('채널');
+    const channel = interaction.options.getChannel('채널') || interaction.channel;
     const content = interaction.options.getString('내용');
     const image = interaction.options.getAttachment('이미지');
     const emoji = interaction.options.getString('이모지');
     const replyTo = interaction.options.getString('답글');
 
+    if (!content && !image && emoji && replyTo) {
+      try {
+        const msg = await channel.messages.fetch(replyTo);
+        await msg.react(emoji);
+        return interaction.reply({ content: '✅ 이모지 리액션 완료!', ephemeral: true });
+      } catch {
+        return interaction.reply({ content: '❌ 메시지 ID를 찾을 수 없습니다.', ephemeral: true });
+      }
+    }
+
     if (!content && !image && !emoji) {
       return interaction.reply({ content: '전송할 내용 또는 이미지를 입력해 주세요.', ephemeral: true });
     }
 
-    // 전송 옵션 세팅
     const sendOptions = {};
     if (content) sendOptions.content = content;
     if (image) sendOptions.files = [image.url];
 
-    // 답글로 보낼 경우
     if (replyTo) {
       try {
         const msg = await channel.messages.fetch(replyTo);
@@ -58,7 +64,6 @@ module.exports = {
       }
     }
 
-    // 메시지 전송
     let sent;
     try {
       sent = await channel.send(sendOptions);
@@ -66,15 +71,12 @@ module.exports = {
       return interaction.reply({ content: '❌ 메시지 전송에 실패했습니다.', ephemeral: true });
     }
 
-    // 이모지 리액션 추가
     if (emoji) {
       try {
         await sent.react(emoji);
-      } catch {
-        // 이모지가 잘못되었거나 지원 안하면 무시
-      }
+      } catch {}
     }
 
     return interaction.reply({ content: '✅ 메시지 전송 완료!', ephemeral: true });
   }
-}
+};
