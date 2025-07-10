@@ -30,7 +30,7 @@ module.exports = {
     const serverIcon = guild?.iconURL() || null;
 
     // 금액 포맷 함수
-    const formatAmount = n => Number(n).toLocaleString('ko-KR');
+    const formatAmount = n => Math.floor(Number(n)).toLocaleString('ko-KR');
 
     // 랭킹 텍스트
     let rankText = sorted.length > 0
