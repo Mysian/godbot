@@ -412,29 +412,47 @@ module.exports = {
     }
 
   } else if (i.customId === "toggle_longstay") {
-    // === [비밀번호 모달 없이 즉시 처리!] ===
-    const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
-    let action, logMsg;
-    if (hasLongStay) {
-      await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
-      action = "해제";
-      logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})`;
-    } else {
-      await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
-      action = "부여";
-      logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})`;
-    }
-    await i.reply({ content: `장기 투숙객 역할을 ${action}했습니다.`, ephemeral: true });
-    await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("장기 투숙객 역할 변경")
-          .setDescription(logMsg)
-          .setColor(hasLongStay ? 0xff5555 : 0x55ff55)
-          .setTimestamp()
-      ]
-    });
-    await showUserInfo(targetUserId, interaction);
+  const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
+  let action, logMsg;
+  if (hasLongStay) {
+    await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
+    action = "해제";
+    logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+  } else {
+    await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
+    action = "부여";
+    logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+  }
+  await i.reply({ content: `장기 투숙객 역할을 ${action}했습니다.`, ephemeral: true });
+  await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("장기 투숙객 역할 변경")
+        .setDescription(logMsg)
+        .setColor(hasLongStay ? 0xff5555 : 0x55ff55)
+        .setTimestamp()
+    ]
+  });
+  await showUserInfo(targetUserId, interaction);
+
+} else if (i.customId === "receive_monthly") {
+  const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
+  if (!hasMonthly) {
+    await i.reply({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
+    return;
+  }
+  await member.roles.remove(MONTHLY_ROLE_ID, "월세 받기 처리");
+  await i.reply({ content: "월세 납부자 역할을 해제(월세 수령) 처리했습니다.", ephemeral: true });
+  await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("월세 수령 처리")
+        .setDescription(`💸 월세 받기 처리: <@${targetUserId}> (${member.user.tag})\n월세 납부자 역할 해제\n- **처리자:** <@${i.user.id}> (${i.user.tag})`)
+        .setColor(0x4eaaff)
+        .setTimestamp()
+    ]
+  });
+  await showUserInfo(targetUserId, interaction);
 
   } else if (i.customId === "receive_monthly") {
     // === [비밀번호 모달 없이 즉시 처리!] ===
