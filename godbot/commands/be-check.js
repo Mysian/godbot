@@ -8,6 +8,8 @@ function loadBE() {
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
 
+const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715b7518075715dde84f97a9976a6b7a8&=&format=webp';
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수조회')
@@ -43,7 +45,8 @@ module.exports = {
       .addFields(
         { name: "📜 최근 거래 내역", value: history }
       )
-      .setColor(0x3399ff);
+      .setColor(0x3399ff)
+      .setImage(EMBED_IMAGE);   // ← 이 라인만 추가!
 
     await interaction.reply({
       embeds: [embed],
