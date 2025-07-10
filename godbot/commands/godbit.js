@@ -898,14 +898,13 @@ module.exports = {
 
 
     // 5. 갓비트 내코인
-      if (sub === '내코인') {
+   if (sub === '내코인') {
   await interaction.deferReply({ ephemeral: true });
   const coins = await loadJson(coinsPath, {});
   const wallets = await loadJson(walletsPath, {});
   const userW = wallets[interaction.user.id] || {};
   const userBuys = wallets[interaction.user.id + "_buys"] || {};
 
-  // 정렬 함수
   function getSortedMyCoins(_coins = coins, _userW = userW, _userBuys = userBuys) {
     return Object.entries(_userW)
       .map(([c, q]) => {
@@ -916,17 +915,11 @@ module.exports = {
         const profit = evalPrice - buyCost;
         const yieldPct = buyCost > 0 ? ((profit / buyCost) * 100) : 0;
         return {
-          name: c,
-          q,
-          nowPrice,
-          buyCost,
-          evalPrice,
-          profit,
-          yieldPct,
+          name: c, q, nowPrice, buyCost, evalPrice, profit, yieldPct,
         };
       })
       .filter(Boolean)
-      .sort((a, b) => b.yieldPct - a.yieldPct); // 손익 % 내림차순
+      .sort((a, b) => b.yieldPct - a.yieldPct);
   }
 
   let allMyCoins = getSortedMyCoins();
@@ -934,8 +927,171 @@ module.exports = {
   let page = 0;
   let totalPages = Math.max(1, Math.ceil(allMyCoins.length / PAGE_SIZE));
 
+  // 투자 규모
+function getAmountLabel(val) {
+  if (val < 1) return "극미량";
+  if (val < 5) return "초소량";
+  if (val < 10) return "소량";
+  if (val < 30) return "준소량";
+  if (val < 50) return "중소량";
+  if (val < 100) return "중량";
+  if (val < 300) return "중대량";
+  if (val < 1_000) return "다량";
+  if (val < 10_000) return "대량";
+  if (val < 100_000) return "초대량";
+  if (val < 1_000_000) return "극대량";
+  if (val < 10_000_000) return "엄청난 양";
+  if (val < 100_000_000) return "폭주";
+  if (val < 1_000_000_000) return "천문학적";
+  return "무한대";
+}
+
+     // 한줄평 생성
+  function getOneLineReview(totalYield, totalEval) {
+  let scale = getScale(totalEval);
+     // 초마이너스 구간 (10~50% 단위, -2000%까지)
+  if (totalYield <= -2000) return `🕳️ "이쯤 되면… 코인판 흑역사. 지갑도 마음도 비워짐"${scale}`;
+  if (totalYield <= -1950) return `🌑 내 인생이 여기서 끝날 줄은 몰랐다${scale}`;
+  if (totalYield <= -1900) return `🪦 이 정도면 계좌장례식 가능${scale}`;
+  if (totalYield <= -1850) return `⚰️ 존버하다가 계좌 소멸됨${scale}`;
+  if (totalYield <= -1800) return `🫥 사람 구실이 힘들다${scale}`;
+  if (totalYield <= -1750) return `😶‍🌫️ 감정 없는 상태, 그냥 텅빈 느낌${scale}`;
+  if (totalYield <= -1700) return `💀 남은 건 통장 캡처뿐${scale}`;
+  if (totalYield <= -1650) return `🫗 돈도 정신도 다 증발${scale}`;
+  if (totalYield <= -1600) return `🌊 실화냐 이 손실, 바닥이 어딘지 모름${scale}`;
+  if (totalYield <= -1550) return `🥀 친구한테 말도 못함${scale}`;
+  if (totalYield <= -1500) return `🧟 "살아있는 좀비" 상태${scale}`;
+  if (totalYield <= -1450) return `😩 그냥 웃음만 남음${scale}`;
+  if (totalYield <= -1400) return `🙃 계좌 들여다보는 게 무섭다${scale}`;
+  if (totalYield <= -1350) return `😭 현실 부정, 근데 현실${scale}`;
+  if (totalYield <= -1300) return `😫 반등? 포기함${scale}`;
+  if (totalYield <= -1250) return `😖 코인판 입문 추천 못함${scale}`;
+  if (totalYield <= -1200) return `🫠 마음 비우고 새출발 준비${scale}`;
+  if (totalYield <= -1150) return `🥶 하루에도 한숨이 백 번${scale}`;
+  if (totalYield <= -1100) return `🥵 회복 불가. 계좌 인증 박제감${scale}`;
+  if (totalYield <= -1050) return `💸 원금은커녕 생활비까지 날아감${scale}`;
+  if (totalYield <= -1000) return `💀 "이쯤이면 코인판의 바이블" 계좌 상태${scale}`;
+  if (totalYield <= -950) return `🪦 내가 뭘 잘못했는지 생각 중${scale}`;
+  if (totalYield <= -900) return `⚰️ 존버는 전설이 아니라 전설의 희생양${scale}`;
+  if (totalYield <= -850) return `🌚 계좌를 끊임없이 내려다보는 중${scale}`;
+  if (totalYield <= -800) return `🥀 매수·매도 버튼 눌러도 의미 없음${scale}`;
+  if (totalYield <= -750) return `😔 웃긴 건 익숙해지고 있다는 것${scale}`;
+  if (totalYield <= -700) return `🧟 이미 무감각${scale}`;
+  if (totalYield <= -650) return `😮‍💨 "반등? 그런 건 없었다" 체감 중${scale}`;
+  if (totalYield <= -600) return `🫥 단념 끝에 체념${scale}`;
+  if (totalYield <= -550) return `🥲 친구들, 내게 코인 묻지 마${scale}`;
+  if (totalYield <= -500) return `💀 계좌가 사망했습니다. 이건 거의 도박의 신.${scale}`;
+  if (totalYield <= -490) return `🪦 "이쯤이면 손절도 못함, 남은 건 스크린샷 뿐" ${scale}`;
+  if (totalYield <= -480) return `🧊 계좌 냉동보관 중. 가족에겐 비밀로 하세요.${scale}`;
+  if (totalYield <= -470) return `😵‍💫 이 구간엔 설명이 필요 없다...${scale}`;
+  if (totalYield <= -460) return `🥀 "손실의 늪에서 허우적" 인증 가능${scale}`;
+  if (totalYield <= -450) return `🫥 반등? 그런 거 없음. 그냥 남탓이라도 하자${scale}`;
+  if (totalYield <= -440) return `🥵 포기하면 편해진다${scale}`;
+  if (totalYield <= -430) return `💸 마이너스, 다음 생에 만나요${scale}`;
+  if (totalYield <= -420) return `🧟‍♂️ 이 구간엔 살아있는 유저가 드뭄${scale}`;
+  if (totalYield <= -410) return `🌊 바닥이 어딘지 알 수 없다${scale}`;
+  if (totalYield <= -400) return `🔪 반성문 각, 인생은 실전이다${scale}`;
+  if (totalYield <= -390) return `🥶 계좌를 잠시 꺼두셔도 좋습니다${scale}`;
+  if (totalYield <= -380) return `😨 "내가 이럴려고 코인했나" 실감 중${scale}`;
+  if (totalYield <= -370) return `😵 흔들리지 않는 편안함, 계좌는 이미 바닥${scale}`;
+  if (totalYield <= -360) return `😖 계속 내려가도 실감이 안 남${scale}`;
+  if (totalYield <= -350) return `😭 반등 희망 소멸, 단념의 미학${scale}`;
+  if (totalYield <= -340) return `🥲 코인=복불복 체감 중${scale}`;
+  if (totalYield <= -330) return `😑 존버는 이제 무의미${scale}`;
+  if (totalYield <= -320) return `😫 물렸다는 말로도 부족${scale}`;
+  if (totalYield <= -310) return `😣 손실=일상, 반전은 없다${scale}`;
+  if (totalYield <= -300) return `😔 마이너스가 내 친구, 이쯤이면 멘탈도 갔음${scale}`;
+  if (totalYield <= -290) return `🥺 오늘도 출금 버튼만 바라본다${scale}`;
+  if (totalYield <= -280) return `🥶 계좌 보며 심호흡 중${scale}`;
+  if (totalYield <= -270) return `😩 남 일 같지 않은 패배감${scale}`;
+  if (totalYield <= -260) return `🥴 돈 잃고 경험 얻음${scale}`;
+  if (totalYield <= -250) return `🫠 그래도 안 접는다. 코인판의 끈질김${scale}`;
+  if (totalYield <= -240) return `🥲 복구? 일단 희망은 놓지 말자${scale}`;
+  if (totalYield <= -230) return `😑 현실 도피가 필요함${scale}`;
+  if (totalYield <= -220) return `🫥 애써 웃고 있지만 속은 타들어감${scale}`;
+  if (totalYield <= -210) return `🥹 계좌가 울고 있다${scale}`;
+  if (totalYield <= -200) return `😱 "계좌 인증 박제감" 여기 있습니다${scale}`;
+  if (totalYield <= -190) return `😨 마이너스가 익숙해지는 구간${scale}`;
+  if (totalYield <= -180) return `😭 아직도 덜 빠졌다${scale}`;
+  if (totalYield <= -170) return `😓 체념했지만 미련이 남음${scale}`;
+  if (totalYield <= -160) return `😩 이제 뭐라도 오르면 팔 듯${scale}`;
+  if (totalYield <= -150) return `🌊 물려도 너무 물렸습니다${scale}`;
+  if (totalYield <= -140) return `😑 주변에서 "이제 팔지" 소리 들림${scale}`;
+  if (totalYield <= -130) return `🥺 잠시만 기다려달라 빌고 있음${scale}`;
+  if (totalYield <= -120) return `🧟‍♂️ 계좌 좀비 모드, 아무 감정도 없음${scale}`;
+  if (totalYield <= -110) return `☠️ 손절각? 이미 타이밍 놓침${scale}`;
+  if (totalYield <= -100) return `☠️ 마이너스 100%. 계좌 RIP${scale}`;
+  if (totalYield <= -90)  return `🥶 내일은 오를까? 소소한 희망${scale}`;
+  if (totalYield <= -80)  return `💸 "이쯤이면 충분히 배웠다" 각성 중${scale}`;
+  if (totalYield <= -70)  return `🥶 입금력만 믿고 또 버티는 중${scale}`;
+  if (totalYield <= -60)  return `😨 희망고문, 현실 부정${scale}`;
+  if (totalYield <= -50)  return `😭 존버 끝에 눈물. 다음부턴 다르게${scale}`;
+  if (totalYield <= -40)  return `😣 살짝만 오르면 팔아야지 생각 중${scale}`;
+  if (totalYield <= -30)  return `🥲 손실 익숙, 담엔 잘해보자${scale}`;
+  if (totalYield <= -20)  return `😬 반등 나오면 바로 손절${scale}`;
+  if (totalYield <= -10)  return `😑 미세한 손실도 은근 거슬림${scale}`;
+  if (totalYield < 0)     return `😶 아직 끝나진 않았다, 혹시 모름${scale}`;
+
+   // 0~20%
+  if (totalYield === 0)    return `⚪️ 이게 바로 제로의 마법${scale}`;
+  if (totalYield < 2)      return `🥱 평온함 그 자체. 시간만 씀${scale}`;
+  if (totalYield < 5)      return `🪙 실익 미미, 교통비 커버?${scale}`;
+  if (totalYield < 10)     return `🍞 잔잔한 이득, 빵 한 개${scale}`;
+  if (totalYield < 15)     return `🥨 차라리 예금 넣지… 싶은 수익${scale}`;
+  if (totalYield < 20)     return `🧃 이 정도면 그냥 쥬스값${scale}`;
+
+  // 20~100%
+  if (totalYield < 30)     return `😏 슬슬 본전 회복, 입꼬리 올라감${scale}`;
+  if (totalYield < 40)     return `😀 티 안 나게 플러스, 남 모르게 웃음${scale}`;
+  if (totalYield < 50)     return `😋 "이게 코인이지" 체감 시작${scale}`;
+  if (totalYield < 60)     return `😎 약간 여유생긴 느낌${scale}`;
+  if (totalYield < 70)     return `😁 수익률 보고 깜짝, 기분 좋음${scale}`;
+  if (totalYield < 80)     return `🤑 친구한테 카톡 박제 가능${scale}`;
+  if (totalYield < 90)     return `😗 이제는 퇴근길이 가볍다${scale}`;
+  if (totalYield < 100)    return `🦾 "내가 바로 존버러" 라고 혼잣말${scale}`;
+
+  // 100~200%
+  if (totalYield < 120)    return `🚗 "중고차 한 대" 구간. 돈 맛봄${scale}`;
+  if (totalYield < 140)    return `🏅 이제 남한테 보여줄만함${scale}`;
+  if (totalYield < 160)    return `🥳 술자리에서 꺼내는 내역${scale}`;
+  if (totalYield < 180)    return `🥂 오늘 저녁 메뉴는 소고기${scale}`;
+  if (totalYield < 200)    return `🎉 이쯤되면 진짜 감 잡은 듯${scale}`;
+
+  // 200~500%
+  if (totalYield < 250)    return `🦁 코인계에서 "형" 소리 듣는 구간${scale}`;
+  if (totalYield < 300)    return `🏆 이제야 진짜 수익 체감${scale}`;
+  if (totalYield < 350)    return `💸 월급 부럽지 않은 캐시플로우${scale}`;
+  if (totalYield < 400)    return `🥇 투자 밈 직접 만듦${scale}`;
+  if (totalYield < 450)    return `🌈 무슨 코인만 골라도 상승${scale}`;
+  if (totalYield < 500)    return `🔥 서버에서 "이분 계좌 뭐냐" 듣는 구간${scale}`;
+
+  // 500~1000%
+  if (totalYield < 600)    return `💰 친구들 코인 상담하러 옴${scale}`;
+  if (totalYield < 700)    return `🎩 코인판 매니저급 포스${scale}`;
+  if (totalYield < 800)    return `👑 서버에서 "한수 가르쳐주세요" 듣는 구간${scale}`;
+  if (totalYield < 900)    return `🦄 인생 역전의 길목${scale}`;
+  if (totalYield < 1000)   return `🛸 "나 이정도인데" 인증 가능${scale}`;
+
+  // 1000~2000%
+  if (totalYield < 1100)   return `🚀 천프로 실화냐${scale}`;
+  if (totalYield < 1200)   return `🦾 이 구간은 아무나 못 옴${scale}`;
+  if (totalYield < 1300)   return `🌌 계좌만 보면 미소가 절로${scale}`;
+  if (totalYield < 1400)   return `💎 손절이 뭔가요? 모름${scale}`;
+  if (totalYield < 1500)   return `👽 돈 들어오는 소리 들림${scale}`;
+  if (totalYield < 1600)   return `💵 이제 일 그만두고 싶음${scale}`;
+  if (totalYield < 1700)   return `🏖️ 해변에서 한량처럼 살고 싶다${scale}`;
+  if (totalYield < 1800)   return `👑 서버계좌 지존 인증${scale}`;
+  if (totalYield < 1900)   return `🏆 람보르기니 실구매 가능?${scale}`;
+  if (totalYield < 2000)   return `🎲 코인판 신급으로 승격${scale}`;
+
+  // 2000% 이상
+  if (totalYield < 5000)   return `🌋 이쯤되면… 서버의 신화${scale}`;
+  if (totalYield < 10000)  return `🪐 코인계의 금수저, 우주에서 통하는 계좌${scale}`;
+  return `🌌 우주의 끝, 인간의 영역을 벗어남${scale}`;
+}
+    
+
   function renderEmbed(page) {
-    // 페이지 범위 체크
     if (page < 0) page = 0;
     if (page >= totalPages) page = totalPages - 1;
     const slice = allMyCoins.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -955,21 +1111,41 @@ module.exports = {
         totalEval += c.evalPrice;
         totalBuy += c.buyCost;
         totalProfit += c.profit;
+        // 손익 이모지
+        let profitEmoji = '⏺️';
+        if (c.profit > 0) profitEmoji = '🔺';
+        else if (c.profit < 0) profitEmoji = '🔻';
+
+        // 수익률 컬러 이모지
+        let yieldColor = '⚪️';
+        if (c.yieldPct >= 10) yieldColor = '🟢';
+        else if (c.yieldPct <= -10) yieldColor = '🔴';
+
         detailLines.push(
-          `**${c.name}**
-• 보유: ${c.q}개
-• 누적매수: ${Number(c.buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
-• 평가액: ${Number(c.evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
-• 손익: ${c.profit>=0?`+${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${c.yieldPct>=0?'+':''}${c.yieldPct.toFixed(2)}%)`
+          `${profitEmoji} **${c.name}** (${yieldColor}${c.yieldPct>=0?'+':''}${c.yieldPct.toFixed(2)}%)
+보유: \`${c.q}\`개 ｜ 누적매수: \`${Number(c.buyCost).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`
+평가액: \`${Number(c.evalPrice).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\`
+손익: \`${c.profit>=0?'+':''}${Number(c.profit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\``
         );
       });
+      // 전체 합산
       const totalYield = totalBuy > 0 ? ((totalProfit/totalBuy)*100) : 0;
       embed.setDescription(detailLines.join('\n\n'));
       embed.addFields(
-        { name: '총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-        { name: '총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
-        { name: '평가 손익', value: `${totalProfit>=0?`+${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}`:Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, inline: true }
+        { name: '💸 총 매수', value: `${Number(totalBuy).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+        { name: '🏦 총 평가', value: `${Number(totalEval).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE`, inline: true },
+        { 
+          name: `${totalProfit > 0 ? '📈' : totalProfit < 0 ? '📉' : '🎯'} 평가 손익`, 
+          value: `${totalProfit>=0?'+':''}${Number(totalProfit).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE (${totalYield>=0?'+':''}${totalYield.toFixed(2)}%)`, 
+          inline: true 
+        }
       );
+      // 하단에 한줄평 추가!
+      embed.addFields({
+        name: '💬 투자 한줄평',
+        value: getOneLineReview(totalYield, totalEval),
+        inline: false
+      });
     }
     embed.setFooter({ text: `페이지 ${page+1}/${totalPages}` });
     return embed;
@@ -1005,7 +1181,6 @@ module.exports = {
   collector.on('collect', async btn => {
     if (btn.customId === 'refresh_mycoin') {
       await btn.deferUpdate();
-      // 최신 데이터 불러와서 다시 정렬
       const coinsNew = await loadJson(coinsPath, {});
       const walletsNew = await loadJson(walletsPath, {});
       const userWNew = walletsNew[interaction.user.id] || {};
@@ -1032,6 +1207,7 @@ module.exports = {
 
   return;
 }
+
 
 
     // 6. 순위
