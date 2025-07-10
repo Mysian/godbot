@@ -80,7 +80,7 @@ module.exports = {
     const voiceId = interaction.options.getString("음성채널");
     const mentionRole = interaction.options.getRole("mention_role");
     const imageUrl = interaction.options.getString("이미지");
-    let closeHour = interaction.options.getInteger("마감시간") || 24;
+    let closeHour = interaction.options.getInteger("마감시간") ?? 1;
     if (closeHour < 1) closeHour = 1;
     if (closeHour > 24) closeHour = 24;
 
