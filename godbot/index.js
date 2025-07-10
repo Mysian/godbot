@@ -404,6 +404,21 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
+   // === advertise.js "참여 의사 밝히기" 버튼 ===
+  if (
+    interaction.isButton() &&
+    interaction.customId &&
+    interaction.customId.startsWith('joinintent_')
+  ) {
+    const [_, voiceId, closeAt] = interaction.customId.split('_');
+    if (Date.now() > Number(closeAt)) {
+      await interaction.reply({ content: '⚠️ 이미 마감된 모집입니다.', ephemeral: true });
+      return;
+    }
+    await interaction.reply({ content: `✅ 참여 의사 등록 완료!`, ephemeral: true });
+    return;
+  }
+
   // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
