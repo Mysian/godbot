@@ -193,7 +193,7 @@ function isKoreanName(str) {
   return /^[가-힣]+$/.test(str);
 }
 
-// ==== 이벤트 상폐/부활/상장 멘트 ====
+// ==== 이벤트 상폐/부활/상장/극복 멘트 ====
 const DELIST_MSGS = [
   '😱 [상폐] 이런! {coin}은(는) 스캠 코인으로 판명되었습니다!',
   '😱 [상폐] {coin}은(는) 사기였습니다! 사기!',
@@ -214,12 +214,20 @@ const NEWCOIN_MSGS = [
   '🌟 [상장] {coin}이(가) 오늘부로 공식 상장되었습니다. 첫 번째 투자자는 누구?',
   '🌟 [상장] {coin} 코인, 대망의 상장! 승부의 시작을 알립니다!',
 ];
+const SURVIVE_MSGS = [
+  '⚡️ [극복] {coin}이(가) 상장폐지 위기를 극복했습니다! 투자자들 환호!',
+  '⚡️ [극복] {coin} 상장폐지 직전에서 극적으로 살아났습니다!',
+  '⚡️ [극복] {coin}, 이 정도면 살아있는 전설!',
+  '⚡️ [극복] {coin} 상장폐지 위기를 멋지게 넘겼습니다!',
+  '⚡️ [극복] {coin}, 절망 속에서도 버텼다!'
+];
 function pickRandom(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
 async function postLogMsg(type, coinName, client) {
   let msg;
   if (type === 'delist') msg = pickRandom(DELIST_MSGS).replace('{coin}', coinName);
   if (type === 'revive') msg = pickRandom(REVIVE_MSGS).replace('{coin}', coinName);
   if (type === 'new')    msg = pickRandom(NEWCOIN_MSGS).replace('{coin}', coinName);
+  if (type === 'survive') msg = pickRandom(SURVIVE_MSGS).replace('{coin}', coinName);
   try {
     const ch = await client.channels.fetch(LOG_CHANNEL_ID);
     if (ch) ch.send(msg);
@@ -326,10 +334,14 @@ for (const [name, info] of Object.entries(coins)) {
     let delistProb = 0.002; // 상장 폐지 확률
     if (pct >= 50 || pct <= -50) delistProb = 0.008; // 급등락시 상장 폐지 확률
     if (Math.random() < delistProb) {
-      info.delistedAt = new Date().toISOString();
-      await postLogMsg('delist', name, client);
-    }
+  // 50% 확률로 상장폐지 극복 이벤트
+  if (Math.random() < 0.5) {
+    await postLogMsg('survive', name, client); // 극복 성공 메시지
+  } else {
+    info.delistedAt = new Date().toISOString(); // 상장폐지 처리
+    await postLogMsg('delist', name, client);   // 상장폐지 메시지
   }
+}
 
   let corrQueue = [];
   let newlyListed = null;
