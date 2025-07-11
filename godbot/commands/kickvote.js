@@ -101,8 +101,10 @@ module.exports = {
     activeVotes.set(voteKey, true); // 투표 시작 기록
 
     const makeDescription = () =>
-      `**<@${target.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
-      `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n현재: 👍 ${yesCount} / 👎 ${noCount}\n\n버튼을 눌러 투표(변경)하세요. (최대 30초)`;
+  `**<@${target.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
+  `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n` +
+  `총 투표 인원: ${totalUsers}명\n` +
+  `👍 찬성: ${yesCount} / 👎 반대: ${noCount}\n\n버튼을 눌러 투표(변경)하세요. (최대 30초)`;
 
     const embed = new EmbedBuilder()
       .setTitle("⚠️ 강퇴 투표 시작")
@@ -258,7 +260,10 @@ module.exports = {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
           .setDescription(`동점 또는 반대표가 더 많아 이동되지 않았습니다.`)
-          .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+          .addFields({ 
+  name: "투표 결과", 
+  value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
+})
           .setColor(0xff0000);
         return interaction.followUp({ embeds: [failEmbed] });
       }
@@ -284,7 +289,10 @@ module.exports = {
           const resultEmbed = new EmbedBuilder()
             .setTitle("✅ 강퇴 처리 완료")
             .setDescription(`<#${voiceChannel.id}> 에서 (사유: ${reason})로 인해 <@${target.id}> 님을 잠수 채널로 이동시켰습니다.`)
-            .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+            .addFields({ 
+  name: "투표 결과", 
+  value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
+})
             .setColor(0x00cc66);
           await interaction.followUp({ embeds: [resultEmbed] });
           if (resultLogChannel?.isTextBased()) {
@@ -314,7 +322,10 @@ module.exports = {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
           .setDescription(`과반수 미달로 이동되지 않았습니다.`)
-          .addFields({ name: "투표 결과", value: `👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+          .addFields({ 
+  name: "투표 결과", 
+  value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
+})
           .setColor(0xffaa00);
         await interaction.followUp({ embeds: [failEmbed] });
       }
