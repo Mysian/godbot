@@ -1,5 +1,13 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType, StringSelectMenuBuilder } = require('discord.js');
-const { getStats } = require('../utils/activity-tracker');
+const {
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ComponentType,
+  StringSelectMenuBuilder,
+  Events,
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -11,6 +19,8 @@ const EXEMPT_ROLE_IDS = ['1371476512024559756'];
 const LOG_CHANNEL_ID = '1380874052855529605';
 
 const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
+const VOICE_NOTIFY_PATH = path.join(__dirname, '../data/voice-notify.json');
+
 const PERIODS = [
   { label: '1일', value: '1' },
   { label: '7일', value: '7' },
@@ -19,6 +29,58 @@ const PERIODS = [
   { label: '60일', value: '60' },
   { label: '90일', value: '90' }
 ];
+
+// ====== 음성채널 자동이동 관련 ======
+let voiceAutoEnabled = false;
+const voiceAutoTimers = new Map();
+const VOICE_AUTO_CATEGORY_IDS = [
+  '1207980297854124032',
+  '1273762376889532426',
+  '1369008627045765173'
+];
+const VOICE_AUTO_MOVE_CHANNEL_ID = '1202971727915651092';
+const VOICE_AUTO_NOTICE_CHANNEL_ID = '1202971727915651092';
+const VOICE_AUTO_MINUTES = 60;
+let voiceAutoListenerRegistered = false;
+function setupVoiceAutoListener(client) {
+  if (voiceAutoListenerRegistered) return;
+  client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+    if (!voiceAutoEnabled) return;
+    const member = newState.member || oldState.member;
+    const channel = newState.channel || oldState.channel;
+    if (!channel || !VOICE_AUTO_CATEGORY_IDS.includes(channel.parentId)) {
+      if (voiceAutoTimers.has(member.id)) voiceAutoTimers.delete(member.id);
+      return;
+    }
+    const members = channel.members.filter(m => !m.user.bot);
+    if (members.size === 1) {
+      if (!voiceAutoTimers.has(member.id)) {
+        voiceAutoTimers.set(member.id, setTimeout(async () => {
+          if (channel.members.filter(m => !m.user.bot).size === 1) {
+            try {
+              await member.voice.setChannel(VOICE_AUTO_MOVE_CHANNEL_ID, `장시간 혼자 대기 자동 이동`);
+              const noticeChannel = member.guild.channels.cache.get(VOICE_AUTO_NOTICE_CHANNEL_ID)
+                || member.guild.systemChannel;
+              if (noticeChannel) {
+                noticeChannel.send({
+                  content: `\`${member.displayName}\`님, 음성채널에 장시간 혼자 머물러 계셔서 자동으로 이동되었습니다.`
+                });
+              }
+            } catch (e) {}
+          }
+          voiceAutoTimers.delete(member.id);
+        }, VOICE_AUTO_MINUTES * 60 * 1000));
+      }
+    } else {
+      if (voiceAutoTimers.has(member.id)) {
+        clearTimeout(voiceAutoTimers.get(member.id));
+        voiceAutoTimers.delete(member.id);
+      }
+    }
+  });
+  voiceAutoListenerRegistered = true;
+}
+// ====================================
 
 function readWarnHistory() {
   if (!fs.existsSync(WARN_HISTORY_PATH)) return {};
@@ -31,6 +93,16 @@ function readWarnHistory() {
 function saveWarnHistory(obj) {
   fs.writeFileSync(WARN_HISTORY_PATH, JSON.stringify(obj, null, 2));
 }
+
+// ====== 음성알림 관련 ======
+function loadVoiceNotify() {
+  if (!fs.existsSync(VOICE_NOTIFY_PATH)) fs.writeFileSync(VOICE_NOTIFY_PATH, '{}');
+  return JSON.parse(fs.readFileSync(VOICE_NOTIFY_PATH, 'utf8'));
+}
+function saveVoiceNotify(data) {
+  fs.writeFileSync(VOICE_NOTIFY_PATH, JSON.stringify(data, null, 2));
+}
+// ==========================
 
 function formatTimeAgo(date) {
   if (!date) return '기록 없음';
@@ -137,14 +209,16 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('고급관리')
-    .setDescription('필수옵션: [장기 미접속 유저, 비활동 신규 유저]')
+    .setDescription('서버 관리 기능을 한 번에!')
     .addStringOption(opt =>
       opt.setName('필수옵션')
         .setDescription('관리 항목 선택')
         .setRequired(true)
         .addChoices(
           { name: '장기 미접속 유저', value: 'long' },
-          { name: '비활동 신규 유저', value: 'newbie' }
+          { name: '비활동 신규 유저', value: 'newbie' },
+          { name: '음성채널 알림 설정', value: 'voice_notify' },
+          { name: '음성채널 자동이동 설정', value: 'voice_auto' }
         )
     ),
   async execute(interaction) {
@@ -158,27 +232,98 @@ module.exports = {
     let warnedObj = readWarnHistory();
     let page = 0;
 
-    const makePeriodRow = (disabled = false) =>
-      new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId('period')
-          .setPlaceholder(`비활동 기간(일) 선택`)
-          .setDisabled(disabled)
-          .addOptions(PERIODS.map(p => ({
-            label: p.label,
-            value: p.value,
-            default: String(selectedDays) === p.value
-          })))
+    // ===== 음성채널 알림/자동이동 설정 기능 분기 =====
+    if (option === 'voice_notify') {
+      const notifyData = loadVoiceNotify();
+      const guildId = interaction.guildId;
+      const isOn = !!notifyData[guildId];
+      const embed = new EmbedBuilder()
+        .setTitle('음성채널 입장/퇴장 알림 설정')
+        .setDescription(
+          `현재 상태: **${isOn ? 'ON' : 'OFF'}**\n\n` +
+          `- 음성채널 입장/퇴장 시 알림 메시지가 서버에 전송됩니다.\n` +
+          `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
+        )
+        .setColor(isOn ? 0x43b581 : 0xff5555);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('notify_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(isOn),
+        new ButtonBuilder().setCustomId('notify_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!isOn)
       );
+      const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
 
-    const makeRow = (disabled = false) => new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
-      new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-      new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(disabled || page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
-      new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(disabled),
-      new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(disabled)
-    );
+      const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+      collector.on('collect', async i => {
+        const newOn = i.customId === 'notify_on';
+        notifyData[guildId] = newOn;
+        saveVoiceNotify(notifyData);
+        await i.update({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('음성채널 입장/퇴장 알림 설정')
+              .setDescription(
+                `현재 상태: **${newOn ? 'ON' : 'OFF'}**\n\n` +
+                `- 음성채널 입장/퇴장 시 알림 메시지가 서버에 전송됩니다.\n` +
+                `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
+              )
+              .setColor(newOn ? 0x43b581 : 0xff5555)
+          ],
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('notify_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(newOn),
+            new ButtonBuilder().setCustomId('notify_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!newOn)
+          )],
+          ephemeral: true
+        });
+      });
+      return;
+    }
 
+    if (option === 'voice_auto') {
+      const embed = new EmbedBuilder()
+        .setTitle('음성채널 장시간 1인 자동이동 설정')
+        .setDescription(
+          `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
+          `- 감시 카테고리 내에서 1명이 60분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+          `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
+        )
+        .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('auto_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(voiceAutoEnabled),
+        new ButtonBuilder().setCustomId('auto_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!voiceAutoEnabled)
+      );
+      const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
+
+      setupVoiceAutoListener(interaction.client);
+
+      const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+      collector.on('collect', async i => {
+        voiceAutoEnabled = i.customId === 'auto_on';
+        if (!voiceAutoEnabled) {
+          for (const t of voiceAutoTimers.values()) clearTimeout(t);
+          voiceAutoTimers.clear();
+        }
+        await i.update({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('음성채널 장시간 1인 자동이동 설정')
+              .setDescription(
+                `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
+                `- 감시 카테고리 내에서 1명이 60분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+                `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
+              )
+              .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555)
+          ],
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('auto_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(voiceAutoEnabled),
+            new ButtonBuilder().setCustomId('auto_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!voiceAutoEnabled)
+          )],
+          ephemeral: true
+        });
+      });
+      return;
+    }
+    // ============ 기존 기능(유저 목록) ============
     if (option === 'long') {
       title = '장기 미접속 유저';
       const getUserList = async () => {
@@ -216,7 +361,25 @@ module.exports = {
 
     const msg = await interaction.editReply({
       embeds,
-      components: [makeRow(), makePeriodRow()],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
+          new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
+        ),
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('period')
+            .setPlaceholder(`비활동 기간(일) 선택`)
+            .addOptions(PERIODS.map(p => ({
+              label: p.label,
+              value: p.value,
+              default: String(selectedDays) === p.value
+            })))
+        ),
+      ],
       ephemeral: true
     });
 
@@ -263,7 +426,6 @@ module.exports = {
               }
             } catch { }
           }
-          // 추방 로그 타이틀/설명
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
             `관리자: <@${interaction.user.id}>\n` +
@@ -316,7 +478,6 @@ module.exports = {
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
 
-          // 경고 로그 타이틀/설명
           const warnTitle = option === 'long' ? '장기 미접속 유저 경고 DM' : '비활동 신규 유저 경고 DM';
           const warnDesc =
             `관리자: <@${interaction.user.id}>\n` +
@@ -351,10 +512,47 @@ module.exports = {
             resultMsg += getUserDisplay(failed);
           }
           await interaction.followUp({ content: resultMsg, ephemeral: true });
-          await msg.edit({ embeds, components: [makeRow(true), makePeriodRow(true)] });
+          await msg.edit({ embeds, components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
+              new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(true),
+              new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(true),
+              new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+              new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
+            ),
+            new ActionRowBuilder().addComponents(
+              new StringSelectMenuBuilder()
+                .setCustomId('period')
+                .setPlaceholder(`비활동 기간(일) 선택`)
+                .setDisabled(true)
+                .addOptions(PERIODS.map(p => ({
+                  label: p.label,
+                  value: p.value,
+                  default: String(selectedDays) === p.value
+                })))
+            ),
+          ] });
         }
         embeds = getEmbeds(userList, page, title, selectedDays);
-        await i.update({ embeds, components: [makeRow(), makePeriodRow()], ephemeral: true });
+        await i.update({ embeds, components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
+            new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
+          ),
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('period')
+              .setPlaceholder(`비활동 기간(일) 선택`)
+              .addOptions(PERIODS.map(p => ({
+                label: p.label,
+                value: p.value,
+                default: String(selectedDays) === p.value
+              })))
+          ),
+        ], ephemeral: true });
         collector.resetTimer();
       } catch (err) { }
     });
@@ -372,7 +570,25 @@ module.exports = {
         }
         page = 0;
         embeds = getEmbeds(userList, page, title, selectedDays);
-        await i.update({ embeds, components: [makeRow(), makePeriodRow()], ephemeral: true });
+        await i.update({ embeds, components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
+            new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
+          ),
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('period')
+              .setPlaceholder(`비활동 기간(일) 선택`)
+              .addOptions(PERIODS.map(p => ({
+                label: p.label,
+                value: p.value,
+                default: String(selectedDays) === p.value
+              })))
+          ),
+        ], ephemeral: true });
         collector.resetTimer();
         selectCollector.resetTimer();
       } catch (err) { }
@@ -380,12 +596,50 @@ module.exports = {
 
     collector.on('end', async () => {
       try {
-        await msg.edit({ components: [makeRow(true), makePeriodRow(true)] });
+        await msg.edit({ components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(true),
+            new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+            new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('period')
+              .setPlaceholder(`비활동 기간(일) 선택`)
+              .setDisabled(true)
+              .addOptions(PERIODS.map(p => ({
+                label: p.label,
+                value: p.value,
+                default: String(selectedDays) === p.value
+              })))
+          ),
+        ] });
       } catch { }
     });
     selectCollector.on('end', async () => {
       try {
-        await msg.edit({ components: [makeRow(true), makePeriodRow(true)] });
+        await msg.edit({ components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(true),
+            new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+            new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('period')
+              .setPlaceholder(`비활동 기간(일) 선택`)
+              .setDisabled(true)
+              .addOptions(PERIODS.map(p => ({
+                label: p.label,
+                value: p.value,
+                default: String(selectedDays) === p.value
+              })))
+          ),
+        ] });
       } catch { }
     });
   }
