@@ -806,6 +806,85 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
+// 승인 테스트 근무실태 관련 인덱스
+const fs = require('fs');
+const path = require('path');
+const { sendApproveLog } = require('./utils/approve-log');
+const DB_PATH = path.join(__dirname, './utils/approve-test-db.json');
+
+function loadDB() {
+  if (!fs.existsSync(DB_PATH)) return [];
+  return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+}
+function saveDB(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
+
+// 버튼 클릭 감지
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
+  const db = loadDB();
+  const found = db.find(e => e.messageId === interaction.message.id);
+  if (!found) return; // 승인테스트 임베드가 아닐 때
+
+  // "대상 유저만 처리 가능"
+  if (interaction.user.id !== found.targetUserId) {
+    await interaction.reply({ content: '당신은 이 요청에 대한 권한이 없습니다.', ephemeral: true });
+    return;
+  }
+
+  let action = '';
+  if (interaction.customId === 'approve') action = '승인';
+  if (interaction.customId === 'approve_silent') action = '조용히 승인';
+  if (interaction.customId === 'reject') action = '거절';
+  if (interaction.customId === 'reject_reason') action = '거절(사유 입력)';
+  if (interaction.customId === 'edit_nick') action = '닉네임 수정 승인';
+
+  const timeTaken = ((Date.now() - found.startTime) / 1000).toFixed(1);
+  await interaction.reply({ content: `처리 완료: ${action} (${timeTaken}s 소요)`, ephemeral: true });
+
+  // 로그
+  sendApproveLog({
+    type: '버튼',
+    action,
+    by: interaction.user,
+    target: interaction.user, // 본인
+    timeTaken,
+  }, interaction.guild);
+
+  // 처리된 것은 DB에서 제거
+  saveDB(db.filter(e => e.messageId !== interaction.message.id));
+});
+
+// 이모지 반응 감지
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot) return;
+  const db = loadDB();
+  const found = db.find(e => e.messageId === reaction.message.id);
+  if (!found) return;
+
+  if (user.id !== found.targetUserId) return; // 대상 유저만
+
+  let action = '';
+  if (reaction.emoji.name === '✅') action = '이모지 승인';
+  if (reaction.emoji.name === '❌') action = '이모지 거절';
+  if (!action) return;
+
+  const timeTaken = ((Date.now() - found.startTime) / 1000).toFixed(1);
+
+  sendApproveLog({
+    type: '이모지',
+    action,
+    by: user,
+    target: user,
+    timeTaken,
+  }, reaction.message.guild);
+
+  // 처리된 것은 DB에서 제거
+  saveDB(db.filter(e => e.messageId !== reaction.message.id));
+});
+
+
 // === 간단 코인 시세 조회 (!영갓코인 등) ===
 const lockfile = require('proper-lockfile');
 const coinsPath = path.join(__dirname, './data/godbit-coins.json');
