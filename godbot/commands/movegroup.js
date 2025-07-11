@@ -4,6 +4,35 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function moveMembersInChunks(members, targetChannel, chunkSize = 5, waitMs = 500) {
+  let moved = [];
+  const chunks = chunkArray(members, chunkSize);
+
+  for (const chunk of chunks) {
+    for (const member of chunk) {
+      try {
+        await member.voice.setChannel(targetChannel);
+        moved.push(member.user.tag);
+      } catch (e) {}
+    }
+    await delay(waitMs);
+  }
+
+  return moved;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('단체이동')
@@ -41,7 +70,6 @@ module.exports = {
       });
     }
 
-    // 같은 채널일 경우
     if (sourceChannel.id === targetChannel.id) {
       return await interaction.reply({
         content: '⚠️ 같은 채널로는 이동할 수 없습니다.',
@@ -49,7 +77,6 @@ module.exports = {
       });
     }
 
-    // 스테이지 채널 차단
     if (targetChannel.type !== ChannelType.GuildVoice) {
       return await interaction.reply({
         content: '❌ 이동할 채널은 일반 음성 채널만 가능합니다.',
@@ -57,7 +84,6 @@ module.exports = {
       });
     }
 
-    // 대상 채널에서 이동할 유저 추출
     const members = [...sourceChannel.members.values()].filter(
       m => !m.user.bot && (!exceptUser || m.id !== exceptUser.id),
     );
@@ -69,7 +95,6 @@ module.exports = {
       });
     }
 
-    // 조건 위반 체크
     const errors = [];
 
     for (const member of members) {
@@ -94,17 +119,7 @@ module.exports = {
       });
     }
 
-    // 이동 수행
-    const moved = [];
-
-    for (const member of members) {
-      try {
-        await member.voice.setChannel(targetChannel);
-        moved.push(member.user.tag);
-      } catch (e) {
-        // 무시
-      }
-    }
+    const moved = await moveMembersInChunks(members, targetChannel, 5, 500);
 
     return await interaction.reply({
       content: `✅ ${moved.length}명 이동 완료: \n${moved.join('\n')}`,
