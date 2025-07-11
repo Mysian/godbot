@@ -29,26 +29,29 @@ module.exports = {
     const member = await interaction.guild.members.fetch(interaction.user.id);
     const targetMember = await interaction.guild.members.fetch(target.id);
 
-    // 멀티 투표 방지
     const voteKey = `${member.voice?.channelId}:${target.id}`;
+    // *** 동시 진입 방지: 명령어 진입 즉시 set ***
     if (activeVotes.has(voteKey)) {
       return interaction.reply({
         content: "❗ 이미 해당 대상에 대한 투표가 진행 중입니다.",
         ephemeral: true,
       });
     }
+    activeVotes.set(voteKey, true); // *** 여기로 이동! ***
 
     if (
       !member.voice.channel ||
       !targetMember.voice.channel ||
       member.voice.channel.id !== targetMember.voice.channel.id
     ) {
+      activeVotes.delete(voteKey);
       return interaction.reply({
         content: "❌ 대상 유저는 같은 음성채널에 접속 중이어야 합니다.",
         ephemeral: true,
       });
     }
     if (interaction.user.id === target.id) {
+      activeVotes.delete(voteKey);
       return interaction.reply({
         content: "❌ 자신에게는 투표를 진행할 수 없습니다.",
         ephemeral: true,
@@ -76,6 +79,7 @@ module.exports = {
     }).catch(() => null);
 
     if (!submitted) {
+      activeVotes.delete(voteKey);
       return interaction.followUp({ content: "⏰ 시간 초과로 취소되었습니다.", ephemeral: true });
     }
 
@@ -98,19 +102,18 @@ module.exports = {
     let kickScheduled = false;
     let leftSeconds = 30;
 
-    activeVotes.set(voteKey, true); // 투표 시작 기록
-
     const makeDescription = () =>
-  `**<@${target.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
-  `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n` +
-  `총 투표 인원: ${totalUsers}명\n` +
-  `👍 찬성: ${yesCount} / 👎 반대: ${noCount}\n\n버튼을 눌러 투표(변경)하세요. (최대 30초)`;
+      `**<@${target.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
+      `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n` +
+      `총 투표 인원: ${totalUsers}명\n` +
+      `👍 찬성: ${yesCount} / 👎 반대: ${noCount}\n\n버튼을 눌러 투표(변경)하세요. (최대 30초)`;
 
     const embed = new EmbedBuilder()
-      .setTitle("⚠️ 강퇴 투표 시작")
-      .setDescription(makeDescription())
-      .setColor(0xff4444)
-      .setFooter({ text: "투표는 30초 내 언제든 수정 가능하며, 최대 30초 뒤 자동 종료됩니다." });
+  .setTitle("⚠️ 강퇴 투표 시작")
+  .setDescription(makeDescription())
+  .setColor(0xff4444)
+  .setFooter({ text: "투표는 30초 내 언제든 수정 가능하며, 최대 30초 뒤 자동 종료됩니다." })
+  .setImage("https://media.discordapp.net/attachments/1388728993787940914/1393024803488927744/Image_fx.jpg?ex=6871aaf2&is=68705972&hm=2a6831a918c89470fc5ab03d675b0b2d52cee21a6791ba18a6747e164a1e29cf&=&format=webp");
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("vote_yes").setLabel("찬성 👍").setStyle(ButtonStyle.Success),
@@ -261,9 +264,9 @@ module.exports = {
           .setTitle("🛑 강퇴 투표 종료")
           .setDescription(`동점 또는 반대표가 더 많아 이동되지 않았습니다.`)
           .addFields({ 
-  name: "투표 결과", 
-  value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
-})
+            name: "투표 결과", 
+            value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
+          })
           .setColor(0xff0000);
         return interaction.followUp({ embeds: [failEmbed] });
       }
@@ -290,9 +293,9 @@ module.exports = {
             .setTitle("✅ 강퇴 처리 완료")
             .setDescription(`<#${voiceChannel.id}> 에서 (사유: ${reason})로 인해 <@${target.id}> 님을 잠수 채널로 이동시켰습니다.`)
             .addFields({ 
-  name: "투표 결과", 
-  value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
-})
+              name: "투표 결과", 
+              value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
+            })
             .setColor(0x00cc66);
           await interaction.followUp({ embeds: [resultEmbed] });
           if (resultLogChannel?.isTextBased()) {
@@ -323,9 +326,9 @@ module.exports = {
           .setTitle("🛑 강퇴 투표 종료")
           .setDescription(`과반수 미달로 이동되지 않았습니다.`)
           .addFields({ 
-  name: "투표 결과", 
-  value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
-})
+            name: "투표 결과", 
+            value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` 
+          })
           .setColor(0xffaa00);
         await interaction.followUp({ embeds: [failEmbed] });
       }
