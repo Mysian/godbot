@@ -1,3 +1,4 @@
 data/*.json
+utils/*.json
 /*.json
 .env
