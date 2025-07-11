@@ -806,6 +806,50 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
+
+// === 간단 코인 시세 조회 (!영갓, !영갓코인 등) ===
+const lockfile = require('proper-lockfile');
+const coinsPath = path.join(__dirname, './data/godbit-coins.json');
+const SIMPLE_COIN_CHANNEL = '1381193562330370048';
+
+client.on('messageCreate', async (msg) => {
+  if (msg.channel.id !== SIMPLE_COIN_CHANNEL) return;
+  if (msg.author.bot) return;
+  if (!msg.content.startsWith('!')) return;
+
+  const keyword = msg.content.slice(1).trim();
+  if (!keyword) return;
+
+  let coinName = keyword;
+  if (!coinName.endsWith('코인')) coinName += '코인';
+
+  // 코인 데이터 안전하게 읽기 (lock 사용)
+  if (!fs.existsSync(coinsPath)) return;
+  let coins;
+  try {
+    const release = await lockfile.lock(coinsPath, { retries: 2, stale: 2500 });
+    coins = JSON.parse(fs.readFileSync(coinsPath, 'utf8'));
+    release();
+  } catch (e) {
+    return;
+  }
+
+  // 앞글자 or 전체 일치 우선 검색
+  const match = Object.keys(coins).find(name =>
+    name.toLowerCase() === coinName.toLowerCase() ||
+    name.toLowerCase().startsWith(keyword.toLowerCase())
+  );
+  if (!match) return;
+
+  const info = coins[match];
+  if (info.delistedAt) {
+    msg.channel.send(`-# [${match}] 폐지된 코인입니다.`);
+    return;
+  }
+  const price = Number(info.price).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  msg.channel.send(`-# [${match}] ${price} BE`);
+});
+
 setInterval(async () => {
   if (!client || !client.user || !client.ws || client.ws.status !== 0) {
     console.warn("🛑 클라이언트 연결이 끊겼습니다. 재로그인 시도 중...");
