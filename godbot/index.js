@@ -237,7 +237,15 @@ const modalHandlers = new Map([
  ["status_set", async (interaction) => {
     const cmd = client.commands.get("상태설정");
     if (cmd?.modal) return cmd.modal.execute(interaction);
- }],  
+ }],
+["donate_money_modal", async (interaction) => {
+  const cmd = client.commands.get("후원");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["donate_item_modal", async (interaction) => {
+  const cmd = client.commands.get("후원");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   // 필요하면 추가로 더 여기에 등록
 ]);
 
