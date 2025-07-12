@@ -17,7 +17,7 @@ function saveRank() {
   fs.writeFileSync(DATA_PATH, JSON.stringify(rankData, null, 2), 'utf8');
 }
 
-// 순위: bestTry 오름차순 → bestClear(최소 시도 기록으로 성공한 횟수) 내림차순 → lastClear 오름차순
+// 순위: bestTry 오름차순 → bestClear 내림차순 → lastClear 오름차순
 function getRankArray() {
   const arr = Object.entries(rankData).map(([id, record]) => ({
     userId: id,
@@ -96,13 +96,13 @@ module.exports = {
     // 게임 시작
     if (message.content === '!업다운') {
       if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-        return message.reply('이미 진행 중인 업다운 게임이 있습니다! 먼저 완료하거나 !종료로 닫아주세요.');
+        return message.reply(`**${message.author}**: 이미 진행 중인 업다운 게임이 있습니다! 먼저 완료하거나 !종료로 닫아주세요.`);
       }
       const answer = Math.floor(Math.random() * 100) + 1;
       // 제한시간 180초(3분)
       const timeout = setTimeout(() => {
         if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-          message.reply(`⏰ 3분(180초) 제한시간이 끝났습니다! 업다운 게임이 종료됩니다.`);
+          message.reply(`⏰ **${message.author}**: 3분(180초) 제한시간이 끝났습니다! 업다운 게임이 종료됩니다.`);
           ACTIVE[message.author.id].finished = true;
           delete ACTIVE[message.author.id];
         }
@@ -116,7 +116,7 @@ module.exports = {
         startTime: Date.now(),
         timeout
       };
-      return message.reply('1~100 사이의 숫자 중 **정답**을 5번 안에 맞혀보세요! 숫자를 입력하세요.');
+      return message.reply(`**${message.author}**: 1~100 사이의 숫자 중 **정답**을 5번 안에 맞혀보세요! 숫자를 입력하세요.`);
     }
 
     // 순위 출력
@@ -145,13 +145,13 @@ module.exports = {
     // 종료 명령어
     if (message.content === '!종료') {
       const game = ACTIVE[message.author.id];
-      if (!game || game.finished) return message.reply('진행 중인 게임이 없습니다.');
+      if (!game || game.finished) return message.reply(`**${message.author}**: 진행 중인 게임이 없습니다.`);
       game.finished = true;
       clearTimeout(game.timeout);
-      message.reply('5초 뒤에 업다운 게임 세션이 종료됩니다...');
+      message.reply(`**${message.author}**: 5초 뒤에 업다운 게임 세션이 종료됩니다...`);
       setTimeout(() => {
         if (ACTIVE[message.author.id]) {
-          message.channel.send('업다운 게임이 종료되었습니다.');
+          message.channel.send(`**${message.author}**: 업다운 게임이 종료되었습니다.`);
           delete ACTIVE[message.author.id];
         }
       }, 5000);
@@ -165,7 +165,7 @@ module.exports = {
       const guess = parseInt(message.content.trim());
       if (isNaN(guess) || guess < 1 || guess > 100) return;
       if (game.tries.includes(guess)) {
-        return message.reply('이미 시도한 숫자입니다. 다른 숫자를 입력하세요!');
+        return message.reply(`**${message.author}**: 이미 시도한 숫자입니다. 다른 숫자를 입력하세요!`);
       }
       game.tries.push(guess);
       game.chance--;
@@ -202,7 +202,7 @@ module.exports = {
         }
         saveRank();
 
-        return message.reply(`🎉 정답! (${tryCount}번 만에 성공)\n랭킹에 기록되었습니다!\n!업다운 순위로 내 순위를 확인해보세요!`);
+        return message.reply(`🎉 **${message.author}**: 정답! (${tryCount}번 만에 성공)\n랭킹에 기록되었습니다!\n!업다운 순위로 내 순위를 확인해보세요!`);
       } else {
         // 힌트
         let res, hint;
@@ -216,9 +216,9 @@ module.exports = {
         if (game.chance === 0) {
           game.finished = true;
           clearTimeout(game.timeout);
-          return message.reply(`❌ 기회 소진! 정답은 **${game.answer}**였습니다.\n다시 도전하려면 !업다운을 입력하세요.`);
+          return message.reply(`❌ **${message.author}**: 기회 소진! 정답은 **${game.answer}**였습니다.\n다시 도전하려면 !업다운을 입력하세요.`);
         } else {
-          return message.reply(`${res} (${hint}) 남은 기회: ${game.chance}번`);
+          return message.reply(`**${message.author}**: ${res} (${hint}) 남은 기회: ${game.chance}번`);
         }
       }
     }
