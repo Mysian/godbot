@@ -471,6 +471,16 @@ function firstDiff(a, b) {
   return -1;
 }
 
+// 오타난 부분만 추출
+function getMistypedSegment(answer, input) {
+  const diffIdx = firstDiff(answer, input);
+  if (diffIdx === -1) return '길이가 다릅니다.';
+  // 오타 지점부터 최대 5글자만
+  const correctSeg = answer.slice(diffIdx, diffIdx + 5);
+  const inputSeg = input.slice(diffIdx, diffIdx + 5);
+  return `정답: "${correctSeg}", 입력: "${inputSeg}"`;
+}
+
 module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
@@ -500,7 +510,7 @@ module.exports = {
             '- 랜덤 문장이 출제되며, 똑같이 입력하면 됩니다.',
             '- 각 게임은 90초 제한, 여러 명이 동시에 진행 가능',
             '- [CPM/WPM/정확도]가 자동 계산되어 랭킹에 반영됨',
-            '- 오타 시 오타 부분까지 표시해서 알려줌',
+            '- 오타 시 오타 부분만 따로 안내해줍니다.',
             '- `!종료`로 직접 연습 세션 종료 가능',
           ].join('\n')
         )
@@ -615,17 +625,8 @@ module.exports = {
         game.finished = true;
         delete ACTIVE[message.author.id];
       } else {
-        // 오타 안내
-        const diffIdx = firstDiff(game.answer, message.content);
-        let hint;
-        if (diffIdx === -1) {
-          hint = '길이가 다릅니다.';
-        } else {
-          hint =
-            `정답: \`${game.answer}\`\n` +
-            `입력: \`${message.content}\`\n` +
-            ' '.repeat(diffIdx + 4) + '↑ 여기서 오타!';
-        }
+        // 오타 안내 (오타난 부분만)
+        const hint = getMistypedSegment(game.answer, message.content);
         message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
       }
     }
