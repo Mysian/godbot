@@ -12,7 +12,7 @@ const {
 
 
 // 롤, 스팀게임, 나머지
-const PAGE_SIZE        = 10;
+const PAGE_SIZE        = 5;
 const BLANK = '\u200B';
 const LOL              = ["소환사의 협곡", "칼바람 나락", "롤토체스", "이벤트 모드"];
 const STEAM_GAMES      = ["스팀게임"];
