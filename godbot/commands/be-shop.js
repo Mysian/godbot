@@ -3,9 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
 
-// ======================[ PATHS & CONFIGURATION ]======================
-
-// --- File Paths ---
+// === 경로 및 파일 ===
 const bePath = path.join(__dirname, '../data/BE.json');
 const itemsPath = path.join(__dirname, '../data/items.json');
 const skillsPath = path.join(__dirname, '../data/skills.json');
@@ -13,13 +11,13 @@ const stockPath = path.join(__dirname, '../data/upgrade-stock.json');
 const nicknameRolesPath = path.join(__dirname, '../data/nickname-roles.json');
 const titlesPath = path.join(__dirname, '../data/limited-titles.json');
 
-// --- Shop Configuration ---
-const NICKNAME_ROLE_PER_USER = 1; // Max ownable nickname roles. Set to 0 for unlimited.
+const NICKNAME_ROLE_PER_USER = 1; // 한 명당 1개만 허용(수정가능)
 const CHANNEL_ROLE_ID = '1352582997400092755';
 const CHANNEL_ROLE_PRICE = 3000000;
-const SHOP_SESSION_TIMEOUT_SEC = 180; // Shop window validity duration
 
-// --- Upgradeable Item Settings ---
+function numFmt(num) { return num.toLocaleString(); }
+
+// === 강화 아이템 설정 ===
 const 강화ITEMS = [
   {
     name: '불굴의 영혼',
@@ -28,7 +26,7 @@ const 강화ITEMS = [
     desc: '챔피언 단일 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 1시간마다 재고 1개 충전 [최대 10개]',
     emoji: '🧿',
     key: 'soul',
-    period: 1 // Restock period in hours
+    period: 1
   },
   {
     name: '불굴의 영혼 (전설)',
@@ -37,67 +35,49 @@ const 강화ITEMS = [
     desc: '챔피언 한방 강화 진행시 보유하고 있는 경우 100% 확률로 소멸을 방지한다. [1회성/고유상품]\n※ 3시간마다 재고 1개 충전 [최대 5개]',
     emoji: '🌟',
     key: 'legendary',
-    period: 3 // Restock period in hours
+    period: 3
   }
 ];
 const MAX_STOCK = { soul: 10, legendary: 5 };
 
-// ======================[ UTILITY & FILE I/O ]======================
-
-/** Formats a number with commas. */
-function numFmt(num) { return num.toLocaleString(); }
-
-/**
- * Asynchronously loads and parses a JSON file with file locking.
- * @param {string} p - The file path.
- * @param {boolean} [isArray=false] - Whether to initialize with an empty array if the file doesn't exist.
- * @returns {Promise<Object|Array>} The parsed JSON data.
- */
+// === 파일 IO ===
 async function loadJson(p, isArray = false) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, isArray ? "[]" : "{}");
   const release = await lockfile.lock(p, { retries: 3 });
-  try {
-    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-    return data;
-  } finally {
-    await release();
-  }
+  const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+  await release();
+  return data;
 }
-
-/**
- * Asynchronously saves data to a JSON file with file locking.
- * @param {string} p - The file path.
- * @param {Object|Array} data - The data to save.
- */
 async function saveJson(p, data) {
   const release = await lockfile.lock(p, { retries: 3 });
-  try {
-    fs.writeFileSync(p, JSON.stringify(data, null, 2));
-  } finally {
-    await release();
-  }
+  fs.writeFileSync(p, JSON.stringify(data, null, 2));
+  await release();
 }
 
-// ======================[ STOCK MANAGEMENT ]======================
+// === 강화 아이템 재고 IO ===
+async function loadStock() {
+  if (!fs.existsSync(stockPath)) fs.writeFileSync(stockPath, '{}');
+  const release = await lockfile.lock(stockPath, { retries: 3 });
+  const data = JSON.parse(fs.readFileSync(stockPath, 'utf8'));
+  await release();
+  return data;
+}
+async function saveStock(data) {
+  const release = await lockfile.lock(stockPath, { retries: 3 });
+  fs.writeFileSync(stockPath, JSON.stringify(data, null, 2));
+  await release();
+}
 
-/** Loads the stock data. */
-async function loadStock() { return loadJson(stockPath); }
-/** Saves the stock data. */
-async function saveStock(data) { return saveJson(stockPath, data); }
-
-/**
- * Checks and restocks an item based on its restock period.
- * @param {Object} item - The item configuration object from `강화ITEMS`.
- * @returns {Promise<number>} The current stock count.
- */
+// === 강화 아이템 재고 관리 ===
 async function checkAndRestock(item) {
   const stock = await loadStock();
   const now = Date.now();
   if (!stock[item.key]) stock[item.key] = { stock: 0, last: 0 };
 
   let changed = false;
-  const periodMs = item.period * 60 * 60 * 1000;
-  let { last = 0, stock: currentStock = 0 } = stock[item.key];
+  let periodMs = item.period * 60 * 60 * 1000;
+  let last = stock[item.key].last || 0;
+  let currentStock = stock[item.key].stock || 0;
 
   if (now - last >= periodMs) {
     const addCount = Math.floor((now - last) / periodMs);
@@ -114,772 +94,883 @@ async function checkAndRestock(item) {
   if (changed) await saveStock(stock);
   return currentStock;
 }
-
-/**
- * Checks if an item is in stock.
- * @param {Object} item - The item configuration object.
- * @returns {Promise<boolean>} True if stock > 0.
- */
 async function checkStock(item) {
-  const stockCount = await checkAndRestock(item);
-  return stockCount > 0;
+  const stock = await checkAndRestock(item);
+  return stock > 0;
 }
-
-/**
- * Decreases the stock of a given item by one.
- * @param {Object} item - The item configuration object.
- */
 async function decreaseStock(item) {
   const stock = await loadStock();
   if (!stock[item.key]) stock[item.key] = { stock: 0, last: 0 };
   stock[item.key].stock = Math.max(0, (stock[item.key].stock || 0) - 1);
   await saveStock(stock);
 }
-
-/**
- * Calculates the time in seconds until the next restock.
- * @param {Object} item - The item configuration object.
- * @returns {Promise<number>} Seconds until next restock, or 0 if fully stocked.
- */
 async function nextRestock(item) {
   const stock = await loadStock();
   const now = Date.now();
   if (!stock[item.key]) stock[item.key] = { stock: 0, last: 0 };
-
+  let periodMs = item.period * 60 * 60 * 1000;
+  let last = stock[item.key].last || 0;
+  let nextTime = last + periodMs;
   if (stock[item.key].stock >= MAX_STOCK[item.key]) return 0;
-
-  const periodMs = item.period * 60 * 60 * 1000;
-  const lastRestock = stock[item.key].last || 0;
-  const nextTime = lastRestock + periodMs;
-
   return Math.max(0, Math.floor((nextTime - now) / 1000));
 }
 
-// ======================[ MEMORY FLAGS ]======================
-// Prevents race conditions and multiple open windows per user.
-const userBuying = new Set();
-const userShopOpen = new Set();
+// === 메모리 플래그 ===
+const userBuying = {};
+const userShopOpen = {};
 
-// ======================[ SHOP HANDLERS ]======================
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('상점')
+    .setDescription('파랑 정수(BE)로 다양한 아이템/강화/역할을 구매할 수 있습니다.')
+    .addStringOption(option =>
+      option
+        .setName('종류')
+        .setDescription('상점 종류를 선택하세요.')
+        .setRequired(true)
+        .addChoices(
+          { name: '닉네임 색상', value: 'nickname' },
+          { name: '개인채널 계약금', value: 'channel' },
+          { name: '한정판 칭호', value: 'title' },
+          { name: '챔피언 강화 아이템', value: 'upgrade' },
+          { name: '배틀 아이템', value: 'item' },
+          { name: '배틀 스킬', value: 'skill' }
+        )
+    ),
+  async execute(interaction) {
+    try {
+      if (userShopOpen[interaction.user.id]) {
+        await interaction.reply({ content: '이미 상점 창이 열려있습니다. 먼저 기존 상점을 종료해주세요!', ephemeral: true });
+        return;
+      }
+      userShopOpen[interaction.user.id] = true;
+      const expireSec = 180;
+      const sessionExpireAt = Date.now() + expireSec * 1000;
+      let interval;
+      await interaction.deferReply({ ephemeral: false });
 
-/**
- * Handles the "Battle Item" shop.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe - The user's initial BE balance.
- */
-async function handleItemShop(interaction, initialBe) {
-    const ITEMS = require('../utils/items.js');
-    const ITEM_LIST = Object.values(ITEMS);
-    const sorted = ITEM_LIST.slice().sort((a, b) => b.price - a.price);
-    let page = 0;
-    const ITEMS_PER_PAGE = 5;
-    const maxPage = Math.ceil(ITEM_LIST.length / ITEMS_PER_PAGE);
+      const kind = interaction.options.getString('종류');
+      const be = await loadJson(bePath);
+      const userBe = be[interaction.user.id]?.amount || 0;
+      function getRemainSec() {
+        return Math.max(0, Math.floor((sessionExpireAt - Date.now()) / 1000));
+      }
 
-    const getEmbedAndRows = (currentPage, currentBe) => {
-        const showItems = sorted.slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE);
-        const embed = new EmbedBuilder()
+      // ---- 아이템 상점 ----
+      if (kind === 'item') {
+        const ITEMS = require('../utils/items.js');
+        const ITEM_LIST = Object.values(ITEMS);
+        const sorted = ITEM_LIST.slice().sort((a, b) => b.price - a.price);
+        let page = 0;
+        const ITEMS_PER_PAGE = 5;
+        const maxPage = Math.ceil(ITEM_LIST.length / ITEMS_PER_PAGE);
+
+        const getEmbedAndRows = (_page, curBe) => {
+          const showItems = sorted.slice(_page * ITEMS_PER_PAGE, (_page + 1) * ITEMS_PER_PAGE);
+          const embed = new EmbedBuilder()
             .setTitle("🛒 아이템 상점")
-            .setColor("#3498db")
-            .setDescription(`🔷 내 파랑 정수: ${numFmt(currentBe)} BE\n\n` +
-                showItems.map((item, i) =>
-                    `**${item.icon || "▫️"} ${item.name}** (${numFmt(item.price)} BE)\n*${item.desc}*`
-                ).join("\n\n"))
-            .setFooter({ text: `총 아이템: ${ITEM_LIST.length} | 페이지 ${currentPage + 1}/${maxPage}` });
+            .setDescription(
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
+              showItems.map((item, i) =>
+                `#${i + 1 + _page * ITEMS_PER_PAGE} | ${item.icon || ""} **${item.name}** (${numFmt(item.price)} BE)\n${item.desc}`
+              ).join("\n\n"))
+            .setFooter({ text: `총 아이템: ${ITEM_LIST.length} | 페이지 ${_page + 1}/${maxPage}` });
 
-        const navigationRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("prev_page").setLabel("이전").setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 0),
-            new ButtonBuilder().setCustomId("refresh").setLabel("새로고침").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId("next_page").setLabel("다음").setStyle(ButtonStyle.Secondary).setDisabled(currentPage + 1 >= maxPage),
-            new ButtonBuilder().setCustomId("close_shop").setLabel("닫기").setStyle(ButtonStyle.Danger)
-        );
-        const purchaseRow = new ActionRowBuilder();
-        showItems.forEach(item => {
-            purchaseRow.addComponents(
-                new ButtonBuilder()
-                .setCustomId(`buy_${item.name}`)
+          const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("item_prev").setLabel("이전 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page === 0),
+            new ButtonBuilder().setCustomId("item_refresh").setLabel("새로고침").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("item_next").setLabel("다음 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page + 1 >= maxPage),
+            new ButtonBuilder().setCustomId("shop_close").setLabel("상점 닫기").setStyle(ButtonStyle.Danger)
+          );
+          const rowBuy = new ActionRowBuilder();
+          showItems.forEach(item => {
+            rowBuy.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`item_buy_${item.name}`)
                 .setLabel(`${item.name} 구매`)
                 .setStyle(ButtonStyle.Primary)
             );
+          });
+          return { embed, rows: [row1, rowBuy] };
+        };
+
+        let { embed, rows } = getEmbedAndRows(page, userBe);
+
+        const shopMsg = await interaction.editReply({
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+          embeds: [embed],
+          components: rows
         });
-        return { embed, rows: [purchaseRow, navigationRow] };
-    };
-    
-    await generalShopHandler(interaction, initialBe, page, maxPage, getEmbedAndRows, async (i, itemIdentifier) => {
-        const itemName = itemIdentifier;
-        const item = ITEM_LIST.find(x => x.name === itemName);
-        if (!item) {
-            await i.reply({ content: "❌ 해당 아이템을 찾을 수 없습니다.", ephemeral: true });
-            return;
-        }
 
-        const items = await loadJson(itemsPath);
-        items[i.user.id] = items[i.user.id] || {};
-        const myItem = items[i.user.id][item.name] || { count: 0, desc: item.desc };
-        if (myItem.count >= 99) {
-            await i.reply({ content: `⚠️ 최대 99개까지만 소지할 수 있습니다. (현재: ${myItem.count}개)`, ephemeral: true });
-            return;
-        }
-
-        const be = await loadJson(bePath);
-        const userBe = be[i.user.id]?.amount || 0;
-        if (userBe < item.price) {
-            await i.reply({ content: `❌ 파랑 정수가 부족합니다! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
-            return;
-        }
-
-        be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-        be[i.user.id].amount -= item.price;
-        be[i.user.id].history.push({ type: "spend", amount: item.price, reason: `${item.name} 구매`, timestamp: Date.now() });
-        await saveJson(bePath, be);
-
-        myItem.count += 1;
-        items[i.user.id][item.name] = myItem;
-        await saveJson(itemsPath, items);
-
-        await i.reply({ content: `✅ **${item.name}** 1개를 ${numFmt(item.price)} BE에 구매했습니다! (현재 보유: ${myItem.count}개)`, ephemeral: true });
-    });
-}
-
-
-/**
- * Handles the "Nickname Color" shop.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe - The user's initial BE balance.
- */
-async function handleNicknameShop(interaction, initialBe) {
-    const ROLES = await loadJson(nicknameRolesPath);
-    const roleList = Object.values(ROLES);
-    if (roleList.length === 0) {
-        await interaction.editReply('현재 구매 가능한 닉네임 색상이 없습니다.');
-        return;
-    }
-    let page = 0;
-    const ROLES_PER_PAGE = 5; // Display more items per page
-    const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
-    
-    const hexToImgUrl = (hex) => `https://singlecolorimage.com/get/${hex.replace('#', '')}/40x40`;
-
-    const getEmbedAndRows = async (currentPage, currentBe) => {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        const showRoles = roleList.slice(currentPage * ROLES_PER_PAGE, (currentPage + 1) * ROLES_PER_PAGE);
-
-        const embed = new EmbedBuilder()
-            .setTitle('🎨 닉네임 색상 상점')
-            .setColor("#f1c40f")
-            .setDescription(`마음에 드는 색상을 구매하여 닉네임을 꾸며보세요!\n🔷 내 파랑 정수: **${numFmt(currentBe)} BE**`)
-            .setFooter({ text: `총 ${roleList.length}개의 색상 | 페이지 ${currentPage + 1}/${maxPage}` });
-
-        showRoles.forEach(role => {
-            const hasRole = member.roles.cache.has(role.roleId);
-            embed.addFields({
-                name: `${role.emoji || ''} ${role.name} (${numFmt(role.price)} BE)`,
-                value: `[색상 미리보기](${hexToImgUrl(role.color)}) \`(${role.color})\`\n${role.desc}${hasRole ? '\n**✅ 보유중**' : ''}`,
-                inline: true,
+        interval = setInterval(async () => {
+          try {
+            await interaction.editReply({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [embed],
+              components: rows
             });
+          } catch (e) {}
+        }, 1000);
+
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+
+        collector.on('collect', async i => {
+          if (i.customId === "shop_close") {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
+          let updated = false;
+          if (i.customId === "item_prev" && page > 0) { page--; updated = true; }
+          if (i.customId === "item_next" && (page + 1) * ITEMS_PER_PAGE < sorted.length) { page++; updated = true; }
+          if (i.customId === "item_refresh") { updated = true; }
+
+          if (updated) {
+            const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
+            ({ embed, rows } = getEmbedAndRows(page, beLive));
+            await i.update({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [embed],
+              components: rows
+            });
+            return;
+          }
+
+          if (i.customId.startsWith("item_buy_")) {
+            if (userBuying[i.user.id]) {
+              await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
+              return;
+            }
+            userBuying[i.user.id] = true;
+            try {
+              const ITEMS = require('../utils/items.js');
+              const ITEM_LIST = Object.values(ITEMS);
+              const itemName = i.customId.replace("item_buy_", "");
+              const item = ITEM_LIST.find(x => x.name === itemName);
+              if (!item) {
+                await i.reply({ content: "해당 아이템을 찾을 수 없습니다.", ephemeral: true });
+                return;
+              }
+              const items = await loadJson(itemsPath);
+              items[i.user.id] = items[i.user.id] || {};
+              const myItem = items[i.user.id][item.name] || { count: 0, desc: item.desc };
+              if (myItem.count >= 99) {
+                await i.reply({ content: `최대 99개까지만 소지할 수 있습니다. (보유: ${myItem.count})`, ephemeral: true });
+                return;
+              }
+              const be = await loadJson(bePath);
+              const userBe = be[i.user.id]?.amount || 0;
+              if (userBe < item.price) {
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
+                return;
+              }
+              be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+              be[i.user.id].amount -= item.price;
+              be[i.user.id].history.push({ type: "spend", amount: item.price, reason: `${item.name} 구매`, timestamp: Date.now() });
+              await saveJson(bePath, be);
+
+              myItem.count += 1;
+              items[i.user.id][item.name] = myItem;
+              await saveJson(itemsPath, items);
+
+              await i.reply({ content: `✅ [${item.name}]을(를) ${numFmt(item.price)} BE에 구매 완료! (최대 99개까지 소지 가능)`, ephemeral: true });
+            } catch (e) {
+              await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
+            } finally {
+              userBuying[i.user.id] = false;
+            }
+            return;
+          }
         });
 
-        const purchaseRow = new ActionRowBuilder();
-        showRoles.forEach(role => {
-            const hasRole = member.roles.cache.has(role.roleId);
-            purchaseRow.addComponents(
-                new ButtonBuilder()
-                .setCustomId(`buy_${role.roleId}`)
-                .setLabel(hasRole ? `${role.name}` : `${role.name} 구매`)
-                .setStyle(hasRole ? ButtonStyle.Success : ButtonStyle.Primary)
-                .setDisabled(hasRole)
-            );
+        collector.on('end', async () => {
+          clearInterval(interval);
+          try {
+            await interaction.deleteReply();
+          } catch (e) {}
+          userBuying[interaction.user.id] = false;
+          userShopOpen[interaction.user.id] = false;
         });
+        return;
+      }
 
-        const navigationRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prev_page').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 0),
-            new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('next_page').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(currentPage + 1 >= maxPage),
-            new ButtonBuilder().setCustomId('close_shop').setLabel('닫기').setStyle(ButtonStyle.Danger)
-        );
+      // ---- 닉네임 색상 역할 상점 ----
+if (kind === 'nickname') {
+  const ROLES = await loadJson(nicknameRolesPath);
+  const roleList = Object.values(ROLES);
+  if (roleList.length === 0) {
+    await interaction.editReply('등록된 색상 역할이 없습니다.');
+    userShopOpen[interaction.user.id] = false;
+    return;
+  }
+  let page = 0;
+  const ROLES_PER_PAGE = 1;
+  const maxPage = Math.ceil(roleList.length / ROLES_PER_PAGE);
+  let member = await interaction.guild.members.fetch(interaction.user.id);
 
-        return { embed, rows: [purchaseRow, navigationRow] };
-    };
+  // 색상 코드 → 이미지 URL 변환 함수
+  const hexToImgUrl = (hex) =>
+    `https://singlecolorimage.com/get/${hex.replace('#', '')}/100x100`;
+  const getEmbedAndRows = (_page, curBe) => {
+    const showRoles = roleList.slice(_page * ROLES_PER_PAGE, (_page + 1) * ROLES_PER_PAGE);
 
-    await generalShopHandler(interaction, initialBe, page, maxPage, getEmbedAndRows, async (i, itemIdentifier) => {
-        const roleId = itemIdentifier;
-        const roleData = roleList.find(x => x.roleId === roleId);
-        if (!roleData) {
-            await i.reply({ content: "❌ 해당 역할을 찾을 수 없습니다.", ephemeral: true });
-            return;
-        }
-        
-        const member = await i.guild.members.fetch(i.user.id);
-        if (member.roles.cache.has(roleId)) {
-            await i.reply({ content: `⚠️ 이미 **[${roleData.name}]** 색상을 보유하고 있습니다!`, ephemeral: true });
-            return;
-        }
+    // 임베드 생성
+    const embed = new EmbedBuilder()
+      .setTitle('🎨 닉네임 색상 상점')
+      .setDescription(`🔷 내 파랑 정수: ${numFmt(curBe)} BE`)
+      .setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${_page + 1}/${maxPage}` });
 
+    // (선택) 첫 번째 색상 이미지를 메인 임베드 이미지로 노출
+    if (showRoles[0]?.color)
+      embed.setImage(hexToImgUrl(showRoles[0].color));
+
+    // 4개 색상 모두 필드로 추가
+    showRoles.forEach((role, idx) => {
+      embed.addFields({
+        name: `${role.emoji || ''} ${role.name} (${numFmt(role.price)} BE)`,
+        value:
+          `${role.desc}\n` +
+          (role.color
+            ? `\`색상코드:\` ${role.color}\n[컬러 박스 미리보기](${hexToImgUrl(role.color)})`
+            : ''
+          ) +
+          (member.roles.cache.has(role.roleId) ? '\n**[보유중]**' : ''),
+        inline: false,
+      });
+    });
+
+    // 버튼
+    const row = new ActionRowBuilder();
+    showRoles.forEach(role => {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`nickname_buy_${role.roleId}`)
+          .setLabel(member.roles.cache.has(role.roleId) ? `${role.name} 보유중` : `${role.name} 구매`)
+          .setStyle(member.roles.cache.has(role.roleId) ? ButtonStyle.Secondary : ButtonStyle.Primary)
+          .setDisabled(member.roles.cache.has(role.roleId))
+      );
+    });
+    const rowPage = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nick_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
+      new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
+      new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+    );
+    return { embed, rows: [row, rowPage] };
+  };
+
+  let { embed, rows } = getEmbedAndRows(page, userBe);
+
+  const shopMsg = await interaction.editReply({
+    content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+    embeds: [embed],
+    components: rows
+  });
+
+  interval = setInterval(async () => {
+    try {
+      const { embed: newEmbed, rows: newRows } = getEmbedAndRows(page, userBe);
+      await interaction.editReply({
+        content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+        embeds: [newEmbed],
+        components: newRows
+      });
+    } catch {}
+  }, 1000);
+
+  const filter = i => i.user.id === interaction.user.id;
+  const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+  collector.on('collect', async i => {
+    if (i.customId === 'shop_close') {
+      collector.stop("user");
+      try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+      return;
+    }
+    let updated = false;
+    if (i.customId === 'nick_prev' && page > 0) { page--; updated = true; }
+    if (i.customId === 'nick_next' && (page+1)*ROLES_PER_PAGE < roleList.length) { page++; updated = true; }
+    if (updated) {
+      ({ embed, rows } = getEmbedAndRows(page, userBe));
+      await i.update({
+        content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+        embeds: [embed],
+        components: rows
+      });
+      return;
+    }
+    if (i.customId.startsWith('nickname_buy_')) {
+      const roleId = i.customId.replace('nickname_buy_', '');
+      const roleData = roleList.find(x => x.roleId === roleId);
+      if (!roleData) {
+        await i.reply({ content: "해당 역할을 찾을 수 없습니다.", ephemeral: true });
+        return;
+      }
+      if (member.roles.cache.has(roleId)) {
+        await i.reply({ content: `이미 [${roleData.name}] 색상 역할을 보유 중입니다!`, ephemeral: true });
+        return;
+      }
+      if (userBuying[i.user.id]) {
+        await i.reply({ content: '이미 구매 처리 중입니다.', ephemeral: true });
+        return;
+      }
+      userBuying[i.user.id] = true;
+      try {
         const be = await loadJson(bePath);
         const userBe = be[i.user.id]?.amount || 0;
         if (userBe < roleData.price) {
-            await i.reply({ content: `❌ 파랑 정수가 부족합니다! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
-            return;
+          await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
+          return;
         }
-
-        // Remove other color roles if user can only own one
+        // 한 명당 1개만 소유(다른 색상 있으면 제거)
         if (NICKNAME_ROLE_PER_USER > 0) {
-            const allColorRoleIds = roleList.map(x => x.roleId);
-            for (const rId of allColorRoleIds) {
-                if (member.roles.cache.has(rId)) {
-                    await member.roles.remove(rId, '신규 색상 구매로 인한 기존 색상 제거');
-                }
-            }
+          const allRoleIds = roleList.map(x => x.roleId);
+          for (const rId of allRoleIds) {
+            if (member.roles.cache.has(rId)) await member.roles.remove(rId, '색상 중복 방지');
+          }
         }
-        
         await member.roles.add(roleId, '닉네임 색상 구매');
         be[i.user.id].amount -= roleData.price;
         be[i.user.id].history.push({ type: "spend", amount: roleData.price, reason: `${roleData.name} 색상 역할 구매`, timestamp: Date.now() });
         await saveJson(bePath, be);
-        
-        await i.reply({ content: `✅ **[${roleData.name}]** 색상을 ${numFmt(roleData.price)} BE에 구매했습니다!`, ephemeral: true });
-    });
+        await i.reply({ content: `✅ [${roleData.name}] 색상 역할을 ${numFmt(roleData.price)} BE에 구매 완료!`, ephemeral: true });
+      } catch (e) {
+        await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
+      } finally { userBuying[i.user.id] = false; }
+      return;
+    }
+  });
+  collector.on('end', async () => {
+    clearInterval(interval);
+    try { await interaction.deleteReply(); } catch {}
+    userBuying[interaction.user.id] = false;
+    userShopOpen[interaction.user.id] = false;
+  });
+  return;
 }
 
-/**
- * Handles the "Personal Channel Contract" shop.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe - The user's initial BE balance.
- */
-async function handleChannelShop(interaction, initialBe) {
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-    const hasRole = member.roles.cache.has(CHANNEL_ROLE_ID);
-
-    const embed = new EmbedBuilder()
-        .setTitle('🛎️ 개인채널 계약금')
-        .setColor('#FFD700')
-        .setDescription(`**${numFmt(CHANNEL_ROLE_PRICE)} BE**\n\n역할을 구매하면 개인 전용 채널을 신청할 수 있는 자격이 주어집니다. 이 역할은 일회성 구매입니다.\n\n🔷 **내 파랑 정수:** ${numFmt(initialBe)} BE`)
-        .addFields({ name: '상태', value: hasRole ? '✅ 이미 계약금 역할을 보유하고 있습니다.' : '🛒 즉시 구매 가능' });
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('buy_channel_contract')
-            .setLabel(hasRole ? '보유중' : '구매하기')
-            .setStyle(hasRole ? ButtonStyle.Success : ButtonStyle.Primary)
-            .setDisabled(hasRole),
-        new ButtonBuilder()
-            .setCustomId('close_shop')
-            .setLabel('닫기')
+      // ---- 개인채널 계약금 상점 ----
+      if (kind === 'channel') {
+        let member = await interaction.guild.members.fetch(interaction.user.id);
+        let already = member.roles.cache.has(CHANNEL_ROLE_ID);
+        const embed = new EmbedBuilder()
+          .setTitle('🛎️ 개인채널 계약금')
+          .setDescription(`3,000,000 BE\n역할 구매시 개인 전용 채널을 신청할 수 있는 권한이 부여됩니다.\n\n${already ? '> 이미 보유 중!' : '> 즉시 구매 가능'}`)
+          .setColor('#FFD700');
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('channel_buy')
+            .setLabel(already ? '이미 보유중' : '구매')
+            .setStyle(already ? ButtonStyle.Secondary : ButtonStyle.Primary)
+            .setDisabled(already),
+          new ButtonBuilder()
+            .setCustomId('shop_close')
+            .setLabel('상점 닫기')
             .setStyle(ButtonStyle.Danger)
-    );
-
-    await generalShopHandler(interaction, initialBe, 0, 1, () => ({ embed, rows: [row] }), async (i) => {
-        const be = await loadJson(bePath);
-        const userBe = be[i.user.id]?.amount || 0;
-        if (userBe < CHANNEL_ROLE_PRICE) {
-            await i.reply({ content: `❌ 파랑 정수가 부족합니다! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
-            return;
-        }
-
-        const currentMember = await i.guild.members.fetch(i.user.id);
-        if (currentMember.roles.cache.has(CHANNEL_ROLE_ID)) {
-             await i.reply({ content: `⚠️ 이미 개인채널 계약금 역할을 보유하고 있습니다.`, ephemeral: true });
-             return;
-        }
-
-        await currentMember.roles.add(CHANNEL_ROLE_ID, '개인채널 계약금 구매');
-        be[i.user.id].amount -= CHANNEL_ROLE_PRICE;
-        be[i.user.id].history.push({ type: "spend", amount: CHANNEL_ROLE_PRICE, reason: "개인채널 계약금 구매", timestamp: Date.now() });
-        await saveJson(bePath, be);
-        
-        await i.reply({ content: `✅ 개인채널 계약금 역할을 성공적으로 구매했습니다!`, ephemeral: true });
-        
-        // Disable the button after purchase
-        row.components[0].setDisabled(true).setLabel('구매 완료').setStyle(ButtonStyle.Success);
-        await i.message.edit({ components: [row] });
-    });
-}
-
-/**
- * Handles the "Limited Edition Title" shop.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe - The user's initial BE balance.
- */
-async function handleTitleShop(interaction, initialBe) {
-    const TITLES = await loadJson(titlesPath);
-    const titleList = Object.values(TITLES);
-    if (titleList.length === 0) {
-        await interaction.editReply('현재 판매중인 한정판 칭호가 없습니다.');
-        return;
-    }
-    let page = 0;
-    const TITLE_PER_PAGE = 5; // Increased for better UX
-    const maxPage = Math.ceil(titleList.length / TITLE_PER_PAGE);
-    
-    const getEmbedAndRows = async (currentPage, currentBe) => {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        const showTitles = titleList.slice(currentPage * TITLE_PER_PAGE, (currentPage + 1) * TITLE_PER_PAGE);
-
-        const embed = new EmbedBuilder()
-            .setTitle('🏅 한정판 칭호 상점')
-            .setColor("#e74c3c")
-            .setDescription(`희귀한 한정판 칭호를 획득하세요! 수량이 정해져있을 수 있습니다.\n🔷 내 파랑 정수: **${numFmt(currentBe)} BE**\n${'─'.repeat(30)}`)
-            .setFooter({ text: `총 ${titleList.length}개의 칭호 | 페이지 ${currentPage + 1}/${maxPage}` });
-
-        showTitles.forEach(title => {
-            const hasRole = member.roles.cache.has(title.roleId);
-            const isSoldOut = title.stock !== undefined && title.stock !== null && title.stock <= 0;
-            let stockInfo = '';
-            if (isSoldOut) stockInfo = `\n**[품절]**`;
-            else if (title.stock) stockInfo = `\n**[재고: ${title.stock}개]**`;
-
-            embed.addFields({
-                name: `${title.emoji || ''} ${title.name} (${numFmt(title.price)} BE)`,
-                value: `${title.desc}${hasRole ? '\n**✅ 보유중**' : stockInfo}`,
-                inline: false
-            });
-        });
-
-        const purchaseRow = new ActionRowBuilder();
-        showTitles.forEach(title => {
-            const hasRole = member.roles.cache.has(title.roleId);
-            const isSoldOut = title.stock !== undefined && title.stock !== null && title.stock <= 0;
-            purchaseRow.addComponents(
-                new ButtonBuilder()
-                .setCustomId(`buy_${title.roleId}`)
-                .setLabel(hasRole ? `${title.name}` : `${title.name} 구매`)
-                .setStyle(hasRole ? ButtonStyle.Success : (isSoldOut ? ButtonStyle.Secondary : ButtonStyle.Primary))
-                .setDisabled(hasRole || isSoldOut)
-            );
-        });
-        
-        const navigationRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prev_page').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 0),
-            new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('next_page').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(currentPage + 1 >= maxPage),
-            new ButtonBuilder().setCustomId('close_shop').setLabel('닫기').setStyle(ButtonStyle.Danger)
         );
-
-        return { embed, rows: [purchaseRow, navigationRow] };
-    };
-    
-    await generalShopHandler(interaction, initialBe, page, maxPage, getEmbedAndRows, async (i, itemIdentifier) => {
-        const roleId = itemIdentifier;
-        const ALL_TITLES = await loadJson(titlesPath); // Re-fetch for live stock check
-        const titleData = Object.values(ALL_TITLES).find(x => x.roleId === roleId);
-
-        if (!titleData) {
-            await i.reply({ content: "❌ 해당 칭호를 찾을 수 없습니다.", ephemeral: true });
-            return;
-        }
-
-        const member = await i.guild.members.fetch(i.user.id);
-        if (member.roles.cache.has(roleId)) {
-            await i.reply({ content: `⚠️ 이미 **[${titleData.name}]** 칭호를 보유하고 있습니다!`, ephemeral: true });
-            return;
-        }
-        
-        if (titleData.stock !== undefined && titleData.stock !== null && titleData.stock <= 0) {
-            await i.reply({ content: "❌ 죄송합니다. 해당 칭호는 품절되었습니다.", ephemeral: true });
-            return;
-        }
-
-        const be = await loadJson(bePath);
-        const userBe = be[i.user.id]?.amount || 0;
-        if (userBe < titleData.price) {
-            await i.reply({ content: `❌ 파랑 정수가 부족합니다! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
-            return;
-        }
-        
-        await member.roles.add(roleId, '한정판 칭호 구매');
-        be[i.user.id].amount -= titleData.price;
-        be[i.user.id].history.push({ type: "spend", amount: titleData.price, reason: `${titleData.name} 칭호 구매`, timestamp: Date.now() });
-        await saveJson(bePath, be);
-        
-        // Decrease stock
-        if (titleData.stock !== undefined && titleData.stock !== null) {
-            if (ALL_TITLES[roleId]) {
-                ALL_TITLES[roleId].stock--;
-                await saveJson(titlesPath, ALL_TITLES);
-            }
-        }
-        
-        await i.reply({ content: `✅ **[${titleData.name}]** 칭호를 ${numFmt(titleData.price)} BE에 구매했습니다!`, ephemeral: true });
-    });
-}
-
-/**
- * Handles the "Battle Skill" shop.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe - The user's initial BE balance.
- */
-async function handleSkillShop(interaction, initialBe) {
-    const SKILLS = require('../utils/active-skills.js');
-    const SKILL_LIST = Object.values(SKILLS);
-    const sorted = SKILL_LIST.slice().sort((a, b) => b.price - a.price);
-    let page = 0;
-    const SKILLS_PER_PAGE = 5;
-    const maxPage = Math.ceil(SKILL_LIST.length / SKILLS_PER_PAGE);
-
-    const getEmbedAndRows = async (currentPage, currentBe) => {
-        const ownedSkills = (await loadJson(skillsPath))[interaction.user.id] || {};
-        const showSkills = sorted.slice(currentPage * SKILLS_PER_PAGE, (currentPage + 1) * SKILLS_PER_PAGE);
-        const embed = new EmbedBuilder()
-            .setTitle("📚 배틀 스킬 상점")
-            .setColor("#9b59b6")
-            .setDescription(`전투에 도움이 되는 액티브 스킬을 구매하세요. 스킬은 중복 구매할 수 없습니다.\n🔷 내 파랑 정수: **${numFmt(currentBe)} BE**\n${'─'.repeat(30)}`)
-            .setFooter({ text: `총 스킬: ${SKILL_LIST.length} | 페이지 ${currentPage + 1}/${maxPage}` });
-        
-        showSkills.forEach(skill => {
-            const hasSkill = !!ownedSkills[skill.name];
-            embed.addFields({
-                name: `${skill.icon || ''} ${skill.name} (${numFmt(skill.price)} BE)`,
-                value: `${skill.desc}${hasSkill ? '\n**✅ 보유중**' : ''}`,
-                inline: false
-            });
+        const shopMsg = await interaction.editReply({
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+          embeds: [embed],
+          components: [row]
         });
-
-        const navigationRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("prev_page").setLabel("이전").setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 0),
-            new ButtonBuilder().setCustomId("refresh").setLabel("새로고침").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId("next_page").setLabel("다음").setStyle(ButtonStyle.Secondary).setDisabled(currentPage + 1 >= maxPage),
-            new ButtonBuilder().setCustomId("close_shop").setLabel("닫기").setStyle(ButtonStyle.Danger)
-        );
-        const purchaseRow = new ActionRowBuilder();
-        showSkills.forEach(skill => {
-            const hasSkill = !!ownedSkills[skill.name];
-            purchaseRow.addComponents(
-                new ButtonBuilder()
-                .setCustomId(`buy_${skill.name}`)
-                .setLabel(hasSkill ? `${skill.name}` : `${skill.name} 구매`)
-                .setStyle(hasSkill ? ButtonStyle.Success : ButtonStyle.Primary)
-                .setDisabled(hasSkill)
-            );
-        });
-        return { embed, rows: [purchaseRow, navigationRow] };
-    };
-    
-    await generalShopHandler(interaction, initialBe, page, maxPage, getEmbedAndRows, async (i, itemIdentifier) => {
-        const skillName = itemIdentifier;
-        const skill = SKILL_LIST.find(x => x.name === skillName);
-        if (!skill) {
-            await i.reply({ content: "❌ 해당 스킬을 찾을 수 없습니다.", ephemeral: true });
-            return;
-        }
-
-        const skills = await loadJson(skillsPath);
-        const mySkills = skills[i.user.id] || {};
-        if (mySkills[skill.name]) {
-            await i.reply({ content: `⚠️ 이미 **[${skill.name}]** 스킬을 보유하고 있습니다!`, ephemeral: true });
-            return;
-        }
-
-        const be = await loadJson(bePath);
-        const userBe = be[i.user.id]?.amount || 0;
-        if (userBe < skill.price) {
-            await i.reply({ content: `❌ 파랑 정수가 부족합니다! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
-            return;
-        }
-
-        be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-        be[i.user.id].amount -= skill.price;
-        be[i.user.id].history.push({ type: "spend", amount: skill.price, reason: `${skill.name} 스킬 구매`, timestamp: Date.now() });
-        await saveJson(bePath, be);
-
-        skills[i.user.id] = skills[i.user.id] || {};
-        skills[i.user.id][skill.name] = { desc: skill.desc };
-        await saveJson(skillsPath, skills);
-
-        await i.reply({ content: `✅ **[${skill.name}]** 스킬을 ${numFmt(skill.price)} BE에 구매했습니다!`, ephemeral: true });
-    });
-}
-
-/**
- * Handles the "Upgrade Item" shop.
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe - The user's initial BE balance.
- */
-async function handleUpgradeShop(interaction, initialBe) {
-    const getEmbedAndRows = async (currentPage, currentBe) => {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        const stocks = {};
-        for (const item of 강화ITEMS) {
-            stocks[item.key] = await checkAndRestock(item);
-        }
-        
-        const embed = new EmbedBuilder()
-            .setTitle("🪄 강화 아이템 상점")
-            .setColor("#e67e22")
-            .setDescription(`강화 실패로부터 챔피언을 보호하는 1회성 아이템입니다.\n🔷 내 파랑 정수: **${numFmt(currentBe)} BE**\n${'─'.repeat(30)}`);
-        
-        for (const item of 강화ITEMS) {
-            const stock = stocks[item.key];
-            let stockMsg = '';
-            if (stock <= 0) {
-                const timeLeft = await nextRestock(item);
-                if (timeLeft > 0) {
-                    const h = Math.floor(timeLeft / 3600);
-                    const m = Math.floor((timeLeft % 3600) / 60);
-                    const s = timeLeft % 60;
-                    stockMsg = `\n**[품절]** 다음 충전까지 약 ${h ? `${h}시간 ` : ''}${m ? `${m}분 ` : ''}${s}초`;
-                } else {
-                    stockMsg = `\n**[품절]**`;
-                }
-            } else {
-                stockMsg = `\n**[재고: ${stock}개]**`;
-            }
-
-            const hasRole = member.roles.cache.has(item.roleId);
-            if (hasRole) stockMsg = `\n**✅ 보유중**`;
-
-            embed.addFields({
-                name: `${item.emoji} ${item.name} (${numFmt(item.price)} BE)`,
-                value: `${item.desc}${stockMsg}`,
-                inline: false
+        interval = setInterval(async () => {
+          try {
+            await interaction.editReply({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [embed],
+              components: [row]
             });
-        }
-
-        const purchaseRow = new ActionRowBuilder();
-        for (const item of 강화ITEMS) {
-            const stock = stocks[item.key];
-            const hasRole = member.roles.cache.has(item.roleId);
-            const isSoldOut = stock <= 0;
-
-            purchaseRow.addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`buy_${item.roleId}`)
-                    .setLabel(hasRole ? `${item.name}` : isSoldOut ? `${item.name} (품절)` : `${item.name} 구매`)
-                    .setStyle(hasRole ? ButtonStyle.Success : isSoldOut ? ButtonStyle.Secondary : ButtonStyle.Primary)
-                    .setDisabled(hasRole || isSoldOut)
-            );
-        }
-        
-        const navigationRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("refresh").setLabel("새로고침").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId("close_shop").setLabel("닫기").setStyle(ButtonStyle.Danger)
-        );
-
-        return { embed, rows: [purchaseRow, navigationRow] };
-    };
-
-    await generalShopHandler(interaction, initialBe, 0, 1, getEmbedAndRows, async (i, itemIdentifier) => {
-        const roleId = itemIdentifier;
-        const item = 강화ITEMS.find(x => x.roleId === roleId);
-        
-        if (!item) {
-             await i.reply({ content: "❌ 해당 아이템을 찾을 수 없습니다.", ephemeral: true });
-             return;
-        }
-        
-        if (!(await checkStock(item))) {
-            await i.reply({ content: `❌ 죄송합니다. **[${item.name}]** 아이템은 품절되었습니다.`, ephemeral: true });
+          } catch {}
+        }, 1000);
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+        collector.on('collect', async i => {
+          if (i.customId === 'shop_close') {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
             return;
-        }
-        
-        const member = await i.guild.members.fetch(i.user.id);
-        if (member.roles.cache.has(item.roleId)) {
-            await i.reply({ content: `⚠️ 이미 **[${item.name}]** 아이템을 보유하고 있습니다!`, ephemeral: true });
-            return;
-        }
-
-        const be = await loadJson(bePath);
-        const userBe = be[i.user.id]?.amount || 0;
-        if (userBe < item.price) {
-            await i.reply({ content: `❌ 파랑 정수가 부족합니다! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
-            return;
-        }
-        
-        // Use a backup in case role assignment fails
-        const beBackup = JSON.stringify(be); 
-        
-        // Deduct BE and stock first
-        be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-        be[i.user.id].amount -= item.price;
-        be[i.user.id].history.push({ type: "spend", amount: item.price, reason: `${item.name} 역할 구매`, timestamp: Date.now() });
-        await saveJson(bePath, be);
-        await decreaseStock(item);
-
-        try {
-            await member.roles.add(item.roleId, "강화 아이템 구매");
-            await i.reply({ content: `✅ **[${item.name}]** 아이템을 ${numFmt(item.price)} BE에 구매했습니다! (역할로 지급됨)`, ephemeral: true });
-        } catch (roleError) {
-            console.error("Role assignment failed:", roleError);
-            // Rollback BE deduction if role assignment fails
-            await saveJson(bePath, JSON.parse(beBackup));
-            // NOTE: Stock is not rolled back to prevent potential exploits. This should be reviewed based on server policy.
-            await i.reply({ content: `❌ 역할 지급에 실패했습니다. BE 차감이 취소되었습니다. (서버 권한 문제일 수 있습니다)`, ephemeral: true });
-        }
-    });
-}
-
-// ======================[ GENERIC SHOP CONTROLLER ]======================
-
-/**
- * A generic function to handle the entire shop lifecycle (display, interaction, timeout).
- * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {number} initialBe The user's initial BE balance.
- * @param {number} initialPage The starting page number.
- * @param {number} maxPage The maximum number of pages.
- * @param {function} getEmbedAndRows A function that returns the embed and action rows for the current state.
- * @param {function} purchaseCallback A function to call when a 'buy' button is pressed.
- */
-async function generalShopHandler(interaction, initialBe, initialPage, maxPage, getEmbedAndRows, purchaseCallback) {
-    let currentPage = initialPage;
-    const sessionExpireAt = Date.now() + SHOP_SESSION_TIMEOUT_SEC * 1000;
-    
-    const getRemainingTime = () => Math.max(0, Math.floor((sessionExpireAt - Date.now()) / 1000));
-    
-    const { embed, rows } = await getEmbedAndRows(currentPage, initialBe);
-    
-    const shopMsg = await interaction.editReply({
-        content: `⏳ 상점이 ${getRemainingTime()}초 후에 닫힙니다.`,
-        embeds: [embed],
-        components: rows
-    });
-
-    const timer = setInterval(async () => {
-        const remaining = getRemainingTime();
-        if (remaining > 0) {
-            await shopMsg.edit({ content: `⏳ 상점이 ${remaining}초 후에 닫힙니다.` }).catch(() => {});
-        } else {
-            clearInterval(timer);
-        }
-    }, 5000);
-
-    const collector = shopMsg.createMessageComponentCollector({
-        filter: i => i.user.id === interaction.user.id,
-        time: SHOP_SESSION_TIMEOUT_SEC * 1000,
-    });
-
-    collector.on('collect', async i => {
-        await i.deferUpdate();
-        
-        let needsUpdate = false;
-
-        if (i.customId === 'close_shop') {
-            collector.stop('user_closed');
-            return;
-        }
-        if (i.customId === 'prev_page') {
-            if (currentPage > 0) {
-                currentPage--;
-                needsUpdate = true;
+          }
+          if (i.customId === 'channel_buy') {
+            if (userBuying[i.user.id]) {
+              await i.reply({ content: '이미 구매 처리 중입니다.', ephemeral: true });
+              return;
             }
-        }
-        if (i.customId === 'next_page') {
-            if (currentPage + 1 < maxPage) {
-                currentPage++;
-                needsUpdate = true;
-            }
-        }
-        if (i.customId === 'refresh') {
-            needsUpdate = true;
-        }
-
-        if (needsUpdate) {
-            const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
-            const { embed: newEmbed, rows: newRows } = await getEmbedAndRows(currentPage, beLive);
-            await shopMsg.edit({ embeds: [newEmbed], components: newRows });
-            return;
-        }
-        
-        if (i.customId.startsWith('buy_')) {
-            if (userBuying.has(i.user.id)) {
-                await i.followUp({ content: '⏳ 이전 구매를 처리하고 있습니다. 잠시만 기다려주세요.', ephemeral: true });
+            userBuying[i.user.id] = true;
+            try {
+              const be = await loadJson(bePath);
+              const userBe = be[i.user.id]?.amount || 0;
+              if (userBe < CHANNEL_ROLE_PRICE) {
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
                 return;
-            }
-
-            userBuying.add(i.user.id);
-            try {
-                const itemIdentifier = i.customId.replace('buy_', '');
-                await purchaseCallback(i, itemIdentifier);
-                
-                // After purchase, refresh the shop to show updated state (e.g., stock, owned status)
-                const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
-                const { embed: newEmbed, rows: newRows } = await getEmbedAndRows(currentPage, beLive);
-                await shopMsg.edit({ embeds: [newEmbed], components: newRows });
-
+              }
+              await member.roles.add(CHANNEL_ROLE_ID, '개인채널 계약금 구매');
+              be[i.user.id].amount -= CHANNEL_ROLE_PRICE;
+              be[i.user.id].history.push({ type: "spend", amount: CHANNEL_ROLE_PRICE, reason: "개인채널 계약금 구매", timestamp: Date.now() });
+              await saveJson(bePath, be);
+              await i.reply({ content: `✅ 개인채널 계약금 역할 지급 완료!`, ephemeral: true });
             } catch (e) {
-                console.error(`[Shop Purchase Error] User: ${i.user.tag}, ItemID: ${i.customId}`, e);
-                await i.followUp({ content: '❌ 구매 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', ephemeral: true });
-            } finally {
-                userBuying.delete(i.user.id);
-            }
-        }
-    });
-
-    collector.on('end', async (collected, reason) => {
-        clearInterval(timer);
-        if (reason === 'user_closed') {
-            await shopMsg.edit({ content: '상점이 사용자에 의해 닫혔습니다.', embeds: [], components: [] }).catch(() => {});
-        } else {
-            await shopMsg.delete().catch(() => {});
-        }
-    });
-}
-
-// ======================[ SLASH COMMAND DEFINITION ]======================
-
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('상점')
-        .setDescription('파랑 정수(BE)로 다양한 아이템, 역할 등을 구매합니다.')
-        .addStringOption(option =>
-            option
-            .setName('종류')
-            .setDescription('방문할 상점 종류를 선택하세요.')
-            .setRequired(true)
-            .addChoices(
-                { name: '🛒 배틀 아이템', value: 'item' },
-                { name: '📚 배틀 스킬', value: 'skill' },
-                { name: '🎨 닉네임 색상', value: 'nickname' },
-                { name: '🏅 한정판 칭호', value: 'title' },
-                { name: '🪄 강화 아이템', value: 'upgrade' },
-                { name: '🛎️ 개인채널 계약금', value: 'channel' }
-            )
-        ),
-    async execute(interaction) {
-        if (userShopOpen.has(interaction.user.id)) {
-            await interaction.reply({ content: '⚠️ 이미 다른 상점 창이 열려있습니다. 먼저 기존 상점을 닫아주세요!', ephemeral: true });
+              await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
+            } finally { userBuying[i.user.id] = false; }
             return;
-        }
+          }
+        });
+        collector.on('end', async () => {
+          clearInterval(interval);
+          try { await interaction.deleteReply(); } catch {}
+          userBuying[interaction.user.id] = false;
+          userShopOpen[interaction.user.id] = false;
+        });
+        return;
+      }
 
-        userShopOpen.add(interaction.user.id);
-        
-        try {
-            await interaction.deferReply({ ephemeral: false });
+      // ---- 한정판 칭호 상점 ----
+if (kind === 'title') {
+  const TITLES = await loadJson(titlesPath);
+  const titleList = Object.values(TITLES);
+  if (titleList.length === 0) {
+    await interaction.editReply('등록된 한정판 칭호가 없습니다.');
+    userShopOpen[interaction.user.id] = false;
+    return;
+  }
+  let page = 0, TITLE_PER_PAGE = 1, maxPage = Math.ceil(titleList.length / TITLE_PER_PAGE);
+  let member = await interaction.guild.members.fetch(interaction.user.id);
 
-            const kind = interaction.options.getString('종류');
-            const beData = await loadJson(bePath);
-            const userBe = beData[interaction.user.id]?.amount || 0;
-            
-            // Route to the correct shop handler
-            switch (kind) {
-                case 'item':
-                    await handleItemShop(interaction, userBe);
-                    break;
-                case 'nickname':
-                    await handleNicknameShop(interaction, userBe);
-                    break;
-                case 'channel':
-                    await handleChannelShop(interaction, userBe);
-                    break;
-                case 'title':
-                    await handleTitleShop(interaction, userBe);
-                    break;
-                case 'skill':
-                    await handleSkillShop(interaction, userBe);
-                    break;
-                case 'upgrade':
-                    await handleUpgradeShop(interaction, userBe);
-                    break;
-                default:
-                    await interaction.editReply('❌ 잘못된 상점 종류입니다.');
-            }
+  // [핵심] HEX or 이미지 구분 함수
+  const getImageIfUrl = (color) => {
+    if (color && typeof color === 'string' && color.startsWith('http')) return color;
+    return null;
+  };
+  const getColorIfHex = (color) => {
+    if (color && typeof color === 'string' && /^#?[0-9a-fA-F]{6}$/.test(color.replace('#',''))) return color;
+    return null;
+  };
 
-        } catch (err) {
-            console.error(`[Shop Open Error] User: ${interaction.user.tag}, Kind: ${interaction.options.getString('종류')}`, err);
-            try {
-                await interaction.editReply({ content: `❌ 상점을 여는 중 오류가 발생했습니다: ${err.message}`, components: [], embeds: [] });
-            } catch {}
-        } finally {
-            // Cleanup flags after the shop is closed by the handler
-            userShopOpen.delete(interaction.user.id);
-            userBuying.delete(interaction.user.id);
-        }
+  const getEmbedAndRows = (_page, curBe) => {
+    const showTitles = titleList.slice(_page * TITLE_PER_PAGE, (_page + 1) * TITLE_PER_PAGE);
+    const embed = new EmbedBuilder()
+      .setTitle('🏅 한정판 칭호 상점')
+      .setDescription(
+        `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
+        showTitles.map((t, i) => {
+          let owned = member.roles.cache.has(t.roleId);
+          let stockMsg = (t.stock === undefined || t.stock === null) ? '' : (t.stock <= 0 ? '\n> [품절]' : `\n> [남은 수량: ${t.stock}개]`);
+          return `#${i+1+_page*TITLE_PER_PAGE} | ${t.emoji||''} **${t.name}** (${numFmt(t.price)} BE)
+${t.desc}
+${stockMsg}
+> ${owned ? '**[보유중]**' : ''}`;
+        }).join('\n\n')
+      )
+      .setFooter({ text: `총 칭호: ${titleList.length} | 페이지 ${_page + 1}/${maxPage}` });
+
+    if (showTitles[0]?.color && showTitles[0].color.startsWith('http'))
+    embed.setImage(showTitles[0].color);
+
+    // 미리보기 이미지/색상 지원
+    if (showTitles[0]?.color) {
+      const imgUrl = getImageIfUrl(showTitles[0].color);
+      if (imgUrl) {
+        embed.setImage(imgUrl);
+      } else {
+        const hexColor = getColorIfHex(showTitles[0].color);
+        if (hexColor) embed.setColor(hexColor);
+      }
     }
+
+    const row = new ActionRowBuilder();
+    showTitles.forEach(t => {
+      let owned = member.roles.cache.has(t.roleId);
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`title_buy_${t.roleId}`)
+          .setLabel(owned ? `${t.name} 보유중` : `${t.name} 구매`)
+          .setStyle(owned || (t.stock!==undefined&&t.stock<=0) ? ButtonStyle.Secondary : ButtonStyle.Primary)
+          .setDisabled(owned || (t.stock!==undefined&&t.stock<=0))
+      );
+    });
+    const rowPage = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('title_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(_page===0),
+      new ButtonBuilder().setCustomId('title_refresh').setLabel('새로고침').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('title_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(_page+1>=maxPage),
+      new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+    );
+    return { embed, rows: [row, rowPage] };
+  };
+        let { embed, rows } = getEmbedAndRows(page, userBe);
+        const shopMsg = await interaction.editReply({
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+          embeds: [embed],
+          components: rows
+        });
+        interval = setInterval(async () => {
+          try {
+            const { embed: newEmbed, rows: newRows } = getEmbedAndRows(page, userBe);
+            await interaction.editReply({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [newEmbed],
+              components: newRows
+            });
+          } catch {}
+        }, 1000);
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+        collector.on('collect', async i => {
+          if (i.customId === 'shop_close') {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
+          let updated = false;
+          if (i.customId === 'title_prev' && page > 0) { page--; updated = true; }
+          if (i.customId === 'title_next' && (page+1)*TITLE_PER_PAGE < titleList.length) { page++; updated = true; }
+          if (i.customId === 'title_refresh') { updated = true; }
+          if (updated) {
+            ({ embed, rows } = getEmbedAndRows(page, userBe));
+            await i.update({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [embed],
+              components: rows
+            });
+            return;
+          }
+          if (i.customId.startsWith('title_buy_')) {
+            const roleId = i.customId.replace('title_buy_', '');
+            const titleData = titleList.find(x => x.roleId === roleId);
+            if (!titleData) {
+              await i.reply({ content: "해당 칭호를 찾을 수 없습니다.", ephemeral: true });
+              return;
+            }
+            if (member.roles.cache.has(roleId)) {
+              await i.reply({ content: `이미 [${titleData.name}] 칭호를 보유 중입니다!`, ephemeral: true });
+              return;
+            }
+            if (titleData.stock !== undefined && titleData.stock !== null && titleData.stock <= 0) {
+              await i.reply({ content: "품절입니다!", ephemeral: true });
+              return;
+            }
+            if (userBuying[i.user.id]) {
+              await i.reply({ content: '이미 구매 처리 중입니다.', ephemeral: true });
+              return;
+            }
+            userBuying[i.user.id] = true;
+            try {
+              const be = await loadJson(bePath);
+              const userBe = be[i.user.id]?.amount || 0;
+              if (userBe < titleData.price) {
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
+                return;
+              }
+              await member.roles.add(roleId, '한정판 칭호 구매');
+              be[i.user.id].amount -= titleData.price;
+              be[i.user.id].history.push({ type: "spend", amount: titleData.price, reason: `${titleData.name} 칭호 구매`, timestamp: Date.now() });
+              await saveJson(bePath, be);
+              // 수량 차감
+              if (titleData.stock !== undefined && titleData.stock !== null) {
+                titleData.stock--;
+                const TITLES2 = await loadJson(titlesPath);
+                if (TITLES2[roleId]) {
+                  TITLES2[roleId].stock = titleData.stock;
+                  await saveJson(titlesPath, TITLES2);
+                }
+              }
+              await i.reply({ content: `✅ [${titleData.name}] 칭호 역할을 ${numFmt(titleData.price)} BE에 구매 완료!`, ephemeral: true });
+            } catch (e) {
+              await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
+            } finally { userBuying[i.user.id] = false; }
+            return;
+          }
+        });
+        collector.on('end', async () => {
+          clearInterval(interval);
+          try { await interaction.deleteReply(); } catch {}
+          userBuying[interaction.user.id] = false;
+          userShopOpen[interaction.user.id] = false;
+        });
+        return;
+      }
+
+      // ---- 스킬 상점 ----
+      if (kind === 'skill') {
+        const SKILLS = require('../utils/active-skills.js');
+        const SKILL_LIST = Object.values(SKILLS);
+        const sorted = SKILL_LIST.slice().sort((a, b) => b.price - a.price);
+        let page = 0;
+        const SKILLS_PER_PAGE = 5;
+        const maxPage = Math.ceil(SKILL_LIST.length / SKILLS_PER_PAGE);
+
+        const getEmbedAndRows = (_page, curBe) => {
+          const showSkills = sorted.slice(_page * SKILLS_PER_PAGE, (_page + 1) * SKILLS_PER_PAGE);
+          const embed = new EmbedBuilder()
+            .setTitle("📚 스킬 상점")
+            .setDescription(
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
+              showSkills.map((skill, i) =>
+                `#${i + 1 + _page * SKILLS_PER_PAGE} | ${skill.icon || ""} **${skill.name}** (${numFmt(skill.price)} BE)\n${skill.desc}`
+              ).join("\n\n"))
+            .setFooter({ text: `총 스킬: ${SKILL_LIST.length} | 페이지 ${_page + 1}/${maxPage}` });
+
+          const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("skill_prev").setLabel("이전 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page === 0),
+            new ButtonBuilder().setCustomId("skill_refresh").setLabel("새로고침").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("skill_next").setLabel("다음 페이지").setStyle(ButtonStyle.Secondary).setDisabled(_page + 1 >= maxPage),
+            new ButtonBuilder().setCustomId("shop_close").setLabel("상점 닫기").setStyle(ButtonStyle.Danger)
+          );
+          const rowBuy = new ActionRowBuilder();
+          showSkills.forEach(skill => {
+            rowBuy.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`skill_buy_${skill.name}`)
+                .setLabel(`${skill.name} 구매`)
+                .setStyle(ButtonStyle.Primary)
+            );
+          });
+          return { embed, rows: [row1, rowBuy] };
+        };
+
+        let { embed, rows } = getEmbedAndRows(page, userBe);
+
+        const shopMsg = await interaction.editReply({
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+          embeds: [embed],
+          components: rows
+        });
+
+        interval = setInterval(async () => {
+          try {
+            await interaction.editReply({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [embed],
+              components: rows
+            });
+          } catch (e) {}
+        }, 1000);
+
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+
+        collector.on('collect', async i => {
+          if (i.customId === "shop_close") {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
+          let updated = false;
+          if (i.customId === "skill_prev" && page > 0) { page--; updated = true; }
+          if (i.customId === "skill_next" && (page + 1) * SKILLS_PER_PAGE < sorted.length) { page++; updated = true; }
+          if (i.customId === "skill_refresh") { updated = true; }
+
+          if (updated) {
+            const beLive = (await loadJson(bePath))[interaction.user.id]?.amount || 0;
+            ({ embed, rows } = getEmbedAndRows(page, beLive));
+            await i.update({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [embed],
+              components: rows
+            });
+            return;
+          }
+
+          if (i.customId.startsWith("skill_buy_")) {
+            if (userBuying[i.user.id]) {
+              await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
+              return;
+            }
+            userBuying[i.user.id] = true;
+            try {
+              const SKILLS = require('../utils/active-skills.js');
+              const SKILL_LIST = Object.values(SKILLS);
+              const skillName = i.customId.replace("skill_buy_", "");
+              const skill = SKILL_LIST.find(x => x.name === skillName);
+              if (!skill) {
+                await i.reply({ content: "해당 스킬을 찾을 수 없습니다.", ephemeral: true });
+                return;
+              }
+              const skills = await loadJson(skillsPath);
+              const mySkills = skills[i.user.id] || {};
+              if (mySkills[skill.name]) {
+                await i.reply({ content: `이미 [${skill.name}] 스킬을 소유하고 있습니다! (스킬은 1개만 소유 가능)`, ephemeral: true });
+                return;
+              }
+              const be = await loadJson(bePath);
+              const userBe = be[i.user.id]?.amount || 0;
+              if (userBe < skill.price) {
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
+                return;
+              }
+              be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+              be[i.user.id].amount -= skill.price;
+              be[i.user.id].history.push({ type: "spend", amount: skill.price, reason: `${skill.name} 스킬 구매`, timestamp: Date.now() });
+              await saveJson(bePath, be);
+
+              skills[i.user.id] = skills[i.user.id] || {};
+              skills[i.user.id][skill.name] = { desc: skill.desc };
+              await saveJson(skillsPath, skills);
+
+              await i.reply({ content: `✅ [${skill.name}] 스킬을 ${numFmt(skill.price)} BE에 구매 완료! (동일 스킬 중복 보유 불가)`, ephemeral: true });
+            } catch (e) {
+              await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
+            } finally {
+              userBuying[i.user.id] = false;
+            }
+            return;
+          }
+        });
+
+        collector.on('end', async () => {
+          clearInterval(interval);
+          try {
+            await interaction.deleteReply();
+          } catch (e) {}
+          userBuying[interaction.user.id] = false;
+          userShopOpen[interaction.user.id] = false;
+        });
+        return;
+      }
+
+      // ---- 강화 아이템 상점(역할, json 기반 재고 관리) ----
+      if (kind === 'upgrade') {
+        const getEmbedAndRows = async (curBe) => {
+          // 각각의 현재 재고 동적으로 불러옴
+          const stocks = {};
+          for (const item of 강화ITEMS) {
+            stocks[item.key] = await checkAndRestock(item);
+          }
+          const embed = new EmbedBuilder()
+            .setTitle("🪄 강화 아이템 상점 (역할 상품)")
+            .setDescription(
+              `🔷 내 파랑 정수: ${numFmt(curBe)} BE\n` +
+              await Promise.all(강화ITEMS.map(async (item, i) => {
+                const stock = stocks[item.key];
+                let msg = '';
+                if (stock <= 0) {
+                  const left = await nextRestock(item);
+                  if (left > 0) {
+                    const h = Math.floor(left / 3600);
+                    const m = Math.floor((left % 3600) / 60);
+                    const s = left % 60;
+                    msg = `\n> **[품절]** 충전까지 ${h ? `${h}시간 ` : ''}${m ? `${m}분 ` : ''}${s}초 남음`;
+                  } else {
+                    msg = `\n> **[품절]**`;
+                  }
+                } else {
+                  msg = `\n> **[남은 재고: ${stock}개]**`;
+                }
+                return `#${i + 1} | ${item.emoji} **${item.name}** (${numFmt(item.price)} BE)\n${item.desc}${msg}\n`
+              })).then(lines => lines.join("\n"))
+            )
+            .setFooter({ text: `고유상품: 1회성 역할 아이템 | 구매시 즉시 지급` });
+
+          const rowBuy = new ActionRowBuilder();
+          강화ITEMS.forEach(item => {
+            const stock = stocks[item.key];
+            rowBuy.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`upgrade_buy_${item.roleId}`)
+                .setLabel(stock > 0 ? `${item.name} 구매` : `${item.name} 품절`)
+                .setStyle(stock > 0 ? ButtonStyle.Primary : ButtonStyle.Secondary)
+                .setDisabled(stock <= 0)
+            );
+          });
+          rowBuy.addComponents(
+            new ButtonBuilder()
+              .setCustomId("shop_close")
+              .setLabel("상점 닫기")
+              .setStyle(ButtonStyle.Danger)
+          );
+          return { embed, rows: [rowBuy] };
+        };
+
+        let { embed, rows } = await getEmbedAndRows(userBe);
+
+        const shopMsg = await interaction.editReply({
+          content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+          embeds: [embed],
+          components: rows
+        });
+
+        interval = setInterval(async () => {
+          try {
+            const { embed: newEmbed, rows: newRows } = await getEmbedAndRows(userBe);
+            await interaction.editReply({
+              content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec()}초)`,
+              embeds: [newEmbed],
+              components: newRows
+            });
+          } catch (e) {}
+        }, 1000);
+
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = shopMsg.createMessageComponentCollector({ filter, time: expireSec * 1000 });
+
+        collector.on('collect', async i => {
+          if (i.customId === "shop_close") {
+            collector.stop("user");
+            try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
+            return;
+          }
+          const btnItem = 강화ITEMS.find(x => i.customId === `upgrade_buy_${x.roleId}`);
+          if (btnItem) {
+            if (!(await checkStock(btnItem))) {
+              await i.reply({ content: `❌ [${btnItem.name}] 품절입니다.`, ephemeral: true });
+              return;
+            }
+            if (userBuying[i.user.id]) {
+              await i.reply({ content: '이미 구매 처리 중입니다. 잠시만 기다려 주세요!', ephemeral: true });
+              return;
+            }
+            userBuying[i.user.id] = true;
+            try {
+              const member = await i.guild.members.fetch(i.user.id);
+              if (member.roles.cache.has(btnItem.roleId)) {
+                await i.reply({ content: `이미 [${btnItem.name}] 역할을 소유하고 있어요!`, ephemeral: true });
+                return;
+              }
+              const be = await loadJson(bePath);
+              const userBe = be[i.user.id]?.amount || 0;
+              if (userBe < btnItem.price) {
+                await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBe)} BE)`, ephemeral: true });
+                return;
+              }
+              await decreaseStock(btnItem); // ★구매 성공 시 재고 차감
+
+              const beBackup = JSON.stringify(be);
+              be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
+              be[i.user.id].amount -= btnItem.price;
+              be[i.user.id].history.push({ type: "spend", amount: btnItem.price, reason: `${btnItem.name} 역할 구매`, timestamp: Date.now() });
+              await saveJson(bePath, be);
+
+              try {
+                await member.roles.add(btnItem.roleId, "강화 아이템 구매");
+              } catch (err) {
+                await saveJson(bePath, JSON.parse(beBackup));
+                await i.reply({ content: `❌ 역할 지급 실패! (권한 부족 또는 설정 오류 / BE 차감 취소됨)`, ephemeral: true });
+                return;
+              }
+              await i.reply({ content: `✅ [${btnItem.name}] 역할을 ${numFmt(btnItem.price)} BE에 구매 완료! (서버 내 역할로 즉시 지급)`, ephemeral: true });
+            } catch (e) {
+              await i.reply({ content: `❌ 오류 발생: ${e.message}`, ephemeral: true });
+            } finally {
+              userBuying[i.user.id] = false;
+            }
+          }
+        });
+
+        collector.on('end', async () => {
+          clearInterval(interval);
+          try {
+            await interaction.deleteReply();
+          } catch (e) {}
+          userBuying[interaction.user.id] = false;
+          userShopOpen[interaction.user.id] = false;
+        });
+        return;
+      }
+
+      
+    } catch (err) {
+      try {
+        await interaction.editReply({ content: `❌ 오류 발생: ${err.message}` });
+      } catch {}
+      userShopOpen[interaction.user.id] = false;
+      userBuying[interaction.user.id] = false;
+    }
+  }
 };
