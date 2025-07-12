@@ -21,6 +21,7 @@ module.exports = {
           { name: '서버 프로필 관리', value: 'profile' },
           { name: '신고 및 민원', value: 'report' },
           { name: '게임/서버 태그', value: 'tag' },
+          { name: '후원 안내', value: 'donate' },
           { name: '겐지 키우기 및 챔피언 모험', value: 'genji_adv' },
           { name: '갓비트 시세 요약', value: 'godbit_summary' },
           { name: '봇 관리', value: 'bot_manage' },
@@ -323,5 +324,41 @@ if (type === 'afk_status') {
   await channel.send({ embeds: [embed], components: [row] });
   return void interaction.reply({ content: '상태 메시지(AFK) 안내 공지 전송 완료!', ephemeral: true });
 }
+
+// ───────────── 9. 후원 안내 ─────────────
+if (type === 'donate') {
+  const embed = new EmbedBuilder()
+    .setTitle('💖 까리한 디스코드 후원 안내')
+    .setDescription([
+      '✨ **서버 운영 및 커뮤니티 발전을 위해 소중한 후원을 받고 있습니다!** ✨',
+      '',
+      '💸 **후원금:** 지정 계좌로 입금 후 인증 버튼 클릭!',
+      '🎁 **상품 후원:** 상품 전달 및 활용처 지정!',
+      '',
+      '아래 버튼을 통해 원하시는 후원 방식을 선택해주세요.',
+      '',
+      '> 진심으로 감사드립니다. 모든 후원은 투명하게 관리·사용됩니다.',
+      '',
+      '📢 `/후원` 명령어로도 언제든 참여할 수 있습니다.'
+    ].join('\n'))
+    .setColor(0xf9bb52)
+    .setFooter({ text: '후원 관련 문의는 운영진 또는 영갓에게 DM!' });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('donate_money')
+      .setLabel('💸 후원금')
+      .setEmoji('💸')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('donate_item')
+      .setLabel('🎁 상품 후원')
+      .setEmoji('🎁')
+      .setStyle(ButtonStyle.Success)
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+  return void interaction.reply({ content: '💖 후원 안내 공지 전송 완료!', ephemeral: true });
+} 
   }
 }
