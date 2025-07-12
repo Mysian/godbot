@@ -46,7 +46,7 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
 
   const embed = new EmbedBuilder()
     .setTitle(`💙 ${targetUser.tag}`)
-    .setDescription(`<@${targetUser.id}>님의 🔷파랑 정수(BE) 잔액: **${formatAmount(data.amount)} BE**`)
+    .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
     .addFields(
       { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }
     )
