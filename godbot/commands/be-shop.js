@@ -129,12 +129,12 @@ module.exports = {
         .setDescription('상점 종류를 선택하세요.')
         .setRequired(true)
         .addChoices(
-          { name: '닉네임 색상', value: 'nickname' },
-          { name: '개인채널 계약금', value: 'channel' },
-          { name: '한정판 칭호', value: 'title' },
-          { name: '챔피언 강화 아이템', value: 'upgrade' },
-          { name: '배틀 아이템', value: 'item' },
-          { name: '배틀 스킬', value: 'skill' }
+          { name: '🎨닉네임 색상', value: 'nickname' },
+          { name: '💸개인채널 계약금', value: 'channel' },
+          { name: '🐲한정판 칭호', value: 'title' },
+          { name: '🧿챔피언 강화 아이템', value: 'upgrade' },
+          { name: '⚔️배틀 아이템', value: 'item' },
+          { name: '⚔️배틀 스킬', value: 'skill' }
         )
     ),
   async execute(interaction) {
