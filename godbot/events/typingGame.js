@@ -70,7 +70,6 @@ function calcWPM(input, ms, lang) {
   }
 }
 function calcACC(target, input) {
-  // 정답 기준, 한 글자씩 비교
   let correct = 0;
   for (let i = 0; i < Math.min(target.length, input.length); i++) {
     if (target[i] === input[i]) correct++;
@@ -123,15 +122,25 @@ module.exports = {
       return message.reply(`아래 문장을 **똑같이** 입력하세요. (90초)\n\`\`\`${answer}\`\`\``);
     }
 
-    // 랭킹
-    if (message.content === '!순위') {
-      // 기본: 최근 기록 남긴 타입, 없으면 한타
-      let lang = 'ko';
-      if (rankData.ko[message.author.id] && !rankData.en[message.author.id]) lang = 'ko';
-      else if (!rankData.ko[message.author.id] && rankData.en[message.author.id]) lang = 'en';
-      else if (rankData.ko[message.author.id] && rankData.en[message.author.id]) {
-        lang = (rankData.ko[message.author.id].time <= rankData.en[message.author.id].time) ? 'ko' : 'en';
-      }
+    // 종료 명령어: 5초 뒤 닫힘
+    if (message.content === '!종료') {
+      const game = ACTIVE[message.author.id];
+      if (!game || game.finished) return message.reply('진행 중인 타자 게임이 없습니다.');
+      game.finished = true;
+      clearTimeout(game.timeout);
+      message.reply('5초 뒤에 타자 연습 세션이 종료됩니다...');
+      setTimeout(() => {
+        if (ACTIVE[message.author.id]) {
+          message.channel.send('타자 연습이 종료되었습니다.');
+          delete ACTIVE[message.author.id];
+        }
+      }, 5000);
+      return;
+    }
+
+    // 랭킹 출력 (한글/영문)
+    if (message.content === '!한타 순위' || message.content === '!영타 순위') {
+      const lang = message.content === '!한타 순위' ? 'ko' : 'en';
       const top = getRankArray(lang);
       const myRank = getUserRank(lang, message.author.id);
       const myRec = rankData[lang][message.author.id];
