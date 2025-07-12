@@ -117,7 +117,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setTitle('🔷 파랑 정수 지급')
-            .setDescription(`<@${target.id}>에게 🔺 **${amount} 🔷 BE** 지급 완료! \n(/정수확인 명령어로 확인 가능)`)
+            .setDescription(`<@${target.id}>에게 🔺 **${amount} 🔷 BE** 지급 완료! \n(/정수조회 명령어로 확인 가능)`)
             .setColor(0x33cc99)
             .setTimestamp()
         ]
