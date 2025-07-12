@@ -504,7 +504,7 @@ module.exports = {
             '- `!종료`로 직접 연습 세션 종료 가능',
           ].join('\n')
         )
-        .setFooter({ text: '개발자: 이영민(까리한 디스코드) | 문의는 DM!' });
+        .setFooter({ text: '갓봇과 함께 즐거운 시간 되세요!' });
       return message.reply({ embeds: [embed] });
     }
 
