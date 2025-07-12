@@ -22,8 +22,8 @@ const ENGLISH = [
   "Enjoy the game with your friends!"
 ];
 
-const ACTIVE = {}; // { channelId: { answer, lang, startTime, userId } }
 let rankData = { ko: {}, en: {} };
+const ACTIVE = {}; // { userId: { answer, lang, startTime, timeout, finished } }
 
 // 랭킹 파일 불러오기/저장
 function loadRank() {
@@ -35,12 +35,14 @@ function saveRank() {
   fs.writeFileSync(DATA_PATH, JSON.stringify(rankData, null, 2), 'utf8');
 }
 
-// 랭킹 TOP20
 function getRankArray(lang) {
   const arr = Object.entries(rankData[lang] || {}).map(([id, record]) => ({
     userId: id,
     username: record.username,
-    time: record.time
+    time: record.time,
+    cpm: record.cpm,
+    wpm: record.wpm,
+    acc: record.acc
   }));
   return arr.sort((a, b) => a.time - b.time).slice(0, 20);
 }
@@ -53,6 +55,37 @@ function getUserRank(lang, userId) {
   return idx === -1 ? null : idx + 1;
 }
 
+function calcCPM(input, ms) {
+  return Math.round((input.length / ms) * 60000);
+}
+function calcWPM(input, ms, lang) {
+  if (lang === 'ko') {
+    // 한글은 2자 = 1단어
+    const words = Math.max(1, Math.round(input.length / 2));
+    return Math.round((words / ms) * 60000);
+  } else {
+    // 영어는 띄어쓰기 단위
+    const words = Math.max(1, input.trim().split(/\s+/).length);
+    return Math.round((words / ms) * 60000);
+  }
+}
+function calcACC(target, input) {
+  // 정답 기준, 한 글자씩 비교
+  let correct = 0;
+  for (let i = 0; i < Math.min(target.length, input.length); i++) {
+    if (target[i] === input[i]) correct++;
+  }
+  return ((correct / target.length) * 100).toFixed(1);
+}
+function firstDiff(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (a[i] !== b[i]) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 module.exports = {
   name: Events.MessageCreate,
   async execute(message) {
@@ -61,26 +94,38 @@ module.exports = {
 
     loadRank();
 
-    // ----- 명령어 처리 -----
+    // 타자 시작
     if (message.content === '!한타' || message.content === '!영타') {
-      if (ACTIVE[message.channel.id]) {
-        return message.reply('이미 타자 게임이 진행 중입니다! 먼저 끝내주세요.');
+      if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
+        return message.reply('이미 진행 중인 타자 게임이 있습니다! 먼저 완료하거나 90초 기다려주세요.');
       }
       const isKo = message.content === '!한타';
       const arr = isKo ? HANGUL : ENGLISH;
       const answer = arr[Math.floor(Math.random() * arr.length)];
-      ACTIVE[message.channel.id] = {
+      const startTime = Date.now();
+
+      // 90초 제한 타이머
+      const timeout = setTimeout(() => {
+        if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
+          message.reply(`⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.`);
+          ACTIVE[message.author.id].finished = true;
+          delete ACTIVE[message.author.id];
+        }
+      }, 90 * 1000);
+
+      ACTIVE[message.author.id] = {
         answer,
         lang: isKo ? 'ko' : 'en',
-        startTime: Date.now(),
-        userId: null
+        startTime,
+        timeout,
+        finished: false
       };
-      return message.reply(`타자 연습 시작!\n아래 문장을 **똑같이** 입력해 보세요:\n\`\`\`${answer}\`\`\``);
+      return message.reply(`아래 문장을 **똑같이** 입력하세요. (90초)\n\`\`\`${answer}\`\`\``);
     }
 
-    // ----- 랭킹 -----
+    // 랭킹
     if (message.content === '!순위') {
-      // 한타/영타 구분: 최근 기록 남긴 타입이 있으면 해당 타입, 없으면 한타 기본
+      // 기본: 최근 기록 남긴 타입, 없으면 한타
       let lang = 'ko';
       if (rankData.ko[message.author.id] && !rankData.en[message.author.id]) lang = 'ko';
       else if (!rankData.ko[message.author.id] && rankData.en[message.author.id]) lang = 'en';
@@ -89,45 +134,75 @@ module.exports = {
       }
       const top = getRankArray(lang);
       const myRank = getUserRank(lang, message.author.id);
-      const myTime = rankData[lang][message.author.id]?.time;
+      const myRec = rankData[lang][message.author.id];
 
       const embed = new EmbedBuilder()
         .setTitle(`타자 랭킹 TOP20 (${lang === 'ko' ? '한글' : '영문'})`)
         .setColor(0x7a4ef7)
         .setDescription(
           top.length
-            ? top.map((e, i) => `${i + 1}. <@${e.userId}> - \`${e.time}s\``).join('\n')
+            ? top.map((e, i) =>
+                `${i + 1}. <@${e.userId}> - \`${e.time}s\` | CPM: \`${e.cpm}\` | WPM: \`${e.wpm}\` | ACC: \`${e.acc}%\``
+              ).join('\n')
             : '아직 기록이 없습니다!'
         )
-        .setFooter({ text: myRank
-          ? `내 순위: ${myRank}위 | 기록: ${myTime}s`
+        .setFooter({ text: myRank && myRec
+          ? `내 순위: ${myRank}위 | 기록: ${myRec.time}s, CPM: ${myRec.cpm}, WPM: ${myRec.wpm}, ACC: ${myRec.acc}%`
           : '아직 기록이 없습니다. 먼저 타자 게임을 완료해보세요!' });
 
       return message.reply({ embeds: [embed] });
     }
 
-    // ----- 게임 정답 처리 -----
-    const game = ACTIVE[message.channel.id];
-    if (game) {
-      if (message.content.startsWith('!')) return; // 명령어는 무시
+    // 타자 정답 처리
+    const game = ACTIVE[message.author.id];
+    if (game && !game.finished) {
+      if (message.content.startsWith('!')) return; // 명령어 무시
+      const now = Date.now();
+      if (now - game.startTime > 90 * 1000) {
+        clearTimeout(game.timeout);
+        game.finished = true;
+        delete ACTIVE[message.author.id];
+        return;
+      }
       if (message.content === game.answer) {
-        const time = ((Date.now() - game.startTime) / 1000).toFixed(2);
+        clearTimeout(game.timeout);
+        const ms = now - game.startTime;
+        const time = (ms / 1000).toFixed(2);
+        const cpm = calcCPM(game.answer, ms);
+        const wpm = calcWPM(game.answer, ms, game.lang);
+        const acc = calcACC(game.answer, message.content);
+
         // 기록 갱신: 기존 기록 없거나 더 빠를 때만 저장
         const lang = game.lang;
         const old = rankData[lang][message.author.id];
         if (!old || Number(time) < old.time) {
           rankData[lang][message.author.id] = {
             username: message.author.username,
-            time: Number(time)
+            time: Number(time),
+            cpm,
+            wpm,
+            acc
           };
           saveRank();
-          message.reply(`정답! ⏱️ ${time}초\n최고 기록이 갱신되었습니다!`);
+          message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
         } else {
-          message.reply(`정답! ⏱️ ${time}초\n(기존 최고 기록: ${old.time}s)`);
+          message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.time}s)`);
         }
-        delete ACTIVE[message.channel.id];
+        game.finished = true;
+        delete ACTIVE[message.author.id];
       } else {
-        message.reply('오타! 다시 입력해 보세요.');
+        // 오타 안내
+        const diffIdx = firstDiff(game.answer, message.content);
+        let hint;
+        if (diffIdx === -1) {
+          hint = '길이가 다릅니다.';
+        } else {
+          hint =
+            `정답: \`${game.answer}\`\n` +
+            `입력: \`${message.content}\`\n` +
+            ' '.repeat(diffIdx + 4) + '↑ 여기서 오타!';
+        }
+        message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
       }
     }
   }
