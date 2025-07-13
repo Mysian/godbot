@@ -6,7 +6,7 @@ const ALLOWED_CHANNEL = '1393421229083328594';
 const DATA_PATH = path.join(__dirname, '../data/typing-rank.json');
 const { createCanvas, registerFont } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
-registerFont(path.join(__dirname, '../fonts/NanumGothic.ttf'), { family: 'NanumGothic' });
+registerFont(path.join(__dirname, '../fonts/NotoSansKR-Regular.ttf'), { family: 'NotoSansKR' });
 
 function renderTextToImage(text) {
   const width = 880, height = 90;
@@ -14,7 +14,7 @@ function renderTextToImage(text) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
-  ctx.font = '32px NanumGothic';
+  ctx.font = '32px NotoSansKR';
   ctx.fillStyle = '#111';
   ctx.textBaseline = 'middle';
   // 여러 줄 지원
