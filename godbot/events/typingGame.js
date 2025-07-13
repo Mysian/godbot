@@ -560,7 +560,7 @@ module.exports = {
       return message.reply({ embeds: [embed] });
     }
 
-    // 타자 시작
+// 타자 시작
 if (message.content === '!한타' || message.content === '!영타') {
   if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
     return message.reply('이미 진행 중인 타자 게임이 있습니다! 먼저 완료하거나 90초 기다려주세요.');
@@ -568,29 +568,29 @@ if (message.content === '!한타' || message.content === '!영타') {
   const isKo = message.content === '!한타';
   const arr = isKo ? HANGUL : ENGLISH;
   const answer = arr[Math.floor(Math.random() * arr.length)];
-  const startTime = Date.now();
-  const timeout = setTimeout(() => {
-    if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-      message.reply(`⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.`);
-      ACTIVE[message.author.id].finished = true;
-      delete ACTIVE[message.author.id];
-    }
-  }, 90 * 1000);
-  ACTIVE[message.author.id] = {
-    answer,
-    lang: isKo ? 'ko' : 'en',
-    startTime,
-    timeout,
-    finished: false
-  };
-  // 이미지로 출제!
   const image = renderTextToImage(answer);
+
   return message.reply({
     content: '아래 문장을 **똑같이** 입력하세요. (90초)',
     files: [image]
+  }).then(sentMsg => {
+    const timeout = setTimeout(() => {
+      if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
+        message.reply(`⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.`);
+        ACTIVE[message.author.id].finished = true;
+        delete ACTIVE[message.author.id];
+      }
+    }, 90 * 1000);
+
+    ACTIVE[message.author.id] = {
+      answer,
+      lang: isKo ? 'ko' : 'en',
+      startTime: Date.now(), 
+      timeout,
+      finished: false
+    };
   });
 }
-
 
     // 종료 명령어: 5초 뒤 닫힘
     if (message.content === '!종료') {
