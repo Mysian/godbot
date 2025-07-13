@@ -632,6 +632,13 @@ if (message.content === '!한타' || message.content === '!영타') {
       return message.reply({ embeds: [embed] });
     }
 
+
+function normalizeQuote(str) {
+  return str
+    .replace(/’|‘/g, "'")
+    .replace(/“|”/g, '"');
+}
+    
     // 타자 정답 처리
 const game = ACTIVE[message.author.id];
 if (game && !game.finished) {
@@ -644,16 +651,20 @@ if (game && !game.finished) {
     delete ACTIVE[message.author.id];
     return;
   }
-  if (message.content === game.answer) {
+
+  const normAnswer = normalizeQuote(game.answer);
+  const normInput = normalizeQuote(message.content);
+
+  if (normInput === normAnswer) {
     clearTimeout(game.timeout);
     const time = (ms / 1000).toFixed(2);
-    const cpm = calcCPM(game.answer, ms);
-    const wpm = calcWPM(game.answer, ms, game.lang);
-    const acc = calcACC(game.answer, message.content);
+    const cpm = calcCPM(normAnswer, ms);  
+    const wpm = calcWPM(normAnswer, ms, game.lang);
+    const acc = calcACC(normAnswer, normInput);
 
     // 복붙 방지(3초 이내 정답은 랭킹 미등록)
     if (ms < 3000) {
-      message.reply(`❌ 3초 이내 입력은 복사/붙여넣기 의심으로 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)`);
+      message.reply(`❌ 복사/붙여넣기는 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)`);
     } else {
       // 기록 갱신: 기존 기록 없거나 더 빠를 때만 저장
       const lang = game.lang;
@@ -678,9 +689,9 @@ if (game && !game.finished) {
     delete ACTIVE[message.author.id];
   } else {
     // 오타 안내 기존대로
-    const hint = getMistypedSegment(game.answer, message.content);
+    const hint = getMistypedSegment(normAnswer, normInput);
     message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
-    }
-   }
+  }
+}
   }
 };
