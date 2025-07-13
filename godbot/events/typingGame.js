@@ -4,6 +4,38 @@ const path = require('path');
 
 const ALLOWED_CHANNEL = '1393421229083328594';
 const DATA_PATH = path.join(__dirname, '../data/typing-rank.json');
+const { createCanvas, registerFont } = require('canvas');
+const { AttachmentBuilder } = require('discord.js');
+registerFont(path.join(__dirname, '../fonts/NanumGothic.ttf'), { family: 'NanumGothic' });
+
+function renderTextToImage(text) {
+  const width = 880, height = 90;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.font = '32px NanumGothic';
+  ctx.fillStyle = '#111';
+  ctx.textBaseline = 'middle';
+  // 여러 줄 지원
+  let lines = [];
+  let line = '', words = text.split(' ');
+  for (let word of words) {
+    let test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > width - 40) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], 20, 45 + i * 38);
+  }
+  return new AttachmentBuilder(canvas.toBuffer(), { name: 'typing.png' });
+}
+
 
 const HANGUL = [
 "시작이 반이다. 지금 이 순간 한 걸음을 내딛어 보세요.",
@@ -519,33 +551,36 @@ module.exports = {
     }
 
     // 타자 시작
-    if (message.content === '!한타' || message.content === '!영타') {
-      if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-        return message.reply('이미 진행 중인 타자 게임이 있습니다! 먼저 완료하거나 90초 기다려주세요.');
-      }
-      const isKo = message.content === '!한타';
-      const arr = isKo ? HANGUL : ENGLISH;
-      const answer = arr[Math.floor(Math.random() * arr.length)];
-      const startTime = Date.now();
-
-      // 90초 제한 타이머
-      const timeout = setTimeout(() => {
-        if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-          message.reply(`⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.`);
-          ACTIVE[message.author.id].finished = true;
-          delete ACTIVE[message.author.id];
-        }
-      }, 90 * 1000);
-
-      ACTIVE[message.author.id] = {
-        answer,
-        lang: isKo ? 'ko' : 'en',
-        startTime,
-        timeout,
-        finished: false
-      };
-      return message.reply(`아래 문장을 **똑같이** 입력하세요. (90초)\n\`\`\`${answer}\`\`\``);
+if (message.content === '!한타' || message.content === '!영타') {
+  if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
+    return message.reply('이미 진행 중인 타자 게임이 있습니다! 먼저 완료하거나 90초 기다려주세요.');
+  }
+  const isKo = message.content === '!한타';
+  const arr = isKo ? HANGUL : ENGLISH;
+  const answer = arr[Math.floor(Math.random() * arr.length)];
+  const startTime = Date.now();
+  const timeout = setTimeout(() => {
+    if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
+      message.reply(`⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.`);
+      ACTIVE[message.author.id].finished = true;
+      delete ACTIVE[message.author.id];
     }
+  }, 90 * 1000);
+  ACTIVE[message.author.id] = {
+    answer,
+    lang: isKo ? 'ko' : 'en',
+    startTime,
+    timeout,
+    finished: false
+  };
+  // 이미지로 출제!
+  const image = renderTextToImage(answer);
+  return message.reply({
+    content: '아래 문장을 **똑같이** 입력하세요. (90초)',
+    files: [image]
+  });
+}
+
 
     // 종료 명령어: 5초 뒤 닫힘
     if (message.content === '!종료') {
@@ -588,47 +623,52 @@ module.exports = {
     }
 
     // 타자 정답 처리
-    const game = ACTIVE[message.author.id];
-    if (game && !game.finished) {
-      if (message.content.startsWith('!')) return; // 명령어 무시
-      const now = Date.now();
-      if (now - game.startTime > 90 * 1000) {
-        clearTimeout(game.timeout);
-        game.finished = true;
-        delete ACTIVE[message.author.id];
-        return;
-      }
-      if (message.content === game.answer) {
-        clearTimeout(game.timeout);
-        const ms = now - game.startTime;
-        const time = (ms / 1000).toFixed(2);
-        const cpm = calcCPM(game.answer, ms);
-        const wpm = calcWPM(game.answer, ms, game.lang);
-        const acc = calcACC(game.answer, message.content);
+const game = ACTIVE[message.author.id];
+if (game && !game.finished) {
+  if (message.content.startsWith('!')) return;
+  const now = Date.now();
+  const ms = now - game.startTime;
+  if (now - game.startTime > 90 * 1000) {
+    clearTimeout(game.timeout);
+    game.finished = true;
+    delete ACTIVE[message.author.id];
+    return;
+  }
+  if (message.content === game.answer) {
+    clearTimeout(game.timeout);
+    const time = (ms / 1000).toFixed(2);
+    const cpm = calcCPM(game.answer, ms);
+    const wpm = calcWPM(game.answer, ms, game.lang);
+    const acc = calcACC(game.answer, message.content);
 
-        // 기록 갱신: 기존 기록 없거나 더 빠를 때만 저장
-        const lang = game.lang;
-        const old = rankData[lang][message.author.id];
-        if (!old || Number(time) < old.time) {
-          rankData[lang][message.author.id] = {
-            username: message.author.username,
-            time: Number(time),
-            cpm,
-            wpm,
-            acc
-          };
-          saveRank();
-          message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
-        } else {
-          message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.time}s)`);
-        }
-        game.finished = true;
-        delete ACTIVE[message.author.id];
+    // 복붙 방지(3초 이내 정답은 랭킹 미등록)
+    if (ms < 3000) {
+      message.reply(`❌ 3초 이내 입력은 복사/붙여넣기 의심으로 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)`);
+    } else {
+      // 기록 갱신: 기존 기록 없거나 더 빠를 때만 저장
+      const lang = game.lang;
+      const old = rankData[lang][message.author.id];
+      if (!old || Number(time) < old.time) {
+        rankData[lang][message.author.id] = {
+          username: message.author.username,
+          time: Number(time),
+          cpm,
+          wpm,
+          acc
+        };
+        saveRank();
+        message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
       } else {
-        // 오타 안내 (오타난 부분만)
-        const hint = getMistypedSegment(game.answer, message.content);
-        message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
+        message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.time}s)`);
       }
     }
+    game.finished = true;
+    delete ACTIVE[message.author.id];
+  } else {
+    // 오타 안내 기존대로
+    const hint = getMistypedSegment(game.answer, message.content);
+    message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
+    }
+   }
   }
 };
