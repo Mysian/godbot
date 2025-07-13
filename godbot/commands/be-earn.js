@@ -119,7 +119,8 @@ module.exports = {
           { name: '알바', value: 'alba' },
           { name: '도박', value: 'gamble' },
           { name: '가위바위보', value: 'rps' },
-          { name: '블랙잭', value: 'blackjack' }
+          { name: '블랙잭', value: 'blackjack' },
+          { name: '짝짓기', value: 'pair' }
         )
     ),
 
@@ -601,6 +602,192 @@ if (kind === 'alba') {
       await interaction.showModal(modal);
       return;
     }
+
+    // 짝짓기
+    if (kind === 'pair') {
+  if (!lock(userId)) {
+    await interaction.reply({ content: '⚠️ 현재 미니게임 진행중이야! 잠시 후 다시 시도해줘.', ephemeral: true }); return;
+  }
+  setTimeout(unlock, 70000, userId);
+
+  // 랜덤 이모지 Pool (ex. 동물/과일 등 8쌍 + 1개)
+  const EMOJIS = [
+    '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼',
+    '🍎','🍌','🍇','🍒','🍑','🍉','🍋','🥝',
+    '⚽','🏀','🏈','⚾','🎾','🏐','🏉','🎱'
+  ];
+  // 8쌍 중 4쌍 뽑고, 하나는 짝 없는 이모지
+  const shuffle = arr => arr.sort(() => Math.random() - 0.5);
+  const base = shuffle(EMOJIS).slice(0, 5);
+  const pairs = shuffle([
+    ...Array(2).fill(base[0]),
+    ...Array(2).fill(base[1]),
+    ...Array(2).fill(base[2]),
+    ...Array(2).fill(base[3]),
+    base[4] // 짝 없는 카드
+  ]);
+  const grid = shuffle([...pairs]); // 9개 카드 랜덤 배치
+
+  // 카드 상태: 0=뒤집힘, 1=열림, 2=매칭 성공
+  let cardState = Array(9).fill(0);
+
+  // 유저가 선택한 카드 인덱스 저장
+  let openedIdx = [];
+
+  let remainTime = 60;
+  let timer = null;
+  let ended = false;
+
+  // 버튼 렌더링 함수
+  function renderButtons() {
+    const rows = [];
+    for (let r = 0; r < 3; r++) {
+      rows.push(new ActionRowBuilder().addComponents(
+        ...[0, 1, 2].map(c => {
+          const idx = r * 3 + c;
+          let label = '❓';
+          let disabled = false;
+          if (cardState[idx] === 1 || cardState[idx] === 2) label = grid[idx];
+          if (cardState[idx] === 2) disabled = true;
+          return new ButtonBuilder()
+            .setCustomId(`pair_${idx}`)
+            .setLabel(label)
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(disabled);
+        })
+      ));
+    }
+    return rows;
+  }
+
+  // 매칭 완료 확인
+  function isGameClear() {
+    // 짝 없는 카드(1개) 제외하고 모두 매칭됨(2)이면 클리어
+    return cardState.filter((v, i) => grid[i] !== base[4] && v === 2).length === 8;
+  }
+
+  // 최초 메시지 전송
+  await interaction.reply({
+    content: `⏳ 남은 시간: **${remainTime}초**\n❓ 3x3 그리드에서 **같은 이모티콘 4쌍**을 모두 맞춰봐!\n짝 없는 카드(총 1개)도 섞여 있음!`,
+    embeds: [
+      new EmbedBuilder()
+        .setTitle('🧩 짝짓기 미니게임')
+        .setDescription('카드를 두 개씩 눌러 같은 이모지를 맞추세요!\n60초 안에 모두 맞추면 보상 지급!')
+        .setFooter({ text: `짝 없는 이모티콘: ${base[4]}` })
+    ],
+    components: renderButtons(),
+    ephemeral: true
+  });
+
+  // 타이머
+  timer = setInterval(async () => {
+    if (ended) return clearInterval(timer);
+    remainTime--;
+    if (remainTime >= 0) {
+      await interaction.editReply({ content: `⏳ 남은 시간: **${remainTime}초**` }).catch(()=>{});
+    }
+    if (remainTime <= 0) {
+      ended = true;
+      clearInterval(timer);
+      await interaction.editReply({
+        content: '⏰ 시간 초과! 실패! 다시 도전해봐!',
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('❌ 실패!')
+            .setDescription('60초 내에 모든 짝을 맞추지 못했어!\n보상 없음!')
+        ],
+        components: [],
+        ephemeral: true
+      }).catch(() => {});
+      unlock(userId);
+      collector.stop('fail');
+    }
+  }, 1000);
+
+  // 컴포넌트 콜렉터
+  const filter = i => i.user.id === userId && i.customId.startsWith('pair_');
+  const collector = interaction.channel.createMessageComponentCollector({ filter, time: 61000 });
+
+  collector.on('collect', async i => {
+    const idx = Number(i.customId.split('_')[1]);
+    if (cardState[idx] !== 0 || openedIdx.length === 2) return await i.deferUpdate();
+
+    cardState[idx] = 1; // 열림 처리
+    openedIdx.push(idx);
+
+    // 두 개 열었을 때
+    if (openedIdx.length === 2) {
+      const [a, b] = openedIdx;
+      // 둘 다 짝 있는 카드 & 같은 그림
+      if (grid[a] === grid[b] && grid[a] !== base[4]) {
+        cardState[a] = 2;
+        cardState[b] = 2;
+        openedIdx = [];
+        // 성공 사운드/임베드 등 넣고
+      } else {
+        // 다른 그림 or 짝 없는 카드
+        setTimeout(async () => {
+          if (cardState[a] === 1) cardState[a] = 0;
+          if (cardState[b] === 1) cardState[b] = 0;
+          openedIdx = [];
+          await i.editReply({
+            content: `⏳ 남은 시간: **${remainTime}초**`,
+            components: renderButtons()
+          }).catch(() => {});
+        }, 900);
+      }
+    }
+
+    // 매칭 성공 체크
+    if (isGameClear()) {
+      ended = true;
+      clearInterval(timer);
+
+      // 보상 계산: 500 + (남은 시간/10초당 100씩)
+      let reward = 500 + Math.floor(remainTime / 10) * 100;
+      setUserBe(userId, reward, `짝짓기(메모리) 게임 성공! 남은시간 ${remainTime}초`);
+
+      await i.update({
+        content: '',
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('🎉 성공!')
+            .setDescription(`모든 짝을 맞췄어! **${comma(reward)} BE** 지급\n남은 시간: ${remainTime}초`)
+        ],
+        components: [],
+        ephemeral: true
+      }).catch(() => {});
+      unlock(userId);
+      collector.stop('done');
+      return;
+    }
+
+    // 매칭 전 갱신
+    await i.update({
+      content: `⏳ 남은 시간: **${remainTime}초**`,
+      components: renderButtons()
+    }).catch(() => {});
+  });
+
+  collector.on('end', async (_, reason) => {
+    if (!ended && reason !== 'done' && reason !== 'fail') {
+      ended = true;
+      clearInterval(timer);
+      await interaction.editReply({
+        content: '⏰ 시간 초과! 실패! 다시 도전해봐!',
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('❌ 실패!')
+            .setDescription('60초 내에 모든 짝을 맞추지 못했어!\n보상 없음!')
+        ],
+        components: [],
+        ephemeral: true
+      }).catch(() => {});
+      unlock(userId);
+    }
+  });
+  return;
+}
 
     // 4. 블랙잭 - 모달만 띄우고 본 게임은 아래 modal()에서 처리!
     if (kind === 'blackjack') {
