@@ -462,16 +462,26 @@ function getRankArray(lang) {
     wpm: record.wpm,
     acc: record.acc
   }));
-  return arr.sort((a, b) => a.time - b.time).slice(0, 20);
+  // CPM 내림차순, 동률이면 time 빠른 순
+  return arr.sort((a, b) => {
+    if (b.cpm !== a.cpm) return b.cpm - a.cpm;
+    return a.time - b.time;
+  }).slice(0, 20);
 }
 function getUserRank(lang, userId) {
   const arr = Object.entries(rankData[lang] || {}).map(([id, record]) => ({
     userId: id,
+    cpm: record.cpm,
     time: record.time
-  })).sort((a, b) => a.time - b.time);
+  }))
+    .sort((a, b) => {
+      if (b.cpm !== a.cpm) return b.cpm - a.cpm;
+      return a.time - b.time;
+    });
   const idx = arr.findIndex(e => e.userId === userId);
   return idx === -1 ? null : idx + 1;
 }
+
 
 function calcCPM(input, ms) {
   return Math.round((input.length / ms) * 60000);
@@ -648,19 +658,21 @@ if (game && !game.finished) {
       // 기록 갱신: 기존 기록 없거나 더 빠를 때만 저장
       const lang = game.lang;
       const old = rankData[lang][message.author.id];
-      if (!old || Number(time) < old.time) {
-        rankData[lang][message.author.id] = {
-          username: message.author.username,
-          time: Number(time),
-          cpm,
-          wpm,
-          acc
-        };
-        saveRank();
-        message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
-      } else {
-        message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.time}s)`);
-      }
+      if (!old || cpm > old.cpm) {
+  // 기록 갱신!
+  rankData[lang][message.author.id] = {
+    username: message.author.username,
+    time: Number(time),
+    cpm,
+    wpm,
+    acc
+  };
+  saveRank();
+  message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
+} else {
+  message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.cpm}CPM)`);
+}
+
     }
     game.finished = true;
     delete ACTIVE[message.author.id];
