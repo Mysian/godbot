@@ -629,79 +629,89 @@ if (kind === 'alba') {
   async modal(interaction) {
     const userId = interaction.user.id;
 
-    // === 가위바위보 모달 submit ===
-    if (interaction.customId === 'rps_bet_modal') {
-      const raw = interaction.fields.getTextInputValue('rps_bet').replace(/,/g, '');
-      const bet = Math.floor(Number(raw));
-      if (isNaN(bet) || bet < 10 || bet > 1000000) {
-        await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (10~1,000,000 BE)", ephemeral: true });
-        unlock(userId); return;
-      }
-      if (getUserBe(userId) < bet) {
-        await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
-        unlock(userId); return;
-      }
-      let rpsGame = async () => {
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('rps_0').setLabel('✌️ 가위').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId('rps_1').setLabel('✊ 바위').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId('rps_2').setLabel('✋ 보').setStyle(ButtonStyle.Primary)
-        );
-        await interaction.reply({
-          embeds: [new EmbedBuilder()
-            .setTitle('✂️ 가위바위보')
-            .setDescription(`배팅금: **${comma(bet)} BE**\n가위/바위/보 중 하나를 골라!`)
-          ],
-          components: [row], ephemeral: true
-        });
-        const filter = i => i.user.id === userId && i.customId.startsWith('rps_');
-        interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 30000 })
-          .on('collect', async i2 => {
-            const rnd = Math.random();
-            let acc = 0, result = null;
-            for (let r of RPS_RATE) {
-              acc += r.prob;
-              if (rnd <= acc) { result = r.result; break; }
-            }
-            if (!result) result = 'lose';
-            let userPick = ['가위', '바위', '보'][parseInt(i2.customId.split('_')[1])];
-            let botPick = null;
-            if (result === 'draw') {
-              botPick = userPick;
-            } else if (result === 'win') {
-              botPick = ['바위', '보', '가위'][parseInt(i2.customId.split('_')[1])];
-            } else {
-              botPick = ['보', '가위', '바위'][parseInt(i2.customId.split('_')[1])];
-            }
-            let msg = `너: **${userPick}**\n상대: **${botPick}**\n\n`;
-            if (result === 'win') {
-              setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
-              msg += `🎉 승리! **${comma(Math.floor(bet * 1.9))} BE** 획득!`;
-              await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-              unlock(userId);
-            } else if (result === 'lose') {
-              setUserBe(userId, -bet, '가위바위보 패배');
-              msg += `💀 패배! 배팅금 **${comma(bet)} BE** 소멸!`;
-              await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-              unlock(userId);
-            } else { // draw
-              msg += `🤝 무승부! 배팅금 **${comma(bet)} BE** 반환!`;
-              setUserBe(userId, bet, '가위바위보 무승부 환불');
-              await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-              unlock(userId);
-            }
-          })
-          .on('end', async (_, reason) => {
-            if (reason === 'time') {
-              setUserBe(userId, -Math.floor(bet * 0.25), '가위바위보 시간초과/도중포기(25%만 소멸)');
-              await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
-              unlock(userId);
-            }
-          });
-      };
-      rpsGame();
-      return;
-    }
+   // === 가위바위보 모달 submit ===
+if (interaction.customId === 'rps_bet_modal') {
+  const raw = interaction.fields.getTextInputValue('rps_bet').replace(/,/g, '');
+  const bet = Math.floor(Number(raw));
+  if (isNaN(bet) || bet < 10 || bet > 1000000) {
+    await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (10~1,000,000 BE)", ephemeral: true });
+    unlock(userId); return;
+  }
+  if (getUserBe(userId) < bet) {
+    await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
+    unlock(userId); return;
+  }
+  let rpsGame = async () => {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('rps_0').setLabel('✌️ 가위').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('rps_1').setLabel('✊ 바위').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('rps_2').setLabel('✋ 보').setStyle(ButtonStyle.Primary)
+    );
+    await interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setTitle('✂️ 가위바위보')
+        .setDescription(`배팅금: **${comma(bet)} BE**\n가위/바위/보 중 하나를 골라!`)
+      ],
+      components: [row], ephemeral: true
+    });
+
+    const filter = i => i.user.id === userId && i.customId.startsWith('rps_');
+    interaction.channel.createMessageComponentCollector({ filter, max: 1, time: 30000 })
+      .on('collect', async i2 => {
+        const rnd = Math.random();
+        let acc = 0, result = null;
+        for (let r of RPS_RATE) {
+          acc += r.prob;
+          if (rnd <= acc) { result = r.result; break; }
+        }
+        if (!result) result = 'lose';
+
+        const winTable = [2, 0, 1];  
+        const loseTable = [1, 2, 0];  
+        const RPS = ['가위', '바위', '보'];
+
+        let userPickIdx = parseInt(i2.customId.split('_')[1]);
+        let userPick = RPS[userPickIdx];
+        let botPickIdx;
+        if (result === 'draw') {
+          botPickIdx = userPickIdx;
+        } else if (result === 'win') {
+          botPickIdx = winTable[userPickIdx];
+        } else {
+          botPickIdx = loseTable[userPickIdx];
+        }
+        let botPick = RPS[botPickIdx];
+
+        let msg = `너: **${userPick}**\n상대: **${botPick}**\n\n`;
+        if (result === 'win') {
+          setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
+          msg += `🎉 승리! **${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+          await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+          unlock(userId);
+        } else if (result === 'lose') {
+          setUserBe(userId, -bet, '가위바위보 패배');
+          msg += `💀 패배! 배팅금 **${comma(bet)} BE** 소멸!`;
+          await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+          unlock(userId);
+        } else { // draw
+          msg += `🤝 무승부! 배팅금 **${comma(bet)} BE** 반환!`;
+          setUserBe(userId, bet, '가위바위보 무승부 환불');
+          await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+          unlock(userId);
+        }
+      })
+      .on('end', async (_, reason) => {
+        if (reason === 'time') {
+          setUserBe(userId, -Math.floor(bet * 0.25), '가위바위보 시간초과/도중포기(25%만 소멸)');
+          await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
+          unlock(userId);
+        }
+      });
+  };
+  rpsGame();
+  return;
+}
+
 
     // === 블랙잭 모달 submit ===
     if (interaction.customId === 'blackjack_bet_modal') {
