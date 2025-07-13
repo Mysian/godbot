@@ -166,90 +166,72 @@ PAGES = PAGES.filter(pageHasRole);
 
    async function render(u = null) {
   const chosenRoles = member.roles.cache.filter(r => ALL_GAMES.includes(r.name));
-
-let chosenText;
-if (chosenRoles.size) {
-  const arr = chosenRoles.map(r => GAME_EMOJIS[r.name] || "");
-  const lines = [];
-  for (let i = 0; i < arr.length; i += 5) {
-    lines.push(arr.slice(i, i + 5).join(" "));
+  let chosenText;
+  if (chosenRoles.size) {
+    const arr = chosenRoles.map(r => `${GAME_EMOJIS[r.name] || "❔"}${r.name}`);
+    const maxShow = 30;
+    let showArr = arr;
+    if (arr.length > maxShow) showArr = arr.slice(0, maxShow).concat(`...외 ${arr.length - maxShow}개`);
+    const lines = [];
+    for (let i = 0; i < showArr.length; i += 5) lines.push(showArr.slice(i, i + 5).join(" "));
+    chosenText = lines.join("\n");
+  } else {
+    chosenText = "아직 등록된 태그가 없습니다.";
   }
-  chosenText = lines.join("\n");
-} else {
-  chosenText = "아직 등록된 태그가 없습니다.";
+
+  // 선택한 게임 태그 임베드
+  const chosenEmbed = new EmbedBuilder()
+    .setTitle("📌 등록한 게임 태그")
+    .setDescription(chosenText)
+    .setColor(0xf2b619);
+
+  // 아래는 기존 게임 태그 목록 임베드
+  const rolesThisPage = getRoles(PAGES[page]);
+  const emojis = rolesThisPage.map(r => GAME_EMOJIS[r.name] || "❔");
+  const lines = [];
+  for (let i = 0; i < emojis.length; i += 5) lines.push(emojis.slice(i, i + 5).join(", "));
+  const pageList = lines.join(",\n");
+
+  const mainEmbed = new EmbedBuilder()
+    .setTitle("🎮 게임 태그 설정하기")
+    .setColor(0x2095ff)
+    .setFooter({text:"게임 태그는 최소 1개 이상 유지해야 합니다.",iconURL:FOOTER_ICON_URL})
+    .addFields(
+      { name: "🗂️ 현재 목록에 있는 게임 (페이지 " + (page + 1) + "/" + PAGES.length + ")", value: pageList }
+    );
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("select")
+    .setPlaceholder("여기를 눌러 게임 태그를 설정하세요!")
+    .setMinValues(0)
+    .setMaxValues(rolesThisPage.length)
+    .addOptions(
+      rolesThisPage.map(r=>({
+        label: r.name.length>100 ? r.name.slice(0,97)+"…" : r.name,
+        value: r.id,
+        default: member.roles.cache.has(r.id),
+        emoji: GAME_EMOJIS[r.name] || undefined
+      }))
+    );
+
+  const nav = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("search").setEmoji("🔍").setStyle("Secondary"),
+    new ButtonBuilder().setCustomId("prev").setLabel("이전 게임").setStyle("Secondary").setDisabled(page===0).setEmoji("⬅️"),
+    new ButtonBuilder().setCustomId("next").setLabel("다음 게임").setStyle("Primary").setDisabled(page>=PAGES.length-1).setEmoji("➡️"),
+    new ButtonBuilder().setCustomId("info").setLabel("설명").setStyle("Success").setEmoji("ℹ️")
+  );
+
+  const payload = {
+    embeds: [chosenEmbed, mainEmbed],
+    components: [
+      new ActionRowBuilder().addComponents(select),
+      nav
+    ],
+    ephemeral: true
+  };
+  return u ? u.update(payload) : interaction.reply(payload);
 }
 
-      const rolesThisPage = getRoles(PAGES[page]);
-
-      
-      const emojis = rolesThisPage.map(r => GAME_EMOJIS[r.name] || "❔");
-const lines  = [];
-for (let i = 0; i < emojis.length; i += 5) {
-  lines.push(emojis.slice(i, i + 5).join(", "));
-}
-const pageList = lines.join(",\n");
-
-      const embed = new EmbedBuilder()
-        .setTitle("🎮 게임 태그 설정하기")
-        .setColor(0x2095ff)
-        .setFooter({text:"게임 태그는 최소 1개 이상 유지해야 합니다.",iconURL:FOOTER_ICON_URL})
-        .addFields(
-          { name: "📌 등록한 게임 태그", value: chosenText },
-  { name: BLANK, value: BLANK },
-  { name: BLANK, value: BLANK },
-  { name: `🗂️ 현재 목록에 있는 게임 (페이지 ${page+1}/${PAGES.length})`, value: pageList }
-);
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId("select")
-        .setPlaceholder("여기를 눌러 게임 태그를 설정하세요!")
-        .setMinValues(0)
-        .setMaxValues(rolesThisPage.length)
-        .addOptions(
-          rolesThisPage.map(r=>({
-            label: r.name.length>100 ? r.name.slice(0,97)+"…" : r.name,
-            value: r.id,
-            default: member.roles.cache.has(r.id),
-            emoji: GAME_EMOJIS[r.name] || undefined
-          }))
-        );
-
-      const nav = new ActionRowBuilder().addComponents(
-        
-  new ButtonBuilder()
-    .setCustomId("search")
-    .setEmoji("🔍")
-    .setStyle("Secondary"),
-
-  new ButtonBuilder()
-    .setCustomId("prev")
-    .setLabel("이전 게임")
-    .setStyle("Secondary")
-    .setDisabled(page===0)
-    .setEmoji("⬅️"),
-  new ButtonBuilder()
-    .setCustomId("next")
-    .setLabel("다음 게임")
-    .setStyle("Primary")
-    .setDisabled(page>=PAGES.length-1)
-    .setEmoji("➡️"),
-  new ButtonBuilder()
-    .setCustomId("info")
-    .setLabel("설명")
-    .setStyle("Success")
-    .setEmoji("ℹ️")
-);
-
-      const payload = {
-        embeds:[embed],
-        components:[
-          new ActionRowBuilder().addComponents(select),
-          nav
-        ],
-        ephemeral:true
-      };
-      return u ? u.update(payload) : interaction.reply(payload);
-    }
 
     await render();
     const msg = await interaction.fetchReply();
