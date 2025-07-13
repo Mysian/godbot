@@ -9,7 +9,7 @@ const { AttachmentBuilder } = require('discord.js');
 registerFont(path.join(__dirname, '../fonts/NotoSansKR-Regular.ttf'), { family: 'NotoSansKR' });
 
 function renderTextToImage(text) {
-  const width = 880, height = 90;
+  const width = 880, height = 120;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff';
