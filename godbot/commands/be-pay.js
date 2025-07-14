@@ -55,11 +55,11 @@ module.exports = {
           if (current > 0) {
             const minus = Math.min(current, Math.abs(amount));
             await addBE(member.user.id, -minus, reasonTakeRole);
-            msg.push(`<@${member.user.id}> - 🔻 **${minus} 🔷 BE 차감**`);
+            msg.push(`<@${member.user.id}> - 🔻 **${minus.toLocaleString()} 🔷 BE 차감**`);
           }
         } else {
           await addBE(member.user.id, amount, reasonGiveRole);
-          msg.push(`<@${member.user.id}> - 🔺 **${amount} 🔷 BE 지급**`);
+          msg.push(`<@${member.user.id}> - 🔺 **${amount.toLocaleString()} 🔷 BE 지급**`);
         }
       }
       if (msg.length === 0) {
@@ -106,7 +106,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setTitle('🔷 파랑 정수 차감')
-            .setDescription(`<@${target.id}>의 BE에서 🔻 **${minus} 🔷 BE** 차감됨!`)
+            .setDescription(`<@${target.id}>의 BE에서 🔻 **${minus.toLocaleString()} 🔷 BE** 차감됨!`)
             .setColor(0xff5555)
             .setTimestamp()
         ]
@@ -117,7 +117,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setTitle('🔷 파랑 정수 지급')
-            .setDescription(`<@${target.id}>에게 🔺 **${amount} 🔷 BE** 지급 완료! \n(/정수조회 명령어로 확인 가능)`)
+            .setDescription(`<@${target.id}>에게 🔺 **${amount.toLocaleString()} 🔷 BE** 지급 완료! \n(/정수조회 명령어로 확인 가능)`)
             .setColor(0x33cc99)
             .setTimestamp()
         ]
