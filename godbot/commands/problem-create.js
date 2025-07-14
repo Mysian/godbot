@@ -6,7 +6,6 @@ const lockfile = require('proper-lockfile');
 
 const problemFilePath = path.join(__dirname, '../data/problem.json');
 const BE_REWARD = '파랑 정수';
-const ARI_REWARD = '아리포인트';
 const XP_REWARD = '경험치';
 
 function loadProblems() {
@@ -17,31 +16,30 @@ function saveProblems(data) {
   fs.writeFileSync(problemFilePath, JSON.stringify(data, null, 2));
 }
 function formatNumber(n) {
-  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return n.toLocaleString(); 
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('문제')
-    .setDescription('문제를 출제합니다 (문제, 정답, 보상 종류, 보상, [힌트])')
+    .setDescription('문제를 출제합니다 (문제, 정답, 힌트 [필수], 보상/종류 [선택])')
     .addStringOption(opt =>
       opt.setName('문제').setDescription('문제 내용을 입력하세요').setRequired(true))
     .addStringOption(opt =>
       opt.setName('정답').setDescription('정답을 입력하세요').setRequired(true))
+    .addStringOption(opt =>
+      opt.setName('힌트').setDescription('힌트를 입력하세요').setRequired(true)) // 필수!
     .addIntegerOption(opt =>
-      opt.setName('보상').setDescription('정답 보상 수치').setRequired(true))
+      opt.setName('보상').setDescription('정답 보상 수치 (입력 안하면 5,000)').setRequired(false)) // 옵션
     .addStringOption(opt =>
       opt.setName('보상종류')
-        .setDescription('보상 종류를 선택하세요')
-        .setRequired(true)
+        .setDescription('보상 종류를 선택하세요 (입력 안하면 파랑 정수)')
+        .setRequired(false)
         .addChoices(
           { name: '파랑 정수', value: BE_REWARD },
-          { name: '아리포인트', value: ARI_REWARD },
           { name: '경험치', value: XP_REWARD }
         )
     )
-    .addStringOption(opt =>
-      opt.setName('힌트').setDescription('힌트(선택)').setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
   async execute(interaction) {
@@ -50,9 +48,9 @@ module.exports = {
     const authorId = interaction.user.id;
     const question = interaction.options.getString('문제');
     const answer = interaction.options.getString('정답');
-    const reward = interaction.options.getInteger('보상');
+    const hint = interaction.options.getString('힌트'); 
+    let reward = interaction.options.getInteger('보상') ?? 5000; 
     const rewardType = interaction.options.getString('보상종류') || BE_REWARD;
-    const hint = interaction.options.getString('힌트') || null;
 
     if (reward <= 0) {
       await interaction.reply({ content: '보상은 1 이상이어야 합니다.', ephemeral: true });
@@ -72,13 +70,12 @@ module.exports = {
 
       let rewardStr = '';
       if (rewardType === BE_REWARD) rewardStr = `🔷정수 ${formatNumber(reward)} BE`;
-      if (rewardType === ARI_REWARD) rewardStr = `🪙포인트 ${formatNumber(reward)} pt`;
       if (rewardType === XP_REWARD) rewardStr = `⬆️경험치 ${formatNumber(reward)} xp`;
 
       const embed = new EmbedBuilder()
         .addFields(
           { name: '📜 문제', value: question, inline: false },
-          ...(hint ? [{ name: '💡 힌트', value: hint, inline: false }] : []),
+          { name: '💡 힌트', value: hint, inline: false },
           { name: '보상', value: rewardStr, inline: false }
         )
         .setFooter({ text: `정답을 맞히면 보상이 지급됩니다! (정답 입력: !정답)` });
