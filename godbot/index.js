@@ -678,22 +678,22 @@ client.on("messageCreate", async msg => {
 
       if (r < 0.7) { // 70%
         reward = Math.floor(Math.random() * (1000 - 100 + 1)) + 100;
-        msgText = `-# 🔷 <@${msg.author.id}>님이 파랑 정수 ${reward} BE를 주웠습니다.`;
+        msgText = `-# 🔷 <@${msg.author.id}>님이 파랑 정수 ${reward.toLocaleString()} BE를 주웠습니다.`;
       } else if (r < 0.9) { // 20%
         reward = Math.floor(Math.random() * (5000 - 1001 + 1)) + 1001;
-        msgText = `-# 🔷 <@${msg.author.id}>님이 파랑 정수 ${reward} BE를 획득했습니다.`;
+        msgText = `-# 🔷 <@${msg.author.id}>님이 파랑 정수 ${reward.toLocaleString()} BE를 획득했습니다.`;
       } else if (r < 0.97) { // 7%
         reward = Math.floor(Math.random() * (10000 - 5001 + 1)) + 5001;
-        msgText = `-# 🔷 <@${msg.author.id}>님이 두둑하게 파랑 정수 ${reward} BE를 획득했습니다.`;
+        msgText = `-# 🔷 <@${msg.author.id}>님이 두둑하게 파랑 정수 ${reward.toLocaleString()} BE를 획득했습니다.`;
       } else if (r < 0.99) { // 2%
         reward = Math.floor(Math.random() * (30000 - 10001 + 1)) + 10001;
-        msgText = `-# 🔷 <@${msg.author.id}>님이 희귀한 확률로 파랑 정수 ${reward} BE를 손에 넣었습니다.`;
+        msgText = `-# 🔷 <@${msg.author.id}>님이 희귀한 확률로 파랑 정수 ${reward.toLocaleString()} BE를 손에 넣었습니다.`;
       } else if (r < 0.998) { // 0.8%
         reward = Math.floor(Math.random() * (40000 - 30001 + 1)) + 30001;
-        msgText = `-# 🔷 <@${msg.author.id}>님이 특급 파랑 정수 ${reward} BE를 획득합니다!`;
+        msgText = `-# 🔷 <@${msg.author.id}>님이 특급 파랑 정수 ${reward.toLocaleString()} BE를 획득합니다!`;
       } else { // 0.2%
         reward = Math.floor(Math.random() * (50000 - 40001 + 1)) + 40001;
-        msgText = `-# 🔷 <@${msg.author.id}>님에게 레전드 상황 발생! 파랑 정수 ${reward} BE가 쏟아집니다!`;
+        msgText = `-# 🔷 <@${msg.author.id}>님에게 레전드 상황 발생! 파랑 정수 ${reward.toLocaleString()} BE가 쏟아집니다!`;
       }
 
       addBE(msg.author.id, reward, "채널 주제 보상");
@@ -701,6 +701,7 @@ client.on("messageCreate", async msg => {
     }
   }
 });
+
 
 
 
