@@ -2,15 +2,15 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType } = require('discord.js');
 const { addBE } = require('./be-util.js');
 
-// 보상 테이블 (가중치, 이펙트, 설명)
+// 보상 테이블: 소수점 확률 반영, 5,000이하 압도적, 10만 극악
 const rewardTable = [
-  { min: 1000, max: 4000, weight: 7000, effect: '🎁', effectMsg: '평범한 정수!' },
-  { min: 4001, max: 8000, weight: 2000, effect: '✨', effectMsg: '특별한 정수!' },
-  { min: 8001, max: 20000, weight: 900, effect: '💎', effectMsg: '레어 정수!!' },
-  { min: 20001, max: 30000, weight: 100, effect: '🔥', effectMsg: '초레어 정수!!!' }
+  { min: 1000, max: 2500, weight: 8500, effect: '🎁', effectMsg: '나쁘지 않네요' },    // 85%
+  { min: 2501, max: 5000, weight: 1100, effect: '✨', effectMsg: '오~ 소소한데요?' },   // 11%
+  { min: 5001, max: 15000, weight: 300, effect: '💎', effectMsg: '제법 특별하신듯??' },   // 3%
+  { min: 15001, max: 40000, weight: 95, effect: '🔥', effectMsg: '에? 이게 뜬다고..?' }, // 0.95%
+  { min: 40001, max: 100000, weight: 5, effect: '🌈', effectMsg: 'ㅁㅊ 이게 떴다고???? 복권 사러가셈 님아 이거 극악 확률인데;;;' },  // 0.05%
 ];
 
-// 보상 추첨 함수
 function pickReward() {
   const total = rewardTable.reduce((sum, r) => sum + r.weight, 0);
   let rand = Math.random() * total;
@@ -26,24 +26,66 @@ function pickReward() {
   return { ...last, amount: last.max };
 }
 
+// 연출 세트
+function getEffectEmbed(user, reward) {
+  if (reward.amount <= 2500) {
+    // 평범
+    return new EmbedBuilder()
+      .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
+      .setDescription(`<@${user.id}>님, ${reward.effectMsg} \n**${reward.amount.toLocaleString()} BE**를 획득!`)
+      .setColor(0x5bbcff)
+      .setFooter({ text: reward.effectMsg });
+  } else if (reward.amount <= 5000) {
+    // 특별
+    return new EmbedBuilder()
+      .setTitle(`${reward.effect} [특별한 정수 획득!] ${reward.effect}`)
+      .setDescription(`✨ <@${user.id}>님이 특별한 정수를 얻었다!\n**${reward.amount.toLocaleString()} BE** 지급! ✨`)
+      .setColor(0x8ae65c)
+      .setFooter({ text: reward.effectMsg });
+  } else if (reward.amount <= 15000) {
+    // 레어
+    return new EmbedBuilder()
+      .setTitle(`${reward.effect} [레어 정수 획득!] ${reward.effect}`)
+      .setDescription(`💎 <@${user.id}>님이 레어 정수를 얻었습니다!\n**${reward.amount.toLocaleString()} BE**`)
+      .setColor(0xa953ff)
+      .setFooter({ text: reward.effectMsg });
+  } else if (reward.amount <= 40000) {
+    // 초레어
+    return new EmbedBuilder()
+      .setTitle(`${reward.effect} [초레어 정수!!] ${reward.effect}`)
+      .setDescription(`🔥 <@${user.id}>님이 초레어 정수를 터뜨렸다! \n**${reward.amount.toLocaleString()} BE**`)
+      .setColor(0xf75525)
+      .setFooter({ text: reward.effectMsg });
+  } else {
+    // 신화의 정수
+    return new EmbedBuilder()
+      .setTitle(`${reward.effect} [신화의 정수!!] ${reward.effect}`)
+      .setDescription(`🌈 <@${user.id}>님이 서버 최초의 신화의 정수를 획득!!!\n**${reward.amount.toLocaleString()} BE**\n\n*이 행운의 주인공은 당신!*`)
+      .setColor(0xf4e642)
+      .setFooter({ text: reward.effectMsg });
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수이벤트')
-    .setDescription('60초 안에 선착순 1명에게 파랑 정수를 지급하는 깜짝 이벤트!'),
+    .setDescription('60초 선착순 1명만 파랑 정수를 받을 수 있는 깜짝 이벤트!'),
   async execute(interaction) {
-    const reward = pickReward();
-
     const embed = new EmbedBuilder()
-      .setTitle(`${reward.effect} [깜짝 정수 이벤트] ${reward.effect}`)
-      .setDescription(`60초 안에 **가장 먼저 버튼**을 누르면 최대 \`${rewardTable[rewardTable.length-1].max.toLocaleString()} BE\`!\n\n*누가 먼저 받을까?*`)
+      .setTitle(`🎲 [깜짝 정수 이벤트] 🎲`)
+      .setDescription(
+        `60초 안에 **가장 먼저** '정수 받기' 버튼을 누르면\n\n`
+        + `💰 *얼마를 받게 될지 아무도 모릅니다!*\n\n`
+        + `평범~초레어까지 다양한 정수, 운에 맡겨보세요!`
+      )
       .addFields({ name: '참여방법', value: `버튼을 가장 먼저 누르세요!` })
       .setColor(0x3b8beb)
-      .setFooter({ text: reward.effectMsg });
+      .setFooter({ text: '정수 금액은 수령 후 공개!' });
 
     const btnRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('gift_event_btn')
-        .setLabel(`정수 받기 (${reward.amount.toLocaleString()} BE)`)
+        .setLabel(`정수 받기`)
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -60,14 +102,13 @@ module.exports = {
       if (claimed) return;
       claimed = true;
       collector.stop('claimed');
+      // 보상 추첨 & 지급
+      const reward = pickReward();
       await addBE(i.user.id, reward.amount, `정수이벤트 (${interaction.channel.name})`);
+      // 연출
       await i.update({
         embeds: [
-          new EmbedBuilder()
-            .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
-            .setDescription(`<@${i.user.id}>님이 **${reward.amount.toLocaleString()} BE**를 획득!`)
-            .setColor(0x43b581)
-            .setFooter({ text: reward.effectMsg })
+          getEffectEmbed(i.user, reward)
         ],
         components: [
           new ActionRowBuilder().addComponents(
