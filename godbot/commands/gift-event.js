@@ -176,23 +176,9 @@ module.exports = {
 
     collector.on('end', async (collected, reason) => {
       if (claimed) return;
-      await msg.edit({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(`[이벤트 종료]`)
-            .setDescription('수령자가 없어 지급되지 않았습니다.')
-            .setColor(0x888888)
-        ],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('timeout')
-              .setLabel('수령자 없음')
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          )
-        ]
-      });
+      try {
+        await msg.delete(); // 수령자 없으면 메시지 통째로 삭제
+      } catch (e) {}
     });
   }
 };
