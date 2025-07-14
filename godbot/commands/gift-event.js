@@ -50,35 +50,35 @@ function getEffectEmbed(user, reward) {
   if (reward.amount <= 2500) {
     // 평범
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
+      .setTitle(`${reward.effect} [깜짝 정수 획득!] ${reward.effect}`)
       .setDescription(`<@${user.id}>님, ${reward.effectMsg} \n**${formatted} BE**를 획득!`)
       .setColor(0x5bbcff)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 5000) {
     // 특별
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
+      .setTitle(`${reward.effect} [깜짝 정수 획득!!] ${reward.effect}`)
       .setDescription(`✨ <@${user.id}>님이 정수를 얻었다!\n**${formatted} BE** 지급! ✨`)
       .setColor(0x8ae65c)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 15000) {
     // 레어
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
+      .setTitle(`${reward.effect} [깜짝 정수 획득!!!] ${reward.effect}`)
       .setDescription(`💎 <@${user.id}>님이 정수를 얻었습니다!\n**${formatted} BE**`)
       .setColor(0xa953ff)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 40000) {
     // 초레어
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [정수 획득!!] ${reward.effect}`)
+      .setTitle(`${reward.effect} [깜짝 정수 획득!!!!] ${reward.effect}`)
       .setDescription(`🔥 <@${user.id}>님이 정수를 터뜨렸다! \n**${formatted} BE**`)
       .setColor(0xf75525)
       .setFooter({ text: reward.effectMsg });
   } else {
     // 신화의 정수
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [정수 획득!!!] ${reward.effect}`)
+      .setTitle(`${reward.effect} [깜짝 정수 획득!!!!!] ${reward.effect}`)
       .setDescription(`🌈 <@${user.id}>님이 극악의 확률로 대량의 정수를 획득!!!\n**${formatted} BE**\n\n*이 행운의 주인공은 당신!*`)
       .setColor(0xf4e642)
       .setFooter({ text: reward.effectMsg });
