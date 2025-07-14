@@ -129,9 +129,12 @@ module.exports = {
       .setFooter({ text: '정답을 맞히면 보상을 받습니다!' });
 
     const filter = m =>
-      !m.author.bot &&
-      m.channel.id === interaction.channel.id &&
-      m.content.trim() === answer.trim();
+  !m.author.bot &&
+  m.channel.id === interaction.channel.id &&
+  (
+    m.content.trim().replace(/^[!./\-+_?#]+/, "") === answer.trim()
+  );
+
 
     // 1. 임베드 + 타이머 메시지(텍스트) 동시 출력
     let timerMsg = await interaction.reply({
