@@ -331,7 +331,7 @@ const ENGLISH = [
 "Nothing will work unless you do.",
 "Don’t let yesterday take up too much of today.",
 "Life is 10% what happens to us and 90% how we react to it.",
-"Keep your face always toward the sunshine—and shadows will fall behind you.",
+"Keep your face always toward the sunshine and shadows will fall behind you.",
 "You are never too old to set another goal or to dream a new dream.",
 "All our dreams can come true, if we have the courage to pursue them.",
 "Great minds discuss ideas; average minds discuss events; small minds discuss people.",
