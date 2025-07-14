@@ -565,7 +565,6 @@ client.on("messageCreate", async message => {
 
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
-const { EmbedBuilder } = require("discord.js");
 
 const TIMEOUT_OPTIONS = [
   { duration: 60,    chance: 0.4,  text: "1분" },
@@ -596,7 +595,6 @@ client.on("messageCreate", async message => {
   const user = message.author;
   const isTurn = game.participants[game.currentTurn].id === user.id;
 
-  // 차례 안내(진행): 텍스트
   const sendNextTurn = async () => {
     if (game.timeout) clearTimeout(game.timeout);
     const current = game.participants[game.currentTurn];
@@ -609,14 +607,7 @@ client.on("messageCreate", async message => {
       const msg = msgs[Math.floor(Math.random() * msgs.length)];
       rouletteGames.delete(channelId);
       activeChannels.delete(channelId);
-      message.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("☠️ 시간초과로 폭사!")
-            .setDescription(`**${current.username}** 님이 폭사!\n💣 ${msg}\n\n게임 종료.`)
-            .setColor(0x555555)
-        ]
-      });
+      message.channel.send(`☠️ **${current.username}** 님이 폭사!\n💣 ${msg}\n\n게임 종료.`);
       logRouletteResult({
         timestamp: new Date().toISOString(),
         channel: message.channel.name,
@@ -627,29 +618,24 @@ client.on("messageCreate", async message => {
     }, 20000);
   };
 
-  // 장전
+  // !장전, !격발 → 장전, 발사로도 인식
   if (["!장전", "장전"].includes(message.content)) {
-    if (!isTurn)
-      return message.reply("❌ 지금은 당신 차례가 아닙니다!");
-    if (game.isLoaded)
-      return message.reply("❗ 이미 장전되었습니다. `발사`를 입력하세요!");
+    if (!isTurn) return message.reply("❌ 지금은 당신 차례가 아닙니다!");
+    if (game.isLoaded) return message.reply("❗ 이미 장전되었습니다. `발사`를 입력하세요!");
     if (game.timeout) clearTimeout(game.timeout);
     const tensionMsgs = ["서늘한 기분이 든다.", "어디서 화약 냄새가 난다.."];
     game.isLoaded = true;
     return message.reply(`🔫 ${tensionMsgs[Math.floor(Math.random() * tensionMsgs.length)]} 이제 \`발사\`를 입력하세요.`);
   }
 
-  // 발사
   if (["!격발", "발사"].includes(message.content)) {
-    if (!isTurn)
-      return message.reply("❌ 지금은 당신 차례가 아닙니다!");
-    if (!game.isLoaded)
-      return message.reply("❗ 먼저 `장전`을 입력해야 합니다!");
+    if (!isTurn) return message.reply("❌ 지금은 당신 차례가 아닙니다!");
+    if (!game.isLoaded) return message.reply("❗ 먼저 \`장전\`을 입력해야 합니다!");
     if (game.timeout) clearTimeout(game.timeout);
 
     const deathChance = Math.random();
     if (deathChance < 0.39) {
-      // 벌칙(결과): 임베드
+      // 타임아웃 벌칙 뽑기
       const timeoutOption = getRandomTimeout();
       const timeoutMs = timeoutOption.duration * 1000;
       const reason = "러시안룰렛 패배!";
@@ -662,6 +648,7 @@ client.on("messageCreate", async message => {
       rouletteGames.delete(channelId);
       activeChannels.delete(channelId);
 
+      // 멤버 타임아웃 적용 (권한/관리자 예외 처리)
       let timeoutApplied = false;
       try {
         const guildMember = await message.guild.members.fetch(user.id);
@@ -670,45 +657,17 @@ client.on("messageCreate", async message => {
           !guildMember.moderatable ||
           guildMember.roles.highest.position >= message.guild.members.me.roles.highest.position
         ) {
-          await message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("⚡ 벌칙 면제!")
-                .setDescription("해당 유저는 프론트맨입니다. 벌칙을 받지 않습니다!")
-                .setColor(0x3b8beb)
-            ]
-          });
+          await message.channel.send(`헉! 해당 유저는 프론트맨이었습니다. 벌칙을 받지 않습니다!`);
         } else {
           await guildMember.timeout(timeoutMs, reason);
           timeoutApplied = true;
-          await message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("💥 사망!")
-                .setDescription(`**${user.username}** 님이 사망했습니다.\n${msg}\n\n게임 종료.`)
-                .setColor(0x000000)
-            ]
-          });
+          await message.channel.send(`💥 **${user.username}** 님이 사망했습니다.\n${msg}\n\n게임 종료.`);
         }
       } catch (err) {
         if (!timeoutApplied) {
-          await message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("⚠️ 벌칙 실패")
-                .setDescription("갓봇이 처단할 수 없습니다 ㅠㅠ! 그는 프론트맨입니다. 벌칙을 받지 않습니다!")
-                .setColor(0xffbe00)
-            ]
-          });
+          await message.channel.send(`헉! 해당 유저는 프론트맨이었습니다. 벌칙을 받지 않습니다!`);
         } else {
-          await message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("⚠️ 타임아웃 오류")
-                .setDescription("타임아웃 적용 중 오류 발생!")
-                .setColor(0xffbe00)
-            ]
-          });
+          await message.channel.send(`⚠️ 타임아웃 적용 중 오류 발생!`);
         }
       }
 
@@ -721,7 +680,6 @@ client.on("messageCreate", async message => {
         timeout: timeoutOption.text,
       });
     } else {
-      // 생존(결과): 임베드
       const surviveMsgs = [
         "휴 살았다.",
         "응 살았죠?",
@@ -732,18 +690,12 @@ client.on("messageCreate", async message => {
       const surviveMsg = surviveMsgs[Math.floor(Math.random() * surviveMsgs.length)];
       game.isLoaded = false;
       game.currentTurn = (game.currentTurn + 1) % game.participants.length;
-      await message.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("😮 생존!")
-            .setDescription(`**${user.username}** 님은 살아남았습니다!\n🫣 ${surviveMsg}`)
-            .setColor(0x43b581)
-        ]
-      });
+      await message.channel.send(`😮 **${user.username}** 님은 살아남았습니다!\n🫣 ${surviveMsg}`);
       sendNextTurn();
     }
   }
 });
+
 
 // 파랑 정수(보상) 기능 등 기존 로직은 유지
 const bePath = path.join(__dirname, "data/BE.json");
