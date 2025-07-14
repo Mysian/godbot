@@ -1,5 +1,4 @@
-// 📁 commands/gift-event.js
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType, PermissionsBitField } = require('discord.js');
 const { addBE } = require('./be-util.js');
 
 // 한국식 화폐 표기 함수
@@ -39,44 +38,37 @@ function pickReward() {
     }
     rand -= r.weight;
   }
-  // fallback
   const last = rewardTable[rewardTable.length - 1];
   return { ...last, amount: last.max };
 }
 
-// 연출 세트 (금액 표기 한국식 적용)
 function getEffectEmbed(user, reward) {
   const formatted = formatKoreanMoney(reward.amount);
   if (reward.amount <= 2500) {
-    // 평범
     return new EmbedBuilder()
       .setTitle(`${reward.effect} [깜짝 정수 획득!] ${reward.effect}`)
       .setDescription(`<@${user.id}>님, ${reward.effectMsg} \n**${formatted} BE**를 획득!`)
       .setColor(0x5bbcff)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 5000) {
-    // 특별
     return new EmbedBuilder()
       .setTitle(`${reward.effect} [깜짝 정수 획득!!] ${reward.effect}`)
       .setDescription(`✨ <@${user.id}>님이 정수를 얻었다!\n**${formatted} BE** 지급! ✨`)
       .setColor(0x8ae65c)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 15000) {
-    // 레어
     return new EmbedBuilder()
       .setTitle(`${reward.effect} [깜짝 정수 획득!!!] ${reward.effect}`)
       .setDescription(`💎 <@${user.id}>님이 정수를 얻었습니다!\n**${formatted} BE**`)
       .setColor(0xa953ff)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 40000) {
-    // 초레어
     return new EmbedBuilder()
       .setTitle(`${reward.effect} [깜짝 정수 획득!!!!] ${reward.effect}`)
       .setDescription(`🔥 <@${user.id}>님이 정수를 터뜨렸다! \n**${formatted} BE**`)
       .setColor(0xf75525)
       .setFooter({ text: reward.effectMsg });
   } else {
-    // 신화의 정수
     return new EmbedBuilder()
       .setTitle(`${reward.effect} [깜짝 정수 획득!!!!!] ${reward.effect}`)
       .setDescription(`🌈 <@${user.id}>님이 극악의 확률로 대량의 정수를 획득!!!\n**${formatted} BE**\n\n*이 행운의 주인공은 당신!*`)
@@ -85,11 +77,48 @@ function getEffectEmbed(user, reward) {
   }
 }
 
+// ====== 쿨타임 관리 (메모리 캐시, 서버 재시작 시 초기화) ======
+const COOLDOWN = 60 * 60 * 1000; // 1시간(ms)
+const cooldownMap = new Map(); // userId -> 마지막 사용 시각
+
+const ALLOWED_ROLE_IDS = [
+  '786128824365482025',
+  '1201856430580432906'
+];
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수이벤트')
     .setDescription('60초 선착순 1명만 파랑 정수를 받을 수 있는 깜짝 이벤트!'),
   async execute(interaction) {
+    const member = interaction.member;
+    const userId = interaction.user.id;
+    const isManager = member.permissions.has(PermissionsBitField.Flags.Administrator) || member.permissions.has(PermissionsBitField.Flags.ManageGuild);
+    const hasAllowedRole = member.roles.cache.some(r => ALLOWED_ROLE_IDS.includes(r.id));
+
+    // 1. 역할/권한 체크
+    if (!isManager && !hasAllowedRole) {
+      return await interaction.reply({
+        content: '❌ 이 명령어는 특정 역할 또는 관리자만 사용할 수 있습니다.',
+        ephemeral: true
+      });
+    }
+
+    // 2. 쿨타임 체크(관리자 무시)
+    if (!isManager) {
+      const lastUsed = cooldownMap.get(userId) || 0;
+      const now = Date.now();
+      if (now - lastUsed < COOLDOWN) {
+        const left = Math.ceil((COOLDOWN - (now - lastUsed)) / 1000 / 60); // 남은 분
+        return await interaction.reply({
+          content: `⏳ 해당 명령어는 1시간 쿨타임이 있습니다. (남은 시간: ${left}분)`,
+          ephemeral: true
+        });
+      }
+      cooldownMap.set(userId, now);
+    }
+
+    // 3. 이벤트 메시지 출력
     const embed = new EmbedBuilder()
       .setTitle(`🎲 [깜짝 정수 이벤트] 🎲`)
       .setDescription(
@@ -119,12 +148,16 @@ module.exports = {
 
     collector.on('collect', async i => {
       if (claimed) return;
+
+      // 3. 명령어 사용자는 버튼 클릭 불가
+      if (i.user.id === userId) {
+        return await i.reply({ content: '❌ 이벤트를 시작한 본인은 참여할 수 없습니다!', ephemeral: true });
+      }
+
       claimed = true;
       collector.stop('claimed');
-      // 보상 추첨 & 지급
       const reward = pickReward();
       await addBE(i.user.id, reward.amount, `정수이벤트 (${interaction.channel.name})`);
-      // 연출
       await i.update({
         embeds: [
           getEffectEmbed(i.user, reward)
