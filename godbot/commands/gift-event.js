@@ -2,6 +2,24 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType } = require('discord.js');
 const { addBE } = require('./be-util.js');
 
+// 한국식 화폐 표기 함수
+function formatKoreanMoney(num) {
+  if (typeof num !== 'number') num = parseInt(num, 10);
+  if (isNaN(num)) return num;
+
+  if (num >= 1e8) { // 억 이상
+    const eok = Math.floor(num / 1e8);
+    const rest = num % 1e8;
+    return `${eok}억${rest > 0 ? ' ' + formatKoreanMoney(rest) : ''}`;
+  } else if (num >= 1e4) { // 만 이상
+    const man = Math.floor(num / 1e4);
+    const rest = num % 1e4;
+    return `${man}만${rest > 0 ? ' ' + rest.toLocaleString() : ''}`;
+  } else {
+    return num.toLocaleString();
+  }
+}
+
 // 보상 테이블: 소수점 확률 반영, 5,000이하 압도적, 10만 극악
 const rewardTable = [
   { min: 1000, max: 2500, weight: 8500, effect: '🎁', effectMsg: '나쁘지 않네요' },    // 85%
@@ -26,41 +44,42 @@ function pickReward() {
   return { ...last, amount: last.max };
 }
 
-// 연출 세트
+// 연출 세트 (금액 표기 한국식 적용)
 function getEffectEmbed(user, reward) {
+  const formatted = formatKoreanMoney(reward.amount);
   if (reward.amount <= 2500) {
     // 평범
     return new EmbedBuilder()
       .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
-      .setDescription(`<@${user.id}>님, ${reward.effectMsg} \n**${reward.amount.toLocaleString()} BE**를 획득!`)
+      .setDescription(`<@${user.id}>님, ${reward.effectMsg} \n**${formatted} BE**를 획득!`)
       .setColor(0x5bbcff)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 5000) {
     // 특별
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [특별한 정수 획득!] ${reward.effect}`)
-      .setDescription(`✨ <@${user.id}>님이 특별한 정수를 얻었다!\n**${reward.amount.toLocaleString()} BE** 지급! ✨`)
+      .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
+      .setDescription(`✨ <@${user.id}>님이 정수를 얻었다!\n**${formatted} BE** 지급! ✨`)
       .setColor(0x8ae65c)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 15000) {
     // 레어
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [레어 정수 획득!] ${reward.effect}`)
-      .setDescription(`💎 <@${user.id}>님이 레어 정수를 얻었습니다!\n**${reward.amount.toLocaleString()} BE**`)
+      .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
+      .setDescription(`💎 <@${user.id}>님이 정수를 얻었습니다!\n**${formatted} BE**`)
       .setColor(0xa953ff)
       .setFooter({ text: reward.effectMsg });
   } else if (reward.amount <= 40000) {
     // 초레어
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [초레어 정수!!] ${reward.effect}`)
-      .setDescription(`🔥 <@${user.id}>님이 초레어 정수를 터뜨렸다! \n**${reward.amount.toLocaleString()} BE**`)
+      .setTitle(`${reward.effect} [정수 획득!!] ${reward.effect}`)
+      .setDescription(`🔥 <@${user.id}>님이 정수를 터뜨렸다! \n**${formatted} BE**`)
       .setColor(0xf75525)
       .setFooter({ text: reward.effectMsg });
   } else {
     // 신화의 정수
     return new EmbedBuilder()
-      .setTitle(`${reward.effect} [신화의 정수!!] ${reward.effect}`)
-      .setDescription(`🌈 <@${user.id}>님이 서버 최초의 신화의 정수를 획득!!!\n**${reward.amount.toLocaleString()} BE**\n\n*이 행운의 주인공은 당신!*`)
+      .setTitle(`${reward.effect} [정수 획득!!!] ${reward.effect}`)
+      .setDescription(`🌈 <@${user.id}>님이 극악의 확률로 대량의 정수를 획득!!!\n**${formatted} BE**\n\n*이 행운의 주인공은 당신!*`)
       .setColor(0xf4e642)
       .setFooter({ text: reward.effectMsg });
   }
@@ -76,7 +95,7 @@ module.exports = {
       .setDescription(
         `60초 안에 **가장 먼저** '정수 받기' 버튼을 누르면\n\n`
         + `💰 *얼마를 받게 될지 아무도 모릅니다!*\n\n`
-        + `평범~초레어까지 다양한 정수, 운에 맡겨보세요!`
+        + `당신의 운에 맡겨보세요!`
       )
       .addFields({ name: '참여방법', value: `버튼을 가장 먼저 누르세요!` })
       .setColor(0x3b8beb)
@@ -90,7 +109,7 @@ module.exports = {
     );
 
     const msg = await interaction.channel.send({ embeds: [embed], components: [btnRow] });
-    await interaction.reply({ content: '이벤트가 시작됐어! 채팅방을 확인해!', ephemeral: true });
+    await interaction.reply({ content: '이벤트가 시작됐어요! 채팅방을 확인해보세요!', ephemeral: true });
 
     let claimed = false;
     const collector = msg.createMessageComponentCollector({
@@ -128,7 +147,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setTitle(`[이벤트 종료]`)
-            .setDescription('60초 내에 수령자가 없어 지급되지 않았어!')
+            .setDescription('수령자가 없어 지급되지 않았습니다.')
             .setColor(0x888888)
         ],
         components: [
