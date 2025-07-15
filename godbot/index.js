@@ -242,7 +242,11 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("내기");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
-["bet_join_", async (interaction) => {
+["bet_join_select", async (interaction) => {
+  const cmd = client.commands.get("내기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["bet_join_", async (interaction) => {  // bet_join_0, bet_join_1 등 전체 대응
   const cmd = client.commands.get("내기");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
