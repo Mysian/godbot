@@ -238,6 +238,14 @@ const modalHandlers = new Map([
     const cmd = client.commands.get("상태설정");
     if (cmd?.modal) return cmd.modal.execute(interaction);
  }],
+["bet_create", async (interaction) => {
+  const cmd = client.commands.get("내기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["bet_join_", async (interaction) => {
+  const cmd = client.commands.get("내기");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
 ["donate_money_modal", async (interaction) => {
   const cmd = client.commands.get("후원");
   if (cmd?.modal) return cmd.modal(interaction);
