@@ -21,22 +21,27 @@ function formatNumber(n) {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+function norm(str) {
+  return str
+    .replace(/[\s!.,?~`'"‘’“”\[\]{}()_+=@#$%^&*\\\/|-]/g, '')
+    .toLowerCase();
+}
+
 module.exports = {
   name: 'messageCreate',
   async execute(message) {
-    if (message.author.bot || !message.content.startsWith('!')) return;
+    if (message.author.bot) return;
 
     const guildId = message.guildId;
     const problems = loadProblems();
     const problem = problems[guildId];
     if (!problem || message.channelId !== problem.channelId) return;
 
-    const match = message.content.match(/^!(.+)/);
-    if (!match) return;
+    const userInput = message.content.trim();
 
-    const userAnswer = match[1].trim();
-    const isCorrect = userAnswer.toLowerCase() === problem.answer.toLowerCase();
+    const userAnswer = userInput.startsWith('!') ? userInput.slice(1).trim() : userInput;
 
+    const isCorrect = norm(userAnswer).includes(norm(problem.answer));
     if (!isCorrect) return;
 
     let release;
@@ -63,6 +68,7 @@ module.exports = {
         .setDescription(`<@${message.author.id}>님, 정답을 맞혔습니다!`)
         .addFields(
           { name: '문제', value: problem.question },
+          { name: '힌트', value: problem.hint || '없음' },
           { name: '정답', value: problem.answer },
           { name: '보상', value: rewardMsg }
         )
