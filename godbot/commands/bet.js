@@ -335,7 +335,7 @@ module.exports = {
         const winTotal = winners.reduce((a, p) => a + p.amount, 0);
 
         if (!winners.length) {
-          bet.settled = true;
+          bets.splice(betIdx, 1);
           saveBets(bets);
           return interaction.reply({ content: `승리 항목 "${winChoice}"에 베팅한 사람이 없어 아무도 배당을 받지 못했습니다!`, flags: 1 << 6 });
         }
