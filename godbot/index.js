@@ -341,6 +341,24 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   return interaction.reply({ embeds: [embed], ephemeral: true });
 }
 
+   // === 내기 셀렉트/모달 통합 처리 ===
+  const betCmd = client.commands.get("내기");
+  if (
+    (interaction.isStringSelectMenu() && interaction.customId.startsWith("bet_")) ||
+    (interaction.isModalSubmit() && interaction.customId.startsWith("bet_"))
+  ) {
+    if (betCmd?.modal) {
+      try {
+        await betCmd.modal(interaction);
+      } catch (err) {
+        console.error(err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❌ 내기 상호작용 처리 오류", ephemeral: true }).catch(() => {});
+        }
+      }
+    }
+    return;
+  }
 
   // 1. 경고 카테고리/세부사유 SelectMenu warn
   if (
@@ -367,6 +385,8 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     await remoteCmd.handleButton(interaction);
     return;
   }
+
+  
 
   // 2. 모달 통합 처리 (여기만 바뀜!)
   if (interaction.isModalSubmit()) {
