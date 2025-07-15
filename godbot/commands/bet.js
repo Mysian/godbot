@@ -85,7 +85,8 @@ module.exports = {
           new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
           new ButtonBuilder().setCustomId('join').setLabel('참여').setStyle(ButtonStyle.Primary)
             .setDisabled(items.every(bet => !bet.active)),
-          new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
+          new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('share').setLabel('내기 공유').setStyle(ButtonStyle.Secondary) // ★ 추가!
         );
         let secondRow = new ActionRowBuilder();
         if (showClose)
@@ -204,6 +205,29 @@ module.exports = {
             });
             return;
           }
+          // === 공유버튼 로직 추가 ===
+          else if (i.customId === 'share') {
+            const betsActive = loadBets().filter(bet => bet.active);
+            if (!betsActive.length)
+              return i.reply({ content: '진행 중인 내기가 없습니다.', flags: 1 << 6 });
+
+            // 진행중 내기 셀렉트 메뉴 생성
+            const select = new StringSelectMenuBuilder()
+              .setCustomId('bet_share_select')
+              .setPlaceholder('공유할 내기를 선택하세요')
+              .addOptions(betsActive.map((bet, idx) => ({
+                label: `[${bet.topic}]`,
+                value: `${idx}`,
+                description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
+              })));
+
+            await i.reply({
+              content: '공유할 내기를 선택하세요.',
+              components: [new ActionRowBuilder().addComponents(select)],
+              flags: 1 << 6
+            });
+            return;
+          }
           await i.update({ embeds: [makeEmbed(page)], components: makeRow(page, member) });
         } catch (err) {
           if (!i.replied && !i.deferred) {
@@ -311,12 +335,12 @@ module.exports = {
           return interaction.reply({ content: '정산 권한이 없습니다.', flags: 1 << 6 });
         }
         const select = new StringSelectMenuBuilder()
-  .setCustomId(`bet_result_select_${betIdx}`)
-  .setPlaceholder('승리한 항목을 선택하세요')
-  .addOptions([...new Set(bet.choices)].map((ch) => ({
-    label: ch,
-    value: ch
-  })));
+          .setCustomId(`bet_result_select_${betIdx}`)
+          .setPlaceholder('승리한 항목을 선택하세요')
+          .addOptions([...new Set(bet.choices)].map((ch) => ({
+            label: ch,
+            value: ch
+          })));
         await interaction.reply({
           content: `[${bet.topic}]의 승리 항목을 선택하세요.\n정산 시 전체 베팅액의 10%가 수수료로 차감되며, 남은 금액이 승자끼리 비율분배됩니다.`,
           components: [new ActionRowBuilder().addComponents(select)],
@@ -350,9 +374,27 @@ module.exports = {
           await addBE(winner.user, reward, `[내기정산] ${bet.topic} - ${winChoice} 당첨`);
           resultText += `- <@${winner.user}>님: ${reward}BE 지급\n`;
         }
-        bet.settled = true;
+        bets.splice(betIdx, 1); // 정산 완료시 내기 삭제!
         saveBets(bets);
         return interaction.reply({ content: `[${bet.topic}] 내기 결과: **"${winChoice}"**\n총 상금 ${total}BE 중 10%(${fee}BE) 수수료 차감, 남은 ${pot}BE가 승자끼리 비율분배되었습니다!\n${resultText.trim()}`, flags: 1 << 6 });
+      }
+      // ==== 공유 셀렉트 메뉴 처리 ====
+      else if (interaction.customId === "bet_share_select") {
+        const betIdx = parseInt(interaction.values[0]);
+        const bets = loadBets().filter(bet => bet.active);
+        const bet = bets[betIdx];
+        if (!bet)
+          return interaction.reply({ content: '내기를 찾을 수 없습니다.', flags: 1 << 6 });
+
+        let msg = `@everyone\n🔥 **[${bet.topic}] 내기가 진행중입니다! 지금 참여해보세요!**\n\n`;
+        msg += `• 항목: ${bet.choices.join(' / ')}\n`;
+        msg += `• 금액: ${bet.min} ~ ${bet.max} BE\n`;
+        msg += `• 주최: <@${bet.owner}>\n`;
+        msg += `• 현재 참여자: ${bet.participants.length}명\n`;
+
+        await interaction.channel.send({ content: msg });
+        await interaction.reply({ content: '공유 완료!', flags: 1 << 6 });
+        return;
       }
     } catch (err) {
       if (!interaction.replied && !interaction.deferred) {
