@@ -22,15 +22,18 @@ module.exports = {
 
   async execute(interaction) {
     let bets = loadBets();
-    if (!bets.length) {
-      return await interaction.reply({ content: '현재 진행 중인 내기가 없습니다.', ephemeral: true });
-    }
     let page = 0;
     const PAGE_SIZE = 3;
-    const totalPages = Math.ceil(bets.length / PAGE_SIZE);
+    const totalPages = Math.max(1, Math.ceil(bets.length / PAGE_SIZE));
 
     // 임베드 생성 함수
     const makeEmbed = (page) => {
+      if (!bets.length) {
+        return new EmbedBuilder()
+          .setTitle(`현재 진행 중인 내기 없음`)
+          .setColor(0x2b99ff)
+          .setDescription(`진행 중인 내기가 없습니다. 아래 버튼으로 새 내기를 생성할 수 있습니다.`);
+      }
       const start = page * PAGE_SIZE;
       const items = bets.slice(start, start + PAGE_SIZE);
       const embed = new EmbedBuilder()
@@ -43,12 +46,19 @@ module.exports = {
     };
 
     // 버튼 생성
-    const makeRow = (page) => new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-      new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
-      new ButtonBuilder().setCustomId('join').setLabel('참여').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
-    );
+    const makeRow = (page) => {
+      if (!bets.length) {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
+        );
+      }
+      return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+        new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
+        new ButtonBuilder().setCustomId('join').setLabel('참여').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
+      );
+    };
 
     // 첫 메시지
     const msg = await interaction.reply({ embeds: [makeEmbed(page)], components: [makeRow(page)], ephemeral: true, fetchReply: true });
@@ -61,7 +71,7 @@ module.exports = {
       if (i.customId === 'prev') page--;
       else if (i.customId === 'next') page++;
       else if (i.customId === 'new') {
-        // 내기 생성 모달 호출 (핸들러는 아래 modal 함수 참고)
+        // 내기 생성 모달
         const modal = new ModalBuilder().setCustomId('bet_create').setTitle('새 내기 생성');
         modal.addComponents(
           new ActionRowBuilder().addComponents(
