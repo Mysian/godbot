@@ -386,11 +386,13 @@ module.exports = {
         if (!bet)
           return interaction.reply({ content: '내기를 찾을 수 없습니다.', flags: 1 << 6 });
 
-        let msg = `@everyone\n🔥 **[${bet.topic}] 내기가 진행중입니다! 지금 참여해보세요!**\n\n`;
-        msg += `• 항목: ${bet.choices.join(' / ')}\n`;
-        msg += `• 금액: ${bet.min} ~ ${bet.max} BE\n`;
-        msg += `• 주최: <@${bet.owner}>\n`;
-        msg += `• 현재 참여자: ${bet.participants.length}명\n`;
+        let msg = `🔥 **[${bet.topic}] 내기가 진행중입니다!**\n`;
+msg += `• 항목: ${bet.choices.join(' / ')}\n`;
+msg += `• 금액: ${bet.min} ~ ${bet.max} BE\n`;
+msg += `• 주최: <@${bet.owner}>\n`;
+msg += `• 현재 참여자: ${bet.participants.length}명\n\n`;
+msg += `👉 </내기:1394584041272905869> 명령어를 통해 참여할 수 있습니다!`;
+
 
         await interaction.channel.send({ content: msg });
         await interaction.reply({ content: '공유 완료!', flags: 1 << 6 });
