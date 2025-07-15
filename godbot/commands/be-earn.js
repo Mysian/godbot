@@ -221,12 +221,22 @@ module.exports = {
 
   let effectMsg = `음성 ${comma(voiceBE)} + 채팅 ${comma(chatBE)} ×(${randRate.toFixed(2)}) + 연속출석(${streak}일, ${comma(bonus)} BE)`;
   await interaction.reply({
-    embeds: [new EmbedBuilder()
-      .setTitle("📅 출석 완료!")
-      .setDescription(`오늘의 출석 보상: **${comma(reward)} BE**\n${effectMsg}\n(내일 자정 이후 다시 출석 가능!)`)
-    ],
-    ephemeral: true
-  });
+  embeds: [new EmbedBuilder()
+    .setTitle(`📅 출석 완료! | 🔥 **연속 ${streak}일** 출석 중!`)
+    .setDescription(
+      `오늘의 출석 보상: **${comma(reward)} BE**\n` +
+      `\n` +
+      `▶️ **연속 출석 ${streak}일째!**\n` + // <-- 한 번 더 강조
+      `${effectMsg}\n` +
+      `\n` +
+      `\`연속 출석 보너스:\` **${comma(bonus)} BE**` + 
+      `\n\n(내일 자정 이후 다시 출석 가능!)`
+    )
+    .setColor(0x00aaff)
+    .setFooter({ text: `연속 출석 기록은 하루라도 빠지면 1일부터 다시 시작!` })
+  ],
+  ephemeral: true
+});
   return;
 }
 
