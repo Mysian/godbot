@@ -311,12 +311,12 @@ module.exports = {
           return interaction.reply({ content: '정산 권한이 없습니다.', flags: 1 << 6 });
         }
         const select = new StringSelectMenuBuilder()
-          .setCustomId(`bet_result_select_${betIdx}`)
-          .setPlaceholder('승리한 항목을 선택하세요')
-          .addOptions(bet.choices.map((ch, idx) => ({
-            label: ch,
-            value: ch
-          })));
+  .setCustomId(`bet_result_select_${betIdx}`)
+  .setPlaceholder('승리한 항목을 선택하세요')
+  .addOptions([...new Set(bet.choices)].map((ch) => ({
+    label: ch,
+    value: ch
+  })));
         await interaction.reply({
           content: `[${bet.topic}]의 승리 항목을 선택하세요.\n정산 시 전체 베팅액의 10%가 수수료로 차감되며, 남은 금액이 승자끼리 비율분배됩니다.`,
           components: [new ActionRowBuilder().addComponents(select)],
