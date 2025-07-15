@@ -31,7 +31,6 @@ module.exports = {
       const totalPages = Math.max(1, Math.ceil(bets.length / PAGE_SIZE));
       const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
 
-      // 임베드 필드 기반
       const makeEmbed = (page) => {
         if (!bets.length) {
           return new EmbedBuilder()
@@ -62,7 +61,7 @@ module.exports = {
         return embed;
       };
 
-      // 버튼 2줄 구조 (한 줄 최대 5개, 두 번째 줄은 마감/정산만)
+      // 버튼 2줄 구조 (ActionRow 2개)
       const makeRow = (page, member) => {
         if (!bets.length) {
           return [new ActionRowBuilder().addComponents(
@@ -99,7 +98,7 @@ module.exports = {
         return rows;
       };
 
-      // collector는 버튼만 listen!
+      // collector에서는 버튼만 listen!
       const rows = makeRow(page, member);
       const msg = await interaction.reply({ 
         embeds: [makeEmbed(page)], 
@@ -207,7 +206,6 @@ module.exports = {
           }
           await i.update({ embeds: [makeEmbed(page)], components: makeRow(page, member) });
         } catch (err) {
-          console.error('bet collector error:', err, err.stack);
           if (!i.replied && !i.deferred) {
             await i.reply({ content: '❌ 버튼 처리 중 오류!\n' + (err.message || err), flags: 1 << 6 }).catch(() => {});
           }
@@ -218,7 +216,6 @@ module.exports = {
         await msg.edit({ components: [] }).catch(() => {});
       });
     } catch (err) {
-      console.error('bet execute error:', err, err.stack);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: '❌ 내기 실행 중 오류 발생!\n' + (err.message || err), flags: 1 << 6 }).catch(() => {});
       }
@@ -227,7 +224,6 @@ module.exports = {
 
   async modal(interaction) {
     try {
-      console.log('bet modal customId:', interaction.customId); // 디버깅용
       if (interaction.customId === "bet_create") {
         const topic = interaction.fields.getTextInputValue('topic').trim();
         const choices = interaction.fields.getTextInputValue('choices').split(',').map(x => x.trim()).filter(Boolean);
@@ -359,7 +355,6 @@ module.exports = {
         return interaction.reply({ content: `[${bet.topic}] 내기 결과: **"${winChoice}"**\n총 상금 ${total}BE 중 10%(${fee}BE) 수수료 차감, 남은 ${pot}BE가 승자끼리 비율분배되었습니다!\n${resultText.trim()}`, flags: 1 << 6 });
       }
     } catch (err) {
-      console.error('bet modal error:', err, err.stack);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: '❌ 내기 모달 처리 중 오류!\n' + (err.message || err), flags: 1 << 6 }).catch(() => {});
       }
