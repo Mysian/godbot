@@ -32,34 +32,53 @@ module.exports = {
       const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
 
       const makeEmbed = (page) => {
-        if (!bets.length) {
-          return new EmbedBuilder()
-            .setTitle(`현재 진행 중인 내기 없음`)
-            .setColor(0x2b99ff)
-            .setDescription(`진행 중인 내기가 없습니다. 아래 버튼으로 새 내기를 생성할 수 있습니다.`);
-        }
-        const start = page * PAGE_SIZE;
-        const items = bets.slice(start, start + PAGE_SIZE);
-        const embed = new EmbedBuilder()
-          .setTitle(`현재 진행 중인 내기 목록 [${page + 1}/${totalPages}]`)
-          .setColor(0x2b99ff)
-          .setDescription(
-            "💡 **내기 안내**\n- 1인 1회만 참여, 진행자(주최자)는 참여 불가\n- 정산시 전체 베팅액의 10% 수수료 차감, 나머지는 승자끼리 비율분배\n- '마감' 후 '결과(정산)'에서 승리 항목을 선택해 자동 분배"
-          );
-        items.forEach((bet, idx) => {
-          let status = '';
-          if (!bet.active) status = bet.settled ? ' (정산 완료)' : ' (마감됨)';
-          embed.addFields({
-            name: `#${start + idx + 1} [${bet.topic}]${status}`,
-            value:
-              `- 항목: ${bet.choices.join(' / ')}\n` +
-              `- 금액: ${bet.min} ~ ${bet.max} BE\n` +
-              `- 주최: <@${bet.owner}>\n` +
-              `- 참여자: ${bet.participants.length}명`
-          });
-        });
-        return embed;
-      };
+  if (!bets.length) {
+    return new EmbedBuilder()
+      .setTitle(`현재 진행 중인 내기 없음`)
+      .setColor(0x2b99ff)
+      .setDescription(`진행 중인 내기가 없습니다. 아래 버튼으로 새 내기를 생성할 수 있습니다.`);
+  }
+  const start = page * PAGE_SIZE;
+  const items = bets.slice(start, start + PAGE_SIZE);
+  const embed = new EmbedBuilder()
+    .setTitle(`현재 진행 중인 내기 목록 [${page + 1}/${totalPages}]`)
+    .setColor(0x2b99ff)
+    .setDescription(
+      "💡 **내기 안내**\n- 1인 1회만 참여, 진행자(주최자)는 참여 불가\n- 정산시 전체 베팅액의 10% 수수료 차감, 나머지는 승자끼리 비율분배\n- '마감' 후 '결과(정산)'에서 승리 항목을 선택해 자동 분배"
+    );
+  items.forEach((bet, idx) => {
+    let status = '';
+    if (!bet.active) status = bet.settled ? ' (정산 완료)' : ' (마감됨)';
+    // === 항목별 현황 계산 ===
+    let totalAmount = bet.participants.reduce((a, p) => a + p.amount, 0);
+    let choiceStatus = '';
+    if (bet.choices && bet.choices.length) {
+      // 각 항목별 금액, 인원, 퍼센트, 게이지
+      let statusArr = [];
+      for (const choice of bet.choices) {
+        const group = bet.participants.filter(p => p.choice === choice);
+        const amount = group.reduce((a, p) => a + p.amount, 0);
+        const percent = totalAmount ? Math.round(amount / totalAmount * 100) : 0;
+        // 간단한 텍스트 게이지(최대 10칸)
+        const gauge = "█".repeat(Math.round(percent / 10)).padEnd(10, "░");
+        statusArr.push(
+          `> **${choice}**  (${group.length}명, ${amount.toLocaleString()}BE, ${percent}%)\n> \`${gauge}\``
+        );
+      }
+      choiceStatus = statusArr.join('\n');
+    }
+    embed.addFields({
+      name: `#${start + idx + 1} [${bet.topic}]${status}`,
+      value:
+        `- 항목: ${bet.choices.join(' / ')}\n` +
+        `- 금액: ${bet.min} ~ ${bet.max} BE\n` +
+        `- 주최: <@${bet.owner}>\n` +
+        `- 참여자: ${bet.participants.length}명\n` +
+        `\n**배팅 현황**\n${choiceStatus}`
+    });
+  });
+  return embed;
+};
 
       // 버튼 2줄 구조 (ActionRow 2개)
       const makeRow = (page, member) => {
