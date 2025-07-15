@@ -99,110 +99,119 @@ module.exports = {
         return rows;
       };
 
+      // collector는 버튼만 listen!
       const rows = makeRow(page, member);
       const msg = await interaction.reply({ 
         embeds: [makeEmbed(page)], 
         components: rows,
-        flags: 1 << 6, // ephemeral
+        flags: 1 << 6,
         fetchReply: true 
       });
 
-      const collector = msg.createMessageComponentCollector({ time: 300_000 });
+      const collector = msg.createMessageComponentCollector({
+        filter: i => i.isButton() && i.user.id === interaction.user.id,
+        time: 300_000
+      });
 
       collector.on('collect', async i => {
-        if (i.user.id !== interaction.user.id) 
-          return i.reply({ content: '본인만 조작할 수 있습니다.', flags: 1 << 6 });
-        if (i.customId === 'prev') page--;
-        else if (i.customId === 'next') page++;
-        else if (i.customId === 'new') {
-          const modal = new ModalBuilder().setCustomId('bet_create').setTitle('새 내기 생성');
-          modal.addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('topic').setLabel('내기 주제').setStyle(TextInputStyle.Short).setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('choices').setLabel('항목(쉼표로 구분, 최소 2개)').setStyle(TextInputStyle.Short).setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('min').setLabel('최소 금액').setStyle(TextInputStyle.Short).setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder().setCustomId('max').setLabel('최대 금액').setStyle(TextInputStyle.Short).setRequired(true)
-            )
-          );
-          await i.showModal(modal);
-          return;
-        }
-        else if (i.customId === 'join') {
-          const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
-            .filter(bet => bet.active);
-          if (!currBets.length) return i.reply({ content: '참여 가능한 내기가 없습니다.', flags: 1 << 6 });
-          const select = new StringSelectMenuBuilder()
-            .setCustomId('bet_join_select')
-            .setPlaceholder('참여할 내기를 선택하세요')
-            .addOptions(currBets.map((bet, idx) => ({
-              label: `[${bet.topic}]`,
-              value: `${bets.indexOf(bet)}`,
-              description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
-            })));
-          await i.reply({
-            content: '참여할 내기를 선택하세요. (베팅은 1회만 가능, 주최자 참여 불가)',
-            components: [new ActionRowBuilder().addComponents(select)],
-            flags: 1 << 6
-          });
-          return;
-        }
-        else if (i.customId === 'close') {
-          const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
-            .filter(bet =>
-              bet.active && (
-                bet.owner === interaction.user.id ||
-                (member && isAdmin(member))
+        try {
+          if (i.customId === 'prev') page--;
+          else if (i.customId === 'next') page++;
+          else if (i.customId === 'new') {
+            const modal = new ModalBuilder().setCustomId('bet_create').setTitle('새 내기 생성');
+            modal.addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('topic').setLabel('내기 주제').setStyle(TextInputStyle.Short).setRequired(true)
+              ),
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('choices').setLabel('항목(쉼표로 구분, 최소 2개)').setStyle(TextInputStyle.Short).setRequired(true)
+              ),
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('min').setLabel('최소 금액').setStyle(TextInputStyle.Short).setRequired(true)
+              ),
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('max').setLabel('최대 금액').setStyle(TextInputStyle.Short).setRequired(true)
               )
             );
-          if (!currBets.length)
-            return i.reply({ content: '마감 가능한 내기가 없습니다.', flags: 1 << 6 });
-          const select = new StringSelectMenuBuilder()
-            .setCustomId('bet_close_select')
-            .setPlaceholder('마감할 내기를 선택하세요')
-            .addOptions(currBets.map((bet, idx) => ({
-              label: `[${bet.topic}]`,
-              value: `${bets.indexOf(bet)}`,
-              description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
-            })));
-          await i.reply({
-            content: '내기를 마감하면 더 이상 참여가 불가합니다.',
-            components: [new ActionRowBuilder().addComponents(select)],
-            flags: 1 << 6
-          });
-          return;
+            await i.showModal(modal);
+            return;
+          }
+          else if (i.customId === 'join') {
+            const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+              .filter(bet => bet.active);
+            if (!currBets.length) return i.reply({ content: '참여 가능한 내기가 없습니다.', flags: 1 << 6 });
+            const select = new StringSelectMenuBuilder()
+              .setCustomId('bet_join_select')
+              .setPlaceholder('참여할 내기를 선택하세요')
+              .addOptions(currBets.map((bet, idx) => ({
+                label: `[${bet.topic}]`,
+                value: `${bets.indexOf(bet)}`,
+                description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
+              })));
+            await i.reply({
+              content: '참여할 내기를 선택하세요. (베팅은 1회만 가능, 주최자 참여 불가)',
+              components: [new ActionRowBuilder().addComponents(select)],
+              flags: 1 << 6
+            });
+            return;
+          }
+          else if (i.customId === 'close') {
+            const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+              .filter(bet =>
+                bet.active && (
+                  bet.owner === interaction.user.id ||
+                  (member && isAdmin(member))
+                )
+              );
+            if (!currBets.length)
+              return i.reply({ content: '마감 가능한 내기가 없습니다.', flags: 1 << 6 });
+            const select = new StringSelectMenuBuilder()
+              .setCustomId('bet_close_select')
+              .setPlaceholder('마감할 내기를 선택하세요')
+              .addOptions(currBets.map((bet, idx) => ({
+                label: `[${bet.topic}]`,
+                value: `${bets.indexOf(bet)}`,
+                description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
+              })));
+            await i.reply({
+              content: '내기를 마감하면 더 이상 참여가 불가합니다.',
+              components: [new ActionRowBuilder().addComponents(select)],
+              flags: 1 << 6
+            });
+            return;
+          }
+          else if (i.customId === 'settle') {
+            const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+              .filter(bet =>
+                !bet.active && !bet.settled && (
+                  bet.owner === interaction.user.id ||
+                  (member && isAdmin(member))
+                )
+              );
+            if (!currBets.length)
+              return i.reply({ content: '정산 가능한 내기가 없습니다.', flags: 1 << 6 });
+            const select = new StringSelectMenuBuilder()
+              .setCustomId('bet_settle_select')
+              .setPlaceholder('정산할 내기를 선택하세요')
+              .addOptions(currBets.map((bet, idx) => ({
+                label: `[${bet.topic}]`,
+                value: `${bets.indexOf(bet)}`,
+                description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
+              })));
+            await i.reply({
+              content: '정산할 내기를 선택하세요. (전체 베팅액의 10% 수수료가 차감됩니다)',
+              components: [new ActionRowBuilder().addComponents(select)],
+              flags: 1 << 6
+            });
+            return;
+          }
+          await i.update({ embeds: [makeEmbed(page)], components: makeRow(page, member) });
+        } catch (err) {
+          console.error('bet collector error:', err, err.stack);
+          if (!i.replied && !i.deferred) {
+            await i.reply({ content: '❌ 버튼 처리 중 오류!\n' + (err.message || err), flags: 1 << 6 }).catch(() => {});
+          }
         }
-        else if (i.customId === 'settle') {
-          const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
-            .filter(bet =>
-              !bet.active && !bet.settled && (
-                bet.owner === interaction.user.id ||
-                (member && isAdmin(member))
-              )
-            );
-          if (!currBets.length)
-            return i.reply({ content: '정산 가능한 내기가 없습니다.', flags: 1 << 6 });
-          const select = new StringSelectMenuBuilder()
-            .setCustomId('bet_settle_select')
-            .setPlaceholder('정산할 내기를 선택하세요')
-            .addOptions(currBets.map((bet, idx) => ({
-              label: `[${bet.topic}]`,
-              value: `${bets.indexOf(bet)}`,
-              description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
-            })));
-          await i.reply({
-            content: '정산할 내기를 선택하세요. (전체 베팅액의 10% 수수료가 차감됩니다)',
-            components: [new ActionRowBuilder().addComponents(select)],
-            flags: 1 << 6
-          });
-          return;
-        }
-        await i.update({ embeds: [makeEmbed(page)], components: makeRow(page, member) });
       });
 
       collector.on('end', async () => {
@@ -218,6 +227,7 @@ module.exports = {
 
   async modal(interaction) {
     try {
+      console.log('bet modal customId:', interaction.customId); // 디버깅용
       if (interaction.customId === "bet_create") {
         const topic = interaction.fields.getTextInputValue('topic').trim();
         const choices = interaction.fields.getTextInputValue('choices').split(',').map(x => x.trim()).filter(Boolean);
@@ -351,7 +361,7 @@ module.exports = {
     } catch (err) {
       console.error('bet modal error:', err, err.stack);
       if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: '❌ 내기 모달 처리 중 오류 발생!\n' + (err.message || err), flags: 1 << 6 }).catch(() => {});
+        await interaction.reply({ content: '❌ 내기 모달 처리 중 오류!\n' + (err.message || err), flags: 1 << 6 }).catch(() => {});
       }
     }
   }
