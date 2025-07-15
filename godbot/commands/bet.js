@@ -52,30 +52,29 @@ module.exports = {
     // === 항목별 현황 계산 ===
     let totalAmount = bet.participants.reduce((a, p) => a + p.amount, 0);
     let choiceStatus = '';
-    if (bet.choices && bet.choices.length) {
-      // 각 항목별 금액, 인원, 퍼센트, 게이지
-      let statusArr = [];
-      for (const choice of bet.choices) {
-        const group = bet.participants.filter(p => p.choice === choice);
-        const amount = group.reduce((a, p) => a + p.amount, 0);
-        const percent = totalAmount ? Math.round(amount / totalAmount * 100) : 0;
-        // 간단한 텍스트 게이지(최대 10칸)
-        const gauge = "█".repeat(Math.round(percent / 10)).padEnd(10, "░");
-        statusArr.push(
-          `> **${choice}**  (${group.length}명, ${amount.toLocaleString()}BE, ${percent}%)\n> \`${gauge}\``
-        );
-      }
-      choiceStatus = statusArr.join('\n');
-    }
+if (bet.choices && bet.choices.length) {
+  let statusArr = [];
+  for (const choice of bet.choices) {
+    const group = bet.participants.filter(p => p.choice === choice);
+    const percent = bet.participants.length
+      ? Math.round(group.length / bet.participants.length * 100)
+      : 0;
+    const gauge = "█".repeat(Math.round(percent / 10)).padEnd(10, "░");
+    statusArr.push(
+      `> **${choice}**  (${group.length}명, ${percent}%)\n> \`${gauge}\``
+    );
+  }
+  choiceStatus = statusArr.join('\n');
+}
     embed.addFields({
-      name: `#${start + idx + 1} [${bet.topic}]${status}`,
-      value:
-        `- 항목: ${bet.choices.join(' / ')}\n` +
-        `- 금액: ${bet.min} ~ ${bet.max} BE\n` +
-        `- 주최: <@${bet.owner}>\n` +
-        `- 참여자: ${bet.participants.length}명\n` +
-        `\n**배팅 현황**\n${choiceStatus}`
-    });
+  name: `#${start + idx + 1} [${bet.topic}]${status}`,
+  value:
+    `- 항목: ${bet.choices.join(' / ')}\n` +
+    `- 금액: ${bet.min} ~ ${bet.max} BE\n` +
+    `- 주최: <@${bet.owner}>\n` +
+    `- 참여자: ${bet.participants.length}명\n` +
+    `\n**배팅 현황**\n${choiceStatus}`
+});
   });
   return embed;
 };
