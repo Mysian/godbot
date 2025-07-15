@@ -850,77 +850,84 @@ module.exports = {
     }
 
     // 3. 매수
-    if (sub === '매수') {
-      await interaction.deferReply({ ephemeral: true });
-      const rawInput = interaction.options.getString('코인');
-      let coin = rawInput.trim();
-      if (!coin.endsWith('코인')) coin += '코인';
-      const amount = interaction.options.getInteger('수량');
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
-      if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 매수 가능: ${coin}` });
-      if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
+if (sub === '매수') {
+  await interaction.deferReply({ ephemeral: true });
+  const rawInput = interaction.options.getString('코인');
+  let coin = rawInput.trim();
+  if (!coin.endsWith('코인')) coin += '코인';
+  let amount = interaction.options.getInteger('수량');
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 매수 가능: ${coin}` });
+  if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
 
-      const price = coins[coin].price;
-      const total = Number((price * amount).toFixed(3));
-      const fee = 0;
-      const needBE = total;
-      const bal = getBE(interaction.user.id);
-      if (bal < needBE) return interaction.editReply({ content: `❌ BE 부족: 필요 ${needBE}` });
+  const price = coins[coin].price;
+  const bal = getBE(interaction.user.id);
 
-      wallets[interaction.user.id] = wallets[interaction.user.id] || {};
-      wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
-      wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
-      wallets[interaction.user.id + "_buys"][coin] = Number(((wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount)).toFixed(3));
+  // === [풀매수 기능] ===
+  const maxBuy = Math.floor(bal / price);
+  if (amount > maxBuy) amount = maxBuy;
+  if (amount <= 0) return interaction.editReply({ content: `❌ 구매 가능 수량이 없습니다.` });
 
-      await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
-      await saveJson(walletsPath, wallets);
+  const total = Number((price * amount).toFixed(3));
+  const fee = 0;
+  const needBE = total;
 
-      await addHistory(coins[coin], price);
-      await saveJson(coinsPath, coins);
+  wallets[interaction.user.id] = wallets[interaction.user.id] || {};
+  wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
+  wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
+  wallets[interaction.user.id + "_buys"][coin] = Number(((wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount)).toFixed(3));
 
-      recordVolume(coin, amount);
+  await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
+  await saveJson(walletsPath, wallets);
 
-      return interaction.editReply({
-        content: `✅ ${coin} ${amount}개 매수 완료! (개당 ${Number(price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(total).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모, 수수료 ${fee} BE)`
-      });
+  await addHistory(coins[coin], price);
+  await saveJson(coinsPath, coins);
 
-    }
+  recordVolume(coin, amount);
 
-    // 4. 매도
-    if (sub === '매도') {
-      await interaction.deferReply({ ephemeral: true });
-      const rawInput = interaction.options.getString('코인');
-      let coin = rawInput.trim();
-      if (!coin.endsWith('코인')) coin += '코인';
-      const amount = interaction.options.getInteger('수량');
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
-      if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 매도 가능: ${coin}` });
-      if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
+  return interaction.editReply({
+    content: `✅ ${coin} ${amount}개 매수 완료! (개당 ${Number(price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(total).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모, 수수료 ${fee} BE)`
+  });
+}
 
-      const have = wallets[interaction.user.id]?.[coin] || 0;
-      if (have < amount) return interaction.editReply({ content: `❌ 보유 부족: ${have}` });
-      const gross = Number((coins[coin].price * amount).toFixed(3));
-      const fee = Number((gross * 0.3).toFixed(3));
-      const net = Number((gross - fee).toFixed(3));
-      wallets[interaction.user.id][coin] -= amount;
-      if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
-      await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
-      wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
-      wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
-      await saveJson(walletsPath, wallets);
+   // 4. 매도
+if (sub === '매도') {
+  await interaction.deferReply({ ephemeral: true });
+  const rawInput = interaction.options.getString('코인');
+  let coin = rawInput.trim();
+  if (!coin.endsWith('코인')) coin += '코인';
+  let amount = interaction.options.getInteger('수량');
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
+  if (!coins[coin] || coins[coin].delistedAt) return interaction.editReply({ content: `❌ 상장 중인 코인만 매도 가능: ${coin}` });
+  if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
 
-      await addHistory(coins[coin], coins[coin].price);
-      await saveJson(coinsPath, coins);
+  const have = wallets[interaction.user.id]?.[coin] || 0;
 
-      recordVolume(coin, amount);
+  // === [풀매도 기능] ===
+  if (amount > have) amount = have;
+  if (amount <= 0) return interaction.editReply({ content: `❌ 매도할 보유 코인이 없습니다.` });
 
-      return interaction.editReply({
-        content: `✅ ${coin} ${amount}개 매도 완료! (개당 ${Number(coins[coin].price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(gross).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 수수료 ${Number(fee).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 실수령 ${Number(net).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)`
-      });
+  const gross = Number((coins[coin].price * amount).toFixed(3));
+  const fee = Number((gross * 0.3).toFixed(3));
+  const net = Number((gross - fee).toFixed(3));
+  wallets[interaction.user.id][coin] -= amount;
+  if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
+  await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
+  wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
+  wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
+  await saveJson(walletsPath, wallets);
 
-    }
+  await addHistory(coins[coin], coins[coin].price);
+  await saveJson(coinsPath, coins);
+
+  recordVolume(coin, amount);
+
+  return interaction.editReply({
+    content: `✅ ${coin} ${amount}개 매도 완료! (개당 ${Number(coins[coin].price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(gross).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 수수료 ${Number(fee).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 실수령 ${Number(net).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)`
+  });
+}
 
 
     // 5. 갓비트 내코인
