@@ -121,6 +121,14 @@ async function sendCommandLog(interaction) {
     const cmdName = interaction.commandName;
     const time = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 
+    // 👉 채널 정보 뽑기
+    const channel = interaction.channel;
+    const channelInfo = channel
+      ? (channel.isDMBased()
+          ? "DM"
+          : `<#${channel.id}> (\`${channel.name}\`)`)
+      : "알 수 없음";
+
     let extra = "";
     if (interaction.options && interaction.options.data) {
       extra = interaction.options.data.map(opt =>
@@ -133,12 +141,14 @@ async function sendCommandLog(interaction) {
       description: `**유저:** <@${interaction.user.id}> (\`${userTag}\`)
 **명령어:** \`/${cmdName}\`
 ${extra ? `**옵션:** ${extra}\n` : ""}
+**채널:** ${channelInfo}
 **시간:** ${time}`,
       color: 0x009688
     };
     await logChannel.send({ embeds: [embed] });
   } catch (e) { /* 무시 */ }
 }
+
 
 // === 모달 커스텀ID 핸들러 등록 (한 곳에서)
 const modalHandlers = new Map([
