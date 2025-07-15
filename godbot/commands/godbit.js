@@ -849,7 +849,7 @@ module.exports = {
       return;
     }
 
-    // 3. 매수
+// 3. 매수
 if (sub === '매수') {
   await interaction.deferReply({ ephemeral: true });
   const rawInput = interaction.options.getString('코인');
@@ -863,8 +863,6 @@ if (sub === '매수') {
 
   const price = coins[coin].price;
   const bal = getBE(interaction.user.id);
-
-  // === [풀매수 기능] ===
   const maxBuy = Math.floor(bal / price);
   if (amount > maxBuy) amount = maxBuy;
   if (amount <= 0) return interaction.editReply({ content: `❌ 구매 가능 수량이 없습니다.` });
@@ -872,26 +870,81 @@ if (sub === '매수') {
   const total = Number((price * amount).toFixed(3));
   const fee = 0;
   const needBE = total;
+  const afterBal = bal - needBE;
 
-  wallets[interaction.user.id] = wallets[interaction.user.id] || {};
-  wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
-  wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
-  wallets[interaction.user.id + "_buys"][coin] = Number(((wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount)).toFixed(3));
+  const userWallet = wallets[interaction.user.id]?.[coin] || 0;
+  const afterAmount = userWallet + amount;
 
-  await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
-  await saveJson(walletsPath, wallets);
+  // [1] 예/아니오 확인용 임베드+버튼
+  const embed = new EmbedBuilder()
+    .setTitle(`🛒 ${coin} ${amount}개 매수 확인`)
+    .setDescription(
+      `보유 BE: **${bal.toLocaleString()} BE** → **${afterBal.toLocaleString()} BE**
+매수 수량: **${amount}개**
+개당 가격: **${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+총 소모: **${total.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+매수 후 보유: **${afterAmount}개**
+\n매수를 진행할까요?`
+    )
+    .setColor('#60be8e');
 
-  await addHistory(coins[coin], price);
-  await saveJson(coinsPath, coins);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('yes_buy').setLabel('예').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('no_buy').setLabel('아니오').setStyle(ButtonStyle.Danger),
+  );
+  await interaction.editReply({ embeds: [embed], components: [row] });
 
-  recordVolume(coin, amount);
-
-  return interaction.editReply({
-    content: `✅ ${coin} ${amount}개 매수 완료! (개당 ${Number(price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(total).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모, 수수료 ${fee} BE)`
+  const msg = await interaction.fetchReply();
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 15000,
+    filter: btn => btn.user.id === interaction.user.id
   });
+
+  collector.on('collect', async btn => {
+    if (btn.customId === 'yes_buy') {
+      wallets[interaction.user.id] = wallets[interaction.user.id] || {};
+      wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
+      wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
+      wallets[interaction.user.id + "_buys"][coin] = Number(((wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount)).toFixed(3));
+
+      await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
+      await saveJson(walletsPath, wallets);
+
+      await addHistory(coins[coin], price);
+      await saveJson(coinsPath, coins);
+
+      recordVolume(coin, amount);
+
+      await btn.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`✅ 매수 완료!`)
+            .setDescription(
+              `${coin} **${amount}개** 매수 (개당 ${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)\n총 ${total.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모\n잔액: ${afterBal.toLocaleString()} BE`
+            )
+            .setColor('#60be8e')
+        ],
+        components: []
+      });
+    } else {
+      await btn.update({
+        embeds: [
+          new EmbedBuilder().setDescription(`❌ 매수를 취소했습니다.`).setColor('#f24a4a')
+        ],
+        components: []
+      });
+    }
+  });
+
+  collector.on('end', async () => {
+    try { await interaction.editReply({ components: [] }); } catch {}
+  });
+
+  return;
 }
 
-   // 4. 매도
+// 4. 매도
 if (sub === '매도') {
   await interaction.deferReply({ ephemeral: true });
   const rawInput = interaction.options.getString('코인');
@@ -904,31 +957,91 @@ if (sub === '매도') {
   if (!Number.isFinite(amount) || amount <= 0) return interaction.editReply({ content: `❌ 올바른 수량을 입력하세요.` });
 
   const have = wallets[interaction.user.id]?.[coin] || 0;
-
-  // === [풀매도 기능] ===
   if (amount > have) amount = have;
   if (amount <= 0) return interaction.editReply({ content: `❌ 매도할 보유 코인이 없습니다.` });
 
-  const gross = Number((coins[coin].price * amount).toFixed(3));
+  const price = coins[coin].price;
+  const gross = Number((price * amount).toFixed(3));
   const fee = Number((gross * 0.3).toFixed(3));
   const net = Number((gross - fee).toFixed(3));
-  wallets[interaction.user.id][coin] -= amount;
-  if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
-  await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
-  wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
-  wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
-  await saveJson(walletsPath, wallets);
+  const afterCoin = have - amount;
+  const bal = getBE(interaction.user.id);
+  const afterBal = bal + net;
 
-  await addHistory(coins[coin], coins[coin].price);
-  await saveJson(coinsPath, coins);
+  // 평균 매입가 및 손익 계산
+  const userBuys = wallets[interaction.user.id + "_buys"] || {};
+  const avgBuyPrice = (userBuys[coin] && have) ? userBuys[coin] / have : price;
+  const realizedProfit = net - (avgBuyPrice * amount);
 
-  recordVolume(coin, amount);
+  const embed = new EmbedBuilder()
+    .setTitle(`💸 ${coin} ${amount}개 매도 확인`)
+    .setDescription(
+      `보유: **${have}개** → **${afterCoin}개**
+개당 시세: **${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+총 매도: **${gross.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+수수료(30%): **${fee.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+실수령: **${net.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+매도 후 BE 잔액: **${afterBal.toLocaleString()} BE**
+\n매도 실현손익: **${realizedProfit>=0?'+':''}${realizedProfit.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE**
+(내 평균 매입가: ${avgBuyPrice.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)
+\n매도를 진행할까요?`
+    )
+    .setColor('#f2a96a');
 
-  return interaction.editReply({
-    content: `✅ ${coin} ${amount}개 매도 완료! (개당 ${Number(coins[coin].price).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 총 ${Number(gross).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 수수료 ${Number(fee).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 실수령 ${Number(net).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)`
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('yes_sell').setLabel('예').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('no_sell').setLabel('아니오').setStyle(ButtonStyle.Danger),
+  );
+  await interaction.editReply({ embeds: [embed], components: [row] });
+
+  const msg = await interaction.fetchReply();
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 15000,
+    filter: btn => btn.user.id === interaction.user.id
   });
-}
 
+  collector.on('collect', async btn => {
+    if (btn.customId === 'yes_sell') {
+      wallets[interaction.user.id][coin] -= amount;
+      if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
+      await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
+      wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
+      wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
+      await saveJson(walletsPath, wallets);
+
+      await addHistory(coins[coin], coins[coin].price);
+      await saveJson(coinsPath, coins);
+
+      recordVolume(coin, amount);
+
+      await btn.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`✅ 매도 완료!`)
+            .setDescription(
+              `${coin} **${amount}개** 매도 (개당 ${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)\n총 ${gross.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 수수료 ${fee.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 실수령 ${net.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\n잔액: ${afterBal.toLocaleString()} BE`
+            )
+            .setColor('#f2a96a')
+        ],
+        components: []
+      });
+    } else {
+      await btn.update({
+        embeds: [
+          new EmbedBuilder().setDescription(`❌ 매도를 취소했습니다.`).setColor('#f24a4a')
+        ],
+        components: []
+      });
+    }
+  });
+
+  collector.on('end', async () => {
+    try { await interaction.editReply({ components: [] }); } catch {}
+  });
+
+  return;
+}
 
     // 5. 갓비트 내코인
    if (sub === '내코인') {
