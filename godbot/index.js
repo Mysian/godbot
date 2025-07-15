@@ -899,6 +899,30 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith('bet_share_join_')) {
+  // betIdx 파싱
+  const betIdx = parseInt(interaction.customId.split('_').pop());
+  const bets = loadBets().filter(bet => bet.active);
+  const bet = bets[betIdx];
+  if (!bet) return interaction.reply({ content: '해당 내기가 없습니다.', ephemeral: true });
+
+  // 참여용 모달 띄우기
+  const modal = new ModalBuilder()
+    .setCustomId(`bet_join_${betIdx}`)
+    .setTitle(`[${bet.topic}] 내기 참여`);
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('choice').setLabel(`항목(${bet.choices.join(', ')})`).setStyle(TextInputStyle.Short).setRequired(true)
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('amount').setLabel(`금액(${bet.min}~${bet.max})`).setStyle(TextInputStyle.Short).setRequired(true)
+    )
+  );
+  await interaction.showModal(modal);
+  return;
+}
+
+
   // "_open" 아닌 버튼은 무시(페이지네이션 등은 각 collector가 처리)
 });
 
