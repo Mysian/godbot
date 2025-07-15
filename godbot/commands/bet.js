@@ -66,35 +66,40 @@ module.exports = {
       };
 
       const makeRow = (page, member) => {
-        if (!bets.length) {
-          return new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
-          );
-        }
-        const start = page * PAGE_SIZE;
-        const items = bets.slice(start, start + PAGE_SIZE);
-        const showClose = items.some((bet) =>
-          bet.active &&
-          (bet.owner === interaction.user.id ||
-            (member && isAdmin(member)))
-        );
-        const showSettle = items.some((bet) =>
-          !bet.active && !bet.settled &&
-          (bet.owner === interaction.user.id ||
-            (member && isAdmin(member)))
-        );
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-          new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
-          new ButtonBuilder().setCustomId('join').setLabel('참여').setStyle(ButtonStyle.Primary)
-            .setDisabled(items.every(bet => !bet.active)),
-          new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('close').setLabel('마감').setStyle(ButtonStyle.Danger)
-            .setDisabled(!showClose),
-          new ButtonBuilder().setCustomId('settle').setLabel('결과(정산)').setStyle(ButtonStyle.Primary)
-            .setDisabled(!showSettle)
-        );
-      };
+  if (!bets.length) {
+    return [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
+    )];
+  }
+  const start = page * PAGE_SIZE;
+  const items = bets.slice(start, start + PAGE_SIZE);
+  const showClose = items.some((bet) =>
+    bet.active &&
+    (bet.owner === interaction.user.id ||
+      (member && isAdmin(member)))
+  );
+  const showSettle = items.some((bet) =>
+    !bet.active && !bet.settled &&
+    (bet.owner === interaction.user.id ||
+      (member && isAdmin(member)))
+  );
+  let firstRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
+    new ButtonBuilder().setCustomId('join').setLabel('참여').setStyle(ButtonStyle.Primary).setDisabled(items.every(bet => !bet.active)),
+    new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success)
+  );
+  let secondRow = new ActionRowBuilder();
+  if (showClose)
+    secondRow.addComponents(new ButtonBuilder().setCustomId('close').setLabel('마감').setStyle(ButtonStyle.Danger));
+  if (showSettle)
+    secondRow.addComponents(new ButtonBuilder().setCustomId('settle').setLabel('결과(정산)').setStyle(ButtonStyle.Primary));
+
+  let rows = [firstRow];
+  if (secondRow.components.length > 0)
+    rows.push(secondRow);
+  return rows;
+};
 
       const msg = await interaction.reply({ 
         embeds: [makeEmbed(page)], 
