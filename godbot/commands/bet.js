@@ -23,7 +23,7 @@ const PAGE_SIZE = 3;
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('내기')
-    .setDescription('진행중인 내기 목록을 확인, 참여, 마감, 정산할 수 있습니다.'),
+    .setDescription('진행중인 내기 목록을 확인, 참여, 마감, 정산, 무산할 수 있습니다.'),
   async execute(interaction) {
     try {
       let bets = loadBets();
@@ -32,52 +32,51 @@ module.exports = {
       const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
 
       const makeEmbed = (page) => {
-  if (!bets.length) {
-    return new EmbedBuilder()
-      .setTitle(`현재 진행 중인 내기 없음`)
-      .setColor(0x2b99ff)
-      .setDescription(`진행 중인 내기가 없습니다. 아래 버튼으로 새 내기를 생성할 수 있습니다.`);
-  }
-  const start = page * PAGE_SIZE;
-  const items = bets.slice(start, start + PAGE_SIZE);
-  const embed = new EmbedBuilder()
-    .setTitle(`현재 진행 중인 내기 목록 [${page + 1}/${totalPages}]`)
-    .setColor(0x2b99ff)
-    .setDescription(
-      "💡 **내기 안내**\n- 1인 1회만 참여, 진행자(주최자)는 참여 불가\n- 정산시 전체 베팅액의 10% 수수료 차감, 나머지는 승자끼리 비율분배\n- '마감' 후 '결과(정산)'에서 승리 항목을 선택해 자동 분배"
-    );
-  items.forEach((bet, idx) => {
-    let status = '';
-    if (!bet.active) status = bet.settled ? ' (정산 완료)' : ' (마감됨)';
-    // === 항목별 현황 계산 ===
-    let totalAmount = bet.participants.reduce((a, p) => a + p.amount, 0);
-    let choiceStatus = '';
-if (bet.choices && bet.choices.length) {
-  let statusArr = [];
-  for (const choice of bet.choices) {
-    const group = bet.participants.filter(p => p.choice === choice);
-    const percent = bet.participants.length
-      ? Math.round(group.length / bet.participants.length * 100)
-      : 0;
-    const gauge = "█".repeat(Math.round(percent / 10)).padEnd(10, "░");
-    statusArr.push(
-      `> **${choice}**  (${group.length}명, ${percent}%)\n> \`${gauge}\``
-    );
-  }
-  choiceStatus = statusArr.join('\n');
-}
-    embed.addFields({
-  name: `#${start + idx + 1} [${bet.topic}]${status}`,
-  value:
-    `- 항목: ${bet.choices.join(' / ')}\n` +
-    `- 금액: ${bet.min} ~ ${bet.max} BE\n` +
-    `- 주최: <@${bet.owner}>\n` +
-    `- 참여자: ${bet.participants.length}명\n` +
-    `\n**배팅 현황**\n${choiceStatus}`
-});
-  });
-  return embed;
-};
+        if (!bets.length) {
+          return new EmbedBuilder()
+            .setTitle(`현재 진행 중인 내기 없음`)
+            .setColor(0x2b99ff)
+            .setDescription(`진행 중인 내기가 없습니다. 아래 버튼으로 새 내기를 생성할 수 있습니다.`);
+        }
+        const start = page * PAGE_SIZE;
+        const items = bets.slice(start, start + PAGE_SIZE);
+        const embed = new EmbedBuilder()
+          .setTitle(`현재 진행 중인 내기 목록 [${page + 1}/${totalPages}]`)
+          .setColor(0x2b99ff)
+          .setDescription(
+            "💡 **내기 안내**\n- 1인 1회만 참여, 진행자(주최자)는 참여 불가\n- 정산시 전체 베팅액의 10% 수수료 차감, 나머지는 승자끼리 비율분배\n- '마감' 후 '결과(정산)'에서 승리 항목을 선택해 자동 분배\n- 무산시 모든 참여자에게 베팅금 환불"
+          );
+        items.forEach((bet, idx) => {
+          let status = '';
+          if (!bet.active) status = bet.settled ? ' (정산 완료)' : ' (마감됨)';
+          // === 배팅 현황 ===
+          let choiceStatus = '';
+          if (bet.choices && bet.choices.length) {
+            let statusArr = [];
+            for (const choice of bet.choices) {
+              const group = bet.participants.filter(p => p.choice === choice);
+              const percent = bet.participants.length
+                ? Math.round(group.length / bet.participants.length * 100)
+                : 0;
+              const gauge = "█".repeat(Math.round(percent / 10)).padEnd(10, "░");
+              statusArr.push(
+                `> **${choice}**  (${group.length}명, ${percent}%)\n> \`${gauge}\``
+              );
+            }
+            choiceStatus = statusArr.join('\n');
+          }
+          embed.addFields({
+            name: `#${start + idx + 1} [${bet.topic}]${status}`,
+            value:
+              `- 항목: ${bet.choices.join(' / ')}\n` +
+              `- 금액: ${bet.min} ~ ${bet.max} BE\n` +
+              `- 주최: <@${bet.owner}>\n` +
+              `- 참여자: ${bet.participants.length}명\n` +
+              `\n**배팅 현황**\n${choiceStatus}`
+          });
+        });
+        return embed;
+      };
 
       // 버튼 2줄 구조 (ActionRow 2개)
       const makeRow = (page, member) => {
@@ -98,19 +97,26 @@ if (bet.choices && bet.choices.length) {
           (bet.owner === interaction.user.id ||
             (member && isAdmin(member)))
         );
+        // 무산 버튼 (진행중 내기만, 권한 체크)
+        const showCancel = items.some(bet =>
+          bet.active &&
+          (bet.owner === interaction.user.id || (member && isAdmin(member)))
+        );
         let firstRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
           new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
           new ButtonBuilder().setCustomId('join').setLabel('참여').setStyle(ButtonStyle.Primary)
             .setDisabled(items.every(bet => !bet.active)),
           new ButtonBuilder().setCustomId('new').setLabel('내기 생성').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('share').setLabel('내기 공유').setStyle(ButtonStyle.Secondary) // ★ 추가!
+          new ButtonBuilder().setCustomId('share').setLabel('내기 공유').setStyle(ButtonStyle.Secondary)
         );
         let secondRow = new ActionRowBuilder();
         if (showClose)
           secondRow.addComponents(new ButtonBuilder().setCustomId('close').setLabel('마감').setStyle(ButtonStyle.Danger));
         if (showSettle)
           secondRow.addComponents(new ButtonBuilder().setCustomId('settle').setLabel('결과(정산)').setStyle(ButtonStyle.Primary));
+        if (showCancel)
+          secondRow.addComponents(new ButtonBuilder().setCustomId('cancel').setLabel('내기 무산').setStyle(ButtonStyle.Secondary));
         let rows = [firstRow];
         if (secondRow.components.length > 0)
           rows.push(secondRow);
@@ -229,7 +235,6 @@ if (bet.choices && bet.choices.length) {
             if (!betsActive.length)
               return i.reply({ content: '진행 중인 내기가 없습니다.', flags: 1 << 6 });
 
-            // 진행중 내기 셀렉트 메뉴 생성
             const select = new StringSelectMenuBuilder()
               .setCustomId('bet_share_select')
               .setPlaceholder('공유할 내기를 선택하세요')
@@ -241,6 +246,30 @@ if (bet.choices && bet.choices.length) {
 
             await i.reply({
               content: '공유할 내기를 선택하세요.',
+              components: [new ActionRowBuilder().addComponents(select)],
+              flags: 1 << 6
+            });
+            return;
+          }
+          // === 무산 버튼 처리 ===
+          else if (i.customId === 'cancel') {
+            const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+              .filter(bet =>
+                bet.active &&
+                (bet.owner === interaction.user.id || (member && isAdmin(member)))
+              );
+            if (!currBets.length)
+              return i.reply({ content: '무산 가능한 내기가 없습니다.', flags: 1 << 6 });
+            const select = new StringSelectMenuBuilder()
+              .setCustomId('bet_cancel_select')
+              .setPlaceholder('무산할 내기를 선택하세요')
+              .addOptions(currBets.map((bet, idx) => ({
+                label: `[${bet.topic}]`,
+                value: `${bets.indexOf(bet)}`,
+                description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
+              })));
+            await i.reply({
+              content: '내기를 무산 처리하면 모든 기록이 삭제되고, 참여자에게 환불됩니다.',
               components: [new ActionRowBuilder().addComponents(select)],
               flags: 1 << 6
             });
@@ -365,6 +394,7 @@ if (bet.choices && bet.choices.length) {
           flags: 1 << 6
         });
       }
+      // ==== 정산 결과 임베드 + 전체공지 ====
       else if (interaction.customId.startsWith('bet_result_select_')) {
         const betIdx = parseInt(interaction.customId.split('_').pop());
         let bets = loadBets();
@@ -379,24 +409,41 @@ if (bet.choices && bet.choices.length) {
         if (!winners.length) {
           bets.splice(betIdx, 1);
           saveBets(bets);
-          return interaction.reply({ content: `승리 항목 "${winChoice}"에 베팅한 사람이 없어 아무도 배당을 받지 못했습니다!`, flags: 1 << 6 });
+
+          let embed = new EmbedBuilder()
+            .setTitle(`❌ [${bet.topic}] 내기 정산 결과`)
+            .setDescription(`**"${winChoice}"**에 베팅한 사람이 없어 배당 없음\n\n참여자 전원은 베팅금을 잃었습니다.`)
+            .setColor(0xed4245)
+            .setFooter({ text: `진행자: ${bet.owner}` });
+
+          await interaction.channel.send({ embeds: [embed] });
+          return interaction.reply({ content: '정산 완료!', flags: 1 << 6 });
         }
 
         const fee = Math.floor(total * BET_FEE_PERCENT / 100);
         const pot = total - fee;
-        let resultText = `수수료: ${fee}BE 차감, 분배금: ${pot}BE\n\n`;
-
-        for (const winner of winners) {
-          const rate = winner.amount / winTotal;
-          const reward = Math.floor(pot * rate);
-          await addBE(winner.user, reward, `[내기정산] ${bet.topic} - ${winChoice} 당첨`);
-          resultText += `- <@${winner.user}>님: ${reward}BE 지급\n`;
-        }
-        bets.splice(betIdx, 1); // 정산 완료시 내기 삭제!
+        let resultText = winners.map(w =>
+          `- <@${w.user}>: ${Math.floor(pot * (w.amount / winTotal)).toLocaleString()}BE`
+        ).join('\n');
+        bets.splice(betIdx, 1);
         saveBets(bets);
-        return interaction.reply({ content: `[${bet.topic}] 내기 결과: **"${winChoice}"**\n총 상금 ${total}BE 중 10%(${fee}BE) 수수료 차감, 남은 ${pot}BE가 승자끼리 비율분배되었습니다!\n${resultText.trim()}`, flags: 1 << 6 });
+
+        let embed = new EmbedBuilder()
+          .setTitle(`✅ [${bet.topic}] 내기 정산 결과`)
+          .setDescription(
+            `**승리 항목:** ${winChoice}\n` +
+            `**총 상금:** ${total.toLocaleString()}BE\n` +
+            `**수수료:** ${fee.toLocaleString()}BE (10%)\n` +
+            `**분배금:** ${pot.toLocaleString()}BE\n\n` +
+            `**승리자 배분**\n${resultText}`
+          )
+          .setColor(0x30d158)
+          .setFooter({ text: `진행자: ${bet.owner}` });
+
+        await interaction.channel.send({ embeds: [embed] });
+        return interaction.reply({ content: '정산 완료!', flags: 1 << 6 });
       }
-      // ==== 공유 셀렉트 메뉴 처리 ====
+      // ==== 공유 셀렉트 메뉴 처리 + 임베드/버튼 ====
       else if (interaction.customId === "bet_share_select") {
         const betIdx = parseInt(interaction.values[0]);
         const bets = loadBets().filter(bet => bet.active);
@@ -404,16 +451,87 @@ if (bet.choices && bet.choices.length) {
         if (!bet)
           return interaction.reply({ content: '내기를 찾을 수 없습니다.', flags: 1 << 6 });
 
-        let msg = `🔥 **[${bet.topic}] 내기가 진행중입니다!**\n`;
-msg += `• 항목: ${bet.choices.join(' / ')}\n`;
-msg += `• 금액: ${bet.min} ~ ${bet.max} BE\n`;
-msg += `• 주최: <@${bet.owner}>\n`;
-msg += `• 현재 참여자: ${bet.participants.length}명\n\n`;
-msg += `👉 </내기:1394584041272905869> 명령어를 통해 참여할 수 있습니다!`;
+        let embed = new EmbedBuilder()
+          .setTitle(`🔥 [${bet.topic}] 내기 안내`)
+          .setDescription(
+            `**진행자:** <@${bet.owner}>\n` +
+            `**항목:** ${bet.choices.join(" / ")}\n` +
+            `**금액:** ${bet.min} ~ ${bet.max} BE\n` +
+            `**참여자:** ${bet.participants.length}명\n\n` +
+            `**아래 버튼으로 바로 참여 가능!**\n\n` +
+            `> </내기:1394584041272905869> 명령어로도 언제든 확인`
+          )
+          .setColor(0xffa200)
+          .setFooter({ text: "본 공지는 5분간 버튼 참여가 가능합니다." });
 
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`bet_share_join_${betIdx}`)
+            .setLabel('내기 참여하기')
+            .setStyle(ButtonStyle.Success)
+        );
 
-        await interaction.channel.send({ content: msg });
+        const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
+
+        // 5분 후 버튼 비활성화
+        setTimeout(async () => {
+          try {
+            await msg.edit({ components: [new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`bet_share_join_${betIdx}`)
+                .setLabel('내기 참여하기')
+                .setStyle(ButtonStyle.Success)
+                .setDisabled(true)
+            )] });
+          } catch {}
+        }, 300000);
+
         await interaction.reply({ content: '공유 완료!', flags: 1 << 6 });
+        return;
+      }
+      // ==== 버튼 직접 참여 처리 ====
+      else if (interaction.customId.startsWith('bet_share_join_')) {
+        const betIdx = parseInt(interaction.customId.split('_').pop());
+        const bets = loadBets().filter(bet => bet.active);
+        const bet = bets[betIdx];
+        if (!bet)
+          return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', ephemeral: true });
+
+        // 참여용 모달 띄우기
+        const modal = new ModalBuilder()
+          .setCustomId(`bet_join_${betIdx}`)
+          .setTitle(`[${bet.topic}] 내기 참여`);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('choice').setLabel(`항목(${bet.choices.join(', ')})`).setStyle(TextInputStyle.Short).setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('amount').setLabel(`금액(${bet.min}~${bet.max})`).setStyle(TextInputStyle.Short).setRequired(true)
+          )
+        );
+        await interaction.showModal(modal);
+        return;
+      }
+      // ==== 무산 셀렉트 메뉴 처리 + 환불 ====
+      else if (interaction.customId === "bet_cancel_select") {
+        const betIdx = parseInt(interaction.values[0]);
+        let bets = loadBets();
+        const bet = bets[betIdx];
+        if (!bet || !bet.active)
+          return interaction.reply({ content: '이미 마감됐거나 존재하지 않는 내기입니다.', flags: 1 << 6 });
+        const topic = bet.topic;
+        // 참여자 환불
+        let refundText = '';
+        for (const p of bet.participants) {
+          await addBE(p.user, p.amount, `[내기무산] ${topic} 환불`);
+          refundText += `- <@${p.user}>님: ${p.amount.toLocaleString()}BE 환불\n`;
+        }
+        bets.splice(betIdx, 1);
+        saveBets(bets);
+        let result = `❌ **[${topic}] 내기**가 무산 처리되었습니다.\n`;
+        if (refundText) result += `\n아래와 같이 참여자 전원에게 환불되었습니다:\n${refundText}`;
+        await interaction.channel.send({ content: result });
+        await interaction.reply({ content: '무산 완료! 참여자 모두 환불되었습니다.', flags: 1 << 6 });
         return;
       }
     } catch (err) {
