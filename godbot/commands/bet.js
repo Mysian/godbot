@@ -1,3 +1,5 @@
+// ==== bet.js 통파일(공유 관련 전체 인덱스 기준) ====
+
 const { 
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
   ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder 
@@ -167,7 +169,7 @@ module.exports = {
             const select = new StringSelectMenuBuilder()
               .setCustomId('bet_join_select')
               .setPlaceholder('참여할 내기를 선택하세요')
-              .addOptions(currBets.map((bet, idx) => ({
+              .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
                 value: `${bets.indexOf(bet)}`,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
@@ -192,7 +194,7 @@ module.exports = {
             const select = new StringSelectMenuBuilder()
               .setCustomId('bet_close_select')
               .setPlaceholder('마감할 내기를 선택하세요')
-              .addOptions(currBets.map((bet, idx) => ({
+              .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
                 value: `${bets.indexOf(bet)}`,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
@@ -217,7 +219,7 @@ module.exports = {
             const select = new StringSelectMenuBuilder()
               .setCustomId('bet_settle_select')
               .setPlaceholder('정산할 내기를 선택하세요')
-              .addOptions(currBets.map((bet, idx) => ({
+              .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
                 value: `${bets.indexOf(bet)}`,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
@@ -229,18 +231,21 @@ module.exports = {
             });
             return;
           }
-          // === 공유버튼 로직 추가 ===
+          // === 공유버튼 로직 수정(전체 인덱스 기준) ===
           else if (i.customId === 'share') {
-            const betsActive = loadBets().filter(bet => bet.active);
+            const betsAll = loadBets();
+            const betsActive = betsAll
+              .map((bet, idx) => ({ ...bet, _idx: idx }))
+              .filter(bet => bet.active);
             if (!betsActive.length)
               return i.reply({ content: '진행 중인 내기가 없습니다.', flags: 1 << 6 });
 
             const select = new StringSelectMenuBuilder()
               .setCustomId('bet_share_select')
               .setPlaceholder('공유할 내기를 선택하세요')
-              .addOptions(betsActive.map((bet, idx) => ({
+              .addOptions(betsActive.map((bet) => ({
                 label: `[${bet.topic}]`,
-                value: `${idx}`,
+                value: `${bet._idx}`, // 전체 인덱스
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
               })));
 
@@ -263,7 +268,7 @@ module.exports = {
             const select = new StringSelectMenuBuilder()
               .setCustomId('bet_cancel_select')
               .setPlaceholder('무산할 내기를 선택하세요')
-              .addOptions(currBets.map((bet, idx) => ({
+              .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
                 value: `${bets.indexOf(bet)}`,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
@@ -422,6 +427,10 @@ module.exports = {
 
         const fee = Math.floor(total * BET_FEE_PERCENT / 100);
         const pot = total - fee;
+        for (const w of winners) {
+    const share = Math.floor(pot * (w.amount / winTotal));
+    await addBE(w.user, share, `[내기정산] ${bet.topic} (${winChoice})`);
+  }
         let resultText = winners.map(w =>
           `- <@${w.user}>: ${Math.floor(pot * (w.amount / winTotal)).toLocaleString()}BE`
         ).join('\n');
@@ -446,9 +455,9 @@ module.exports = {
       // ==== 공유 셀렉트 메뉴 처리 + 임베드/버튼 ====
       else if (interaction.customId === "bet_share_select") {
         const betIdx = parseInt(interaction.values[0]);
-        const bets = loadBets().filter(bet => bet.active);
+        const bets = loadBets();
         const bet = bets[betIdx];
-        if (!bet)
+        if (!bet || !bet.active)
           return interaction.reply({ content: '내기를 찾을 수 없습니다.', flags: 1 << 6 });
 
         let embed = new EmbedBuilder()
@@ -466,7 +475,7 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`bet_share_join_${betIdx}`)
+            .setCustomId(`bet_share_join_${betIdx}`) // 전체 인덱스!
             .setLabel('내기 참여하기')
             .setStyle(ButtonStyle.Success)
         );
@@ -492,9 +501,9 @@ module.exports = {
       // ==== 버튼 직접 참여 처리 ====
       else if (interaction.customId.startsWith('bet_share_join_')) {
         const betIdx = parseInt(interaction.customId.split('_').pop());
-        const bets = loadBets().filter(bet => bet.active);
+        const bets = loadBets();
         const bet = bets[betIdx];
-        if (!bet)
+        if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', ephemeral: true });
 
         // 참여용 모달 띄우기
