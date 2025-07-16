@@ -1,5 +1,3 @@
-// ==== bet.js 통파일(공유 관련 전체 인덱스 기준) ====
-
 const { 
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
   ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder 
@@ -9,6 +7,10 @@ const path = require('path');
 const { getBE, addBE } = require('./be-util.js');
 const betsPath = path.join(__dirname, '../data/bets.json');
 
+// ===== 고유 id 생성 함수 =====
+function uuid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 function loadBets() {
   if (!fs.existsSync(betsPath)) fs.writeFileSync(betsPath, '[]');
   return JSON.parse(fs.readFileSync(betsPath, 'utf8'));
@@ -18,6 +20,11 @@ function saveBets(data) {
 }
 function isAdmin(member) {
   return member.permissions.has('Administrator') || member.permissions.has('ManageGuild');
+}
+// === 특정 역할 예외 처리 함수 ===
+function isBetException(member) {
+  const ALLOW_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
+  return member && member.roles.cache.some(role => ALLOW_ROLE_IDS.includes(role.id));
 }
 const BET_FEE_PERCENT = 10;
 const PAGE_SIZE = 3;
@@ -51,7 +58,6 @@ module.exports = {
         items.forEach((bet, idx) => {
           let status = '';
           if (!bet.active) status = bet.settled ? ' (정산 완료)' : ' (마감됨)';
-          // === 배팅 현황 ===
           let choiceStatus = '';
           if (bet.choices && bet.choices.length) {
             let statusArr = [];
@@ -80,7 +86,6 @@ module.exports = {
         return embed;
       };
 
-      // 버튼 2줄 구조 (ActionRow 2개)
       const makeRow = (page, member) => {
         if (!bets.length) {
           return [new ActionRowBuilder().addComponents(
@@ -99,7 +104,6 @@ module.exports = {
           (bet.owner === interaction.user.id ||
             (member && isAdmin(member)))
         );
-        // 무산 버튼 (진행중 내기만, 권한 체크)
         const showCancel = items.some(bet =>
           bet.active &&
           (bet.owner === interaction.user.id || (member && isAdmin(member)))
@@ -125,7 +129,6 @@ module.exports = {
         return rows;
       };
 
-      // collector에서는 버튼만 listen!
       const rows = makeRow(page, member);
       const msg = await interaction.reply({ 
         embeds: [makeEmbed(page)], 
@@ -171,7 +174,7 @@ module.exports = {
               .setPlaceholder('참여할 내기를 선택하세요')
               .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
-                value: `${bets.indexOf(bet)}`,
+                value: bet.id, // 고유 id!
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
               })));
             await i.reply({
@@ -196,7 +199,7 @@ module.exports = {
               .setPlaceholder('마감할 내기를 선택하세요')
               .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
-                value: `${bets.indexOf(bet)}`,
+                value: bet.id,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
               })));
             await i.reply({
@@ -221,7 +224,7 @@ module.exports = {
               .setPlaceholder('정산할 내기를 선택하세요')
               .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
-                value: `${bets.indexOf(bet)}`,
+                value: bet.id,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
               })));
             await i.reply({
@@ -231,12 +234,10 @@ module.exports = {
             });
             return;
           }
-          // === 공유버튼 로직 수정(전체 인덱스 기준) ===
+          // === 공유버튼 로직 (id로) ===
           else if (i.customId === 'share') {
             const betsAll = loadBets();
-            const betsActive = betsAll
-              .map((bet, idx) => ({ ...bet, _idx: idx }))
-              .filter(bet => bet.active);
+            const betsActive = betsAll.filter(bet => bet.active);
             if (!betsActive.length)
               return i.reply({ content: '진행 중인 내기가 없습니다.', flags: 1 << 6 });
 
@@ -245,7 +246,7 @@ module.exports = {
               .setPlaceholder('공유할 내기를 선택하세요')
               .addOptions(betsActive.map((bet) => ({
                 label: `[${bet.topic}]`,
-                value: `${bet._idx}`, // 전체 인덱스
+                value: bet.id, // id!
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
               })));
 
@@ -256,7 +257,6 @@ module.exports = {
             });
             return;
           }
-          // === 무산 버튼 처리 ===
           else if (i.customId === 'cancel') {
             const currBets = bets.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
               .filter(bet =>
@@ -270,7 +270,7 @@ module.exports = {
               .setPlaceholder('무산할 내기를 선택하세요')
               .addOptions(currBets.map((bet) => ({
                 label: `[${bet.topic}]`,
-                value: `${bets.indexOf(bet)}`,
+                value: bet.id,
                 description: `항목: ${bet.choices.join('/')} | 금액: ${bet.min}~${bet.max}BE`
               })));
             await i.reply({
@@ -309,21 +309,27 @@ module.exports = {
           return interaction.reply({ content: '입력값 오류! 항목 2개 이상, 금액 양수 입력!', flags: 1 << 6 });
         }
         let bets = loadBets();
-        bets.push({ topic, choices, min, max, owner: interaction.user.id, participants: [], active: true });
+        bets.push({ id: uuid(), topic, choices, min, max, owner: interaction.user.id, participants: [], active: true });
         saveBets(bets);
         return interaction.reply({ content: `내기 [${topic}]가 생성되었습니다!\n- 항목: ${choices.join(', ')}\n- 금액: ${min}~${max}BE\n진행자(주최자)는 참여할 수 없으며, 참여는 1회만 가능합니다.`, flags: 1 << 6 });
       }
       else if (interaction.customId === "bet_join_select") {
-        const betIdx = parseInt(interaction.values[0]);
+        const betId = interaction.values[0];
         let bets = loadBets();
-        const bet = bets[betIdx];
+        const bet = bets.find(b => b.id === betId);
+        const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+
         if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', flags: 1 << 6 });
-        if (bet.owner === interaction.user.id)
-          return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
-        if (bet.participants.some(p => p.user === interaction.user.id))
-          return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
-        const modal = new ModalBuilder().setCustomId(`bet_join_${betIdx}`).setTitle(`[${bet.topic}] 내기 참여`);
+
+        // === 역할 예외: 주최자/중복참여 체크 무시
+        if (!isBetException(member)) {
+          if (bet.owner === interaction.user.id)
+            return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
+          if (bet.participants.some(p => p.user === interaction.user.id))
+            return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+        }
+        const modal = new ModalBuilder().setCustomId(`bet_join_${bet.id}`).setTitle(`[${bet.topic}] 내기 참여`);
         modal.addComponents(
           new ActionRowBuilder().addComponents(
             new TextInputBuilder().setCustomId('choice').setLabel(`항목(${bet.choices.join(', ')})`).setStyle(TextInputStyle.Short).setRequired(true)
@@ -335,15 +341,21 @@ module.exports = {
         await interaction.showModal(modal);
       }
       else if (interaction.customId.startsWith("bet_join_")) {
-        const betIdx = parseInt(interaction.customId.split('_')[2]);
+        const betId = interaction.customId.split('_').slice(2).join('_');
         let bets = loadBets();
-        const bet = bets[betIdx];
+        const bet = bets.find(b => b.id === betId);
+        const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+
         if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', flags: 1 << 6 });
-        if (bet.owner === interaction.user.id)
-          return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
-        if (bet.participants.some(p => p.user === interaction.user.id))
-          return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+
+        // === 역할 예외: 주최자/중복참여 체크 무시
+        if (!isBetException(member)) {
+          if (bet.owner === interaction.user.id)
+            return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
+          if (bet.participants.some(p => p.user === interaction.user.id))
+            return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+        }
         const choice = interaction.fields.getTextInputValue('choice').trim();
         const amount = parseInt(interaction.fields.getTextInputValue('amount').replace(/\D/g, ''));
         if (!bet.choices.includes(choice) || isNaN(amount) || amount < bet.min || amount > bet.max) {
@@ -358,9 +370,9 @@ module.exports = {
         return interaction.reply({ content: `[${bet.topic}]에 [${choice}]로 ${amount}BE 참여 완료!\n\n- 참여는 1회만 가능하며, 진행자(주최자)는 참여 불가입니다.\n- 정산시 10% 수수료가 차감되고 나머지는 승자끼리 비율분배됩니다.`, flags: 1 << 6 });
       }
       else if (interaction.customId === "bet_close_select") {
-        const betIdx = parseInt(interaction.values[0]);
+        const betId = interaction.values[0];
         let bets = loadBets();
-        const bet = bets[betIdx];
+        const bet = bets.find(b => b.id === betId);
         const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
         if (
           !bet ||
@@ -374,9 +386,9 @@ module.exports = {
         return interaction.reply({ content: `내기 [${bet.topic}]가 마감되었습니다.\n이제 '결과(정산)' 버튼으로 승리 항목을 선택하면 자동 분배가 진행됩니다!`, flags: 1 << 6 });
       }
       else if (interaction.customId === "bet_settle_select") {
-        const betIdx = parseInt(interaction.values[0]);
+        const betId = interaction.values[0];
         let bets = loadBets();
-        const bet = bets[betIdx];
+        const bet = bets.find(b => b.id === betId);
         const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
         if (
           !bet ||
@@ -387,7 +399,7 @@ module.exports = {
           return interaction.reply({ content: '정산 권한이 없습니다.', flags: 1 << 6 });
         }
         const select = new StringSelectMenuBuilder()
-          .setCustomId(`bet_result_select_${betIdx}`)
+          .setCustomId(`bet_result_select_${bet.id}`)
           .setPlaceholder('승리한 항목을 선택하세요')
           .addOptions([...new Set(bet.choices)].map((ch) => ({
             label: ch,
@@ -399,10 +411,10 @@ module.exports = {
           flags: 1 << 6
         });
       }
-      // ==== 정산 결과 임베드 + 전체공지 ====
       else if (interaction.customId.startsWith('bet_result_select_')) {
-        const betIdx = parseInt(interaction.customId.split('_').pop());
+        const betId = interaction.customId.split('_').slice(3).join('_');
         let bets = loadBets();
+        const betIdx = bets.findIndex(b => b.id === betId);
         const bet = bets[betIdx];
         const winChoice = interaction.values[0];
         if (!bet || bet.settled) 
@@ -428,9 +440,10 @@ module.exports = {
         const fee = Math.floor(total * BET_FEE_PERCENT / 100);
         const pot = total - fee;
         for (const w of winners) {
-    const share = Math.floor(pot * (w.amount / winTotal));
-    await addBE(w.user, share, `[내기정산] ${bet.topic} (${winChoice})`);
-  }
+          const share = Math.floor(pot * (w.amount / winTotal));
+          await addBE(w.user, share, `[내기정산] ${bet.topic} (${winChoice})`);
+        }
+
         let resultText = winners.map(w =>
           `- <@${w.user}>: ${Math.floor(pot * (w.amount / winTotal)).toLocaleString()}BE`
         ).join('\n');
@@ -452,11 +465,10 @@ module.exports = {
         await interaction.channel.send({ embeds: [embed] });
         return interaction.reply({ content: '정산 완료!', flags: 1 << 6 });
       }
-      // ==== 공유 셀렉트 메뉴 처리 + 임베드/버튼 ====
       else if (interaction.customId === "bet_share_select") {
-        const betIdx = parseInt(interaction.values[0]);
+        const betId = interaction.values[0];
         const bets = loadBets();
-        const bet = bets[betIdx];
+        const bet = bets.find(b => b.id === betId);
         if (!bet || !bet.active)
           return interaction.reply({ content: '내기를 찾을 수 없습니다.', flags: 1 << 6 });
 
@@ -475,19 +487,18 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`bet_share_join_${betIdx}`) // 전체 인덱스!
+            .setCustomId(`bet_share_join_${bet.id}`) // id!
             .setLabel('내기 참여하기')
             .setStyle(ButtonStyle.Success)
         );
 
         const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
 
-        // 5분 후 버튼 비활성화
         setTimeout(async () => {
           try {
             await msg.edit({ components: [new ActionRowBuilder().addComponents(
               new ButtonBuilder()
-                .setCustomId(`bet_share_join_${betIdx}`)
+                .setCustomId(`bet_share_join_${bet.id}`)
                 .setLabel('내기 참여하기')
                 .setStyle(ButtonStyle.Success)
                 .setDisabled(true)
@@ -498,17 +509,24 @@ module.exports = {
         await interaction.reply({ content: '공유 완료!', flags: 1 << 6 });
         return;
       }
-      // ==== 버튼 직접 참여 처리 ====
       else if (interaction.customId.startsWith('bet_share_join_')) {
-        const betIdx = parseInt(interaction.customId.split('_').pop());
+        const betId = interaction.customId.split('_').slice(3).join('_');
         const bets = loadBets();
-        const bet = bets[betIdx];
+        const bet = bets.find(b => b.id === betId);
+        const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
         if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', ephemeral: true });
 
-        // 참여용 모달 띄우기
+        // === 역할 예외: 주최자/중복참여 체크 무시
+        if (!isBetException(member)) {
+          if (bet.owner === interaction.user.id)
+            return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
+          if (bet.participants.some(p => p.user === interaction.user.id))
+            return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+        }
+
         const modal = new ModalBuilder()
-          .setCustomId(`bet_join_${betIdx}`)
+          .setCustomId(`bet_join_${bet.id}`)
           .setTitle(`[${bet.topic}] 내기 참여`);
         modal.addComponents(
           new ActionRowBuilder().addComponents(
@@ -521,15 +539,14 @@ module.exports = {
         await interaction.showModal(modal);
         return;
       }
-      // ==== 무산 셀렉트 메뉴 처리 + 환불 ====
       else if (interaction.customId === "bet_cancel_select") {
-        const betIdx = parseInt(interaction.values[0]);
+        const betId = interaction.values[0];
         let bets = loadBets();
+        const betIdx = bets.findIndex(b => b.id === betId);
         const bet = bets[betIdx];
         if (!bet || !bet.active)
           return interaction.reply({ content: '이미 마감됐거나 존재하지 않는 내기입니다.', flags: 1 << 6 });
         const topic = bet.topic;
-        // 참여자 환불
         let refundText = '';
         for (const p of bet.participants) {
           await addBE(p.user, p.amount, `[내기무산] ${topic} 환불`);
