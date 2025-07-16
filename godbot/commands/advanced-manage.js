@@ -416,16 +416,17 @@ module.exports = {
           let kicked = 0;
           let kickedList = [];
           for (const u of userList) {
-            if (!u.warned) continue;
-            try {
-              const m = await guild.members.fetch(u.id).catch(() => null);
-              if (m) {
-                await m.kick(`고급관리 - ${title} 일괄 추방`);
-                kicked++;
-                kickedList.push({ nickname: u.nickname, id: u.id });
-              }
-            } catch { }
-          }
+  if (!u.warned) continue;
+  try {
+    const m = await guild.members.fetch(u.id).catch(() => null);
+    if (m) {
+      await m.kick(`고급관리 - ${title} 일괄 추방`);
+      kicked++;
+      kickedList.push({ nickname: u.nickname, id: u.id });
+      await new Promise(res => setTimeout(res, 1500));
+    }
+  } catch { }
+}
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
             `관리자: <@${interaction.user.id}>\n` +
