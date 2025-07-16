@@ -902,7 +902,6 @@ client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isButton() && interaction.customId.startsWith('bet_share_join_')) {
   // betIdx 파싱
   const betIdx = parseInt(interaction.customId.split('_').pop());
-  const bets = loadBets().filter(bet => bet.active);
   const bet = bets[betIdx];
   if (!bet) return interaction.reply({ content: '해당 내기가 없습니다.', ephemeral: true });
 
