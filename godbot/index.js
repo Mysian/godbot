@@ -850,6 +850,13 @@ client.on(Events.InteractionCreate, async interaction => {
   return;
 }
 
+  // 공유된 내기에 참여하기
+  if (interaction.isButton() && interaction.customId.startsWith("bet_share_join_")) {
+  const betCmd = client.commands.get("내기");
+  if (betCmd?.modal) return betCmd.modal(interaction);
+  return;
+}
+
   // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
 
