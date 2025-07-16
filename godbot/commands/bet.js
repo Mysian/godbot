@@ -21,7 +21,7 @@ function saveBets(data) {
 function isAdmin(member) {
   return member.permissions.has('Administrator') || member.permissions.has('ManageGuild');
 }
-// === 특정 역할 예외 처리 함수 ===
+// === 특정 역할 예외 처리 함수(주최자 참여만 예외) ===
 function isBetException(member) {
   const ALLOW_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
   return member && member.roles.cache.some(role => ALLOW_ROLE_IDS.includes(role.id));
@@ -53,7 +53,7 @@ module.exports = {
           .setTitle(`현재 진행 중인 내기 목록 [${page + 1}/${totalPages}]`)
           .setColor(0x2b99ff)
           .setDescription(
-            "💡 **내기 안내**\n- 1인 1회만 참여, 진행자(주최자)는 참여 불가\n- 정산시 전체 베팅액의 10% 수수료 차감, 나머지는 승자끼리 비율분배\n- '마감' 후 '결과(정산)'에서 승리 항목을 선택해 자동 분배\n- 무산시 모든 참여자에게 베팅금 환불"
+            "💡 **내기 안내**\n- 1인 1회만 참여, 진행자(주최자)는 참여 불가(일부 역할은 예외)\n- 정산시 전체 베팅액의 10% 수수료 차감, 나머지는 승자끼리 비율분배\n- '마감' 후 '결과(정산)'에서 승리 항목을 선택해 자동 분배\n- 무산시 모든 참여자에게 베팅금 환불"
           );
         items.forEach((bet, idx) => {
           let status = '';
@@ -318,17 +318,19 @@ module.exports = {
         let bets = loadBets();
         const bet = bets.find(b => b.id === betId);
         const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+        const isException = isBetException(member);
 
         if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', flags: 1 << 6 });
 
-        // === 역할 예외: 주최자/중복참여 체크 무시
-        if (!isBetException(member)) {
-          if (bet.owner === interaction.user.id)
-            return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
-          if (bet.participants.some(p => p.user === interaction.user.id))
-            return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
-        }
+        // 내기 1회 참여 제한(역할 관계없이 모두 적용)
+        if (bet.participants.some(p => p.user === interaction.user.id))
+          return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+
+        // 주최자 참여 금지: 특정 역할만 예외
+        if (!isException && bet.owner === interaction.user.id)
+          return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
+
         const modal = new ModalBuilder().setCustomId(`bet_join_${bet.id}`).setTitle(`[${bet.topic}] 내기 참여`);
         modal.addComponents(
           new ActionRowBuilder().addComponents(
@@ -345,17 +347,19 @@ module.exports = {
         let bets = loadBets();
         const bet = bets.find(b => b.id === betId);
         const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+        const isException = isBetException(member);
 
         if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', flags: 1 << 6 });
 
-        // === 역할 예외: 주최자/중복참여 체크 무시
-        if (!isBetException(member)) {
-          if (bet.owner === interaction.user.id)
-            return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
-          if (bet.participants.some(p => p.user === interaction.user.id))
-            return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
-        }
+        // 내기 1회 참여 제한(역할 관계없이 모두 적용)
+        if (bet.participants.some(p => p.user === interaction.user.id))
+          return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+
+        // 주최자 참여 금지: 특정 역할만 예외
+        if (!isException && bet.owner === interaction.user.id)
+          return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
+
         const choice = interaction.fields.getTextInputValue('choice').trim();
         const amount = parseInt(interaction.fields.getTextInputValue('amount').replace(/\D/g, ''));
         if (!bet.choices.includes(choice) || isNaN(amount) || amount < bet.min || amount > bet.max) {
@@ -367,7 +371,7 @@ module.exports = {
         await addBE(interaction.user.id, -amount, `[내기] ${bet.topic} - ${choice}`);
         bet.participants.push({ user: interaction.user.id, choice, amount });
         saveBets(bets);
-        return interaction.reply({ content: `[${bet.topic}]에 [${choice}]로 ${amount}BE 참여 완료!\n\n- 참여는 1회만 가능하며, 진행자(주최자)는 참여 불가입니다.\n- 정산시 10% 수수료가 차감되고 나머지는 승자끼리 비율분배됩니다.`, flags: 1 << 6 });
+        return interaction.reply({ content: `[${bet.topic}]에 [${choice}]로 ${amount}BE 참여 완료!\n\n- 참여는 1회만 가능하며, 진행자(주최자)는 참여 불가(일부 역할은 예외)입니다.\n- 정산시 10% 수수료가 차감되고 나머지는 승자끼리 비율분배됩니다.`, flags: 1 << 6 });
       }
       else if (interaction.customId === "bet_close_select") {
         const betId = interaction.values[0];
@@ -514,16 +518,18 @@ module.exports = {
         const bets = loadBets();
         const bet = bets.find(b => b.id === betId);
         const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+        const isException = isBetException(member);
+
         if (!bet || !bet.active)
           return interaction.reply({ content: '해당 내기를 찾을 수 없습니다.', ephemeral: true });
 
-        // === 역할 예외: 주최자/중복참여 체크 무시
-        if (!isBetException(member)) {
-          if (bet.owner === interaction.user.id)
-            return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
-          if (bet.participants.some(p => p.user === interaction.user.id))
-            return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
-        }
+        // 내기 1회 참여 제한(역할 관계없이 모두 적용)
+        if (bet.participants.some(p => p.user === interaction.user.id))
+          return interaction.reply({ content: '이미 참여한 내기입니다.', flags: 1 << 6 });
+
+        // 주최자 참여 금지: 특정 역할만 예외
+        if (!isException && bet.owner === interaction.user.id)
+          return interaction.reply({ content: '본인이 만든 내기에는 참여할 수 없습니다.', flags: 1 << 6 });
 
         const modal = new ModalBuilder()
           .setCustomId(`bet_join_${bet.id}`)
