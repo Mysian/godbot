@@ -6,7 +6,7 @@ const path = require('path');
 const lockfile = require('proper-lockfile');
 const { getBE, addBE } = require('./be-util.js');
 const profilesPath = path.join(__dirname, '../data/profiles.json');
-const NICKNAME_BE_COST = 100000;
+const NICKNAME_BE_COST = 500000;
 
 async function readProfiles() {
   if (!fs.existsSync(profilesPath)) return {};
@@ -38,7 +38,7 @@ function isValidNickname(nickname) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('닉네임변경')
-    .setDescription('파랑 정수(BE) 100,000을 사용하여 서버 내 닉네임을 변경합니다.')
+    .setDescription('파랑 정수(BE) 500,000을 사용하여 서버 내 닉네임을 변경합니다.')
     .addStringOption(opt =>
       opt.setName('닉네임')
         .setDescription('변경할 닉네임')
