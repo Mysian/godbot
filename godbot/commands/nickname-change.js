@@ -1,12 +1,13 @@
 // commands/nickname-change.js
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
 const { getBE, addBE } = require('./be-util.js');
 const profilesPath = path.join(__dirname, '../data/profiles.json');
 const NICKNAME_BE_COST = 500000;
+const LOG_CHANNEL_ID = '1380874052855529605'; // 관리자 로그 채널
 
 async function readProfiles() {
   if (!fs.existsSync(profilesPath)) return {};
@@ -16,13 +17,10 @@ async function readProfiles() {
   return data;
 }
 
-// 닉네임 규칙: 초성/자음/모음만 or 이모티콘만 or 특수문자 포함 불가
 function isValidNickname(nickname) {
   const cho = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
   const jung = 'ㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ';
-  // 특수문자/이모지 금지, 영문/숫자/한글 허용
-  if (!/^[\w가-힣]+$/.test(nickname)) return false; // 특수문자/이모지 포함 불가
-  // 초성, 모음, 자음만 조합/단독 금지
+  if (!/^[\w가-힣]+$/.test(nickname)) return false;
   if ([...nickname].every(ch => cho.includes(ch) || jung.includes(ch))) return false;
   if ([...nickname].some(ch => cho.includes(ch) || jung.includes(ch))) {
     for (let i = 0; i < nickname.length; i++) {
@@ -46,7 +44,9 @@ module.exports = {
     ),
   async execute(interaction) {
     const userId = interaction.user.id;
+    const member = interaction.member;
     const newNick = interaction.options.getString('닉네임').trim();
+    const oldNick = member.nickname || member.user.username;
 
     // 1. 프로필 등록 여부 확인
     const profiles = await readProfiles();
@@ -71,8 +71,9 @@ module.exports = {
       });
     }
 
-    // 4. 서버 내 닉네임 중복 불가
+    // 4. 서버 내 닉네임 중복 불가 (캐시 최신화)
     const guild = interaction.guild;
+    await guild.members.fetch();
     const exists = guild.members.cache.some(member =>
       member.nickname === newNick || (member.user && member.user.username === newNick)
     );
@@ -85,12 +86,31 @@ module.exports = {
 
     // 5. 닉네임 변경 실행
     try {
-      await interaction.member.setNickname(newNick, '닉네임 변경 명령어 사용');
+      await member.setNickname(newNick, '닉네임 변경 명령어 사용');
       await addBE(userId, -NICKNAME_BE_COST, '닉네임 변경');
-      return interaction.reply({
+      await interaction.reply({
         content: `✅ 닉네임이 \`${newNick}\`(으)로 변경되었습니다! ( -${NICKNAME_BE_COST.toLocaleString()} BE )`,
         ephemeral: true
       });
+
+      // 6. 로그 채널에 변경 기록 임베드 전송
+      const logChannel = await guild.channels.fetch(LOG_CHANNEL_ID);
+      if (logChannel) {
+        const embed = new EmbedBuilder()
+          .setColor(0x3057e0)
+          .setTitle('📝 닉네임 변경 로그')
+          .setDescription(`<@${userId}> 닉네임 변경 기록`)
+          .addFields(
+            { name: '변경 전', value: `\`${oldNick}\``, inline: true },
+            { name: '변경 후', value: `\`${newNick}\``, inline: true },
+            { name: '처리자', value: `<@${userId}> (\`${userId}\`)`, inline: false },
+            { name: '일시', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+          )
+          .setFooter({ text: `닉네임 변경 시 BE 차감: ${NICKNAME_BE_COST.toLocaleString()} BE` });
+
+        await logChannel.send({ embeds: [embed] });
+      }
+
     } catch (err) {
       return interaction.reply({
         content: '닉네임 변경에 실패했습니다. 봇 권한을 확인해주세요.',
