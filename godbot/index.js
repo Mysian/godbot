@@ -89,7 +89,8 @@ client.once(Events.ClientReady, async () => {
   const activityMessages = [
     "/챔피언획득으로 롤 챔피언을 키워보세요!",
     "/도움말 을 통해 까리한 기능들을 확인해보세요!",
-    "/프로필등록 을 통해 자신의 개성을 뽐내세요!!"
+    "/프로필등록 을 통해 자신의 개성을 뽐내세요!!",
+    "/내기 를 통해 정수 내기를 진행해보세요"
   ];
   let activityIndex = 0;
 
