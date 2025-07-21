@@ -916,7 +916,7 @@ if (interaction.customId === 'rps_bet_modal') {
 if (interaction.customId === 'blackjack_bet_modal') {
   const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
   const bet = Math.floor(Number(raw));
-  if (isNaN(bet) || bet < 100 || bet > 10000000) {
+  if (isNaN(bet) || bet < 1000 || bet > 1000000000) {
     await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (100~10,000,000 BE)", ephemeral: true });
     unlock(userId); return;
   }
@@ -929,15 +929,20 @@ if (interaction.customId === 'blackjack_bet_modal') {
   let dealerHand = [drawCard(deck), drawCard(deck)];
   let gameOver = false;
 
-  // 배당률 구간 함수 (1백만~5백만 / 5백만~1천만 구간 분리)
-  function getBlackjackPayoutRate(bet) {
-    if (bet >= 5000000)   return 1.4;   // 500만 ~ 1,000만
-    if (bet >= 1000000)   return 1.5;   // 100만 ~ 500만
-    if (bet >= 500000)    return 1.6;   // 50만 ~ 100만
-    if (bet >= 100000)    return 1.7;   // 10만 ~ 50만
-    if (bet >= 10000)     return 1.8;   // 1만 ~ 10만
-    return 1.95;                         // ~1만
-  }
+
+ function getBlackjackPayoutRate(bet) {
+  if (bet >= 500000000 && bet <= 1000000000) return 1.2;   
+  if (bet >= 100000000 && bet < 500000000)   return 1.2;   
+  if (bet >= 50000000 && bet < 100000000)    return 1.3;   
+  if (bet >= 10000000 && bet < 50000000)     return 1.4;   
+  if (bet >= 5000000 && bet < 10000000)      return 1.5;    
+  if (bet >= 1000000 && bet < 5000000)       return 1.6;   
+  if (bet >= 500000 && bet < 1000000)        return 1.7;   
+  if (bet >= 100000 && bet < 500000)         return 1.8;  
+  if (bet >= 10000 && bet < 100000)          return 1.9;   
+  return 1.95;                                         
+}
+
   const payoutRate = getBlackjackPayoutRate(bet);
 
   // 카드 이모지 변환 함수 (색상 강조)
