@@ -18,6 +18,16 @@ const PAGE_SIZE = 30;
 const EXEMPT_ROLE_IDS = ['1371476512024559756'];
 const LOG_CHANNEL_ID = '1380874052855529605';
 
+// 색상 역할 ID
+const COLOR_ROLE_IDS = [
+  '1294259058102239305', '1374740411662209085', '1296493619359780925',
+  '1296628752742350848', '1296628913493114991', '1374740544298684456',
+  '1374740211707150367', '1224021837038616626', '1296493760108040264',
+  '1374740012784025600', '1374740162684391456', '1294259479474339912',
+  '1296493906854285344'
+];
+let colorRoleInactiveOn = false; // 전역 토글 변수
+
 const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
 const VOICE_NOTIFY_PATH = path.join(__dirname, '../data/voice-notify.json');
 
@@ -206,6 +216,33 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
   return arr;
 }
 
+// ★★★ 색상 역할 미접속 대상자 필터 ★★★
+async function fetchInactiveColorRoleUsers(guild, days) {
+  const activityData = fs.existsSync(__dirname + '/../activity-data.json')
+    ? JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
+  const now = new Date();
+  const allMembers = await guild.members.fetch();
+  let arr = [];
+  for (const member of allMembers.values()) {
+    if (member.user.bot) continue;
+    // 색상 역할 보유 여부
+    if (!COLOR_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
+    const userData = activityData[member.id];
+    const lastDate = userData ? getMostRecentDate(userData) : null;
+    const diffDays = lastDate ? (now - lastDate) / (1000 * 60 * 60 * 24) : Infinity;
+    if (diffDays >= days) {
+      arr.push({
+        id: member.id,
+        tag: `<@${member.id}>`,
+        user: member.user,
+        nickname: member.displayName,
+        lastActive: lastDate
+      });
+    }
+  }
+  return arr;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('고급관리')
@@ -219,7 +256,8 @@ module.exports = {
           { name: '비활동 신규 유저', value: 'newbie' },
           { name: '음성채널 알림 설정', value: 'voice_notify' },
           { name: '음성채널 자동이동 설정', value: 'voice_auto' },
-          { name: '세금누락 강제처리', value: 'tax_force' }
+          { name: '세금누락 강제처리', value: 'tax_force' },
+          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' } // ★추가
         )
     ),
   async execute(interaction) {
@@ -233,7 +271,7 @@ module.exports = {
     let warnedObj = readWarnHistory();
     let page = 0;
 
-    // ===== 음성채널 알림/자동이동 설정 기능 분기 =====
+    // ===== 음성채널 알림/자동이동 설정 =====
     if (option === 'voice_notify') {
       const notifyData = loadVoiceNotify();
       const guildId = interaction.guildId;
@@ -327,36 +365,111 @@ module.exports = {
 
     // 세금 누락건 처리
     if (option === 'tax_force') {
-  await interaction.editReply({ content: '세금 누락 강제 처리 중...', ephemeral: true });
+      await interaction.editReply({ content: '세금 누락 강제 처리 중...', ephemeral: true });
 
-  const { collectTaxFromSnapshot, saveTaxSnapshot } = require('../utils/tax-collect.js');
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  const dateStr = `${yyyy}-${mm}-${dd}`;
+      const { collectTaxFromSnapshot, saveTaxSnapshot } = require('../utils/tax-collect.js');
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
 
-  const path = require('path');
-  const fs = require('fs');
-  const SNAPSHOT_DIR = path.join(__dirname, '../data/');
-  const filename = path.join(SNAPSHOT_DIR, `tax-snapshot-${dateStr}.json`);
+      const path = require('path');
+      const fs = require('fs');
+      const SNAPSHOT_DIR = path.join(__dirname, '../data/');
+      const filename = path.join(SNAPSHOT_DIR, `tax-snapshot-${dateStr}.json`);
 
-  if (!fs.existsSync(filename)) {
-    saveTaxSnapshot();
-  }
+      if (!fs.existsSync(filename)) {
+        saveTaxSnapshot();
+      }
 
-  const result = await collectTaxFromSnapshot(interaction.client, dateStr);
+      const result = await collectTaxFromSnapshot(interaction.client, dateStr);
 
-  if (result?.error) {
-    await interaction.followUp({ content: `❌ 스냅샷 파일 생성 후에도 에러! 관리자 문의 바람!`, ephemeral: true });
-  } else {
-    await interaction.followUp({ content: `💸 오늘 정수세 누락 강제징수 완료!\n총 세금: ${result.totalTax.toLocaleString('ko-KR')} BE`, ephemeral: true });
-  }
-  return;
-}
+      if (result?.error) {
+        await interaction.followUp({ content: `❌ 스냅샷 파일 생성 후에도 에러! 관리자 문의 바람!`, ephemeral: true });
+      } else {
+        await interaction.followUp({ content: `💸 오늘 정수세 누락 강제징수 완료!\n총 세금: ${result.totalTax.toLocaleString('ko-KR')} BE`, ephemeral: true });
+      }
+      return;
+    }
 
-    
-    // ============ 기존 기능(유저 목록) ============
+    // ========== 30일 미접속 색상 칭호 해제 ==========
+    if (option === 'colorrole_inactive') {
+      // 토글 확인
+      const embed = new EmbedBuilder()
+        .setTitle('30일 미접속 색상 칭호 해제')
+        .setDescription(
+          `현재 상태: **${colorRoleInactiveOn ? 'ON' : 'OFF'}**\n\n` +
+          `- 색상 역할을 보유한 유저가 30일 이상 미접속이면 색상 칭호를 자동 해제합니다.\n` +
+          `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.\n` +
+          `- 아래 '미접속 대상 미리보기' 버튼으로 현재 대상 유저를 확인할 수 있습니다.\n` +
+          `- '대상 모두 칭호 해제' 버튼 클릭 시, 즉시 해제됩니다.`
+        )
+        .setColor(colorRoleInactiveOn ? 0x43b581 : 0xff5555);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('colorrole_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(colorRoleInactiveOn),
+        new ButtonBuilder().setCustomId('colorrole_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!colorRoleInactiveOn),
+        new ButtonBuilder().setCustomId('colorrole_preview').setLabel('미접속 대상 미리보기').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('colorrole_remove').setLabel('대상 모두 칭호 해제').setStyle(ButtonStyle.Danger)
+      );
+      const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
+
+      const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+
+      collector.on('collect', async i => {
+        if (i.customId === 'colorrole_on' || i.customId === 'colorrole_off') {
+          colorRoleInactiveOn = i.customId === 'colorrole_on';
+          await i.update({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('30일 미접속 색상 칭호 해제')
+                .setDescription(
+                  `현재 상태: **${colorRoleInactiveOn ? 'ON' : 'OFF'}**\n\n` +
+                  `- 색상 역할을 보유한 유저가 30일 이상 미접속이면 색상 칭호를 자동 해제합니다.\n` +
+                  `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.\n` +
+                  `- 아래 '미접속 대상 미리보기' 버튼으로 현재 대상 유저를 확인할 수 있습니다.\n` +
+                  `- '대상 모두 칭호 해제' 버튼 클릭 시, 즉시 해제됩니다.`
+                )
+                .setColor(colorRoleInactiveOn ? 0x43b581 : 0xff5555)
+            ],
+            components: [row],
+            ephemeral: true
+          });
+        } else if (i.customId === 'colorrole_preview') {
+          // 미접속 대상 미리보기
+          await i.deferReply({ ephemeral: true });
+          const targetUsers = await fetchInactiveColorRoleUsers(guild, 30);
+          if (targetUsers.length === 0) {
+            await i.followUp({ content: '해당되는 유저가 없습니다!', ephemeral: true });
+          } else {
+            const userList = targetUsers.map(u => `${u.tag} | \`${u.id}\` | ${u.nickname} | ${formatTimeAgo(u.lastActive)}`).join('\n');
+            await i.followUp({ content: `대상 유저 (${targetUsers.length}명):\n${userList}`, ephemeral: true });
+          }
+        } else if (i.customId === 'colorrole_remove') {
+          // 역할 해제 실행
+          await i.deferReply({ ephemeral: true });
+          const targetUsers = await fetchInactiveColorRoleUsers(guild, 30);
+          let success = 0, failed = 0;
+          for (const u of targetUsers) {
+            try {
+              const m = await guild.members.fetch(u.id).catch(() => null);
+              if (m) {
+                for (const rid of COLOR_ROLE_IDS) {
+                  if (m.roles.cache.has(rid)) {
+                    await m.roles.remove(rid, '30일 미접속 색상 칭호 자동 해제');
+                  }
+                }
+                success++;
+              }
+            } catch { failed++; }
+          }
+          await i.followUp({ content: `색상 칭호 해제 완료! 성공: ${success}명 / 실패: ${failed}명`, ephemeral: true });
+        }
+      });
+      return;
+    }
+    // ============= 기존 기능(유저 목록) ============
     if (option === 'long') {
       title = '장기 미접속 유저';
       const getUserList = async () => {
@@ -449,17 +562,17 @@ module.exports = {
           let kicked = 0;
           let kickedList = [];
           for (const u of userList) {
-  if (!u.warned) continue;
-  try {
-    const m = await guild.members.fetch(u.id).catch(() => null);
-    if (m) {
-      await m.kick(`고급관리 - ${title} 일괄 추방`);
-      kicked++;
-      kickedList.push({ nickname: u.nickname, id: u.id });
-      await new Promise(res => setTimeout(res, 1500));
-    }
-  } catch { }
-}
+            if (!u.warned) continue;
+            try {
+              const m = await guild.members.fetch(u.id).catch(() => null);
+              if (m) {
+                await m.kick(`고급관리 - ${title} 일괄 추방`);
+                kicked++;
+                kickedList.push({ nickname: u.nickname, id: u.id });
+                await new Promise(res => setTimeout(res, 1500));
+              }
+            } catch { }
+          }
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
             `관리자: <@${interaction.user.id}>\n` +
