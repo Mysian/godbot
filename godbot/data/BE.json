@@ -1,6 +1,6 @@
 {
   "285645561582059520": {
-    "amount": 1231,
+    "amount": 39710,
     "history": [
       {
         "type": "earn",
@@ -883,11 +883,59 @@
         "amount": 4,
         "reason": "채널 주제 보상",
         "timestamp": 1751330704206
+      },
+      {
+        "type": "spend",
+        "amount": 815,
+        "reason": "매수 3 갓봇코인 (수수료 188 BE 포함)",
+        "timestamp": 1751366843187
+      },
+      {
+        "type": "spend",
+        "amount": 1,
+        "reason": "정수송금 -> <@362413312954204160> (수수료 0BE)",
+        "timestamp": 1751421553254
+      },
+      {
+        "type": "spend",
+        "amount": 1,
+        "reason": "정수송금 -> <@638742607861645372> (수수료 0BE)",
+        "timestamp": 1751422220042
+      },
+      {
+        "type": "spend",
+        "amount": 1,
+        "reason": "정수송금 -> <@362413312954204160> (수수료 0BE)",
+        "timestamp": 1751422378131
+      },
+      {
+        "type": "earn",
+        "amount": 197,
+        "reason": "출석 보상",
+        "timestamp": 1751422408898
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327181
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751457607629
+      },
+      {
+        "type": "spend",
+        "amount": 15900,
+        "reason": "매수 10 까리코인 (수수료 0 BE 포함)",
+        "timestamp": 1751537036420
       }
     ]
   },
   "751267368696807424": {
-    "amount": 53,
+    "amount": 50056,
     "history": [
       {
         "type": "earn",
@@ -942,11 +990,29 @@
         "amount": 2,
         "reason": "호감도 지급 성공 보상",
         "timestamp": 1751294532985
+      },
+      {
+        "type": "earn",
+        "amount": 1,
+        "reason": "호감도 지급 성공 보상",
+        "timestamp": 1751385741848
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328224
+      },
+      {
+        "type": "earn",
+        "amount": 2,
+        "reason": "호감도 지급 성공 보상",
+        "timestamp": 1751553938566
       }
     ]
   },
   "871253558488625175": {
-    "amount": 5017,
+    "amount": 10905,
     "history": [
       {
         "type": "earn",
@@ -1013,11 +1079,389 @@
         "amount": 1,
         "reason": "호감도 지급 성공 보상",
         "timestamp": 1751294548344
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751360665201
+      },
+      {
+        "type": "earn",
+        "amount": 1,
+        "reason": "호감도 지급 성공 보상",
+        "timestamp": 1751385698315
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326935
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423549025
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423556931
+      },
+      {
+        "type": "lose",
+        "amount": 1000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423567345
+      },
+      {
+        "type": "earn",
+        "amount": 1000,
+        "reason": "도박 STOP 수령 (총 1단계)",
+        "timestamp": 1751423568977
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423573126
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423582394
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423588392
+      },
+      {
+        "type": "earn",
+        "amount": 21059,
+        "reason": "도박 STOP 수령 (총 3단계)",
+        "timestamp": 1751423592532
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423596943
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423606496
+      },
+      {
+        "type": "earn",
+        "amount": 29405,
+        "reason": "도박 STOP 수령 (총 3단계)",
+        "timestamp": 1751423611538
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423617974
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423630382
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423636305
+      },
+      {
+        "type": "earn",
+        "amount": 17844,
+        "reason": "도박 STOP 수령 (총 2단계)",
+        "timestamp": 1751423639856
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423648548
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423655211
+      },
+      {
+        "type": "earn",
+        "amount": 42694,
+        "reason": "도박 STOP 수령 (총 4단계)",
+        "timestamp": 1751423661833
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423670776
+      },
+      {
+        "type": "earn",
+        "amount": 27791,
+        "reason": "도박 STOP 수령 (총 3단계)",
+        "timestamp": 1751423674597
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423689497
+      },
+      {
+        "type": "earn",
+        "amount": 16827,
+        "reason": "도박 STOP 수령 (총 2단계)",
+        "timestamp": 1751423693959
+      },
+      {
+        "type": "earn",
+        "amount": 300,
+        "reason": "알바(미니게임) 성공",
+        "timestamp": 1751423709793
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423724500
+      },
+      {
+        "type": "earn",
+        "amount": 18174,
+        "reason": "도박 STOP 수령 (총 2단계)",
+        "timestamp": 1751423727803
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423735681
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423741182
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423746160
+      },
+      {
+        "type": "earn",
+        "amount": 38888,
+        "reason": "도박 STOP 수령 (총 3단계)",
+        "timestamp": 1751423750467
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423754734
+      },
+      {
+        "type": "earn",
+        "amount": 13608,
+        "reason": "도박 STOP 수령 (총 2단계)",
+        "timestamp": 1751423757723
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423761666
+      },
+      {
+        "type": "earn",
+        "amount": 32887,
+        "reason": "도박 STOP 수령 (총 4단계)",
+        "timestamp": 1751423767853
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423772169
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423777952
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423783558
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423790074
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423796407
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423801319
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423808140
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423814332
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423819258
+      },
+      {
+        "type": "earn",
+        "amount": 18771,
+        "reason": "도박 STOP 수령 (총 2단계)",
+        "timestamp": 1751423821990
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423825371
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423830161
+      },
+      {
+        "type": "earn",
+        "amount": 33760,
+        "reason": "도박 STOP 수령 (총 3단계)",
+        "timestamp": 1751423834650
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423838598
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423843908
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423848903
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423853665
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423860525
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423867299
+      },
+      {
+        "type": "earn",
+        "amount": 24877,
+        "reason": "도박 STOP 수령 (총 3단계)",
+        "timestamp": 1751423871753
+      },
+      {
+        "type": "lose",
+        "amount": 5000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423876185
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423881484
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423887285
+      },
+      {
+        "type": "lose",
+        "amount": 1000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423896885
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751436089100
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751500802553
+      },
+      {
+        "type": "earn",
+        "amount": 2,
+        "reason": "호감도 지급 성공 보상",
+        "timestamp": 1751553943056
       }
     ]
   },
   "403164325595971584": {
-    "amount": 26191,
+    "amount": 50036,
     "history": [
       {
         "type": "earn",
@@ -1108,11 +1552,59 @@
         "amount": 10,
         "reason": "채널 주제 보상",
         "timestamp": 1751270970130
+      },
+      {
+        "type": "earn",
+        "amount": 143,
+        "reason": "출석 보상",
+        "timestamp": 1751422412025
+      },
+      {
+        "type": "lose",
+        "amount": 5000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751422426178
+      },
+      {
+        "type": "earn",
+        "amount": 9986,
+        "reason": "도박 STOP 수령 (총 2단계)",
+        "timestamp": 1751422432619
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327012
+      },
+      {
+        "type": "spend",
+        "amount": 1145,
+        "reason": "매수 1 까리코인 (수수료 0 BE 포함)",
+        "timestamp": 1751449113953
+      },
+      {
+        "type": "spend",
+        "amount": 68865,
+        "reason": "매수 5 애옹코인 (수수료 0 BE 포함)",
+        "timestamp": 1751467464157
+      },
+      {
+        "type": "earn",
+        "amount": 70010,
+        "reason": "관리자 지급 by <@285645561582059520>",
+        "timestamp": 1751540391298
+      },
+      {
+        "type": "spend",
+        "amount": 31284,
+        "reason": "매수 3 후수니코인 (수수료 0 BE 포함)",
+        "timestamp": 1751540728927
       }
     ]
   },
   "1054303020160122896": {
-    "amount": 5015,
+    "amount": 55024,
     "history": [
       {
         "type": "earn",
@@ -1131,11 +1623,23 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751284877465
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334515
+      },
+      {
+        "type": "earn",
+        "amount": 9,
+        "reason": "채널 주제 보상",
+        "timestamp": 1751534625777
       }
     ]
   },
   "494852004112236544": {
-    "amount": 1540,
+    "amount": 51540,
     "history": [
       {
         "type": "earn",
@@ -1166,11 +1670,17 @@
         "amount": 1,
         "reason": "호감도 차감 성공 보상",
         "timestamp": 1751020646592
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334682
       }
     ]
   },
   "1114510682021441536": {
-    "amount": 571,
+    "amount": 50571,
     "history": [
       {
         "type": "earn",
@@ -1195,11 +1705,17 @@
         "amount": 7,
         "reason": "채널 주제 보상",
         "timestamp": 1750603136622
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332210
       }
     ]
   },
   "353475063116464130": {
-    "amount": 43748,
+    "amount": 110452,
     "history": [
       {
         "type": "earn",
@@ -8196,11 +8712,23 @@
         "amount": 300,
         "reason": "알바(미니게임) 성공",
         "timestamp": 1750953077070
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327133
+      },
+      {
+        "type": "earn",
+        "amount": 16704,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751574096829
       }
     ]
   },
   "822301411554754591": {
-    "amount": 246062,
+    "amount": 394040,
     "history": [
       {
         "type": "earn",
@@ -20759,11 +21287,155 @@
         "amount": 14459,
         "reason": "가장 빠른 정수 지급 이벤트",
         "timestamp": 1751338836702
+      },
+      {
+        "type": "earn",
+        "amount": 20312,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751371202531
+      },
+      {
+        "type": "earn",
+        "amount": 41,
+        "reason": "오늘의 운세 보상",
+        "timestamp": 1751380405879
+      },
+      {
+        "type": "earn",
+        "amount": 21234,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751382073754
+      },
+      {
+        "type": "earn",
+        "amount": 328,
+        "reason": "출석 보상",
+        "timestamp": 1751382797376
+      },
+      {
+        "type": "spend",
+        "amount": 14586,
+        "reason": "매수 10 하니코인 (수수료 3366 BE 포함)",
+        "timestamp": 1751387661678
+      },
+      {
+        "type": "earn",
+        "amount": 10107,
+        "reason": "매도 10 하니코인",
+        "timestamp": 1751387747602
+      },
+      {
+        "type": "earn",
+        "amount": 19,
+        "reason": "오늘의 운세 보상",
+        "timestamp": 1751416824615
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329780
+      },
+      {
+        "type": "earn",
+        "amount": 23096,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751468443078
+      },
+      {
+        "type": "earn",
+        "amount": 258,
+        "reason": "출석 보상",
+        "timestamp": 1751474238601
+      },
+      {
+        "type": "earn",
+        "amount": 26,
+        "reason": "오늘의 운세 보상",
+        "timestamp": 1751474244174
+      },
+      {
+        "type": "earn",
+        "amount": 17349,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751511602354
+      },
+      {
+        "type": "earn",
+        "amount": 17556,
+        "reason": "랜덤 정수 지급",
+        "timestamp": 1751522505938
+      },
+      {
+        "type": "earn",
+        "amount": 21352,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751533207698
+      },
+      {
+        "type": "spend",
+        "amount": 10000,
+        "reason": "불굴의 영혼 역할 구매",
+        "timestamp": 1751547196673
+      },
+      {
+        "type": "earn",
+        "amount": 13469,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751554839967
+      },
+      {
+        "type": "earn",
+        "amount": 267,
+        "reason": "출석 보상",
+        "timestamp": 1751554948151
+      },
+      {
+        "type": "spend",
+        "amount": 200,
+        "reason": "챔피언 강화",
+        "timestamp": 1751557868870
+      },
+      {
+        "type": "spend",
+        "amount": 10000,
+        "reason": "불굴의 영혼 역할 구매",
+        "timestamp": 1751560344189
+      },
+      {
+        "type": "spend",
+        "amount": 200,
+        "reason": "챔피언 강화",
+        "timestamp": 1751560350549
+      },
+      {
+        "type": "spend",
+        "amount": 200,
+        "reason": "챔피언 강화",
+        "timestamp": 1751560354385
+      },
+      {
+        "type": "spend",
+        "amount": 2050,
+        "reason": "연속강화 10회",
+        "timestamp": 1751561256117
+      },
+      {
+        "type": "spend",
+        "amount": 10000,
+        "reason": "불굴의 영혼 역할 구매",
+        "timestamp": 1751561288930
+      },
+      {
+        "type": "spend",
+        "amount": 200,
+        "reason": "챔피언 강화",
+        "timestamp": 1751561294710
       }
     ]
   },
   "1106640146914353162": {
-    "amount": 7237,
+    "amount": 57237,
     "history": [
       {
         "type": "earn",
@@ -20854,11 +21526,17 @@
         "amount": 7,
         "reason": "오늘의 운세 보상",
         "timestamp": 1751250331165
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330269
       }
     ]
   },
   "269837995820056586": {
-    "amount": 34214,
+    "amount": 84214,
     "history": [
       {
         "type": "earn",
@@ -27927,11 +28605,17 @@
         "amount": 40,
         "reason": "오늘의 운세 보상",
         "timestamp": 1751257950196
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330086
       }
     ]
   },
   "490417019028504597": {
-    "amount": 5837,
+    "amount": 56246,
     "history": [
       {
         "type": "earn",
@@ -28070,11 +28754,23 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751036402437
+      },
+      {
+        "type": "earn",
+        "amount": 409,
+        "reason": "출석 보상",
+        "timestamp": 1751423253765
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331497
       }
     ]
   },
   "445590914874998794": {
-    "amount": 46,
+    "amount": 100,
     "history": [
       {
         "type": "earn",
@@ -28117,11 +28813,23 @@
         "amount": 2,
         "reason": "호감도 차감 성공 보상",
         "timestamp": 1751274550957
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331726
+      },
+      {
+        "type": "spend",
+        "amount": 49946,
+        "reason": "매수 34 까리코인 (수수료 0 BE 포함)",
+        "timestamp": 1751538889354
       }
     ]
   },
   "328826726278758400": {
-    "amount": 0,
+    "amount": 50000,
     "history": [
       {
         "type": "spend",
@@ -28320,11 +29028,17 @@
         "amount": 0,
         "reason": "챔피언 강화",
         "timestamp": 1750302054744
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331057
       }
     ]
   },
   "1161257460221354064": {
-    "amount": 165608,
+    "amount": 169833,
     "history": [
       {
         "type": "earn",
@@ -29711,11 +30425,71 @@
         "amount": 26829,
         "reason": "가장 빠른 정수 지급 이벤트",
         "timestamp": 1751321516058
+      },
+      {
+        "type": "earn",
+        "amount": 29503,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751407231127
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333427
+      },
+      {
+        "type": "earn",
+        "amount": 27764,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751491017056
+      },
+      {
+        "type": "spend",
+        "amount": 170000,
+        "reason": "매수 170000 까리코인 (수수료 0 BE 포함)",
+        "timestamp": 1751518787546
+      },
+      {
+        "type": "earn",
+        "amount": 170000,
+        "reason": "코인시장 복구",
+        "timestamp": 1751519782477
+      },
+      {
+        "type": "spend",
+        "amount": 150350,
+        "reason": "매수 10 후수니코인 (수수료 0 BE 포함)",
+        "timestamp": 1751536603605
+      },
+      {
+        "type": "spend",
+        "amount": 74050,
+        "reason": "매수 50 까리코인 (수수료 0 BE 포함)",
+        "timestamp": 1751537901311
+      },
+      {
+        "type": "earn",
+        "amount": 81725,
+        "reason": "매도 50 까리코인",
+        "timestamp": 1751543010000
+      },
+      {
+        "type": "earn",
+        "amount": 11832,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751544110020
+      },
+      {
+        "type": "earn",
+        "amount": 27801,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751577818478
       }
     ]
   },
   "410271326301978634": {
-    "amount": 4881,
+    "amount": 54881,
     "history": [
       {
         "type": "earn",
@@ -31246,11 +32020,17 @@
         "amount": 300,
         "reason": "알바(미니게임) 성공",
         "timestamp": 1750313843860
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330721
       }
     ]
   },
   "300573554766774272": {
-    "amount": 10000,
+    "amount": 60000,
     "history": [
       {
         "type": "earn",
@@ -31263,11 +32043,17 @@
         "amount": 5000,
         "reason": "문제 정답 맞힘",
         "timestamp": 1750309867279
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329137
       }
     ]
   },
   "549954448298999810": {
-    "amount": 11,
+    "amount": 50011,
     "history": [
       {
         "type": "earn",
@@ -31322,11 +32108,17 @@
         "amount": 5,
         "reason": "채널 주제 보상",
         "timestamp": 1750501216157
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333268
       }
     ]
   },
   "395719866881146881": {
-    "amount": 20032,
+    "amount": 129232,
     "history": [
       {
         "type": "spend",
@@ -31393,11 +32185,35 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751263215821
+      },
+      {
+        "type": "earn",
+        "amount": 12170,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751414416920
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327036
+      },
+      {
+        "type": "earn",
+        "amount": 28904,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751500802521
+      },
+      {
+        "type": "earn",
+        "amount": 18126,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751587205647
       }
     ]
   },
   "249210909992550400": {
-    "amount": 10006,
+    "amount": 65006,
     "history": [
       {
         "type": "earn",
@@ -31422,11 +32238,23 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751122801931
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751407231183
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332547
       }
     ]
   },
   "362413312954204160": {
-    "amount": 0,
+    "amount": 70592,
     "history": [
       {
         "type": "spend",
@@ -31439,22 +32267,82 @@
         "amount": 0,
         "reason": "연속강화 20회",
         "timestamp": 1750421944872
+      },
+      {
+        "type": "earn",
+        "amount": 9000,
+        "reason": "정수송금 ← <@783512002651750430> (수수료 1000BE)",
+        "timestamp": 1751421346748
+      },
+      {
+        "type": "earn",
+        "amount": 13500,
+        "reason": "정수송금 ← <@783512002651750430> (수수료 1500BE)",
+        "timestamp": 1751421377781
+      },
+      {
+        "type": "spend",
+        "amount": 8789,
+        "reason": "매수 1 효철코인 (수수료 2028 BE 포함)",
+        "timestamp": 1751421511705
+      },
+      {
+        "type": "earn",
+        "amount": 1,
+        "reason": "정수송금 ← <@285645561582059520> (수수료 0BE)",
+        "timestamp": 1751421553254
+      },
+      {
+        "type": "spend",
+        "amount": 13111,
+        "reason": "매수 2 효철코인 (수수료 3025 BE 포함)",
+        "timestamp": 1751421573431
+      },
+      {
+        "type": "earn",
+        "amount": 1,
+        "reason": "정수송금 ← <@285645561582059520> (수수료 0BE)",
+        "timestamp": 1751422378131
+      },
+      {
+        "type": "earn",
+        "amount": 20000,
+        "reason": "관리자 지급 by <@285645561582059520>",
+        "timestamp": 1751422398885
+      },
+      {
+        "type": "spend",
+        "amount": 10,
+        "reason": "정수송금 -> <@783512002651750430> (수수료 1BE)",
+        "timestamp": 1751422445340
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327108
       }
     ]
   },
   "383494229676130306": {
-    "amount": 1,
+    "amount": 50001,
     "history": [
       {
         "type": "earn",
         "amount": 1,
         "reason": "채널 주제 보상",
         "timestamp": 1750491477505
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330291
       }
     ]
   },
   "783512002651750430": {
-    "amount": 25000,
+    "amount": 9,
     "history": [
       {
         "type": "earn",
@@ -31485,11 +32373,29 @@
         "amount": 5000,
         "reason": "문제 정답 맞힘",
         "timestamp": 1750500544021
+      },
+      {
+        "type": "spend",
+        "amount": 10000,
+        "reason": "정수송금 -> <@362413312954204160> (수수료 1000BE)",
+        "timestamp": 1751421346748
+      },
+      {
+        "type": "spend",
+        "amount": 15000,
+        "reason": "정수송금 -> <@362413312954204160> (수수료 1500BE)",
+        "timestamp": 1751421377781
+      },
+      {
+        "type": "earn",
+        "amount": 9,
+        "reason": "정수송금 ← <@362413312954204160> (수수료 1BE)",
+        "timestamp": 1751422445341
       }
     ]
   },
   "375954010731184132": {
-    "amount": 10000,
+    "amount": 60000,
     "history": [
       {
         "type": "earn",
@@ -31502,11 +32408,17 @@
         "amount": 5000,
         "reason": "문제 정답 맞힘",
         "timestamp": 1750500850729
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327085
       }
     ]
   },
   "344891846465552384": {
-    "amount": 10757,
+    "amount": 60757,
     "history": [
       {
         "type": "earn",
@@ -31537,22 +32449,34 @@
         "amount": 39,
         "reason": "오늘의 운세 보상",
         "timestamp": 1751209224332
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327157
       }
     ]
   },
   "250192744528609280": {
-    "amount": 4,
+    "amount": 50004,
     "history": [
       {
         "type": "earn",
         "amount": 4,
         "reason": "채널 주제 보상",
         "timestamp": 1750518286979
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334204
       }
     ]
   },
   "462990525268754432": {
-    "amount": 5002,
+    "amount": 55002,
     "history": [
       {
         "type": "earn",
@@ -31565,11 +32489,17 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751004002101
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334954
       }
     ]
   },
   "284313710833434625": {
-    "amount": 0,
+    "amount": 50000,
     "history": [
       {
         "type": "spend",
@@ -31630,11 +32560,17 @@
         "amount": 0,
         "reason": "챔피언 강화",
         "timestamp": 1750734227540
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335007
       }
     ]
   },
   "621333537941094401": {
-    "amount": 86660,
+    "amount": 91660,
     "history": [
       {
         "type": "earn",
@@ -31653,11 +32589,17 @@
         "amount": 16465,
         "reason": "가장 빠른 정수 지급 이벤트",
         "timestamp": 1751328020040
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751479298383
       }
     ]
   },
   "1255342003508478044": {
-    "amount": 95,
+    "amount": 10278,
     "history": [
       {
         "type": "earn",
@@ -31676,44 +32618,122 @@
         "amount": 1,
         "reason": "채널 주제 보상",
         "timestamp": 1751270721208
+      },
+      {
+        "type": "earn",
+        "amount": 382,
+        "reason": "출석 보상",
+        "timestamp": 1751422414239
+      },
+      {
+        "type": "earn",
+        "amount": 300,
+        "reason": "알바(미니게임) 성공",
+        "timestamp": 1751422429634
+      },
+      {
+        "type": "lose",
+        "amount": 500,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751422458170
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326760
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423452966
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423475263
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423510129
+      },
+      {
+        "type": "lose",
+        "amount": 10000,
+        "reason": "도박 베팅 시작",
+        "timestamp": 1751423539020
+      },
+      {
+        "type": "earn",
+        "amount": 1,
+        "reason": "테스트",
+        "timestamp": 1751553234304
       }
     ]
   },
   "395548493885997058": {
-    "amount": 1,
+    "amount": 50001,
     "history": [
       {
         "type": "earn",
         "amount": 1,
         "reason": "호감도 지급 성공 보상",
         "timestamp": 1751033278408
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332255
       }
     ]
   },
   "410685284162994178": {
-    "amount": 5000,
+    "amount": 60000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751071113786
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332323
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751468443113
       }
     ]
   },
   "370497595358969856": {
-    "amount": 5000,
+    "amount": 55000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751079662576
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327625
       }
     ]
   },
   "1384581446978638006": {
-    "amount": 37412,
+    "amount": 175323,
     "history": [
       {
         "type": "earn",
@@ -31726,33 +32746,81 @@
         "amount": 20000,
         "reason": "관리자 지급 by <@285645561582059520>",
         "timestamp": 1751349714053
+      },
+      {
+        "type": "earn",
+        "amount": 21396,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751360665170
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326730
+      },
+      {
+        "type": "earn",
+        "amount": 19294,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751436089066
+      },
+      {
+        "type": "earn",
+        "amount": 19174,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751447560506
+      },
+      {
+        "type": "earn",
+        "amount": 12591,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751457607595
+      },
+      {
+        "type": "earn",
+        "amount": 15456,
+        "reason": "가장 빠른 정수 지급 이벤트",
+        "timestamp": 1751479298342
       }
     ]
   },
   "390414332313468929": {
-    "amount": 5000,
+    "amount": 55000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751091112000
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335292
       }
     ]
   },
   "524565703123009547": {
-    "amount": 5000,
+    "amount": 55000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751113029682
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331191
       }
     ]
   },
   "287036502158868493": {
-    "amount": 10001,
+    "amount": 65008,
     "history": [
       {
         "type": "earn",
@@ -31771,11 +32839,29 @@
         "amount": 1,
         "reason": "채널 주제 보상",
         "timestamp": 1751330666636
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751382073789
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332621
+      },
+      {
+        "type": "earn",
+        "amount": 7,
+        "reason": "채널 주제 보상",
+        "timestamp": 1751428332820
       }
     ]
   },
   "386868715461017600": {
-    "amount": 10000,
+    "amount": 70000,
     "history": [
       {
         "type": "earn",
@@ -31788,11 +32874,29 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751321516136
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333553
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751447560601
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751533207791
       }
     ]
   },
   "383784679901233172": {
-    "amount": 10000,
+    "amount": 65000,
     "history": [
       {
         "type": "earn",
@@ -31805,11 +32909,23 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751234458549
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751371202567
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335057
       }
     ]
   },
   "638742607861645372": {
-    "amount": 9700,
+    "amount": 9701,
     "history": [
       {
         "type": "earn",
@@ -31834,11 +32950,17 @@
         "amount": 100,
         "reason": "포커 참가비",
         "timestamp": 1751172079877
+      },
+      {
+        "type": "earn",
+        "amount": 1,
+        "reason": "정수송금 ← <@285645561582059520> (수수료 0BE)",
+        "timestamp": 1751422220042
       }
     ]
   },
   "320889129372090378": {
-    "amount": 10000,
+    "amount": 60000,
     "history": [
       {
         "type": "earn",
@@ -31851,94 +32973,3924 @@
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751241602519
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329706
       }
     ]
   },
   "757033323162763385": {
-    "amount": 15,
+    "amount": 50015,
     "history": [
       {
         "type": "earn",
         "amount": 15,
         "reason": "오늘의 운세 보상",
         "timestamp": 1751211014482
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328581
       }
     ]
   },
   "333870852850450433": {
-    "amount": 42,
+    "amount": 50042,
     "history": [
       {
         "type": "earn",
         "amount": 42,
         "reason": "오늘의 운세 보상",
         "timestamp": 1751211569923
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327933
       }
     ]
   },
   "1054727468692541521": {
-    "amount": 30,
+    "amount": 50030,
     "history": [
       {
         "type": "earn",
         "amount": 30,
         "reason": "오늘의 운세 보상",
         "timestamp": 1751214829919
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326910
       }
     ]
   },
   "513529929800089624": {
-    "amount": 5000,
+    "amount": 55000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751252764897
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332363
       }
     ]
   },
   "174497664925171712": {
-    "amount": 5000,
+    "amount": 60000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751274004122
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329682
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751544110054
       }
     ]
   },
   "307934480553738242": {
-    "amount": 5000,
+    "amount": 55000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751295603936
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328270
       }
     ]
   },
   "1157276334771421184": {
-    "amount": 8,
+    "amount": 50008,
     "history": [
       {
         "type": "earn",
         "amount": 8,
         "reason": "채널 주제 보상",
         "timestamp": 1751305994060
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334386
       }
     ]
   },
   "417331366557122580": {
-    "amount": 5000,
+    "amount": 60000,
     "history": [
       {
         "type": "earn",
         "amount": 5000,
         "reason": "부스트 유저 호명 보상",
         "timestamp": 1751328020085
+      },
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332005
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751577818531
+      }
+    ]
+  },
+  "1169617555346952312": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326859
+      }
+    ]
+  },
+  "601110743953440784": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326961
+      }
+    ]
+  },
+  "550652216424267791": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423326985
+      }
+    ]
+  },
+  "388674695391608832": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327060
+      }
+    ]
+  },
+  "455092178704924673": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327205
+      }
+    ]
+  },
+  "250264283420557312": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327229
+      }
+    ]
+  },
+  "433569276469837845": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327253
+      }
+    ]
+  },
+  "254928628813529088": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327283
+      }
+    ]
+  },
+  "902151319572340756": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327307
+      }
+    ]
+  },
+  "708650508101091379": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327332
+      }
+    ]
+  },
+  "625280194747564042": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327357
+      }
+    ]
+  },
+  "418409388596789248": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327381
+      }
+    ]
+  },
+  "273837751944609802": {
+    "amount": 55000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327405
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751554840010
+      }
+    ]
+  },
+  "280238791375978499": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327429
+      }
+    ]
+  },
+  "381829555041599508": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327453
+      }
+    ]
+  },
+  "718678309508218950": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327478
+      }
+    ]
+  },
+  "634762812744400926": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327502
+      }
+    ]
+  },
+  "463320811294556161": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327527
+      }
+    ]
+  },
+  "282068177595269131": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327551
+      }
+    ]
+  },
+  "874996240532783114": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327576
+      }
+    ]
+  },
+  "290046994867683328": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327601
+      }
+    ]
+  },
+  "463888916530069504": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327650
+      }
+    ]
+  },
+  "231405920821837825": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327674
+      }
+    ]
+  },
+  "284551271875084289": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327699
+      }
+    ]
+  },
+  "351876868867358721": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327723
+      }
+    ]
+  },
+  "424241351580975106": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327747
+      }
+    ]
+  },
+  "337229294285619201": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327770
+      }
+    ]
+  },
+  "349181849727401984": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327794
+      }
+    ]
+  },
+  "369071908236427266": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327818
+      }
+    ]
+  },
+  "394736808124219414": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327842
+      }
+    ]
+  },
+  "147597272060788736": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327867
+      }
+    ]
+  },
+  "531840428211961856": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327889
+      }
+    ]
+  },
+  "534912500077035540": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327911
+      }
+    ]
+  },
+  "403920709115707399": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327955
+      }
+    ]
+  },
+  "733186870770401280": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327977
+      }
+    ]
+  },
+  "323059093386297344": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423327999
+      }
+    ]
+  },
+  "776051592125218826": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328023
+      }
+    ]
+  },
+  "864856961512898560": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328046
+      }
+    ]
+  },
+  "284868357641994241": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328068
+      }
+    ]
+  },
+  "399770436596137985": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328090
+      }
+    ]
+  },
+  "366452048339795971": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328112
+      }
+    ]
+  },
+  "1075674334204547112": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328135
+      }
+    ]
+  },
+  "936187510416109578": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328157
+      }
+    ]
+  },
+  "440319644918874112": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328179
+      }
+    ]
+  },
+  "549072555777196042": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328202
+      }
+    ]
+  },
+  "378080597735768064": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328247
+      }
+    ]
+  },
+  "832502249149300786": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328291
+      }
+    ]
+  },
+  "202987240752676864": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328313
+      }
+    ]
+  },
+  "932788968892809236": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328335
+      }
+    ]
+  },
+  "1001899989208936488": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328357
+      }
+    ]
+  },
+  "836613263243476992": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328379
+      }
+    ]
+  },
+  "653074825006546993": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328401
+      }
+    ]
+  },
+  "939059256202772491": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328423
+      }
+    ]
+  },
+  "279450288958472192": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328446
+      }
+    ]
+  },
+  "794601673724657694": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328469
+      }
+    ]
+  },
+  "546616728780537856": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328491
+      }
+    ]
+  },
+  "267535178556112898": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328513
+      }
+    ]
+  },
+  "450992813631340574": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328536
+      }
+    ]
+  },
+  "571620447955714051": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328558
+      }
+    ]
+  },
+  "466970690931654667": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328603
+      }
+    ]
+  },
+  "458613351732215816": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328625
+      }
+    ]
+  },
+  "383639163523694624": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328648
+      }
+    ]
+  },
+  "650951978620289024": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328670
+      }
+    ]
+  },
+  "285009329923424259": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328693
+      }
+    ]
+  },
+  "556065507988733952": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328715
+      }
+    ]
+  },
+  "368698998921494529": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328737
+      }
+    ]
+  },
+  "513642071404445699": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328759
+      }
+    ]
+  },
+  "356331499471110147": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328781
+      }
+    ]
+  },
+  "623310114975383552": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328803
+      }
+    ]
+  },
+  "942721969256792074": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328825
+      }
+    ]
+  },
+  "345913191760658433": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328848
+      }
+    ]
+  },
+  "174019025267851265": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328870
+      }
+    ]
+  },
+  "640088708376428545": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328894
+      }
+    ]
+  },
+  "345540935737933834": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328918
+      }
+    ]
+  },
+  "481778112124944396": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328942
+      }
+    ]
+  },
+  "578146468423008276": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328966
+      }
+    ]
+  },
+  "1138407183013384266": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423328991
+      }
+    ]
+  },
+  "1334950387702038707": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329016
+      }
+    ]
+  },
+  "436464756019167233": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329040
+      }
+    ]
+  },
+  "419557212982345771": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329064
+      }
+    ]
+  },
+  "383043409947918337": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329089
+      }
+    ]
+  },
+  "724228914494439525": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329113
+      }
+    ]
+  },
+  "1138460027435368480": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329162
+      }
+    ]
+  },
+  "543815780912070678": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329186
+      }
+    ]
+  },
+  "265112507700477952": {
+    "amount": 55000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329210
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751511602390
+      }
+    ]
+  },
+  "280000547828793344": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329235
+      }
+    ]
+  },
+  "375640799829819392": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329259
+      }
+    ]
+  },
+  "535494887362002946": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329283
+      }
+    ]
+  },
+  "851521071219474483": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329308
+      }
+    ]
+  },
+  "415749821073326080": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329333
+      }
+    ]
+  },
+  "955791227075313704": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329357
+      }
+    ]
+  },
+  "245546906191790080": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329381
+      }
+    ]
+  },
+  "710318137823854602": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329406
+      }
+    ]
+  },
+  "333982382220902422": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329431
+      }
+    ]
+  },
+  "842310008635916290": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329455
+      }
+    ]
+  },
+  "404651803968405535": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329480
+      }
+    ]
+  },
+  "533646314454515714": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329505
+      }
+    ]
+  },
+  "294838888474869760": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329529
+      }
+    ]
+  },
+  "701823991077404767": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329553
+      }
+    ]
+  },
+  "953581606734561390": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329580
+      }
+    ]
+  },
+  "482774177175175178": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329607
+      }
+    ]
+  },
+  "270048566699884544": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329632
+      }
+    ]
+  },
+  "1355276282950324535": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329658
+      }
+    ]
+  },
+  "669633024337510444": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329731
+      }
+    ]
+  },
+  "542713669184651305": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329755
+      }
+    ]
+  },
+  "644948690787631126": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329806
+      }
+    ]
+  },
+  "1275775649721880639": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329830
+      }
+    ]
+  },
+  "371491047970308096": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329854
+      }
+    ]
+  },
+  "242315387285274624": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329879
+      }
+    ]
+  },
+  "886258168143953972": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329904
+      }
+    ]
+  },
+  "348600134105432066": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329928
+      }
+    ]
+  },
+  "366355662466187274": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329950
+      }
+    ]
+  },
+  "341673134224703491": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329972
+      }
+    ]
+  },
+  "258457445289033738": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423329995
+      }
+    ]
+  },
+  "1231828585753350226": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330018
+      }
+    ]
+  },
+  "1323995080570306652": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330042
+      }
+    ]
+  },
+  "808196464438280222": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330064
+      }
+    ]
+  },
+  "264279881783836672": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330108
+      }
+    ]
+  },
+  "622045687495917619": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330132
+      }
+    ]
+  },
+  "526981168759963658": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330154
+      }
+    ]
+  },
+  "1012416757241237515": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330177
+      }
+    ]
+  },
+  "228554183425392641": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330199
+      }
+    ]
+  },
+  "367113754925596672": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330223
+      }
+    ]
+  },
+  "920315516990685214": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330247
+      }
+    ]
+  },
+  "803104401220042793": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330315
+      }
+    ]
+  },
+  "364311178861608960": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330338
+      }
+    ]
+  },
+  "241827872870760448": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330360
+      }
+    ]
+  },
+  "208832359167033345": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330384
+      }
+    ]
+  },
+  "612660617861398530": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330406
+      }
+    ]
+  },
+  "425192965674237973": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330429
+      }
+    ]
+  },
+  "1128495962596331660": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330453
+      }
+    ]
+  },
+  "617694489993150507": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330475
+      }
+    ]
+  },
+  "942030695834988544": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330498
+      }
+    ]
+  },
+  "237897464206589952": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330520
+      }
+    ]
+  },
+  "907797697736638514": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330542
+      }
+    ]
+  },
+  "965256204232323183": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330565
+      }
+    ]
+  },
+  "310436076873580544": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330588
+      }
+    ]
+  },
+  "1186549456817094706": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330610
+      }
+    ]
+  },
+  "265794342222954496": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330633
+      }
+    ]
+  },
+  "835522118720421941": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330655
+      }
+    ]
+  },
+  "460310997417066533": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330677
+      }
+    ]
+  },
+  "1324685105528307765": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330699
+      }
+    ]
+  },
+  "1334450669343604747": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330743
+      }
+    ]
+  },
+  "548012299508776981": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330766
+      }
+    ]
+  },
+  "998637845818388491": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330788
+      }
+    ]
+  },
+  "935666479104417822": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330821
+      }
+    ]
+  },
+  "706385753776848946": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330845
+      }
+    ]
+  },
+  "989519783764582441": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330879
+      }
+    ]
+  },
+  "325856051574603779": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330902
+      }
+    ]
+  },
+  "375243569130242048": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330925
+      }
+    ]
+  },
+  "396607572695842816": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330950
+      }
+    ]
+  },
+  "398125450758586369": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423330975
+      }
+    ]
+  },
+  "1117121774593777824": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331001
+      }
+    ]
+  },
+  "355937904863870977": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331029
+      }
+    ]
+  },
+  "436220511945621504": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331083
+      }
+    ]
+  },
+  "832486433981595661": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331112
+      }
+    ]
+  },
+  "1134841642436792332": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331151
+      }
+    ]
+  },
+  "480353590880239627": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331216
+      }
+    ]
+  },
+  "737941412540186688": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331241
+      }
+    ]
+  },
+  "648786795693342722": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331266
+      }
+    ]
+  },
+  "342690397400727553": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331292
+      }
+    ]
+  },
+  "307464443330297857": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331318
+      }
+    ]
+  },
+  "242967977702457344": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331345
+      }
+    ]
+  },
+  "492658860226510859": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331370
+      }
+    ]
+  },
+  "420014053164056616": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331396
+      }
+    ]
+  },
+  "424962575072231425": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331422
+      }
+    ]
+  },
+  "374249549411123200": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331447
+      }
+    ]
+  },
+  "529169966814199819": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331472
+      }
+    ]
+  },
+  "860546937081036860": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331523
+      }
+    ]
+  },
+  "335715525227446273": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331548
+      }
+    ]
+  },
+  "944910318692356146": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331573
+      }
+    ]
+  },
+  "996375413947375707": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331599
+      }
+    ]
+  },
+  "976421616848371712": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331624
+      }
+    ]
+  },
+  "592216779921555513": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331649
+      }
+    ]
+  },
+  "686108623004237831": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331675
+      }
+    ]
+  },
+  "358541726291591169": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331700
+      }
+    ]
+  },
+  "383947150192803840": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331751
+      }
+    ]
+  },
+  "354591189984477187": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331777
+      }
+    ]
+  },
+  "416240334717190144": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331803
+      }
+    ]
+  },
+  "332233556061323264": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331828
+      }
+    ]
+  },
+  "690922971015151646": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331853
+      }
+    ]
+  },
+  "1178686528965324864": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331878
+      }
+    ]
+  },
+  "327828042544054274": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331907
+      }
+    ]
+  },
+  "539065772127813632": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331932
+      }
+    ]
+  },
+  "332182048968146945": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331957
+      }
+    ]
+  },
+  "1328748043071131750": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423331981
+      }
+    ]
+  },
+  "479101379202252803": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332028
+      }
+    ]
+  },
+  "390478289174790144": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332051
+      }
+    ]
+  },
+  "516831065852346386": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332074
+      }
+    ]
+  },
+  "1023578204608401408": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332096
+      }
+    ]
+  },
+  "822779337425289248": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332119
+      }
+    ]
+  },
+  "450647764062175243": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332142
+      }
+    ]
+  },
+  "320080020963852289": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332165
+      }
+    ]
+  },
+  "286447091985940480": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332188
+      }
+    ]
+  },
+  "321253902697758720": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332233
+      }
+    ]
+  },
+  "735887163052523664": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332278
+      }
+    ]
+  },
+  "829346317481672714": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332300
+      }
+    ]
+  },
+  "276975985264427008": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332423
+      }
+    ]
+  },
+  "355395013695242252": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332472
+      }
+    ]
+  },
+  "287846124700827649": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332496
+      }
+    ]
+  },
+  "783681704002977822": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332519
+      }
+    ]
+  },
+  "318190478254145541": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332570
+      }
+    ]
+  },
+  "316842795644092416": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332595
+      }
+    ]
+  },
+  "704580913622679612": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332645
+      }
+    ]
+  },
+  "343400133725126686": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332669
+      }
+    ]
+  },
+  "152389763842703360": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332692
+      }
+    ]
+  },
+  "821777222251315200": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332716
+      }
+    ]
+  },
+  "795419871588384795": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332740
+      }
+    ]
+  },
+  "942543777644544070": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332763
+      }
+    ]
+  },
+  "239663624984068098": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332786
+      }
+    ]
+  },
+  "519131904205651969": {
+    "amount": 50006,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332809
+      },
+      {
+        "type": "earn",
+        "amount": 6,
+        "reason": "채널 주제 보상",
+        "timestamp": 1751435181339
+      }
+    ]
+  },
+  "353482626566193163": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332832
+      }
+    ]
+  },
+  "1284906659306541107": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332855
+      }
+    ]
+  },
+  "292669858313797642": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332877
+      }
+    ]
+  },
+  "368338329969623040": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332900
+      }
+    ]
+  },
+  "247009858195423232": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332924
+      }
+    ]
+  },
+  "250172336911810560": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332947
+      }
+    ]
+  },
+  "380193052268167180": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423332977
+      }
+    ]
+  },
+  "1069579298647838800": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333003
+      }
+    ]
+  },
+  "1207767628412747886": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333028
+      }
+    ]
+  },
+  "238978205078388747": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333054
+      }
+    ]
+  },
+  "269828935372636161": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333079
+      }
+    ]
+  },
+  "396912321596751875": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333105
+      }
+    ]
+  },
+  "1197201137028300880": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333130
+      }
+    ]
+  },
+  "1338780167316963372": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333157
+      }
+    ]
+  },
+  "470581632932249610": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333182
+      }
+    ]
+  },
+  "1115265914145874011": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333207
+      }
+    ]
+  },
+  "1316636191872782337": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333242
+      }
+    ]
+  },
+  "366567742385422338": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333293
+      }
+    ]
+  },
+  "419844762913341442": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333320
+      }
+    ]
+  },
+  "462311317215117337": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333345
+      }
+    ]
+  },
+  "334609392995663874": {
+    "amount": 55000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333372
+      },
+      {
+        "type": "earn",
+        "amount": 5000,
+        "reason": "부스트 유저 호명 보상",
+        "timestamp": 1751587205693
+      }
+    ]
+  },
+  "993034866004348989": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333401
+      }
+    ]
+  },
+  "233567302010929153": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333452
+      }
+    ]
+  },
+  "862652883115048970": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333477
+      }
+    ]
+  },
+  "1313516052839141470": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333502
+      }
+    ]
+  },
+  "385087714875408384": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333528
+      }
+    ]
+  },
+  "398009289962422275": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333578
+      }
+    ]
+  },
+  "506869371633926175": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333604
+      }
+    ]
+  },
+  "399517651476676611": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333629
+      }
+    ]
+  },
+  "391259929740312587": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333655
+      }
+    ]
+  },
+  "396583593767338006": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333682
+      }
+    ]
+  },
+  "1307228048982278216": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333708
+      }
+    ]
+  },
+  "767797538417541132": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333735
+      }
+    ]
+  },
+  "365923300108402700": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333760
+      }
+    ]
+  },
+  "980790338690109452": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333785
+      }
+    ]
+  },
+  "259953611562287105": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333811
+      }
+    ]
+  },
+  "400556662114484245": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333837
+      }
+    ]
+  },
+  "1270233658657341470": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333863
+      }
+    ]
+  },
+  "262238832659922945": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333890
+      }
+    ]
+  },
+  "381618923885428736": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333916
+      }
+    ]
+  },
+  "368356498897633280": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333942
+      }
+    ]
+  },
+  "905099429135155230": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333969
+      }
+    ]
+  },
+  "418724745807265793": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423333996
+      }
+    ]
+  },
+  "929023995804782622": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334023
+      }
+    ]
+  },
+  "1140669778630025286": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334048
+      }
+    ]
+  },
+  "404681028876238870": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334074
+      }
+    ]
+  },
+  "372655430205440000": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334099
+      }
+    ]
+  },
+  "579565097287155722": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334126
+      }
+    ]
+  },
+  "266592133882839040": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334152
+      }
+    ]
+  },
+  "322765840955080704": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334178
+      }
+    ]
+  },
+  "924156591895363674": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334230
+      }
+    ]
+  },
+  "547059444207583242": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334255
+      }
+    ]
+  },
+  "1361234667210014834": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334281
+      }
+    ]
+  },
+  "817690196467908638": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334308
+      }
+    ]
+  },
+  "596311095744921621": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334333
+      }
+    ]
+  },
+  "910158945648254986": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334359
+      }
+    ]
+  },
+  "381318480978378762": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334411
+      }
+    ]
+  },
+  "297345829763678209": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334437
+      }
+    ]
+  },
+  "264993471847333889": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334463
+      }
+    ]
+  },
+  "409419380842037248": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334489
+      }
+    ]
+  },
+  "386440221455155200": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334540
+      }
+    ]
+  },
+  "276300767814615041": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334566
+      }
+    ]
+  },
+  "631421216833536011": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334595
+      }
+    ]
+  },
+  "259874478895529985": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334623
+      }
+    ]
+  },
+  "283204380201713665": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334652
+      }
+    ]
+  },
+  "975979339130748948": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334709
+      }
+    ]
+  },
+  "523142026510860292": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334745
+      }
+    ]
+  },
+  "487818924172247042": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334771
+      }
+    ]
+  },
+  "844576199904854016": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334798
+      }
+    ]
+  },
+  "386845516811599873": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334824
+      }
+    ]
+  },
+  "434914705451253774": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334850
+      }
+    ]
+  },
+  "1204001441681907779": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334876
+      }
+    ]
+  },
+  "1136302660920807424": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334902
+      }
+    ]
+  },
+  "264564910711767050": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334928
+      }
+    ]
+  },
+  "434555516015083521": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423334979
+      }
+    ]
+  },
+  "1290584176944222293": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335033
+      }
+    ]
+  },
+  "843495532084985889": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335080
+      }
+    ]
+  },
+  "1027205323947245609": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335104
+      }
+    ]
+  },
+  "394795036954591233": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335128
+      }
+    ]
+  },
+  "339657263264301059": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335152
+      }
+    ]
+  },
+  "505610912376291339": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335175
+      }
+    ]
+  },
+  "530717169743560719": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335199
+      }
+    ]
+  },
+  "799137980232368129": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335222
+      }
+    ]
+  },
+  "330712388280254466": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335245
+      }
+    ]
+  },
+  "787114833929043989": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335269
+      }
+    ]
+  },
+  "917715224251994112": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335315
+      }
+    ]
+  },
+  "950430911294480425": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335339
+      }
+    ]
+  },
+  "1130650137073549424": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335363
+      }
+    ]
+  },
+  "1030124382422573138": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335386
+      }
+    ]
+  },
+  "593773536905003018": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335410
+      }
+    ]
+  },
+  "960444985864491040": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335434
+      }
+    ]
+  },
+  "1215898615269163078": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335457
+      }
+    ]
+  },
+  "251724610305785856": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335480
+      }
+    ]
+  },
+  "741591440928538625": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335504
+      }
+    ]
+  },
+  "589163291688042537": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335531
+      }
+    ]
+  },
+  "503410433424752640": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335555
+      }
+    ]
+  },
+  "384702551901077514": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335578
+      }
+    ]
+  },
+  "681853673961291806": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335603
+      }
+    ]
+  },
+  "746603675258060833": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335626
+      }
+    ]
+  },
+  "281990880834093056": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335650
+      }
+    ]
+  },
+  "678916943868067871": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335674
+      }
+    ]
+  },
+  "551331220357775371": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335697
+      }
+    ]
+  },
+  "281767431209484288": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335721
+      }
+    ]
+  },
+  "261021543897890818": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335745
+      }
+    ]
+  },
+  "754326710882926633": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335768
+      }
+    ]
+  },
+  "637967063066869781": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335792
+      }
+    ]
+  },
+  "386498065483300884": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335816
+      }
+    ]
+  },
+  "865706129053188137": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335840
+      }
+    ]
+  },
+  "1297606322648256533": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335863
+      }
+    ]
+  },
+  "307871926066479106": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335887
+      }
+    ]
+  },
+  "482736416107921428": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335910
+      }
+    ]
+  },
+  "380944259961847818": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335934
+      }
+    ]
+  },
+  "1307279812905402380": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335958
+      }
+    ]
+  },
+  "955118598408527913": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423335981
+      }
+    ]
+  },
+  "673006867387252775": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336007
+      }
+    ]
+  },
+  "1030431927733334036": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336030
+      }
+    ]
+  },
+  "434996666647707655": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336054
+      }
+    ]
+  },
+  "1224978104385142797": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336078
+      }
+    ]
+  },
+  "1371454074293190728": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336102
+      }
+    ]
+  },
+  "926493021120385064": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336128
+      }
+    ]
+  },
+  "765538665761079306": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336152
+      }
+    ]
+  },
+  "637229232677715978": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336176
+      }
+    ]
+  },
+  "544345326723661824": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336200
+      }
+    ]
+  },
+  "914245831291445258": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336224
+      }
+    ]
+  },
+  "396559888467230722": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336248
+      }
+    ]
+  },
+  "447054532027875338": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336272
+      }
+    ]
+  },
+  "215494580441841664": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336296
+      }
+    ]
+  },
+  "1194595757848805447": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336320
+      }
+    ]
+  },
+  "552123428249796608": {
+    "amount": 50000,
+    "history": [
+      {
+        "type": "earn",
+        "amount": 50000,
+        "reason": "초기 스타트 자금",
+        "timestamp": 1751423336345
       }
     ]
   }
