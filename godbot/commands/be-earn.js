@@ -102,7 +102,9 @@ function deckInit() {
   const suits = ['♠', '♥', '♦', '♣'];
   const deck = [];
   for (let s of suits) for (let v = 1; v <= 13; v++) deck.push({ suit: s, value: v });
-  return deck;
+  let eightDeck = [];
+  for (let i = 0; i < 8; i++) eightDeck = eightDeck.concat(deck);
+  return eightDeck;
 }
 
 module.exports = {
