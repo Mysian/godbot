@@ -914,34 +914,53 @@ if (interaction.customId === 'rps_bet_modal') {
 
 // === 블랙잭 모달 submit ===
 if (interaction.customId === 'blackjack_bet_modal') {
-  const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
-  const bet = Math.floor(Number(raw));
-  if (isNaN(bet) || bet < 1000 || bet > 1000000000) {
-    await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (100~10,000,000 BE)", ephemeral: true });
+  const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '').trim();
+  let myBe = getUserBe(userId);
+  let bet;
+
+  // "올인" or allin or 본인 소유금액 초과 입력 → 자동 올인(10억 한도)
+  if (
+    raw === '올인' ||
+    raw.toLowerCase() === 'allin' ||
+    isNaN(Number(raw)) ||
+    Number(raw) > myBe
+  ) {
+    bet = myBe;
+    if (bet > 1000000000) bet = 1000000000;
+  } else {
+    bet = Math.floor(Number(raw));
+    if (bet > myBe) bet = myBe > 1000000000 ? 1000000000 : myBe; // 혹시라도 이중 보정
+    if (bet > 1000000000) bet = 1000000000;
+  }
+
+  // 1,000 미만이거나 소유 BE가 1,000 미만이면 에러
+  if (isNaN(bet) || bet < 1000) {
+    await interaction.reply({ content: "⚠️ 잘못된 배팅금액이야. (1,000~1,000,000,000 BE)", ephemeral: true });
     unlock(userId); return;
   }
-  if (getUserBe(userId) < bet) {
+  if (myBe < bet) {
     await interaction.reply({ content: "⚠️ 소유 BE 부족!", ephemeral: true });
     unlock(userId); return;
   }
+
+  // 블랙잭 게임 진행
   let deck = deckInit();
   let userHand = [drawCard(deck), drawCard(deck)];
   let dealerHand = [drawCard(deck), drawCard(deck)];
   let gameOver = false;
 
-
- function getBlackjackPayoutRate(bet) {
-  if (bet >= 500000000 && bet <= 1000000000) return 1.2;   
-  if (bet >= 100000000 && bet < 500000000)   return 1.2;   
-  if (bet >= 50000000 && bet < 100000000)    return 1.3;   
-  if (bet >= 10000000 && bet < 50000000)     return 1.4;   
-  if (bet >= 5000000 && bet < 10000000)      return 1.5;    
-  if (bet >= 1000000 && bet < 5000000)       return 1.6;   
-  if (bet >= 500000 && bet < 1000000)        return 1.7;   
-  if (bet >= 100000 && bet < 500000)         return 1.8;  
-  if (bet >= 10000 && bet < 100000)          return 1.9;   
-  return 1.95;                                         
-}
+  function getBlackjackPayoutRate(bet) {
+    if (bet >= 500000000 && bet <= 1000000000) return 1.2;   
+    if (bet >= 100000000 && bet < 500000000)   return 1.2;   
+    if (bet >= 50000000 && bet < 100000000)    return 1.3;   
+    if (bet >= 10000000 && bet < 50000000)     return 1.4;   
+    if (bet >= 5000000 && bet < 10000000)      return 1.5;    
+    if (bet >= 1000000 && bet < 5000000)       return 1.6;   
+    if (bet >= 500000 && bet < 1000000)        return 1.7;   
+    if (bet >= 100000 && bet < 500000)         return 1.8;  
+    if (bet >= 10000 && bet < 100000)          return 1.9;   
+    return 1.95;                                         
+  }
 
   const payoutRate = getBlackjackPayoutRate(bet);
 
@@ -954,7 +973,7 @@ if (interaction.customId === 'blackjack_bet_modal') {
     return colorWrap(`[${suitEmojis[card.suit] || card.suit}${n}]`);
   }
 
-  // 임베드 빌더: 상태별 색상/메시지/오픈카드 구분
+  // 임베드 빌더: 상태별 색상/메시지/오픈카드 구분 + 경고문구
   function getEmbed(state) {
     const colorMap = {
       'start': 0x3399ff, 'playing': 0x3399ff,
@@ -996,10 +1015,12 @@ if (interaction.customId === 'blackjack_bet_modal') {
     else if (state === 'lose')
       desc += `\n\n💀 **패배! 배팅금 ${comma(bet)} BE 소멸!**`;
 
+    // ⚠️ 임베드 하단 경고문
     return new EmbedBuilder()
       .setTitle(titleMap[state] || "🃏 블랙잭")
       .setColor(colorMap[state] || 0x3399ff)
-      .setDescription(desc);
+      .setDescription(desc)
+      .setFooter({ text: "⚠️ 임베드를 닫거나 시간을 초과하면 패배 처리 됩니다. 주의!" });
   }
 
   // 게임 진행 함수
@@ -1066,8 +1087,8 @@ if (interaction.customId === 'blackjack_bet_modal') {
       })
       .on('end', async (_, reason) => {
         if (!gameOver && reason === 'time') {
-          setUserBe(userId, -Math.floor(bet * 0.25), '블랙잭 시간초과/도중포기(25%만 소멸)');
-          await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금의 25%(${comma(Math.floor(bet * 0.25))} BE)만 소멸!`, ephemeral: true });
+          setUserBe(userId, -bet, '블랙잭 시간초과/중도포기(100% 소멸)');
+          await interaction.followUp({ content: `⏰ 제한시간 초과! 배팅금 전액(${comma(bet)} BE) 소멸!`, ephemeral: true });
           unlock(userId); gameOver = true;
         }
       });
@@ -1076,6 +1097,6 @@ if (interaction.customId === 'blackjack_bet_modal') {
   // 게임 시작
   gameStep(interaction, true);
   return;
- }
+   }
   }
 };
