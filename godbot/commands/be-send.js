@@ -1,5 +1,28 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getBE, loadConfig, addBE } = require('./be-util');
+const fs = require('fs');
+const path = require('path');
+
+const cooldownPath = path.join(__dirname, '../data/be-send-cooldown.json');
+
+// 쿨타임 설정(단위 ms)
+const COOLDOWN_STAGE = [
+  30 * 60 * 1000,       // 0단계: 30분
+  2 * 60 * 60 * 1000,   // 1단계: 2시간
+  8 * 60 * 60 * 1000,   // 2단계: 8시간
+  24 * 60 * 60 * 1000,  // 3단계: 24시간
+  48 * 60 * 60 * 1000   // 4단계: 48시간
+];
+const COOLDOWN_LABEL = ['30분', '2시간', '8시간', '24시간', '48시간'];
+
+// 쿨타임 파일 입출력
+function loadCooldowns() {
+  if (!fs.existsSync(cooldownPath)) fs.writeFileSync(cooldownPath, '{}');
+  return JSON.parse(fs.readFileSync(cooldownPath, 'utf8'));
+}
+function saveCooldowns(data) {
+  fs.writeFileSync(cooldownPath, JSON.stringify(data, null, 2));
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,6 +38,37 @@ module.exports = {
     if (to.id === interaction.user.id) return interaction.reply({ content: '자기 자신에게는 송금할 수 없습니다.', ephemeral: true });
     if (amount <= 0) return interaction.reply({ content: '1 BE 이상만 송금할 수 있습니다.', ephemeral: true });
 
+    // 쿨타임 체크
+    const cooldowns = loadCooldowns();
+    const now = Date.now();
+    let stage = cooldowns[interaction.user.id]?.stage || 0;
+    let lastSend = cooldowns[interaction.user.id]?.lastSend || 0;
+    let nextAvailable = lastSend + COOLDOWN_STAGE[Math.min(stage, COOLDOWN_STAGE.length - 1)];
+
+    if (now < nextAvailable) {
+      const remainSec = Math.ceil((nextAvailable - now) / 1000);
+      let h = Math.floor(remainSec / 3600);
+      let m = Math.floor((remainSec % 3600) / 60);
+      let s = remainSec % 60;
+      let timeStr = [
+        h ? `${h}시간` : '',
+        m ? `${m}분` : '',
+        s ? `${s}초` : ''
+      ].filter(Boolean).join(' ');
+      return interaction.reply({ content: `🕒 송금 쿨타임! ${timeStr} 후에 다시 송금할 수 있습니다.`, ephemeral: true });
+    }
+
+    // 쿨타임 단계 올리기(단, 24시간 이상 지난 경우 자동 0단계로 복구)
+    if (now - lastSend > 24 * 60 * 60 * 1000) stage = 0;
+    else stage = Math.min(stage + 1, COOLDOWN_STAGE.length - 1);
+
+    cooldowns[interaction.user.id] = {
+      stage,
+      lastSend: now
+    };
+    saveCooldowns(cooldowns);
+
+    // 송금 처리
     const config = loadConfig();
     const feeRate = config.fee || 10; // 기본 10%
     let fromBalance = getBE(interaction.user.id);
@@ -40,7 +94,8 @@ module.exports = {
             `**${amount.toLocaleString('ko-KR')} 🔷 BE**를 <@${to.id}>에게 송금 완료!`,
             `\`사유:\` ${reason}`,
             `||수수료: **${fee.toLocaleString('ko-KR')} 🔷 BE**`,
-            `실제 출금액: **${outgo.toLocaleString('ko-KR')} 🔷 BE**||`
+            `실제 출금액: **${outgo.toLocaleString('ko-KR')} 🔷 BE**||`,
+            `\n🕒 다음 송금 가능: **${COOLDOWN_LABEL[stage]} 후**`
           ].join('\n'))
           .setColor(0x3399ff)
           .setTimestamp()
