@@ -35,7 +35,7 @@ module.exports = {
     if (role) {
       await interaction.deferReply({ ephemeral: false });
       await interaction.guild.members.fetch();
-      const members = interaction.guild.members.cache.filter(m => m.roles.cache.has(role.id) && !m.user.bot);
+      const members = interaction.guild.members.cache.filter(m => m.roles.cache.has(role.id));
 
       if (members.size === 0) {
         return interaction.editReply({
