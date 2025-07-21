@@ -20,7 +20,7 @@ function loadBE() {
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
 const formatAmount = n => Number(n).toLocaleString('ko-KR');
-const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715b7518075715dde84f97a9976a6b7a8&=&format=webp';
+const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715dde84f97a9976a6b7a8&=&format=webp';
 
 const PAGE_SIZE = 10;
 const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
@@ -40,6 +40,20 @@ function getTax(amount) {
   if (amount >=        1_000_000) return Math.floor(amount * 0.005);
   return Math.floor(amount * 0.001);
 }
+const TAX_TABLE = [
+  ["500만원 미만", "세금 면제"],
+  ["500만원 이상", "0.1%"],
+  ["1천만원 이상", "0.5%"],
+  ["5천만원 이상", "1%"],
+  ["1억 이상", "1.5%"],
+  ["5억 이상", "2%"],
+  ["10억 이상", "3.5%"],
+  ["50억 이상", "5%"],
+  ["100억 이상", "7.5%"],
+  ["500억 이상", "10%"],
+  ["1,000억 이상", "25%"],
+  ["1조 이상", "50%"]
+];
 
 function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
   let historyList = data.history || [];
@@ -111,7 +125,11 @@ function buildRow(page, maxPage, filter) {
     new ButtonBuilder()
       .setCustomId('spendonly')
       .setLabel('🔻 손해만')
-      .setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary)
+      .setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('taxinfo')
+      .setLabel('정수세 안내')
+      .setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -170,6 +188,45 @@ module.exports = {
       if (i.user.id !== interaction.user.id)
         return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
 
+      // 정수세 안내 버튼
+      if (i.customId === 'taxinfo') {
+        const nowTax = getTax(data.amount);
+
+        // 최근 5회 납부 기록 ("정수세"로 reason에 들어간 것만)
+        const recentTaxHistory = (data.history || [])
+          .filter(h => h.reason && h.reason.includes('정수세'))
+          .slice(-5)
+          .reverse();
+
+        let taxHistoryText = recentTaxHistory.length
+          ? recentTaxHistory.map(h =>
+              `• ${formatAmount(h.amount)} BE (${h.reason}) - <t:${Math.floor(h.timestamp/1000)}:R>`
+            ).join('\n')
+          : '최근 정수세 납부 내역이 없습니다.';
+
+        const tableText = TAX_TABLE.map(([cond, rate]) => `${cond.padEnd(9)}: ${rate}`).join('\n');
+        const infoEmbed = new EmbedBuilder()
+          .setTitle('💸 정수세 안내')
+          .setColor(0x4bb0fd)
+          .setDescription([
+            '※ 정수세는 매일 18:00에 자동으로 납부됩니다.',
+            '',
+            '**정수세 누진세율 표**',
+            '```',
+            tableText,
+            '```',
+            `**현재 잔액 기준 납부 예정 세금:**\n> ${formatAmount(nowTax)} BE`,
+            '',
+            '**최근 정수세 납부 기록**',
+            taxHistoryText
+          ].join('\n'))
+          .setFooter({ text: '정수세는 [세율표]에 따라 실시간 변동될 수 있습니다.' });
+
+        await i.reply({ embeds: [infoEmbed], ephemeral: true });
+        return;
+      }
+
+      // 기존 페이지네이션 등 유지
       // 새로고침 시점마다 BE 다시 로딩
       const freshBE = loadBE();
       const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
