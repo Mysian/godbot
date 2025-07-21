@@ -218,7 +218,8 @@ module.exports = {
           { name: '장기 미접속 유저', value: 'long' },
           { name: '비활동 신규 유저', value: 'newbie' },
           { name: '음성채널 알림 설정', value: 'voice_notify' },
-          { name: '음성채널 자동이동 설정', value: 'voice_auto' }
+          { name: '음성채널 자동이동 설정', value: 'voice_auto' },
+          { name: '세금누락 강제처리', value: 'tax_force' }
         )
     ),
   async execute(interaction) {
@@ -323,6 +324,26 @@ module.exports = {
       });
       return;
     }
+
+    // 세금 누락건 처리
+    if (option === 'tax_force') {
+  await interaction.editReply({ content: '세금 누락 강제 처리 중...', ephemeral: true });
+
+  const { collectTaxFromSnapshot } = require('../utils/tax-collect.js');
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const result = await collectTaxFromSnapshot(interaction.client, `${yyyy}-${mm}-${dd}`);
+
+  if (result?.error) {
+    await interaction.followUp({ content: `❌ 오늘 스냅샷 파일이 없어 처리에 실패했어!`, ephemeral: true });
+  } else {
+    await interaction.followUp({ content: `💸 오늘 정수세 누락 강제징수 완료!\n총 세금: ${result.totalTax.toLocaleString('ko-KR')} BE`, ephemeral: true });
+  }
+  return;
+}
+    
     // ============ 기존 기능(유저 목록) ============
     if (option === 'long') {
       title = '장기 미접속 유저';
