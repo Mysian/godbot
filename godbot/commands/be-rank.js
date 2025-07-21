@@ -40,16 +40,33 @@ module.exports = {
     .setDescription('파랑 정수 보유 TOP20 유저를 확인합니다.'),
   async execute(interaction) {
     const be = loadBE();
+    const guild = interaction.guild;
+    const serverName = guild?.name || '까리한 디스코드';
+    const serverIcon = guild?.iconURL() || null;
+
+    // guild 멤버 중 봇 ID 모음
+    await guild.members.fetch();
+    const botIds = guild.members.cache.filter(m => m.user.bot).map(m => m.user.id);
+
+    // 봇 계정은 제외한 BE만 대상으로 랭킹 계산
+    const entries = Object.entries(be)
+      .filter(([id]) => !botIds.includes(id));
+
     // TOP 20만 추출, amount 내림차순
-    const sorted = Object.entries(be)
+    const sorted = entries
       .map(([id, data]) => ({ id, ...data }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 20);
 
-    // 서버 이름/프사
-    const guild = interaction.guild;
-    const serverName = guild?.name || '까리한 디스코드';
-    const serverIcon = guild?.iconURL() || null;
+    // 본인 랭킹 찾기
+    const userId = interaction.user.id;
+    const userEntry = entries
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => b.amount - a.amount)
+      .findIndex(user => user.id === userId);
+
+    const userRank = userEntry === -1 ? null : userEntry + 1;
+    const userAmount = be[userId]?.amount ?? 0;
 
     // 랭킹 텍스트
     let rankText = sorted.length > 0
@@ -59,17 +76,24 @@ module.exports = {
         }).join('\n')
       : '아직 정수 보유자가 없습니다!';
 
+    // 내 순위/금액 하단 표기
+    let myText = '';
+    if (userRank) {
+      myText = `\n\n👑 **당신의 순위: ${userRank}위 / 보유 BE: ${formatAmount(userAmount)}**`;
+    } else {
+      myText = `\n\n👑 **당신의 BE 순위 정보가 없습니다.**`;
+    }
+
     // 임베드
     const embed = new EmbedBuilder()
       .setTitle(`🏆 파랑 정수 랭킹 TOP 20`)
-      .setDescription(rankText)
+      .setDescription(rankText + myText)
       .setColor(0x3399ff)
       .setFooter({
         text: `/정수획득 명령어로 파랑 정수를 획득할 수 있습니다`,
         iconURL: serverIcon || undefined
       });
 
-    // 임베드 상단에 서버 정보 넣기
     if (serverIcon) {
       embed.setAuthor({ name: serverName, iconURL: serverIcon });
       embed.setThumbnail(serverIcon);
