@@ -102,14 +102,18 @@ module.exports = {
       sc.setName('세금')
         .setDescription('누적 세금풀 및 최근 정수세 납부내역 조회')
     )
-    .addUserOption(opt =>
-      opt.setName('유저')
-        .setDescription('조회할 대상 유저 (입력 안하면 본인)')
-        .setRequired(false)
+    .addSubcommand(sc =>
+      sc.setName('개인')
+        .setDescription('본인 또는 특정 유저의 BE 내역을 조회')
+        .addUserOption(opt =>
+          opt.setName('유저')
+            .setDescription('조회할 대상 유저 (입력 안하면 본인)')
+            .setRequired(false)
+        )
     ),
   async execute(interaction) {
     // 세금풀 서브명령 처리
-    if (interaction.options.getSubcommand && interaction.options.getSubcommand() === '세금') {
+    if (interaction.options.getSubcommand() === '세금') {
       const pool = loadTaxPool();
       const embed = new EmbedBuilder()
         .setTitle('💰 정수세 세금풀 현황')
@@ -126,89 +130,25 @@ module.exports = {
       return;
     }
 
-    // 기존 유저별 조회
-    const targetUser = interaction.options.getUser('유저') || interaction.user;
-    const be = loadBE();
-    const data = be[targetUser.id];
+    // 개인/유저별 조회
+    if (interaction.options.getSubcommand() === '개인') {
+      const targetUser = interaction.options.getUser('유저') || interaction.user;
+      const be = loadBE();
+      const data = be[targetUser.id];
 
-    if (!data) {
-      await interaction.reply({
-        content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    let page = 1;
-    let filter = FILTERS.ALL;
-    let searchTerm = '';
-    let historyList = data.history || [];
-    let filteredHistory = historyList;
-    if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
-    if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
-    if (filter === FILTERS.SEARCH && searchTerm) {
-      filteredHistory = historyList.filter(h =>
-        (h.reason && h.reason.includes(searchTerm)) ||
-        String(h.amount).includes(searchTerm)
-      );
-    }
-    let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
-
-    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
-    const row = buildRow(page, maxPage, filter);
-
-    const msg = await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      ephemeral: true,
-      fetchReply: true
-    });
-
-    // 5분 동안 상호작용 가능
-    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300_000 });
-
-    collector.on('collect', async i => {
-      if (i.user.id !== interaction.user.id)
-        return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
-
-      // 새로고침 시점마다 BE 다시 로딩
-      const freshBE = loadBE();
-      const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
-      historyList = freshData.history || [];
-
-      if (i.customId === 'prev') page--;
-      if (i.customId === 'next') page++;
-      if (i.customId === 'earnonly') {
-        filter = filter === FILTERS.EARN ? FILTERS.ALL : FILTERS.EARN;
-        searchTerm = '';
-        page = 1;
-      }
-      if (i.customId === 'spendonly') {
-        filter = filter === FILTERS.SPEND ? FILTERS.ALL : FILTERS.SPEND;
-        searchTerm = '';
-        page = 1;
-      }
-      if (i.customId === 'search') {
-        // 모달 customId에 유저ID 포함
-        const modal = new ModalBuilder()
-          .setCustomId(`be_search_modal_${targetUser.id}`)
-          .setTitle('거래내역 검색');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('searchTerm')
-              .setLabel('검색어(금액/사유 등)')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('예: 강화, 1000, 송금')
-              .setRequired(true)
-          )
-        );
-        await i.showModal(modal);
+      if (!data) {
+        await interaction.reply({
+          content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`,
+          ephemeral: true
+        });
         return;
       }
 
-      // 필터 적용
-      filteredHistory = historyList;
+      let page = 1;
+      let filter = FILTERS.ALL;
+      let searchTerm = '';
+      let historyList = data.history || [];
+      let filteredHistory = historyList;
       if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
       if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
       if (filter === FILTERS.SEARCH && searchTerm) {
@@ -217,20 +157,86 @@ module.exports = {
           String(h.amount).includes(searchTerm)
         );
       }
-      maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
-      page = Math.max(1, Math.min(page, maxPage));
+      let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
 
-      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm);
-      const newRow = buildRow(page, maxPage, filter);
+      const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
+      const row = buildRow(page, maxPage, filter);
 
-      await i.update({ embeds: [newEmbed], components: [newRow] });
-    });
+      const msg = await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true,
+        fetchReply: true
+      });
 
-    collector.on('end', async () => {
-      try {
-        await msg.edit({ components: [] });
-      } catch (e) { }
-    });
+      // 5분 동안 상호작용 가능
+      const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300_000 });
+
+      collector.on('collect', async i => {
+        if (i.user.id !== interaction.user.id)
+          return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
+
+        // 새로고침 시점마다 BE 다시 로딩
+        const freshBE = loadBE();
+        const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
+        historyList = freshData.history || [];
+
+        if (i.customId === 'prev') page--;
+        if (i.customId === 'next') page++;
+        if (i.customId === 'earnonly') {
+          filter = filter === FILTERS.EARN ? FILTERS.ALL : FILTERS.EARN;
+          searchTerm = '';
+          page = 1;
+        }
+        if (i.customId === 'spendonly') {
+          filter = filter === FILTERS.SPEND ? FILTERS.ALL : FILTERS.SPEND;
+          searchTerm = '';
+          page = 1;
+        }
+        if (i.customId === 'search') {
+          // 모달 customId에 유저ID 포함
+          const modal = new ModalBuilder()
+            .setCustomId(`be_search_modal_${targetUser.id}`)
+            .setTitle('거래내역 검색');
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('searchTerm')
+                .setLabel('검색어(금액/사유 등)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('예: 강화, 1000, 송금')
+                .setRequired(true)
+            )
+          );
+          await i.showModal(modal);
+          return;
+        }
+
+        // 필터 적용
+        filteredHistory = historyList;
+        if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
+        if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
+        if (filter === FILTERS.SEARCH && searchTerm) {
+          filteredHistory = historyList.filter(h =>
+            (h.reason && h.reason.includes(searchTerm)) ||
+            String(h.amount).includes(searchTerm)
+          );
+        }
+        maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
+        page = Math.max(1, Math.min(page, maxPage));
+
+        const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm);
+        const newRow = buildRow(page, maxPage, filter);
+
+        await i.update({ embeds: [newEmbed], components: [newRow] });
+      });
+
+      collector.on('end', async () => {
+        try {
+          await msg.edit({ components: [] });
+        } catch (e) { }
+      });
+    }
   }
 };
 
