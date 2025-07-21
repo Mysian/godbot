@@ -71,7 +71,7 @@ async function collectDailyTax(client) {
 
   // 로그 채널 안내
   if (client) {
-    const channel = client.channels.cache.get('로그채널ID여기에');
+    const channel = client.channels.cache.get('1380874052855529605');
     if (channel) {
       await channel.send(`💸 오늘의 정수세 납부가 완료되었습니다.\n총 세금: **${totalTax.toLocaleString('ko-KR')} BE**\n세금풀 적립 완료!`);
     }
