@@ -1,16 +1,19 @@
-const { 
-  SlashCommandBuilder, 
-  EmbedBuilder, 
-  ActionRowBuilder, 
-  ButtonBuilder, 
-  ButtonStyle, 
-  ModalBuilder, 
-  TextInputBuilder, 
-  TextInputStyle, 
-  ComponentType 
+// godbot/commands/be-check.js
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ComponentType
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { loadTaxPool } = require('./tax-collect.js');
+
 const bePath = path.join(__dirname, '../data/BE.json');
 
 function loadBE() {
@@ -95,12 +98,35 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수조회')
     .setDescription('파랑 정수(BE) 잔액과 최근 거래내역을 확인합니다.')
+    .addSubcommand(sc =>
+      sc.setName('세금')
+        .setDescription('누적 세금풀 및 최근 정수세 납부내역 조회')
+    )
     .addUserOption(opt =>
       opt.setName('유저')
         .setDescription('조회할 대상 유저 (입력 안하면 본인)')
         .setRequired(false)
     ),
   async execute(interaction) {
+    // 세금풀 서브명령 처리
+    if (interaction.options.getSubcommand && interaction.options.getSubcommand() === '세금') {
+      const pool = loadTaxPool();
+      const embed = new EmbedBuilder()
+        .setTitle('💰 정수세 세금풀 현황')
+        .setDescription(`누적 세금풀: **${pool.pool.toLocaleString('ko-KR')} BE**`)
+        .addFields(
+          ...(pool.history.slice(-5).reverse().map((h, idx) => ({
+            name: `#${pool.history.length - idx} 납부 (총 ${h.amount.toLocaleString('ko-KR')} BE)`,
+            value: `${new Date(h.date).toLocaleString('ko-KR')} | ${h.users.length}명 납부`
+          })))
+        )
+        .setColor(0x3399ff)
+        .setFooter({ text: '※ 최근 5회 납부 기록만 표시됨' });
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    // 기존 유저별 조회
     const targetUser = interaction.options.getUser('유저') || interaction.user;
     const be = loadBE();
     const data = be[targetUser.id];
