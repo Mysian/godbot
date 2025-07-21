@@ -934,6 +934,15 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
+const { collectDailyTax } = require('./utils/tax-collect.js');
+const cron = require('node-cron');
+
+// 매일 오후 6시 자동 납부
+cron.schedule('0 18 * * *', async () => {
+  await collectDailyTax(global.client); // client 주입
+  console.log('정수세 납부 완료');
+});
+
 // === 간단 코인 시세 조회 (!영갓코인 등) ===
 const lockfile = require('proper-lockfile');
 const coinsPath = path.join(__dirname, './data/godbit-coins.json');
