@@ -883,21 +883,20 @@ if (interaction.customId === 'rps_bet_modal') {
 
         let msg = `너: **${userPick}**\n상대: **${botPick}**\n\n`;
         if (result === 'win') {
-          setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
-          msg += `🎉 승리! **${comma(Math.floor(bet * 1.9))} BE** 획득!`;
-          await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-          unlock(userId);
-        } else if (result === 'lose') {
-          setUserBe(userId, -bet, '가위바위보 패배');
-          msg += `💀 패배! 배팅금 **${comma(bet)} BE** 소멸!`;
-          await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-          unlock(userId);
-        } else { // draw
-          msg += `🤝 무승부! 배팅금 **${comma(bet)} BE** 반환!`;
-          setUserBe(userId, bet, '가위바위보 무승부 환불');
-          await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
-          unlock(userId);
-        }
+  setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
+  msg += `🎉 승리! **${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+  await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+  unlock(userId);
+} else if (result === 'lose') {
+  setUserBe(userId, -bet, '가위바위보 패배');
+  msg += `💀 패배! 배팅금 **${comma(bet)} BE** 소멸!`;
+  await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+  unlock(userId);
+} else { // draw
+  msg += `🤝 무승부! 아무런 변화 없음!`;
+  await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
+  unlock(userId);
+}
       })
       .on('end', async (_, reason) => {
         if (reason === 'time') {
