@@ -1,9 +1,10 @@
 // godbot/commands/tax-collect.js
-const { loadBE, saveBE } = require('../commands/be-util.js');
+const { loadBE, saveBE, addBE } = require('../commands/be-util.js');
 const fs = require('fs');
 const path = require('path');
 const taxPoolPath = path.join(__dirname, '../data/tax-pool.json');
 const SNAPSHOT_DIR = path.join(__dirname, '../data/');
+const GODBOT_ID = '1380841362752274504'; // 너의 갓봇 사용자ID!
 
 // 세금률 산정 함수
 function getTaxRate(amount) {
@@ -98,11 +99,14 @@ async function collectTaxFromSnapshot(client, date = null) {
   if (taxPool.history.length > 1000) taxPool.history = taxPool.history.slice(-1000);
   saveTaxPool(taxPool);
 
+  // === 갓봇 계정에 입금 (락/히스토리 자동!)
+  await addBE(GODBOT_ID, totalTax, "정수세 수납");
+
   // 로그 채널 안내
   if (client) {
     const channel = client.channels.cache.get('1380874052855529605');
     if (channel) {
-      await channel.send(`💸 오늘의 정수세 납부가 완료되었습니다.\n총 세금: **${totalTax.toLocaleString('ko-KR')} BE**\n세금풀 적립 완료!`);
+      await channel.send(`💸 오늘의 정수세 납부가 완료되었습니다.\n총 세금: **${totalTax.toLocaleString('ko-KR')} BE**\n세금풀 적립 및 갓봇 계정 입금 완료!`);
     }
   }
   return { totalTax, taxedUsers };
@@ -110,7 +114,6 @@ async function collectTaxFromSnapshot(client, date = null) {
 
 // === 호환성: 기존 방식도 남겨둠 ===
 async function collectDailyTax(client) {
-  // 기본은 오늘 날짜 스냅샷 기준
   return await collectTaxFromSnapshot(client);
 }
 
