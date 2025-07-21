@@ -20,7 +20,7 @@ function loadBE() {
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
 const formatAmount = n => Number(n).toLocaleString('ko-KR');
-const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715dde84f97a9976a6b7a8&=&format=webp';
+const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715b7518075715dde84f97a9976a6b7a8&=&format=webp';
 
 const PAGE_SIZE = 10;
 const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
@@ -103,7 +103,8 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
 }
 
 function buildRow(page, maxPage, filter) {
-  return new ActionRowBuilder().addComponents(
+  // 1번째 줄 (페이지, 검색, 이익/손해)
+  const mainRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('prev')
       .setLabel('◀ 이전')
@@ -125,12 +126,16 @@ function buildRow(page, maxPage, filter) {
     new ButtonBuilder()
       .setCustomId('spendonly')
       .setLabel('🔻 손해만')
-      .setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary),
+      .setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary)
+  );
+  // 2번째 줄 (정수세 안내만)
+  const taxInfoRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('taxinfo')
       .setLabel('정수세 안내')
       .setStyle(ButtonStyle.Secondary)
   );
+  return [mainRow, taxInfoRow];
 }
 
 module.exports = {
@@ -172,11 +177,11 @@ module.exports = {
     let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
 
     const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
-    const row = buildRow(page, maxPage, filter);
+    const rows = buildRow(page, maxPage, filter);
 
     const msg = await interaction.reply({
       embeds: [embed],
-      components: [row],
+      components: rows,
       ephemeral: true,
       fetchReply: true
     });
@@ -277,9 +282,9 @@ module.exports = {
       page = Math.max(1, Math.min(page, maxPage));
 
       const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm);
-      const newRow = buildRow(page, maxPage, filter);
+      const newRows = buildRow(page, maxPage, filter);
 
-      await i.update({ embeds: [newEmbed], components: [newRow] });
+      await i.update({ embeds: [newEmbed], components: newRows });
     });
 
     collector.on('end', async () => {
@@ -313,7 +318,7 @@ module.exports.modal = async function(interaction) {
   let filter = FILTERS.SEARCH;
 
   const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
-  const row = buildRow(page, maxPage, filter);
+  const rows = buildRow(page, maxPage, filter);
 
-  await interaction.update({ embeds: [embed], components: [row] });
+  await interaction.update({ embeds: [embed], components: rows });
 };
