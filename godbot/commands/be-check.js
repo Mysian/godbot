@@ -12,7 +12,6 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { loadTaxPool } = require('../utils/tax-collect.js');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 
@@ -105,30 +104,6 @@ module.exports = {
     ),
   async execute(interaction) {
     const userOpt = interaction.options.getUser('유저');
-
-    // "갓봇" 유저 체크 (봇 자체 세금풀)
-    // 디스코드에서 봇 유저(이 명령어 실행하는 bot)를 선택했는지 판별
-    const botUser = interaction.client.user;
-
-    if (userOpt && userOpt.id === botUser.id) {
-      // 세금풀 현황 출력
-      const pool = loadTaxPool();
-      const embed = new EmbedBuilder()
-        .setTitle('💰 정수세 세금풀 현황')
-        .setDescription(`누적 세금풀: **${pool.pool.toLocaleString('ko-KR')} BE**`)
-        .addFields(
-          ...(pool.history.slice(-5).reverse().map((h, idx) => ({
-            name: `#${pool.history.length - idx} 납부 (총 ${h.amount.toLocaleString('ko-KR')} BE)`,
-            value: `${new Date(h.date).toLocaleString('ko-KR')} | ${h.users.length}명 납부`
-          })))
-        )
-        .setColor(0x3399ff)
-        .setFooter({ text: '※ 최근 5회 납부 기록만 표시됨' });
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-      return;
-    }
-
-    // 개인/유저별 조회 (유저 옵션 없으면 본인)
     const targetUser = userOpt || interaction.user;
     const be = loadBE();
     const data = be[targetUser.id];
@@ -238,7 +213,6 @@ module.exports = {
 
 // ==== 모달 핸들러 (본인/타인 모두 지원) ====
 module.exports.modal = async function(interaction) {
-  // customId: be_search_modal_유저ID
   let userId = interaction.user.id;
   let targetUser = interaction.user;
   const idFromCustomId = interaction.customId.split("_")[3];
