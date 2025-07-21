@@ -25,6 +25,22 @@ const EMBED_IMAGE = 'https://media.discordapp.net/attachments/138872899378794091
 const PAGE_SIZE = 10;
 const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
 
+// 정수세 납부액 계산
+function getTax(amount) {
+  if (amount < 5_000_000) return 0;
+  if (amount >= 1_000_000_000_000) return Math.floor(amount * 0.5);
+  if (amount >=   10_000_000_000) return Math.floor(amount * 0.25);
+  if (amount >=    5_000_000_000) return Math.floor(amount * 0.10);
+  if (amount >=    1_000_000_000) return Math.floor(amount * 0.075);
+  if (amount >=      500_000_000) return Math.floor(amount * 0.05);
+  if (amount >=      100_000_000) return Math.floor(amount * 0.035);
+  if (amount >=       50_000_000) return Math.floor(amount * 0.02);
+  if (amount >=       10_000_000) return Math.floor(amount * 0.015);
+  if (amount >=        5_000_000) return Math.floor(amount * 0.01);
+  if (amount >=        1_000_000) return Math.floor(amount * 0.005);
+  return Math.floor(amount * 0.001);
+}
+
 function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
   let historyList = data.history || [];
   if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
