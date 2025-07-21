@@ -12,17 +12,20 @@ function loadBE() {
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
 
-// 금액 포맷 함수 (1억 이상 약 O억 X천만원)
+// 금액 포맷 함수 (1억 미만: 숫자, 1억~100억: 약 O억 X천만원, 100억 이상: 자산가)
 function formatAmount(n) {
   n = Math.floor(Number(n));
   if (n < 100_000_000) {
     // 1억 미만: 그냥 숫자 표기
     return n.toLocaleString('ko-KR');
+  } else if (n >= 10_000_000_000) {
+    // 100억 이상: 자산가 표기
+    return `100억 이상의 자산가`;
   } else {
-    // 1억원 이상: 약 O억 X천만원 (천만원 단위)
-    const eok = Math.floor(n / 100_000_000); // 억
+    // 1억원 이상~100억 미만: 약 O억 X천만원 (천만원 단위)
+    const eok = Math.floor(n / 100_000_000);
     const remain = n % 100_000_000;
-    const chonman = Math.floor(remain / 10_000_000); // 천만원
+    const chonman = Math.floor(remain / 10_000_000);
     if (chonman === 0) {
       return `약 ${eok}억`;
     } else {
