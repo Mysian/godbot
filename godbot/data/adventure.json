@@ -1,1 +1,79 @@
-{}
+{
+  "269837995820056586": {
+    "stage": 10,
+    "hp": 20380,
+    "reward": 32,
+    "clear": 10,
+    "inBattle": false,
+    "monster": {
+      "name": "바람의 드래곤",
+      "hp": 0
+    }
+  },
+  "403164325595971584": {
+    "stage": 10,
+    "hp": 765,
+    "reward": 0,
+    "clear": 9,
+    "inBattle": true,
+    "monster": {
+      "name": "바람의 드래곤",
+      "hp": 1449
+    }
+  },
+  "638742607861645372": {
+    "stage": 1,
+    "hp": 650,
+    "reward": 0,
+    "clear": 0,
+    "inBattle": false,
+    "monster": {
+      "name": "푸른 파수꾼",
+      "hp": 68
+    }
+  },
+  "395719866881146881": {
+    "stage": 11,
+    "hp": 900,
+    "reward": 32,
+    "clear": 10,
+    "inBattle": false,
+    "monster": {
+      "name": "칼날부리",
+      "hp": 248
+    }
+  },
+  "285645561582059520": {
+    "stage": 18,
+    "hp": 725,
+    "reward": 32,
+    "clear": 20,
+    "inBattle": false,
+    "monster": {
+      "name": "어스름 늑대",
+      "hp": 0
+    }
+  },
+  "490417019028504597": {
+    "stage": 15,
+    "hp": 1600,
+    "reward": 32,
+    "clear": 14,
+    "inBattle": false,
+    "monster": {
+      "name": "협곡의 전령",
+      "hp": 320
+    }
+  },
+  "1054727468692541521": {
+    "stage": 30,
+    "hp": 2525,
+    "reward": 71,
+    "clear": 29,
+    "inBattle": false,
+    "monster": {
+      "name": "화염의 드래곤",
+      "hp": 3717
+    }
+  }
+}

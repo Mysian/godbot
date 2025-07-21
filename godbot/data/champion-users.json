@@ -235,14 +235,14 @@
   },
   "822301411554754591": {
     "name": "케이틀린",
-    "level": 177,
-    "success": 169,
+    "level": 193,
+    "success": 179,
     "stats": {
-      "attack": 5166.5,
-      "ap": 2327,
-      "hp": 87310,
-      "defense": 1684,
-      "penetration": 114
+      "attack": 6090.5,
+      "ap": 2758,
+      "hp": 102870,
+      "defense": 1988,
+      "penetration": 122
     },
     "timestamp": 1750662997967
   },
@@ -259,19 +259,6 @@
     },
     "timestamp": 1750663033601
   },
-  "285645561582059520": {
-    "name": "아트록스",
-    "level": 5,
-    "success": 0,
-    "stats": {
-      "attack": 74.5,
-      "ap": 1,
-      "hp": 725,
-      "defense": 41,
-      "penetration": 25
-    },
-    "timestamp": 1750930350135
-  },
   "353475063116464130": {
     "name": "카이사",
     "level": 113,
@@ -284,5 +271,57 @@
       "penetration": 26
     },
     "timestamp": 1750930404050
+  },
+  "285645561582059520": {
+    "name": "헤카림",
+    "level": 7,
+    "success": 5,
+    "stats": {
+      "attack": 96,
+      "ap": 7,
+      "hp": 1105,
+      "defense": 43,
+      "penetration": 28
+    },
+    "timestamp": 1752564078068
+  },
+  "1054727468692541521": {
+    "name": "아칼리",
+    "level": 56,
+    "success": 50,
+    "stats": {
+      "attack": 282,
+      "ap": 657,
+      "hp": 11075,
+      "defense": 216,
+      "penetration": 48
+    },
+    "timestamp": 1752564120791
+  },
+  "242315387285274624": {
+    "name": "잭스",
+    "level": 15,
+    "success": 12,
+    "stats": {
+      "attack": 147,
+      "ap": 26,
+      "hp": 1995,
+      "defense": 56,
+      "penetration": 31
+    },
+    "timestamp": 1752587010783
+  },
+  "690922971015151646": {
+    "name": "타릭",
+    "level": 1,
+    "success": 0,
+    "stats": {
+      "attack": 38,
+      "ap": 35,
+      "hp": 670,
+      "defense": 46,
+      "penetration": 15
+    },
+    "timestamp": 1752706145816
   }
 }

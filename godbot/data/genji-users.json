@@ -1,1 +1,266 @@
-{}
+{
+  "285645561582059520": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 17,
+    "reward": 596,
+    "inBattle": false,
+    "enemy": {
+      "name": "일리아리",
+      "hp": 218,
+      "hpmax": 218,
+      "attack": 45,
+      "defense": 11,
+      "crit": 0.22005263325669894,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528476601159791/02rvtwno.png?ex=68566572&is=685513f2&hm=d9623b58ba728dec8e8722da038a217f4efae6e1e93ca54479f4c49829270969&=&format=webp&quality=lossless",
+      "stage": 6
+    }
+  },
+  "353475063116464130": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 12,
+    "reward": 437,
+    "inBattle": false,
+    "enemy": {
+      "name": "주노",
+      "hp": 11,
+      "hpmax": 149,
+      "attack": 34,
+      "defense": 9,
+      "crit": 0.21373061229888718,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528475686801468/i7b0hg2q.png?ex=68566572&is=685513f2&hm=28329dfca363bcd1c92db2e7f9e5ed1a4ea657122d373507fe24ad6cd351c9db&=&format=webp&quality=lossless",
+      "stage": 3
+    }
+  },
+  "269837995820056586": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 17,
+    "reward": 648,
+    "inBattle": false,
+    "enemy": {
+      "name": "정커퀸",
+      "hp": 744,
+      "hpmax": 744,
+      "attack": 147,
+      "defense": 33,
+      "crit": 0.37971295986620385,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528474764185630/1hrup2mp.png?ex=68566572&is=685513f2&hm=a59ee9d57d31937510b7c69b4c50dcee24e2a3a5aa6fc95914085c527663dbc9&=&format=webp&quality=lossless",
+      "stage": 10
+    }
+  },
+  "822301411554754591": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 4,
+    "reward": 140,
+    "inBattle": false,
+    "enemy": {
+      "name": "마우가",
+      "hp": 51,
+      "hpmax": 195,
+      "attack": 41,
+      "defense": 11,
+      "crit": 0.20766481830185343,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528476353953842/btqzxg7c.png?ex=68566572&is=685513f2&hm=123b3b1a0d2a0ace0318b9ff4c8798c5244de8940a919852bcfbba4be4baf625&=&format=webp&quality=lossless",
+      "stage": 5
+    }
+  },
+  "783512002651750430": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": 0,
+    "clear": 0,
+    "reward": 0,
+    "inBattle": false,
+    "enemy": {
+      "name": "프레야",
+      "hp": 103,
+      "hpmax": 103,
+      "attack": 27,
+      "defense": 7,
+      "crit": 0.17594858433788024,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528475103920148/tpj8m23v.png?ex=68566572&is=685513f2&hm=1d8e40b584daca18496dca369c666d037806e196a193e41c83c118d5746427c8&=&format=webp&quality=lossless",
+      "stage": 1
+    }
+  },
+  "490417019028504597": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": true,
+    "clear": 6,
+    "reward": 224,
+    "inBattle": false,
+    "enemy": {
+      "name": "라이프위버",
+      "hp": 241,
+      "hpmax": 241,
+      "attack": 48,
+      "defense": 12,
+      "crit": 0.24673079181672916,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528476894756884/ak6q5hk6.png?ex=68566572&is=685513f2&hm=dc557fb01f5f5489f195a56ad3d832c7a081fe6da13e4ee8f795a1b9a454b533&=&format=webp&quality=lossless",
+      "stage": 7
+    }
+  },
+  "152389763842703360": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 1,
+    "reward": 32,
+    "inBattle": false,
+    "enemy": {
+      "name": "헤저드",
+      "hp": 14,
+      "hpmax": 126,
+      "attack": 31,
+      "defense": 8,
+      "crit": 0.2509693055951375,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528475422818345/48qawntw.png?ex=68566572&is=685513f2&hm=9a74f449bb55593bde47fc370da1b7168f5deab99e9556488152084c78bd6ada&=&format=webp&quality=lossless",
+      "stage": 2
+    }
+  },
+  "1106640146914353162": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 10,
+    "reward": 417,
+    "inBattle": false,
+    "enemy": {
+      "name": "소전",
+      "hp": 333,
+      "hpmax": 333,
+      "attack": 62,
+      "defense": 15,
+      "crit": 0.20552116041971688,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528506087374858/zy7ysg6x.png?ex=68566579&is=685513f9&hm=b1e1e96320314bcdc3f896ac9682fa01f249566bfbfe4a9135ad9e53ea47fe52&=&format=webp&quality=lossless",
+      "stage": 11
+    }
+  },
+  "1054727468692541521": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 13,
+    "reward": 451,
+    "inBattle": false,
+    "enemy": {
+      "name": "일리아리",
+      "hp": 218,
+      "hpmax": 218,
+      "attack": 45,
+      "defense": 11,
+      "crit": 0.2668716937534072,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528476601159791/02rvtwno.png?ex=68566572&is=685513f2&hm=d9623b58ba728dec8e8722da038a217f4efae6e1e93ca54479f4c49829270969&=&format=webp&quality=lossless",
+      "stage": 6
+    }
+  },
+  "242315387285274624": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 90,
+    "reward": 3121,
+    "inBattle": false,
+    "enemy": {
+      "name": "벤처",
+      "hp": 34,
+      "hpmax": 172,
+      "attack": 38,
+      "defense": 10,
+      "crit": 0.22507954786355175,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528476060221441/uegzomvq.png?ex=68566572&is=685513f2&hm=e10edb5a8a62b382346bbc557088d2004bd1b990be06901ca622e13a88e893c0&=&format=webp&quality=lossless",
+      "stage": 4
+    }
+  },
+  "690922971015151646": {
+    "stage": 1,
+    "hp": 120,
+    "stat": {
+      "hp": 120,
+      "attack": 35,
+      "defense": 10,
+      "crit": 0.2
+    },
+    "levelup": false,
+    "clear": 92,
+    "reward": 3295,
+    "inBattle": false,
+    "enemy": {
+      "name": "프레야",
+      "hp": 103,
+      "hpmax": 103,
+      "attack": 27,
+      "defense": 7,
+      "crit": 0.21669552101907388,
+      "image": "https://media.discordapp.net/attachments/1385523931577843842/1385528475103920148/tpj8m23v.png?ex=68566572&is=685513f2&hm=1d8e40b584daca18496dca369c666d037806e196a193e41c83c118d5746427c8&=&format=webp&quality=lossless",
+      "stage": 1
+    }
+  }
+}
