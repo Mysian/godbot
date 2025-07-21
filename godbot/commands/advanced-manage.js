@@ -329,20 +329,32 @@ module.exports = {
     if (option === 'tax_force') {
   await interaction.editReply({ content: '세금 누락 강제 처리 중...', ephemeral: true });
 
-  const { collectTaxFromSnapshot } = require('../utils/tax-collect.js');
+  const { collectTaxFromSnapshot, saveTaxSnapshot } = require('../utils/tax-collect.js');
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const dd = String(today.getDate()).padStart(2, '0');
-  const result = await collectTaxFromSnapshot(interaction.client, `${yyyy}-${mm}-${dd}`);
+  const dateStr = `${yyyy}-${mm}-${dd}`;
+
+  const path = require('path');
+  const fs = require('fs');
+  const SNAPSHOT_DIR = path.join(__dirname, '../data/');
+  const filename = path.join(SNAPSHOT_DIR, `tax-snapshot-${dateStr}.json`);
+
+  if (!fs.existsSync(filename)) {
+    saveTaxSnapshot();
+  }
+
+  const result = await collectTaxFromSnapshot(interaction.client, dateStr);
 
   if (result?.error) {
-    await interaction.followUp({ content: `❌ 오늘 스냅샷 파일이 없어 처리에 실패했어!`, ephemeral: true });
+    await interaction.followUp({ content: `❌ 스냅샷 파일 생성 후에도 에러! 관리자 문의 바람!`, ephemeral: true });
   } else {
     await interaction.followUp({ content: `💸 오늘 정수세 누락 강제징수 완료!\n총 세금: ${result.totalTax.toLocaleString('ko-KR')} BE`, ephemeral: true });
   }
   return;
 }
+
     
     // ============ 기존 기능(유저 목록) ============
     if (option === 'long') {
