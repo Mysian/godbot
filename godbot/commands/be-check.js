@@ -46,6 +46,18 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
       `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`
     ).join('\n') || "내역 없음";
 
+  const tax = getTax(data.amount);
+  let footerText = '';
+
+  if (filter === FILTERS.SEARCH && searchTerm)
+    footerText = `검색어: "${searchTerm}"`;
+  else if (filter === FILTERS.EARN)
+    footerText = '이익(earn)만 표시중';
+  else if (filter === FILTERS.SPEND)
+    footerText = '손해(spend)만 표시중';
+
+  footerText += (footerText ? ' | ' : '') + `오늘 18:00 정수세 예정: ${formatAmount(tax)} BE`;
+
   const embed = new EmbedBuilder()
     .setTitle(`💙 ${targetUser.tag}`)
     .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
@@ -54,14 +66,8 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
     )
     .setColor(0x3399ff)
     .setImage(EMBED_IMAGE)
-    .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 }));
-
-  if (filter === FILTERS.SEARCH && searchTerm)
-    embed.setFooter({ text: `검색어: "${searchTerm}"` });
-  else if (filter === FILTERS.EARN)
-    embed.setFooter({ text: '이익(earn)만 표시중' });
-  else if (filter === FILTERS.SPEND)
-    embed.setFooter({ text: '손해(spend)만 표시중' });
+    .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 }))
+    .setFooter({ text: footerText });
 
   return embed;
 }
