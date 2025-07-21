@@ -813,7 +813,7 @@ if (kind === 'alba') {
         .setTitle('블랙잭 배팅금 입력');
       const betInput = new TextInputBuilder()
         .setCustomId('blackjack_bet')
-        .setLabel('배팅할 금액 (100~10,000,000 BE)')
+        .setLabel('배팅할 금액 (1,000~1,000,000,000 BE)')
         .setStyle(TextInputStyle.Short)
         .setMinLength(1).setMaxLength(10).setPlaceholder('예: 50000');
       modal.addComponents(
