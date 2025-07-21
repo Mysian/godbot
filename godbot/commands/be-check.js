@@ -12,7 +12,7 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { loadTaxPool } = require('./tax-collect.js');
+const { loadTaxPool } = require('../utils/tax-collect.js');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 
