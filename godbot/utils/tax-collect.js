@@ -3,21 +3,22 @@ const { loadBE, saveBE } = require('../commands/be-util.js');
 const fs = require('fs');
 const path = require('path');
 const taxPoolPath = path.join(__dirname, '../data/tax-pool.json');
+const SNAPSHOT_DIR = path.join(__dirname, '../data/');
 
 // 세금률 산정 함수
 function getTaxRate(amount) {
   if (amount < 5_000_000) return 0;
-  if (amount >= 1_000_000_000_000) return 0.5;     // 1조 이상: 50%
-  if (amount >=   10_000_000_000) return 0.25;     // 1,000억 이상: 25%
-  if (amount >=    5_000_000_000) return 0.10;     // 500억 이상: 10%
-  if (amount >=    1_000_000_000) return 0.075;    // 100억 이상: 7.5%
-  if (amount >=      500_000_000) return 0.05;     // 50억 이상: 5%
-  if (amount >=      100_000_000) return 0.035;    // 10억 이상: 3.5%
-  if (amount >=       50_000_000) return 0.02;     // 5억 이상: 2%
-  if (amount >=       10_000_000) return 0.015;    // 1억 이상: 1.5%
-  if (amount >=        5_000_000) return 0.01;     // 5천만원 이상: 1%
-  if (amount >=        1_000_000) return 0.005;    // 1천만원 이상: 0.5%
-  return 0.001; // 500만원 이상: 0.1%
+  if (amount >= 1_000_000_000_000) return 0.5;
+  if (amount >=   10_000_000_000) return 0.25;
+  if (amount >=    5_000_000_000) return 0.10;
+  if (amount >=    1_000_000_000) return 0.075;
+  if (amount >=      500_000_000) return 0.05;
+  if (amount >=      100_000_000) return 0.035;
+  if (amount >=       50_000_000) return 0.02;
+  if (amount >=       10_000_000) return 0.015;
+  if (amount >=        5_000_000) return 0.01;
+  if (amount >=        1_000_000) return 0.005;
+  return 0.001;
 }
 
 // 세금풀 불러오기/저장
@@ -29,23 +30,52 @@ function saveTaxPool(pool) {
   fs.writeFileSync(taxPoolPath, JSON.stringify(pool, null, 2));
 }
 
-// 실제 세금 부과 실행
-async function collectDailyTax(client) {
+// 1. 17:55 스냅샷 저장 함수
+function saveTaxSnapshot() {
+  const be = loadBE();
+  const snapshot = {};
+  for (const [userId, data] of Object.entries(be)) {
+    snapshot[userId] = data.amount;
+  }
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const filename = path.join(SNAPSHOT_DIR, `tax-snapshot-${yyyy}-${mm}-${dd}.json`);
+  fs.writeFileSync(filename, JSON.stringify({
+    date: `${yyyy}-${mm}-${dd}`,
+    amounts: snapshot
+  }, null, 2));
+  return filename;
+}
+
+// 2. 18:00 스냅샷 기준 세금 징수 함수
+async function collectTaxFromSnapshot(client, date = null) {
+  const today = date
+    ? new Date(date)
+    : new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const filename = path.join(SNAPSHOT_DIR, `tax-snapshot-${yyyy}-${mm}-${dd}.json`);
+  if (!fs.existsSync(filename)) return { error: "스냅샷 파일 없음" };
+
+  const snap = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  const amounts = snap.amounts;
   const be = loadBE();
   let taxPool = loadTaxPool();
   let totalTax = 0;
   let taxedUsers = [];
   let now = Date.now();
 
-  for (const [userId, data] of Object.entries(be)) {
-    const amount = data.amount;
+  for (const [userId, amount] of Object.entries(amounts)) {
     const taxRate = getTaxRate(amount);
-    if (taxRate === 0) continue; // 면제
+    if (taxRate === 0) continue;
     const tax = Math.floor(amount * taxRate);
     if (tax <= 0) continue;
+    if (!be[userId]) continue;
     be[userId].amount -= tax;
     if (be[userId].amount < 0) be[userId].amount = 0;
-    // 히스토리 추가
     be[userId].history = be[userId].history || [];
     be[userId].history.push({
       type: "spend",
@@ -53,7 +83,6 @@ async function collectDailyTax(client) {
       reason: `일일 정수세 납부 (${(taxRate*100).toFixed(1)}%)`,
       timestamp: now
     });
-    // 세금풀 적립
     totalTax += tax;
     taxedUsers.push({ userId, tax, after: be[userId].amount });
   }
@@ -79,4 +108,15 @@ async function collectDailyTax(client) {
   return { totalTax, taxedUsers };
 }
 
-module.exports = { collectDailyTax, loadTaxPool };
+// === 호환성: 기존 방식도 남겨둠 ===
+async function collectDailyTax(client) {
+  // 기본은 오늘 날짜 스냅샷 기준
+  return await collectTaxFromSnapshot(client);
+}
+
+module.exports = {
+  saveTaxSnapshot,
+  collectTaxFromSnapshot,
+  collectDailyTax,
+  loadTaxPool
+};
