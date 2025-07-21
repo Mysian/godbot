@@ -912,8 +912,8 @@ if (interaction.customId === 'rps_bet_modal') {
 }
 
 
-    // === 블랙잭 모달 submit ===
-    if (interaction.customId === 'blackjack_bet_modal') {
+// === 블랙잭 모달 submit ===
+if (interaction.customId === 'blackjack_bet_modal') {
   const raw = interaction.fields.getTextInputValue('blackjack_bet').replace(/,/g, '');
   const bet = Math.floor(Number(raw));
   if (isNaN(bet) || bet < 100 || bet > 10000000) {
@@ -928,6 +928,17 @@ if (interaction.customId === 'rps_bet_modal') {
   let userHand = [drawCard(deck), drawCard(deck)];
   let dealerHand = [drawCard(deck), drawCard(deck)];
   let gameOver = false;
+
+  // 배당률 구간 함수 (1백만~5백만 / 5백만~1천만 구간 분리)
+  function getBlackjackPayoutRate(bet) {
+    if (bet >= 5000000)   return 1.4;   // 500만 ~ 1,000만
+    if (bet >= 1000000)   return 1.5;   // 100만 ~ 500만
+    if (bet >= 500000)    return 1.6;   // 50만 ~ 100만
+    if (bet >= 100000)    return 1.7;   // 10만 ~ 50만
+    if (bet >= 10000)     return 1.8;   // 1만 ~ 10만
+    return 1.95;                         // ~1만
+  }
+  const payoutRate = getBlackjackPayoutRate(bet);
 
   // 카드 이모지 변환 함수 (색상 강조)
   function cardStr(card) {
@@ -970,9 +981,9 @@ if (interaction.customId === 'rps_bet_modal') {
     if (state === 'playing' || state === 'start')
       desc += `\n카드를 더 받거나(히트), 멈출 수 있음!`;
     else if (state === 'bj')
-      desc += `\n\n🂡 **블랙잭! (첫 두 장 21)**\n**${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+      desc += `\n\n🂡 **블랙잭! (첫 두 장 21)**\n**${comma(Math.floor(bet * payoutRate))} BE** 획득!`;
     else if (state === 'win')
-      desc += `\n\n🎉 **승리! ${comma(Math.floor(bet * 1.9))} BE** 획득!`;
+      desc += `\n\n🎉 **승리! ${comma(Math.floor(bet * payoutRate))} BE** 획득!`;
     else if (state === 'draw')
       desc += `\n\n🤝 **무승부!** 배팅금 반환!`;
     else if (state === 'bust')
@@ -1002,7 +1013,7 @@ if (interaction.customId === 'rps_bet_modal') {
 
     // 첫 두장 블랙잭
     if (userVal === 21 && isFirst) {
-      setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리(첫 두장 21)');
+      setUserBe(userId, Math.floor(bet * payoutRate), '블랙잭 승리(첫 두장 21)');
       await intr.update({
         embeds: [getEmbed('bj')], components: [], ephemeral: true
       });
@@ -1033,7 +1044,7 @@ if (interaction.customId === 'rps_bet_modal') {
           // 승/무/패
           let state = 'lose';
           if (dealerVal > 21 || userVal > dealerVal) {
-            setUserBe(userId, Math.floor(bet * 1.9), '블랙잭 승리');
+            setUserBe(userId, Math.floor(bet * payoutRate), '블랙잭 승리');
             state = 'win';
           } else if (dealerVal === userVal) {
             state = 'draw';
@@ -1058,8 +1069,8 @@ if (interaction.customId === 'rps_bet_modal') {
   };
 
   // 게임 시작
-      gameStep(interaction, true);
-      return;
-    }
+  gameStep(interaction, true);
+  return;
+ }
   }
 };
