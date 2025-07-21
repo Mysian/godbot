@@ -1,5 +1,5 @@
 data/*.json
-!data/BE.json
+!BE.json
 utils/*.json
 /*.json
 .env
