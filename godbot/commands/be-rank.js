@@ -12,6 +12,25 @@ function loadBE() {
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
 
+// 금액 포맷 함수 (1억 이상 약 O억 X천만원)
+function formatAmount(n) {
+  n = Math.floor(Number(n));
+  if (n < 100_000_000) {
+    // 1억 미만: 그냥 숫자 표기
+    return n.toLocaleString('ko-KR');
+  } else {
+    // 1억원 이상: 약 O억 X천만원 (천만원 단위)
+    const eok = Math.floor(n / 100_000_000); // 억
+    const remain = n % 100_000_000;
+    const chonman = Math.floor(remain / 10_000_000); // 천만원
+    if (chonman === 0) {
+      return `약 ${eok}억`;
+    } else {
+      return `약 ${eok}억 ${chonman}천만원`;
+    }
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수순위')
@@ -28,9 +47,6 @@ module.exports = {
     const guild = interaction.guild;
     const serverName = guild?.name || '까리한 디스코드';
     const serverIcon = guild?.iconURL() || null;
-
-    // 금액 포맷 함수
-    const formatAmount = n => Math.floor(Number(n)).toLocaleString('ko-KR');
 
     // 랭킹 텍스트
     let rankText = sorted.length > 0
