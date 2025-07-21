@@ -1,13 +1,13 @@
 {
   "285645561582059520": {
-    "statusMsg": "반갑습니다. 영갓이에요",
+    "statusMsg": "안녕하실까요?",
     "favGames": [
       "칼바람",
       "롤체",
       "에펙"
     ],
     "owTier": "플래티넘/딜러",
-    "lolTier": "언랭",
+    "lolTier": "칼바람 선호",
     "steamNick": "YoungGod",
     "lolNick": "고슈진사마#KR1",
     "bnetNick": "YoungGod#11755"
@@ -41,14 +41,14 @@
   "1255342003508478044": {
     "statusMsg": "",
     "favGames": [],
-    "owTier": "",
+    "owTier": "플래티넘/힐러",
     "lolTier": "",
     "steamNick": "",
     "lolNick": "",
     "bnetNick": ""
   },
   "822301411554754591": {
-    "statusMsg": "오렌지😺🍊",
+    "statusMsg": "오렌지 쪼아",
     "favGames": [],
     "owTier": "",
     "lolTier": "",
@@ -149,6 +149,454 @@
     "lolTier": "골드/원딜",
     "steamNick": "tommy",
     "lolNick": "토오미이#토오밍",
+    "bnetNick": ""
+  },
+  "836613263243476992": {
+    "statusMsg": "",
+    "favGames": [
+      "오버워치",
+      "롤",
+      "롤체"
+    ],
+    "owTier": "탱딜/미배치, 힐러/마스터",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "사악함을 벌하는 심판의 빛",
+    "bnetNick": "YEON"
+  },
+  "395719866881146881": {
+    "statusMsg": "",
+    "favGames": [
+      "롤",
+      "오버워치",
+      "에이펙스 레전드"
+    ],
+    "owTier": "플레티넘2/딜러",
+    "lolTier": "플래티넘/미드",
+    "steamNick": "dorong",
+    "lolNick": "도롱뇽#0000",
+    "bnetNick": "도롱#31325"
+  },
+  "1161257460221354064": {
+    "statusMsg": "쮜직.",
+    "favGames": [
+      "오버워치",
+      "마비노기 모바일",
+      "그 외 스팀게임"
+    ],
+    "owTier": "다이아5/탱커",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "333870852850450433": {
+    "statusMsg": "",
+    "favGames": [
+      "롤",
+      "발로란트",
+      "오버워치"
+    ],
+    "owTier": "",
+    "lolTier": "플레티넘/원딜",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "1114510682021441536": {
+    "statusMsg": "",
+    "favGames": [
+      "마피아42",
+      "데바데",
+      "이터널 리턴"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "sychang",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "417331366557122580": {
+    "statusMsg": "",
+    "favGames": [
+      "오버워치",
+      "오버워치",
+      "오버워치"
+    ],
+    "owTier": "골드/탱커",
+    "lolTier": "",
+    "steamNick": "Semper",
+    "lolNick": "",
+    "bnetNick": "Semper"
+  },
+  "549954448298999810": {
+    "statusMsg": "",
+    "favGames": [
+      "롤",
+      "롤토체스",
+      "같이 하자고 하는 겜 아무거나"
+    ],
+    "owTier": "",
+    "lolTier": "마스터/아무데나",
+    "steamNick": "",
+    "lolNick": "후수니#KR1",
+    "bnetNick": ""
+  },
+  "344891846465552384": {
+    "statusMsg": "에이멘",
+    "favGames": [
+      "테라리아",
+      "롤",
+      "배그"
+    ],
+    "owTier": "언랭크/딜러",
+    "lolTier": "브론즈/미드",
+    "steamNick": "tofindnostalgia",
+    "lolNick": "Bgle#KR1",
+    "bnetNick": "시도때도없이개소리"
+  },
+  "300573554766774272": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "burujua",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "249210909992550400": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "265112507700477952": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "287036502158868493": {
+    "statusMsg": "mbti nf이신분 친추주세요",
+    "favGames": [
+      "몬헌시리즈",
+      "롤",
+      "오버워치"
+    ],
+    "owTier": "브론즈",
+    "lolTier": "아이언2",
+    "steamNick": "TETORU",
+    "lolNick": "크림팡#KR1",
+    "bnetNick": "은방울꽃#31544"
+  },
+  "917715224251994112": {
+    "statusMsg": "",
+    "favGames": [
+      "워썬더",
+      "발로란트",
+      "콜오브듀티"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "269837995820056586": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "골드/딜러",
+    "lolTier": "",
+    "steamNick": "kyuho0614",
+    "lolNick": "까까규호#0412",
+    "bnetNick": ""
+  },
+  "490417019028504597": {
+    "statusMsg": "",
+    "favGames": [
+      "마인크래프트",
+      "롤",
+      "리썰"
+    ],
+    "owTier": "골드/딜러",
+    "lolTier": "브론즈/미드",
+    "steamNick": "",
+    "lolNick": "우리집댕댕이나서스#서스물어",
+    "bnetNick": ""
+  },
+  "383494229676130306": {
+    "statusMsg": "야옹",
+    "favGames": [
+      "롤 스팀 마크"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "SFM",
+    "lolNick": "SCP3114#SCP",
+    "bnetNick": ""
+  },
+  "445590914874998794": {
+    "statusMsg": "123",
+    "favGames": [
+      "롤체"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "270048566699884544": {
+    "statusMsg": "",
+    "favGames": [
+      "테일즈런너",
+      "콜오브듀티",
+      "발로란트"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "592216779921555513": {
+    "statusMsg": "",
+    "favGames": [
+      "발로란트",
+      "서든어택"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "871253558488625175": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "341100979363643393": {
+    "statusMsg": "",
+    "favGames": [
+      "워프레임",
+      "퍼스트 디센던트",
+      "더 크루"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "노란매실",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "362413312954204160": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "1054727468692541521": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "783512002651750430": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "366452048339795971": {
+    "statusMsg": "흠냐냐",
+    "favGames": [
+      "데바데",
+      "로스트아크"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "751267368696807424": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "370497595358969856": {
+    "statusMsg": "극 I 아싸",
+    "favGames": [
+      "발로란트",
+      "에이펙스",
+      "마인크래프트"
+    ],
+    "owTier": "언랭/딜러,힐러",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "1169617555346952312": {
+    "statusMsg": "",
+    "favGames": [
+      "마크",
+      "롤",
+      "오버워치"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "각 도#탄젠트",
+    "bnetNick": ""
+  },
+  "601110743953440784": {
+    "statusMsg": "",
+    "favGames": [
+      "칼바람"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "242315387285274624": {
+    "statusMsg": "꾸기다",
+    "favGames": [
+      "오버워치"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "881293812926931036": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "호진 전부인#kr2",
+    "bnetNick": ""
+  },
+  "261021543897890818": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "690922971015151646": {
+    "statusMsg": "한마디!",
+    "favGames": [
+      "롤",
+      "오버워치",
+      "DJ MAX"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "506869371633926175": {
+    "statusMsg": "오잉",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "등급없음/서폿",
+    "steamNick": "주소양",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "404651803968405535": {
+    "statusMsg": "",
+    "favGames": [
+      "롤"
+    ],
+    "owTier": "",
+    "lolTier": "마스터/탑,서폿",
+    "steamNick": "",
+    "lolNick": "밤하늘 위에 달 #KR1",
+    "bnetNick": ""
+  },
+  "388674695391608832": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "648141428496531456": {
+    "statusMsg": "",
+    "favGames": [
+      "발로란트",
+      "롤",
+      "배그"
+    ],
+    "owTier": "",
+    "lolTier": "골드 / 서폿 미드",
+    "steamNick": "Frog_04",
+    "lolNick": "マオマオ#カエル",
+    "bnetNick": ""
+  },
+  "757033323162763385": {
+    "statusMsg": "",
+    "favGames": [],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "surrel",
+    "lolNick": "못하면찡찡대지마#너말이야",
+    "bnetNick": ""
+  },
+  "989105355080470599": {
+    "statusMsg": "ㅇㅅㅇ",
+    "favGames": [
+      "롤"
+    ],
+    "owTier": "",
+    "lolTier": "에메랄드/미드",
+    "steamNick": "",
+    "lolNick": "",
+    "bnetNick": ""
+  },
+  "1159502372951826484": {
+    "statusMsg": "",
+    "favGames": [
+      "서든어택"
+    ],
+    "owTier": "",
+    "lolTier": "",
+    "steamNick": "",
+    "lolNick": "",
     "bnetNick": ""
   }
 }

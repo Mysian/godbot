@@ -1,0 +1,47 @@
+{
+  "1374761417789407284": {
+    "roleId": "1374761417789407284",
+    "name": "고양이",
+    "emoji": "",
+    "price": 18000000,
+    "desc": null,
+    "color": null,
+    "stock": 0
+  },
+  "1374768685675319526": {
+    "roleId": "1374768685675319526",
+    "name": "강아지",
+    "emoji": "",
+    "price": 18000000,
+    "desc": null,
+    "color": null,
+    "stock": 0
+  },
+  "1374744115954192435": {
+    "roleId": "1374744115954192435",
+    "name": "공주",
+    "emoji": "",
+    "price": 20000000,
+    "desc": null,
+    "color": null,
+    "stock": 0
+  },
+  "1374744174322127020": {
+    "roleId": "1374744174322127020",
+    "name": "왕자",
+    "emoji": "",
+    "price": 20000000,
+    "desc": null,
+    "color": null,
+    "stock": 0
+  },
+  "1374778874126405643": {
+    "roleId": "1374778874126405643",
+    "name": "???",
+    "emoji": "",
+    "price": 10000000,
+    "desc": "???",
+    "color": "https://media.discordapp.net/attachments/1388728993787940914/1392414639568064532/Kkari_what_is_this.jpg?ex=686f72af&is=686e212f&hm=5c8c5b85b36938830fbb23914a9bfd2a4231249863966f6c304e5c93e49fc2ff&=&format=webp&width=802&height=802",
+    "stock": 0
+  }
+}
