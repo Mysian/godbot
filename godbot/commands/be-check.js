@@ -27,18 +27,18 @@ const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
 
 // 정수세 납부액 계산
 function getTax(amount) {
-  if (amount < 5_000_000) return 0;
-  if (amount >= 1_000_000_000_000) return Math.floor(amount * 0.5);
-  if (amount >=   10_000_000_000) return Math.floor(amount * 0.25);
-  if (amount >=    5_000_000_000) return Math.floor(amount * 0.10);
-  if (amount >=    1_000_000_000) return Math.floor(amount * 0.075);
-  if (amount >=      500_000_000) return Math.floor(amount * 0.05);
-  if (amount >=      100_000_000) return Math.floor(amount * 0.035);
-  if (amount >=       50_000_000) return Math.floor(amount * 0.02);
-  if (amount >=       10_000_000) return Math.floor(amount * 0.015);
-  if (amount >=        5_000_000) return Math.floor(amount * 0.01);
-  if (amount >=        1_000_000) return Math.floor(amount * 0.005);
-  return Math.floor(amount * 0.001);
+  if (amount < 5_000_000) return 0; // 500만 미만: 면제
+  if (amount < 10_000_000) return Math.floor(amount * 0.001);    // 500만~1천만: 0.1%
+  if (amount < 50_000_000) return Math.floor(amount * 0.005);    // 1천만~5천만: 0.5%
+  if (amount < 100_000_000) return Math.floor(amount * 0.01);    // 5천만~1억: 1%
+  if (amount < 500_000_000) return Math.floor(amount * 0.015);   // 1억~5억: 1.5%
+  if (amount < 1_000_000_000) return Math.floor(amount * 0.02);  // 5억~10억: 2%
+  if (amount < 5_000_000_000) return Math.floor(amount * 0.035); // 10억~50억: 3.5%
+  if (amount < 10_000_000_000) return Math.floor(amount * 0.05); // 50억~100억: 5%
+  if (amount < 100_000_000_000) return Math.floor(amount * 0.075); // 100억~500억: 7.5%
+  if (amount < 500_000_000_000) return Math.floor(amount * 0.10); // 500억~1,000억: 10%
+  if (amount < 1_000_000_000_000) return Math.floor(amount * 0.25); // 1,000억~1조: 25%
+  return Math.floor(amount * 0.5); // 1조 이상: 50%
 }
 const TAX_TABLE = [
   ["500만원 미만", "세금 면제"],
