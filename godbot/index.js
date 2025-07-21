@@ -968,6 +968,15 @@ client.on('messageCreate', async (msg) => {
 });
 
 
+const { collectDailyTax } = require('./commands/tax-collect.js');
+const cron = require('node-cron');
+
+// 매일 오후 6시 자동 납부
+cron.schedule('0 18 * * *', async () => {
+  await collectDailyTax(global.client); // client 주입
+  console.log('정수세 납부 완료');
+});
+
 setInterval(async () => {
   if (!client || !client.user || !client.ws || client.ws.status !== 0) {
     console.warn("🛑 클라이언트 연결이 끊겼습니다. 재로그인 시도 중...");
