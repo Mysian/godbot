@@ -934,14 +934,20 @@ process.on("unhandledRejection", async (reason) => {
   } catch (logErr) {}
 });
 
-const { collectDailyTax } = require('./utils/tax-collect.js');
+const { saveTaxSnapshot, collectTaxFromSnapshot } = require('./utils/tax-collect.js');
 const cron = require('node-cron');
 
-// 매일 오후 6시 자동 납부
+// 1. 17:55 스냅샷 저장
+cron.schedule('55 17 * * *', () => {
+  saveTaxSnapshot();
+  console.log('정수세 스냅샷 저장 완료');
+}, { timezone: 'Asia/Seoul' });
+
+// 2. 18:00 스냅샷 기준 세금 부과
 cron.schedule('0 18 * * *', async () => {
-  await collectDailyTax(global.client); // client 주입
+  await collectTaxFromSnapshot(global.client);
   console.log('정수세 납부 완료');
-});
+}, { timezone: 'Asia/Seoul' });
 
 // === 간단 코인 시세 조회 (!영갓코인 등) ===
 const lockfile = require('proper-lockfile');
