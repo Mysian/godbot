@@ -46,7 +46,7 @@ module.exports = {
           '상태 메시지가 저장되었습니다!',
           '---',
           `누군가 당신을 @멘션하면,`,
-          '`-# [상태] 현재 ' + interaction.member.displayName + '님은 ' + msg + '`',
+          '`-# [상태] ' + interaction.member.displayName + '님은 ' + msg + '`',
           '이렇게 채팅방에 안내됩니다.'
         ].join('\n'),
         ephemeral: true
