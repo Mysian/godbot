@@ -883,7 +883,7 @@ if (interaction.customId === 'rps_bet_modal') {
 
         let msg = `너: **${userPick}**\n상대: **${botPick}**\n\n`;
         if (result === 'win') {
-  setUserBe(userId, Math.floor(bet * 1.9), '가위바위보 승리');
+  setUserBe(userId, Math.floor(bet * 0.9), '가위바위보 승리');
   msg += `🎉 승리! **${comma(Math.floor(bet * 0.9))} BE** 획득!`;
   await i2.update({ embeds: [new EmbedBuilder().setTitle('✂️ 가위바위보').setDescription(msg)], components: [], ephemeral: true });
   unlock(userId);
