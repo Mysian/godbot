@@ -1,4 +1,3 @@
-// godbot/commands/tax-collect.js
 const { loadBE, saveBE, addBE } = require('../commands/be-util.js');
 const fs = require('fs');
 const path = require('path');
@@ -31,7 +30,7 @@ function saveTaxPool(pool) {
   fs.writeFileSync(taxPoolPath, JSON.stringify(pool, null, 2));
 }
 
-// 1. 17:55 스냅샷 저장 함수
+// 1. 17:55 스냅샷 저장 함수 (7일치만 남기고 나머지 자동 삭제)
 function saveTaxSnapshot() {
   const be = loadBE();
   const snapshot = {};
@@ -47,6 +46,15 @@ function saveTaxSnapshot() {
     date: `${yyyy}-${mm}-${dd}`,
     amounts: snapshot
   }, null, 2));
+
+  // 🔥 7일보다 오래된 스냅샷 파일 자동 삭제
+  const files = fs.readdirSync(SNAPSHOT_DIR)
+    .filter(f => f.startsWith('tax-snapshot-') && f.endsWith('.json'))
+    .sort();
+  while (files.length > 7) {
+    const oldFile = files.shift();
+    fs.unlinkSync(path.join(SNAPSHOT_DIR, oldFile));
+  }
   return filename;
 }
 
