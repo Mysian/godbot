@@ -950,14 +950,14 @@ if (interaction.customId === 'blackjack_bet_modal') {
 
   function getBlackjackPayoutRate(bet) {
     if (bet >= 500000000 && bet <= 1000000000) return 0.2;   
-    if (bet >= 100000000 && bet < 500000000)   return 0.2;   
-    if (bet >= 50000000 && bet < 100000000)    return 0.3;   
-    if (bet >= 10000000 && bet < 50000000)     return 0.4;   
-    if (bet >= 5000000 && bet < 10000000)      return 0.5;    
-    if (bet >= 1000000 && bet < 5000000)       return 0.6;   
-    if (bet >= 500000 && bet < 1000000)        return 0.7;   
-    if (bet >= 100000 && bet < 500000)         return 0.8;  
-    if (bet >= 10000 && bet < 100000)          return 0.9;   
+    if (bet >= 100000000 && bet < 500000000)   return 0.3;   
+    if (bet >= 50000000 && bet < 100000000)    return 0.4;   
+    if (bet >= 10000000 && bet < 50000000)     return 0.5;   
+    if (bet >= 5000000 && bet < 10000000)      return 0.6;    
+    if (bet >= 1000000 && bet < 5000000)       return 0.7;   
+    if (bet >= 500000 && bet < 1000000)        return 0.8;   
+    if (bet >= 100000 && bet < 500000)         return 0.9;  
+    if (bet >= 10000 && bet < 100000)          return 1.0;   
     return 0.95;                                         
   }
 
