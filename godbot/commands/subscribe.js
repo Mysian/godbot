@@ -24,7 +24,7 @@ module.exports = {
       new ButtonBuilder()
         .setLabel('💎 까리한 디스코드 구독')
         .setStyle(ButtonStyle.Link)
-        .setURL('https://www.patreon.com/kkari')
+        .setURL('https://www.patreon.com/kkari/membership')
     );
 
     await interaction.reply({
