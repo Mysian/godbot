@@ -997,6 +997,37 @@ setInterval(async () => {
 
 client.login(process.env.DISCORD_TOKEN);
 
+// 신규 첫 입장시 채팅방 인사 안하면 경험치 제한 룰
+const WELCOME_ROLE_ID = '1286237811959140363';
+const WELCOME_CHANNEL_ID = '1202425624061415464';
+
+client.on(Events.GuildMemberAdd, async member => {
+  try {
+    if (!member.roles.cache.has(WELCOME_ROLE_ID)) {
+      await member.roles.add(WELCOME_ROLE_ID, '서버 첫 입장시 자동 역할 부여');
+    }
+  } catch (err) {
+    console.error('[환영 역할 부여 실패]', err);
+  }
+});
+
+client.on(Events.MessageCreate, async message => {
+  if (message.author.bot) return;
+  if (message.channel.id !== WELCOME_CHANNEL_ID) return;
+  if (!message.guild) return;
+
+  const member = message.member;
+  if (!member) return;
+
+  if (member.roles.cache.has(WELCOME_ROLE_ID)) {
+    try {
+      await member.roles.remove(WELCOME_ROLE_ID, '환영 채널에서 채팅하여 역할 제거');
+    } catch (err) {
+      console.error('[환영 역할 제거 실패]', err);
+    }
+  }
+});
+
 const dmRelay = require('./commands/dm.js');
 dmRelay.relayRegister(client);
 
