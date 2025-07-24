@@ -32,11 +32,11 @@ function getDaysLeft(dateStr) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('donate-check')
+    .setName('후원내역')
     .setDescription('후원 내역/후원자 목록을 확인합니다.')
     .addStringOption(opt => 
-      opt.setName('type')
-        .setDescription('필터: all(전체), money(후원금), item(상품)')
+      opt.setName('종류')
+        .setDescription('필터: 전체, 후원금, 상품')
         .addChoices(
           { name: '전체', value: 'all' },
           { name: '후원금', value: 'money' },
@@ -45,7 +45,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const filter = interaction.options.getString('type') || 'all';
+    const filter = interaction.options.getString('종류') || 'all';
     let page = 1;
 
     // 버튼 필터/페이지 처리
@@ -176,7 +176,7 @@ module.exports = {
         row.addComponents(
           new ButtonBuilder()
             .setCustomId('cancel_self')
-            .setLabel('내 후원자 혜택 취소')
+            .setLabel('내 후원자 역할 취소')
             .setStyle(ButtonStyle.Danger)
         );
       }
