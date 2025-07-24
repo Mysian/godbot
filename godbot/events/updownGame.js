@@ -4,7 +4,7 @@ const path = require('path');
 
 const ALLOWED_CHANNEL = '1393477449123106939';
 const DATA_PATH = path.join(__dirname, '../data/updown-rank.json');
-const { addBE } = require('./be-util.js');
+const { addBE } = require('../data/be-util.js');
 
 let rankData = {}; // { userId: { username, bestTry, bestClear, clear, lastClear } }
 const ACTIVE = {}; // { userId: { answer, chance, tries, finished, startTime, timeout } }
