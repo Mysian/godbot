@@ -761,6 +761,14 @@ if (game && !game.finished) {
     const wpm = calcWPM(normAnswer, ms, game.lang);
     const acc = calcACC(normAnswer, normInput);
 
+    try {
+    const member = await message.guild.members.fetch(message.author.id);
+    if (member.roles.cache.has("1397076919127900171")) {
+      await addBE(member.id, 30, "타자 연습 𝕯𝖔𝖓𝖔𝖗 추가 보상");
+      await message.reply("💜 𝕯𝖔𝖓𝖔𝖗 혜택: 30 BE가 추가 지급되었습니다!");
+    }
+  } catch {}
+
     // 복붙 방지(2.5초 이내 정답은 랭킹 미등록)
     if (ms < 2500) {
       message.reply(`❌ 복사/붙여넣기는 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)`);
