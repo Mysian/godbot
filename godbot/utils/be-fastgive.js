@@ -53,8 +53,7 @@ async function startGiveaway(client) {
   currentRound[CHANNEL_ID] = { ...picked, rewarded: false, reward };
 
   await channel.send(
-    `가장 빠르게 ${picked.keyword} 를 입력한 유저에게 랜덤 정수가 지급됩니다!\n` +
-    `\`(부스트 유저 호명시 5,000 BE, 𝕯𝖔𝖓𝖔𝖗 호명시 7,777 BE 추가 지급)\``
+    `가장 빠르게 ${picked.keyword} 를 입력한 유저에게 랜덤 정수가 지급됩니다!`
   );
 }
 
