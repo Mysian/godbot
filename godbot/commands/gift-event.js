@@ -20,6 +20,8 @@ function formatKoreanMoney(num) {
   }
 }
 
+const DONOR_ROLE = '1397076919127900171';
+
 // 구간별 확률표 (확률*1000 단위, 합계 100,000)
 const rewardTable = [
   { min: 1000,     max: 20000,     weight: 70000,  effect: '🎁',   effectMsg: '나쁘지 않네요' },
@@ -47,7 +49,6 @@ function pickReward() {
     if (rand < r.weight) {
       let amount = r.min;
       if (r.min !== r.max) {
-        // 3제곱 곡선: 저가 빈도↑, 고가 극소수
         const base = Math.random() ** 3;
         amount = Math.floor(r.min + base * (r.max - r.min));
       }
@@ -55,30 +56,34 @@ function pickReward() {
     }
     rand -= r.weight;
   }
-  // 혹시 오류시 마지막 구간
   const last = rewardTable[rewardTable.length - 1];
   return { ...last, amount: last.max };
 }
 
 // 임베드
-function getEffectEmbed(user, reward) {
-  const formatted = formatKoreanMoney(reward.amount);
+function getEffectEmbed(user, reward, isDonor, donorText) {
+  let amount = reward.amount;
+  if (isDonor && amount < 10000) amount = 10000; // 도너 1만원 고정 반영
+  const formatted = formatKoreanMoney(amount);
   let color = 0x5bbcff;
-  if (reward.amount < 20000) color = 0x8ae65c;
-  else if (reward.amount < 100000) color = 0x0ba99c;
-  else if (reward.amount < 200000) color = 0xa953ff;
-  else if (reward.amount < 300000) color = 0xf75525;
-  else if (reward.amount < 500000) color = 0xf4e642;
-  else if (reward.amount < 1000000) color = 0xff44aa;
+  if (amount < 20000) color = 0x8ae65c;
+  else if (amount < 100000) color = 0x0ba99c;
+  else if (amount < 200000) color = 0xa953ff;
+  else if (amount < 300000) color = 0xf75525;
+  else if (amount < 500000) color = 0xf4e642;
+  else if (amount < 1000000) color = 0xff44aa;
   else color = 0x000000;
   return new EmbedBuilder()
     .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
-    .setDescription(`<@${user.id}>님, ${reward.effectMsg}\n**${formatted} BE** 획득!`)
+    .setDescription([
+      `<@${user.id}>님, ${reward.effectMsg}`,
+      `**${formatted} BE** 획득!`,
+      donorText ? `\n${donorText}` : ''
+    ].join('\n'))
     .setColor(color)
     .setFooter({ text: reward.effectMsg });
 }
 
-// 쿨타임 관리
 const COOLDOWN = 60 * 60 * 1000; // 1시간
 const cooldownMap = new Map();
 const ALLOWED_ROLE_IDS = [
@@ -96,12 +101,10 @@ module.exports = {
     const isManager = member.permissions.has(PermissionsBitField.Flags.Administrator) || member.permissions.has(PermissionsBitField.Flags.ManageGuild);
     const hasAllowedRole = member.roles.cache.some(r => ALLOWED_ROLE_IDS.includes(r.id));
 
-    // 1. 권한/역할 체크
     if (!isManager && !hasAllowedRole) {
       await interaction.reply({ content: '❌ 특정 역할 또는 관리자만 사용 가능.', ephemeral: true });
       return;
     }
-    // 2. 쿨타임 체크
     if (!isManager) {
       const lastUsed = cooldownMap.get(userId) || 0;
       const now = Date.now();
@@ -113,7 +116,6 @@ module.exports = {
       cooldownMap.set(userId, now);
     }
 
-    // 3. 이벤트 메시지
     const embed = new EmbedBuilder()
       .setTitle(`🎲 [깜짝 정수 이벤트] 🎲`)
       .setDescription(
@@ -143,34 +145,39 @@ module.exports = {
     });
 
     collector.on('collect', async i => {
-      // 이미 수령됨
       if (claimed) {
         if (!i.replied && !i.deferred) {
           await i.reply({ content: '이미 정수가 수령되었습니다!', ephemeral: true });
         }
         return;
       }
-      // 명령어 실행자는 참여 불가
       if (i.user.id === userId) {
         if (!i.replied && !i.deferred) {
           await i.reply({ content: '❌ 이벤트 시작자는 참여 불가!', ephemeral: true });
         }
         return;
       }
-      // 정상 수령 처리
       claimed = true;
       collector.stop('claimed');
       const reward = pickReward();
 
+      // 𝕯𝖔𝖓𝖔𝖗 체크 및 보상/안내문 처리
+      const isDonor = i.member.roles.cache.has(DONOR_ROLE);
+      let rewardAmount = reward.amount;
+      let donorText = '';
+      if (isDonor && rewardAmount < 10000) {
+        rewardAmount = 10000;
+        donorText = '💜 𝕯𝖔𝖓𝖔𝖗 : 1만원 미만 보상이 **1만원**으로 고정되어 지급됩니다.';
+      }
+
       try {
-        await addBE(i.user.id, reward.amount, `정수이벤트 (${interaction.channel.name})`);
+        await addBE(i.user.id, rewardAmount, isDonor ? '정수이벤트 (𝕯𝖔𝖓𝖔𝖗 최저보상 적용)' : `정수이벤트 (${interaction.channel.name})`);
       } catch (err) {
         await i.reply({ content: `BE 지급 중 오류 발생. 관리자 문의바람.`, ephemeral: true });
         return;
       }
-      // 임베드+버튼 갱신
       await i.update({
-        embeds: [getEffectEmbed(i.user, reward)],
+        embeds: [getEffectEmbed(i.user, { ...reward, amount: rewardAmount }, isDonor, donorText)],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -183,14 +190,12 @@ module.exports = {
       });
     });
 
-    // 콜렉터 종료 처리
     collector.on('end', async (collected, reason) => {
       if (!claimed) {
         try { await msg.delete(); } catch (e) {}
       }
     });
 
-    // 만료 후 버튼 비활성화
     setTimeout(async () => {
       try {
         await msg.edit({
