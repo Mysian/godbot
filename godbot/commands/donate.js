@@ -1,9 +1,9 @@
 // commands/donate.js
+
 const { 
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType
 } = require('discord.js');
-
 const fs = require('fs');
 const path = require('path');
 
@@ -85,6 +85,10 @@ async function handleMoneyModal(submitted) {
     return;
   }
   const amount = submitted.fields.getTextInputValue('donate_amount');
+  if (isNaN(amount) || Number(amount) < 1000) {
+    await submitted.reply({ content: '최소 후원금은 1,000원부터 가능합니다.', ephemeral: true });
+    return;
+  }
   const inName = submitted.fields.getTextInputValue('donate_name');
   const purpose = submitted.fields.getTextInputValue('donate_purpose') || '미입력';
 
@@ -321,16 +325,7 @@ module.exports = {
             )
           );
         await btnInt.showModal(modal);
-
-        let submitted;
-        try {
-          submitted = await btnInt.awaitModalSubmit({
-            filter: m => m.user.id === interaction.user.id && m.customId === 'donate_money_modal',
-            time: 180_000
-          });
-        } catch { return; }
-        if (!submitted) return;
-        await handleMoneyModal(submitted);
+        // 이후는 외부 modal 핸들러에서 처리!
         return;
       }
 
@@ -371,16 +366,7 @@ module.exports = {
             )
           );
         await btnInt.showModal(modal);
-
-        let submitted;
-        try {
-          submitted = await btnInt.awaitModalSubmit({
-            filter: m => m.user.id === interaction.user.id && m.customId === 'donate_item_modal',
-            time: 180_000
-          });
-        } catch { return; }
-        if (!submitted) return;
-        await handleItemModal(submitted);
+        // 이후는 외부 modal 핸들러에서 처리!
         return;
       }
 
