@@ -36,11 +36,12 @@ function getDaysLeft(dateStr) {
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
-// 버튼 자동 5개씩 줄바꿈
+// 버튼 자동 5개씩 줄바꿈 + 빈 row는 절대 반환 안함
 function buildButtonRows(btnList) {
   const rows = [];
   for (let i = 0; i < btnList.length; i += 5) {
-    rows.push(new ActionRowBuilder().addComponents(...btnList.slice(i, i + 5)));
+    const btnRow = btnList.slice(i, i + 5);
+    if (btnRow.length > 0) rows.push(new ActionRowBuilder().addComponents(...btnRow));
   }
   return rows;
 }
@@ -209,7 +210,7 @@ module.exports = {
         );
       }
 
-      // 삭제 버튼 여러 줄
+      // 삭제 버튼 여러 줄 (빈 Row 절대 포함 X)
       let deleteButtons = [];
       deleteTargets.forEach((t, idx) => {
         if (t.type === 'money') {
@@ -229,8 +230,9 @@ module.exports = {
         }
       });
       const deleteRows = buildButtonRows(deleteButtons);
+      const allRows = [row, ...deleteRows];
 
-      return { embed, rows: [row, ...deleteRows], page, maxPage, filter };
+      return { embed, rows: allRows, page, maxPage, filter };
     };
 
     // 첫 호출
@@ -273,7 +275,7 @@ module.exports = {
         }
         await btnInt.reply({ content: `해당 상품 후원 내역이 삭제되었습니다.`, ephemeral: true });
         let updated = await updateList(curPage, curFilter, interaction.user.id);
-        await interaction.editReply({ embeds: [updated.embed], components: [updated.rows] });
+        await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
         return;
       }
 
