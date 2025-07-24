@@ -4,6 +4,7 @@ const path = require('path');
 
 const ALLOWED_CHANNEL = '1393477449123106939';
 const DATA_PATH = path.join(__dirname, '../data/updown-rank.json');
+const { addBE } = require('./be-util.js');
 
 let rankData = {}; // { userId: { username, bestTry, bestClear, clear, lastClear } }
 const ACTIVE = {}; // { userId: { answer, chance, tries, finished, startTime, timeout } }
@@ -201,6 +202,16 @@ module.exports = {
           rankData[message.author.id].lastClear = now;
         }
         saveRank();
+
+        let beReward = 0;
+  if (tryCount === 1) beReward = 1000;
+  else if (tryCount === 2) beReward = 500;
+  else if (tryCount === 3) beReward = 250;
+  else if (tryCount === 4) beReward = 100;
+  else beReward = 50;
+
+  await addBE(message.author.id, beReward, `업다운 게임 시도 ${tryCount}회 만에 성공 보상`);
+  await message.reply(`💙 보상: 파랑정수 ${beReward} BE가 지급되었습니다!`);
 
         return message.reply(`🎉 **${message.author}**: 정답! (${tryCount}번 만에 성공)\n랭킹에 기록되었습니다!\n!업다운 순위로 내 순위를 확인해보세요!`);
       } else {
