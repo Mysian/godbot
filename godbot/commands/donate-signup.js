@@ -1,4 +1,4 @@
-
+// commands/donate-signup.js
 
 const { SlashCommandBuilder } = require('discord.js');
 const fs = require('fs');
@@ -23,14 +23,33 @@ function saveItemDonations(arr) {
   fs.writeFileSync(itemDonationsPath, JSON.stringify(arr, null, 2));
 }
 
+// 역할 기간 누적 부여
+async function giveDonorRole(member, days) {
+  if (!days || days < 1) return;
+  let donorData = loadDonorRoles();
+  let now = new Date();
+  let base = now;
+  if (donorData[member.id]?.expiresAt) {
+    let prev = new Date(donorData[member.id].expiresAt);
+    base = prev > now ? prev : now;
+  }
+  let expires = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+  donorData[member.id] = {
+    roleId: DONOR_ROLE_ID,
+    expiresAt: expires.toISOString()
+  };
+  saveDonorRoles(donorData);
+  await member.roles.add(DONOR_ROLE_ID).catch(() => {});
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('후원자등록')
-    .setDescription('후원자 역할 또는 상품 후원자로 직접 등록합니다.')
-    .addStringOption(o => o.setName('종류').setDescription('등록 종류').setRequired(true)
+    .setDescription('후원자 역할 또는 상품 후원자를 수동 등록합니다.')
+    .addStringOption(o => o.setName('종류').setDescription('등록 종류를 선택').setRequired(true)
       .addChoices({ name: '후원금', value: 'money' }, { name: '상품', value: 'item' }))
     .addUserOption(o => o.setName('유저').setDescription('등록할 유저').setRequired(true))
-    .addIntegerOption(o => o.setName('기간').setDescription('[후원금용] 역할 일수').setRequired(false))
+    .addIntegerOption(o => o.setName('기간').setDescription('[후원금용] 역할 일수(최소 1)').setRequired(false))
     .addStringOption(o => o.setName('메모').setDescription('[후원금용] 참고 메모').setRequired(false))
     .addStringOption(o => o.setName('상품명').setDescription('[상품용] 상품명').setRequired(false))
     .addStringOption(o => o.setName('사유').setDescription('[상품용] 후원 이유').setRequired(false))
@@ -44,24 +63,19 @@ module.exports = {
       await interaction.reply({ content: '유저를 반드시 선택해야 합니다.', ephemeral: true });
       return;
     }
+    // 후원금 등록 (직접 일수 기입)
     if (kind === 'money') {
       const days = interaction.options.getInteger('기간');
       if (!days || days < 1) return await interaction.reply({ content: '등록 일수는 1 이상이어야 합니다.', ephemeral: true });
       const memo = interaction.options.getString('메모') || '';
+      await giveDonorRole(await interaction.guild.members.fetch(user.id), days);
       let donorData = loadDonorRoles();
-      let now = new Date();
-      let expires = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-      donorData[user.id] = {
-        roleId: DONOR_ROLE_ID,
-        expiresAt: expires.toISOString(),
-        adminMemo: memo
-      };
+      donorData[user.id].adminMemo = memo;
       saveDonorRoles(donorData);
-      // 역할 부여 시도
-      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-      if (member) await member.roles.add(DONOR_ROLE_ID).catch(() => {});
-      await interaction.reply({ content: `✅ ${user}님에게 ${days}일 후원자 역할을 등록했습니다.`, ephemeral: true });
-    } else if (kind === 'item') {
+      await interaction.reply({ content: `✅ ${user}님에게 후원자 역할 ${days}일 부여 완료!`, ephemeral: true });
+    } 
+    // 상품 후원 등록 → 7일 자동 부여
+    else if (kind === 'item') {
       const item = interaction.options.getString('상품명') || '';
       const reason = interaction.options.getString('사유') || '';
       const situation = interaction.options.getString('사용처') || '';
@@ -77,7 +91,9 @@ module.exports = {
         date: new Date().toISOString()
       });
       saveItemDonations(arr);
-      await interaction.reply({ content: `✅ ${user}님을 상품 후원자로 등록했습니다.`, ephemeral: true });
+
+      await giveDonorRole(await interaction.guild.members.fetch(user.id), 7);
+      await interaction.reply({ content: `✅ ${user}님을 상품 후원자로 등록했고, 역할 7일 자동 부여 완료!`, ephemeral: true });
     } else {
       await interaction.reply({ content: '종류는 "후원금" 또는 "상품" 중 선택해주세요.', ephemeral: true });
     }
