@@ -81,11 +81,11 @@ cron.schedule('0 9 * * *', async () => {
     .setColor(0x666666)
     .setTitle(`📊 어제의 활동 요약`)
     .setThumbnail(THUMBNAIL_URL)
-    .setFooter({ text: '까리한 디스코드 | 자동 통계', iconURL: SERVER_ICON_URL })
+    .setFooter({ text: '까리한 디스코드 | 이용량 통계', iconURL: SERVER_ICON_URL })
     .setTimestamp()
     .addFields({
-      name: '🎁 활동 1등 보상 안내',
-      value: '🎤 음성채널 1등 2만 BE, 💬 채팅 1등 2만 BE 지급!',
+      name: '🎁 각 활동량 1등 보상',
+      value: ' 20,000 BE',
       inline: false
     });
 
@@ -94,7 +94,7 @@ cron.schedule('0 9 * * *', async () => {
     const name = await getDisplayName(topVoice.userId);
     embed.addFields({
       name: '🎤 음성채널 활동 1위',
-      value: `🥇 ${name} 님 (${secToHMS(topVoice.voice)})\n🔷 2만 BE 지급!`,
+      value: `🥇 ${name} 님`,
       inline: false
     });
     await addBE(topVoice.userId, 20000, "일일 음성채널 1등 보상");
@@ -111,7 +111,7 @@ cron.schedule('0 9 * * *', async () => {
     const name = await getDisplayName(topMsg.userId);
     embed.addFields({
       name: '💬 채팅 메시지 1위',
-      value: `🥇 ${name} 님 (${topMsg.message}회)\n🔷 2만 BE 지급!`,
+      value: `🥇 ${name} 님`,
       inline: false
     });
     await addBE(topMsg.userId, 20000, "일일 채팅 1등 보상");
