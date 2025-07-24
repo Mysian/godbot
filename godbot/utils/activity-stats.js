@@ -151,7 +151,7 @@ cron.schedule('0 21 * * 1', async () => {
     .setTimestamp()
     .addFields({
       name: '🎁 주간 1등 보상 안내',
-      value: '🎤 음성 1등 10만 BE, 💬 채팅 1등 10만 BE 지급!',
+      value: '각 1등 100,000 BE',
       inline: false
     });
 
