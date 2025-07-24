@@ -1,5 +1,3 @@
-// commands/후원확인.js
-
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -84,16 +82,18 @@ module.exports = {
       });
     }
 
-    // 상품 후원 내역
+    // 상품 후원 내역 (최근 10건만)
     if (userItems.length > 0) {
+      const itemsToShow = userItems.slice(-10); // 최근 10건만
       embed.addFields({
         name: `🎁 내 상품 후원 내역`,
-        value: userItems.map((item, idx) => [
-          `#${idx+1}. \`${item.item}\``,
+        value: itemsToShow.map((item, idx) => [
+          `#${userItems.length - itemsToShow.length + idx + 1}. \`${item.item}\``,
           item.reason ? `- 사유: ${item.reason}` : '',
           item.situation ? `- 희망상황: ${item.situation}` : '',
           `- 후원일: ${formatDateKST(item.date)}`
-        ].filter(Boolean).join('\n')).join('\n\n'),
+        ].filter(Boolean).join('\n')).join('\n\n') +
+        (userItems.length > 10 ? `\n\n...외 ${userItems.length - 10}건 더 있음. (관리진에게 문의)` : ''),
         inline: false
       });
     } else {
