@@ -203,18 +203,23 @@ module.exports = {
         }
         saveRank();
 
-        let beReward = 0;
-  if (tryCount === 1) beReward = 1000;
-  else if (tryCount === 2) beReward = 500;
-  else if (tryCount === 3) beReward = 250;
-  else if (tryCount === 4) beReward = 100;
-  else beReward = 50;
+        const member = await message.guild.members.fetch(message.author.id);
+  if (member.roles.cache.has("1397076919127900171")) {
+    let beReward = 0;
+    if (tryCount === 1) beReward = 1000;
+    else if (tryCount === 2) beReward = 500;
+    else if (tryCount === 3) beReward = 250;
+    else if (tryCount === 4) beReward = 100;
+    else beReward = 50;
 
-  await addBE(message.author.id, beReward, `업다운 게임 시도 ${tryCount}회 만에 성공 보상`);
-  await message.reply(`💙 보상: 파랑정수 ${beReward} BE가 지급되었습니다!`);
+    await addBE(message.author.id, beReward, `업다운 게임(도우너) 시도 ${tryCount}회 만에 성공 보상`);
+    await message.reply(`💜 𝕯𝖔𝖓𝖔𝖗 혜택: 파랑정수 ${beReward} BE가 지급되었습니다!`);
+  }
 
-        return message.reply(`🎉 **${message.author}**: 정답! (${tryCount}번 만에 성공)\n랭킹에 기록되었습니다!\n!업다운 순위로 내 순위를 확인해보세요!`);
-      } else {
+  return message.reply(
+    `🎉 **${message.author}**: 정답! (${tryCount}번 만에 성공)\n랭킹에 기록되었습니다!\n!업다운 순위로 내 순위를 확인해보세요!`
+  );
+} else {
         // 힌트
         let res, hint;
         if (guess < game.answer) {
