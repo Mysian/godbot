@@ -93,9 +93,9 @@ function createDonateMoneyModal() {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('donate_name')
-          .setLabel('입금자 성함')
+          .setLabel('입금자 정보')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('예: 김영갓, 박까리')
+          .setPlaceholder('반드시 입금자 성함과 서버 닉네임을 함께 적어주세요.')
           .setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
@@ -109,7 +109,7 @@ function createDonateMoneyModal() {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('donate_account_info')
-          .setLabel('입금 계좌 (안내, 복사해서 입금)')
+          .setLabel('입금 계좌는 다음과 같습니다')
           .setStyle(TextInputStyle.Short)
           .setValue(DONATE_ACCOUNT)
           .setRequired(false)
