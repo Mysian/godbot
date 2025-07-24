@@ -8,6 +8,7 @@ const donorRolesPath = path.join(__dirname, '../data/donor_roles.json');
 const itemDonationsPath = path.join(__dirname, '../data/item_donations.json');
 const DONOR_ROLE_ID = '1397076919127900171';
 
+// 파일 입출력
 function loadDonorRoles() {
   if (!fs.existsSync(donorRolesPath)) return {};
   return JSON.parse(fs.readFileSync(donorRolesPath, 'utf8'));
@@ -23,15 +24,25 @@ function saveItemDonations(arr) {
   fs.writeFileSync(itemDonationsPath, JSON.stringify(arr, null, 2));
 }
 function formatDateKST(dateStr) {
+  if (!dateStr) return '';
   const d = new Date(dateStr);
   return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 }
 function getDaysLeft(dateStr) {
+  if (!dateStr) return 0;
   const now = new Date();
   const end = new Date(dateStr);
   const diff = end.getTime() - now.getTime();
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+// 버튼 자동 5개씩 줄바꿈
+function buildButtonRows(btnList) {
+  const rows = [];
+  for (let i = 0; i < btnList.length; i += 5) {
+    rows.push(new ActionRowBuilder().addComponents(...btnList.slice(i, i + 5)));
+  }
+  return rows;
 }
 
 module.exports = {
@@ -52,21 +63,25 @@ module.exports = {
     const filter = interaction.options.getString('종류') || 'all';
     let page = 1;
 
-    // 동적 버튼 id 배열 저장
-    let deleteTargets = []; // ex: [ { type: 'money', userId }, ... ]
+    let deleteTargets = []; // 버튼용 삭제 타깃 저장
 
+    // 정책 안내문
+    const POLICY_NOTICE =
+      '💸 **후원금:** 1,000원당 후원자 역할 3일\n' +
+      '🎁 **상품:** 1건 당 후원자 역할 7일 (누적)\n';
+
+    // 리스트+버튼+페이징 구성
     const updateList = async (page, filter, userId = interaction.user.id) => {
       let donorData = loadDonorRoles();
       let itemDonations = loadItemDonations();
 
-      // --- 후원금 리스트 ---
+      // 후원금/상품 리스트 가공
       let moneyList = Object.entries(donorData).map(([uid, info]) => ({
         userId: uid,
         roleId: info.roleId,
         expiresAt: info.expiresAt
       }));
 
-      // --- 상품 후원 리스트 ---
       let itemList = itemDonations.map((x, idx) => ({
         userId: x.userId,
         name: x.name,
@@ -75,24 +90,18 @@ module.exports = {
         situation: x.situation,
         anonymous: x.anonymous,
         date: x.date,
-        index: idx // 삭제시 index 구분용
+        index: idx // 삭제용
       }));
 
-      // --- 필터링 ---
+      // 필터
       let showMoney = (filter === 'all' || filter === 'money');
       let showItem = (filter === 'all' || filter === 'item');
       let allList = [];
       if (showMoney) allList.push(...moneyList.map(x => ({ type: 'money', ...x })));
       if (showItem) allList.push(...itemList.map(x => ({ type: 'item', ...x })));
-
-      // 최신순 정렬
       allList.sort((a, b) => {
-        if (a.type === 'money' && b.type === 'money') {
-          return new Date(b.expiresAt) - new Date(a.expiresAt);
-        }
-        if (a.type === 'item' && b.type === 'item') {
-          return new Date(b.date) - new Date(a.date);
-        }
+        if (a.type === 'money' && b.type === 'money') return new Date(b.expiresAt) - new Date(a.expiresAt);
+        if (a.type === 'item' && b.type === 'item') return new Date(b.date) - new Date(a.date);
         return a.type === 'money' ? -1 : 1;
       });
 
@@ -104,23 +113,31 @@ module.exports = {
 
       const showList = allList.slice((page - 1) * perPage, page * perPage);
 
-      // --- Embed ---
+      // Embed 생성
       const embed = new EmbedBuilder()
         .setTitle('🎁 후원 내역 조회')
         .setDescription(
-          [
+          POLICY_NOTICE + '\n' +
+          (
             filter === 'money' ? '💸 **후원금 후원자 목록**' :
             filter === 'item' ? '🎁 **상품 후원자 목록**' :
-            '💸 **후원금** + 🎁 **상품** 후원자 전체 목록',
-            `\n**페이지**: ${page}/${maxPage}  |  **전체 ${total}건**`
-          ].join('\n')
+            '💸 **후원금** + 🎁 **상품** 후원자 전체 목록'
+          ) +
+          `\n\n**페이지**: ${page}/${maxPage}  |  **전체 ${total}건**`
         )
         .setColor(0xf9bb52);
 
       deleteTargets = [];
-      let idx = 0;
 
-      for (const entry of showList) {
+      if (showList.length === 0) {
+        embed.addFields({
+          name: '내역 없음',
+          value: '조회된 후원 내역이 없습니다.',
+          inline: false
+        });
+      }
+
+      showList.forEach((entry, idx) => {
         if (entry.type === 'money') {
           let expiresStr = formatDateKST(entry.expiresAt);
           let daysLeft = getDaysLeft(entry.expiresAt);
@@ -136,8 +153,6 @@ module.exports = {
             ].filter(Boolean).join('\n'),
             inline: false
           });
-
-          // 삭제 대상 추가
           deleteTargets.push({ type: 'money', userId: entry.userId });
         }
         if (entry.type === 'item') {
@@ -154,14 +169,11 @@ module.exports = {
             ].filter(Boolean).join('\n'),
             inline: false
           });
-
-          // 삭제 대상 추가
           deleteTargets.push({ type: 'item', index: entry.index });
         }
-        idx++;
-      }
+      });
 
-      // 버튼: 이전/다음/필터변경/내역취소 (윗줄)
+      // 윗줄(페이지/필터/내역취소) 버튼
       let row = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
@@ -187,27 +199,6 @@ module.exports = {
             .setLabel('상품')
             .setStyle(filter === 'item' ? ButtonStyle.Primary : ButtonStyle.Secondary)
         );
-
-      // 두 번째 줄: 삭제 버튼 N개
-      let deleteRow = new ActionRowBuilder();
-      deleteTargets.forEach((t, idx) => {
-        if (t.type === 'money') {
-          deleteRow.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`delete_money_${t.userId}`)
-              .setLabel(`💸 ${idx + 1}번 삭제`)
-              .setStyle(ButtonStyle.Danger)
-          );
-        } else if (t.type === 'item') {
-          deleteRow.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`delete_item_${t.index}`)
-              .setLabel(`🎁 ${idx + 1}번 삭제`)
-              .setStyle(ButtonStyle.Danger)
-          );
-        }
-      });
-
       // "내역 취소" 버튼(본인 money만)
       if (showList.find(x => x.type === 'money' && x.userId === userId)) {
         row.addComponents(
@@ -218,7 +209,28 @@ module.exports = {
         );
       }
 
-      return { embed, rows: [row, deleteRow], page, maxPage, filter };
+      // 삭제 버튼 여러 줄
+      let deleteButtons = [];
+      deleteTargets.forEach((t, idx) => {
+        if (t.type === 'money') {
+          deleteButtons.push(
+            new ButtonBuilder()
+              .setCustomId(`delete_money_${t.userId}`)
+              .setLabel(`💸 ${idx + 1}번 삭제`)
+              .setStyle(ButtonStyle.Danger)
+          );
+        } else if (t.type === 'item') {
+          deleteButtons.push(
+            new ButtonBuilder()
+              .setCustomId(`delete_item_${t.index}`)
+              .setLabel(`🎁 ${idx + 1}번 삭제`)
+              .setStyle(ButtonStyle.Danger)
+          );
+        }
+      });
+      const deleteRows = buildButtonRows(deleteButtons);
+
+      return { embed, rows: [row, ...deleteRows], page, maxPage, filter };
     };
 
     // 첫 호출
@@ -232,15 +244,12 @@ module.exports = {
     });
 
     collector.on('collect', async btnInt => {
-      // 페이지 & 필터 상태 기억
       let nextPage = curPage;
       let nextFilter = curFilter;
 
       // 삭제 버튼 처리
       if (btnInt.customId.startsWith('delete_money_')) {
-        // ex: delete_money_123456789
         let userId = btnInt.customId.replace('delete_money_', '');
-        // donor_roles에서 삭제 + 역할 제거
         let donorData = loadDonorRoles();
         if (donorData[userId]) {
           delete donorData[userId];
@@ -256,7 +265,6 @@ module.exports = {
         return;
       }
       if (btnInt.customId.startsWith('delete_item_')) {
-        // ex: delete_item_5 (index)
         let index = Number(btnInt.customId.replace('delete_item_', ''));
         let arr = loadItemDonations();
         if (arr[index]) {
@@ -265,7 +273,7 @@ module.exports = {
         }
         await btnInt.reply({ content: `해당 상품 후원 내역이 삭제되었습니다.`, ephemeral: true });
         let updated = await updateList(curPage, curFilter, interaction.user.id);
-        await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
+        await interaction.editReply({ embeds: [updated.embed], components: [updated.rows] });
         return;
       }
 
@@ -275,11 +283,9 @@ module.exports = {
       if (btnInt.customId === 'filter_money') nextFilter = 'money', nextPage = 1;
       if (btnInt.customId === 'filter_item') nextFilter = 'item', nextPage = 1;
 
-      // 본인 후원 내역 취소
       if (btnInt.customId === 'cancel_self') {
         let donorData = loadDonorRoles();
         if (donorData[interaction.user.id]) {
-          // 즉시 만료 처리
           delete donorData[interaction.user.id];
           saveDonorRoles(donorData);
           try {
