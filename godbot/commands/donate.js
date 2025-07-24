@@ -87,7 +87,7 @@ function createDonateMoneyModal() {
           .setCustomId('donate_amount')
           .setLabel('입금 금액 (원)')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('예: 10000')
+          .setPlaceholder('1,000원부터 𝕯𝖔𝖓𝖔𝖗 혜택이 부여됩니다.')
           .setRequired(true)
       ),
       new ActionRowBuilder().addComponents(
