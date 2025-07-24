@@ -4,7 +4,7 @@ const { getBE, addBE, transferBE } = require('./be-util.js');
 
 const MAX_BET = 1000000;
 const DONOR_ROLE = "1397076919127900171";
-const BOOSTER_ROLE = "서버 부스터 역할ID"; // 실제 부스터 역할 ID로 바꿔야 함
+const BOOSTER_ROLE = "1207437971037356142"; // 실제 부스터 역할 ID로 바꿔야 함
 
 const CARD_TYPES = ["공격", "공격", "공격", "방어", "회복"];
 const CARD_EMOJI = { 공격: "⚔️", 방어: "🛡️", 회복: "❤️" };
