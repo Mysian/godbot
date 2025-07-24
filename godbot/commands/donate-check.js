@@ -1,6 +1,6 @@
 // commands/donate-check.js
 
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -36,15 +36,6 @@ function getDaysLeft(dateStr) {
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
-// 버튼 자동 5개씩 줄바꿈 + 빈 row는 절대 반환 안함
-function buildButtonRows(btnList) {
-  const rows = [];
-  for (let i = 0; i < btnList.length; i += 5) {
-    const btnRow = btnList.slice(i, i + 5);
-    if (btnRow.length > 0) rows.push(new ActionRowBuilder().addComponents(...btnRow));
-  }
-  return rows;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -63,8 +54,6 @@ module.exports = {
   async execute(interaction) {
     const filter = interaction.options.getString('종류') || 'all';
     let page = 1;
-
-    let deleteTargets = []; // 버튼용 삭제 타깃 저장
 
     // 정책 안내문
     const POLICY_NOTICE =
@@ -128,23 +117,15 @@ module.exports = {
         )
         .setColor(0xf9bb52);
 
-      deleteTargets = [];
-
-      if (showList.length === 0) {
-        embed.addFields({
-          name: '내역 없음',
-          value: '조회된 후원 내역이 없습니다.',
-          inline: false
-        });
-      }
-
-      showList.forEach((entry, idx) => {
+      // 실제 삭제타겟(select용)
+      let selectOptions = [];
+      let idx = 1;
+      showList.forEach(entry => {
         if (entry.type === 'money') {
           let expiresStr = formatDateKST(entry.expiresAt);
           let daysLeft = getDaysLeft(entry.expiresAt);
           let userMention = `<@${entry.userId}>`;
           let isSelf = entry.userId === userId;
-
           embed.addFields({
             name: `💸 ${userMention} (ID: ${entry.userId})`,
             value: [
@@ -154,7 +135,11 @@ module.exports = {
             ].filter(Boolean).join('\n'),
             inline: false
           });
-          deleteTargets.push({ type: 'money', userId: entry.userId });
+          selectOptions.push({
+            label: `[후원금] ${userMention} (ID: ${entry.userId})`,
+            value: `money_${entry.userId}`,
+            description: `만료: ${expiresStr} / 남은: ${daysLeft}일`
+          });
         }
         if (entry.type === 'item') {
           let userMention = `<@${entry.userId}>`;
@@ -170,39 +155,47 @@ module.exports = {
             ].filter(Boolean).join('\n'),
             inline: false
           });
-          deleteTargets.push({ type: 'item', index: entry.index });
+          selectOptions.push({
+            label: `[상품] ${userMention} (ID: ${entry.userId})`,
+            value: `item_${entry.index}`,
+            description: entry.item.length > 80 ? entry.item.slice(0,77) + '...' : entry.item
+          });
         }
+        idx++;
       });
 
-      // 윗줄(페이지/필터/내역취소) 버튼
+      if (showList.length === 0) {
+        embed.addFields({
+          name: '내역 없음',
+          value: '조회된 후원 내역이 없습니다.',
+          inline: false
+        });
+      }
+
+      // 1줄: 페이지/필터만
       let row = new ActionRowBuilder()
         .addComponents(
-          new ButtonBuilder()
-            .setCustomId('prev')
-            .setLabel('⬅️ 이전')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === 1),
-          new ButtonBuilder()
-            .setCustomId('next')
-            .setLabel('다음 ➡️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === maxPage),
-          new ButtonBuilder()
-            .setCustomId('filter_all')
-            .setLabel('전체')
-            .setStyle(filter === 'all' ? ButtonStyle.Primary : ButtonStyle.Secondary),
-          new ButtonBuilder()
-            .setCustomId('filter_money')
-            .setLabel('후원금')
-            .setStyle(filter === 'money' ? ButtonStyle.Primary : ButtonStyle.Secondary),
-          new ButtonBuilder()
-            .setCustomId('filter_item')
-            .setLabel('상품')
-            .setStyle(filter === 'item' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId('prev').setLabel('⬅️ 이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+          new ButtonBuilder().setCustomId('next').setLabel('다음 ➡️').setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage),
+          new ButtonBuilder().setCustomId('filter_all').setLabel('전체').setStyle(filter === 'all' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId('filter_money').setLabel('후원금').setStyle(filter === 'money' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId('filter_item').setLabel('상품').setStyle(filter === 'item' ? ButtonStyle.Primary : ButtonStyle.Secondary)
         );
-      // "내역 취소" 버튼(본인 money만)
+
+      // 2줄: SelectMenu(삭제), 내역취소(본인) 버튼
+      let selectRow = null;
+      if (selectOptions.length > 0) {
+        selectRow = new ActionRowBuilder()
+          .addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId('delete_select')
+              .setPlaceholder('삭제할 후원 내역을 선택하세요')
+              .addOptions(selectOptions.slice(0, 25)) // SelectMenu 한 줄 최대 25개
+          );
+      }
+      let cancelRow = null;
       if (showList.find(x => x.type === 'money' && x.userId === userId)) {
-        row.addComponents(
+        cancelRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('cancel_self')
             .setLabel('내 후원자 역할 취소')
@@ -210,29 +203,11 @@ module.exports = {
         );
       }
 
-      // 삭제 버튼 여러 줄 (빈 Row 절대 포함 X)
-      let deleteButtons = [];
-      deleteTargets.forEach((t, idx) => {
-        if (t.type === 'money') {
-          deleteButtons.push(
-            new ButtonBuilder()
-              .setCustomId(`delete_money_${t.userId}`)
-              .setLabel(`💸 ${idx + 1}번 삭제`)
-              .setStyle(ButtonStyle.Danger)
-          );
-        } else if (t.type === 'item') {
-          deleteButtons.push(
-            new ButtonBuilder()
-              .setCustomId(`delete_item_${t.index}`)
-              .setLabel(`🎁 ${idx + 1}번 삭제`)
-              .setStyle(ButtonStyle.Danger)
-          );
-        }
-      });
-      const deleteRows = buildButtonRows(deleteButtons);
-      const allRows = [row, ...deleteRows];
+      let rows = [row];
+      if (selectRow) rows.push(selectRow);
+      if (cancelRow) rows.push(cancelRow);
 
-      return { embed, rows: allRows, page, maxPage, filter };
+      return { embed, rows, page, maxPage, filter };
     };
 
     // 첫 호출
@@ -249,31 +224,35 @@ module.exports = {
       let nextPage = curPage;
       let nextFilter = curFilter;
 
-      // 삭제 버튼 처리
-      if (btnInt.customId.startsWith('delete_money_')) {
-        let userId = btnInt.customId.replace('delete_money_', '');
-        let donorData = loadDonorRoles();
-        if (donorData[userId]) {
-          delete donorData[userId];
-          saveDonorRoles(donorData);
-          try {
-            let member = await interaction.guild.members.fetch(userId).catch(() => null);
-            if (member) await member.roles.remove(DONOR_ROLE_ID).catch(() => {});
-          } catch {}
+      // SelectMenu(삭제)
+      if (btnInt.customId === 'delete_select') {
+        const selected = btnInt.values[0];
+        if (selected.startsWith('money_')) {
+          let userId = selected.replace('money_', '');
+          let donorData = loadDonorRoles();
+          if (donorData[userId]) {
+            delete donorData[userId];
+            saveDonorRoles(donorData);
+            try {
+              let member = await interaction.guild.members.fetch(userId).catch(() => null);
+              if (member) await member.roles.remove(DONOR_ROLE_ID).catch(() => {});
+            } catch {}
+            await btnInt.reply({ content: `후원금 내역 및 역할이 삭제되었습니다.`, ephemeral: true });
+          } else {
+            await btnInt.reply({ content: `이미 삭제된 내역입니다.`, ephemeral: true });
+          }
         }
-        await btnInt.reply({ content: `해당 후원금 내역과 역할 혜택이 삭제되었습니다.`, ephemeral: true });
-        let updated = await updateList(curPage, curFilter, interaction.user.id);
-        await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
-        return;
-      }
-      if (btnInt.customId.startsWith('delete_item_')) {
-        let index = Number(btnInt.customId.replace('delete_item_', ''));
-        let arr = loadItemDonations();
-        if (arr[index]) {
-          arr.splice(index, 1);
-          saveItemDonations(arr);
+        if (selected.startsWith('item_')) {
+          let index = Number(selected.replace('item_', ''));
+          let arr = loadItemDonations();
+          if (arr[index]) {
+            arr.splice(index, 1);
+            saveItemDonations(arr);
+            await btnInt.reply({ content: `상품 후원 내역이 삭제되었습니다.`, ephemeral: true });
+          } else {
+            await btnInt.reply({ content: `이미 삭제된 내역입니다.`, ephemeral: true });
+          }
         }
-        await btnInt.reply({ content: `해당 상품 후원 내역이 삭제되었습니다.`, ephemeral: true });
         let updated = await updateList(curPage, curFilter, interaction.user.id);
         await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
         return;
@@ -316,7 +295,6 @@ module.exports = {
     });
 
     collector.on('end', async () => {
-      // 만료 시 버튼 비활성화
       rows.forEach(row => row.components.forEach(btn => btn.setDisabled(true)));
       try {
         await interaction.editReply({ components: rows });
