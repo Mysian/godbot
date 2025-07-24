@@ -9,6 +9,7 @@ const activityTracker = require('../utils/activity-tracker');
 const attendancePath = path.join(__dirname, '../data/attendance-data.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
 
+const DONOR_ROLE = '1397076919127900171';
 
 function loadJson(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
@@ -210,6 +211,15 @@ module.exports = {
   let bonus = Math.min(streak * 50, 50000);
 
   reward += bonus;
+
+  // === 𝕯𝖔𝖓𝖔𝖗 체크 및 1.5배 ===
+      const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
+      let rewardFinal = reward;
+      let donorMsg = '';
+      if (isDonor) {
+        rewardFinal = Math.floor(reward * 1.5);
+        donorMsg = '\n💜 𝕯𝖔𝖓𝖔𝖗 : 최종 출석 보상의 **1.5배** 보정 지급!';
+      }
 
   // === 기록 저장 ===
   attendanceData[userId] = {
