@@ -366,12 +366,12 @@ if (type === 'donate') {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('donate_money')
-      .setLabel('💸 후원금')
+      .setLabel('후원금 후원')
       .setEmoji('💸')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('donate_item')
-      .setLabel('🎁 상품 후원')
+      .setLabel('상품 후원')
       .setEmoji('🎁')
       .setStyle(ButtonStyle.Success)
   );
