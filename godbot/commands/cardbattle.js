@@ -11,13 +11,15 @@ const CARD_EMOJI = { 공격: "⚔️", 방어: "🛡️", 회복: "❤️" };
 
 const waitingMatch = new Collection(); // 유저 결투 대기 큐
 
+const formatBE = n => n.toLocaleString(); // 세 자리 콤마 함수
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('카드배틀')
     .setDescription('확률형 턴제 카드 배틀 게임! (AI/유저 대결)')
     .addIntegerOption(opt =>
       opt.setName('배팅금액')
-        .setDescription(`배팅 금액 (최대 ${MAX_BET} BE)`)
+        .setDescription(`배팅 금액 (최대 ${formatBE(MAX_BET)} BE)`)
         .setMinValue(1000)
         .setMaxValue(MAX_BET)
         .setRequired(true)
@@ -46,7 +48,8 @@ module.exports = {
         `- **방어(🛡️):** 공격만 막음, 서로 방어는 아무 일 없음(카드도 소모X)`,
         `- **회복(❤️):** 공격 맞으면 무효, 안 맞으면 체력 1 회복(최대2)`,
         "",
-        `**AI결투:** 승리시 +${bet * 1.5} BE, 패배시 -${bet} BE\n**플레이어결투:** 승자 +${bet * 1.9} BE, 패자 -${bet} BE`,
+        `**AI결투:** 승리시 +${formatBE(Math.floor(bet * 1.5))} BE, 패배시 -${formatBE(bet)} BE\n` +
+        `**플레이어결투:** 승자 +${formatBE(Math.floor(bet * 1.9))} BE, 패자 -${formatBE(bet)} BE`,
       ].join("\n"))
       .setFooter({ text: "까리한 디스코드 | 카드 소모시 종료, 동작은 턴마다 버튼으로!" })
       .setColor(0x7c51c2);
@@ -94,7 +97,6 @@ async function runAIBattle(interaction, bet, userId) {
   let turn = 1, log = [];
 
   while (player.cards.length > 0 && ai.cards.length > 0 && player.hp > 0 && ai.hp > 0) {
-    // 카드 선택 UI (비공개)
     const cardRow = new ActionRowBuilder()
       .addComponents(player.cards.map(type =>
         new ButtonBuilder()
@@ -128,10 +130,8 @@ async function runAIBattle(interaction, bet, userId) {
       return await interaction.editReply({ content: "시간초과로 게임 종료!", components: [], embeds: [] });
     }
 
-    // AI 카드 선택 (확률)
     const aiPick = aiAICardPick(ai.cards, player.hp, ai.hp);
 
-    // 턴 결과 연출
     await interaction.editReply({
       embeds: [
         stateEmbed.setFooter({ text: "카드 선택 완료! 상대 카드 공개 중..." })
@@ -140,22 +140,17 @@ async function runAIBattle(interaction, bet, userId) {
     });
     await delay(1200);
 
-    // 룰 적용
     let pUse = false, aUse = false;
     let pDmg = 0, aDmg = 0;
 
     if (cardPick === aiPick) {
-      // 공격-공격, 방어-방어 : 아무 일도 X, 카드 소모 X
       log.push(`턴${turn} | ${CARD_EMOJI[cardPick]} vs ${CARD_EMOJI[aiPick]} : 서로 같은 카드, 변화 없음!`);
     } else {
-      // 아래 모든 if는 '둘이 다를 때'만 실행됨!
-      // 공격 vs 방어
       if ((cardPick === "공격" && aiPick === "방어") || (cardPick === "방어" && aiPick === "공격")) {
         if (cardPick === "공격") aUse = true;
         if (aiPick === "공격") pUse = true;
         log.push(`턴${turn} | ⚔️ vs 🛡️ : 공격이 방어에 막혔다! (방어 카드만 소모)`);
       }
-      // 공격 vs 회복
       else if ((cardPick === "공격" && aiPick === "회복")) {
         aDmg = 1; aUse = true;
         log.push(`턴${turn} | ⚔️ vs ❤️ : 회복이 공격에 끊겼다! (AI 데미지, AI 카드 소모)`);
@@ -163,7 +158,6 @@ async function runAIBattle(interaction, bet, userId) {
         pDmg = 1; pUse = true;
         log.push(`턴${turn} | ❤️ vs ⚔️ : 회복이 공격에 끊겼다! (유저 데미지, 유저 카드 소모)`);
       }
-      // 방어 vs 회복
       else if ((cardPick === "방어" && aiPick === "회복")) {
         aUse = true; if (ai.hp < 2) ai.hp++;
         log.push(`턴${turn} | 🛡️ vs ❤️ : AI가 안전하게 체력 1 회복! (AI 카드 소모)`);
@@ -173,11 +167,9 @@ async function runAIBattle(interaction, bet, userId) {
       }
     }
 
-    // 피해 적용
     if (pDmg) player.hp -= pDmg;
     if (aDmg) ai.hp -= aDmg;
 
-    // 카드 소모
     if (pUse) player.cards.splice(player.cards.indexOf(cardPick), 1);
     if (aUse) ai.cards.splice(ai.cards.indexOf(aiPick), 1);
 
@@ -185,7 +177,6 @@ async function runAIBattle(interaction, bet, userId) {
     if (player.hp <= 0 || ai.hp <= 0) break;
   }
 
-  // 승패 결정
   let result;
   if (player.hp <= 0 && ai.hp <= 0) result = "무승부";
   else if (player.hp > ai.hp) result = "승리";
@@ -205,7 +196,11 @@ async function runAIBattle(interaction, bet, userId) {
       "",
       `**최종 내 체력:** ${player.hp <= 0 ? "0" : player.hp}`,
       `**최종 AI 체력:** ${ai.hp <= 0 ? "0" : ai.hp}`,
-      earn > 0 ? `\n**💰 보상: +${earn} BE!**` : result === "패배" ? `\n**❌ 배팅금액: -${bet} BE**` : ""
+      earn > 0 
+        ? `\n**💰 보상: +${formatBE(earn)} BE!**`
+        : result === "패배"
+          ? `\n**❌ 배팅금액: -${formatBE(bet)} BE**`
+          : ""
     ].join("\n"))
     .setColor(result === "승리" ? 0x7cf251 : result === "무승부" ? 0xcccccc : 0xff3333);
 
@@ -213,7 +208,6 @@ async function runAIBattle(interaction, bet, userId) {
 }
 
 function aiAICardPick(cards, pHp, aiHp) {
-  // 상황 따라 AI 확률 조정
   let weights = cards.map(type => {
     if (type === "공격") return aiHp === 1 ? 1 : 3;
     if (type === "방어") return pHp === 1 ? 3 : 2;
@@ -235,20 +229,17 @@ function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
 async function runUserBattle(interaction, bet, userId, userDisplayName) {
   await interaction.deferUpdate();
 
-  // BE 차감 (매칭 상대도 나중에 차감)
   await addBE(userId, -bet, "[카드배틀] 유저결투 배팅");
 
-  // 대기 큐 등록
   waitingMatch.set(interaction.channel.id, {
     initiator: { id: userId, name: userDisplayName, bet, interaction },
     joined: null
   });
 
-  // 대기 안내
   const waitEmbed = new EmbedBuilder()
     .setTitle("🧑‍🤝‍🧑 플레이어 결투 대기중")
     .setDescription([
-      `**${userDisplayName}**님이 ${bet.toLocaleString()} BE로 결투를 신청했습니다!`,
+      `**${userDisplayName}**님이 ${formatBE(bet)} BE로 결투를 신청했습니다!`,
       "같이 참여할 유저는 아래 버튼을 눌러주세요.",
       "*결투는 누구나 참여 가능! (단, 명령어 시작은 부스터/도너만)*"
     ].join("\n"))
@@ -268,7 +259,6 @@ async function runUserBattle(interaction, bet, userId, userDisplayName) {
 
   await interaction.editReply({ embeds: [waitEmbed], components: [joinBtn] });
 
-  // 참가/취소 대기
   let joinedUser, joinedMember;
   try {
     const btnInt = await interaction.channel.awaitMessageComponent({
@@ -295,7 +285,6 @@ async function runUserBattle(interaction, bet, userId, userDisplayName) {
     return;
   }
 
-  // 참가자 BE 확인
   const joinedBE = getBE(joinedUser.id);
   if (joinedBE < bet) {
     await interaction.followUp({ content: "참가 유저의 BE가 부족해!", ephemeral: true });
@@ -306,20 +295,16 @@ async function runUserBattle(interaction, bet, userId, userDisplayName) {
   }
   await addBE(joinedUser.id, -bet, "[카드배틀] 유저결투 배팅");
 
-  // 결투 시작!
   waitingMatch.delete(interaction.channel.id);
   await playUserVsUser(interaction, bet, userId, userDisplayName, joinedUser.id, joinedUser.displayName || joinedUser.username);
 }
 
 async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
-  // 기본 세팅
   let A = { id: idA, name: nameA, hp: 2, cards: [...CARD_TYPES] };
   let B = { id: idB, name: nameB, hp: 2, cards: [...CARD_TYPES] };
   let turn = 1, log = [];
 
-  // 카드 동시 선택 → 결과 공개 → 반복
   while (A.cards.length > 0 && B.cards.length > 0 && A.hp > 0 && B.hp > 0) {
-    // 두 플레이어에게 각각 카드 고르기 DM 전송
     const pickMsg = (p, opp, channel) => {
       const row = new ActionRowBuilder()
         .addComponents(p.cards.map(type =>
@@ -341,11 +326,9 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
       return { embeds: [embed], components: [row] };
     };
 
-    // 각각에게 카드 선택 받기
     let pickA, pickB;
     try {
-      // 동시에 선택받기 위해 Promise.race + filter 분리
-      const msg = await interaction.editReply({
+      await interaction.editReply({
         content: null,
         embeds: [
           new EmbedBuilder()
@@ -357,11 +340,9 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
         fetchReply: true
       });
 
-      // 양쪽 모두 버튼 대기
       const filterA = i => i.user.id === idA && i.customId.endsWith("_" + turn);
       const filterB = i => i.user.id === idB && i.customId.endsWith("_" + turn);
 
-      // 둘 다 올때까지 기다리기
       const pickRes = await Promise.all([
         interaction.channel.awaitMessageComponent({ filter: filterA, time: 120000 }),
         interaction.channel.awaitMessageComponent({ filter: filterB, time: 120000 })
@@ -378,7 +359,6 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
       return;
     }
 
-    // 결과 연출
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
@@ -394,7 +374,6 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
     });
     await delay(1200);
 
-    // 룰 적용
     let useA = false, useB = false;
     let dmgA = 0, dmgB = 0;
     if (pickA === pickB) {
@@ -432,14 +411,12 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
     if (A.hp <= 0 || B.hp <= 0) break;
   }
 
-  // 승패 결정
   let resultA, resultB;
   if (A.hp <= 0 && B.hp <= 0) resultA = resultB = "무승부";
   else if (A.hp > B.hp) { resultA = "승리"; resultB = "패배"; }
   else if (A.hp < B.hp) { resultA = "패배"; resultB = "승리"; }
   else resultA = resultB = "무승부";
 
-  // BE 보상/차감
   if (resultA === "승리") {
     const earn = Math.floor(bet * 1.9);
     await addBE(A.id, earn, "[카드배틀] 플레이어승리 보상");
@@ -448,9 +425,8 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
     const earn = Math.floor(bet * 1.9);
     await addBE(B.id, earn, "[카드배틀] 플레이어승리 보상");
     await addBE(A.id, 0, "[카드배틀] 플레이어패배");
-  } // 무승부는 둘 다 추가X
+  }
 
-  // 결과 임베드
   const resultEmbed = new EmbedBuilder()
     .setTitle(`🎴 카드배틀 결과`)
     .setDescription([
@@ -458,9 +434,11 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
       "",
       `**${A.name} 체력:** ${A.hp <= 0 ? "0" : A.hp}`,
       `**${B.name} 체력:** ${B.hp <= 0 ? "0" : B.hp}`,
-      resultA === "승리" ? `\n**${A.name} 승리! +${Math.floor(bet*1.9)} BE**` : 
-      resultB === "승리" ? `\n**${B.name} 승리! +${Math.floor(bet*1.9)} BE**` : 
-      "\n**무승부!**"
+      resultA === "승리"
+        ? `\n**${A.name} 승리! +${formatBE(Math.floor(bet*1.9))} BE**`
+        : resultB === "승리"
+          ? `\n**${B.name} 승리! +${formatBE(Math.floor(bet*1.9))} BE**`
+          : "\n**무승부!**"
     ].join("\n"))
     .setColor(resultA === "승리" ? 0x7cf251 : resultB === "승리" ? 0xff3333 : 0xcccccc);
 
