@@ -800,40 +800,52 @@ client.on("messageCreate", async msg => {
     msg.channel.topic &&
     msg.channel.topic.includes("파랑 정수")
   ) {
-    if (Math.random() < 0.01) { // 1% 확률
-      // 구간별로 확률 나누기
+    if (Math.random() < 0.01) {
+      // 기존 확률별 메시지, 이모지
       const r = Math.random();
       let reward = 0;
       let msgText = "";
-
-      if (r < 0.7) { // 70%
+      if (r < 0.7) {
         reward = Math.floor(Math.random() * (1000 - 100 + 1)) + 100;
         msgText = `-# 🔷 <@${msg.author.id}>님이 파랑 정수 ${reward.toLocaleString()} BE를 주웠습니다.`;
-      } else if (r < 0.9) { // 20%
+      } else if (r < 0.9) {
         reward = Math.floor(Math.random() * (5000 - 1001 + 1)) + 1001;
         msgText = `-# 🔷 <@${msg.author.id}>님이 파랑 정수 ${reward.toLocaleString()} BE를 획득했습니다.`;
-      } else if (r < 0.97) { // 7%
+      } else if (r < 0.97) {
         reward = Math.floor(Math.random() * (10000 - 5001 + 1)) + 5001;
         msgText = `-# 🔷 <@${msg.author.id}>님이 두둑하게 파랑 정수 ${reward.toLocaleString()} BE를 획득했습니다.`;
-      } else if (r < 0.99) { // 2%
+      } else if (r < 0.99) {
         reward = Math.floor(Math.random() * (30000 - 10001 + 1)) + 10001;
         msgText = `-# 🔷 <@${msg.author.id}>님이 희귀한 확률로 파랑 정수 ${reward.toLocaleString()} BE를 손에 넣었습니다.`;
-      } else if (r < 0.998) { // 0.8%
+      } else if (r < 0.998) {
         reward = Math.floor(Math.random() * (40000 - 30001 + 1)) + 30001;
         msgText = `-# 🔷 <@${msg.author.id}>님이 특급 파랑 정수 ${reward.toLocaleString()} BE를 획득합니다!`;
-      } else { // 0.2%
+      } else {
         reward = Math.floor(Math.random() * (50000 - 40001 + 1)) + 40001;
         msgText = `-# 🔷 <@${msg.author.id}>님에게 레전드 상황 발생! 파랑 정수 ${reward.toLocaleString()} BE가 쏟아집니다!`;
       }
 
-      addBE(msg.author.id, reward, "채널 주제 보상");
-      msg.channel.send(msgText);
+      // 배율/최종보상 처리
+      const member = await msg.guild.members.fetch(msg.author.id).catch(() => null);
+      let finalReward = reward;
+      let tag = "";
+      if (member) {
+        const isBooster = !!member.premiumSince;
+        const isDonor = member.roles.cache.has("1397076919127900171");
+        if (isDonor) {
+          finalReward = reward * 2;
+          tag = ` [ 𝕯𝖔𝖓𝖔𝖗 보정: ${reward.toLocaleString()} → ${finalReward.toLocaleString()} ]`;
+        } else if (isBooster) {
+          finalReward = Math.floor(reward * 1.5);
+          tag = ` [ 부스터 보정: ${reward.toLocaleString()} → ${finalReward.toLocaleString()} ]`;
+        }
+      }
+
+      addBE(msg.author.id, finalReward, "채널 주제 보상");
+      msg.channel.send(msgText + tag);
     }
   }
 });
-
-
-
 
 // 상시 클릭 가능 버튼형 공지 모달
 const report = require('./commands/report.js');
