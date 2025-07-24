@@ -76,6 +76,94 @@ async function checkDonorRoleExpires(guild) {
   if (changed) saveDonorRoles(donorData);
 }
 
+// 💸 "후원금" 모달 생성 함수
+function createDonateMoneyModal() {
+  return new ModalBuilder()
+    .setCustomId('donate_money_modal')
+    .setTitle('💸 후원금 정보 입력')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('donate_amount')
+          .setLabel('입금 금액 (원)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예: 10000')
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('donate_name')
+          .setLabel('입금자 성함')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예: 김영갓, 박까리')
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('donate_purpose')
+          .setLabel('후원금이 쓰였으면 하는 곳/목적 (선택)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예: 장비 구매, 커뮤니티 운영 등')
+          .setRequired(false)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('donate_account_info')
+          .setLabel('입금 계좌 (안내, 복사해서 입금)')
+          .setStyle(TextInputStyle.Short)
+          .setValue(DONATE_ACCOUNT)
+          .setRequired(false)
+          .setMaxLength(40)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('donate_confirm')
+          .setLabel('※ "입금 완료" 라고 꼭 입력해주세요!')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('입금 완료')
+          .setRequired(true)
+      )
+    );
+}
+
+// 🎁 "상품후원" 모달 생성 함수
+function createDonateItemModal() {
+  return new ModalBuilder()
+    .setCustomId('donate_item_modal')
+    .setTitle('🎁 상품 후원 신청')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('item')
+          .setLabel('후원하는 상품 (필수)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('reason')
+          .setLabel('후원하는 이유 (필수)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('situation')
+          .setLabel('상품이 소비되었으면 하는 상황/대상 (선택)')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('anonymous')
+          .setLabel('익명 후원 여부 ("예" 입력시 익명)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('예 / 아니오 / 공란')
+          .setRequired(false)
+      )
+    );
+}
+
 // 후원금 모달 처리
 async function handleMoneyModal(submitted) {
   const confirm = submitted.fields.getTextInputValue('donate_confirm');
@@ -286,93 +374,13 @@ module.exports = {
 
       // --- 후원금 ---
       if (btnInt.customId === 'donate_money') {
-        const modal = new ModalBuilder()
-          .setCustomId('donate_money_modal')
-          .setTitle('💸 후원금 정보 입력')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_amount')
-                .setLabel('입금 금액 (원)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예: 10000')
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_name')
-                .setLabel('입금자 성함')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예: 김영갓, 박까리')
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_purpose')
-                .setLabel('후원금이 쓰였으면 하는 곳/목적 (선택)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예: 장비 구매, 커뮤니티 운영 등')
-                .setRequired(false)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_account_info')
-                .setLabel('입금 계좌 (안내, 복사해서 입금)')
-                .setStyle(TextInputStyle.Short)
-                .setValue(DONATE_ACCOUNT)
-                .setRequired(false)
-                .setMaxLength(40)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('donate_confirm')
-                .setLabel('※ "입금 완료" 라고 꼭 입력해주세요!')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('입금 완료')
-                .setRequired(true)
-            )
-          );
-        await btnInt.showModal(modal);
+        await btnInt.showModal(createDonateMoneyModal());
         return;
       }
 
       // --- 상품후원 ---
       if (btnInt.customId === 'donate_item') {
-        const modal = new ModalBuilder()
-          .setCustomId('donate_item_modal')
-          .setTitle('🎁 상품 후원 신청')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('item')
-                .setLabel('후원하는 상품 (필수)')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('reason')
-                .setLabel('후원하는 이유 (필수)')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('situation')
-                .setLabel('상품이 소비되었으면 하는 상황/대상 (선택)')
-                .setStyle(TextInputStyle.Short)
-                .setRequired(false)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('anonymous')
-                .setLabel('익명 후원 여부 ("예" 입력시 익명)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('예 / 아니오 / 공란')
-                .setRequired(false)
-            )
-          );
-        await btnInt.showModal(modal);
+        await btnInt.showModal(createDonateItemModal());
         return;
       }
 
@@ -399,4 +407,8 @@ module.exports = {
 
   // === 역할 만료 체크 함수(외부에서 호출 가능) ===
   checkDonorRoleExpires,
+
+  // === 모달 생성 함수 export ===
+  createDonateMoneyModal,
+  createDonateItemModal,
 };
