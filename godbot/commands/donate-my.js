@@ -1,0 +1,109 @@
+// commands/후원확인.js
+
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+
+const donorRolesPath = path.join(__dirname, '../data/donor_roles.json');
+const itemDonationsPath = path.join(__dirname, '../data/item_donations.json');
+
+function loadDonorRoles() {
+  if (!fs.existsSync(donorRolesPath)) return {};
+  return JSON.parse(fs.readFileSync(donorRolesPath, 'utf8'));
+}
+function loadItemDonations() {
+  if (!fs.existsSync(itemDonationsPath)) return [];
+  return JSON.parse(fs.readFileSync(itemDonationsPath, 'utf8'));
+}
+function formatDateKST(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+}
+function getDaysLeft(dateStr) {
+  if (!dateStr) return 0;
+  const now = new Date();
+  const end = new Date(dateStr);
+  const diff = end.getTime() - now.getTime();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+function getTimeLeftString(dateStr) {
+  if (!dateStr) return '-';
+  const now = new Date();
+  const end = new Date(dateStr);
+  let diff = end.getTime() - now.getTime();
+  if (diff <= 0) return '만료됨';
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  diff -= days * 1000 * 60 * 60 * 24;
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  diff -= hours * 1000 * 60 * 60;
+  const minutes = Math.floor(diff / (1000 * 60));
+  return `${days}일 ${hours}시간 ${minutes}분`;
+}
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('후원확인')
+    .setDescription('자신의 후원 현황/역할/남은 혜택 기간을 확인합니다.'),
+
+  async execute(interaction) {
+    const userId = interaction.user.id;
+    const donorData = loadDonorRoles();
+    const itemDonations = loadItemDonations();
+    const userMoney = donorData[userId];
+    const userItems = itemDonations.filter(x => x.userId === userId);
+
+    let embed = new EmbedBuilder()
+      .setTitle('🎁 내 후원 현황')
+      .setDescription([
+        '💡 아래는 내 디스코드 후원 내역과 보유 혜택 정보야.',
+        '※ 후원 내역이 누적되어 있을 수 있어.',
+        '※ 후원 혜택(역할) 만료 시 자동으로 사라짐.'
+      ].join('\n'))
+      .setColor(0x9be7ff);
+
+    // 후원금 내역
+    if (userMoney) {
+      const expires = formatDateKST(userMoney.expiresAt);
+      const daysLeft = getDaysLeft(userMoney.expiresAt);
+      const timeLeft = getTimeLeftString(userMoney.expiresAt);
+      embed.addFields({
+        name: `💸 후원자 역할(혜택)`,
+        value: [
+          `만료일: \`${expires}\``,
+          `남은 기간: **${timeLeft}**`
+        ].join('\n'),
+        inline: false
+      });
+    } else {
+      embed.addFields({
+        name: `💸 후원자 역할(혜택)`,
+        value: `보유하지 않음 (또는 만료됨)`,
+        inline: false
+      });
+    }
+
+    // 상품 후원 내역
+    if (userItems.length > 0) {
+      embed.addFields({
+        name: `🎁 내 상품 후원 내역`,
+        value: userItems.map((item, idx) => [
+          `#${idx+1}. \`${item.item}\``,
+          item.reason ? `- 사유: ${item.reason}` : '',
+          item.situation ? `- 희망상황: ${item.situation}` : '',
+          `- 후원일: ${formatDateKST(item.date)}`
+        ].filter(Boolean).join('\n')).join('\n\n'),
+        inline: false
+      });
+    } else {
+      embed.addFields({
+        name: `🎁 내 상품 후원 내역`,
+        value: '없음',
+        inline: false
+      });
+    }
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+};
