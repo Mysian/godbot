@@ -36,6 +36,22 @@ function getDaysLeft(dateStr) {
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
+// 유저ID로 멘션+닉네임 ([닉네임] 없으면 태그/ID fallback)
+async function getUserDisplay(guild, userId) {
+  try {
+    const member = await guild.members.fetch(userId);
+    // 닉네임 있으면
+    if (member && member.displayName) {
+      return `<@${userId}> [${member.displayName}]`;
+    }
+    // 없으면 유저 태그
+    if (member && member.user && member.user.tag) {
+      return `<@${userId}> [${member.user.tag}]`;
+    }
+  } catch {}
+  // 최후 fallback
+  return `<@${userId}> [${userId}]`;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -61,7 +77,7 @@ module.exports = {
       '🎁 **상품:** 1건 당 후원자 역할 7일 (누적)\n';
 
     // 리스트+버튼+페이징 구성
-    const updateList = async (page, filter, userId = interaction.user.id) => {
+    const updateList = async (page, filter, userId = interaction.user.id, selected = null) => {
       let donorData = loadDonorRoles();
       let itemDonations = loadItemDonations();
 
@@ -117,34 +133,31 @@ module.exports = {
         )
         .setColor(0xf9bb52);
 
-      // 실제 삭제타겟(select용)
+      // 삭제 선택용 SelectMenu 옵션
       let selectOptions = [];
-      let idx = 1;
-      showList.forEach(entry => {
+      for (const entry of showList) {
+        let userDisplay = await getUserDisplay(interaction.guild, entry.userId);
         if (entry.type === 'money') {
           let expiresStr = formatDateKST(entry.expiresAt);
           let daysLeft = getDaysLeft(entry.expiresAt);
-          let userMention = `<@${entry.userId}>`;
-          let isSelf = entry.userId === userId;
           embed.addFields({
-            name: `💸 ${userMention} (ID: ${entry.userId})`,
+            name: `💸 ${userDisplay}`,
             value: [
               `• 예정 만료: \`${expiresStr}\``,
-              `• 남은 기한: **${daysLeft}일**`,
-              isSelf ? '🔻 **[내 역할 직접 취소]** 버튼 클릭 시 즉시 만료됨!' : ''
-            ].filter(Boolean).join('\n'),
+              `• 남은 기한: **${daysLeft}일**`
+            ].join('\n'),
             inline: false
           });
           selectOptions.push({
-            label: `[후원금] ${userMention} (ID: ${entry.userId})`,
+            label: `[후원금] ${userDisplay}`,
             value: `money_${entry.userId}`,
             description: `만료: ${expiresStr} / 남은: ${daysLeft}일`
           });
         }
         if (entry.type === 'item') {
-          let userMention = `<@${entry.userId}>`;
+          let userDisplayItem = await getUserDisplay(interaction.guild, entry.userId);
           embed.addFields({
-            name: `🎁 ${userMention} (ID: ${entry.userId})`,
+            name: `🎁 ${userDisplayItem}`,
             value: [
               `• 상품: \`${entry.item}\``,
               entry.name && !entry.anonymous ? `• 닉네임: ${entry.name}` : '',
@@ -156,13 +169,12 @@ module.exports = {
             inline: false
           });
           selectOptions.push({
-            label: `[상품] ${userMention} (ID: ${entry.userId})`,
+            label: `[상품] ${userDisplayItem}`,
             value: `item_${entry.index}`,
             description: entry.item.length > 80 ? entry.item.slice(0,77) + '...' : entry.item
           });
         }
-        idx++;
-      });
+      }
 
       if (showList.length === 0) {
         embed.addFields({
@@ -182,7 +194,7 @@ module.exports = {
           new ButtonBuilder().setCustomId('filter_item').setLabel('상품').setStyle(filter === 'item' ? ButtonStyle.Primary : ButtonStyle.Secondary)
         );
 
-      // 2줄: SelectMenu(삭제), 내역취소(본인) 버튼
+      // 2줄: SelectMenu(삭제) + 삭제 버튼 (누구나 삭제 가능)
       let selectRow = null;
       if (selectOptions.length > 0) {
         selectRow = new ActionRowBuilder()
@@ -193,25 +205,27 @@ module.exports = {
               .addOptions(selectOptions.slice(0, 25)) // SelectMenu 한 줄 최대 25개
           );
       }
-      let cancelRow = null;
-      if (showList.find(x => x.type === 'money' && x.userId === userId)) {
-        cancelRow = new ActionRowBuilder().addComponents(
+      let deleteBtnRow = null;
+      if (selectOptions.length > 0) {
+        deleteBtnRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId('cancel_self')
-            .setLabel('내 후원자 역할 취소')
+            .setCustomId('delete_selected')
+            .setLabel('선택 내역 삭제')
             .setStyle(ButtonStyle.Danger)
         );
       }
 
       let rows = [row];
       if (selectRow) rows.push(selectRow);
-      if (cancelRow) rows.push(cancelRow);
+      if (deleteBtnRow) rows.push(deleteBtnRow);
 
-      return { embed, rows, page, maxPage, filter };
+      return { embed, rows, page, maxPage, filter, selectOptions, selected };
     };
 
-    // 첫 호출
-    let { embed, rows, page: curPage, filter: curFilter } = await updateList(1, filter);
+    // 현재 선택된 항목 기억 (상태 저장용)
+    let selectedDeleteValue = null;
+
+    let { embed, rows, page: curPage, filter: curFilter, selectOptions } = await updateList(1, filter, interaction.user.id, selectedDeleteValue);
 
     await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
 
@@ -224,11 +238,23 @@ module.exports = {
       let nextPage = curPage;
       let nextFilter = curFilter;
 
-      // SelectMenu(삭제)
+      // SelectMenu(삭제) 선택만
       if (btnInt.customId === 'delete_select') {
-        const selected = btnInt.values[0];
-        if (selected.startsWith('money_')) {
-          let userId = selected.replace('money_', '');
+        selectedDeleteValue = btnInt.values[0]; // 선택값 기억
+        await btnInt.reply({ content: `삭제할 내역을 선택했습니다. [선택 내역 삭제] 버튼을 눌러 삭제할 수 있습니다.`, ephemeral: true });
+        let updated = await updateList(curPage, curFilter, interaction.user.id, selectedDeleteValue);
+        await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
+        return;
+      }
+
+      // [선택 내역 삭제] 버튼
+      if (btnInt.customId === 'delete_selected') {
+        if (!selectedDeleteValue) {
+          await btnInt.reply({ content: `먼저 삭제할 내역을 선택하세요!`, ephemeral: true });
+          return;
+        }
+        if (selectedDeleteValue.startsWith('money_')) {
+          let userId = selectedDeleteValue.replace('money_', '');
           let donorData = loadDonorRoles();
           if (donorData[userId]) {
             delete donorData[userId];
@@ -242,8 +268,8 @@ module.exports = {
             await btnInt.reply({ content: `이미 삭제된 내역입니다.`, ephemeral: true });
           }
         }
-        if (selected.startsWith('item_')) {
-          let index = Number(selected.replace('item_', ''));
+        if (selectedDeleteValue.startsWith('item_')) {
+          let index = Number(selectedDeleteValue.replace('item_', ''));
           let arr = loadItemDonations();
           if (arr[index]) {
             arr.splice(index, 1);
@@ -253,7 +279,9 @@ module.exports = {
             await btnInt.reply({ content: `이미 삭제된 내역입니다.`, ephemeral: true });
           }
         }
-        let updated = await updateList(curPage, curFilter, interaction.user.id);
+        // 삭제 후 초기화
+        selectedDeleteValue = null;
+        let updated = await updateList(curPage, curFilter, interaction.user.id, selectedDeleteValue);
         await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
         return;
       }
@@ -264,30 +292,8 @@ module.exports = {
       if (btnInt.customId === 'filter_money') nextFilter = 'money', nextPage = 1;
       if (btnInt.customId === 'filter_item') nextFilter = 'item', nextPage = 1;
 
-      if (btnInt.customId === 'cancel_self') {
-        let donorData = loadDonorRoles();
-        if (donorData[interaction.user.id]) {
-          delete donorData[interaction.user.id];
-          saveDonorRoles(donorData);
-          try {
-            let member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-            if (member) await member.roles.remove(DONOR_ROLE_ID).catch(() => {});
-          } catch {}
-        }
-        await btnInt.update({
-          embeds: [new EmbedBuilder()
-            .setTitle('✅ 내 후원자 역할 취소 완료!')
-            .setDescription('후원자 역할이 즉시 해제되었습니다.\n언제든 다시 후원시 기간이 새로 부여됩니다.')
-            .setColor(0x39db7f)
-          ],
-          components: []
-        });
-        collector.stop();
-        return;
-      }
-
       // 리스트 갱신
-      let updated = await updateList(nextPage, nextFilter, interaction.user.id);
+      let updated = await updateList(nextPage, nextFilter, interaction.user.id, selectedDeleteValue);
       curPage = updated.page;
       curFilter = updated.filter;
 
