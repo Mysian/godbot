@@ -4,9 +4,15 @@ const {
   ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType
 } = require('discord.js');
 
+const fs = require('fs');
+const path = require('path');
+
 const DONATION_LOG_CHANNEL = '1385860310753087549';
 const DONATION_THANKS_CHANNEL = '1264514955269640252';
 const DONATE_ACCOUNT = '지역농협 3521075112463 예금주:이O민';
+const DONOR_ROLE_ID = '1397076919127900171';
+
+const donorRolesPath = path.join(__dirname, '../data/donor_roles.json');
 
 function getKSTDateString() {
   return new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
@@ -15,7 +21,56 @@ function getKSTDateTimeString() {
   return new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
-// --- 공통 처리 함수(중복 방지) ---
+// donor_roles.json 입출력
+function loadDonorRoles() {
+  if (!fs.existsSync(donorRolesPath)) return {};
+  return JSON.parse(fs.readFileSync(donorRolesPath, 'utf8'));
+}
+function saveDonorRoles(data) {
+  fs.writeFileSync(donorRolesPath, JSON.stringify(data, null, 2));
+}
+
+// 역할 부여 & 기간 관리
+async function giveDonorRole(member, days) {
+  if (!days || days <= 0) return;
+  let donorData = loadDonorRoles();
+  let now = new Date();
+  let base = now;
+
+  // 기존 만료일 있으면 누적
+  if (donorData[member.id]?.expiresAt) {
+    let prev = new Date(donorData[member.id].expiresAt);
+    base = prev > now ? prev : now;
+  }
+  let expires = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+  donorData[member.id] = {
+    roleId: DONOR_ROLE_ID,
+    expiresAt: expires.toISOString()
+  };
+  saveDonorRoles(donorData);
+
+  // 역할 부여 (이미 있으면 무시)
+  await member.roles.add(DONOR_ROLE_ID).catch(() => {});
+}
+
+// 만료 체크 (ready, 주기적 호출 추천)
+async function checkDonorRoleExpires(guild) {
+  let donorData = loadDonorRoles();
+  let now = new Date();
+  let changed = false;
+  for (const [userId, info] of Object.entries(donorData)) {
+    if (new Date(info.expiresAt) <= now) {
+      // 역할 해제
+      let member = await guild.members.fetch(userId).catch(() => null);
+      if (member) await member.roles.remove(DONOR_ROLE_ID).catch(() => {});
+      delete donorData[userId];
+      changed = true;
+    }
+  }
+  if (changed) saveDonorRoles(donorData);
+}
+
+// 후원금 모달 처리
 async function handleMoneyModal(submitted) {
   const amount = submitted.fields.getTextInputValue('donate_amount');
   const inName = submitted.fields.getTextInputValue('donate_name');
@@ -33,6 +88,10 @@ async function handleMoneyModal(submitted) {
       await submitted.editReply({ embeds: [thanksEmbed], ephemeral: true });
     }
   } catch {}
+
+  // 역할 지급 (1,000원당 10일, 소수점은 버림)
+  let days = Math.floor(Number(amount) / 1000) * 10;
+  if (days > 0) await giveDonorRole(submitted.member, days);
 
   // 로그 채널 전송
   try {
@@ -137,17 +196,26 @@ async function handleItemModal(submitted) {
   } catch {}
 }
 
-// --- 명령어/외부 모두 대응하는 구조 ---
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('후원')
     .setDescription('소중한 후원을 해주세요!'),
 
   async execute(interaction) {
+    // 서버 입장 시 만료 체크 (최초 명령어 입력마다 해도 무방)
+    await checkDonorRoleExpires(interaction.guild);
+
     try {
       const embed = new EmbedBuilder()
         .setTitle('💖 후원해주셔서 감사합니다!')
-        .setDescription('어떤 방식으로 후원하시겠어요?\n\n**정말 감사한 마음을 담아, 모든 후원은 신중하게 관리됩니다.**')
+        .setDescription([
+          `어떤 방식으로 후원하시겠어요?\n\n**정말 감사한 마음을 담아, 모든 후원은 신중하게 관리됩니다.**\n\n`,
+          `**✅ 입금 계좌:** \`${DONATE_ACCOUNT}\``
+        ].join('\n'))
+        .addFields(
+          { name: '🎁 후원자의 혜택', value: `• 서버 내 **경험치 부스터 +333**\n• 후원자 역할 𝕯𝖔𝖓𝖔𝖗 부여 및 서버 멤버 상단 고정\n• 추가 정수 획득 기회`, inline: false },
+          { name: '💰 후원금의 용도', value: `• 서버 부스터 잔여분 진행\n• 정수 **'경매 현물'** 마련 (게임 아이템, 기프티콘, 실제 상품 등)\n• 내전(서버 내 대회) 보상\n• 마인크래프트 등 자체 서버 호스팅 및 유지(일정 금액 달성 시)\n• 자체 봇 '갓봇'의 개발 및 서버 호스팅 비용`, inline: false }
+        )
         .setColor(0xf9bb52);
 
       const row = new ActionRowBuilder().addComponents(
@@ -209,7 +277,7 @@ module.exports = {
           );
         await btnInt.showModal(modal);
 
-        // === 명령어에서 모달 제출도 직접 기다려서 처리 ===
+        // 모달 제출
         let submitted;
         try {
           submitted = await btnInt.awaitModalSubmit({
@@ -291,5 +359,8 @@ module.exports = {
       await handleItemModal(interaction);
       return;
     }
-  }
+  },
+
+  // === 역할 만료 체크 함수(외부에서 호출 가능) ===
+  checkDonorRoleExpires,
 };
