@@ -13,7 +13,9 @@ const DONATE_ACCOUNT = '지역농협 3521075112463 예금주:이O민';
 const DONOR_ROLE_ID = '1397076919127900171';
 
 const donorRolesPath = path.join(__dirname, '../data/donor_roles.json');
+const itemDonationsPath = path.join(__dirname, '../data/item_donations.json');
 
+// KST 날짜/시간 포맷
 function getKSTDateString() {
   return new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 }
@@ -30,14 +32,21 @@ function saveDonorRoles(data) {
   fs.writeFileSync(donorRolesPath, JSON.stringify(data, null, 2));
 }
 
+// item_donations.json 입출력
+function loadItemDonations() {
+  if (!fs.existsSync(itemDonationsPath)) return [];
+  return JSON.parse(fs.readFileSync(itemDonationsPath, 'utf8'));
+}
+function saveItemDonations(arr) {
+  fs.writeFileSync(itemDonationsPath, JSON.stringify(arr, null, 2));
+}
+
 // 역할 부여 & 기간 관리
 async function giveDonorRole(member, days) {
   if (!days || days <= 0) return;
   let donorData = loadDonorRoles();
   let now = new Date();
   let base = now;
-
-  // 기존 만료일 있으면 누적
   if (donorData[member.id]?.expiresAt) {
     let prev = new Date(donorData[member.id].expiresAt);
     base = prev > now ? prev : now;
@@ -48,8 +57,6 @@ async function giveDonorRole(member, days) {
     expiresAt: expires.toISOString()
   };
   saveDonorRoles(donorData);
-
-  // 역할 부여 (이미 있으면 무시)
   await member.roles.add(DONOR_ROLE_ID).catch(() => {});
 }
 
@@ -60,7 +67,6 @@ async function checkDonorRoleExpires(guild) {
   let changed = false;
   for (const [userId, info] of Object.entries(donorData)) {
     if (new Date(info.expiresAt) <= now) {
-      // 역할 해제
       let member = await guild.members.fetch(userId).catch(() => null);
       if (member) await member.roles.remove(DONOR_ROLE_ID).catch(() => {});
       delete donorData[userId];
@@ -89,7 +95,7 @@ async function handleMoneyModal(submitted) {
     }
   } catch {}
 
-  // 역할 지급 (1,000원당 10일, 소수점은 버림)
+  // 역할 지급 (1,000원당 10일, 소수점 버림)
   let days = Math.floor(Number(amount) / 1000) * 10;
   if (days > 0) await giveDonorRole(submitted.member, days);
 
@@ -138,6 +144,7 @@ async function handleMoneyModal(submitted) {
   } catch {}
 }
 
+// 상품 후원 모달 처리 + 로그 저장
 async function handleItemModal(submitted) {
   const item = submitted.fields.getTextInputValue('item');
   const reason = submitted.fields.getTextInputValue('reason');
@@ -145,7 +152,24 @@ async function handleItemModal(submitted) {
   const anonymous = submitted.fields.getTextInputValue('anonymous')?.trim();
 
   let displayName = submitted.member.displayName;
-  if (anonymous && anonymous.toLowerCase() === '예') displayName = '익명';
+  let anonymousBool = false;
+  if (anonymous && anonymous.toLowerCase() === '예') {
+    displayName = '익명';
+    anonymousBool = true;
+  }
+
+  // === 상품 후원 로그 json에 저장 ===
+  let arr = loadItemDonations();
+  arr.unshift({
+    userId: submitted.user.id,
+    name: displayName,
+    item,
+    reason,
+    situation,
+    anonymous: anonymousBool,
+    date: new Date().toISOString()
+  });
+  saveItemDonations(arr);
 
   // 로그 채널
   try {
@@ -202,7 +226,6 @@ module.exports = {
     .setDescription('소중한 후원을 해주세요!'),
 
   async execute(interaction) {
-    // 서버 입장 시 만료 체크 (최초 명령어 입력마다 해도 무방)
     await checkDonorRoleExpires(interaction.guild);
 
     try {
@@ -277,7 +300,6 @@ module.exports = {
           );
         await btnInt.showModal(modal);
 
-        // 모달 제출
         let submitted;
         try {
           submitted = await btnInt.awaitModalSubmit({
