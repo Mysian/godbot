@@ -36,11 +36,13 @@ function getDaysLeft(dateStr) {
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
-// 버튼 자동 5개씩 줄바꿈
+
+// 최대 5개씩 한줄
 function buildButtonRows(btnList) {
   const rows = [];
   for (let i = 0; i < btnList.length; i += 5) {
-    rows.push(new ActionRowBuilder().addComponents(...btnList.slice(i, i + 5)));
+    const chunk = btnList.slice(i, i + 5);
+    if (chunk.length > 0) rows.push(new ActionRowBuilder().addComponents(...chunk));
   }
   return rows;
 }
@@ -49,7 +51,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('후원내역')
     .setDescription('후원 내역/후원자 목록을 확인합니다.')
-    .addStringOption(opt => 
+    .addStringOption(opt =>
       opt.setName('종류')
         .setDescription('필터: 전체, 후원금, 상품')
         .addChoices(
@@ -61,16 +63,10 @@ module.exports = {
 
   async execute(interaction) {
     const filter = interaction.options.getString('종류') || 'all';
-    let page = 1;
+    let curPage = 1;
+    let curFilter = filter;
 
-    let deleteTargets = []; // 버튼용 삭제 타깃 저장
-
-    // 정책 안내문
-    const POLICY_NOTICE =
-      '💸 **후원금:** 1,000원당 후원자 역할 3일\n' +
-      '🎁 **상품:** 1건 당 후원자 역할 7일 (누적)\n';
-
-    // 리스트+버튼+페이징 구성
+    // 리스트+버튼+페이징 구성 함수
     const updateList = async (page, filter, userId = interaction.user.id) => {
       let donorData = loadDonorRoles();
       let itemDonations = loadItemDonations();
@@ -81,7 +77,6 @@ module.exports = {
         roleId: info.roleId,
         expiresAt: info.expiresAt
       }));
-
       let itemList = itemDonations.map((x, idx) => ({
         userId: x.userId,
         name: x.name,
@@ -117,7 +112,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle('🎁 후원 내역 조회')
         .setDescription(
-          POLICY_NOTICE + '\n' +
+          '💸 **후원금:** 1,000원당 후원자 역할 3일\n🎁 **상품:** 1건 당 후원자 역할 7일 (누적)\n\n' +
           (
             filter === 'money' ? '💸 **후원금 후원자 목록**' :
             filter === 'item' ? '🎁 **상품 후원자 목록**' :
@@ -127,8 +122,7 @@ module.exports = {
         )
         .setColor(0xf9bb52);
 
-      deleteTargets = [];
-
+      let deleteTargets = [];
       if (showList.length === 0) {
         embed.addFields({
           name: '내역 없음',
@@ -136,14 +130,12 @@ module.exports = {
           inline: false
         });
       }
-
       showList.forEach((entry, idx) => {
         if (entry.type === 'money') {
           let expiresStr = formatDateKST(entry.expiresAt);
           let daysLeft = getDaysLeft(entry.expiresAt);
           let userMention = `<@${entry.userId}>`;
           let isSelf = entry.userId === userId;
-
           embed.addFields({
             name: `💸 ${userMention} (ID: ${entry.userId})`,
             value: [
@@ -230,11 +222,12 @@ module.exports = {
       });
       const deleteRows = buildButtonRows(deleteButtons);
 
-      return { embed, rows: [row, ...deleteRows], page, maxPage, filter };
+      // 최종 rows 반환 (undefined/null 없도록 필터)
+      return { embed, rows: [row, ...deleteRows].filter(Boolean), page, maxPage, filter };
     };
 
     // 첫 호출
-    let { embed, rows, page: curPage, filter: curFilter } = await updateList(1, filter);
+    let { embed, rows, page, filter: useFilter } = await updateList(curPage, curFilter);
 
     await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
 
@@ -246,6 +239,7 @@ module.exports = {
     collector.on('collect', async btnInt => {
       let nextPage = curPage;
       let nextFilter = curFilter;
+      let changed = false;
 
       // 삭제 버튼 처리
       if (btnInt.customId.startsWith('delete_money_')) {
@@ -259,10 +253,8 @@ module.exports = {
             if (member) await member.roles.remove(DONOR_ROLE_ID).catch(() => {});
           } catch {}
         }
+        changed = true;
         await btnInt.reply({ content: `해당 후원금 내역과 역할 혜택이 삭제되었습니다.`, ephemeral: true });
-        let updated = await updateList(curPage, curFilter, interaction.user.id);
-        await interaction.editReply({ embeds: [updated.embed], components: updated.rows });
-        return;
       }
       if (btnInt.customId.startsWith('delete_item_')) {
         let index = Number(btnInt.customId.replace('delete_item_', ''));
@@ -271,10 +263,8 @@ module.exports = {
           arr.splice(index, 1);
           saveItemDonations(arr);
         }
+        changed = true;
         await btnInt.reply({ content: `해당 상품 후원 내역이 삭제되었습니다.`, ephemeral: true });
-        let updated = await updateList(curPage, curFilter, interaction.user.id);
-        await interaction.editReply({ embeds: [updated.embed], components: [updated.rows] });
-        return;
       }
 
       if (btnInt.customId === 'prev') nextPage--;
@@ -305,17 +295,23 @@ module.exports = {
         return;
       }
 
-      // 리스트 갱신
-      let updated = await updateList(nextPage, nextFilter, interaction.user.id);
-      curPage = updated.page;
-      curFilter = updated.filter;
+      // 리스트 갱신(항상 collector 내부에서 갱신)
+      let { embed: newEmbed, rows: newRows, page: realPage, filter: realFilter } = await updateList(nextPage, nextFilter, interaction.user.id);
+      curPage = realPage;
+      curFilter = realFilter;
 
-      await btnInt.update({ embeds: [updated.embed], components: updated.rows });
+      try {
+        await btnInt.update({ embeds: [newEmbed], components: newRows });
+      } catch (err) {
+        // interaction expired 등 조용히 무시
+      }
     });
 
     collector.on('end', async () => {
       // 만료 시 버튼 비활성화
-      rows.forEach(row => row.components.forEach(btn => btn.setDisabled(true)));
+      rows.forEach(row => {
+        if (row && row.components) row.components.forEach(btn => btn.setDisabled(true));
+      });
       try {
         await interaction.editReply({ components: rows });
       } catch {}
