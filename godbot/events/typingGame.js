@@ -4,7 +4,7 @@ const path = require('path');
 
 const ALLOWED_CHANNEL = '1393421229083328594';
 const DATA_PATH = path.join(__dirname, '../data/typing-rank.json');
-const { addBE } = require('../data/be-util.js');
+const { addBE } = require('../commands/be-util.js');
 const { createCanvas, registerFont } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
 registerFont(path.join(__dirname, '../fonts/NotoSansKR-Regular.ttf'), { family: 'NotoSansKR' });
