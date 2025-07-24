@@ -120,7 +120,7 @@ async function runAIBattle(interaction, bet, userId) {
       const cardInt = await interaction.channel.awaitMessageComponent({
         filter: i => i.user.id === userId,
         componentType: ComponentType.Button,
-        time: 20000,
+        time: 300000,
       });
       await cardInt.deferUpdate();
       cardPick = cardInt.customId;
@@ -273,7 +273,7 @@ async function runUserBattle(interaction, bet, userId, userDisplayName) {
   try {
     const btnInt = await interaction.channel.awaitMessageComponent({
       filter: i => i.customId === "join_battle" || (i.customId === "cancel_battle" && i.user.id === userId),
-      time: 60000
+      time: 120000
     });
     if (btnInt.customId === "cancel_battle") {
       waitingMatch.delete(interaction.channel.id);
@@ -363,8 +363,8 @@ async function playUserVsUser(interaction, bet, idA, nameA, idB, nameB) {
 
       // 둘 다 올때까지 기다리기
       const pickRes = await Promise.all([
-        interaction.channel.awaitMessageComponent({ filter: filterA, time: 60000 }),
-        interaction.channel.awaitMessageComponent({ filter: filterB, time: 60000 })
+        interaction.channel.awaitMessageComponent({ filter: filterA, time: 120000 }),
+        interaction.channel.awaitMessageComponent({ filter: filterB, time: 120000 })
       ]);
 
       pickA = pickRes[0].customId.split("_")[0];
