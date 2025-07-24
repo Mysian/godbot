@@ -288,6 +288,7 @@ const warnCmd = client.commands.get("경고");
 const unwarnCmd = client.commands.get("경고취소");
 const champBattle = require('./commands/champ-battle');
 const remoteCmd = client.commands.get("리모콘");
+const donateCmd = client.commands.get('후원');
 
 client.on(Events.InteractionCreate, async interaction => {
 
@@ -387,7 +388,21 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
-  
+  // 💖 후원 안내 버튼(공지 등)
+  if (
+    interaction.isButton() &&
+    (interaction.customId === 'donate_money' || interaction.customId === 'donate_item')
+  ) {
+    if (!donateCmd) return;
+    if (interaction.customId === 'donate_money') {
+      await interaction.showModal(donateCmd.createDonateMoneyModal());
+      return;
+    }
+    if (interaction.customId === 'donate_item') {
+      await interaction.showModal(donateCmd.createDonateItemModal());
+      return;
+    }
+  }
 
   // 2. 모달 통합 처리 (여기만 바뀜!)
   if (interaction.isModalSubmit()) {
