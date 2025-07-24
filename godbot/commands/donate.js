@@ -9,7 +9,7 @@ const path = require('path');
 
 const DONATION_LOG_CHANNEL = '1385860310753087549';
 const DONATION_THANKS_CHANNEL = '1264514955269640252';
-const DONATE_ACCOUNT = '지역농협 3521075112463 예금주:이O민';
+const DONATE_ACCOUNT = '지역농협 3521075112463 이O민';
 const DONOR_ROLE_ID = '1397076919127900171';
 
 const donorRolesPath = path.join(__dirname, '../data/donor_roles.json');
@@ -78,6 +78,12 @@ async function checkDonorRoleExpires(guild) {
 
 // 후원금 모달 처리
 async function handleMoneyModal(submitted) {
+  // '입금 완료' 체크 확인
+  const confirm = submitted.fields.getTextInputValue('donate_confirm');
+  if (confirm.trim() !== '입금 완료') {
+    await submitted.reply({ content: '입금 완료 체크가 필요합니다. "입금 완료"를 정확히 입력해주세요.', ephemeral: true });
+    return;
+  }
   const amount = submitted.fields.getTextInputValue('donate_amount');
   const inName = submitted.fields.getTextInputValue('donate_name');
   const purpose = submitted.fields.getTextInputValue('donate_purpose') || '미입력';
@@ -232,8 +238,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle('💖 후원해주셔서 감사합니다!')
         .setDescription([
-          `어떤 방식으로 후원하시겠어요?\n\n**정말 감사한 마음을 담아, 모든 후원은 신중하게 관리됩니다.**\n\n`,
-          `**✅ 입금 계좌:** \`${DONATE_ACCOUNT}\``
+          `어떤 방식으로 후원하시겠어요?\n\n**정말 감사한 마음을 담아, 모든 후원은 신중하게 관리됩니다.**`
         ].join('\n'))
         .addFields(
           { name: '🎁 후원자의 혜택', value: `• 서버 내 **경험치 부스터 +333**\n• 후원자 역할 𝕯𝖔𝖓𝖔𝖗 부여 및 서버 멤버 상단 고정\n• 추가 정수 획득 기회`, inline: false },
@@ -296,6 +301,23 @@ module.exports = {
                 .setStyle(TextInputStyle.Short)
                 .setPlaceholder('예: 장비 구매, 커뮤니티 운영 등')
                 .setRequired(false)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('donate_account_info')
+                .setLabel('입금 계좌 (안내, 복사해서 입금)')
+                .setStyle(TextInputStyle.Short)
+                .setValue(DONATE_ACCOUNT)
+                .setRequired(false)
+                .setMaxLength(40)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('donate_confirm')
+                .setLabel('※ "입금 완료" 라고 꼭 입력해주세요!')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('입금 완료')
+                .setRequired(true)
             )
           );
         await btnInt.showModal(modal);
