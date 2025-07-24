@@ -2,6 +2,8 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
+const DONOR_ROLE = '1397076919127900171';
+
 const fortunes = [
   "행운이 가득한 하루가 될 거예요.",
   "작은 기쁨이 찾아오는 하루가 될 거예요.",
@@ -630,7 +632,6 @@ const fortunes = [
 "예상치 못한 소식이 하루를 바꿀 수 있어요.",
 ];
 
-// BE 연동
 const bePath = path.join(__dirname, '../data/BE.json');
 function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, "{}");
@@ -652,12 +653,10 @@ function addBE(userId, amount, reason) {
   saveBE(be);
 }
 
-
 // 유저별 마지막 사용일 저장 경로
 const dataDir = path.join(__dirname, '../data');
 const dataPath = path.join(dataDir, 'fortune-used.json');
 
-// 데이터 로드/세이브 함수
 function loadUserData() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, '{}');
@@ -669,12 +668,11 @@ function saveUserData(data) {
 
 // 자정(한국시간) 기준으로 쿨타임 체크 (KST)
 function getKSTDateString() {
-  // KST = UTC + 9
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  return now.toISOString().split('T')[0]; // "2025-06-12"
+  return now.toISOString().split('T')[0];
 }
 
-// 운세 보상 로직 (금액/확률/이모지 커스텀)
+// 운세 보상 로직
 function getFortuneReward() {
   const rand = Math.random() * 100;
   if (rand < 0.5) { // 0.5%
@@ -698,7 +696,6 @@ module.exports = {
     .setDescription('오늘의 운세를 확인합니다. (자정마다 초기화, 모든 유저 공개)'),
   async execute(interaction) {
     const userId = interaction.user.id;
-    const username = interaction.user.username;
     const today = getKSTDateString();
 
     // 유저 데이터 로드
@@ -715,26 +712,39 @@ module.exports = {
       return;
     }
 
+    // 𝕯𝖔𝖓𝖔𝖗 역할 여부 확인
+    const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
+
     // 운세 랜덤 선택
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
-    const rewardObj = getFortuneReward();
-    const result = `<@${userId}> 님, ${fortune}`;
+    let rewardObj = getFortuneReward();
 
-    // 파랑 정수 지급
-    addBE(userId, rewardObj.amount, "오늘의 운세 보상");
+    // 도너라면 x2
+    let rewardAmount = rewardObj.amount;
+    if (isDonor) rewardAmount *= 2;
 
-    // 데이터 저장 (오늘 날짜로 기록)
+    // 정수 지급
+    addBE(userId, rewardAmount, isDonor ? "오늘의 운세 보상 (𝕯𝖔𝖓𝖔𝖗 x2)" : "오늘의 운세 보상");
+
+    // 기록
     userData[userId] = today;
     saveUserData(userData);
 
-    // 임베드 생성 (이모지/금액 커스텀)
+    // 임베드 생성
+    let desc = [
+      `<@${userId}> 님, ${fortune}`,
+      ``,
+      `${rewardObj.emoji} 파랑 정수 **${rewardAmount.toLocaleString()} BE**를 획득했습니다!`
+    ];
+    if (isDonor) desc.push('\n💜 𝕯𝖔𝖓𝖔𝖗 운세 보상 **2배** 지급!');
+
     const embed = new EmbedBuilder()
       .setTitle('오늘의 운세')
-      .setDescription(`${result}\n\n${rewardObj.emoji} 파랑 정수 ${rewardObj.amount.toLocaleString()} BE를 획득했습니다!`)
-      .setColor(0x57D9A3)
+      .setDescription(desc.join('\n'))
+      .setColor(isDonor ? 0xAE72F7 : 0x57D9A3)
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
-    // 전체 공개로 출력
+    // 전체 공개
     await interaction.reply({ embeds: [embed] });
   }
 };
