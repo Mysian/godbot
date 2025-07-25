@@ -1,4 +1,3 @@
-// godbot/commands/be-check.js
 const {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -15,18 +14,32 @@ const path = require('path');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 
-// === 정수 순위별 이미지 URL(직접 수정) ===
-const RANK_IMAGE = {
-  rank_1:    "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",        // 1위
-  rank_2_5:  "https://media.discordapp.net/attachments/1398143977051652217/1398156432762736731/8_.png?ex=68845626&is=688304a6&hm=f07a8c795f7086a7982f590df11709d2c53a5327a30a78d165f650d14787874b&=&format=webp&quality=lossless&width=888&height=888",      // 2~5위
-  rank_6_10: "https://media.discordapp.net/attachments/1398143977051652217/1398156419642949824/7_.png?ex=68845622&is=688304a2&hm=18ec47803f660efa4ea6d97307501cc96831916d559b4db1da52f3b59abe550b&=&format=webp&quality=lossless&width=888&height=888",     // 6~10위
-  rank_11_20:"https://media.discordapp.net/attachments/1398143977051652217/1398156401238347796/6_.png?ex=6884561e&is=6883049e&hm=ce91718cd8a57c5fa9f73bd87208b48d499f05d135a5ee1e9c40bfd30a3c32a2&=&format=webp&quality=lossless&width=888&height=888",    // 11~20위
-  top5:      "https://media.discordapp.net/attachments/1398143977051652217/1398156383018291243/5_.png?ex=6884561a&is=6883049a&hm=8910df7a7109a1b25df40212cadab46c7623d035ff2501f08837ff65f4d6b983&=&format=webp&quality=lossless&width=888&height=888",     // 상위 5% (21위 이상만)
-  top15:     "https://media.discordapp.net/attachments/1398143977051652217/1398156369885925527/4_.png?ex=68845617&is=68830497&hm=027cf1b399799abc798d956adb3c16ae658ea17ac31bff022308fde58e3a1027&=&format=webp&quality=lossless&width=888&height=888",    // 6~15%
-  top35:     "https://media.discordapp.net/attachments/1398143977051652217/1398156357810524171/3_.png?ex=68845614&is=68830494&hm=f8b248ec38986e68259ce81d715b3b9661ba2dd9a39f50c4ba44a860fed2f062&=&format=webp&quality=lossless&width=888&height=888",    // 16~35%
-  top65:     "https://media.discordapp.net/attachments/1398143977051652217/1398156346456674356/2_.png?ex=68845611&is=68830491&hm=6423ca01333a2bb05216dcfd010fe098b2e74425175747b4258251fcc6711267&=&format=webp&quality=lossless&width=888&height=888",    // 36~65%
-  top100:    "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888",   // 66~100%
-  default:   "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888"
+// 티어별 이미지 URL 직접 입력
+const TIER_IMAGE = {
+  champion:   "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",     // 1위
+  challenger: "https://media.discordapp.net/attachments/1398143977051652217/1398156432762736731/8_.png?ex=68845626&is=688304a6&hm=f07a8c795f7086a7982f590df11709d2c53a5327a30a78d165f650d14787874b&=&format=webp&quality=lossless&width=888&height=888",   // 2~5위
+  legend:     "https://media.discordapp.net/attachments/1398143977051652217/1398156419642949824/7_.png?ex=68845622&is=688304a2&hm=18ec47803f660efa4ea6d97307501cc96831916d559b4db1da52f3b59abe550b&=&format=webp&quality=lossless&width=888&height=888",       // 6~10위
+  diamond:    "https://media.discordapp.net/attachments/1398143977051652217/1398156401238347796/6_.png?ex=6884561e&is=6883049e&hm=ce91718cd8a57c5fa9f73bd87208b48d499f05d135a5ee1e9c40bfd30a3c32a2&=&format=webp&quality=lossless&width=888&height=888",      // 11~20위
+  emerald:    "https://media.discordapp.net/attachments/1398143977051652217/1398156383018291243/5_.png?ex=6884561a&is=6883049a&hm=8910df7a7109a1b25df40212cadab46c7623d035ff2501f08837ff65f4d6b983&=&format=webp&quality=lossless&width=888&height=888",      // 상위 5%
+  platinum:   "https://media.discordapp.net/attachments/1398143977051652217/1398156369885925527/4_.png?ex=68845617&is=68830497&hm=027cf1b399799abc798d956adb3c16ae658ea17ac31bff022308fde58e3a1027&=&format=webp&quality=lossless&width=888&height=888",     // 6~15%
+  gold:       "https://media.discordapp.net/attachments/1398143977051652217/1398156357810524171/3_.png?ex=68845614&is=68830494&hm=f8b248ec38986e68259ce81d715b3b9661ba2dd9a39f50c4ba44a860fed2f062&=&format=webp&quality=lossless&width=888&height=888",         // 16~35%
+  silver:     "https://media.discordapp.net/attachments/1398143977051652217/1398156346456674356/2_.png?ex=68845611&is=68830491&hm=6423ca01333a2bb05216dcfd010fe098b2e74425175747b4258251fcc6711267&=&format=webp&quality=lossless&width=888&height=888",       // 36~65%
+  bronze:     "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888",       // 66~100%
+  default:    "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888"
+};
+
+// 티어명 텍스트
+const TIER_NAME = {
+  champion:   "챔피언",
+  challenger: "챌린저",
+  legend:     "레전드",
+  diamond:    "다이아",
+  emerald:    "에메랄드",
+  platinum:   "플래티넘",
+  gold:       "골드",
+  silver:     "실버",
+  bronze:     "브론즈",
+  default:    "없음"
 };
 
 function loadBE() {
@@ -75,7 +88,7 @@ function getRankInfo(targetUserId, be) {
     .sort((a, b) => b.amount - a.amount);
 
   const idx = rankArr.findIndex(e => e.id === targetUserId);
-  if (idx === -1) return { rank: null, percent: 100 };
+  if (idx === -1) return { rank: null, percent: 100, total: rankArr.length };
 
   const rank = idx + 1;
   const percent = Math.round((rank / rankArr.length) * 100);
@@ -83,21 +96,22 @@ function getRankInfo(targetUserId, be) {
   return { rank, percent, total: rankArr.length };
 }
 
-// === [순위별 썸네일 이미지 선택] ===
-function getRankImage(rank, percent) {
-  if (rank === 1)                   return RANK_IMAGE.rank_1;
-  if (rank >= 2 && rank <= 5)       return RANK_IMAGE.rank_2_5;
-  if (rank >= 6 && rank <= 10)      return RANK_IMAGE.rank_6_10;
-  if (rank >= 11 && rank <= 20)     return RANK_IMAGE.rank_11_20;
-  // 21위부터 퍼센트 분기
-  if (rank >= 21 && percent <= 5)   return RANK_IMAGE.top5;
-  if (rank >= 21 && percent <= 15)  return RANK_IMAGE.top15;
-  if (rank >= 21 && percent <= 35)  return RANK_IMAGE.top35;
-  if (rank >= 21 && percent <= 65)  return RANK_IMAGE.top65;
-  if (rank >= 21 && percent <= 100) return RANK_IMAGE.top100;
-  return RANK_IMAGE.default;
+// === 티어 구하기 ===
+function getTierInfo(rank, percent) {
+  if (rank === 1)                  return { key: "champion" };
+  if (rank >= 2 && rank <= 5)      return { key: "challenger" };
+  if (rank >= 6 && rank <= 10)     return { key: "legend" };
+  if (rank >= 11 && rank <= 20)    return { key: "diamond" };
+  // 21위 이상 퍼센트 티어
+  if (rank >= 21 && percent <= 5)  return { key: "emerald" };
+  if (rank >= 21 && percent <= 15) return { key: "platinum" };
+  if (rank >= 21 && percent <= 35) return { key: "gold" };
+  if (rank >= 21 && percent <= 65) return { key: "silver" };
+  if (rank >= 21 && percent <= 100)return { key: "bronze" };
+  return { key: "default" };
 }
 
+// === 임베드 생성 ===
 function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be) {
   let historyList = data.history || [];
   if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
@@ -129,16 +143,19 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be
 
   // [순위 정보]
   const { rank, percent, total: totalRanked } = getRankInfo(targetUser.id, be);
-  const tierImage = getRankImage(rank, percent);
+  const tier = getTierInfo(rank, percent);
+  const tierName = TIER_NAME[tier.key];
+  const tierImage = TIER_IMAGE[tier.key];
 
   const embed = new EmbedBuilder()
-    .setTitle(`💙 ${targetUser.tag} (${rank ? `${rank}위/${totalRanked}명` : '랭크없음'})`)
+    .setTitle(`💙 ${targetUser.tag} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`)
     .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
     .addFields(
       { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }
     )
     .setColor(0x3399ff)
-    .setThumbnail(tierImage)
+    .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 })) // 프로필 (작게)
+    .setImage(tierImage) // 티어 이미지(크게, 하단)
     .setFooter({ text: footerText });
 
   return embed;
