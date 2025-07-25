@@ -13,7 +13,6 @@ const ERROR_LOG_CHANNEL_ID = "1381062597230460989";
 const RESULT_LOG_CHANNEL_ID = "1380874052855529605";
 const AFK_CHANNEL_ID = "1202971727915651092";
 
-// 멀티 투표 방지용 Map (채널ID:대상ID -> true)
 const activeVotes = new Map();
 
 module.exports = {
@@ -84,19 +83,16 @@ module.exports = {
 
     const reason = submitted.fields.getTextInputValue("reason_input");
     const voiceChannel = member.voice.channel;
-    let usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
-    let totalUsers = usersInChannel.size;
-    let requiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
 
-    // 투표 결과 관리(아이디→"yes"|"no")
+    // === 여기서 인원, 과반수 고정 ===
+    const usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
+    const totalUsers = usersInChannel.size;
+    const requiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
+
     const voterChoices = {};
-    // 명령어 입력자는 자동 찬성 처리
     voterChoices[interaction.user.id] = "yes";
-
-    // 투표자 수 집계
     let yesCount = 1;
     let noCount = 0;
-
     let votingFinished = false;
     let leftSeconds = 30;
 
@@ -128,17 +124,12 @@ module.exports = {
 
     const collector = message.createMessageComponentCollector({ time: 30000 });
 
-    // 실시간 인원 체크 + 남은 시간 카운터 (1초마다)
+    // 남은 시간 카운터 (1초마다)
     const interval = setInterval(async () => {
       if (votingFinished) return;
       leftSeconds -= 1;
-      usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
-      totalUsers = usersInChannel.size;
-      const newRequiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
-      if (newRequiredVotes !== requiredVotes) {
-        requiredVotes = newRequiredVotes;
-        await updateEmbed();
-      }
+
+      // totalUsers/requiredVotes는 고정, 인원수 실시간 변경 X
       if (leftSeconds >= 0) {
         await message.edit({
           content: `⏰ 남은 시간: **${leftSeconds}초**`,
@@ -146,7 +137,8 @@ module.exports = {
           components: [row]
         }).catch(() => {});
       }
-      if (totalUsers < 2) {
+      // 인원이 2명 미만이 되면 투표 종료 (실시간 체크는 유지)
+      if (voiceChannel.members.filter((m) => !m.user.bot).size < 2) {
         collector.stop("not_enough_members");
       }
       if (leftSeconds <= 0) {
@@ -166,7 +158,6 @@ module.exports = {
     };
     interaction.client.on("voiceStateUpdate", voiceStateListener);
 
-    // 실시간 embed 업데이트
     async function updateEmbed(extraMsg) {
       embed.setDescription(makeDescription());
       if (extraMsg) embed.setFooter({ text: extraMsg });
@@ -181,7 +172,7 @@ module.exports = {
       if (i.user.bot) return;
       const voterMember = await interaction.guild.members.fetch(i.user.id);
 
-      // 인원 변화 체크
+      // 인원 변화 체크(실제 투표 참여 자격만 확인)
       if (!voterMember.voice.channel || voterMember.voice.channel.id !== voiceChannel.id) {
         return i.reply({
           content: "❌ 이 투표는 현재 음성채널에 있는 사람만 참여할 수 있어요.",
@@ -189,7 +180,6 @@ module.exports = {
         });
       }
 
-      // 투표(중복/번복 허용)
       const prev = voterChoices[i.user.id] || null;
       if (i.customId === "vote_yes") {
         if (prev === "yes") {
