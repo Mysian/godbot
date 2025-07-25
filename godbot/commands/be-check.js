@@ -15,31 +15,44 @@ const path = require('path');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 
+// === 정수 순위별 이미지 URL(직접 수정) ===
+const RANK_IMAGE = {
+  rank_1:    "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",        // 1위
+  rank_2_5:  "https://media.discordapp.net/attachments/1398143977051652217/1398156432762736731/8_.png?ex=68845626&is=688304a6&hm=f07a8c795f7086a7982f590df11709d2c53a5327a30a78d165f650d14787874b&=&format=webp&quality=lossless&width=888&height=888",      // 2~5위
+  rank_6_10: "https://media.discordapp.net/attachments/1398143977051652217/1398156419642949824/7_.png?ex=68845622&is=688304a2&hm=18ec47803f660efa4ea6d97307501cc96831916d559b4db1da52f3b59abe550b&=&format=webp&quality=lossless&width=888&height=888",     // 6~10위
+  rank_11_20:"https://media.discordapp.net/attachments/1398143977051652217/1398156401238347796/6_.png?ex=6884561e&is=6883049e&hm=ce91718cd8a57c5fa9f73bd87208b48d499f05d135a5ee1e9c40bfd30a3c32a2&=&format=webp&quality=lossless&width=888&height=888",    // 11~20위
+  top5:      "https://media.discordapp.net/attachments/1398143977051652217/1398156383018291243/5_.png?ex=6884561a&is=6883049a&hm=8910df7a7109a1b25df40212cadab46c7623d035ff2501f08837ff65f4d6b983&=&format=webp&quality=lossless&width=888&height=888",     // 상위 5% (21위 이상만)
+  top15:     "https://media.discordapp.net/attachments/1398143977051652217/1398156369885925527/4_.png?ex=68845617&is=68830497&hm=027cf1b399799abc798d956adb3c16ae658ea17ac31bff022308fde58e3a1027&=&format=webp&quality=lossless&width=888&height=888",    // 6~15%
+  top35:     "https://media.discordapp.net/attachments/1398143977051652217/1398156357810524171/3_.png?ex=68845614&is=68830494&hm=f8b248ec38986e68259ce81d715b3b9661ba2dd9a39f50c4ba44a860fed2f062&=&format=webp&quality=lossless&width=888&height=888",    // 16~35%
+  top65:     "https://media.discordapp.net/attachments/1398143977051652217/1398156346456674356/2_.png?ex=68845611&is=68830491&hm=6423ca01333a2bb05216dcfd010fe098b2e74425175747b4258251fcc6711267&=&format=webp&quality=lossless&width=888&height=888",    // 36~65%
+  top100:    "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888",   // 66~100%
+  default:   "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888"
+};
+
 function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, '{}');
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
 const formatAmount = n => Number(n).toLocaleString('ko-KR');
-const EMBED_IMAGE = 'https://media.discordapp.net/attachments/1388728993787940914/1392698206189523113/Image_fx.jpg?ex=68707ac7&is=686f2947&hm=cf727fd173aaf411d649eec368a03b3715b7518075715dde84f97a9976a6b7a8&=&format=webp';
 
 const PAGE_SIZE = 10;
 const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
 
-// 정수세 납부액 계산
 function getTax(amount) {
-  if (amount < 5_000_000) return 0; // 500만 미만: 면제
-  if (amount < 10_000_000) return Math.floor(amount * 0.001);    // 500만~1천만: 0.1%
-  if (amount < 50_000_000) return Math.floor(amount * 0.005);    // 1천만~5천만: 0.5%
-  if (amount < 100_000_000) return Math.floor(amount * 0.01);    // 5천만~1억: 1%
-  if (amount < 500_000_000) return Math.floor(amount * 0.015);   // 1억~5억: 1.5%
-  if (amount < 1_000_000_000) return Math.floor(amount * 0.02);  // 5억~10억: 2%
-  if (amount < 5_000_000_000) return Math.floor(amount * 0.035); // 10억~50억: 3.5%
-  if (amount < 10_000_000_000) return Math.floor(amount * 0.05); // 50억~100억: 5%
-  if (amount < 100_000_000_000) return Math.floor(amount * 0.075); // 100억~500억: 7.5%
-  if (amount < 500_000_000_000) return Math.floor(amount * 0.10); // 500억~1,000억: 10%
-  if (amount < 1_000_000_000_000) return Math.floor(amount * 0.25); // 1,000억~1조: 25%
-  return Math.floor(amount * 0.5); // 1조 이상: 50%
+  if (amount < 5_000_000) return 0;
+  if (amount < 10_000_000) return Math.floor(amount * 0.001);
+  if (amount < 50_000_000) return Math.floor(amount * 0.005);
+  if (amount < 100_000_000) return Math.floor(amount * 0.01);
+  if (amount < 500_000_000) return Math.floor(amount * 0.015);
+  if (amount < 1_000_000_000) return Math.floor(amount * 0.02);
+  if (amount < 5_000_000_000) return Math.floor(amount * 0.035);
+  if (amount < 10_000_000_000) return Math.floor(amount * 0.05);
+  if (amount < 100_000_000_000) return Math.floor(amount * 0.075);
+  if (amount < 500_000_000_000) return Math.floor(amount * 0.10);
+  if (amount < 1_000_000_000_000) return Math.floor(amount * 0.25);
+  return Math.floor(amount * 0.5);
 }
+
 const TAX_TABLE = [
   ["500만원 미만", "세금 면제"],
   ["500만원 이상", "0.1%"],
@@ -55,7 +68,37 @@ const TAX_TABLE = [
   ["1조 이상", "50%"]
 ];
 
-function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
+// === [순위 산정 함수] ===
+function getRankInfo(targetUserId, be) {
+  const rankArr = Object.entries(be)
+    .map(([id, d]) => ({ id, amount: d.amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const idx = rankArr.findIndex(e => e.id === targetUserId);
+  if (idx === -1) return { rank: null, percent: 100 };
+
+  const rank = idx + 1;
+  const percent = Math.round((rank / rankArr.length) * 100);
+
+  return { rank, percent, total: rankArr.length };
+}
+
+// === [순위별 썸네일 이미지 선택] ===
+function getRankImage(rank, percent) {
+  if (rank === 1)                   return RANK_IMAGE.rank_1;
+  if (rank >= 2 && rank <= 5)       return RANK_IMAGE.rank_2_5;
+  if (rank >= 6 && rank <= 10)      return RANK_IMAGE.rank_6_10;
+  if (rank >= 11 && rank <= 20)     return RANK_IMAGE.rank_11_20;
+  // 21위부터 퍼센트 분기
+  if (rank >= 21 && percent <= 5)   return RANK_IMAGE.top5;
+  if (rank >= 21 && percent <= 15)  return RANK_IMAGE.top15;
+  if (rank >= 21 && percent <= 35)  return RANK_IMAGE.top35;
+  if (rank >= 21 && percent <= 65)  return RANK_IMAGE.top65;
+  if (rank >= 21 && percent <= 100) return RANK_IMAGE.top100;
+  return RANK_IMAGE.default;
+}
+
+function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be) {
   let historyList = data.history || [];
   if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
   if (filter === FILTERS.SPEND) historyList = historyList.filter(h => h.type === 'spend');
@@ -77,33 +120,31 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '') {
     ).join('\n') || "내역 없음";
 
   const tax = getTax(data.amount);
+
   let footerText = '';
-
-  if (filter === FILTERS.SEARCH && searchTerm)
-    footerText = `검색어: "${searchTerm}"`;
-  else if (filter === FILTERS.EARN)
-    footerText = '이익(earn)만 표시중';
-  else if (filter === FILTERS.SPEND)
-    footerText = '손해(spend)만 표시중';
-
+  if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
+  else if (filter === FILTERS.EARN) footerText = '이익(earn)만 표시중';
+  else if (filter === FILTERS.SPEND) footerText = '손해(spend)만 표시중';
   footerText += (footerText ? ' | ' : '') + `오늘 18:00 정수세 예정: ${formatAmount(tax)} BE`;
 
+  // [순위 정보]
+  const { rank, percent, total: totalRanked } = getRankInfo(targetUser.id, be);
+  const tierImage = getRankImage(rank, percent);
+
   const embed = new EmbedBuilder()
-    .setTitle(`💙 ${targetUser.tag}`)
+    .setTitle(`💙 ${targetUser.tag} (${rank ? `${rank}위/${totalRanked}명` : '랭크없음'})`)
     .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
     .addFields(
       { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }
     )
     .setColor(0x3399ff)
-    .setImage(EMBED_IMAGE)
-    .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 }))
+    .setThumbnail(tierImage)
     .setFooter({ text: footerText });
 
   return embed;
 }
 
 function buildRow(page, maxPage, filter) {
-  // 1번째 줄 (페이지, 검색, 이익/손해)
   const mainRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('prev')
@@ -128,7 +169,6 @@ function buildRow(page, maxPage, filter) {
       .setLabel('🔻 손해만')
       .setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary)
   );
-  // 2번째 줄 (정수세 안내만)
   const taxInfoRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('taxinfo')
@@ -176,7 +216,7 @@ module.exports = {
     }
     let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
 
-    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
+    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be);
     const rows = buildRow(page, maxPage, filter);
 
     const msg = await interaction.reply({
@@ -186,18 +226,14 @@ module.exports = {
       fetchReply: true
     });
 
-    // 5분 동안 상호작용 가능
     const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300_000 });
 
     collector.on('collect', async i => {
       if (i.user.id !== interaction.user.id)
         return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
 
-      // 정수세 안내 버튼
       if (i.customId === 'taxinfo') {
         const nowTax = getTax(data.amount);
-
-        // 최근 5회 납부 기록 ("정수세"로 reason에 들어간 것만)
         const recentTaxHistory = (data.history || [])
           .filter(h => h.reason && h.reason.includes('정수세'))
           .slice(-5)
@@ -231,8 +267,6 @@ module.exports = {
         return;
       }
 
-      // 기존 페이지네이션 등 유지
-      // 새로고침 시점마다 BE 다시 로딩
       const freshBE = loadBE();
       const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
       historyList = freshData.history || [];
@@ -250,7 +284,6 @@ module.exports = {
         page = 1;
       }
       if (i.customId === 'search') {
-        // 모달 customId에 유저ID 포함
         const modal = new ModalBuilder()
           .setCustomId(`be_search_modal_${targetUser.id}`)
           .setTitle('거래내역 검색');
@@ -268,7 +301,6 @@ module.exports = {
         return;
       }
 
-      // 필터 적용
       filteredHistory = historyList;
       if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
       if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
@@ -281,7 +313,7 @@ module.exports = {
       maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
       page = Math.max(1, Math.min(page, maxPage));
 
-      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm);
+      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE);
       const newRows = buildRow(page, maxPage, filter);
 
       await i.update({ embeds: [newEmbed], components: newRows });
@@ -295,7 +327,6 @@ module.exports = {
   }
 };
 
-// ==== 모달 핸들러 (본인/타인 모두 지원) ====
 module.exports.modal = async function(interaction) {
   let userId = interaction.user.id;
   let targetUser = interaction.user;
@@ -317,7 +348,7 @@ module.exports.modal = async function(interaction) {
   let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
   let filter = FILTERS.SEARCH;
 
-  const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm);
+  const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be);
   const rows = buildRow(page, maxPage, filter);
 
   await interaction.update({ embeds: [embed], components: rows });
