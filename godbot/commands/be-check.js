@@ -28,7 +28,6 @@ const TIER_IMAGE = {
   default:    "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888"
 };
 
-// 티어명 텍스트
 const TIER_NAME = {
   champion:   "챔피언",
   challenger: "챌린저",
@@ -96,13 +95,11 @@ function getRankInfo(targetUserId, be) {
   return { rank, percent, total: rankArr.length };
 }
 
-// === 티어 구하기 ===
 function getTierInfo(rank, percent) {
   if (rank === 1)                  return { key: "champion" };
   if (rank >= 2 && rank <= 5)      return { key: "challenger" };
   if (rank >= 6 && rank <= 10)     return { key: "legend" };
   if (rank >= 11 && rank <= 20)    return { key: "diamond" };
-  // 21위 이상 퍼센트 티어
   if (rank >= 21 && percent <= 5)  return { key: "emerald" };
   if (rank >= 21 && percent <= 15) return { key: "platinum" };
   if (rank >= 21 && percent <= 35) return { key: "gold" };
@@ -111,8 +108,8 @@ function getTierInfo(rank, percent) {
   return { key: "default" };
 }
 
-// === 임베드 생성 ===
-function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be) {
+// ==== 임베드 생성 (닉네임 커스텀 지원) ====
+function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be, displayName = null) {
   let historyList = data.history || [];
   if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
   if (filter === FILTERS.SPEND) historyList = historyList.filter(h => h.type === 'spend');
@@ -135,28 +132,29 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be
 
   const tax = getTax(data.amount);
 
+  // [순위 정보]
+  const { rank, percent, total: totalRanked } = getRankInfo(targetUser.id, be);
+  const tier = getTierInfo(rank, percent);
+  const tierName = TIER_NAME[tier.key];
+  const tierImage = TIER_IMAGE[tier.key];
+  const profileIcon = targetUser.displayAvatarURL({ extension: "png", size: 64 });
+
   let footerText = '';
   if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
   else if (filter === FILTERS.EARN) footerText = '이익(earn)만 표시중';
   else if (filter === FILTERS.SPEND) footerText = '손해(spend)만 표시중';
   footerText += (footerText ? ' | ' : '') + `오늘 18:00 정수세 예정: ${formatAmount(tax)} BE`;
 
-  // [순위 정보]
-  const { rank, percent, total: totalRanked } = getRankInfo(targetUser.id, be);
-  const tier = getTierInfo(rank, percent);
-  const tierName = TIER_NAME[tier.key];
-  const tierImage = TIER_IMAGE[tier.key];
-
+  const nameForTitle = displayName || targetUser.username;
   const embed = new EmbedBuilder()
-    .setTitle(`💙 ${targetUser.tag} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`)
+    .setTitle(`💙 ${nameForTitle} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`)
     .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
     .addFields(
       { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }
     )
     .setColor(0x3399ff)
-    .setThumbnail(targetUser.displayAvatarURL({ extension: "png", size: 256 })) // 프로필 (작게)
-    .setImage(tierImage) // 티어 이미지(크게, 하단)
-    .setFooter({ text: footerText });
+    .setThumbnail(tierImage) // 티어(작게)
+    .setFooter({ text: footerText, iconURL: profileIcon }); // 프로필(아주 작게)
 
   return embed;
 }
@@ -184,7 +182,7 @@ function buildRow(page, maxPage, filter) {
     new ButtonBuilder()
       .setCustomId('spendonly')
       .setLabel('🔻 손해만')
-      .setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary)
+      .setStyle(ButtonStyle.Danger)
   );
   const taxInfoRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -207,6 +205,17 @@ module.exports = {
   async execute(interaction) {
     const userOpt = interaction.options.getUser('유저');
     const targetUser = userOpt || interaction.user;
+
+    // ====== 닉네임 표시를 위해 GuildMember 객체 얻기 ======
+    let displayName = targetUser.username;
+    try {
+      // DMs 등에서는 guild가 없으니 예외처리!
+      if (interaction.guild) {
+        const member = await interaction.guild.members.fetch(targetUser.id);
+        if (member && member.displayName) displayName = member.displayName;
+      }
+    } catch (e) { /* 무시 */ }
+
     const be = loadBE();
     const data = be[targetUser.id];
 
@@ -233,7 +242,8 @@ module.exports = {
     }
     let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
 
-    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be);
+    // *** displayName 전달 ***
+    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName);
     const rows = buildRow(page, maxPage, filter);
 
     const msg = await interaction.reply({
@@ -330,7 +340,11 @@ module.exports = {
       maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
       page = Math.max(1, Math.min(page, maxPage));
 
-      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE);
+      // 닉네임도 반영
+      const member = interaction.guild ? await interaction.guild.members.fetch(targetUser.id).catch(() => null) : null;
+      const displayNameUpdate = member && member.displayName ? member.displayName : targetUser.username;
+
+      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayNameUpdate);
       const newRows = buildRow(page, maxPage, filter);
 
       await i.update({ embeds: [newEmbed], components: newRows });
@@ -355,6 +369,15 @@ module.exports.modal = async function(interaction) {
   const be = loadBE();
   const data = be[userId];
 
+  // 닉네임(별명) 적용
+  let displayName = targetUser.username;
+  try {
+    if (interaction.guild) {
+      const member = await interaction.guild.members.fetch(targetUser.id);
+      if (member && member.displayName) displayName = member.displayName;
+    }
+  } catch (e) { /* 무시 */ }
+
   let searchTerm = interaction.fields.getTextInputValue('searchTerm').trim();
   let historyList = (data?.history || []);
   let filteredHistory = historyList.filter(h =>
@@ -365,7 +388,7 @@ module.exports.modal = async function(interaction) {
   let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
   let filter = FILTERS.SEARCH;
 
-  const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be);
+  const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName);
   const rows = buildRow(page, maxPage, filter);
 
   await interaction.update({ embeds: [embed], components: rows });
