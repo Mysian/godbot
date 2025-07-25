@@ -13,6 +13,7 @@ const ERROR_LOG_CHANNEL_ID = "1381062597230460989";
 const RESULT_LOG_CHANNEL_ID = "1380874052855529605";
 const AFK_CHANNEL_ID = "1202971727915651092";
 
+// 멀티 투표 방지용 Map (채널ID:대상ID -> true)
 const activeVotes = new Map();
 
 module.exports = {
@@ -87,10 +88,15 @@ module.exports = {
     let totalUsers = usersInChannel.size;
     let requiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
 
+    // 투표 결과 관리(아이디→"yes"|"no")
     const voterChoices = {};
+    // 명령어 입력자는 자동 찬성 처리
     voterChoices[interaction.user.id] = "yes";
+
+    // 투표자 수 집계
     let yesCount = 1;
     let noCount = 0;
+
     let votingFinished = false;
     let leftSeconds = 30;
 
@@ -144,8 +150,7 @@ module.exports = {
         collector.stop("not_enough_members");
       }
       if (leftSeconds <= 0) {
-        if (yesCount > noCount && yesCount >= requiredVotes) collector.stop("success");
-        else collector.stop("fail");
+        collector.stop("timeout");
       }
     }, 1000);
 
@@ -161,6 +166,7 @@ module.exports = {
     };
     interaction.client.on("voiceStateUpdate", voiceStateListener);
 
+    // 실시간 embed 업데이트
     async function updateEmbed(extraMsg) {
       embed.setDescription(makeDescription());
       if (extraMsg) embed.setFooter({ text: extraMsg });
@@ -175,6 +181,7 @@ module.exports = {
       if (i.user.bot) return;
       const voterMember = await interaction.guild.members.fetch(i.user.id);
 
+      // 인원 변화 체크
       if (!voterMember.voice.channel || voterMember.voice.channel.id !== voiceChannel.id) {
         return i.reply({
           content: "❌ 이 투표는 현재 음성채널에 있는 사람만 참여할 수 있어요.",
@@ -182,6 +189,7 @@ module.exports = {
         });
       }
 
+      // 투표(중복/번복 허용)
       const prev = voterChoices[i.user.id] || null;
       if (i.customId === "vote_yes") {
         if (prev === "yes") {
@@ -222,6 +230,67 @@ module.exports = {
 
       await message.delete().catch(() => {});
 
+      // -------- 타임아웃(시간 종료) 분기만 별도로 처리 --------
+      if (endReason === "timeout") {
+        if (yesCount > noCount && yesCount >= requiredVotes) {
+          // 이동 처리
+          const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
+          const afkChannel = interaction.guild.channels.cache.get(AFK_CHANNEL_ID);
+          if (!afkChannel?.isVoiceBased()) {
+            return interaction.followUp({
+              content: "❌ 잠수 채널이 존재하지 않거나 음성 채널이 아닙니다.",
+              ephemeral: true,
+            });
+          }
+          try {
+            await targetMember.voice.setChannel(afkChannel);
+            const resultEmbed = new EmbedBuilder()
+              .setTitle("✅ 강퇴 처리 완료")
+              .setDescription(`<#${voiceChannel.id}> 에서 (사유: ${reason})로 인해 <@${target.id}> 님을 잠수 채널로 이동시켰습니다.`)
+              .addFields({
+                name: "투표 결과",
+                value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}`
+              })
+              .setColor(0x00cc66);
+            await interaction.followUp({ embeds: [resultEmbed] });
+            if (resultLogChannel?.isTextBased()) {
+              await resultLogChannel.send({ embeds: [resultEmbed] });
+            }
+          } catch (err) {
+            console.error(err);
+            await interaction.followUp({
+              content: "❌ 채널 이동 중 오류가 발생했어요.",
+              ephemeral: true,
+            });
+            const errorLog = await interaction.client.channels.fetch(ERROR_LOG_CHANNEL_ID).catch(() => null);
+            if (errorLog?.isTextBased()) {
+              await errorLog.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle(`❗ <#${voiceChannel.id}> 에서 <@${target.id}> 님 [강퇴투표 - 채널 이동 실패]`)
+                    .setDescription(`\`\`\`${err.stack?.slice(0, 1900)}\`\`\``)
+                    .setColor(0xff0000),
+                ],
+              });
+            }
+          }
+          return; // 더이상 하단 분기 진행하지 않도록 return
+        } else {
+          // 실패 안내
+          const failEmbed = new EmbedBuilder()
+            .setTitle("🛑 강퇴 투표 종료")
+            .setDescription(`과반수 미달로 이동되지 않았습니다.`)
+            .addFields({
+              name: "투표 결과",
+              value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}`
+            })
+            .setColor(0xffaa00);
+          await interaction.followUp({ embeds: [failEmbed] });
+          return;
+        }
+      }
+
+      // -------- 나머지 분기 기존대로 유지 --------
       if (endReason === "target_left") {
         return interaction.followUp({
           content: "❌ 투표 대상이 음성채널에서 나가 투표가 종료되었습니다.",
@@ -244,14 +313,6 @@ module.exports = {
           })
           .setColor(0xff0000);
         return interaction.followUp({ embeds: [failEmbed] });
-      }
-      if (endReason === "timeout") {
-        // 일반 타임아웃
-        if (yesCount > noCount && yesCount >= requiredVotes) {
-          endReason = "success";
-        } else {
-          endReason = "fail";
-        }
       }
       if (endReason === "success" && yesCount > noCount) {
         const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
@@ -294,8 +355,6 @@ module.exports = {
             });
           }
         }
-      } else if (endReason === "fail") {
-        // 이미 위에서 fail 안내
       } else {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
