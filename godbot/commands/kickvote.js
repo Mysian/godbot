@@ -37,7 +37,7 @@ module.exports = {
         ephemeral: true,
       });
     }
-    activeVotes.set(voteKey, true); // *** 여기로 이동! ***
+    activeVotes.set(voteKey, true);
 
     if (
       !member.voice.channel ||
@@ -221,16 +221,10 @@ module.exports = {
       }
       await updateEmbed();
 
-      // 추방 임박(찬성 과반) 도달 시 10초 보장 (한 번만)
-      if (yesCount >= requiredVotes && !kickScheduled) {
-        kickScheduled = true;
-        leftSeconds = 10;
-        embed.setFooter({ text: "추방 임박! 반대표가 있으면 10초 안에 투표하세요." });
-        await message.edit({
-          content: `⏰ 남은 시간: **${leftSeconds}초**`,
-          embeds: [embed],
-          components: [row]
-        }).catch(() => {});
+      // 1. **여기 추가:** 과반수 도달 시 즉시 종료
+      if (yesCount >= requiredVotes && !votingFinished) {
+        collector.stop("success");
+        return;
       }
       // 반대표도 과반이면 즉시 종료 (동점은 이동X)
       if (noCount > yesCount && noCount >= requiredVotes && !votingFinished) {
@@ -238,7 +232,7 @@ module.exports = {
       }
     });
 
-    // *** 여기 시그니처 고쳤음 ***
+    // 시그니처 수정
     collector.on("end", async (collected, endReason) => {
       votingFinished = true;
       clearInterval(interval);
