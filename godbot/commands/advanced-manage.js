@@ -17,6 +17,8 @@ const NEWBIE_DAYS = 7;
 const PAGE_SIZE = 30;
 const EXEMPT_ROLE_IDS = ['1371476512024559756'];
 const LOG_CHANNEL_ID = '1380874052855529605';
+const BOOSTER_ROLE_ID = '1207437971037356142';
+const DONOR_ROLE_ID = '1397076919127900171';
 
 // 색상 역할 ID
 const COLOR_ROLE_IDS = [
@@ -142,16 +144,21 @@ function getUserDisplay(arr) {
 }
 
 async function fetchLongInactive(guild, days, warnedObj) {
-  const activityData = fs.existsSync(__dirname + '/../activity-data.json') ?
-    JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
+  const activityData = fs.existsSync(__dirname + '/../activity-data.json')
+    ? JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
   const now = new Date();
   const allMembers = await guild.members.fetch();
   let arr = [];
   for (const member of allMembers.values()) {
     if (EXEMPT_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
     if (member.user.bot) continue;
+
     const userData = activityData[member.id];
-    if (!userData) {
+    const isBooster = member.roles.cache.has('1207437971037356142');
+    const isDonor   = member.roles.cache.has('1397076919127900171');
+
+    if (!userData || !getMostRecentDate(userData)) {
+      if (isBooster || isDonor) continue;
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
@@ -162,20 +169,33 @@ async function fetchLongInactive(guild, days, warnedObj) {
       });
       continue;
     }
+
     const lastDate = getMostRecentDate(userData);
-    if (!lastDate) {
+    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+
+    if (isDonor && diffDays >= 90) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
         user: member.user,
         nickname: member.displayName,
-        lastActive: null,
+        lastActive: lastDate,
         warned: !!warnedObj[member.id]
       });
       continue;
     }
-    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-    if (diffDays >= days) {
+    if (isBooster && diffDays >= 60) {
+      arr.push({
+        id: member.id,
+        tag: `<@${member.id}>`,
+        user: member.user,
+        nickname: member.displayName,
+        lastActive: lastDate,
+        warned: !!warnedObj[member.id]
+      });
+      continue;
+    }
+    if (!isBooster && !isDonor && diffDays >= days) {
       arr.push({
         id: member.id,
         tag: `<@${member.id}>`,
