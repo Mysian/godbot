@@ -19,8 +19,8 @@ module.exports = {
     .setDescription("특정 기간, 필터, 유저별 활동량 및 TOP100 순위")
     .addUserOption(opt => opt.setName("유저").setDescription("특정 유저만 조회").setRequired(false)),
   async execute(interaction) {
-    let period = '1'; // 기본값 **1일**
-    let filterType = "all"; // all|message|voice|activity
+    let period = '1';
+    let filterType = "all";
     const user = interaction.options.getUser("유저");
 
     function getDateRange(period) {
@@ -49,7 +49,6 @@ module.exports = {
       return str;
     }
 
-    // === 버튼 Row ===
     function getFilterRow(selected) {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -99,13 +98,10 @@ module.exports = {
     function buildActivityEmbed({ userId = null, userTag = null, guild = null, page = 0, isSingleUser = false }) {
       const pageSize = 10;
       if (!isSingleUser && guild) {
-        // === 전체 랭킹(서버 모든 유저 TOP 활동) ===
-        // 1. 전체 유저 활동 집계
         let activityData = require("fs").existsSync("activity-logs.json")
           ? JSON.parse(require("fs").readFileSync("activity-logs.json", "utf-8"))
           : {};
 
-        // 2. 집계: [유저, 활동명, 횟수, 최근날짜] 형태로 정리
         let allStats = [];
         for (const uid in activityData) {
           if (EXCLUDED_USER_IDS.includes(uid)) continue;
@@ -113,7 +109,6 @@ module.exports = {
           if (!member) continue;
           if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
           const list = activityData[uid];
-          // 활동별 그룹화(게임+노래 따로)
           const actMap = {};
           for (const act of list) {
             let key = "";
@@ -123,7 +118,6 @@ module.exports = {
             if (!actMap[key]) actMap[key] = [];
             actMap[key].push(act);
           }
-          // 정리: [유저, 활동타입, 이름, 횟수, 최근날짜]
           for (const key in actMap) {
             const arr = actMap[key];
             const [type, ...rest] = key.split("|");
@@ -138,14 +132,13 @@ module.exports = {
             });
           }
         }
-        // 3. 횟수→최근 활동순 내림차순 정렬
         allStats.sort((a, b) => (b.count - a.count) || (b.last - a.last));
         const totalPages = Math.ceil(allStats.length / pageSize) || 1;
         const show = allStats.slice(page * pageSize, (page + 1) * pageSize);
 
         let desc = show.length
           ? show.map((a, idx) =>
-            `**${page * pageSize + idx + 1}위** <@${a.userId}> \`${a.userTag}\`\n- ${a.activityType === "game" ? "🎮" : "🎵"} ${a.name} (${a.count}회) [최근: ${new Date(a.last).toLocaleString("ko-KR", { hour12: false })}]`
+            `**${page * pageSize + idx + 1}위** <@${a.userId}> \`${a.userTag}\`\n- ${a.activityType === "game" ? "🎮" : "🎵"} ${a.name} (${a.count}회) [최근: ${new Date(a.last).toLocaleString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" })}]`
           ).join("\n\n")
           : "활동 기록 없음";
         return new EmbedBuilder()
@@ -153,9 +146,7 @@ module.exports = {
           .setDescription(desc)
           .setFooter({ text: `${page + 1} / ${totalPages} 페이지` });
       } else if (isSingleUser && userId) {
-        // === 단일 유저 활동 ===
         let activities = activityLogger.getUserActivities(userId);
-        // 활동별 그룹화(이름별 묶기)
         const actMap = {};
         for (const act of activities) {
           let key = "";
@@ -165,7 +156,6 @@ module.exports = {
           if (!actMap[key]) actMap[key] = [];
           actMap[key].push(act);
         }
-        // 정리: [활동타입, 이름, 횟수, 최근날짜]
         let stats = [];
         for (const key in actMap) {
           const arr = actMap[key];
@@ -178,14 +168,13 @@ module.exports = {
             last: Math.max(...arr.map(a => a.time)),
           });
         }
-        // 정렬: 횟수→최근 활동순 내림차순
         stats.sort((a, b) => (b.count - a.count) || (b.last - a.last));
         const totalPages = Math.ceil(stats.length / pageSize) || 1;
         const show = stats.slice(page * pageSize, (page + 1) * pageSize);
 
         let desc = show.length
           ? show.map((a, idx) =>
-            `**${page * pageSize + idx + 1}위** ${a.activityType === "game" ? "🎮" : "🎵"} ${a.name} (${a.count}회)\n- 최근 기록: ${new Date(a.last).toLocaleString("ko-KR", { hour12: false })}`
+            `**${page * pageSize + idx + 1}위** ${a.activityType === "game" ? "🎮" : "🎵"} ${a.name} (${a.count}회)\n- 최근 기록: ${new Date(a.last).toLocaleString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" })}`
           ).join("\n\n")
           : "활동 기록 없음";
         return new EmbedBuilder()
@@ -193,11 +182,9 @@ module.exports = {
           .setDescription(desc)
           .setFooter({ text: `${page + 1} / ${totalPages} 페이지` });
       }
-      // fallback
       return new EmbedBuilder().setDescription("기록 없음");
     }
 
-    // ==== 초기 출력 ====
     let mainPage = 0;
     const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, user);
 
@@ -213,7 +200,6 @@ module.exports = {
           }),
           totalPages: (() => {
             if (!user) {
-              // 전체: activity-logs 전체 건수
               let activityData = require("fs").existsSync("activity-logs.json")
                 ? JSON.parse(require("fs").readFileSync("activity-logs.json", "utf-8"))
                 : {};
@@ -224,7 +210,6 @@ module.exports = {
                 if (!member) continue;
                 if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
                 const list = activityData[uid];
-                // 활동별 그룹
                 const actMap = {};
                 for (const act of list) {
                   let key = "";
@@ -239,7 +224,6 @@ module.exports = {
               return Math.ceil(count / 10) || 1;
             } else {
               let activities = activityLogger.getUserActivities(user.id);
-              // 활동별 그룹
               const actMap = {};
               for (const act of activities) {
                 let key = "";
@@ -256,14 +240,11 @@ module.exports = {
           stats: null
         };
       }
-      // 기존 랭킹 임베드
       const { from, to } = getDateRange(period);
       let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
 
-      // 유저ID 필터
       stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
 
-      // 역할ID 필터 (필요시)
       if (EXCLUDED_ROLE_IDS.length && interaction.guild) {
         const userIds = stats.map(s => s.userId);
         const guildMembers = interaction.guild.members.cache;
@@ -277,7 +258,6 @@ module.exports = {
       if (filterType === "message") stats.sort((a, b) => b.message - a.message);
       else if (filterType === "voice") stats.sort((a, b) => b.voice - a.voice);
       else stats.sort((a, b) => (b.message + b.voice) - (a.message + a.voice));
-      // 페이징
       const pageSize = 15;
       const totalPages = Math.ceil(Math.min(100, stats.length) / pageSize) || 1;
       let list = "";
@@ -346,7 +326,6 @@ module.exports = {
             updateEmbed = true;
           }
         }
-        // 중복 reply/update 방지
         if (updateEmbed) {
           const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, user);
           await i.update({
