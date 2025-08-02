@@ -109,9 +109,10 @@ module.exports = {
       // 활동명별 카운트
       const activityCounts = {};
       for (const uid in activityData) {
-        if (EXCLUDED_USER_IDS.includes(uid)) continue;
         const member = guild.members.cache.get(uid);
-        if (!member) continue;
+        // 모든 봇과 제외 유저/역할 무시
+        if (!member || member.user.bot) continue;
+        if (EXCLUDED_USER_IDS.includes(uid)) continue;
         if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
         const list = activityData[uid];
         for (const act of list) {
@@ -145,16 +146,15 @@ module.exports = {
       const activity = require("../utils/activity-tracker");
       let stats = activity.getStats({ from, to, filterType, userId: null });
 
-      // 제외 유저/역할 필터
-      stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
-      if (EXCLUDED_ROLE_IDS.length && guild) {
-        const guildMembers = guild.members.cache;
-        stats = stats.filter(s => {
-          const member = guildMembers.get(s.userId);
-          if (!member) return true;
-          return !member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id));
-        });
-      }
+      // 봇/제외 유저/역할 필터
+      stats = stats.filter(s => {
+        const member = guild.members.cache.get(s.userId);
+        if (!member) return false;
+        if (member.user.bot) return false;
+        if (EXCLUDED_USER_IDS.includes(s.userId)) return false;
+        if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) return false;
+        return true;
+      });
 
       // 정렬
       if (filterType === "message") stats.sort((a, b) => b.message - a.message);
@@ -197,9 +197,9 @@ module.exports = {
               : {};
             const activityCounts = {};
             for (const uid in activityData) {
-              if (EXCLUDED_USER_IDS.includes(uid)) continue;
               const member = interaction.guild.members.cache.get(uid);
-              if (!member) continue;
+              if (!member || member.user.bot) continue;
+              if (EXCLUDED_USER_IDS.includes(uid)) continue;
               if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
               const list = activityData[uid];
               for (const act of list) {
@@ -222,15 +222,14 @@ module.exports = {
         const { from, to } = getDateRange(period);
         const activity = require("../utils/activity-tracker");
         let stats = activity.getStats({ from, to, filterType, userId: null });
-        stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
-        if (EXCLUDED_ROLE_IDS.length && interaction.guild) {
-          const guildMembers = interaction.guild.members.cache;
-          stats = stats.filter(s => {
-            const member = guildMembers.get(s.userId);
-            if (!member) return true;
-            return !member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id));
-          });
-        }
+        stats = stats.filter(s => {
+          const member = interaction.guild.members.cache.get(s.userId);
+          if (!member) return false;
+          if (member.user.bot) return false;
+          if (EXCLUDED_USER_IDS.includes(s.userId)) return false;
+          if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) return false;
+          return true;
+        });
         const pageSize = 15;
         const totalPages = Math.ceil(Math.min(100, stats.length) / pageSize) || 1;
         return { embed, totalPages };
