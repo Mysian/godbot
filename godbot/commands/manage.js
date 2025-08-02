@@ -263,15 +263,15 @@ module.exports = {
       });
 
       collector.on("collect", async (i) => {
-        const selectedUserId = i.values[0];
-        const member = await guild.members.fetch(selectedUserId).catch(() => null);
-        if (!member) {
-          await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
-          return;
-        }
-        await i.deferUpdate();
-        await showUserInfo(selectedUserId, interaction, collector);
-      });
+  const selectedUserId = i.values[0];
+  const member = await guild.members.fetch(selectedUserId).catch(() => null);
+  if (!member) {
+    await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
+    return;
+  }
+  await showUserInfo(selectedUserId, i, collector);
+});
+
 
       async function showUserInfo(targetUserId, userInteraction, collector) {
         function formatSeconds(sec) {
