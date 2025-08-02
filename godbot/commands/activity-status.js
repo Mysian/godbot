@@ -43,7 +43,7 @@ module.exports = {
     // 활동 내역 가져오기
     const allActivities = activityLogger.getUserActivities(member.id);
     if (!allActivities.length) {
-      return interaction.editReply(`❌ 최근 활동 기록 없음: **${guildMember.displayName}**`);
+      return interaction.editReply(`❌ 최근 활동 기록이 없거나 디스코드 활동 기능을 OFF한 유저: **${guildMember.displayName}**`);
     }
 
     // 기간 필터
