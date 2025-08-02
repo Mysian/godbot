@@ -269,18 +269,19 @@ module.exports = {
           await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
           return;
         }
+        await i.deferReply({ ephemeral: true }); // **반드시 deferReply!**
         await showUserActivityLog(selectedUserId, i, 0);
       });
 
       async function showUserActivityLog(userId, userInteraction, page = 0) {
         const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
         if (!user) {
-          await userInteraction.reply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
+          await userInteraction.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
           return;
         }
         const activities = activityLogger.getUserActivities(userId).sort((a, b) => b.time - a.time);
         if (!activities.length) {
-          await userInteraction.reply({ content: "이 유저의 최근 90일 활동 이력이 없습니다.", ephemeral: true });
+          await userInteraction.editReply({ content: "이 유저의 최근 90일 활동 이력이 없습니다.", ephemeral: true });
           return;
         }
 
@@ -322,19 +323,11 @@ module.exports = {
             .setDisabled(startIdx + perPage >= activities.length)
         );
 
-        if (userInteraction.replied || userInteraction.deferred) {
-          await userInteraction.editReply({
-            embeds: [embed],
-            components: [navRow],
-            ephemeral: true
-          });
-        } else {
-          await userInteraction.reply({
-            embeds: [embed],
-            components: [navRow],
-            ephemeral: true
-          });
-        }
+        await userInteraction.editReply({
+          embeds: [embed],
+          components: [navRow],
+          ephemeral: true
+        });
 
         const buttonCollector = userInteraction.channel.createMessageComponentCollector({
           filter: (btn) =>
@@ -601,12 +594,12 @@ module.exports = {
         async function showUserActivityLog(userId, userInteraction, page = 0) {
           const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
           if (!user) {
-            await userInteraction.reply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
+            await userInteraction.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
             return;
           }
           const activities = activityLogger.getUserActivities(userId).sort((a, b) => b.time - a.time);
           if (!activities.length) {
-            await userInteraction.reply({ content: "이 유저의 최근 90일 활동 이력이 없습니다.", ephemeral: true });
+            await userInteraction.editReply({ content: "이 유저의 최근 90일 활동 이력이 없습니다.", ephemeral: true });
             return;
           }
 
@@ -648,19 +641,11 @@ module.exports = {
               .setDisabled(startIdx + perPage >= activities.length)
           );
 
-          if (userInteraction.replied || userInteraction.deferred) {
-            await userInteraction.editReply({
-              embeds: [embed],
-              components: [navRow],
-              ephemeral: true
-            });
-          } else {
-            await userInteraction.reply({
-              embeds: [embed],
-              components: [navRow],
-              ephemeral: true
-            });
-          }
+          await userInteraction.editReply({
+            embeds: [embed],
+            components: [navRow],
+            ephemeral: true
+          });
 
           const buttonCollector = userInteraction.channel.createMessageComponentCollector({
             filter: (btn) =>
