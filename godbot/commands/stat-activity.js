@@ -4,8 +4,7 @@ const {
   ActionRowBuilder, 
   ButtonBuilder, 
   ButtonStyle, 
-  StringSelectMenuBuilder, 
-  UserSelectMenuBuilder
+  StringSelectMenuBuilder 
 } = require("discord.js");
 const activity = require("../utils/activity-tracker");
 const activityLogger = require("../utils/activity-logger");
@@ -24,12 +23,11 @@ const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("이용현황")
-    .setDescription("특정 기간, 필터, 유저별 활동량 및 TOP100 순위")
-    .addUserOption(opt => opt.setName("유저").setDescription("특정 유저만 조회").setRequired(false)),
+    .setDescription("특정 기간, 필터, 유저별 활동량 및 TOP100 순위"),
   async execute(interaction) {
     let period = '1';
     let filterType = "all";
-    let selectedUser = interaction.options.getUser("유저") || null;
+    let selectedUserId = "all"; // default: 전체
     let mainPage = 0;
 
     function getDateRange(period) {
@@ -104,22 +102,32 @@ module.exports = {
       );
     }
 
-    // 🔥 유저 셀렉트 메뉴(서버 멤버 최대 25명)
-    function getUserSelectRow(selectedUserId = null) {
-      // 멤버 리스트 25명만 출력 (서버 인원수 많으면 제한)
+    // 유저 드롭다운 (전체 + 최대 24명, 정렬)
+    function getUserSelectRow(currentUserId = "all") {
+      // 전체 옵션
+      const options = [
+        { label: "서버 전체 활동", value: "all", description: "모든 유저 활동 랭킹", default: currentUserId === "all" }
+      ];
+      // 서버 멤버 추가 (닉네임 가나다순, 봇/예외/추방 제외)
       const users = Array.from(interaction.guild.members.cache.values())
         .filter(m => !m.user.bot && !EXCLUDED_USER_IDS.includes(m.id))
-        .slice(0, 25);
+        .sort((a, b) => (a.displayName || a.user.username).localeCompare(b.displayName || b.user.username, "ko-KR"))
+        .slice(0, 24);
+      options.push(...users.map(m => ({
+        label: m.displayName || m.user.username,
+        value: m.id,
+        description: `@${m.user.tag}`,
+        default: m.id === currentUserId
+      })));
       return new ActionRowBuilder().addComponents(
-        new UserSelectMenuBuilder()
+        new StringSelectMenuBuilder()
           .setCustomId("select_user")
-          .setPlaceholder(selectedUserId ? "유저 선택: " + (users.find(m => m.id === selectedUserId)?.user.username || "유저") : "유저 선택")
-          .setMinValues(1)
-          .setMaxValues(1)
+          .setPlaceholder(currentUserId === "all" ? "유저 선택" : (options.find(o => o.value === currentUserId)?.label || "유저"))
+          .addOptions(options)
       );
     }
 
-    // === 활동 임베드 (랭킹/단일조회 모두)
+    // 활동 임베드
     function buildActivityEmbed({ userId = null, userTag = null, guild = null, page = 0, isSingleUser = false }) {
       const pageSize = 10;
       if (!isSingleUser && guild) {
@@ -210,18 +218,18 @@ module.exports = {
       return new EmbedBuilder().setDescription("기록 없음");
     }
 
-    async function getStatsEmbed(page, period, filterType, user) {
+    async function getStatsEmbed(page, period, filterType, userId) {
       if (filterType === "activity") {
         return {
           embed: buildActivityEmbed({
-            userId: user ? user.id : null,
-            userTag: user ? user.tag : null,
+            userId: userId && userId !== "all" ? userId : null,
+            userTag: userId && userId !== "all" ? (interaction.guild.members.cache.get(userId)?.user.tag || null) : null,
             guild: interaction.guild,
             page,
-            isSingleUser: !!user
+            isSingleUser: userId && userId !== "all"
           }),
           totalPages: (() => {
-            if (!user) {
+            if (!userId || userId === "all") {
               let activityData = require("fs").existsSync("activity-logs.json")
                 ? JSON.parse(require("fs").readFileSync("activity-logs.json", "utf-8"))
                 : {};
@@ -245,7 +253,7 @@ module.exports = {
               }
               return Math.ceil(count / 10) || 1;
             } else {
-              let activities = activityLogger.getUserActivities(user.id);
+              let activities = activityLogger.getUserActivities(userId);
               const actMap = {};
               for (const act of activities) {
                 let key = "";
@@ -263,7 +271,7 @@ module.exports = {
         };
       }
       const { from, to } = getDateRange(period);
-      let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
+      let stats = activity.getStats({ from, to, filterType, userId: userId !== "all" ? userId : null });
 
       stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
 
@@ -305,13 +313,13 @@ module.exports = {
       return { embed, totalPages, stats };
     }
 
-    // 최초 임베드 응답
-    const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, selectedUser);
+    // 최초 임베드
+    const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, selectedUserId);
 
     let replyObj = {
       embeds: [embed],
       components: [
-        getUserSelectRow(selectedUser ? selectedUser.id : null), // 유저 셀렉트
+        getUserSelectRow(selectedUserId),
         getFilterRow(filterType),
         getPeriodRow(period),
         getPageRow(),
@@ -323,7 +331,7 @@ module.exports = {
 
     const collector = interaction.channel.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id && (
-        i.isButton() || i.isStringSelectMenu() || i.isUserSelectMenu()
+        i.isButton() || i.isStringSelectMenu()
       ),
       time: 2 * 60 * 1000,
     });
@@ -352,19 +360,18 @@ module.exports = {
             mainPage = 0;
             updateEmbed = true;
           }
-        } else if (i.isUserSelectMenu()) {
-          if (i.customId === "select_user" && i.values.length > 0) {
-            selectedUser = await interaction.guild.members.fetch(i.values[0]).then(m => m.user).catch(() => null);
+          if (i.customId === "select_user") {
+            selectedUserId = i.values[0];
             mainPage = 0;
             updateEmbed = true;
           }
         }
         if (updateEmbed) {
-          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, selectedUser);
+          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, selectedUserId);
           await i.update({
             embeds: [newEmbed],
             components: [
-              getUserSelectRow(selectedUser ? selectedUser.id : null),
+              getUserSelectRow(selectedUserId),
               getFilterRow(filterType),
               getPeriodRow(period),
               getPageRow(),
