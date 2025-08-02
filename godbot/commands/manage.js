@@ -483,11 +483,7 @@ module.exports = {
           new ButtonBuilder()
             .setCustomId("refresh_userinfo")
             .setLabel("🔄 새로고침")
-            .setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder()
-            .setCustomId("view_activity_log")
-            .setLabel("활동 이력")
-            .setStyle(ButtonStyle.Primary)
+            .setStyle(ButtonStyle.Secondary)
         );
 
         const roleRow = new ActionRowBuilder().addComponents(
