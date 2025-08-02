@@ -52,7 +52,7 @@ const VOICE_AUTO_CATEGORY_IDS = [
 ];
 const VOICE_AUTO_MOVE_CHANNEL_ID = '1202971727915651092';
 const VOICE_AUTO_NOTICE_CHANNEL_ID = '1202971727915651092';
-const VOICE_AUTO_MINUTES = 60;
+const VOICE_AUTO_MINUTES = 120;
 let voiceAutoListenerRegistered = false;
 function setupVoiceAutoListener(client) {
   if (voiceAutoListenerRegistered) return;
@@ -81,7 +81,7 @@ function setupVoiceAutoListener(client) {
             } catch (e) {}
           }
           voiceAutoTimers.delete(member.id);
-        }, VOICE_AUTO_MINUTES * 60 * 1000));
+        }, VOICE_AUTO_MINUTES * 120 * 1000));
       }
     } else {
       if (voiceAutoTimers.has(member.id)) {
@@ -342,7 +342,7 @@ module.exports = {
         .setTitle('음성채널 장시간 1인 자동이동 설정')
         .setDescription(
           `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
-          `- 감시 카테고리 내에서 1명이 60분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+          `- 감시 카테고리 내에서 1명이 120분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
           `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
         )
         .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555);
