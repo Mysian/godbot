@@ -1,4 +1,3 @@
-// manage.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -9,6 +8,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
   StringSelectMenuBuilder,
+  UserSelectMenuBuilder,
   AttachmentBuilder
 } = require("discord.js");
 const fs = require("fs");
@@ -16,8 +16,8 @@ const path = require("path");
 const AdmZip = require("adm-zip");
 const os = require("os");
 
-const EXCLUDE_ROLE_ID = "1371476512024559756"; // 장기 투숙객
-const MONTHLY_ROLE_ID = "1352583279102001212"; // 월세 납부자
+const EXCLUDE_ROLE_ID = "1371476512024559756";
+const MONTHLY_ROLE_ID = "1352583279102001212";
 const ADMIN_LOG_CHANNEL_ID = "1380874052855529605";
 const SPAM_ROLE_ID = "1205052922296016906";
 const PAGE_SIZE = 1900;
@@ -59,7 +59,6 @@ module.exports = {
     const guild = interaction.guild;
     const activityStats = activityTracker.getStats({});
 
-    // ====== 서버상태 ======
     if (option === "status") {
       await interaction.deferReply({ ephemeral: true });
 
@@ -119,7 +118,6 @@ module.exports = {
       return;
     }
 
-    // ====== 저장파일 백업 ======
     if (option === "json_backup") {
       const modal = new ModalBuilder()
         .setCustomId("adminpw_json_backup")
@@ -139,7 +137,6 @@ module.exports = {
       return;
     }
 
-    // ====== 스팸의심 계정 추방 ======
     if (option === "spam_kick") {
       await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
@@ -243,57 +240,37 @@ module.exports = {
       return;
     }
 
-    // ====== 유저 관리 (유저 정보 조회/타임아웃/추방) ======
     if (option === "user") {
       await interaction.deferReply({ ephemeral: true });
 
-      // 유저 닉네임 셀렉트 메뉴 띄우기 (최대 25명, 검색 필터링 클라 자동)
-      const allMembers = await guild.members.fetch();
-      const userList = allMembers
-        .filter(m => !m.user.bot)
-        .map(m => ({
-          label: m.displayName.length > 20 ? m.displayName.slice(0, 20) : m.displayName,
-          description: m.user.tag,
-          value: m.id
-        }))
-        .slice(0, 25); // 디스코드 제한 25명
-
-      if (!userList.length) {
-        await interaction.editReply({ content: "❌ 유저가 없습니다.", ephemeral: true });
-        return;
-      }
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("user_select")
-        .setPlaceholder("유저를 검색하거나 선택하세요")
-        .addOptions(userList);
-
-      const row = new ActionRowBuilder().addComponents(selectMenu);
+      const userSelectRow = new ActionRowBuilder().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId("user_select_menu")
+          .setPlaceholder("관리할 유저 선택 (닉네임 일부 입력 가능)")
+          .setMinValues(1)
+          .setMaxValues(1)
+      );
 
       await interaction.editReply({
-        content: "유저를 검색하거나 선택하여 관리 기능을 이용하세요.\n(닉네임 일부를 입력하면 자동 필터링됩니다)",
-        components: [row],
+        content: "관리할 유저를 선택하세요.\n(닉네임 일부 입력 시 자동 검색/필터)",
+        components: [userSelectRow],
         ephemeral: true
       });
 
-      // 유저 선택 → 상세 관리 메뉴로 진입
       const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id,
+        filter: (i) => i.user.id === interaction.user.id && i.customId === "user_select_menu",
         time: 300 * 1000,
       });
 
-      let isManagingUser = false;
-
       collector.on("collect", async (i) => {
-        if (i.customId === "user_select" && !isManagingUser) {
-          isManagingUser = true; // 중복 진입 방지
-
-          const targetUserId = i.values[0];
-          await i.deferUpdate();
-
-          // 상세 관리
-          await showUserInfo(targetUserId, interaction, collector);
+        const selectedUserId = i.values[0];
+        const member = await guild.members.fetch(selectedUserId).catch(() => null);
+        if (!member) {
+          await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
+          return;
         }
+        await i.deferUpdate();
+        await showUserInfo(selectedUserId, interaction, collector);
       });
 
       async function showUserInfo(targetUserId, userInteraction, collector) {
@@ -359,7 +336,6 @@ module.exports = {
           timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
         }
 
-        // 역할 체크
         const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
         const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
 
@@ -413,7 +389,6 @@ module.exports = {
           ephemeral: true
         });
 
-        // 상세관리 내에서 버튼 등 추가 작동
         if (!collector) return;
         collector.on("collect", async (i) => {
           if (i.user.id !== interaction.user.id) return;
@@ -505,7 +480,6 @@ module.exports = {
       return;
     }
 
-    // 저장파일 백업
     if (interaction.customId === "adminpw_json_backup") {
       const files = fs.existsSync(dataDir)
         ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
@@ -548,7 +522,6 @@ module.exports = {
       return;
     }
 
-    // 유저관리 - 타임아웃/추방
     if (interaction.customId.startsWith("adminpw_user_")) {
       const arr = interaction.customId.split("_");
       const action = arr[2];
