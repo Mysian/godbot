@@ -7,6 +7,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  StringSelectMenuBuilder,
   AttachmentBuilder
 } = require("discord.js");
 const fs = require("fs");
@@ -50,12 +51,6 @@ module.exports = {
           { name: "저장파일 백업", value: "json_backup" },
           { name: "스팸의심 계정 추방", value: "spam_kick" }
         )
-    )
-    .addUserOption((option) =>
-      option
-        .setName("대상유저")
-        .setDescription("정보를 조회할 유저")
-        .setRequired(false)
     ),
 
   async execute(interaction) {
@@ -251,7 +246,56 @@ module.exports = {
     if (option === "user") {
       await interaction.deferReply({ ephemeral: true });
 
-      async function showUserInfo(targetUserId, userInteraction) {
+      // Step 1: 유저 닉네임 셀렉트 메뉴 띄우기
+      const allMembers = await guild.members.fetch();
+      const userList = allMembers
+        .filter(m => !m.user.bot)
+        .map(m => ({
+          label: m.displayName.length > 20 ? m.displayName.slice(0, 20) : m.displayName,
+          description: m.user.tag,
+          value: m.id
+        }))
+        .slice(0, 24); // Discord 제한(최대 25개 옵션, 안전하게 24까지만)
+
+      if (!userList.length) {
+        await interaction.editReply({ content: "❌ 유저가 없습니다.", ephemeral: true });
+        return;
+      }
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId("user_select")
+        .setPlaceholder("유저를 선택하세요")
+        .addOptions(userList);
+
+      const row = new ActionRowBuilder().addComponents(selectMenu);
+
+      await interaction.editReply({
+        content: "유저를 선택하여 관리 기능을 이용하세요.",
+        components: [row],
+        ephemeral: true
+      });
+
+      // Step 2: 유저 선택 → 상세 관리 메뉴로 진입
+      const collector = interaction.channel.createMessageComponentCollector({
+        filter: (i) => i.user.id === interaction.user.id,
+        time: 300 * 1000,
+      });
+
+      let isManagingUser = false;
+
+      collector.on("collect", async (i) => {
+        if (i.customId === "user_select" && !isManagingUser) {
+          isManagingUser = true; // 중복 진입 방지
+
+          const targetUserId = i.values[0];
+          await i.deferUpdate();
+
+          // 이후 기존 showUserInfo와 동일하게 처리!
+          await showUserInfo(targetUserId, interaction, collector);
+        }
+      });
+
+      async function showUserInfo(targetUserId, userInteraction, collector) {
         function formatSeconds(sec) {
           sec = Math.floor(sec || 0);
           const h = Math.floor(sec / 3600);
@@ -350,7 +394,6 @@ module.exports = {
             .setStyle(ButtonStyle.Secondary),
         );
 
-        // 2번째 줄 역할관리 버튼
         const roleRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("toggle_longstay")
@@ -362,121 +405,94 @@ module.exports = {
             .setStyle(ButtonStyle.Primary)
         );
 
-        if (userInteraction.editReply)
-          await userInteraction.editReply({ embeds: [embed], components: [row, roleRow] });
-        else
-          await userInteraction.update({ embeds: [embed], components: [row, roleRow], content: "" });
+        // 기존 인터랙션에서 새로운 페이지로 전환
+        await userInteraction.editReply({
+          embeds: [embed],
+          components: [row, roleRow],
+          content: "",
+          ephemeral: true
+        });
+
+        // 상세관리 내에서 버튼 등 추가 작동
+        if (!collector) return;
+        collector.on("collect", async (i) => {
+          if (i.user.id !== interaction.user.id) return;
+          if (i.customId === "refresh_userinfo") {
+            await i.deferUpdate();
+            await showUserInfo(targetUserId, userInteraction, collector);
+
+          } else if (i.customId === "timeout" || i.customId === "kick") {
+            const modal = new ModalBuilder()
+              .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
+              .setTitle("관리 비밀번호 입력")
+              .addComponents(
+                new ActionRowBuilder().addComponents(
+                  new TextInputBuilder()
+                    .setCustomId("pw")
+                    .setLabel("비밀번호 4자리")
+                    .setStyle(TextInputStyle.Short)
+                    .setMinLength(4)
+                    .setMaxLength(4)
+                    .setRequired(true)
+                )
+              );
+            await i.showModal(modal);
+
+          } else if (i.customId === "timeout_release") {
+            await i.update({ content: "⏳ 타임아웃 해제 중...", embeds: [], components: [] });
+            try {
+              await i.guild.members.edit(targetUserId, { communicationDisabledUntil: null, reason: "관리 명령어로 타임아웃 해제" });
+              await i.followUp({ content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`, ephemeral: true });
+            } catch (err) {
+              await i.followUp({ content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)", ephemeral: true });
+            }
+            await showUserInfo(targetUserId, userInteraction, collector);
+
+          } else if (i.customId === "toggle_longstay") {
+            const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
+            let action, logMsg;
+            if (hasLongStay) {
+              await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
+              action = "해제";
+              logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+            } else {
+              await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
+              action = "부여";
+              logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+            }
+            await i.reply({ content: `장기 투숙객 역할을 ${action}했습니다.`, ephemeral: true });
+            await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle("장기 투숙객 역할 변경")
+                  .setDescription(logMsg)
+                  .setColor(hasLongStay ? 0xff5555 : 0x55ff55)
+                  .setTimestamp()
+              ]
+            });
+            await showUserInfo(targetUserId, userInteraction, collector);
+
+          } else if (i.customId === "receive_monthly") {
+            const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
+            if (!hasMonthly) {
+              await i.reply({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
+              return;
+            }
+            await member.roles.remove(MONTHLY_ROLE_ID, "월세 받기 처리");
+            await i.reply({ content: "월세 납부자 역할을 해제(월세 수령) 처리했습니다.", ephemeral: true });
+            await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle("월세 수령 처리")
+                  .setDescription(`💸 월세 받기 처리: <@${targetUserId}> (${member.user.tag})\n월세 납부자 역할 해제\n- **처리자:** <@${i.user.id}> (${i.user.tag})`)
+                  .setColor(0x4eaaff)
+                  .setTimestamp()
+              ]
+            });
+            await showUserInfo(targetUserId, userInteraction, collector);
+          }
+        });
       }
-
-      const target = interaction.options.getUser("대상유저") || interaction.user;
-      await showUserInfo(target.id, interaction);
-
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id,
-        time: 300 * 1000,
-      });
-
-      collector.on("collect", async (i) => {
-  const targetUserId = target.id;
-  const member = await i.guild.members.fetch(targetUserId);
-
-  if (i.customId === "refresh_userinfo") {
-    await i.deferUpdate();
-    await showUserInfo(targetUserId, interaction);
-
-  } else if (i.customId === "timeout" || i.customId === "kick") {
-    // == 여기는 기존대로 비밀번호 모달 필요 == //
-    const modal = new ModalBuilder()
-      .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
-      .setTitle("관리 비밀번호 입력")
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId("pw")
-            .setLabel("비밀번호 4자리")
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(4)
-            .setMaxLength(4)
-            .setRequired(true)
-        )
-      );
-    await i.showModal(modal);
-
-  } else if (i.customId === "timeout_release") {
-    await i.update({ content: "⏳ 타임아웃 해제 중...", embeds: [], components: [] });
-    try {
-      await i.guild.members.edit(targetUserId, { communicationDisabledUntil: null, reason: "관리 명령어로 타임아웃 해제" });
-      await i.followUp({ content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`, ephemeral: true });
-    } catch (err) {
-      await i.followUp({ content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)", ephemeral: true });
-    }
-
-  } else if (i.customId === "toggle_longstay") {
-  const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
-  let action, logMsg;
-  if (hasLongStay) {
-    await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
-    action = "해제";
-    logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
-  } else {
-    await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
-    action = "부여";
-    logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
-  }
-  await i.reply({ content: `장기 투숙객 역할을 ${action}했습니다.`, ephemeral: true });
-  await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("장기 투숙객 역할 변경")
-        .setDescription(logMsg)
-        .setColor(hasLongStay ? 0xff5555 : 0x55ff55)
-        .setTimestamp()
-    ]
-  });
-  await showUserInfo(targetUserId, interaction);
-
-} else if (i.customId === "receive_monthly") {
-  const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
-  if (!hasMonthly) {
-    await i.reply({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
-    return;
-  }
-  await member.roles.remove(MONTHLY_ROLE_ID, "월세 받기 처리");
-  await i.reply({ content: "월세 납부자 역할을 해제(월세 수령) 처리했습니다.", ephemeral: true });
-  await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("월세 수령 처리")
-        .setDescription(`💸 월세 받기 처리: <@${targetUserId}> (${member.user.tag})\n월세 납부자 역할 해제\n- **처리자:** <@${i.user.id}> (${i.user.tag})`)
-        .setColor(0x4eaaff)
-        .setTimestamp()
-    ]
-  });
-  await showUserInfo(targetUserId, interaction);
-
-  } else if (i.customId === "receive_monthly") {
-    // === [비밀번호 모달 없이 즉시 처리!] ===
-    const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
-    if (!hasMonthly) {
-      await i.reply({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
-      return;
-    }
-    await member.roles.remove(MONTHLY_ROLE_ID, "월세 받기 처리");
-    await i.reply({ content: "월세 납부자 역할을 해제(월세 수령) 처리했습니다.", ephemeral: true });
-    await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("월세 수령 처리")
-          .setDescription(`💸 월세 받기 처리: <@${targetUserId}> (${member.user.tag})\n월세 납부자 역할 해제`)
-          .setColor(0x4eaaff)
-          .setTimestamp()
-      ]
-    });
-    await showUserInfo(targetUserId, interaction);
-  }
-});
-
-      collector.on("end", (collected) => {});
       return;
     }
   },
