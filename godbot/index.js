@@ -524,26 +524,128 @@ setupFastGive(client);
 
 // === 음성 누적 + 1시간 알림 ===
 const voiceStartMap = new Map();
-client.on("voiceStateUpdate", (oldState, newState) => {
-  if (!oldState.channel && newState.channel && !newState.member.user.bot) {
-    if (activity.isTracked(newState.channel, "voice")) {
-      voiceStartMap.set(newState.id, { channel: newState.channel, time: Date.now(), notifiedHour: 0 });
+
+// 1. 봇 부팅 시, 이미 음성채널에 있는 유저들도 모두 트래킹 시작 (단, 그 시점부터만)
+client.once('ready', async () => {
+  for (const [guildId, guild] of client.guilds.cache) {
+    for (const [memberId, voiceState] of guild.voiceStates.cache) {
+      if (!voiceState.channel || voiceState.member.user.bot) continue;
+      if (!activity.isTracked(voiceState.channel, "voice")) continue; // 집계 필터
+      if (voiceState.selfMute || voiceState.selfDeaf) continue; // 음소거/헤드셋 닫기 상태면 제외
+      voiceStartMap.set(voiceState.id, {
+        channel: voiceState.channel,
+        time: Date.now(),
+        lastSaved: Date.now()
+      });
     }
   }
+});
+
+// 2. 음성상태 변경 감지
+client.on("voiceStateUpdate", (oldState, newState) => {
+  // === 입장/이동 ===
+  if (!oldState.channel && newState.channel && !newState.member.user.bot) {
+    if (
+      activity.isTracked(newState.channel, "voice") &&
+      !newState.selfMute && !newState.selfDeaf
+    ) {
+      voiceStartMap.set(newState.id, {
+        channel: newState.channel,
+        time: Date.now(),
+        lastSaved: Date.now()
+      });
+    }
+  }
+  // === 퇴장/이동 ===
   if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
     const info = voiceStartMap.get(oldState.id);
-    if (info && activity.isTracked(oldState.channel, "voice")) {
-      const sec = Math.floor((Date.now() - info.time) / 1000);
-      activity.addVoice(oldState.id, sec, oldState.channel);
+    if (
+      info &&
+      activity.isTracked(oldState.channel, "voice")
+    ) {
+      // (음소거 중이었더라도 실제로 트래킹 중인 시간만 누적됨)
+      const sec = Math.floor((Date.now() - info.lastSaved) / 1000);
+      if (sec > 0) {
+        activity.addVoice(oldState.id, sec, oldState.channel);
+      }
       voiceStartMap.delete(oldState.id);
     }
+    // 이동 or 재입장 시 새로 등록
     if (newState.channel && !newState.member.user.bot) {
-      if (activity.isTracked(newState.channel, "voice")) {
-        voiceStartMap.set(newState.id, { channel: newState.channel, time: Date.now(), notifiedHour: 0 });
+      if (
+        activity.isTracked(newState.channel, "voice") &&
+        !newState.selfMute && !newState.selfDeaf
+      ) {
+        voiceStartMap.set(newState.id, {
+          channel: newState.channel,
+          time: Date.now(),
+          lastSaved: Date.now()
+        });
+      }
+    }
+  }
+  // === 음소거/헤드셋 닫기 on/off ===
+  if (
+    newState.channel && !newState.member.user.bot &&
+    activity.isTracked(newState.channel, "voice")
+  ) {
+    const wasTracking = voiceStartMap.has(newState.id);
+    // 음소거/헤드셋 켜면(집계 시작)
+    if (
+      (!oldState.selfMute && newState.selfMute) ||
+      (!oldState.selfDeaf && newState.selfDeaf)
+    ) {
+      // 이제 음소거/헤드셋이 켜짐 → 트래킹 중이었다면 남은 시간 저장 후 map에서 제거
+      if (wasTracking) {
+        const info = voiceStartMap.get(newState.id);
+        const sec = Math.floor((Date.now() - info.lastSaved) / 1000);
+        if (sec > 0) activity.addVoice(newState.id, sec, newState.channel);
+        voiceStartMap.delete(newState.id);
+      }
+    }
+    // 음소거/헤드셋 해제(집계 재시작)
+    if (
+      (oldState.selfMute && !newState.selfMute) ||
+      (oldState.selfDeaf && !newState.selfDeaf)
+    ) {
+      // 기존에 없던 사람이 집계 조건 맞추면 트래킹 시작
+      if (!wasTracking && !newState.selfMute && !newState.selfDeaf) {
+        voiceStartMap.set(newState.id, {
+          channel: newState.channel,
+          time: Date.now(),
+          lastSaved: Date.now()
+        });
       }
     }
   }
 });
+
+// 3. 1분마다 실시간 누적
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, info] of voiceStartMap.entries()) {
+    // **현재 유저의 voiceState(실시간 체크)**
+    let voiceState = null;
+    for (const [guildId, guild] of client.guilds.cache) {
+      if (guild.voiceStates.cache.has(userId)) {
+        voiceState = guild.voiceStates.cache.get(userId);
+        break;
+      }
+    }
+    // 유저가 이미 나갔거나(voiceState 없음), 음소거/헤드셋 닫기 중이면 패스
+    if (
+      !voiceState ||
+      voiceState.selfMute || voiceState.selfDeaf ||
+      !activity.isTracked(info.channel, "voice")
+    ) continue;
+
+    const sec = Math.floor((now - info.lastSaved) / 1000);
+    if (sec >= 60) { // 1분 이상일 때만 저장
+      activity.addVoice(userId, sec, info.channel);
+      voiceStartMap.set(userId, { ...info, lastSaved: now });
+    }
+  }
+}, 60 * 1000);
 
 // ✅ 음성채널 동접 관계도 자동상승
 setInterval(() => {
