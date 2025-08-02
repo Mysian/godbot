@@ -6,8 +6,7 @@ const {
   ButtonStyle, 
   StringSelectMenuBuilder 
 } = require("discord.js");
-const activity = require("../utils/activity-tracker");
-const activityLogger = require("../utils/activity-logger");
+const fs = require("fs");
 
 const PERIODS = [
   { label: '1일', value: '1', description: '최근 1일', },
@@ -23,11 +22,9 @@ const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("이용현황")
-    .setDescription("특정 기간, 필터, 유저별 활동량 및 TOP100 순위"),
+    .setDescription("기간별 전체 활동 랭킹을 확인"),
   async execute(interaction) {
     let period = '1';
-    let filterType = "all";
-    let selectedUserId = "all"; // default: 전체
     let mainPage = 0;
 
     function getDateRange(period) {
@@ -37,48 +34,6 @@ module.exports = {
       now.setDate(now.getDate() - (parseInt(period, 10) - 1));
       const from = now.toISOString().slice(0, 10);
       return { from, to };
-    }
-
-    function getFilterLabel(type) {
-      if (type === "message") return "💬 채팅";
-      if (type === "voice") return "🔊 음성";
-      if (type === "activity") return "🎮 활동";
-      return "🏅 종합";
-    }
-
-    function formatHourMinute(sec) {
-      const totalMinutes = Math.round(sec / 60);
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
-      let str = '';
-      if (hours > 0) str += `${hours}시간`;
-      if (minutes > 0 || hours === 0) str += `${minutes}분`;
-      return str;
-    }
-
-    function getFilterRow(selected) {
-      return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("filter_all")
-          .setStyle(selected === "all" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("🏅")
-          .setLabel("종합"),
-        new ButtonBuilder()
-          .setCustomId("filter_message")
-          .setStyle(selected === "message" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("💬")
-          .setLabel("채팅"),
-        new ButtonBuilder()
-          .setCustomId("filter_voice")
-          .setStyle(selected === "voice" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("🔊")
-          .setLabel("음성"),
-        new ButtonBuilder()
-          .setCustomId("filter_activity")
-          .setStyle(selected === "activity" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("🎮")
-          .setLabel("활동")
-      );
     }
 
     function getPeriodRow(selected) {
@@ -102,225 +57,84 @@ module.exports = {
       );
     }
 
-    // 유저 드롭다운 (전체 + 최대 24명, 정렬)
-    function getUserSelectRow(currentUserId = "all") {
-      // 전체 옵션
-      const options = [
-        { label: "서버 전체 활동", value: "all", description: "모든 유저 활동 랭킹", default: currentUserId === "all" }
-      ];
-      // 서버 멤버 추가 (닉네임 가나다순, 봇/예외/추방 제외)
-      const users = Array.from(interaction.guild.members.cache.values())
-        .filter(m => !m.user.bot && !EXCLUDED_USER_IDS.includes(m.id))
-        .sort((a, b) => (a.displayName || a.user.username).localeCompare(b.displayName || b.user.username, "ko-KR"))
-        .slice(0, 24);
-      options.push(...users.map(m => ({
-        label: m.displayName || m.user.username,
-        value: m.id,
-        description: `@${m.user.tag}`,
-        default: m.id === currentUserId
-      })));
-      return new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("select_user")
-          .setPlaceholder(currentUserId === "all" ? "유저 선택" : (options.find(o => o.value === currentUserId)?.label || "유저"))
-          .addOptions(options)
-      );
-    }
-
-    // 활동 임베드
-    function buildActivityEmbed({ userId = null, userTag = null, guild = null, page = 0, isSingleUser = false }) {
+    // 활동 임베드(이름별 그대로, 유저별/통합 없음)
+    function buildActivityEmbed({ guild, page = 0 }) {
       const pageSize = 10;
-      if (!isSingleUser && guild) {
-        let activityData = require("fs").existsSync("activity-logs.json")
-          ? JSON.parse(require("fs").readFileSync("activity-logs.json", "utf-8"))
-          : {};
+      // 활동 로그 불러오기
+      let activityData = fs.existsSync("activity-logs.json")
+        ? JSON.parse(fs.readFileSync("activity-logs.json", "utf-8"))
+        : {};
 
-        let allStats = [];
-        for (const uid in activityData) {
-          if (EXCLUDED_USER_IDS.includes(uid)) continue;
-          const member = guild.members.cache.get(uid);
-          if (!member) continue;
-          if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
-          const list = activityData[uid];
-          const actMap = {};
-          for (const act of list) {
-            let key = "";
-            if (act.activityType === "game") key = `game|${act.details.name}`;
-            else if (act.activityType === "music") key = `music|${act.details.song}|${act.details.artist}`;
-            else continue;
-            if (!actMap[key]) actMap[key] = [];
-            actMap[key].push(act);
-          }
-          for (const key in actMap) {
-            const arr = actMap[key];
-            const [type, ...rest] = key.split("|");
-            const name = (type === "game") ? rest[0] : `${rest[0]} - ${rest[1]}`;
-            allStats.push({
-              userId: uid,
-              userTag: member.user.tag,
-              activityType: type,
-              name,
-              count: arr.length,
-              last: Math.max(...arr.map(a => a.time)),
-            });
-          }
-        }
-        allStats.sort((a, b) => (b.count - a.count) || (b.last - a.last));
-        const totalPages = Math.ceil(allStats.length / pageSize) || 1;
-        const show = allStats.slice(page * pageSize, (page + 1) * pageSize);
+      // 단순 집계용 Map (활동명별)
+      const activityCounts = {};
 
-        let desc = show.length
-          ? show.map((a, idx) =>
-            `**${page * pageSize + idx + 1}위** <@${a.userId}> \`${a.userTag}\`\n- ${a.activityType === "game" ? "🎮" : "🎵"} ${a.name} (${a.count}회) [최근: ${new Date(a.last).toLocaleString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" })}]`
-          ).join("\n\n")
-          : "활동 기록 없음";
-        return new EmbedBuilder()
-          .setTitle(`🎮 서버 전체 활동 TOP`)
-          .setDescription(desc)
-          .setFooter({ text: `${page + 1} / ${totalPages} 페이지` });
-      } else if (isSingleUser && userId) {
-        let activities = activityLogger.getUserActivities(userId);
-        const actMap = {};
-        for (const act of activities) {
-          let key = "";
-          if (act.activityType === "game") key = `game|${act.details.name}`;
-          else if (act.activityType === "music") key = `music|${act.details.song}|${act.details.artist}`;
-          else continue;
-          if (!actMap[key]) actMap[key] = [];
-          actMap[key].push(act);
-        }
-        let stats = [];
-        for (const key in actMap) {
-          const arr = actMap[key];
-          const [type, ...rest] = key.split("|");
-          const name = (type === "game") ? rest[0] : `${rest[0]} - ${rest[1]}`;
-          stats.push({
-            activityType: type,
-            name,
-            count: arr.length,
-            last: Math.max(...arr.map(a => a.time)),
-          });
-        }
-        stats.sort((a, b) => (b.count - a.count) || (b.last - a.last));
-        const totalPages = Math.ceil(stats.length / pageSize) || 1;
-        const show = stats.slice(page * pageSize, (page + 1) * pageSize);
+      for (const uid in activityData) {
+        if (EXCLUDED_USER_IDS.includes(uid)) continue;
+        const member = guild.members.cache.get(uid);
+        if (!member) continue;
+        if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
 
-        let desc = show.length
-          ? show.map((a, idx) =>
-            `**${page * pageSize + idx + 1}위** ${a.activityType === "game" ? "🎮" : "🎵"} ${a.name} (${a.count}회)\n- 최근 기록: ${new Date(a.last).toLocaleString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" })}`
-          ).join("\n\n")
-          : "활동 기록 없음";
-        return new EmbedBuilder()
-          .setTitle(`🎮 ${userTag || "유저"}의 활동 TOP`)
-          .setDescription(desc)
-          .setFooter({ text: `${page + 1} / ${totalPages} 페이지` });
+        const list = activityData[uid];
+        for (const act of list) {
+          if (act.activityType !== "game") continue;
+          const name = act.details.name;
+          if (!activityCounts[name]) activityCounts[name] = 0;
+          activityCounts[name]++;
+        }
       }
-      return new EmbedBuilder().setDescription("기록 없음");
+      // 순위 정렬
+      const sorted = Object.entries(activityCounts)
+        .sort((a, b) => b[1] - a[1]);
+
+      const totalPages = Math.ceil(sorted.length / pageSize) || 1;
+      const show = sorted.slice(page * pageSize, (page + 1) * pageSize);
+
+      let desc = show.length
+        ? show.map((a, idx) =>
+          `**${page * pageSize + idx + 1}위** ${a[0]} ${a[1]}회`
+        ).join("\n")
+        : "활동 기록 없음";
+      return new EmbedBuilder()
+        .setTitle(`🎮 전체 활동 TOP`)
+        .setDescription(desc)
+        .setFooter({ text: `${page + 1} / ${totalPages} 페이지` });
     }
 
-    async function getStatsEmbed(page, period, filterType, userId) {
-      if (filterType === "activity") {
-        return {
-          embed: buildActivityEmbed({
-            userId: userId && userId !== "all" ? userId : null,
-            userTag: userId && userId !== "all" ? (interaction.guild.members.cache.get(userId)?.user.tag || null) : null,
-            guild: interaction.guild,
-            page,
-            isSingleUser: userId && userId !== "all"
-          }),
-          totalPages: (() => {
-            if (!userId || userId === "all") {
-              let activityData = require("fs").existsSync("activity-logs.json")
-                ? JSON.parse(require("fs").readFileSync("activity-logs.json", "utf-8"))
-                : {};
-              let count = 0;
-              for (const uid in activityData) {
-                if (EXCLUDED_USER_IDS.includes(uid)) continue;
-                const member = interaction.guild.members.cache.get(uid);
-                if (!member) continue;
-                if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
-                const list = activityData[uid];
-                const actMap = {};
-                for (const act of list) {
-                  let key = "";
-                  if (act.activityType === "game") key = `game|${act.details.name}`;
-                  else if (act.activityType === "music") key = `music|${act.details.song}|${act.details.artist}`;
-                  else continue;
-                  if (!actMap[key]) actMap[key] = [];
-                  actMap[key].push(act);
-                }
-                count += Object.keys(actMap).length;
-              }
-              return Math.ceil(count / 10) || 1;
-            } else {
-              let activities = activityLogger.getUserActivities(userId);
-              const actMap = {};
-              for (const act of activities) {
-                let key = "";
-                if (act.activityType === "game") key = `game|${act.details.name}`;
-                else if (act.activityType === "music") key = `music|${act.details.song}|${act.details.artist}`;
-                else continue;
-                if (!actMap[key]) actMap[key] = [];
-                actMap[key].push(act);
-              }
-              let count = Object.keys(actMap).length;
-              return Math.ceil(count / 10) || 1;
+    async function getStatsEmbed(page, period) {
+      return {
+        embed: buildActivityEmbed({
+          guild: interaction.guild,
+          page,
+        }),
+        totalPages: (() => {
+          let activityData = fs.existsSync("activity-logs.json")
+            ? JSON.parse(fs.readFileSync("activity-logs.json", "utf-8"))
+            : {};
+          const activityCounts = {};
+          for (const uid in activityData) {
+            if (EXCLUDED_USER_IDS.includes(uid)) continue;
+            const member = interaction.guild.members.cache.get(uid);
+            if (!member) continue;
+            if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) continue;
+            const list = activityData[uid];
+            for (const act of list) {
+              if (act.activityType !== "game") continue;
+              const name = act.details.name;
+              if (!activityCounts[name]) activityCounts[name] = 0;
+              activityCounts[name]++;
             }
-          })(),
-          stats: null
-        };
-      }
-      const { from, to } = getDateRange(period);
-      let stats = activity.getStats({ from, to, filterType, userId: userId !== "all" ? userId : null });
-
-      stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
-
-      if (EXCLUDED_ROLE_IDS.length && interaction.guild) {
-        const userIds = stats.map(s => s.userId);
-        const guildMembers = interaction.guild.members.cache;
-        stats = stats.filter(s => {
-          const member = guildMembers.get(s.userId);
-          if (!member) return true;
-          return !member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id));
-        });
-      }
-
-      if (filterType === "message") stats.sort((a, b) => b.message - a.message);
-      else if (filterType === "voice") stats.sort((a, b) => b.voice - a.voice);
-      else stats.sort((a, b) => (b.message + b.voice) - (a.message + a.voice));
-      const pageSize = 15;
-      const totalPages = Math.ceil(Math.min(100, stats.length) / pageSize) || 1;
-      let list = "";
-      for (let i = page * pageSize; i < Math.min(stats.length, (page + 1) * pageSize); i++) {
-        const s = stats[i];
-        if (filterType === "message") {
-          const msgStr = s.message.toLocaleString();
-          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개\n`;
-        } else if (filterType === "voice") {
-          const voiceStr = formatHourMinute(s.voice);
-          list += `**${i + 1}위** <@${s.userId}> — 🔊 ${voiceStr}\n`;
-        } else {
-          const msgStr = s.message.toLocaleString();
-          const voiceStr = formatHourMinute(s.voice);
-          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개, 🔊 ${voiceStr}\n`;
-        }
-      }
-      const periodLabel = PERIODS.find(p => p.value === period)?.label || "전체";
-      const embed = new EmbedBuilder()
-        .setTitle(`📊 활동 랭킹 [${getFilterLabel(filterType)}]`)
-        .setDescription(list.length ? list : "해당 조건에 데이터 없음")
-        .setFooter({ text: `기간: ${periodLabel} | ${page + 1}/${totalPages}페이지` });
-      return { embed, totalPages, stats };
+          }
+          return Math.ceil(Object.keys(activityCounts).length / 10) || 1;
+        })(),
+      };
     }
 
     // 최초 임베드
-    const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, selectedUserId);
+    const { embed, totalPages } = await getStatsEmbed(mainPage, period);
 
     let replyObj = {
       embeds: [embed],
       components: [
-        getUserSelectRow(selectedUserId),
-        getFilterRow(filterType),
         getPeriodRow(period),
         getPageRow(),
       ],
@@ -348,31 +162,18 @@ module.exports = {
             mainPage++;
             updateEmbed = true;
           }
-          if (i.customId.startsWith("filter_")) {
-            const type = i.customId.replace("filter_", "");
-            filterType = type;
-            mainPage = 0;
-            updateEmbed = true;
-          }
         } else if (i.isStringSelectMenu()) {
           if (i.customId === "select_period") {
             period = i.values[0];
             mainPage = 0;
             updateEmbed = true;
           }
-          if (i.customId === "select_user") {
-            selectedUserId = i.values[0];
-            mainPage = 0;
-            updateEmbed = true;
-          }
         }
         if (updateEmbed) {
-          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, selectedUserId);
+          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period);
           await i.update({
             embeds: [newEmbed],
             components: [
-              getUserSelectRow(selectedUserId),
-              getFilterRow(filterType),
               getPeriodRow(period),
               getPageRow(),
             ],
