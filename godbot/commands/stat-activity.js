@@ -49,39 +49,49 @@ module.exports = {
     }
 
     // === 활동 버튼 Row ===
-    function getActivityRow(isSingle = false, activityPage = 0, activityTab = "game") {
-      if (!isSingle) {
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("show_activity")
-            .setStyle(ButtonStyle.Secondary)
-            .setLabel("🎮 활동")
-        );
-      } else {
-        // 단일조회: 탭 + 페이지
-        return new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("activity_tab_game")
-            .setStyle(activityTab === "game" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-            .setLabel("게임"),
-          new ButtonBuilder()
-            .setCustomId("activity_tab_music")
-            .setStyle(activityTab === "music" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-            .setLabel("노래"),
-          new ButtonBuilder()
-            .setCustomId("activity_prev")
-            .setStyle(ButtonStyle.Secondary)
-            .setLabel("이전"),
-          new ButtonBuilder()
-            .setCustomId("activity_next")
-            .setStyle(ButtonStyle.Secondary)
-            .setLabel("다음"),
-          new ButtonBuilder()
-            .setCustomId("activity_close")
-            .setStyle(ButtonStyle.Danger)
-            .setLabel("닫기"),
-        );
-      }
+    function getFilterRow(selected) {
+      return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("filter_all")
+          .setStyle(selected === "all" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setEmoji("🏅")
+          .setLabel("종합"),
+        new ButtonBuilder()
+          .setCustomId("filter_message")
+          .setStyle(selected === "message" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setEmoji("💬")
+          .setLabel("채팅"),
+        new ButtonBuilder()
+          .setCustomId("filter_voice")
+          .setStyle(selected === "voice" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setEmoji("🔊")
+          .setLabel("음성"),
+        new ButtonBuilder()
+          .setCustomId("show_activity")
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("🎮")
+          .setLabel("활동")
+      );
+    }
+
+    function getPeriodRow(selected) {
+      return new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("select_period")
+          .setPlaceholder("기간 선택")
+          .addOptions(PERIODS.map(p => ({
+            label: p.label,
+            value: p.value,
+            description: p.description,
+            default: p.value === selected,
+          })))
+      );
+    }
+    function getPageRow() {
+      return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle(ButtonStyle.Secondary)
+      );
     }
 
     // === 활동 임베드 (Top 1 or 리스트) ===
@@ -184,43 +194,31 @@ module.exports = {
       return { embed, totalPages, stats };
     }
 
-    // === 페이징/필터 Row ===
-    function getFilterRow(selected) {
+    // === 단일조회 활동용 Row ===
+    function getActivityRow(isSingle = false, activityPage = 0, activityTab = "game") {
+      if (!isSingle) return null;
+      // 단일조회: 탭 + 페이지
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId("filter_all")
-          .setStyle(selected === "all" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("🏅")
-          .setLabel("종합"),
+          .setCustomId("activity_tab_game")
+          .setStyle(activityTab === "game" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setLabel("게임"),
         new ButtonBuilder()
-          .setCustomId("filter_message")
-          .setStyle(selected === "message" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("💬")
-          .setLabel("채팅"),
+          .setCustomId("activity_tab_music")
+          .setStyle(activityTab === "music" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setLabel("노래"),
         new ButtonBuilder()
-          .setCustomId("filter_voice")
-          .setStyle(selected === "voice" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setEmoji("🔊")
-          .setLabel("음성"),
-      );
-    }
-    function getPeriodRow(selected) {
-      return new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("select_period")
-          .setPlaceholder("기간 선택")
-          .addOptions(PERIODS.map(p => ({
-            label: p.label,
-            value: p.value,
-            description: p.description,
-            default: p.value === selected,
-          })))
-      );
-    }
-    function getPageRow() {
-      return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle(ButtonStyle.Secondary)
+          .setCustomId("activity_prev")
+          .setStyle(ButtonStyle.Secondary)
+          .setLabel("이전"),
+        new ButtonBuilder()
+          .setCustomId("activity_next")
+          .setStyle(ButtonStyle.Secondary)
+          .setLabel("다음"),
+        new ButtonBuilder()
+          .setCustomId("activity_close")
+          .setStyle(ButtonStyle.Danger)
+          .setLabel("닫기"),
       );
     }
 
@@ -233,10 +231,9 @@ module.exports = {
     let replyObj = {
       embeds: [embed],
       components: [
-        getFilterRow(filterType),
+        getFilterRow(filterType),    // 버튼 4개 (마지막이 활동)
         getPeriodRow(period),
         getPageRow(),
-        getActivityRow(!!user),
       ],
       ephemeral: true,
     };
@@ -306,7 +303,6 @@ module.exports = {
                 getFilterRow(filterType),
                 getPeriodRow(period),
                 getPageRow(),
-                getActivityRow(true),
               ],
               ephemeral: true,
             });
@@ -356,7 +352,6 @@ module.exports = {
               getFilterRow(filterType),
               getPeriodRow(period),
               getPageRow(),
-              getActivityRow(!!user),
             ],
             ephemeral: true,
           });
