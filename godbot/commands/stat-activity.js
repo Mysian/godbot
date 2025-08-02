@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require("discord.js");
 const activity = require("../utils/activity-tracker");
+const activityLogger = require("../utils/activity-logger");
 
 const PERIODS = [
   { label: '1일', value: '1', description: '최근 1일', },
@@ -47,6 +48,95 @@ module.exports = {
       return str;
     }
 
+    // === 활동 버튼 Row ===
+    function getActivityRow(isSingle = false, activityPage = 0, activityTab = "game") {
+      if (!isSingle) {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("show_activity")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("🎮 활동")
+        );
+      } else {
+        // 단일조회: 탭 + 페이지
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("activity_tab_game")
+            .setStyle(activityTab === "game" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+            .setLabel("게임"),
+          new ButtonBuilder()
+            .setCustomId("activity_tab_music")
+            .setStyle(activityTab === "music" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+            .setLabel("노래"),
+          new ButtonBuilder()
+            .setCustomId("activity_prev")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("이전"),
+          new ButtonBuilder()
+            .setCustomId("activity_next")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("다음"),
+          new ButtonBuilder()
+            .setCustomId("activity_close")
+            .setStyle(ButtonStyle.Danger)
+            .setLabel("닫기"),
+        );
+      }
+    }
+
+    // === 활동 임베드 (Top 1 or 리스트) ===
+    function buildActivityEmbed(userId, userTag, activities, type = "game", page = 0, isList = false) {
+      let filtered = activities.filter(a => a.activityType === type);
+      if (filtered.length === 0) {
+        return new EmbedBuilder()
+          .setTitle(`🎮 ${type === "game" ? "게임" : "노래"} 기록`)
+          .setDescription("기록 없음");
+      }
+      // 최다 활동
+      if (!isList) {
+        // 카운트 세기
+        const countMap = {};
+        filtered.forEach(a => {
+          const key = type === "game" ? a.details.name : `${a.details.song} - ${a.details.artist}`;
+          countMap[key] = (countMap[key] || 0) + 1;
+        });
+        // 최다 항목 뽑기
+        let maxKey = null;
+        let maxCnt = 0;
+        for (const key in countMap) {
+          if (countMap[key] > maxCnt) {
+            maxKey = key;
+            maxCnt = countMap[key];
+          }
+        }
+        let desc = maxKey
+          ? `**${maxKey}**\n(${maxCnt}회 기록됨)`
+          : "기록 없음";
+        return new EmbedBuilder()
+          .setTitle(`🎮 활동 기록`)
+          .setDescription(type === "game" ? `가장 많이 한 게임\n${desc}` : `가장 많이 들은 노래\n${desc}`);
+      } else {
+        // 리스트 페이지네이션
+        const pageSize = 10;
+        const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+        let pageData = filtered
+          .sort((a, b) => b.time - a.time)
+          .slice(page * pageSize, (page + 1) * pageSize);
+        let desc = pageData
+          .map(a => {
+            let timeStr = new Date(a.time).toLocaleString("ko-KR", { hour12: false });
+            if (type === "game") return `🎮 **${a.details.name}**\n- ${timeStr}`;
+            if (type === "music") return `🎵 **${a.details.song}** - ${a.details.artist}\n- ${timeStr}`;
+          })
+          .join("\n\n");
+        return new EmbedBuilder()
+          .setTitle(`🎮 활동 내역 (${type === "game" ? "게임" : "노래"})`)
+          .setDescription(desc)
+          .setFooter({ text: `${page + 1} / ${totalPages} 페이지 | ${userTag}` });
+      }
+    }
+
+    // === 기존 랭킹 Embed ===
     async function getStatsEmbed(page, period, filterType, user) {
       const { from, to } = getDateRange(period);
       let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
@@ -94,7 +184,7 @@ module.exports = {
       return { embed, totalPages, stats };
     }
 
-    let page = 0;
+    // === 페이징/필터 Row ===
     function getFilterRow(selected) {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -134,18 +224,24 @@ module.exports = {
       );
     }
 
-    // 최초 임베드 출력
-    const { embed, totalPages } = await getStatsEmbed(page, period, filterType, user);
+    // ==== 초기 출력 ====
+    const { embed, totalPages } = await getStatsEmbed(0, period, filterType, user);
+    let mainPage = 0;
+    let activityTab = "game"; // 단일 활동 탭: 'game' | 'music'
+    let activityPage = 0;
 
-    await interaction.reply({
+    let replyObj = {
       embeds: [embed],
       components: [
         getFilterRow(filterType),
         getPeriodRow(period),
         getPageRow(),
+        getActivityRow(!!user),
       ],
       ephemeral: true,
-    });
+    };
+
+    await interaction.reply(replyObj);
 
     const collector = interaction.channel.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id &&
@@ -155,51 +251,121 @@ module.exports = {
 
     collector.on("collect", async i => {
       try {
+        // === 활동 버튼 클릭 ===
+        if (i.isButton() && i.customId === "show_activity" && !user) {
+          // 랭킹에서 버튼 누르면: 자기꺼만!
+          const activities = activityLogger.getUserActivities(i.user.id);
+          let embedGame = buildActivityEmbed(i.user.id, i.user.tag, activities, "game");
+          let embedMusic = buildActivityEmbed(i.user.id, i.user.tag, activities, "music");
+          await i.reply({
+            embeds: [embedGame, embedMusic],
+            ephemeral: true,
+          });
+          return;
+        }
+
+        // === 단일조회 → 활동 버튼 클릭 ===
+        if (i.isButton() && i.customId === "show_activity" && user) {
+          // 단일조회일 땐 '탭+페이지' 방식
+          mainPage = 0;
+          activityPage = 0;
+          activityTab = "game";
+          const activities = activityLogger.getUserActivities(user.id);
+          let embed = buildActivityEmbed(user.id, user.tag, activities, activityTab, activityPage, true);
+          await i.update({
+            embeds: [embed],
+            components: [getActivityRow(true, activityPage, activityTab)],
+            ephemeral: true,
+          });
+          return;
+        }
+
+        // === 단일조회 활동 내역 페이징 및 탭 ===
+        if (user && i.customId?.startsWith("activity_")) {
+          const activities = activityLogger.getUserActivities(user.id);
+          let filtered = activities.filter(a => a.activityType === activityTab);
+          const totalPages = Math.ceil(filtered.length / 10) || 1;
+          if (i.customId === "activity_tab_game") {
+            activityTab = "game"; activityPage = 0;
+          }
+          if (i.customId === "activity_tab_music") {
+            activityTab = "music"; activityPage = 0;
+          }
+          if (i.customId === "activity_prev") {
+            if (activityPage > 0) activityPage--;
+          }
+          if (i.customId === "activity_next") {
+            if (activityPage < totalPages - 1) activityPage++;
+          }
+          if (i.customId === "activity_close") {
+            // 현황메인으로 복귀
+            const { embed: mainEmbed } = await getStatsEmbed(mainPage, period, filterType, user);
+            await i.update({
+              embeds: [mainEmbed],
+              components: [
+                getFilterRow(filterType),
+                getPeriodRow(period),
+                getPageRow(),
+                getActivityRow(true),
+              ],
+              ephemeral: true,
+            });
+            return;
+          }
+          // 다시 embed 출력
+          let embed = buildActivityEmbed(user.id, user.tag, activities, activityTab, activityPage, true);
+          await i.update({
+            embeds: [embed],
+            components: [getActivityRow(true, activityPage, activityTab)],
+            ephemeral: true,
+          });
+          return;
+        }
+
+        // === 기존 랭킹 페이징/필터/기간 ===
         let updateEmbed = false;
         if (i.isButton()) {
-          if (i.customId === "prev" && page > 0) {
-            page--;
+          if (i.customId === "prev" && mainPage > 0) {
+            mainPage--;
             updateEmbed = true;
           }
-          if (i.customId === "next" && page < totalPages - 1) {
-            page++;
+          if (i.customId === "next" && mainPage < totalPages - 1) {
+            mainPage++;
             updateEmbed = true;
           }
           if (i.customId.startsWith("filter_")) {
             const type = i.customId.replace("filter_", "");
             filterType = type;
-            page = 0;
+            mainPage = 0;
             updateEmbed = true;
           }
         } else if (i.isStringSelectMenu && i.isStringSelectMenu()) {
           if (i.customId === "select_period") {
             period = i.values[0];
-            page = 0;
+            mainPage = 0;
             updateEmbed = true;
           }
         }
 
         // 중복 reply/update 방지
         if (updateEmbed) {
-          if (!i.replied && !i.deferred) {
-            const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(page, period, filterType, user);
-            await i.update({
-              embeds: [newEmbed],
-              components: [
-                getFilterRow(filterType),
-                getPeriodRow(period),
-                getPageRow(),
-              ],
-              ephemeral: true,
-            });
-          }
+          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, user);
+          await i.update({
+            embeds: [newEmbed],
+            components: [
+              getFilterRow(filterType),
+              getPeriodRow(period),
+              getPageRow(),
+              getActivityRow(!!user),
+            ],
+            ephemeral: true,
+          });
         } else {
           if (!i.replied && !i.deferred) {
             await i.deferUpdate();
           }
         }
       } catch (err) {
-        // 이미 응답된 interaction이면 에러 무시
         if (!String(err).includes("already been sent or deferred")) {
           console.error(err);
         }
