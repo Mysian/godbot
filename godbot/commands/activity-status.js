@@ -12,7 +12,7 @@ const PERIODS = [
   { label: '90일', value: '90', description: '최근 90일' },
 ];
 
-const PAGE_SIZE = 20; // 한 페이지당 최대 50개
+const PAGE_SIZE = 10; // 한 페이지당 최대 50개
 
 module.exports = {
   data: new SlashCommandBuilder()
