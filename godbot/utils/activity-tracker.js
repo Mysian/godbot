@@ -6,7 +6,7 @@ const dataPath = path.join(__dirname, "../activity-data.json");
 const includedCategoryIds = []; // 이 카테고리만 집계
 const includedChannelIds = [];
 const excludedCategoryIds = [1318529703480397954, 1318445879455125514, 1204329649530998794]; // 이 카테고리 제외
-const excludedChannelIds = [];
+const excludedChannelIds = ["1202971727915651092"];
 
 function isTracked(channel, type = "all") {
   if (!channel) return false;
@@ -127,3 +127,4 @@ module.exports = {
   isTracked,
   getLastActiveDate, 
 };
+
