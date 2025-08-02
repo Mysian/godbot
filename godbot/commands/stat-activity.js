@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require("discord.js");
 const activity = require("../utils/activity-tracker");
 
 const PERIODS = [
@@ -18,7 +18,7 @@ module.exports = {
     .setDescription("특정 기간, 필터, 유저별 활동량 및 TOP100 순위")
     .addUserOption(opt => opt.setName("유저").setDescription("특정 유저만 조회").setRequired(false)),
   async execute(interaction) {
-    let period = '7'; // 기본값 7일
+    let period = '1'; // 기본값 **1일**
     let filterType = "all";
     const user = interaction.options.getUser("유저");
 
@@ -37,7 +37,6 @@ module.exports = {
       return "🏅 종합";
     }
 
-    // 시간 포맷: n시간 n분
     function formatHourMinute(sec) {
       const totalMinutes = Math.round(sec / 60);
       const hours = Math.floor(totalMinutes / 60);
@@ -48,18 +47,15 @@ module.exports = {
       return str;
     }
 
-    // ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-    // 함수 자체를 async로!
     async function getStatsEmbed(page, period, filterType, user) {
       const { from, to } = getDateRange(period);
       let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
 
-      // 1. 유저ID 필터
+      // 유저ID 필터
       stats = stats.filter(s => !EXCLUDED_USER_IDS.includes(s.userId));
 
-      // 2. 역할ID 필터 (필요시)
+      // 역할ID 필터 (필요시)
       if (EXCLUDED_ROLE_IDS.length && interaction.guild) {
-        // 필요한 멤버 정보만 가져오기
         const userIds = stats.map(s => s.userId);
         const guildMembers = await interaction.guild.members.fetch({ user: userIds, force: true });
         stats = stats.filter(s => {
@@ -138,7 +134,7 @@ module.exports = {
       );
     }
 
-    // ⬇️ getStatsEmbed 호출부 변경
+    // 최초 임베드 출력
     const { embed, totalPages } = await getStatsEmbed(page, period, filterType, user);
 
     await interaction.reply({
@@ -153,48 +149,60 @@ module.exports = {
 
     const collector = interaction.channel.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id &&
-        (i.isButton() ||
-          (i.isStringSelectMenu && i.isStringSelectMenu())),
+        (i.isButton() || (i.isStringSelectMenu && i.isStringSelectMenu())),
       time: 2 * 60 * 1000,
     });
 
     collector.on("collect", async i => {
-      let updateEmbed = false;
-      if (i.isButton()) {
-        if (i.customId === "prev" && page > 0) {
-          page--;
-          updateEmbed = true;
+      try {
+        let updateEmbed = false;
+        if (i.isButton()) {
+          if (i.customId === "prev" && page > 0) {
+            page--;
+            updateEmbed = true;
+          }
+          if (i.customId === "next" && page < totalPages - 1) {
+            page++;
+            updateEmbed = true;
+          }
+          if (i.customId.startsWith("filter_")) {
+            const type = i.customId.replace("filter_", "");
+            filterType = type;
+            page = 0;
+            updateEmbed = true;
+          }
+        } else if (i.isStringSelectMenu && i.isStringSelectMenu()) {
+          if (i.customId === "select_period") {
+            period = i.values[0];
+            page = 0;
+            updateEmbed = true;
+          }
         }
-        if (i.customId === "next" && page < totalPages - 1) {
-          page++;
-          updateEmbed = true;
+
+        // 중복 reply/update 방지
+        if (updateEmbed) {
+          if (!i.replied && !i.deferred) {
+            const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(page, period, filterType, user);
+            await i.update({
+              embeds: [newEmbed],
+              components: [
+                getFilterRow(filterType),
+                getPeriodRow(period),
+                getPageRow(),
+              ],
+              ephemeral: true,
+            });
+          }
+        } else {
+          if (!i.replied && !i.deferred) {
+            await i.deferUpdate();
+          }
         }
-        if (i.customId.startsWith("filter_")) {
-          const type = i.customId.replace("filter_", "");
-          filterType = type;
-          page = 0;
-          updateEmbed = true;
+      } catch (err) {
+        // 이미 응답된 interaction이면 에러 무시
+        if (!String(err).includes("already been sent or deferred")) {
+          console.error(err);
         }
-      } else if (i.isStringSelectMenu && i.isStringSelectMenu()) {
-        if (i.customId === "select_period") {
-          period = i.values[0];
-          page = 0;
-          updateEmbed = true;
-        }
-      }
-      if (updateEmbed) {
-        const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(page, period, filterType, user);
-        await i.update({
-          embeds: [newEmbed],
-          components: [
-            getFilterRow(filterType),
-            getPeriodRow(period),
-            getPageRow(),
-          ],
-          ephemeral: true,
-        });
-      } else {
-        await i.deferUpdate();
       }
     });
   }
