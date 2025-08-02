@@ -5,6 +5,7 @@ const { Client, Collection, GatewayIntentBits, Events, ActivityType, StringSelec
   TextInputBuilder, EmbedBuilder } = require("discord.js");
 require("dotenv").config();
 const activity = require("./utils/activity-tracker");
+const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 
@@ -735,6 +736,23 @@ client.on("messageCreate", async message => {
   fs.writeFileSync(activityPath, JSON.stringify(activity, null, 2));
 });
 
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+  const userId = newPresence.userId;
+  if (!newPresence.activities) return;
+  newPresence.activities.forEach(activity => {
+    if (activity.type === 0) { // Playing 게임
+      activityLogger.addActivity(userId, 'game', { name: activity.name });
+    }
+    if (activity.type === 2 && activity.name === 'Spotify') { // 음악
+      activityLogger.addActivity(userId, 'music', {
+        song: activity.details,
+        artist: activity.state,
+        album: activity.assets ? activity.assets.largeText : undefined
+      });
+    }
+  });
+});
+
 // ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
@@ -1196,6 +1214,9 @@ client.on("messageCreate", async msg => {
   }
 });
 
+client.on('guildMemberRemove', member => {
+  activityLogger.removeUser(member.id);
+});
 
 // 120분 혼자 있는 경우 잠수방 이전
 require("./utils/auto-afk-move")(client);
