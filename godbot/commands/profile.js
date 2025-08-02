@@ -196,7 +196,7 @@ module.exports = {
         { name: "🤗 교류가 활발한 3인",        value: friendsStr,                              inline: false },
         { name: "📊 최근 7일 채팅",    value: `${recentMsg}회`,                         inline: true },
         { name: "🔊 최근 7일 음성",    value: formatVoice(recentVoice),                inline: true },
-        { name: "📝 최근 활동 이력",   value: recentActivitiesStr,                      inline: false }, // ★ 추가
+        { name: "📝 최근 활동 이력",   value: recentActivitiesStr,                      inline: false },
       )
       .setFooter({
         text: userId === interaction.user.id
