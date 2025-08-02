@@ -738,9 +738,12 @@ client.on("messageCreate", async message => {
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
   const userId = newPresence.userId;
+  const user = newPresence.user || client.users.cache.get(userId);
+  if (!user || user.bot) return; // 봇은 무시!
+
   if (!newPresence.activities) return;
   newPresence.activities.forEach(activity => {
-    if (activity.type === 0) { // Playing 게임
+    if (activity.type === 0) { // 게임
       activityLogger.addActivity(userId, 'game', { name: activity.name });
     }
     if (activity.type === 2 && activity.name === 'Spotify') { // 음악
