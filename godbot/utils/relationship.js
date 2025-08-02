@@ -68,9 +68,16 @@ function saveLastInteraction() {
   }
 }
 
+// 🔥 여기만 패치됨! (20 초과시 "단짝 N.N" 표시)
 function getRelationshipLevel(score) {
-  const idx = Math.max(0, Math.min(20, Math.round(score) + 6));
-  return RELATIONSHIP_LEVELS[idx];
+  const raw = score + 6;
+  if (raw <= 20) {
+    const idx = Math.max(0, Math.floor(raw));
+    return RELATIONSHIP_LEVELS[idx];
+  } else {
+    const over = (raw - 20).toFixed(1);
+    return `단짝 ${over}`;
+  }
 }
 
 function getInternal(userA, userB) {
