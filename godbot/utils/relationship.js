@@ -17,7 +17,7 @@ const RELATIONSHIP_LEVELS = [
 
 const STAGE_BARRIER = [
   40, 40, 20, 20, 20, 20, 20, 20, 20, 40, 20, 20,
-  40, 20, 20, 40, 20, 20, 60
+  40, 20, 20, 40, 20, 20, 60, 60, 60
 ];
 
 let data = {};
@@ -220,3 +220,4 @@ module.exports = {
   loadLastInteraction: () => lastInteraction,
   getAllScores
 };
+
