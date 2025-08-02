@@ -20,7 +20,7 @@ module.exports = {
     .addUserOption(opt => opt.setName("유저").setDescription("특정 유저만 조회").setRequired(false)),
   async execute(interaction) {
     let period = '1'; // 기본값 **1일**
-    let filterType = "all";
+    let filterType = "all"; // all|message|voice|activity
     const user = interaction.options.getUser("유저");
 
     function getDateRange(period) {
@@ -35,6 +35,7 @@ module.exports = {
     function getFilterLabel(type) {
       if (type === "message") return "💬 채팅";
       if (type === "voice") return "🔊 음성";
+      if (type === "activity") return "🎮 활동";
       return "🏅 종합";
     }
 
@@ -48,7 +49,7 @@ module.exports = {
       return str;
     }
 
-    // === 활동 버튼 Row ===
+    // === 버튼 Row ===
     function getFilterRow(selected) {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -67,8 +68,8 @@ module.exports = {
           .setEmoji("🔊")
           .setLabel("음성"),
         new ButtonBuilder()
-          .setCustomId("show_activity")
-          .setStyle(ButtonStyle.Secondary)
+          .setCustomId("filter_activity")
+          .setStyle(selected === "activity" ? ButtonStyle.Primary : ButtonStyle.Secondary)
           .setEmoji("🎮")
           .setLabel("활동")
       );
@@ -94,60 +95,51 @@ module.exports = {
       );
     }
 
-    // === 활동 임베드 (Top 1 or 리스트) ===
-    function buildActivityEmbed(userId, userTag, activities, type = "game", page = 0, isList = false) {
-      let filtered = activities.filter(a => a.activityType === type);
-      if (filtered.length === 0) {
-        return new EmbedBuilder()
-          .setTitle(`🎮 ${type === "game" ? "게임" : "노래"} 기록`)
-          .setDescription("기록 없음");
-      }
-      // 최다 활동
-      if (!isList) {
-        // 카운트 세기
-        const countMap = {};
-        filtered.forEach(a => {
-          const key = type === "game" ? a.details.name : `${a.details.song} - ${a.details.artist}`;
-          countMap[key] = (countMap[key] || 0) + 1;
-        });
-        // 최다 항목 뽑기
-        let maxKey = null;
-        let maxCnt = 0;
-        for (const key in countMap) {
-          if (countMap[key] > maxCnt) {
-            maxKey = key;
-            maxCnt = countMap[key];
-          }
-        }
-        let desc = maxKey
-          ? `**${maxKey}**\n(${maxCnt}회 기록됨)`
-          : "기록 없음";
-        return new EmbedBuilder()
-          .setTitle(`🎮 활동 기록`)
-          .setDescription(type === "game" ? `가장 많이 한 게임\n${desc}` : `가장 많이 들은 노래\n${desc}`);
-      } else {
-        // 리스트 페이지네이션
-        const pageSize = 10;
-        const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-        let pageData = filtered
-          .sort((a, b) => b.time - a.time)
-          .slice(page * pageSize, (page + 1) * pageSize);
-        let desc = pageData
-          .map(a => {
-            let timeStr = new Date(a.time).toLocaleString("ko-KR", { hour12: false });
-            if (type === "game") return `🎮 **${a.details.name}**\n- ${timeStr}`;
-            if (type === "music") return `🎵 **${a.details.song}** - ${a.details.artist}\n- ${timeStr}`;
-          })
-          .join("\n\n");
-        return new EmbedBuilder()
-          .setTitle(`🎮 활동 내역 (${type === "game" ? "게임" : "노래"})`)
-          .setDescription(desc)
-          .setFooter({ text: `${page + 1} / ${totalPages} 페이지 | ${userTag}` });
-      }
+    // === 활동 임베드 (종합/채팅/음성처럼 한장)
+    function buildActivityEmbed(userId, userTag, activities, page = 0) {
+      // 활동은 "게임/음악"을 함께 보여줌
+      let games = activities.filter(a => a.activityType === "game");
+      let musics = activities.filter(a => a.activityType === "music");
+      const pageSize = 10;
+      // 최신순
+      games = games.sort((a, b) => b.time - a.time);
+      musics = musics.sort((a, b) => b.time - a.time);
+      const totalPages = Math.max(
+        Math.ceil(games.length / pageSize) || 1,
+        Math.ceil(musics.length / pageSize) || 1
+      );
+      // 한 페이지에 게임/음악 각 5개씩
+      let gamesPage = games.slice(page * 5, (page + 1) * 5);
+      let musicsPage = musics.slice(page * 5, (page + 1) * 5);
+      let descGame = gamesPage.length
+        ? gamesPage.map(a => `🎮 **${a.details.name}**\n- ${new Date(a.time).toLocaleString("ko-KR", { hour12: false })}`).join("\n\n")
+        : "기록 없음";
+      let descMusic = musicsPage.length
+        ? musicsPage.map(a => `🎵 **${a.details.song}** - ${a.details.artist}\n- ${new Date(a.time).toLocaleString("ko-KR", { hour12: false })}`).join("\n\n")
+        : "기록 없음";
+      return new EmbedBuilder()
+        .setTitle(`🎮 활동 내역 (최근)`)
+        .setDescription(
+          `**[게임]**\n${descGame}\n\n**[노래]**\n${descMusic}`
+        )
+        .setFooter({ text: `${page + 1} / ${totalPages} 페이지 | ${userTag}` });
     }
 
     // === 기존 랭킹 Embed ===
     async function getStatsEmbed(page, period, filterType, user) {
+      if (filterType === "activity") {
+        // 활동 임베드
+        const activities = activityLogger.getUserActivities(user ? user.id : interaction.user.id);
+        return {
+          embed: buildActivityEmbed(user ? user.id : interaction.user.id, user ? user.tag : interaction.user.tag, activities, page),
+          totalPages: Math.ceil(Math.max(
+            (activities.filter(a => a.activityType === "game").length || 1) / 5,
+            (activities.filter(a => a.activityType === "music").length || 1) / 5
+          )) || 1,
+          stats: null
+        };
+      }
+      // --- 기존 랭킹 집계 ---
       const { from, to } = getDateRange(period);
       let stats = activity.getStats({ from, to, filterType, userId: user?.id || null });
 
@@ -194,44 +186,14 @@ module.exports = {
       return { embed, totalPages, stats };
     }
 
-    // === 단일조회 활동용 Row ===
-    function getActivityRow(isSingle = false, activityPage = 0, activityTab = "game") {
-      if (!isSingle) return null;
-      // 단일조회: 탭 + 페이지
-      return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("activity_tab_game")
-          .setStyle(activityTab === "game" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setLabel("게임"),
-        new ButtonBuilder()
-          .setCustomId("activity_tab_music")
-          .setStyle(activityTab === "music" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setLabel("노래"),
-        new ButtonBuilder()
-          .setCustomId("activity_prev")
-          .setStyle(ButtonStyle.Secondary)
-          .setLabel("이전"),
-        new ButtonBuilder()
-          .setCustomId("activity_next")
-          .setStyle(ButtonStyle.Secondary)
-          .setLabel("다음"),
-        new ButtonBuilder()
-          .setCustomId("activity_close")
-          .setStyle(ButtonStyle.Danger)
-          .setLabel("닫기"),
-      );
-    }
-
     // ==== 초기 출력 ====
-    const { embed, totalPages } = await getStatsEmbed(0, period, filterType, user);
     let mainPage = 0;
-    let activityTab = "game"; // 단일 활동 탭: 'game' | 'music'
-    let activityPage = 0;
+    const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, user);
 
     let replyObj = {
       embeds: [embed],
       components: [
-        getFilterRow(filterType),    // 버튼 4개 (마지막이 활동)
+        getFilterRow(filterType),
         getPeriodRow(period),
         getPageRow(),
       ],
@@ -248,77 +210,6 @@ module.exports = {
 
     collector.on("collect", async i => {
       try {
-        // === 활동 버튼 클릭 ===
-        if (i.isButton() && i.customId === "show_activity" && !user) {
-          // 랭킹에서 버튼 누르면: 자기꺼만!
-          const activities = activityLogger.getUserActivities(i.user.id);
-          let embedGame = buildActivityEmbed(i.user.id, i.user.tag, activities, "game");
-          let embedMusic = buildActivityEmbed(i.user.id, i.user.tag, activities, "music");
-          await i.reply({
-            embeds: [embedGame, embedMusic],
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // === 단일조회 → 활동 버튼 클릭 ===
-        if (i.isButton() && i.customId === "show_activity" && user) {
-          // 단일조회일 땐 '탭+페이지' 방식
-          mainPage = 0;
-          activityPage = 0;
-          activityTab = "game";
-          const activities = activityLogger.getUserActivities(user.id);
-          let embed = buildActivityEmbed(user.id, user.tag, activities, activityTab, activityPage, true);
-          await i.update({
-            embeds: [embed],
-            components: [getActivityRow(true, activityPage, activityTab)],
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // === 단일조회 활동 내역 페이징 및 탭 ===
-        if (user && i.customId?.startsWith("activity_")) {
-          const activities = activityLogger.getUserActivities(user.id);
-          let filtered = activities.filter(a => a.activityType === activityTab);
-          const totalPages = Math.ceil(filtered.length / 10) || 1;
-          if (i.customId === "activity_tab_game") {
-            activityTab = "game"; activityPage = 0;
-          }
-          if (i.customId === "activity_tab_music") {
-            activityTab = "music"; activityPage = 0;
-          }
-          if (i.customId === "activity_prev") {
-            if (activityPage > 0) activityPage--;
-          }
-          if (i.customId === "activity_next") {
-            if (activityPage < totalPages - 1) activityPage++;
-          }
-          if (i.customId === "activity_close") {
-            // 현황메인으로 복귀
-            const { embed: mainEmbed } = await getStatsEmbed(mainPage, period, filterType, user);
-            await i.update({
-              embeds: [mainEmbed],
-              components: [
-                getFilterRow(filterType),
-                getPeriodRow(period),
-                getPageRow(),
-              ],
-              ephemeral: true,
-            });
-            return;
-          }
-          // 다시 embed 출력
-          let embed = buildActivityEmbed(user.id, user.tag, activities, activityTab, activityPage, true);
-          await i.update({
-            embeds: [embed],
-            components: [getActivityRow(true, activityPage, activityTab)],
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // === 기존 랭킹 페이징/필터/기간 ===
         let updateEmbed = false;
         if (i.isButton()) {
           if (i.customId === "prev" && mainPage > 0) {
@@ -342,7 +233,6 @@ module.exports = {
             updateEmbed = true;
           }
         }
-
         // 중복 reply/update 방지
         if (updateEmbed) {
           const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, user);
