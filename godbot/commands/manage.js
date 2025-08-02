@@ -281,7 +281,7 @@ module.exports = {
         }
         const activities = activityLogger.getUserActivities(userId).sort((a, b) => b.time - a.time);
         if (!activities.length) {
-          await parentInteraction.editReply({ content: "이 유저의 최근 90일 활동 이력이 없습니다.", ephemeral: true });
+          await parentInteraction.editReply({ content: "최근 활동 기록이 없거나 디스코드 활동 기능을 OFF한 유저입니다.", ephemeral: true });
           return;
         }
 
