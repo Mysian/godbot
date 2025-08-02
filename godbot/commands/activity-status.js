@@ -85,7 +85,7 @@ module.exports = {
           `• 페이지: **${page + 1} / ${totalPages}**`
         ].filter(Boolean).join('\n'))
         .setColor(0x47cf73)
-        .setFooter({ text: '표시 기록: 최대 50개', iconURL: guildMember.displayAvatarURL() });
+        .setFooter({ text: '해당 명령어는 관리진들에게만 허가되고 있습니다.', iconURL: guildMember.displayAvatarURL() });
 
       embed.addFields({
         name: '활동 내역',
