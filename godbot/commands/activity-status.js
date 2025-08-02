@@ -90,7 +90,7 @@ module.exports = {
       embed.addFields({
         name: '활동 내역',
         value: slice.map((a, idx) => {
-          const t = new Date(a.time);
+          const t = new Date(a.time + 9 * 60 * 60 * 1000);
           const dateStr = `${t.getFullYear()}.${t.getMonth() + 1}.${t.getDate()} ${t.getHours()}:${t.getMinutes().toString().padStart(2, '0')}`;
           let detailStr = '';
           if (a.details?.name) detailStr += `\`${a.details.name}\``;
