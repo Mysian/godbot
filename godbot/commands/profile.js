@@ -1,32 +1,23 @@
 // commands/profile.js
-// -----------------------------------------------------------------------------
-// "/프로필" 명령어
-//  - /프로필등록 없이도 기본 프로필 출력
-//  - 플레이 스타일 역할 자동 감지 (빡겜러 / 즐빡겜러 / 즐겜러)
-//  - 가장 친한 친구 TOP3 닉네임 표시 (탈주 시 "(탈주)" 표기)
-//  - 최근 7일간 채팅·음성 사용량 통계 추가
-// -----------------------------------------------------------------------------
+
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const fs   = require("fs");
 const path = require("path");
 
-// ---- 외부 모듈 ----
-const relationship = require("../utils/relationship.js");   // 친구 관계
-const activity     = require("../utils/activity-tracker.js"); // 활동 트래커
+const relationship = require("../utils/relationship.js"); 
+const activity     = require("../utils/activity-tracker.js");
+const activityLogger = require("../utils/activity-logger.js");
 
-// ---- 파일 경로 ----
 const profilesPath = path.join(__dirname, "../data/profiles.json");
 const favorPath    = path.join(__dirname, "../data/favor.json");
 const bePath       = path.join(__dirname, "../data/BE.json");
 
-// ---- 플레이 스타일 역할 ID ----
 const PLAY_STYLE_ROLES = {
   "빡겜러":   "1210762363704311838",
   "즐빡겜러": "1210762298172383273",
   "즐겜러":   "1210762420151394354",
 };
 
-// ---- 유틸 ----
 const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p)) : {});
 const formatAmount = n => Number(n ?? 0).toLocaleString("ko-KR");
 const formatVoice  = sec => {
@@ -53,6 +44,33 @@ function getPlayStyle(member) {
     if (member.roles.cache.has(id)) return name;
   }
   return "미설정";
+}
+
+function formatActivityName(log) {
+  if (!log) return '';
+  // 활동 타입별로 예쁘게 표시
+  if (log.activityType === 'game' && log.details?.name) {
+    return log.details.name;
+  }
+  if (log.activityType === 'music' && log.details?.song) {
+    return `🎵 ${log.details.song} - ${log.details.artist || ""}`.trim();
+  }
+  // 그 외 기타
+  if (log.activityType && log.details?.name) {
+    return `${log.activityType}: ${log.details.name}`;
+  }
+  return log.activityType || '활동';
+}
+
+function formatTimeString(ms) {
+  const date = new Date(ms);
+  // YYYY-MM-DD HH:mm
+  const y = date.getFullYear();
+  const m = String(date.getMonth()+1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${mi}`;
 }
 
 module.exports = {
@@ -139,6 +157,22 @@ module.exports = {
       console.error("[ActivityStats]", e);
     }
 
+    // ---- 최근 활동 이력 5개 ----
+    let recentActivitiesStr = "기록 없음";
+    try {
+      const logs = activityLogger.getUserActivities(userId) || [];
+      // 최신순 정렬(이미 최신순일 수도 있으나, 보장)
+      logs.sort((a, b) => b.time - a.time);
+      const recentLogs = logs.slice(0, 5);
+      if (recentLogs.length) {
+        recentActivitiesStr = recentLogs.map(log => {
+          return `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`;
+        }).join('\n');
+      }
+    } catch (e) {
+      recentActivitiesStr = "불러오기 실패";
+    }
+
     // ---- Embed ----
     const embed = new EmbedBuilder()
       .setTitle("프로필 정보")
@@ -162,6 +196,7 @@ module.exports = {
         { name: "🤗 교류가 활발한 3인",        value: friendsStr,                              inline: false },
         { name: "📊 최근 7일 채팅",    value: `${recentMsg}회`,                         inline: true },
         { name: "🔊 최근 7일 음성",    value: formatVoice(recentVoice),                inline: true },
+        { name: "📝 최근 활동 이력",   value: recentActivitiesStr,                      inline: false }, // ★ 추가
       )
       .setFooter({
         text: userId === interaction.user.id
