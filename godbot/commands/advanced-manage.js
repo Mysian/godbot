@@ -54,6 +54,38 @@ const VOICE_AUTO_MOVE_CHANNEL_ID = '1202971727915651092';
 const VOICE_AUTO_NOTICE_CHANNEL_ID = '1202971727915651092';
 const VOICE_AUTO_MINUTES = 120;
 let voiceAutoListenerRegistered = false;
+
+function resetVoiceAutoTimer(member, channel) {
+
+  if (voiceAutoTimers.has(member.id)) {
+    clearTimeout(voiceAutoTimers.get(member.id));
+    voiceAutoTimers.delete(member.id);
+  }
+
+  if (
+    channel &&
+    VOICE_AUTO_CATEGORY_IDS.includes(channel.parentId) &&
+    channel.members.filter(m => !m.user.bot).size === 1
+  ) {
+
+    voiceAutoTimers.set(member.id, setTimeout(async () => {
+      if (channel.members.filter(m => !m.user.bot).size === 1) {
+        try {
+          await member.voice.setChannel(VOICE_AUTO_MOVE_CHANNEL_ID, `장시간 혼자 대기 자동 이동`);
+          const noticeChannel = member.guild.channels.cache.get(VOICE_AUTO_NOTICE_CHANNEL_ID)
+            || member.guild.systemChannel;
+          if (noticeChannel) {
+            noticeChannel.send({
+              content: `\`${member.displayName}\`님, 음성채널에 장시간 혼자 머물러 계셔서 자동으로 이동되었습니다.`
+            });
+          }
+        } catch (e) {}
+      }
+      voiceAutoTimers.delete(member.id);
+    }, VOICE_AUTO_MINUTES * 60 * 1000));
+  }
+}
+
 function setupVoiceAutoListener(client) {
   if (voiceAutoListenerRegistered) return;
   client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
@@ -67,21 +99,7 @@ function setupVoiceAutoListener(client) {
     const members = channel.members.filter(m => !m.user.bot);
     if (members.size === 1) {
       if (!voiceAutoTimers.has(member.id)) {
-        voiceAutoTimers.set(member.id, setTimeout(async () => {
-          if (channel.members.filter(m => !m.user.bot).size === 1) {
-            try {
-              await member.voice.setChannel(VOICE_AUTO_MOVE_CHANNEL_ID, `장시간 혼자 대기 자동 이동`);
-              const noticeChannel = member.guild.channels.cache.get(VOICE_AUTO_NOTICE_CHANNEL_ID)
-                || member.guild.systemChannel;
-              if (noticeChannel) {
-                noticeChannel.send({
-                  content: `\`${member.displayName}\`님, 음성채널에 장시간 혼자 머물러 계셔서 자동으로 이동되었습니다.`
-                });
-              }
-            } catch (e) {}
-          }
-          voiceAutoTimers.delete(member.id);
-        }, VOICE_AUTO_MINUTES * 120 * 1000));
+        resetVoiceAutoTimer(member, channel);
       }
     } else {
       if (voiceAutoTimers.has(member.id)) {
@@ -90,9 +108,53 @@ function setupVoiceAutoListener(client) {
       }
     }
   });
+  
+  const activityHandler = async (payload) => {
+    let userId = null, member = null, guild = null, voiceChannel = null;
+    if (payload.member && payload.member.voice && payload.member.voice.channel) {
+      userId = payload.member.id;
+      member = payload.member;
+      voiceChannel = payload.member.voice.channel;
+      guild = payload.guild;
+    } else if (payload.user && payload.guild && payload.guild.members) {
+      userId = payload.user.id;
+      guild = payload.guild;
+      member = await guild.members.fetch(userId).catch(() => null);
+      if (member && member.voice && member.voice.channel) voiceChannel = member.voice.channel;
+    } else if (payload.author && payload.guild && payload.guild.members) {
+      userId = payload.author.id;
+      guild = payload.guild;
+      member = await guild.members.fetch(userId).catch(() => null);
+      if (member && member.voice && member.voice.channel) voiceChannel = member.voice.channel;
+    }
+    if (member && voiceChannel && VOICE_AUTO_CATEGORY_IDS.includes(voiceChannel.parentId)) {
+
+      if (voiceChannel.members.filter(m => !m.user.bot).size === 1) {
+        resetVoiceAutoTimer(member, voiceChannel);
+      }
+    }
+  };
+
+  client.on('messageCreate', activityHandler);
+  client.on('interactionCreate', activityHandler);
+  client.on('messageReactionAdd', (reaction, user) => {
+    if (user.bot) return;
+    if (!reaction.message.guild) return;
+    reaction.message.guild.members.fetch(user.id).then(member => {
+      if (member && member.voice && member.voice.channel &&
+        VOICE_AUTO_CATEGORY_IDS.includes(member.voice.channel.parentId)
+      ) {
+        if (member.voice.channel.members.filter(m => !m.user.bot).size === 1) {
+          resetVoiceAutoTimer(member, member.voice.channel);
+        }
+      }
+    });
+  });
+
   voiceAutoListenerRegistered = true;
 }
 // ====================================
+
 
 function readWarnHistory() {
   if (!fs.existsSync(WARN_HISTORY_PATH)) return {};
