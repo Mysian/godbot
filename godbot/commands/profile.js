@@ -63,8 +63,7 @@ function formatActivityName(log) {
 }
 
 function formatTimeString(ms) {
-  const date = new Date(ms);
-  // YYYY-MM-DD HH:mm
+  const date = new Date(ms + 9 * 60 * 60 * 1000);
   const y = date.getFullYear();
   const m = String(date.getMonth()+1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -72,6 +71,7 @@ function formatTimeString(ms) {
   const mi = String(date.getMinutes()).padStart(2, '0');
   return `${y}-${m}-${d} ${h}:${mi}`;
 }
+
 
 module.exports = {
   data: new SlashCommandBuilder()
