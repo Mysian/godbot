@@ -1,4 +1,12 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require("discord.js");
+const { 
+  SlashCommandBuilder, 
+  EmbedBuilder, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  StringSelectMenuBuilder, 
+  UserSelectMenuBuilder
+} = require("discord.js");
 const activity = require("../utils/activity-tracker");
 const activityLogger = require("../utils/activity-logger");
 
@@ -21,7 +29,8 @@ module.exports = {
   async execute(interaction) {
     let period = '1';
     let filterType = "all";
-    const user = interaction.options.getUser("유저");
+    let selectedUser = interaction.options.getUser("유저") || null;
+    let mainPage = 0;
 
     function getDateRange(period) {
       if (period === 'all') return { from: null, to: null };
@@ -87,10 +96,26 @@ module.exports = {
           })))
       );
     }
+
     function getPageRow() {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("prev").setLabel("이전").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("next").setLabel("다음").setStyle(ButtonStyle.Secondary)
+      );
+    }
+
+    // 🔥 유저 셀렉트 메뉴(서버 멤버 최대 25명)
+    function getUserSelectRow(selectedUserId = null) {
+      // 멤버 리스트 25명만 출력 (서버 인원수 많으면 제한)
+      const users = Array.from(interaction.guild.members.cache.values())
+        .filter(m => !m.user.bot && !EXCLUDED_USER_IDS.includes(m.id))
+        .slice(0, 25);
+      return new ActionRowBuilder().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId("select_user")
+          .setPlaceholder(selectedUserId ? "유저 선택: " + (users.find(m => m.id === selectedUserId)?.user.username || "유저") : "유저 선택")
+          .setMinValues(1)
+          .setMaxValues(1)
       );
     }
 
@@ -185,10 +210,7 @@ module.exports = {
       return new EmbedBuilder().setDescription("기록 없음");
     }
 
-    let mainPage = 0;
-    const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, user);
-
-    function getStatsEmbed(page, period, filterType, user) {
+    async function getStatsEmbed(page, period, filterType, user) {
       if (filterType === "activity") {
         return {
           embed: buildActivityEmbed({
@@ -283,9 +305,13 @@ module.exports = {
       return { embed, totalPages, stats };
     }
 
+    // 최초 임베드 응답
+    const { embed, totalPages } = await getStatsEmbed(mainPage, period, filterType, selectedUser);
+
     let replyObj = {
       embeds: [embed],
       components: [
+        getUserSelectRow(selectedUser ? selectedUser.id : null), // 유저 셀렉트
         getFilterRow(filterType),
         getPeriodRow(period),
         getPageRow(),
@@ -296,8 +322,9 @@ module.exports = {
     await interaction.reply(replyObj);
 
     const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => i.user.id === interaction.user.id &&
-        (i.isButton() || (i.isStringSelectMenu && i.isStringSelectMenu())),
+      filter: i => i.user.id === interaction.user.id && (
+        i.isButton() || i.isStringSelectMenu() || i.isUserSelectMenu()
+      ),
       time: 2 * 60 * 1000,
     });
 
@@ -319,18 +346,25 @@ module.exports = {
             mainPage = 0;
             updateEmbed = true;
           }
-        } else if (i.isStringSelectMenu && i.isStringSelectMenu()) {
+        } else if (i.isStringSelectMenu()) {
           if (i.customId === "select_period") {
             period = i.values[0];
             mainPage = 0;
             updateEmbed = true;
           }
+        } else if (i.isUserSelectMenu()) {
+          if (i.customId === "select_user" && i.values.length > 0) {
+            selectedUser = await interaction.guild.members.fetch(i.values[0]).then(m => m.user).catch(() => null);
+            mainPage = 0;
+            updateEmbed = true;
+          }
         }
         if (updateEmbed) {
-          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, user);
+          const { embed: newEmbed, totalPages: newTotal } = await getStatsEmbed(mainPage, period, filterType, selectedUser);
           await i.update({
             embeds: [newEmbed],
             components: [
+              getUserSelectRow(selectedUser ? selectedUser.id : null),
               getFilterRow(filterType),
               getPeriodRow(period),
               getPageRow(),
