@@ -1,3 +1,4 @@
+// manage.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -246,7 +247,7 @@ module.exports = {
     if (option === "user") {
       await interaction.deferReply({ ephemeral: true });
 
-      // Step 1: 유저 닉네임 셀렉트 메뉴 띄우기
+      // 유저 닉네임 셀렉트 메뉴 띄우기 (최대 25명, 검색 필터링 클라 자동)
       const allMembers = await guild.members.fetch();
       const userList = allMembers
         .filter(m => !m.user.bot)
@@ -255,7 +256,7 @@ module.exports = {
           description: m.user.tag,
           value: m.id
         }))
-        .slice(0, 24); // Discord 제한(최대 25개 옵션, 안전하게 24까지만)
+        .slice(0, 25); // 디스코드 제한 25명
 
       if (!userList.length) {
         await interaction.editReply({ content: "❌ 유저가 없습니다.", ephemeral: true });
@@ -264,18 +265,18 @@ module.exports = {
 
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("user_select")
-        .setPlaceholder("유저를 선택하세요")
+        .setPlaceholder("유저를 검색하거나 선택하세요")
         .addOptions(userList);
 
       const row = new ActionRowBuilder().addComponents(selectMenu);
 
       await interaction.editReply({
-        content: "유저를 선택하여 관리 기능을 이용하세요.",
+        content: "유저를 검색하거나 선택하여 관리 기능을 이용하세요.\n(닉네임 일부를 입력하면 자동 필터링됩니다)",
         components: [row],
         ephemeral: true
       });
 
-      // Step 2: 유저 선택 → 상세 관리 메뉴로 진입
+      // 유저 선택 → 상세 관리 메뉴로 진입
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id,
         time: 300 * 1000,
@@ -290,7 +291,7 @@ module.exports = {
           const targetUserId = i.values[0];
           await i.deferUpdate();
 
-          // 이후 기존 showUserInfo와 동일하게 처리!
+          // 상세 관리
           await showUserInfo(targetUserId, interaction, collector);
         }
       });
@@ -405,7 +406,6 @@ module.exports = {
             .setStyle(ButtonStyle.Primary)
         );
 
-        // 기존 인터랙션에서 새로운 페이지로 전환
         await userInteraction.editReply({
           embeds: [embed],
           components: [row, roleRow],
