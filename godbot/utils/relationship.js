@@ -15,6 +15,7 @@ const RELATIONSHIP_LEVELS = [
   "단짝"
 ];
 
+// 반드시 21개 (0~20)
 const STAGE_BARRIER = [
   40, 40, 20, 20, 20, 20, 20, 20, 20, 40, 20, 20,
   40, 20, 20, 40, 20, 20, 60, 60, 60
@@ -68,7 +69,7 @@ function saveLastInteraction() {
   }
 }
 
-// 🔥 여기만 패치됨! (20 초과시 "단짝 N.N" 표시)
+// 20 초과시 "단짝 N.N" 등급 표기
 function getRelationshipLevel(score) {
   const raw = score + 6;
   if (raw <= 20) {
@@ -103,6 +104,7 @@ function setScore(userA, userB, val) {
   setInternal(userA, userB, { stage: Math.floor(val) + 6, remain: 0 });
 }
 
+// ★ 핵심 패치: 단짝(20) 이후에도 remain 계속 누적 (score 무제한 증가)
 function addScore(userA, userB, diff) {
   if (userA === userB) return;
   let { stage, remain } = getInternal(userA, userB);
@@ -122,7 +124,9 @@ function addScore(userA, userB, diff) {
         remain = 0;
       }
     }
-    if (stage >= 20) remain = 0;
+    if (stage >= 20) {
+      remain += left; // barrier 이상이 되어도 무한 누적
+    }
   } else {
     let left = -diff;
     while (left > 0 && stage > 0) {
@@ -220,4 +224,3 @@ module.exports = {
   loadLastInteraction: () => lastInteraction,
   getAllScores
 };
-
