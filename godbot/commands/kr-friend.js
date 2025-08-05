@@ -14,7 +14,7 @@ module.exports = {
     const target = interaction.options.getUser('유저').id;
 
     if (me === target) {
-      return interaction.reply({ content: '자기 자신과의 관계는 항상 "무관심"입니다.', ephemeral: true });
+      return interaction.reply({ content: '스스로를 언제나 사랑해주세요.', ephemeral: true });
     }
 
     const score = relationship.getScore(me, target).toFixed(2);
@@ -36,3 +36,4 @@ module.exports = {
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };
+
