@@ -20,6 +20,9 @@ module.exports = {
     const score = relationship.getScore(me, target).toFixed(2);
     const rel = relationship.getRelation(me, target);
 
+    const gradeTable =
+      `적대3,2,1 / 경계3,2,1 / 무관심 / 관심1,2,3 / 우호1,2,3 / 신뢰1,2,3 / 애정1,2,3 / 단짝`;
+
     const embed = new EmbedBuilder()
       .setTitle('나의 관계도')
       .addFields(
@@ -27,7 +30,8 @@ module.exports = {
         { name: '관계', value: rel, inline: true },
         { name: '호감도 점수', value: score, inline: true }
       )
-      .setColor(0x43e743);
+      .setColor(0x43e743)
+      .setFooter({ text: `우정 등급표: ${gradeTable}` });
 
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
