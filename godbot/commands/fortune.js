@@ -576,10 +576,11 @@ function addBE(userId, amount, reason) {
   saveBE(be);
 }
 
-// 유저별 마지막 사용일 저장 경로
+// 유저별 마지막 사용일 및 결과 저장 경로
 const dataDir = path.join(__dirname, '../data');
 const dataPath = path.join(dataDir, 'fortune-used.json');
 
+// [변경] fortune 결과까지 저장
 function loadUserData() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, '{}');
@@ -589,24 +590,22 @@ function saveUserData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
 
-// 자정(한국시간) 기준으로 쿨타임 체크 (KST)
 function getKSTDateString() {
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
   return now.toISOString().split('T')[0];
 }
 
-// 운세 보상 로직
 function getFortuneReward() {
   const rand = Math.random() * 100;
-  if (rand < 0.5) { // 0.5%
+  if (rand < 0.5) {
     return { amount: 50000, emoji: "👑" };
-  } else if (rand < 2) { // 1.5%
+  } else if (rand < 2) {
     return { amount: Math.floor(Math.random() * 10000) + 40000, emoji: "🌈" };
-  } else if (rand < 5) { // 3%
+  } else if (rand < 5) {
     return { amount: Math.floor(Math.random() * 10000) + 30000, emoji: "🦄" };
-  } else if (rand < 15) { // 10%
+  } else if (rand < 15) {
     return { amount: Math.floor(Math.random() * 10000) + 20000, emoji: "💎" };
-  } else if (rand < 40) { // 25%
+  } else if (rand < 40) {
     return { amount: Math.floor(Math.random() * 10000) + 10000, emoji: "🪙" };
   } else {
     return { amount: Math.floor(Math.random() * 5000) + 5000, emoji: "🍀" };
@@ -620,40 +619,50 @@ module.exports = {
   async execute(interaction) {
     const userId = interaction.user.id;
     const today = getKSTDateString();
-
-    // 유저 데이터 로드
     const userData = loadUserData();
 
-    // 쿨타임 체크
-    if (userData[userId] && userData[userId] === today) {
+    // [변경] fortune 결과까지 저장/불러오기 구조
+    const todayData = userData[userId]?.[today];
+
+    if (todayData) {
+      // 이미 사용한 경우, 오늘 운세/보상 내역 보여주기 (ephemeral)
+      let desc = [
+        `<@${userId}> 님, ${todayData.fortune}`,
+        ``,
+        `${todayData.emoji} 파랑 정수 **${todayData.amount.toLocaleString()} BE**를 획득했습니다!`
+      ];
+      if (todayData.isDonor) desc.push('\n💜 𝕯𝖔𝖓𝖔𝖗 운세 보상 **2배** 지급!');
+
       const embed = new EmbedBuilder()
         .setTitle('오늘의 운세')
-        .setDescription(`이미 오늘의 운세를 확인하셨습니다!\n(매일 자정 00:00에 다시 이용 가능해요)`)
-        .setColor(0xFFD700)
-        .setFooter({ text: `내일 또 만나요!` });
+        .setDescription(desc.join('\n'))
+        .setColor(todayData.isDonor ? 0xAE72F7 : 0x57D9A3)
+        .setFooter({ text: `이미 오늘의 운세를 확인하셨습니다! (매일 자정 00:00에 초기화)` });
+
       await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
 
-    // 𝕯𝖔𝖓𝖔𝖗 역할 여부 확인
+    // 도너 여부
     const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
 
-    // 운세 랜덤 선택
+    // 운세/보상 추첨
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
     let rewardObj = getFortuneReward();
-
-    // 도너라면 x2
     let rewardAmount = rewardObj.amount;
     if (isDonor) rewardAmount *= 2;
 
-    // 정수 지급
+    // 지급
     addBE(userId, rewardAmount, isDonor ? "오늘의 운세 보상 (𝕯𝖔𝖓𝖔𝖗 x2)" : "오늘의 운세 보상");
 
-    // 기록
-    userData[userId] = today;
+    // 결과 저장
+    if (!userData[userId]) userData[userId] = {};
+    userData[userId][today] = {
+      fortune, amount: rewardAmount, emoji: rewardObj.emoji, isDonor
+    };
     saveUserData(userData);
 
-    // 임베드 생성
+    // 결과 임베드(공개)
     let desc = [
       `<@${userId}> 님, ${fortune}`,
       ``,
@@ -667,7 +676,6 @@ module.exports = {
       .setColor(isDonor ? 0xAE72F7 : 0x57D9A3)
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
-    // 전체 공개
     await interaction.reply({ embeds: [embed] });
   }
 };
