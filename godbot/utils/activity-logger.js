@@ -9,7 +9,7 @@ const MAX_DAYS = 90;
 let cache = {};
 let dirty = false;
 
-// 캐시 초기화
+// 캐시 로드
 function loadCache() {
   if (!fs.existsSync(dataPath)) cache = {};
   else cache = JSON.parse(fs.readFileSync(dataPath));
@@ -25,7 +25,7 @@ function pruneOld(data) {
   }
 }
 
-// 비동기 저장(버퍼링)
+// 1분마다 비동기 저장(버퍼링)
 function flush() {
   if (!dirty) return;
   pruneOld(cache);
@@ -40,14 +40,15 @@ function addActivity(userId, activityType, details) {
   dirty = true;
 }
 
-// 활동 저장 주기(예: 5초)
-setInterval(flush, 5000);
+// 1분(60,000ms)마다 저장
+setInterval(flush, 60000);
 
 // 유저 활동 조회
 function getUserActivities(userId) {
   return cache[userId] || [];
 }
 
+// 유저 데이터 삭제
 function removeUser(userId) {
   if (cache[userId]) {
     delete cache[userId];
@@ -55,10 +56,15 @@ function removeUser(userId) {
   }
 }
 
+// 서버 종료/재시작 시 강제 저장
+process.on('exit', flush);
+process.on('SIGINT', () => { flush(); process.exit(); });
+process.on('SIGTERM', () => { flush(); process.exit(); });
+
 module.exports = {
   addActivity,
   getUserActivities,
   removeUser,
   pruneOld,
-  flush, // 필요시 외부에서 강제 flush
+  flush,
 };
