@@ -1,7 +1,7 @@
 // ==== commands/godbit-admin.js ====
 // 관리자 통합: 타입/시장/로그 멘트 완전체
 
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 const fs = require('fs');
 const path = require('path');
