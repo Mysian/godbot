@@ -483,6 +483,8 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
+  // 오늘의 운세
+  if (interaction.isButton() && interaction.customId && interaction.customId.startsWith('fortune_history')) return;
   
   // 7. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
