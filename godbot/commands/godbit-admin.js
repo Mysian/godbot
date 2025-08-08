@@ -521,7 +521,7 @@ module.exports = {
 
       let page = 0;
       let showDelisted = false;
-      const PAGE_SIZE = 10;
+      const PAGE_SIZE = 5;
 
       function renderEmbed(page, showDelisted) {
         const arr = showDelisted ? delisted : live;
@@ -644,7 +644,7 @@ module.exports = {
       userStats.sort((a, b) => b.profit - a.profit);
 
       let page = 0;
-      const PAGE_SIZE = 10;
+      const PAGE_SIZE = 5;
       const totalPages = Math.max(1, Math.ceil(userStats.length / PAGE_SIZE));
 
       function renderEmbed(page) {
