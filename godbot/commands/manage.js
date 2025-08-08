@@ -68,7 +68,9 @@ module.exports = {
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
 
-      const load = os.loadavg()[0];
+      const load = os.loadavg()[0]; // 1분 평균 CPU load
+      const cpuCount = os.cpus().length;
+
       const uptimeSec = Math.floor(process.uptime());
       const uptime = (() => {
         const h = Math.floor(uptimeSec / 3600);
@@ -77,27 +79,28 @@ module.exports = {
         return `${h}시간 ${m}분 ${s}초`;
       })();
 
+      // 메모리 상태
       let memState = "🟢";
-      if (rssMB > 1024) memState = "🔴";
-      else if (rssMB > 500) memState = "🟡";
+      if (rssMB > 800) memState = "🔴";
+      else if (rssMB > 400) memState = "🟡";
 
+      // CPU 상태
       let cpuState = "🟢";
-      if (load > 3) cpuState = "🔴";
-      else if (load > 1.5) cpuState = "🟡";
+      if (load > cpuCount) cpuState = "🔴";
+      else if (load > cpuCount / 2) cpuState = "🟡";
 
-      let upState = "🟢";
-      if (uptimeSec < 3600) upState = "🔴";
-      else if (uptimeSec < 86400) upState = "🟡";
-
+      // 전체 상태 평가
       let total = "🟢 안정적";
       if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
       else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
+      // 상태별 코멘트
       let comment = "";
       if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
       else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
       else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
 
+      // 호스트 정보
       let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
       if (process.env.RAILWAY_STATIC_URL) {
         hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
@@ -109,8 +112,8 @@ module.exports = {
         .setDescription(comment)
         .addFields(
           { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
-          { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)}`, inline: true },
-          { name: `실행시간(Uptime) ${upState}`, value: uptime, inline: true },
+          { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)} / ${cpuCount}코어`, inline: true },
+          { name: `실행시간(Uptime)`, value: uptime, inline: true },
           { name: "호스트정보", value: hostInfo, inline: false },
           { name: "Node 버전", value: process.version, inline: true }
         )
@@ -119,7 +122,7 @@ module.exports = {
       await interaction.editReply({ embeds: [embed], ephemeral: true });
       return;
     }
-
+    
     if (option === "json_backup") {
       const modal = new ModalBuilder()
         .setCustomId("adminpw_json_backup")
