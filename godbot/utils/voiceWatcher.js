@@ -66,10 +66,6 @@ async function updateStatusEmbed(guild, channel) {
     if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
     else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
     else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
-
-    let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
-    if (process.env.RAILWAY_STATIC_URL) {
-      hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
     }
 
     const embed = new EmbedBuilder()
@@ -79,8 +75,7 @@ async function updateStatusEmbed(guild, channel) {
       .addFields(
         { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
         { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)} / ${cpuCount}코어`, inline: true },
-        { name: `실행시간(Uptime)`, value: uptime, inline: true },
-        { name: `호스트 정보`, value: hostInfo }
+        { name: `실행시간(Uptime)`, value: uptime, inline: true }
       )
       .setFooter({ text: "매 5분마다 자동 측정됩니다." });
 
