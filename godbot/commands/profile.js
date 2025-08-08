@@ -158,7 +158,7 @@ module.exports = {
     }
 
     // ---- 최근 활동 이력 5개 ----
-    let recentActivitiesStr = "기록 없음";
+    let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
     try {
       const logs = activityLogger.getUserActivities(userId) || [];
       // 최신순 정렬(이미 최신순일 수도 있으나, 보장)
