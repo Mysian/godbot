@@ -112,19 +112,32 @@ module.exports = function(client) {
 
       async function updateEmbed() {
         let total = 0;
+        let channelCounts = [];
         for (const id of VOICE_CHANNEL_IDS) {
           const ch = guild.channels.cache.get(id);
-          if (!ch) continue;
-          total += ch.members.filter(m => !m.user.bot).size;
+          if (!ch) {
+            channelCounts.push({ id, name: `채널${channelCounts.length+1}`, count: 0 });
+            continue;
+          }
+          const cnt = ch.members.filter(m => !m.user.bot).size;
+          total += cnt;
+          channelCounts.push({ id, name: ch.name, count: cnt });
         }
+        let maxCount = 0;
+        channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
+
         const embed = new EmbedBuilder()
           .setTitle('🌹 음성채널 실시간 이용 현황')
           .setColor(0x2eccfa)
-          .setDescription(`현재 **${total}명**이 이용 중입니다.\n\n${VOICE_CHANNEL_IDS.map((id, idx) => {
-            const ch = guild.channels.cache.get(id);
-            const cnt = ch ? ch.members.filter(m => !m.user.bot).size : 0;
-            return `• ${ch ? ch.name : `채널${idx+1}`} : ${cnt}명`;
-          }).join('\n')}`);
+          .setDescription(
+            `현재 **${total}명**이 이용 중입니다.\n\n` +
+            channelCounts.map((ch, idx) => {
+              let tag = '';
+              if (ch.count === maxCount && ch.count > 0) tag = ' [❤️‍🔥 BEST]';
+              else if (ch.count >= 6) tag = ' [🔥 HOT]';
+              return `• ${ch.name} : ${ch.count}명${tag}`;
+            }).join('\n')
+          );
         try {
           const msg = await channel.messages.fetch(EMBED_MSG_ID).catch(() => null);
           if (msg) {
