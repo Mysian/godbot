@@ -1,5 +1,7 @@
+// voiceWatcher.js
 const { joinVoiceChannel } = require('@discordjs/voice');
 const { EmbedBuilder } = require('discord.js');
+const activityTracker = require("./activity-tracker");
 
 const TARGET_CHANNEL_ID = '1403304289794785383';
 const VOICE_CHANNEL_IDS = [
@@ -18,7 +20,21 @@ const VOICE_CHANNEL_IDS = [
   '1209157524243091466',
   '1209157622662561813'
 ];
+
+// 기존 실시간 음성 현황용 메시지
 const EMBED_MSG_ID = '1403366474160017489';
+// 신규: TOP3 랭킹 메시지
+const TOP3_MSG_ID = '1403368538890309682';
+
+// [시간 → "52시간 30분"] 변환 함수
+function formatVoiceTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  let str = '';
+  if (h > 0) str += `${h}시간 `;
+  if (m > 0 || h === 0) str += `${m}분`;
+  return str.trim();
+}
 
 module.exports = function(client) {
   async function joinAndWatch() {
@@ -39,6 +55,7 @@ module.exports = function(client) {
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
       if (!channel || !channel.isTextBased()) return;
 
+      // === 기존 음성채널 현황 임베드 ===
       async function updateEmbed() {
         let total = 0;
         for (const id of VOICE_CHANNEL_IDS) {
@@ -62,8 +79,73 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
+      // === TOP3 랭킹 임베드 ===
+      async function updateTop3Embed() {
+        // 최근 7일
+        const now = new Date();
+        const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const toStr = now.toISOString().slice(0, 10);
+        const fromStr = from.toISOString().slice(0, 10);
+
+        // 활동 데이터 집계
+        const stats = activityTracker.getStats({ from: fromStr, to: toStr });
+
+        // 유저 정보 캐싱
+        let userMap = {};
+        for (const member of guild.members.cache.values()) {
+          userMap[member.user.id] = member.displayName || member.user.username;
+        }
+
+        // 음성 TOP3 (시간 많은 순)
+        const topVoice = stats
+          .filter(s => s.voice > 0)
+          .sort((a, b) => b.voice - a.voice)
+          .slice(0, 3);
+
+        // 채팅 TOP3 (횟수 많은 순)
+        const topMsg = stats
+          .filter(s => s.message > 0)
+          .sort((a, b) => b.message - a.message)
+          .slice(0, 3);
+
+        const voiceStr = topVoice.length
+          ? topVoice.map((s, i) => {
+              const name = userMap[s.userId] || `Unknown(${s.userId})`;
+              return `${i + 1}위. ${name} [${formatVoiceTime(s.voice)}]`;
+            }).join('\n')
+          : "데이터 없음";
+
+        const msgStr = topMsg.length
+          ? topMsg.map((s, i) => {
+              const name = userMap[s.userId] || `Unknown(${s.userId})`;
+              return `${i + 1}위. ${name} [${s.message.toLocaleString()}회]`;
+            }).join('\n')
+          : "데이터 없음";
+
+        const embed = new EmbedBuilder()
+          .setTitle('🏆 최근 7일간 활동 TOP 3')
+          .setColor(0xfad131)
+          .addFields(
+            { name: '🎙️ 음성 이용 TOP 3', value: voiceStr },
+            { name: '💬 채팅량 TOP 3', value: msgStr }
+          )
+          .setFooter({ text: "본 순위는 최근 7일 기준입니다." });
+
+        try {
+          const msg = await channel.messages.fetch(TOP3_MSG_ID).catch(() => null);
+          if (msg) {
+            await msg.edit({ embeds: [embed] });
+          }
+        } catch (e) {}
+      }
+
+      // 최초 갱신
       await updateEmbed();
-      setInterval(updateEmbed, 60000);
+      await updateTop3Embed();
+      setInterval(() => {
+        updateEmbed();
+        updateTop3Embed();
+      }, 60000);
 
       client.on('voiceStateUpdate', (oldState, newState) => {
         const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID];
@@ -72,6 +154,7 @@ module.exports = function(client) {
           (newState.channelId && watchedChannels.includes(newState.channelId))
         ) {
           updateEmbed();
+          updateTop3Embed();
         }
       });
 
