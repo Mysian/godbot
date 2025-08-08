@@ -722,30 +722,39 @@ module.exports = {
 
   // === 버튼 핸들러: 운세 기록 보기 ===
   async handleButton(interaction) {
-    const userId = interaction.user.id;
-    const recordData = loadRecord();
-    const today = getKSTDateString();
-    const days = 30;
+  const userId = interaction.user.id;
+  const recordData = loadRecord();
+  const today = getKSTDateString();
 
-    let record = [];
-for (let i = 0; i < days; i++) {
-  const dateStr = getKSTDateString(-i);
-  const dateStrWithDay = getKSTDayString(-i);
-  if (recordData[userId] && recordData[userId][dateStr]) {
-    record.push(`**${dateStrWithDay}**\n${recordData[userId][dateStr]}`);
-  } else {
-    record.push(`**${dateStrWithDay}**\n운세를 확인하지 않은 날입니다.`);
+  // DONOR 여부 확인
+  const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
+  const days = isDonor ? 30 : 7;
+
+  let record = [];
+  for (let i = 0; i < days; i++) {
+    const dateStr = getKSTDateString(-i);
+    const dateStrWithDay = getKSTDayString(-i);
+    if (recordData[userId] && recordData[userId][dateStr]) {
+      record.push(`**${dateStrWithDay}**\n${recordData[userId][dateStr]}`);
+    } else {
+      record.push(`**${dateStrWithDay}**\n운세를 확인하지 않은 날입니다.`);
+    }
   }
+  // 최신순, days 개수만큼만
+  record = record.slice(0, days);
+
+  // DONOR 안내문구
+  let footerText = isDonor
+    ? "💜 서버 후원자 특권: 최근 30일 기록을 모두 확인할 수 있습니다!"
+    : "💜 서버 후원자는 최근 30일 기록을 모두 확인할 수 있습니다.";
+
+  // DONOR는 제목 강조
+  const embed = new EmbedBuilder()
+    .setTitle(isDonor ? '최근 30일 운세 기록 (𝕯𝖔𝖓𝖔𝖗 특권)' : '최근 7일 운세 기록')
+    .setDescription(record.join('\n\n'))
+    .setColor(isDonor ? 0xAE72F7 : 0xF7D072)
+    .setFooter({ text: footerText });
+
+  await interaction.reply({ embeds: [embed], ephemeral: true });
 }
-    // 최대 30개까지만(최신순)
-    record = record.slice(0, 30);
-
-    const embed = new EmbedBuilder()
-      .setTitle('최근 30일 운세 기록')
-      .setDescription(record.join('\n\n'))
-      .setColor(0xF7D072)
-      .setFooter({ text: "매일 00:00 갱신 / 오늘 미확인 시 '운세를 확인하지 않은 날입니다.'로 표기" });
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  }
 };
