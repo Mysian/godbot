@@ -26,6 +26,10 @@ const TOP3_MSG_ID = '1403368538890309682';
 const STATUS_CHANNEL_ID = '1345775748526510201';
 const STATUS_MSG_ID = '1403383641882755243';
 
+// stat-activity.js와 동일하게 맞추기
+const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
+const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
+
 function formatVoiceTime(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -108,12 +112,22 @@ module.exports = function(client) {
         const fromStr = from.toISOString().slice(0, 10);
         const stats = activityTracker.getStats({ from: fromStr, to: toStr });
 
+        // 필터 적용 (stat-activity.js와 완전 동일하게)
+        const filteredStats = stats.filter(s => {
+          const member = guild.members.cache.get(s.userId);
+          if (!member) return false;
+          if (member.user.bot) return false;
+          if (EXCLUDED_USER_IDS.includes(s.userId)) return false;
+          if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) return false;
+          return true;
+        });
+
         let userMap = {};
         for (const member of guild.members.cache.values()) {
           userMap[member.user.id] = member.displayName || member.user.username;
         }
 
-        const topVoice = stats
+        const topVoice = filteredStats
           .filter(s => s.voice > 0)
           .sort((a, b) => b.voice - a.voice)
           .slice(0, 10);
