@@ -9,6 +9,8 @@ const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 
+require('./utils/voiceWatcher')(client);
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
