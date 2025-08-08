@@ -9,8 +9,6 @@ const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 
-require('./utils/voiceWatcher')(client);
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -69,6 +67,9 @@ if (fs.existsSync(eventsPath)) {
     }
   }
 }
+
+// 봇 음성채널 실시간 연결
+require('./utils/voiceWatcher')(client);
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
