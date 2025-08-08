@@ -66,7 +66,6 @@ async function updateStatusEmbed(guild, channel) {
     if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
     else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
     else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
-    }
 
     const embed = new EmbedBuilder()
       .setTitle(`${total} | 서버 상태 진단`)
