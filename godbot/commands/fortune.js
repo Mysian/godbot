@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -580,6 +580,9 @@ function addBE(userId, amount, reason) {
 const dataDir = path.join(__dirname, '../data');
 const dataPath = path.join(dataDir, 'fortune-used.json');
 
+// 유저별 운세 기록 저장 경로
+const recordPath = path.join(dataDir, 'fortune-record.json');
+
 function loadUserData() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, '{}');
@@ -589,24 +592,33 @@ function saveUserData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
 
+// 운세 기록 로드/저장
+function loadRecord() {
+  if (!fs.existsSync(recordPath)) fs.writeFileSync(recordPath, '{}');
+  return JSON.parse(fs.readFileSync(recordPath, 'utf8'));
+}
+function saveRecord(data) {
+  fs.writeFileSync(recordPath, JSON.stringify(data, null, 2));
+}
+
 // 자정(한국시간) 기준으로 쿨타임 체크 (KST)
-function getKSTDateString() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+function getKSTDateString(offset = 0) {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 + offset * 24 * 60 * 60 * 1000);
   return now.toISOString().split('T')[0];
 }
 
 // 운세 보상 로직
 function getFortuneReward() {
   const rand = Math.random() * 100;
-  if (rand < 0.5) { // 0.5%
+  if (rand < 0.5) {
     return { amount: 50000, emoji: "👑" };
-  } else if (rand < 2) { // 1.5%
+  } else if (rand < 2) {
     return { amount: Math.floor(Math.random() * 10000) + 40000, emoji: "🌈" };
-  } else if (rand < 5) { // 3%
+  } else if (rand < 5) {
     return { amount: Math.floor(Math.random() * 10000) + 30000, emoji: "🦄" };
-  } else if (rand < 15) { // 10%
+  } else if (rand < 15) {
     return { amount: Math.floor(Math.random() * 10000) + 20000, emoji: "💎" };
-  } else if (rand < 40) { // 25%
+  } else if (rand < 40) {
     return { amount: Math.floor(Math.random() * 10000) + 10000, emoji: "🪙" };
   } else {
     return { amount: Math.floor(Math.random() * 5000) + 5000, emoji: "🍀" };
@@ -623,15 +635,23 @@ module.exports = {
 
     // 유저 데이터 로드
     const userData = loadUserData();
+    const recordData = loadRecord();
 
     // 쿨타임 체크
     if (userData[userId] && userData[userId] === today) {
+      // 기록 버튼만 보이게
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('fortune_record_view')
+          .setLabel('최근 운세 기록 보기')
+          .setStyle(ButtonStyle.Secondary)
+      );
       const embed = new EmbedBuilder()
         .setTitle('오늘의 운세')
         .setDescription(`이미 오늘의 운세를 확인하셨습니다!\n(매일 자정 00:00에 다시 이용 가능해요)`)
         .setColor(0xFFD700)
         .setFooter({ text: `내일 또 만나요!` });
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
       return;
     }
 
@@ -653,6 +673,19 @@ module.exports = {
     userData[userId] = today;
     saveUserData(userData);
 
+    // === 운세 기록 저장 ===
+    if (!recordData[userId]) recordData[userId] = {};
+    recordData[userId][today] = fortune;
+    // 최근 60일까지 자동정리(혹시 파일 용량 쌓일 경우)
+    const keys = Object.keys(recordData[userId]);
+    if (keys.length > 60) {
+      const sorted = keys.sort().slice(-60);
+      const newObj = {};
+      sorted.forEach(k => newObj[k] = recordData[userId][k]);
+      recordData[userId] = newObj;
+    }
+    saveRecord(recordData);
+
     // 임베드 생성
     let desc = [
       `<@${userId}> 님, ${fortune}`,
@@ -661,13 +694,47 @@ module.exports = {
     ];
     if (isDonor) desc.push('\n💜 𝕯𝖔𝖓𝖔𝖗 운세 보상 **2배** 지급!');
 
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('fortune_record_view')
+        .setLabel('최근 운세 기록 보기')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
     const embed = new EmbedBuilder()
       .setTitle('오늘의 운세')
       .setDescription(desc.join('\n'))
       .setColor(isDonor ? 0xAE72F7 : 0x57D9A3)
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
-    // 전체 공개
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], components: [row] });
+  },
+
+  // === 버튼 핸들러: 운세 기록 보기 ===
+  async handleButton(interaction) {
+    const userId = interaction.user.id;
+    const recordData = loadRecord();
+    const today = getKSTDateString();
+    const days = 30;
+
+    let record = [];
+    for (let i = 0; i < days; i++) {
+      const dateStr = getKSTDateString(-i);
+      if (recordData[userId] && recordData[userId][dateStr]) {
+        record.push(`**${dateStr}**\n${recordData[userId][dateStr]}`);
+      } else {
+        record.push(`**${dateStr}**\n운세를 확인하지 않은 날입니다.`);
+      }
+    }
+    // 최대 30개까지만(최신순)
+    record = record.slice(0, 30);
+
+    const embed = new EmbedBuilder()
+      .setTitle('최근 30일 운세 기록')
+      .setDescription(record.join('\n\n'))
+      .setColor(0xF7D072)
+      .setFooter({ text: "매일 00:00 갱신 / 오늘 미확인 시 '운세를 확인하지 않은 날입니다.'로 표기" });
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };
