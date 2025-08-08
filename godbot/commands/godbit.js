@@ -256,16 +256,24 @@ async function autoMarketUpdate(members, client = global.client) {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
 
-  // === 까리코인 시세 (최소 1000원 보장) ===
-  const base = coins['까리코인'];
-  const deltaBase = (Math.random() * 0.2) - 0.1;
-  const newBase = Math.max(1000, Number((base.price * (1 + deltaBase)).toFixed(3)));
-  base.price = newBase;
-  base.history.push(newBase);
-  base.historyT = base.historyT || [];
-  base.historyT.push(new Date().toISOString());
-  while (base.history.length > HISTORY_MAX) base.history.shift();
-  while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
+  // === 까리코인 시세 ===
+const base = coins['까리코인'];
+const deltaBase = (Math.random() * 0.2) - 0.1;
+
+const deltaWithWall = applyWallEffect(base.price, deltaBase, lastVolume['까리코인'] || 0);
+
+const minPrice = 100;
+const maxPrice = 10000;
+
+const newBase = Math.max(minPrice, Math.min(maxPrice, Number((base.price * (1 + deltaWithWall)).toFixed(3))));
+base.price = newBase;
+base.history.push(newBase);
+base.historyT = base.historyT || [];
+base.historyT.push(new Date().toISOString());
+while (base.history.length > HISTORY_MAX) base.history.shift();
+while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
+
+
 
   // === 폭등/폭락 감지 (최근 60분 내, 연속적 변화 필요) ===
 for (const [name, info] of Object.entries(coins)) {
