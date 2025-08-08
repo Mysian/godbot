@@ -91,6 +91,16 @@ module.exports = {
     .setName('갓비트관리')
     .setDescription('갓비트 관리자 전용 명령어')
     .addSubcommand(sub =>
+      sub.setName('유저현황')
+        .setDescription('특정 유저의 코인 상세 현황')
+        .addUserOption(opt => opt.setName('유저').setDescription('유저').setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName('코인현황')
+        .setDescription('특정 코인의 유저별 투자 현황')
+        .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
+    )
+    .addSubcommand(sub =>
       sub.setName('타입목록')
         .setDescription('갓비트 코인 타입/특성 전체 확인')
     )
@@ -480,6 +490,218 @@ module.exports = {
   await interaction.reply({ embeds: [embed], ephemeral: true });
   return;
 }
+
+    // ========== 15. 유저현황 (페이징) ==========
+    if (sub === '유저현황') {
+      const user = interaction.options.getUser('유저');
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
+
+      const userW = wallets[user.id] || {};
+      const userBuys = wallets[user.id + "_buys"] || {};
+
+      // 코인 분리
+      let live = [];
+      let delisted = [];
+      let totalEval = 0, totalBuy = 0, totalProfit = 0;
+      for (const [c, q] of Object.entries(userW)) {
+        if (!coins[c]) continue;
+        const nowPrice = coins[c]?.price || 0;
+        const buyCost = userBuys[c] || 0;
+        const evalPrice = nowPrice * q;
+        const profit = evalPrice - buyCost;
+        totalEval += evalPrice;
+        totalBuy += buyCost;
+        totalProfit += profit;
+        if (coins[c].delistedAt) {
+          delisted.push({ name: c, q, nowPrice, buyCost, evalPrice, profit, delistedAt: coins[c].delistedAt });
+        } else {
+          live.push({ name: c, q, nowPrice, buyCost, evalPrice, profit });
+        }
+      }
+
+      let page = 0;
+      let showDelisted = false;
+      const PAGE_SIZE = 10;
+
+      function renderEmbed(page, showDelisted) {
+        const arr = showDelisted ? delisted : live;
+        const totalPages = Math.max(1, Math.ceil(arr.length / PAGE_SIZE));
+        const slice = arr.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+        const embed = new EmbedBuilder()
+          .setTitle(showDelisted ? `🚫 [${user.username}] 폐지된 코인 목록` : `💼 [${user.username}] 보유 코인 목록`)
+          .setColor(showDelisted ? '#888888' : '#2ecc71')
+          .setTimestamp();
+
+        if (!slice.length) {
+          embed.setDescription('보유 내역 없음');
+        } else {
+          let lines = [];
+          slice.forEach((c, i) => {
+            lines.push(
+              showDelisted
+                ? `⛔️ **${c.name}** | ${c.q}개 | 폐지 시세: ${c.nowPrice.toLocaleString(undefined,{maximumFractionDigits:3})} BE | 손익: ${(c.profit>=0?'+':'')+c.profit.toLocaleString(undefined,{maximumFractionDigits:3})} BE | 폐지일: ${toKSTString(c.delistedAt)}`
+                : `🟢 **${c.name}** | ${c.q}개 | 평가: ${c.evalPrice.toLocaleString(undefined,{maximumFractionDigits:3})} BE | 손익: ${(c.profit>=0?'+':'')+c.profit.toLocaleString(undefined,{maximumFractionDigits:3})} BE`
+            );
+          });
+          embed.setDescription(lines.join('\n'));
+        }
+        embed.addFields(
+          { name: '총 매수금', value: totalBuy.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
+          { name: showDelisted ? '폐지 시 평가' : '총 평가금', value: totalEval.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
+          { name: '총 손익', value: (totalProfit>=0?'+':'') + totalProfit.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true }
+        );
+        embed.setFooter({ text: `페이지 ${page+1}/${Math.max(1, Math.ceil((showDelisted ? delisted : live).length / PAGE_SIZE))} • ${showDelisted ? "폐지된 코인" : "보유 코인"} 모드` });
+        return embed;
+      }
+
+      function makeNavRow(page, showDelisted) {
+        const arr = showDelisted ? delisted : live;
+        const totalPages = Math.max(1, Math.ceil(arr.length / PAGE_SIZE));
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('prev')
+            .setLabel('◀️ 이전')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(page === 0),
+          new ButtonBuilder()
+            .setCustomId('next')
+            .setLabel('▶️ 다음')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(page >= totalPages - 1),
+          new ButtonBuilder()
+            .setCustomId('toggle_delisted')
+            .setLabel(showDelisted ? '보유 코인 보기' : '폐지 코인 보기')
+            .setStyle(ButtonStyle.Secondary)
+        );
+      }
+
+      await interaction.reply({
+        embeds: [renderEmbed(page, showDelisted)],
+        components: [makeNavRow(page, showDelisted)],
+        ephemeral: true
+      });
+
+      const msg = await interaction.fetchReply();
+      const collector = msg.createMessageComponentCollector({
+        componentType: 2, // Button
+        time: 600_000,
+        filter: btn => btn.user.id === interaction.user.id
+      });
+
+      collector.on('collect', async btn => {
+        await btn.deferUpdate();
+        if (btn.customId === 'prev') page = Math.max(0, page - 1);
+        if (btn.customId === 'next') page = Math.min(page + 1, Math.max(1, Math.ceil((showDelisted ? delisted : live).length / PAGE_SIZE)) - 1);
+        if (btn.customId === 'toggle_delisted') {
+          showDelisted = !showDelisted;
+          page = 0;
+        }
+        await interaction.editReply({
+          embeds: [renderEmbed(page, showDelisted)],
+          components: [makeNavRow(page, showDelisted)]
+        });
+      });
+
+      collector.on('end', async () => {
+        try { await interaction.editReply({ components: [] }); } catch {}
+      });
+
+      return;
+    }
+
+    // ========== 16. 코인현황 (페이징) ==========
+    if (sub === '코인현황') {
+      const coin = interaction.options.getString('코인');
+      const coins = await loadJson(coinsPath, {});
+      const wallets = await loadJson(walletsPath, {});
+
+      if (!coins[coin]) {
+        await interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
+        return;
+      }
+
+      let userStats = [];
+      for (const [uid, wallet] of Object.entries(wallets)) {
+        if (uid.endsWith('_buys') || uid.endsWith('_realized')) continue;
+        const qty = wallet[coin] || 0;
+        if (qty > 0) {
+          const userBuys = wallets[uid + "_buys"] || {};
+          const buyCost = userBuys[coin] || 0;
+          const evalPrice = (coins[coin].price || 0) * qty;
+          const profit = evalPrice - buyCost;
+          userStats.push({
+            uid,
+            qty,
+            buyCost,
+            evalPrice,
+            profit,
+          });
+        }
+      }
+
+      // 수익 많은 순 정렬
+      userStats.sort((a, b) => b.profit - a.profit);
+
+      let page = 0;
+      const PAGE_SIZE = 10;
+      const totalPages = Math.max(1, Math.ceil(userStats.length / PAGE_SIZE));
+
+      function renderEmbed(page) {
+        const slice = userStats.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+        const lines = slice.map((u, i) =>
+          `**${page*PAGE_SIZE+i+1}. <@${u.uid}>** | 보유: ${u.qty}개 | 매수: ${u.buyCost.toLocaleString(undefined,{maximumFractionDigits:3})} BE | 평가: ${u.evalPrice.toLocaleString(undefined,{maximumFractionDigits:3})} BE | 손익: ${(u.profit>=0?'+':'')+u.profit.toLocaleString(undefined,{maximumFractionDigits:3})} BE`
+        );
+        const embed = new EmbedBuilder()
+          .setTitle(`📊 [${coin}] 투자자 순위/현황 (페이지 ${page+1}/${totalPages})`)
+          .setDescription(lines.length ? lines.join('\n') : '이 코인을 보유한 유저 없음')
+          .setColor('#ffcc00')
+          .addFields(
+            { name: '현재 시세', value: (coins[coin].price || 0).toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
+            { name: '상태', value: coins[coin].delistedAt ? `상장폐지 (${toKSTString(coins[coin].delistedAt)})` : '상장', inline: true }
+          )
+          .setFooter({ text: `페이지 ${page+1}/${totalPages}` })
+          .setTimestamp();
+        return embed;
+      }
+
+      function makeNavRow(page) {
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+        );
+      }
+
+      await interaction.reply({
+        embeds: [renderEmbed(page)],
+        components: [makeNavRow(page)],
+        ephemeral: true
+      });
+
+      const msg = await interaction.fetchReply();
+      const collector = msg.createMessageComponentCollector({
+        componentType: 2, // Button
+        time: 600_000,
+        filter: btn => btn.user.id === interaction.user.id
+      });
+
+      collector.on('collect', async btn => {
+        await btn.deferUpdate();
+        if (btn.customId === 'prev') page = Math.max(0, page - 1);
+        if (btn.customId === 'next') page = Math.min(page + 1, totalPages - 1);
+        await interaction.editReply({
+          embeds: [renderEmbed(page)],
+          components: [makeNavRow(page)]
+        });
+      });
+
+      collector.on('end', async () => {
+        try { await interaction.editReply({ components: [] }); } catch {}
+      });
+
+      return;
+    }
   }
 };
 
