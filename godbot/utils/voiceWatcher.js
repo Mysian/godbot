@@ -126,11 +126,19 @@ module.exports = function(client) {
         let maxCount = 0;
         channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
 
+        let headerMsg = "";
+        if (total === 0) headerMsg = "😢: 이런! 아무도 이용하고 있지 않아요.";
+        else if (total <= 9) headerMsg = `😉: 현재 ${total}명이 이용하고 있습니다.`;
+        else if (total <= 19) headerMsg = `😘: 현재 ${total}명이 이용하고 있습니다.`;
+        else if (total <= 29) headerMsg = `😍: 현재 ${total}명이 이용하고 있습니다!!`;
+        else if (total <= 49) headerMsg = `😎: 현재 ${total}명이 이용하고 있습니다!!!`;
+        else headerMsg = `🌹: 현재 ${total}명의 유저 여러분이 이용하고 있습니다!!!!!`;
+
         const embed = new EmbedBuilder()
           .setTitle('🌹 음성채널 실시간 이용 현황')
           .setColor(0x2eccfa)
           .setDescription(
-            `현재 **${total}명**이 이용 중입니다.\n\n` +
+            `${headerMsg}\n\n` +
             channelCounts.map((ch, idx) => {
               let tag = '';
               if (ch.count === maxCount && ch.count > 0) tag = ' [❤️‍🔥 BEST]';
