@@ -5,7 +5,6 @@ const path = require('path');
 const DONOR_ROLE = '1397076919127900171';
 const MAX_HISTORY = 30;
 const PAGE_SIZE = 10; // 1페이지 10일
-const HISTORY_TIMEOUT = 5 * 60 * 1000; // 5분(ms)
 
 const fortunes = [
   "행운이 가득한 하루가 될 거예요.",
@@ -639,7 +638,6 @@ function makeHistoryEmbed(userId, userData, page = 0) {
   let user = userData[userId];
   let list = Array(MAX_HISTORY).fill(null);
 
-  // 기록 날짜별로 세팅
   if (user && user.history && user.history.length > 0) {
     for (let i = 0; i < MAX_HISTORY; i++) {
       const dstr = getDateBefore(i);
@@ -656,7 +654,6 @@ function makeHistoryEmbed(userId, userData, page = 0) {
       list[i] = `${dstr}  '운세를 확인하지 않은 날입니다.'`;
     }
   }
-  // 페이지네이션
   let start = page * PAGE_SIZE;
   let end = start + PAGE_SIZE;
   let pageList = list.slice(start, end);
@@ -668,19 +665,18 @@ function makeHistoryEmbed(userId, userData, page = 0) {
     .setColor(0xA6E1FA);
 }
 
-// 페이지 버튼 생성
-function makeHistoryRow(page, disablePrev, disableNext) {
+function makeHistoryRow(page) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`fortune_history_prev`)
+      .setCustomId(`fortune_history_p${page - 1}_prev`)
       .setLabel('이전')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(disablePrev),
+      .setDisabled(page === 0),
     new ButtonBuilder()
-      .setCustomId(`fortune_history_next`)
+      .setCustomId(`fortune_history_p${page + 1}_next`)
       .setLabel('다음')
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(disableNext)
+      .setDisabled(page === 2)
   );
 }
 
@@ -693,26 +689,12 @@ module.exports = {
     const today = getKSTDateString();
     const userData = loadUserData();
 
-    // 인터랙션(버튼) 핸들링
-    if (interaction.isButton && interaction.isButton() && (interaction.customId.startsWith('fortune_history'))) {
-      let page = Number(interaction.message?.embeds[0]?.title?.match(/\(p\.(\d)\/3\)/)?.[1] || 1) - 1;
-      if (interaction.customId.endsWith('prev')) page--;
-      if (interaction.customId.endsWith('next')) page++;
-      if (page < 0) page = 0;
-      if (page > 2) page = 2;
-
-      const embed = makeHistoryEmbed(userId, userData, page);
-      const row = makeHistoryRow(page, page === 0, page === 2);
-      await interaction.update({ embeds: [embed], components: [row] });
-      return;
-    }
-
     // 쿨타임 체크
     if (userData[userId]?.last === today) {
       const row = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
-            .setCustomId('fortune_history')
+            .setCustomId('fortune_history_p0')
             .setLabel('최근 운세 기록 보기')
             .setStyle(ButtonStyle.Secondary)
         );
@@ -722,27 +704,6 @@ module.exports = {
         .setColor(0xFFD700)
         .setFooter({ text: `내일 또 만나요!` });
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-
-      // 콜렉터(버튼 페이지네이션)
-      const reply = await interaction.fetchReply();
-      const filter = i => i.user.id === userId && i.customId.startsWith('fortune_history');
-      const collector = reply.createMessageComponentCollector({ filter, time: HISTORY_TIMEOUT });
-
-      let page = 0;
-      collector.on('collect', async i => {
-        if (i.customId.endsWith('prev')) page--;
-        if (i.customId.endsWith('next')) page++;
-        if (page < 0) page = 0;
-        if (page > 2) page = 2;
-        const embed = makeHistoryEmbed(userId, userData, page);
-        const row = makeHistoryRow(page, page === 0, page === 2);
-        await i.update({ embeds: [embed], components: [row], ephemeral: true });
-      });
-      collector.on('end', async () => {
-        try {
-          await reply.edit({ components: [] });
-        } catch (e) {}
-      });
       return;
     }
 
@@ -767,7 +728,7 @@ module.exports = {
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId('fortune_history')
+          .setCustomId('fortune_history_p0')
           .setLabel('최근 운세 기록 보기')
           .setStyle(ButtonStyle.Secondary)
       );
@@ -779,26 +740,24 @@ module.exports = {
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
     await interaction.reply({ embeds: [embed], components: [row] });
+  },
 
-    // 히스토리 버튼 콜렉터
-    const reply = await interaction.fetchReply();
-    const filter = i => i.user.id === userId && i.customId.startsWith('fortune_history');
-    const collector = reply.createMessageComponentCollector({ filter, time: HISTORY_TIMEOUT });
-
+  async handleHistoryButton(interaction) {
+    const userId = interaction.user.id;
+    const userData = loadUserData();
     let page = 0;
-    collector.on('collect', async i => {
-      if (i.customId.endsWith('prev')) page--;
-      if (i.customId.endsWith('next')) page++;
-      if (page < 0) page = 0;
-      if (page > 2) page = 2;
-      const embed = makeHistoryEmbed(userId, userData, page);
-      const row = makeHistoryRow(page, page === 0, page === 2);
-      await i.update({ embeds: [embed], components: [row], ephemeral: true });
-    });
-    collector.on('end', async () => {
-      try {
-        await reply.edit({ components: [] });
-      } catch (e) {}
-    });
+
+    // customId 파싱: 'fortune_history_p0', 'fortune_history_p1_prev', 'fortune_history_p2_next' 등
+    const m = interaction.customId.match(/^fortune_history_p(\d+)/);
+    if (m) page = Number(m[1]) || 0;
+    if (interaction.customId.endsWith('_prev')) page--;
+    if (interaction.customId.endsWith('_next')) page++;
+    if (page < 0) page = 0;
+    if (page > 2) page = 2;
+
+    const embed = makeHistoryEmbed(userId, userData, page);
+    const row = makeHistoryRow(page);
+
+    await interaction.update({ embeds: [embed], components: [row], ephemeral: true });
   }
 };
