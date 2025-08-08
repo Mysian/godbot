@@ -47,7 +47,7 @@ module.exports = function(client) {
           total += ch.members.filter(m => !m.user.bot).size;
         }
         const embed = new EmbedBuilder()
-          .setTitle('서버실 실시간 이용 현황')
+          .setTitle('🌹 음성채널 실시간 이용 현황')
           .setColor(0x2eccfa)
           .setDescription(`현재 **${total}명**이 이용 중입니다.\n\n${VOICE_CHANNEL_IDS.map((id, idx) => {
             const ch = guild.channels.cache.get(id);
