@@ -2,7 +2,6 @@ const { joinVoiceChannel } = require('@discordjs/voice');
 const { EmbedBuilder } = require('discord.js');
 
 const TARGET_CHANNEL_ID = '1403304289794785383';
-
 const VOICE_CHANNEL_IDS = [
   '1222085152600096778',
   '1222085194706587730',
@@ -19,8 +18,7 @@ const VOICE_CHANNEL_IDS = [
   '1209157524243091466',
   '1209157622662561813'
 ];
-
-let embedMsgId = null;
+const EMBED_MSG_ID = '1403366474160017489';
 
 module.exports = function(client) {
   async function joinAndWatch() {
@@ -41,7 +39,7 @@ module.exports = function(client) {
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
       if (!channel || !channel.isTextBased()) return;
 
-      async function upsertEmbed() {
+      async function updateEmbed() {
         let total = 0;
         for (const id of VOICE_CHANNEL_IDS) {
           const ch = guild.channels.cache.get(id);
@@ -49,32 +47,23 @@ module.exports = function(client) {
           total += ch.members.filter(m => !m.user.bot).size;
         }
         const embed = new EmbedBuilder()
-          .setTitle('음성채널 이용 현황')
+          .setTitle('서버실 실시간 이용 현황')
           .setColor(0x2eccfa)
           .setDescription(`현재 **${total}명**이 이용 중입니다.\n\n${VOICE_CHANNEL_IDS.map((id, idx) => {
             const ch = guild.channels.cache.get(id);
             const cnt = ch ? ch.members.filter(m => !m.user.bot).size : 0;
             return `• ${ch ? ch.name : `채널${idx+1}`} : ${cnt}명`;
           }).join('\n')}`);
-
         try {
-          let msg;
-          if (embedMsgId) {
-            msg = await channel.messages.fetch(embedMsgId).catch(() => null);
-          }
-          if (!msg) {
-            msg = await channel.send({ embeds: [embed] });
-            embedMsgId = msg.id;
-          } else {
+          const msg = await channel.messages.fetch(EMBED_MSG_ID).catch(() => null);
+          if (msg) {
             await msg.edit({ embeds: [embed] });
           }
-        } catch (e) {
-          embedMsgId = null;
-        }
+        } catch (e) {}
       }
 
-      await upsertEmbed();
-      setInterval(upsertEmbed, 60000);
+      await updateEmbed();
+      setInterval(updateEmbed, 60000);
 
       client.on('voiceStateUpdate', (oldState, newState) => {
         const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID];
@@ -82,7 +71,7 @@ module.exports = function(client) {
           (oldState.channelId && watchedChannels.includes(oldState.channelId)) ||
           (newState.channelId && watchedChannels.includes(newState.channelId))
         ) {
-          upsertEmbed();
+          updateEmbed();
         }
       });
 
