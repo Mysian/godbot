@@ -1,8 +1,11 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 const DONOR_ROLE = '1397076919127900171';
+const MAX_HISTORY = 30;
+const PAGE_SIZE = 10; // 1페이지 10일
+const HISTORY_TIMEOUT = 5 * 60 * 1000; // 5분(ms)
 
 const fortunes = [
   "행운이 가득한 하루가 될 거예요.",
@@ -576,10 +579,8 @@ function addBE(userId, amount, reason) {
   saveBE(be);
 }
 
-// 유저별 마지막 사용일 저장 경로
 const dataDir = path.join(__dirname, '../data');
 const dataPath = path.join(dataDir, 'fortune-used.json');
-
 function loadUserData() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
   if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, '{}');
@@ -588,14 +589,10 @@ function loadUserData() {
 function saveUserData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
-
-// 자정(한국시간) 기준으로 쿨타임 체크 (KST)
 function getKSTDateString() {
   const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
   return now.toISOString().split('T')[0];
 }
-
-// 운세 보상 로직
 function getFortuneReward() {
   const rand = Math.random() * 100;
   if (rand < 0.5) { // 0.5%
@@ -613,47 +610,153 @@ function getFortuneReward() {
   }
 }
 
+function addFortuneHistory(userData, userId, today, fortune, rewardObj, isDonor) {
+  if (!userData[userId]) userData[userId] = {};
+  if (!userData[userId].history) userData[userId].history = [];
+  userData[userId].history.unshift({
+    date: today,
+    fortune,
+    reward: rewardObj.amount * (isDonor ? 2 : 1),
+    donor: isDonor,
+    emoji: rewardObj.emoji,
+  });
+  if (userData[userId].history.length > MAX_HISTORY) {
+    userData[userId].history = userData[userId].history.slice(0, MAX_HISTORY);
+  }
+  userData[userId].last = today;
+}
+
+// 날짜 스트링 생성 (KST, -n일)
+function getDateBefore(n) {
+  const dt = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  dt.setDate(dt.getDate() - n);
+  return dt.toISOString().split('T')[0];
+}
+
+// 페이지 임베드 생성
+function makeHistoryEmbed(userId, userData, page = 0) {
+  let desc = '';
+  let user = userData[userId];
+  let list = Array(MAX_HISTORY).fill(null);
+
+  // 기록 날짜별로 세팅
+  if (user && user.history && user.history.length > 0) {
+    for (let i = 0; i < MAX_HISTORY; i++) {
+      const dstr = getDateBefore(i);
+      const find = user.history.find(h => h.date === dstr);
+      if (find) {
+        list[i] = `${dstr}  ${find.emoji || ''}  '${find.fortune}'  [${find.reward.toLocaleString()} BE]`;
+      } else {
+        list[i] = `${dstr}  '운세를 확인하지 않은 날입니다.'`;
+      }
+    }
+  } else {
+    for (let i = 0; i < MAX_HISTORY; i++) {
+      const dstr = getDateBefore(i);
+      list[i] = `${dstr}  '운세를 확인하지 않은 날입니다.'`;
+    }
+  }
+  // 페이지네이션
+  let start = page * PAGE_SIZE;
+  let end = start + PAGE_SIZE;
+  let pageList = list.slice(start, end);
+
+  desc = pageList.join('\n');
+  return new EmbedBuilder()
+    .setTitle(`최근 30일간 운세 기록 (p.${page+1}/3)`)
+    .setDescription(desc)
+    .setColor(0xA6E1FA);
+}
+
+// 페이지 버튼 생성
+function makeHistoryRow(page, disablePrev, disableNext) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`fortune_history_prev`)
+      .setLabel('이전')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disablePrev),
+    new ButtonBuilder()
+      .setCustomId(`fortune_history_next`)
+      .setLabel('다음')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disableNext)
+  );
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('오늘의운세')
-    .setDescription('오늘의 운세를 확인합니다. (자정마다 초기화, 모든 유저 공개)'),
+    .setDescription('오늘의 운세를 확인합니다. (자정마다 초기화, 최근 운세 기록도 확인 가능)'),
   async execute(interaction) {
     const userId = interaction.user.id;
     const today = getKSTDateString();
-
-    // 유저 데이터 로드
     const userData = loadUserData();
 
+    // 인터랙션(버튼) 핸들링
+    if (interaction.isButton && interaction.isButton() && (interaction.customId.startsWith('fortune_history'))) {
+      let page = Number(interaction.message?.embeds[0]?.title?.match(/\(p\.(\d)\/3\)/)?.[1] || 1) - 1;
+      if (interaction.customId.endsWith('prev')) page--;
+      if (interaction.customId.endsWith('next')) page++;
+      if (page < 0) page = 0;
+      if (page > 2) page = 2;
+
+      const embed = makeHistoryEmbed(userId, userData, page);
+      const row = makeHistoryRow(page, page === 0, page === 2);
+      await interaction.update({ embeds: [embed], components: [row] });
+      return;
+    }
+
     // 쿨타임 체크
-    if (userData[userId] && userData[userId] === today) {
+    if (userData[userId]?.last === today) {
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('fortune_history')
+            .setLabel('최근 운세 기록 보기')
+            .setStyle(ButtonStyle.Secondary)
+        );
       const embed = new EmbedBuilder()
         .setTitle('오늘의 운세')
         .setDescription(`이미 오늘의 운세를 확인하셨습니다!\n(매일 자정 00:00에 다시 이용 가능해요)`)
         .setColor(0xFFD700)
         .setFooter({ text: `내일 또 만나요!` });
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+
+      // 콜렉터(버튼 페이지네이션)
+      const reply = await interaction.fetchReply();
+      const filter = i => i.user.id === userId && i.customId.startsWith('fortune_history');
+      const collector = reply.createMessageComponentCollector({ filter, time: HISTORY_TIMEOUT });
+
+      let page = 0;
+      collector.on('collect', async i => {
+        if (i.customId.endsWith('prev')) page--;
+        if (i.customId.endsWith('next')) page++;
+        if (page < 0) page = 0;
+        if (page > 2) page = 2;
+        const embed = makeHistoryEmbed(userId, userData, page);
+        const row = makeHistoryRow(page, page === 0, page === 2);
+        await i.update({ embeds: [embed], components: [row], ephemeral: true });
+      });
+      collector.on('end', async () => {
+        try {
+          await reply.edit({ components: [] });
+        } catch (e) {}
+      });
       return;
     }
 
-    // 𝕯𝖔𝖓𝖔𝖗 역할 여부 확인
+    // 도너 확인
     const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
-
-    // 운세 랜덤 선택
     const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
     let rewardObj = getFortuneReward();
-
-    // 도너라면 x2
     let rewardAmount = rewardObj.amount;
     if (isDonor) rewardAmount *= 2;
 
-    // 정수 지급
     addBE(userId, rewardAmount, isDonor ? "오늘의 운세 보상 (𝕯𝖔𝖓𝖔𝖗 x2)" : "오늘의 운세 보상");
-
-    // 기록
-    userData[userId] = today;
+    addFortuneHistory(userData, userId, today, fortune, rewardObj, isDonor);
     saveUserData(userData);
 
-    // 임베드 생성
     let desc = [
       `<@${userId}> 님, ${fortune}`,
       ``,
@@ -661,13 +764,41 @@ module.exports = {
     ];
     if (isDonor) desc.push('\n💜 𝕯𝖔𝖓𝖔𝖗 운세 보상 **2배** 지급!');
 
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('fortune_history')
+          .setLabel('최근 운세 기록 보기')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
     const embed = new EmbedBuilder()
       .setTitle('오늘의 운세')
       .setDescription(desc.join('\n'))
       .setColor(isDonor ? 0xAE72F7 : 0x57D9A3)
       .setFooter({ text: `매일 자정 00:00 이후가 지나면 다시 뽑을 수 있습니다.` });
 
-    // 전체 공개
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], components: [row] });
+
+    // 히스토리 버튼 콜렉터
+    const reply = await interaction.fetchReply();
+    const filter = i => i.user.id === userId && i.customId.startsWith('fortune_history');
+    const collector = reply.createMessageComponentCollector({ filter, time: HISTORY_TIMEOUT });
+
+    let page = 0;
+    collector.on('collect', async i => {
+      if (i.customId.endsWith('prev')) page--;
+      if (i.customId.endsWith('next')) page++;
+      if (page < 0) page = 0;
+      if (page > 2) page = 2;
+      const embed = makeHistoryEmbed(userId, userData, page);
+      const row = makeHistoryRow(page, page === 0, page === 2);
+      await i.update({ embeds: [embed], components: [row], ephemeral: true });
+    });
+    collector.on('end', async () => {
+      try {
+        await reply.edit({ components: [] });
+      } catch (e) {}
+    });
   }
 };
