@@ -1,6 +1,6 @@
-// voiceWatcher.js
 const { joinVoiceChannel } = require('@discordjs/voice');
 const { EmbedBuilder } = require('discord.js');
+const os = require("os");
 const activityTracker = require("./activity-tracker");
 
 const TARGET_CHANNEL_ID = '1403304289794785383';
@@ -20,13 +20,10 @@ const VOICE_CHANNEL_IDS = [
   '1209157524243091466',
   '1209157622662561813'
 ];
-
-// 기존 실시간 음성 현황용 메시지
 const EMBED_MSG_ID = '1403366474160017489';
-// 신규: TOP3 랭킹 메시지
 const TOP3_MSG_ID = '1403368538890309682';
+const STATUS_MSG_ID = '1403373820211101797';
 
-// [시간 → "52시간 30분"] 변환 함수
 function formatVoiceTime(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -34,6 +31,66 @@ function formatVoiceTime(seconds) {
   if (h > 0) str += `${h}시간 `;
   if (m > 0 || h === 0) str += `${m}분`;
   return str.trim();
+}
+
+async function updateStatusEmbed(guild, channel) {
+  try {
+    const memory = process.memoryUsage();
+    const rssMB = (memory.rss / 1024 / 1024);
+    const heapMB = (memory.heapUsed / 1024 / 1024);
+
+    const load = os.loadavg()[0];
+    const cpuCount = os.cpus().length;
+
+    const uptimeSec = Math.floor(process.uptime());
+    const uptime = (() => {
+      const h = Math.floor(uptimeSec / 3600);
+      const m = Math.floor((uptimeSec % 3600) / 60);
+      const s = uptimeSec % 60;
+      return `${h}시간 ${m}분 ${s}초`;
+    })();
+
+    let memState = "🟢";
+    if (rssMB > 800) memState = "🔴";
+    else if (rssMB > 400) memState = "🟡";
+
+    let cpuState = "🟢";
+    if (load > cpuCount) cpuState = "🔴";
+    else if (load > cpuCount / 2) cpuState = "🟡";
+
+    let total = "🟢 안정적";
+    if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
+    else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
+
+    let comment = "";
+    if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
+    else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
+    else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
+
+    let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
+    if (process.env.RAILWAY_STATIC_URL) {
+      hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${total} | 서버 상태 진단`)
+      .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
+      .setDescription(comment)
+      .addFields(
+        { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
+        { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)} / ${cpuCount}코어`, inline: true },
+        { name: `실행시간(Uptime)`, value: uptime, inline: true },
+        { name: `호스트 정보`, value: hostInfo }
+      )
+      .setFooter({ text: "매 5분마다 자동 측정됩니다." });
+
+    const msg = await channel.messages.fetch(STATUS_MSG_ID).catch(() => null);
+    if (msg) {
+      await msg.edit({ content: '', embeds: [embed] });
+    }
+  } catch (e) {
+    console.error("[Status 임베드 갱신 에러]", e);
+  }
 }
 
 module.exports = function(client) {
@@ -55,7 +112,6 @@ module.exports = function(client) {
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
       if (!channel || !channel.isTextBased()) return;
 
-      // === 기존 음성채널 현황 임베드 ===
       async function updateEmbed() {
         let total = 0;
         for (const id of VOICE_CHANNEL_IDS) {
@@ -79,30 +135,23 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
-      // === TOP3 랭킹 임베드 ===
       async function updateTop3Embed() {
-        // 최근 7일
         const now = new Date();
         const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const toStr = now.toISOString().slice(0, 10);
         const fromStr = from.toISOString().slice(0, 10);
-
-        // 활동 데이터 집계
         const stats = activityTracker.getStats({ from: fromStr, to: toStr });
 
-        // 유저 정보 캐싱
         let userMap = {};
         for (const member of guild.members.cache.values()) {
           userMap[member.user.id] = member.displayName || member.user.username;
         }
 
-        // 음성 TOP3 (시간 많은 순)
         const topVoice = stats
           .filter(s => s.voice > 0)
           .sort((a, b) => b.voice - a.voice)
           .slice(0, 3);
 
-        // 채팅 TOP3 (횟수 많은 순)
         const topMsg = stats
           .filter(s => s.message > 0)
           .sort((a, b) => b.message - a.message)
@@ -139,13 +188,18 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
-      // 최초 갱신
       await updateEmbed();
       await updateTop3Embed();
+      await updateStatusEmbed(guild, channel);
+
       setInterval(() => {
         updateEmbed();
         updateTop3Embed();
       }, 60000);
+
+      setInterval(() => {
+        updateStatusEmbed(guild, channel);
+      }, 300000);
 
       client.on('voiceStateUpdate', (oldState, newState) => {
         const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID];
