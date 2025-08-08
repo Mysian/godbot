@@ -129,7 +129,7 @@ module.exports = function(client) {
             { name: '🎙️ 음성 이용 TOP 3', value: voiceStr },
             { name: '💬 채팅량 TOP 3', value: msgStr }
           )
-          .setFooter({ text: "본 순위는 최근 7일 기준입니다." });
+          .setFooter({ text: "일정 주기에 맞춰 실시간 변동됩니다." });
 
         try {
           const msg = await channel.messages.fetch(TOP3_MSG_ID).catch(() => null);
