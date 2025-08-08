@@ -22,7 +22,7 @@ const VOICE_CHANNEL_IDS = [
 ];
 const EMBED_MSG_ID = '1403366474160017489';
 const TOP3_MSG_ID = '1403368538890309682';
-const STATUS_MSG_ID = '1403373820211101797';
+const STATUS_MSG_ID = '1403383641882755243';
 
 function formatVoiceTime(seconds) {
   const h = Math.floor(seconds / 3600);
