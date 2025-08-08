@@ -74,7 +74,7 @@ module.exports = function(client) {
         try {
           const msg = await channel.messages.fetch(EMBED_MSG_ID).catch(() => null);
           if (msg) {
-            await msg.edit({ embeds: [embed] });
+            await msg.edit({ content: '', embeds: [embed] });
           }
         } catch (e) {}
       }
@@ -134,7 +134,7 @@ module.exports = function(client) {
         try {
           const msg = await channel.messages.fetch(TOP3_MSG_ID).catch(() => null);
           if (msg) {
-            await msg.edit({ embeds: [embed] });
+            await msg.edit({ content: '', embeds: [embed] });
           }
         } catch (e) {}
       }
