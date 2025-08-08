@@ -546,6 +546,11 @@ module.exports = {
           });
           embed.setDescription(lines.join('\n'));
         }
+
+        if (embed.data.description?.length > 4090) {
+    embed.setDescription(embed.data.description.slice(0, 4090) + "\n...이하 생략...");
+  }
+        
         embed.addFields(
           { name: '총 매수금', value: totalBuy.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
           { name: showDelisted ? '폐지 시 평가' : '총 평가금', value: totalEval.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
@@ -662,6 +667,10 @@ module.exports = {
           )
           .setFooter({ text: `페이지 ${page+1}/${totalPages}` })
           .setTimestamp();
+
+        if (embed.data.description?.length > 4090) {
+    embed.setDescription(embed.data.description.slice(0, 4090) + "\n...이하 생략...");
+  }
         return embed;
       }
 
