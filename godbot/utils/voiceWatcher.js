@@ -35,60 +35,6 @@ function formatVoiceTime(seconds) {
   return str.trim();
 }
 
-async function updateStatusEmbed(guild, statusChannel) {
-  try {
-    const memory = process.memoryUsage();
-    const rssMB = (memory.rss / 1024 / 1024);
-    const heapMB = (memory.heapUsed / 1024 / 1024);
-
-    const load = os.loadavg()[0];
-    const cpuCount = os.cpus().length;
-
-    const uptimeSec = Math.floor(process.uptime());
-    const uptime = (() => {
-      const h = Math.floor(uptimeSec / 3600);
-      const m = Math.floor((uptimeSec % 3600) / 60);
-      const s = uptimeSec % 60;
-      return `${h}시간 ${m}분 ${s}초`;
-    })();
-
-    let memState = "🟢";
-    if (rssMB > 800) memState = "🔴";
-    else if (rssMB > 400) memState = "🟡";
-
-    let cpuState = "🟢";
-    if (load > cpuCount) cpuState = "🔴";
-    else if (load > cpuCount / 2) cpuState = "🟡";
-
-    let total = "🟢 안정적";
-    if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
-    else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
-
-    let comment = "";
-    if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
-    else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
-    else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
-
-    const embed = new EmbedBuilder()
-      .setTitle(`${total} | 서버 상태 진단`)
-      .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
-      .setDescription(comment)
-      .addFields(
-        { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
-        { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)} / ${cpuCount}코어`, inline: true },
-        { name: `실행시간(Uptime)`, value: uptime, inline: true }
-      )
-      .setFooter({ text: "매 5분마다 자동 측정됩니다." });
-
-    const msg = await statusChannel.messages.fetch(STATUS_MSG_ID).catch(() => null);
-    if (msg) {
-      await msg.edit({ content: '', embeds: [embed] });
-    }
-  } catch (e) {
-    console.error("[Status 임베드 갱신 에러]", e);
-  }
-}
-
 module.exports = function(client) {
   async function joinAndWatch() {
     try {
@@ -125,8 +71,6 @@ module.exports = function(client) {
         }
         let maxCount = 0;
         channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
-
-        // BEST 산정: maxCount(0 초과)인 채널이 1개만 있을 때만
         const bestCount = channelCounts.filter(x => x.count === maxCount && maxCount > 0).length;
 
         let headerMsg = "";
@@ -157,7 +101,7 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
-      async function updateTop3Embed() {
+      async function updateVoiceTop10Embed() {
         const now = new Date();
         const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const toStr = now.toISOString().slice(0, 10);
@@ -172,12 +116,7 @@ module.exports = function(client) {
         const topVoice = stats
           .filter(s => s.voice > 0)
           .sort((a, b) => b.voice - a.voice)
-          .slice(0, 3);
-
-        const topMsg = stats
-          .filter(s => s.message > 0)
-          .sort((a, b) => b.message - a.message)
-          .slice(0, 3);
+          .slice(0, 10);
 
         const voiceStr = topVoice.length
           ? topVoice.map((s, i) => {
@@ -186,20 +125,10 @@ module.exports = function(client) {
             }).join('\n')
           : "데이터 없음";
 
-        const msgStr = topMsg.length
-          ? topMsg.map((s, i) => {
-              const name = userMap[s.userId] || `Unknown(${s.userId})`;
-              return `${i + 1}위. ${name} [${s.message.toLocaleString()}회]`;
-            }).join('\n')
-          : "데이터 없음";
-
         const embed = new EmbedBuilder()
-          .setTitle('🏆 최근 7일간 활동 TOP 3')
+          .setTitle('🏆 최근 7일간 음성채널 이용 TOP 10')
           .setColor(0xfad131)
-          .addFields(
-            { name: '🎙️ 음성 이용 TOP 3', value: voiceStr },
-            { name: '💬 채팅량 TOP 3', value: msgStr }
-          )
+          .setDescription(voiceStr)
           .setFooter({ text: "일정 주기에 맞춰 실시간 변동됩니다." });
 
         try {
@@ -210,13 +139,67 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
+      async function updateStatusEmbed(guild, statusChannel) {
+        try {
+          const memory = process.memoryUsage();
+          const rssMB = (memory.rss / 1024 / 1024);
+          const heapMB = (memory.heapUsed / 1024 / 1024);
+
+          const load = os.loadavg()[0];
+          const cpuCount = os.cpus().length;
+
+          const uptimeSec = Math.floor(process.uptime());
+          const uptime = (() => {
+            const h = Math.floor(uptimeSec / 3600);
+            const m = Math.floor((uptimeSec % 3600) / 60);
+            const s = uptimeSec % 60;
+            return `${h}시간 ${m}분 ${s}초`;
+          })();
+
+          let memState = "🟢";
+          if (rssMB > 800) memState = "🔴";
+          else if (rssMB > 400) memState = "🟡";
+
+          let cpuState = "🟢";
+          if (load > cpuCount) cpuState = "🔴";
+          else if (load > cpuCount / 2) cpuState = "🟡";
+
+          let total = "🟢 안정적";
+          if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
+          else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
+
+          let comment = "";
+          if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
+          else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
+          else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
+
+          const embed = new EmbedBuilder()
+            .setTitle(`${total} | 서버 상태 진단`)
+            .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
+            .setDescription(comment)
+            .addFields(
+              { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
+              { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)} / ${cpuCount}코어`, inline: true },
+              { name: `실행시간(Uptime)`, value: uptime, inline: true }
+            )
+            .setFooter({ text: "매 5분마다 자동 측정됩니다." });
+
+          const msg = await statusChannel.messages.fetch(STATUS_MSG_ID).catch(() => null);
+          if (msg) {
+            await msg.edit({ content: '', embeds: [embed] });
+          }
+        } catch (e) {
+          console.error("[Status 임베드 갱신 에러]", e);
+        }
+      }
+
       await updateEmbed();
-      await updateTop3Embed();
+      await updateVoiceTop10Embed();
       await updateStatusEmbed(guild, statusChannel);
 
       setInterval(() => {
         updateEmbed();
-        updateTop3Embed();
+        updateVoiceTop10Embed();
       }, 60000);
 
       setInterval(() => {
@@ -230,7 +213,7 @@ module.exports = function(client) {
           (newState.channelId && watchedChannels.includes(newState.channelId))
         ) {
           updateEmbed();
-          updateTop3Embed();
+          updateVoiceTop10Embed();
         }
       });
 
