@@ -135,7 +135,7 @@ module.exports = function(client) {
               let tag = '';
               if (ch.count === maxCount && ch.count > 0) tag = ' [❤️‍🔥 BEST]';
               else if (ch.count >= 6) tag = ' [🔥 HOT]';
-              return `• ${ch.name} : ${ch.count}명${tag}`;
+              return `• ${ch.name} : ${ch.count === 0 ? '-명' : ch.count + '명'}${tag}`;
             }).join('\n')
           );
         try {
