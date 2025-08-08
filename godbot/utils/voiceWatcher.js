@@ -26,9 +26,17 @@ const TOP3_MSG_ID = '1403368538890309682';
 const STATUS_CHANNEL_ID = '1345775748526510201';
 const STATUS_MSG_ID = '1403383641882755243';
 
-// stat-activity.js와 동일하게 맞추기
 const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
 const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
+
+function getDateRange(period) {
+  if (period === 'all') return { from: null, to: null };
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  now.setDate(now.getDate() - (parseInt(period, 10) - 1));
+  const from = now.toISOString().slice(0, 10);
+  return { from, to };
+}
 
 function formatVoiceTime(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -61,6 +69,7 @@ module.exports = function(client) {
       if (!statusChannel || !statusChannel.isTextBased()) return;
 
       async function updateEmbed() {
+        await guild.members.fetch();
         let total = 0;
         let channelCounts = [];
         for (const id of VOICE_CHANNEL_IDS) {
@@ -80,7 +89,7 @@ module.exports = function(client) {
         let headerMsg = "";
         if (total === 0) headerMsg = "😢: 이런! 아무도 이용하고 있지 않아요.";
         else if (total <= 9) headerMsg = `😉: 현재 ${total}명이 이용하고 있습니다.`;
-        else if (total <= 19) headerMsg = `😘: 현재 ${total}명이 이용하고 있습니다.`;
+        else if (total <= 19) headerMsg = `😘: 현재 ${total}명이 이용하고 있습니다!`;
         else if (total <= 29) headerMsg = `😍: 현재 ${total}명이 이용하고 있습니다!!`;
         else if (total <= 49) headerMsg = `😎: 현재 ${total}명이 이용하고 있습니다!!!`;
         else headerMsg = `🌹: 현재 ${total}명의 유저 여러분이 이용하고 있습니다!!!!!`;
@@ -105,32 +114,23 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
-      async function updateVoiceTop10Embed() {
-        const now = new Date();
-        const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const toStr = now.toISOString().slice(0, 10);
-        const fromStr = from.toISOString().slice(0, 10);
-        const stats = activityTracker.getStats({ from: fromStr, to: toStr });
-
-        // 필터 적용 (stat-activity.js와 완전 동일하게)
-        const filteredStats = stats.filter(s => {
+      async function updateVoiceTop10Embed(period = '7') {
+        await guild.members.fetch();
+        const { from, to } = getDateRange(period);
+        let stats = activityTracker.getStats({ from, to, filterType: "voice" });
+        stats = stats.filter(s => {
           const member = guild.members.cache.get(s.userId);
-          if (!member) return false;
-          if (member.user.bot) return false;
+          if (!member || member.user.bot) return false;
           if (EXCLUDED_USER_IDS.includes(s.userId)) return false;
-          if (member.roles.cache.some(role => EXCLUDED_ROLE_IDS.includes(role.id))) return false;
-          return true;
+          if (member.roles.cache.some(r => EXCLUDED_ROLE_IDS.includes(r.id))) return false;
+          return s.voice > 0;
         });
+        const topVoice = stats.sort((a, b) => b.voice - a.voice).slice(0, 10);
 
         let userMap = {};
         for (const member of guild.members.cache.values()) {
           userMap[member.user.id] = member.displayName || member.user.username;
         }
-
-        const topVoice = filteredStats
-          .filter(s => s.voice > 0)
-          .sort((a, b) => b.voice - a.voice)
-          .slice(0, 10);
 
         const voiceStr = topVoice.length
           ? topVoice.map((s, i) => {
