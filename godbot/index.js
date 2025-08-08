@@ -483,16 +483,7 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
-  // 8. 오늘의 운세
-  if (interaction.isButton() && interaction.customId.startsWith("fortune_history")) {
-  const fortuneCmd = client.commands.get("오늘의운세");
-  if (fortuneCmd && typeof fortuneCmd.handleHistoryButton === "function") {
-    await fortuneCmd.handleHistoryButton(interaction);
-  }
-  return;
-}
-
-  // 9. 그 외 명령어/버튼(로그 및 명령어 실행)
+  // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
     const command = client.commands.get(interaction.commandName);
