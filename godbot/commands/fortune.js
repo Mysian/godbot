@@ -592,6 +592,16 @@ function saveUserData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
 
+function getKSTDayString(offset = 0) {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000 + offset * 24 * 60 * 60 * 1000);
+  const week = ['일', '월', '화', '수', '목', '금', '토'];
+  const y = now.getUTCFullYear();
+  const m = (now.getUTCMonth() + 1).toString().padStart(2, '0');
+  const d = now.getUTCDate().toString().padStart(2, '0');
+  const day = week[now.getUTCDay()];
+  return `${y}/${m}/${d} (${day})`;
+}
+
 // 운세 기록 로드/저장
 function loadRecord() {
   if (!fs.existsSync(recordPath)) fs.writeFileSync(recordPath, '{}');
@@ -718,14 +728,15 @@ module.exports = {
     const days = 30;
 
     let record = [];
-    for (let i = 0; i < days; i++) {
-      const dateStr = getKSTDateString(-i);
-      if (recordData[userId] && recordData[userId][dateStr]) {
-        record.push(`**${dateStr}**\n${recordData[userId][dateStr]}`);
-      } else {
-        record.push(`**${dateStr}**\n운세를 확인하지 않은 날입니다.`);
-      }
-    }
+for (let i = 0; i < days; i++) {
+  const dateStr = getKSTDateString(-i);
+  const dateStrWithDay = getKSTDayString(-i);
+  if (recordData[userId] && recordData[userId][dateStr]) {
+    record.push(`**${dateStrWithDay}**\n${recordData[userId][dateStr]}`);
+  } else {
+    record.push(`**${dateStrWithDay}**\n운세를 확인하지 않은 날입니다.`);
+  }
+}
     // 최대 30개까지만(최신순)
     record = record.slice(0, 30);
 
