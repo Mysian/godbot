@@ -1,10 +1,8 @@
 // utils/voiceWatcher.js
 const { joinVoiceChannel } = require('@discordjs/voice');
 
-// 이름 바꿀 대표 채널(서버실) ID
 const TARGET_CHANNEL_ID = '1403304289794785383';
 
-// 인원 합산 대상 음성채널(호실) ID 배열
 const VOICE_CHANNEL_IDS = [
   '1222085152600096778', // 101호
   '1222085194706587730', // 102호
@@ -33,7 +31,6 @@ module.exports = function(client) {
       const targetChannel = guild.channels.cache.get(TARGET_CHANNEL_ID);
       if (!targetChannel) return;
 
-      // 서버실 채널에 항상 들어가 있게
       joinVoiceChannel({
         channelId: TARGET_CHANNEL_ID,
         guildId: guild.id,
@@ -42,7 +39,16 @@ module.exports = function(client) {
         selfMute: true,
       });
 
+      // *** 중요: setInterval 안에서 항상 최신 값 가져오기 ***
       setInterval(() => {
+        const guild = client.guilds.cache.find(g =>
+          g.channels.cache.has(TARGET_CHANNEL_ID)
+        );
+        if (!guild) return;
+
+        const targetChannel = guild.channels.cache.get(TARGET_CHANNEL_ID);
+        if (!targetChannel) return;
+
         let total = 0;
         for (const id of VOICE_CHANNEL_IDS) {
           const ch = guild.channels.cache.get(id);
@@ -55,7 +61,7 @@ module.exports = function(client) {
             console.error('[voiceWatcher] setName 실패:', e);
           });
         }
-      }, 5000); // 5초마다 합산 & 이름 갱신
+      }, 5000);
     } catch (err) {
       console.error('[voiceWatcher 에러]', err);
     }
@@ -63,7 +69,6 @@ module.exports = function(client) {
 
   client.once('ready', joinAndWatch);
 
-  // 서버실에서 봇이 튕기면 재접속
   client.on('voiceStateUpdate', (oldState, newState) => {
     if (
       oldState.member.id === client.user.id &&
