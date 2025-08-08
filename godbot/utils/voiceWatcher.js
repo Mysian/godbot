@@ -22,6 +22,8 @@ const VOICE_CHANNEL_IDS = [
 ];
 const EMBED_MSG_ID = '1403366474160017489';
 const TOP3_MSG_ID = '1403368538890309682';
+
+const STATUS_CHANNEL_ID = '1345775748526510201';
 const STATUS_MSG_ID = '1403383641882755243';
 
 function formatVoiceTime(seconds) {
@@ -33,7 +35,7 @@ function formatVoiceTime(seconds) {
   return str.trim();
 }
 
-async function updateStatusEmbed(guild, channel) {
+async function updateStatusEmbed(guild, statusChannel) {
   try {
     const memory = process.memoryUsage();
     const rssMB = (memory.rss / 1024 / 1024);
@@ -78,7 +80,7 @@ async function updateStatusEmbed(guild, channel) {
       )
       .setFooter({ text: "매 5분마다 자동 측정됩니다." });
 
-    const msg = await channel.messages.fetch(STATUS_MSG_ID).catch(() => null);
+    const msg = await statusChannel.messages.fetch(STATUS_MSG_ID).catch(() => null);
     if (msg) {
       await msg.edit({ content: '', embeds: [embed] });
     }
@@ -104,7 +106,9 @@ module.exports = function(client) {
       });
 
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
+      const statusChannel = guild.channels.cache.get(STATUS_CHANNEL_ID);
       if (!channel || !channel.isTextBased()) return;
+      if (!statusChannel || !statusChannel.isTextBased()) return;
 
       async function updateEmbed() {
         let total = 0;
@@ -184,7 +188,7 @@ module.exports = function(client) {
 
       await updateEmbed();
       await updateTop3Embed();
-      await updateStatusEmbed(guild, channel);
+      await updateStatusEmbed(guild, statusChannel);
 
       setInterval(() => {
         updateEmbed();
@@ -192,7 +196,7 @@ module.exports = function(client) {
       }, 60000);
 
       setInterval(() => {
-        updateStatusEmbed(guild, channel);
+        updateStatusEmbed(guild, statusChannel);
       }, 300000);
 
       client.on('voiceStateUpdate', (oldState, newState) => {
