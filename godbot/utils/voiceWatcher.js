@@ -126,6 +126,9 @@ module.exports = function(client) {
         let maxCount = 0;
         channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
 
+        // BEST 산정: maxCount(0 초과)인 채널이 1개만 있을 때만
+        const bestCount = channelCounts.filter(x => x.count === maxCount && maxCount > 0).length;
+
         let headerMsg = "";
         if (total === 0) headerMsg = "😢: 이런! 아무도 이용하고 있지 않아요.";
         else if (total <= 9) headerMsg = `😉: 현재 ${total}명이 이용하고 있습니다.`;
@@ -141,7 +144,7 @@ module.exports = function(client) {
             `${headerMsg}\n\n` +
             channelCounts.map((ch, idx) => {
               let tag = '';
-              if (ch.count === maxCount && ch.count > 0) tag = ' [❤️‍🔥 BEST]';
+              if (bestCount === 1 && ch.count === maxCount && ch.count > 0) tag = ' [❤️‍🔥 BEST]';
               else if (ch.count >= 6) tag = ' [🔥 HOT]';
               return `• ${ch.name} : ${ch.count === 0 ? '-명' : ch.count + '명'}${tag}`;
             }).join('\n')
