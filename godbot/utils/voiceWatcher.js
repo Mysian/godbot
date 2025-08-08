@@ -61,7 +61,7 @@ module.exports = function(client) {
             console.error('[voiceWatcher] setName 실패:', e);
           });
         }
-      }, 5000);
+      }, 60000);
     } catch (err) {
       console.error('[voiceWatcher 에러]', err);
     }
