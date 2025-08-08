@@ -290,6 +290,7 @@ const unwarnCmd = client.commands.get("경고취소");
 const champBattle = require('./commands/champ-battle');
 const remoteCmd = client.commands.get("리모콘");
 const donateCmd = client.commands.get('후원');
+const fortuneCmd = require("./commands/fortune.js");
 
 client.on(Events.InteractionCreate, async interaction => {
 
@@ -405,7 +406,12 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     }
   }
 
-  // 2. 모달 통합 처리 (여기만 바뀜!)
+  // "오늘의 운세" 최근 기록 버튼 처리
+  if (interaction.isButton() && interaction.customId === "fortune_record_view") {
+    return fortuneCmd.handleButton(interaction);
+  }
+
+  // 2. 모달 통합 처리
   if (interaction.isModalSubmit()) {
     let handled = false;
     for (const [key, handler] of modalHandlers.entries()) {
