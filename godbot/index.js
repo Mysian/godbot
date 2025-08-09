@@ -68,8 +68,14 @@ if (fs.existsSync(eventsPath)) {
   }
 }
 
+
+// [유틸 대부분의 실시간 기능 지원 파트] ----------------------------------
 // 봇 음성채널 실시간 연결
 require('./utils/voiceWatcher')(client);
+// 🚫 특정 역할 활동 제한
+require('./utils/restricted-role-guard')(client);
+
+
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
