@@ -20,16 +20,12 @@ const LOG_CHANNEL_ID = '1380874052855529605';
 const BOOSTER_ROLE_ID = '1207437971037356142';
 const DONOR_ROLE_ID = '1397076919127900171';
 
-// ====== 대량 처리 안전 설정(속도 ↑, 리밋 안정) ======
-// ※ 너무 작게 잡으면 느리고, 너무 크게 잡으면 리밋 위험.
-//   필요 시 아래 값만 조정해도 됨.
-const BULK_CONCURRENCY_DM = 3;      // 경고 DM 동시 처리 개수
-const BULK_CONCURRENCY_KICK = 2;    // 추방 동시 처리 개수
-const DM_DELAY_MS = 250;            // 각 DM 사이 지연(안전용)
-const KICK_DELAY_MS = 400;          // 각 추방 사이 지연(안전용)
-const PROGRESS_UPDATE_INTERVAL = 1000; // 진행률 임베드 업데이트 최소 간격(ms)
+const BULK_CONCURRENCY_DM = 3;
+const BULK_CONCURRENCY_KICK = 2;
+const DM_DELAY_MS = 250;
+const KICK_DELAY_MS = 400;
+const PROGRESS_UPDATE_INTERVAL = 1000;
 
-// 색상 역할 ID
 const COLOR_ROLE_IDS = [
   '1294259058102239305', '1374740411662209085', '1296493619359780925',
   '1296628752742350848', '1296628913493114991', '1374740544298684456',
@@ -37,7 +33,7 @@ const COLOR_ROLE_IDS = [
   '1374740012784025600', '1374740162684391456', '1294259479474339912',
   '1296493906854285344'
 ];
-let colorRoleInactiveOn = false; // 전역 토글 변수
+let colorRoleInactiveOn = false;
 
 const WARN_HISTORY_PATH = path.join(__dirname, '../data/warn-history.json');
 const VOICE_NOTIFY_PATH = path.join(__dirname, '../data/voice-notify.json');
@@ -51,10 +47,8 @@ const PERIODS = [
   { label: '90일', value: '90' }
 ];
 
-// ====== 유틸: 지연 함수 ======
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-// ====== 유틸: 진행 바/임베드 ======
 function buildProgressBar(percent, width = 20) {
   const filled = Math.round((percent / 100) * width);
   const empty = width - filled;
@@ -75,14 +69,12 @@ function makeProgressEmbed(title, subtitle, current, total) {
     .setTimestamp();
 }
 
-// ====== 유틸: 안전 편집(예외 삼켜서 진행 멈춤 방지) ======
-async function safeEditProgress(msg, title, subtitle, current, total) {
+async function safeEditProgress(interaction, messageId, title, subtitle, current, total) {
   try {
-    await msg.edit({ embeds: [makeProgressEmbed(title, subtitle, current, total)] });
-  } catch (_) { /* 무시: 에페메랄 만료/권한 등으로 실패해도 메인 플로우는 계속 */ }
+    await interaction.webhook.editMessage(messageId, { embeds: [makeProgressEmbed(title, subtitle, current, total)] });
+  } catch (_) {}
 }
 
-// ====== 유틸: 제한 동시성 처리기 ======
 async function processInBatches(items, worker, {
   concurrency = 2,
   delayMs = 250,
@@ -91,7 +83,6 @@ async function processInBatches(items, worker, {
   let index = 0;
   let done = 0;
   const total = items.length;
-
   async function next() {
     const i = index++;
     if (i >= total) return;
@@ -99,22 +90,19 @@ async function processInBatches(items, worker, {
     try {
       await worker(item, i);
     } catch (_) {
-      // worker 내부에서 최대한 예외 처리하지만, 혹시라도 여기로 튀면 무시하고 진행 유지
     } finally {
       done++;
       try {
         await onProgress(done, total);
-      } catch (_) { /* onProgress 실패 무시 */ }
+      } catch (_) {}
       if (delayMs > 0) await sleep(delayMs);
       await next();
     }
   }
-
   const workers = Array.from({ length: Math.min(concurrency, total) }, () => next());
   await Promise.all(workers);
 }
 
-// ====== 음성채널 자동이동 관련 ======
 let voiceAutoEnabled = false;
 const voiceAutoTimers = new Map();
 const VOICE_AUTO_CATEGORY_IDS = [
@@ -128,18 +116,15 @@ const VOICE_AUTO_MINUTES = 120;
 let voiceAutoListenerRegistered = false;
 
 function resetVoiceAutoTimer(member, channel) {
-
   if (voiceAutoTimers.has(member.id)) {
     clearTimeout(voiceAutoTimers.get(member.id));
     voiceAutoTimers.delete(member.id);
   }
-
   if (
     channel &&
     VOICE_AUTO_CATEGORY_IDS.includes(channel.parentId) &&
     channel.members.filter(m => !m.user.bot).size === 1
   ) {
-
     voiceAutoTimers.set(member.id, setTimeout(async () => {
       if (channel.members.filter(m => !m.user.bot).size === 1) {
         try {
@@ -180,7 +165,6 @@ function setupVoiceAutoListener(client) {
       }
     }
   });
-  
   const activityHandler = async (payload) => {
     let userId = null, member = null, guild = null, voiceChannel = null;
     if (payload.member && payload.member.voice && payload.member.voice.channel) {
@@ -200,13 +184,11 @@ function setupVoiceAutoListener(client) {
       if (member && member.voice && member.voice.channel) voiceChannel = member.voice.channel;
     }
     if (member && voiceChannel && VOICE_AUTO_CATEGORY_IDS.includes(voiceChannel.parentId)) {
-
       if (voiceChannel.members.filter(m => !m.user.bot).size === 1) {
         resetVoiceAutoTimer(member, voiceChannel);
       }
     }
   };
-
   client.on('messageCreate', activityHandler);
   client.on('interactionCreate', activityHandler);
   client.on('messageReactionAdd', (reaction, user) => {
@@ -222,11 +204,8 @@ function setupVoiceAutoListener(client) {
       }
     });
   });
-
   voiceAutoListenerRegistered = true;
 }
-// ====================================
-
 
 function readWarnHistory() {
   if (!fs.existsSync(WARN_HISTORY_PATH)) return {};
@@ -240,7 +219,6 @@ function saveWarnHistory(obj) {
   fs.writeFileSync(WARN_HISTORY_PATH, JSON.stringify(obj, null, 2));
 }
 
-// ====== 음성알림 관련 ======
 function loadVoiceNotify() {
   if (!fs.existsSync(VOICE_NOTIFY_PATH)) fs.writeFileSync(VOICE_NOTIFY_PATH, '{}');
   return JSON.parse(fs.readFileSync(VOICE_NOTIFY_PATH, 'utf8'));
@@ -248,7 +226,6 @@ function loadVoiceNotify() {
 function saveVoiceNotify(data) {
   fs.writeFileSync(VOICE_NOTIFY_PATH, JSON.stringify(data, null, 2));
 }
-// ==========================
 
 function formatTimeAgo(date) {
   if (!date) return '기록 없음';
@@ -286,11 +263,9 @@ async function fetchLongInactive(guild, days, warnedObj) {
   for (const member of allMembers.values()) {
     if (EXEMPT_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
     if (member.user.bot) continue;
-
     const userData = activityData[member.id];
     const isBooster = member.roles.cache.has(BOOSTER_ROLE_ID);
     const isDonor   = member.roles.cache.has(DONOR_ROLE_ID);
-
     if (!userData || !getMostRecentDate(userData)) {
       if (isBooster || isDonor) continue;
       arr.push({
@@ -303,10 +278,8 @@ async function fetchLongInactive(guild, days, warnedObj) {
       });
       continue;
     }
-
     const lastDate = getMostRecentDate(userData);
     const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-
     if (isDonor && diffDays >= 90) {
       arr.push({
         id: member.id,
@@ -370,7 +343,6 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
   return arr;
 }
 
-// ★★★ 색상 역할 미접속 대상자 필터 ★★★
 async function fetchInactiveColorRoleUsers(guild, days) {
   const activityData = fs.existsSync(__dirname + '/../activity-data.json')
     ? JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
@@ -379,7 +351,6 @@ async function fetchInactiveColorRoleUsers(guild, days) {
   let arr = [];
   for (const member of allMembers.values()) {
     if (member.user.bot) continue;
-    // 색상 역할 보유 여부
     if (!COLOR_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
     const userData = activityData[member.id];
     const lastDate = userData ? getMostRecentDate(userData) : null;
@@ -411,7 +382,7 @@ module.exports = {
           { name: '음성채널 알림 설정', value: 'voice_notify' },
           { name: '음성채널 자동이동 설정', value: 'voice_auto' },
           { name: '세금누락 강제처리', value: 'tax_force' },
-          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' } // ★추가
+          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' }
         )
     ),
   async execute(interaction) {
@@ -425,7 +396,6 @@ module.exports = {
     let warnedObj = readWarnHistory();
     let page = 0;
 
-    // ===== 음성채널 알림/자동이동 설정 =====
     if (option === 'voice_notify') {
       const notifyData = loadVoiceNotify();
       const guildId = interaction.guildId;
@@ -443,7 +413,6 @@ module.exports = {
         new ButtonBuilder().setCustomId('notify_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!isOn)
       );
       const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
-
       const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
       collector.on('collect', async i => {
@@ -485,9 +454,7 @@ module.exports = {
         new ButtonBuilder().setCustomId('auto_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!voiceAutoEnabled)
       );
       const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
-
       setupVoiceAutoListener(interaction.client);
-
       const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
       collector.on('collect', async i => {
@@ -517,28 +484,20 @@ module.exports = {
       return;
     }
 
-    // 세금 누락건 처리
     if (option === 'tax_force') {
       await interaction.editReply({ content: '세금 누락 강제 처리 중...', ephemeral: true });
-
       const { collectTaxFromSnapshot, saveTaxSnapshot } = require('../utils/tax-collect.js');
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = String(today.getMonth() + 1).padStart(2, '0');
       const dd = String(today.getDate()).padStart(2, '0');
       const dateStr = `${yyyy}-${mm}-${dd}`;
-
-      const path = require('path');
-      const fs = require('fs');
       const SNAPSHOT_DIR = path.join(__dirname, '../data/');
       const filename = path.join(SNAPSHOT_DIR, `tax-snapshot-${dateStr}.json`);
-
       if (!fs.existsSync(filename)) {
         saveTaxSnapshot();
       }
-
       const result = await collectTaxFromSnapshot(interaction.client, dateStr);
-
       if (result?.error) {
         await interaction.followUp({ content: `❌ 스냅샷 파일 생성 후에도 에러! 관리자 문의 바람!`, ephemeral: true });
       } else {
@@ -547,9 +506,7 @@ module.exports = {
       return;
     }
 
-    // ========== 30일 미접속 색상 칭호 해제 ==========
     if (option === 'colorrole_inactive') {
-      // 토글 확인
       const embed = new EmbedBuilder()
         .setTitle('30일 미접속 색상 칭호 해제')
         .setDescription(
@@ -567,10 +524,8 @@ module.exports = {
         new ButtonBuilder().setCustomId('colorrole_remove').setLabel('대상 모두 칭호 해제').setStyle(ButtonStyle.Danger)
       );
       const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
-
       const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
-
       collector.on('collect', async i => {
         if (i.customId === 'colorrole_on' || i.customId === 'colorrole_off') {
           colorRoleInactiveOn = i.customId === 'colorrole_on';
@@ -591,7 +546,6 @@ module.exports = {
             ephemeral: true
           });
         } else if (i.customId === 'colorrole_preview') {
-          // 미접속 대상 미리보기
           await i.deferReply({ ephemeral: true });
           const targetUsers = await fetchInactiveColorRoleUsers(guild, 30);
           if (targetUsers.length === 0) {
@@ -601,7 +555,6 @@ module.exports = {
             await i.followUp({ content: `대상 유저 (${targetUsers.length}명):\n${userList}`, ephemeral: true });
           }
         } else if (i.customId === 'colorrole_remove') {
-          // 역할 해제 실행
           await i.deferReply({ ephemeral: true });
           const targetUsers = await fetchInactiveColorRoleUsers(guild, 30);
           let success = 0, failed = 0;
@@ -624,7 +577,6 @@ module.exports = {
       return;
     }
 
-    // ============= 기존 기능(유저 목록) ============
     if (option === 'long') {
       title = '장기 미접속 유저';
       const getUserList = async () => {
@@ -713,21 +665,26 @@ module.exports = {
             userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
           }
         } else if (i.customId === 'kick') {
-          // ===== 전체 추방: 빠르고 안전하게 + 진행률 임베드 =====
           await i.deferUpdate();
-
-          // 대상 산정: 경고된 대상만 추방
+          if (option === 'long') {
+            warnedObj = readWarnHistory();
+            userList = await fetchLongInactive(guild, selectedDays, warnedObj);
+          } else if (option === 'newbie') {
+            warnedObj = readWarnHistory();
+            userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
+          }
           const targets = userList.filter(u => u.warned);
           const total = targets.length;
-
-          // 진행률 임베드 생성
+          if (total === 0) {
+            await interaction.followUp({ content: '대상이 없습니다.', ephemeral: true });
+            return;
+          }
           const subtitle = `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`;
           const progressMsg = await interaction.followUp({
             embeds: [makeProgressEmbed('🚨 전체 추방 실행 중', subtitle, 0, total)],
-            ephemeral: true
+            ephemeral: true,
+            fetchReply: true
           });
-
-          // UI 잠금(중복 클릭 방지)
           await msg.edit({
             components: [
               new ActionRowBuilder().addComponents(
@@ -750,16 +707,12 @@ module.exports = {
               ),
             ]
           });
-
           let kicked = 0;
           const kickedList = [];
           const failed = [];
-
-          // 소량 대상(<=5)은 매 항목 즉시 업데이트, 그 외에는 스로틀
           const updateInterval = total <= 5 ? 0 : PROGRESS_UPDATE_INTERVAL;
           let lastUpdate = 0;
           let doneCount = 0;
-
           await processInBatches(
             targets,
             async (u) => {
@@ -779,7 +732,7 @@ module.exports = {
                 const now = Date.now();
                 if (updateInterval === 0 || now - lastUpdate >= updateInterval || doneCount === total) {
                   lastUpdate = now;
-                  await safeEditProgress(progressMsg, '🚨 전체 추방 실행 중', subtitle, doneCount, total);
+                  await safeEditProgress(interaction, progressMsg.id, '🚨 전체 추방 실행 중', subtitle, doneCount, total);
                 }
               }
             },
@@ -787,14 +740,12 @@ module.exports = {
               concurrency: BULK_CONCURRENCY_KICK,
               delayMs: KICK_DELAY_MS,
               onProgress: async (done, tot) => {
-                // 보강: 어떤 이유로든 위 편집이 실패했어도 마지막엔 100%로 고정
                 if (done === tot) {
-                  await safeEditProgress(progressMsg, '✅ 전체 추방 완료', `기준: ${title} / ${selectedDays}일`, done, tot);
+                  await safeEditProgress(interaction, progressMsg.id, '✅ 전체 추방 완료', `기준: ${title} / ${selectedDays}일`, done, tot);
                 }
               }
             }
           );
-
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
             `관리자: <@${interaction.user.id}>\n` +
@@ -802,7 +753,6 @@ module.exports = {
             `비활동 일수: ${selectedDays}일\n` +
             `전체 대상: ${targets.length}명\n` +
             `추방 성공: ${kicked}명 / 실패: ${failed.length}명`;
-
           const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
           if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -822,13 +772,10 @@ module.exports = {
               });
             logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
-
           await interaction.followUp({
             content: `🚨 전체 추방 완료!\n성공: **${kicked}명** / 실패: **${failed.length}명**`,
             ephemeral: true
           });
-
-          // 리스트 갱신
           if (option === 'long') {
             warnedObj = readWarnHistory();
             userList = await fetchLongInactive(guild, selectedDays, warnedObj);
@@ -837,8 +784,6 @@ module.exports = {
             userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
-
-          // UI 복구
           await msg.edit({
             embeds,
             components: [
@@ -861,24 +806,28 @@ module.exports = {
               ),
             ],
           });
-
         } else if (i.customId === 'warn') {
-          // ===== 전체 경고 DM: 빠르고 안전하게 + 진행률 임베드 =====
           await i.deferUpdate();
-
-          // 대상 산정(아직 경고 안한 유저 우선)
+          if (option === 'long') {
+            warnedObj = readWarnHistory();
+            userList = await fetchLongInactive(guild, selectedDays, warnedObj);
+          } else if (option === 'newbie') {
+            warnedObj = readWarnHistory();
+            userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
+          }
           warnedObj = readWarnHistory();
           const targets = userList.filter(u => !warnedObj[u.id]);
           const total = targets.length;
-
-          // 진행률 임베드 생성
+          if (total === 0) {
+            await interaction.followUp({ content: '대상이 없습니다.', ephemeral: true });
+            return;
+          }
           const subtitle = `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`;
           const progressMsg = await interaction.followUp({
             embeds: [makeProgressEmbed('📣 전체 경고 DM 발송 중', subtitle, 0, total)],
-            ephemeral: true
+            ephemeral: true,
+            fetchReply: true
           });
-
-          // UI 잠금(중복 클릭 방지)
           await msg.edit({
             components: [
               new ActionRowBuilder().addComponents(
@@ -901,22 +850,17 @@ module.exports = {
               ),
             ]
           });
-
           let warned = 0, failed = [];
           const warnedList = [];
-
-          // 소량 대상(<=5)은 매 항목 즉시 업데이트, 그 외에는 스로틀
           const updateInterval = total <= 5 ? 0 : PROGRESS_UPDATE_INTERVAL;
           let lastUpdate = 0;
           let doneCount = 0;
-
           await processInBatches(
             targets,
             async (u) => {
               try {
                 const m = await guild.members.fetch(u.id).catch(() => null);
                 if (m) {
-                  // 안내 DM 전송 (성공/실패 분리)
                   let dmOk = true;
                   try {
                     await m.send(
@@ -943,7 +887,7 @@ module.exports = {
                 const now = Date.now();
                 if (updateInterval === 0 || now - lastUpdate >= updateInterval || doneCount === total) {
                   lastUpdate = now;
-                  await safeEditProgress(progressMsg, '📣 전체 경고 DM 발송 중', subtitle, doneCount, total);
+                  await safeEditProgress(interaction, progressMsg.id, '📣 전체 경고 DM 발송 중', subtitle, doneCount, total);
                 }
               }
             },
@@ -951,15 +895,12 @@ module.exports = {
               concurrency: BULK_CONCURRENCY_DM,
               delayMs: DM_DELAY_MS,
               onProgress: async (done, tot) => {
-                // 보강: 어떤 이유로든 위 편집이 실패했어도 마지막엔 100%로 고정
                 if (done === tot) {
-                  await safeEditProgress(progressMsg, '✅ 전체 경고 DM 완료', `기준: ${title} / ${selectedDays}일`, done, tot);
+                  await safeEditProgress(interaction, progressMsg.id, '✅ 전체 경고 DM 완료', `기준: ${title} / ${selectedDays}일`, done, tot);
                 }
               }
             }
           );
-
-          // 기록 저장 + 리스트 갱신
           saveWarnHistory(warnedObj);
           if (option === 'long') {
             userList = await fetchLongInactive(guild, selectedDays, warnedObj);
@@ -967,8 +908,6 @@ module.exports = {
             userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
-
-          // 로그 채널 보고
           const warnTitle = option === 'long' ? '장기 미접속 유저 경고 DM' : '비활동 신규 유저 경고 DM';
           const warnDesc =
             `관리자: <@${interaction.user.id}>\n` +
@@ -976,7 +915,6 @@ module.exports = {
             `비활동 일수: ${selectedDays}일\n` +
             `전체 대상: ${warned + failed.length}명\n` +
             `DM 성공: ${warned}명 / 실패: ${failed.length}명`;
-
           const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
           if (logChannel) {
             const logEmbed = new EmbedBuilder()
@@ -996,16 +934,12 @@ module.exports = {
               });
             logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
-
-          // 결과 에페메랄
           let resultMsg = `✅ DM 발송: ${warned}명 / 실패: ${failed.length}명`;
           if (failed.length > 0) {
             resultMsg += "\n\n❌ 실패 닉네임(ID):\n";
             resultMsg += getUserDisplay(failed);
           }
           await interaction.followUp({ content: resultMsg, ephemeral: true });
-
-          // UI 복구
           await msg.edit({ embeds, components: [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
@@ -1026,7 +960,6 @@ module.exports = {
             ),
           ], ephemeral: true });
         }
-        // 일반 페이지 조작 시 갱신
         embeds = getEmbeds(userList, page, title, selectedDays);
         await i.update?.({ embeds, components: [
           new ActionRowBuilder().addComponents(
@@ -1048,7 +981,7 @@ module.exports = {
           ),
         ], ephemeral: true });
         collector.resetTimer();
-      } catch (err) { /* 인터랙션 중 예외는 조용히 무시(UX 유지) */ }
+      } catch (err) {}
     });
 
     selectCollector.on('collect', async i => {
@@ -1085,7 +1018,7 @@ module.exports = {
         ], ephemeral: true });
         collector.resetTimer();
         selectCollector.resetTimer();
-      } catch (err) { /* 무시 */ }
+      } catch (err) {}
     });
 
     collector.on('end', async () => {
@@ -1110,7 +1043,7 @@ module.exports = {
               })))
           ),
         ] });
-      } catch { }
+      } catch {}
     });
     selectCollector.on('end', async () => {
       try {
@@ -1134,7 +1067,7 @@ module.exports = {
               })))
           ),
         ] });
-      } catch { }
+      } catch {}
     });
   }
 };
