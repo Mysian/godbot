@@ -29,6 +29,9 @@ const SHARE_MSG_ID = '1403677011737837590';
 const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
 const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 
+const REQUIRED_ROLE_ID = '1403741005651513464';
+const REDIRECT_CHANNEL_ID = '1202971727915651092';
+
 function getDateRange(period) {
   if (period === 'all') return { from: null, to: null };
   const now = new Date();
@@ -154,7 +157,7 @@ module.exports = function(client) {
         const embed = await buildTop10Embed('7');
         try {
           const msg = await channel.messages.fetch(TOP3_MSG_ID).catch(() => null);
-        if (msg) {
+          if (msg) {
             await msg.edit({ content: '', embeds: [embed] });
           }
         } catch (e) {}
@@ -166,7 +169,7 @@ module.exports = function(client) {
           const rssMB = (memory.rss / 1024 / 1024);
           const heapMB = (memory.heapUsed / 1024 / 1024);
 
-          const load = os.loadavg()[0];
+        const load = os.loadavg()[0];
           const cpuCount = os.cpus().length;
 
           const uptimeSec = Math.floor(process.uptime());
@@ -272,6 +275,22 @@ module.exports = function(client) {
 
       client.on('voiceStateUpdate', (oldState, newState) => {
         const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID];
+
+        if (newState.channelId === TARGET_CHANNEL_ID) {
+          const member = newState.member;
+          if (member && !member.user.bot) {
+            const hasRequired = member.roles.cache.has(REQUIRED_ROLE_ID);
+            if (!hasRequired) {
+              const redirect = newState.guild.channels.cache.get(REDIRECT_CHANNEL_ID);
+              if (redirect && redirect.isVoiceBased()) {
+                member.voice.setChannel(redirect).catch(() => {});
+              } else {
+                member.voice.disconnect().catch(() => {});
+              }
+            }
+          }
+        }
+
         if (
           (oldState.channelId && watchedChannels.includes(oldState.channelId)) ||
           (newState.channelId && watchedChannels.includes(newState.channelId))
