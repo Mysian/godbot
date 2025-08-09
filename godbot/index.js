@@ -93,8 +93,6 @@ client.once(Events.ClientReady, async () => {
   const activityMessages = [
     "/갓비트 로 코인 투자를 진행해보세요.",
     "/도움말 을 통해 까리한 기능들을 확인해보세요.",
-    "/프로필등록 을 통해 자신의 개성을 뽐내세요.",
-    "/정수획득 을 통해 서버 화폐를 벌어보세요.",
     "/후원 을 통해 서버에 힘을 보태주세요!"
   ];
   let activityIndex = 0;
