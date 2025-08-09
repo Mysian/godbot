@@ -27,7 +27,15 @@ function loadVoiceNotify() {
   return JSON.parse(fs.readFileSync(dataPath, 'utf8'));
 }
 
-const SPECIAL_ROLE_ID = '1397076919127900171';
+// 우선순위 1: 도너
+const DONOR_ROLE_ID = '1397076919127900171';
+// 우선순위 2: 아래 4개 역할 중 하나라도 있으면 🐤
+const BIRD_EMOJI_ROLE_IDS = [
+  '1295701019430227988',
+  '1294560033274855425',
+  '1294560128376246272',
+  '1294560174610055198',
+];
 
 module.exports = {
   name: Events.VoiceStateUpdate,
@@ -38,10 +46,15 @@ module.exports = {
 
     const oldChannel = oldState.channel;
     const newChannel = newState.channel;
-    const member = newState.member;
+    const member = newState.member || oldState.member;
+    if (!member) return;
 
-    const hasSpecialRole = member.roles.cache.has(SPECIAL_ROLE_ID);
-    const joinEmoji = hasSpecialRole ? '💜' : '🟢';
+    const roles = member.roles?.cache;
+    const hasDonor = roles?.has(DONOR_ROLE_ID);
+    const hasBirdRole = BIRD_EMOJI_ROLE_IDS.some(id => roles?.has(id));
+
+    // 입장 이모지: 도너(💜) > 새역할(🐤) > 기본(🟢)
+    const joinEmoji = hasDonor ? '💜' : (hasBirdRole ? '🐤' : '🟢');
 
     // 입장
     if (!oldChannel && newChannel) {
@@ -49,7 +62,7 @@ module.exports = {
       if (textChannelId) {
         const textChannel = newState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했습니다.]`);
+          await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했습니다.]`);
         }
       }
     }
@@ -59,24 +72,24 @@ module.exports = {
       if (textChannelId) {
         const textChannel = oldState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          textChannel.send(`-# [🔴 **${member.displayName}** 님이 퇴장했습니다.]`);
+          await textChannel.send(`-# [🔴 **${member.displayName}** 님이 퇴장했습니다.]`);
         }
       }
     }
-    // 이동
+    // 이동 (퇴장 쪽은 🔴, 입장 쪽은 우선순위 이모지)
     else if (oldChannel && newChannel && oldChannel.id !== newChannel.id) {
       const textChannelIdLeave = voiceChannelToTextChannel[oldChannel.id];
       if (textChannelIdLeave) {
         const textChannel = oldState.guild.channels.cache.get(textChannelIdLeave);
         if (textChannel) {
-          textChannel.send(`-# [🔴 **${member.displayName}** 님이 퇴장했습니다.]`);
+          await textChannel.send(`-# [🔴 **${member.displayName}** 님이 퇴장했습니다.]`);
         }
       }
       const textChannelIdJoin = voiceChannelToTextChannel[newChannel.id];
       if (textChannelIdJoin) {
         const textChannel = newState.guild.channels.cache.get(textChannelIdJoin);
         if (textChannel) {
-          textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했습니다.]`);
+          await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했습니다.]`);
         }
       }
     }
