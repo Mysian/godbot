@@ -59,7 +59,7 @@ module.exports = {
   async execute(interaction) {
     const option = interaction.options.getString("옵션");
     const guild = interaction.guild;
-    const activityStats = activityTracker.getStats({});
+    let __activityStatsCache = null;
 
     if (option === "status") {
       await interaction.deferReply({ ephemeral: true });
@@ -408,15 +408,30 @@ module.exports = {
           return;
         }
 
-        const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+        const statAll = activityTracker.getStats({}) || [];
+const stat = statAll.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+
 
         let lastActiveStr = "기록 없음";
-        try {
-          const lastActiveDate = activityTracker.getLastActiveDate(target.id);
-          if (lastActiveDate) {
-            lastActiveStr = lastActiveDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-          }
-        } catch (err) {}
+let lastTs = null;
+try {
+  const logs = activityLogger.getUserActivities(target.id) || [];
+  if (logs.length) {
+    logs.sort((a, b) => b.time - a.time);
+    lastTs = typeof logs[0].time === "number" ? logs[0].time : null;
+  }
+} catch {}
+if (lastTs) {
+  lastActiveStr = new Date(lastTs).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+} else {
+  try {
+    const lastActiveDate = activityTracker.getLastActiveDate(target.id);
+    if (lastActiveDate) {
+      lastActiveStr = lastActiveDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    }
+  } catch {}
+}
+
 
         const joinedAt = member.joinedAt;
         const joinedAtStr = joinedAt
@@ -507,8 +522,8 @@ module.exports = {
           if (i.user.id !== interaction.user.id) return;
           if (i.customId === "refresh_userinfo") {
             await i.deferUpdate();
+            __activityStatsCache = activityTracker.getStats({});
             await showUserInfo(targetUserId, i, collector, parentInteraction);
-
           } else if (i.customId === "timeout" || i.customId === "kick") {
             const modal = new ModalBuilder()
               .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
@@ -525,7 +540,6 @@ module.exports = {
                 )
               );
             await i.showModal(modal);
-
           } else if (i.customId === "timeout_release") {
             await i.update({ content: "⏳ 타임아웃 해제 중...", embeds: [], components: [] });
             try {
@@ -535,7 +549,6 @@ module.exports = {
               await i.followUp({ content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)", ephemeral: true });
             }
             await showUserInfo(targetUserId, i, collector, parentInteraction);
-
           } else if (i.customId === "toggle_longstay") {
             const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
             let action, logMsg;
@@ -559,7 +572,6 @@ module.exports = {
               ]
             });
             await showUserInfo(targetUserId, i, collector, parentInteraction);
-
           } else if (i.customId === "receive_monthly") {
             const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
             if (!hasMonthly) {
@@ -578,7 +590,6 @@ module.exports = {
               ]
             });
             await showUserInfo(targetUserId, i, collector, parentInteraction);
-
           } else if (i.customId === "view_activity_log") {
             await i.deferUpdate();
             await showUserActivityLog(targetUserId, parentInteraction, 0);
