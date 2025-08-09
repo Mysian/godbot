@@ -154,7 +154,7 @@ module.exports = function(client) {
         const embed = await buildTop10Embed('7');
         try {
           const msg = await channel.messages.fetch(TOP3_MSG_ID).catch(() => null);
-          if (msg) {
+        if (msg) {
             await msg.edit({ content: '', embeds: [embed] });
           }
         } catch (e) {}
@@ -234,7 +234,7 @@ module.exports = function(client) {
             new ButtonBuilder().setCustomId('share_live').setStyle(ButtonStyle.Primary).setLabel('음성채널 이용 현황 공유'),
             new ButtonBuilder().setCustomId('share_top10').setStyle(ButtonStyle.Secondary).setLabel('음성채널 TOP10 공유')
           );
-          await shareMsg.edit({ components: [row] });
+          await shareMsg.edit({ content: '', embeds: [], components: [row] });
         }
       } catch (e) {}
 
@@ -247,14 +247,19 @@ module.exports = function(client) {
             await interaction.reply({ content: '음성채널에 접속 중일 때만 공유할 수 있어요!', ephemeral: true });
             return;
           }
+          const vc = member.voice.channel;
+          if (!vc || !vc.isTextBased || !vc.isTextBased()) {
+            await interaction.reply({ content: '해당 음성채널은 텍스트 채팅을 지원하지 않아서 공유할 수 없어요.', ephemeral: true });
+            return;
+          }
           if (interaction.customId === 'share_live') {
             const embed = await buildLiveEmbed();
-            await interaction.channel.send({ embeds: [embed] });
-            await interaction.reply({ content: '현재 음성채널 이용 현황을 공유했어요!', ephemeral: true });
+            await vc.send({ embeds: [embed] });
+            await interaction.reply({ content: '해당 음성채널 채팅방에 현황을 공유했어요!', ephemeral: true });
           } else if (interaction.customId === 'share_top10') {
             const embed = await buildTop10Embed('7');
-            await interaction.channel.send({ embeds: [embed] });
-            await interaction.reply({ content: '최근 7일 음성채널 TOP10을 공유했어요!', ephemeral: true });
+            await vc.send({ embeds: [embed] });
+            await interaction.reply({ content: '해당 음성채널 채팅방에 TOP10을 공유했어요!', ephemeral: true });
           }
         } catch (e) {
           try {
