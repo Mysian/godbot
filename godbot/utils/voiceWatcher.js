@@ -1,5 +1,5 @@
 const { joinVoiceChannel } = require('@discordjs/voice');
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const os = require("os");
 const activityTracker = require("./activity-tracker");
 
@@ -22,9 +22,9 @@ const VOICE_CHANNEL_IDS = [
 ];
 const EMBED_MSG_ID = '1403366474160017489';
 const TOP3_MSG_ID = '1403368538890309682';
-
 const STATUS_CHANNEL_ID = '1345775748526510201';
 const STATUS_MSG_ID = '1403383641882755243';
+const SHARE_MSG_ID = '1403677011737837590';
 
 const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
 const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
@@ -68,7 +68,7 @@ module.exports = function(client) {
       if (!channel || !channel.isTextBased()) return;
       if (!statusChannel || !statusChannel.isTextBased()) return;
 
-      async function updateEmbed() {
+      async function buildLiveEmbed() {
         await guild.members.fetch();
         let total = 0;
         let channelCounts = [];
@@ -94,7 +94,7 @@ module.exports = function(client) {
         else if (total <= 49) headerMsg = `😎: 현재 ${total}명이 이용하고 있습니다!!!`;
         else headerMsg = `🌹: 현재 ${total}명의 유저 여러분이 이용하고 있습니다!!!!!`;
 
-        const embed = new EmbedBuilder()
+        return new EmbedBuilder()
           .setTitle('🌹 음성채널 실시간 이용 현황')
           .setColor(0x2eccfa)
           .setDescription(
@@ -106,6 +106,10 @@ module.exports = function(client) {
               return `• ${ch.name} : ${ch.count === 0 ? '-명' : ch.count + '명'}${tag}`;
             }).join('\n')
           );
+      }
+
+      async function updateEmbed() {
+        const embed = await buildLiveEmbed();
         try {
           const msg = await channel.messages.fetch(EMBED_MSG_ID).catch(() => null);
           if (msg) {
@@ -114,7 +118,7 @@ module.exports = function(client) {
         } catch (e) {}
       }
 
-      async function updateVoiceTop10Embed(period = '7') {
+      async function buildTop10Embed(period = '7') {
         await guild.members.fetch();
         const { from, to } = getDateRange(period);
         let stats = activityTracker.getStats({ from, to, filterType: "voice" });
@@ -139,12 +143,15 @@ module.exports = function(client) {
             }).join('\n')
           : "데이터 없음";
 
-        const embed = new EmbedBuilder()
+        return new EmbedBuilder()
           .setTitle('🏆 최근 7일간 음성채널 이용 TOP 10')
           .setColor(0xfad131)
           .setDescription(voiceStr)
           .setFooter({ text: "일정 주기에 맞춰 실시간 변동됩니다." });
+      }
 
+      async function updateVoiceTop10Embed() {
+        const embed = await buildTop10Embed('7');
         try {
           const msg = await channel.messages.fetch(TOP3_MSG_ID).catch(() => null);
           if (msg) {
@@ -219,6 +226,44 @@ module.exports = function(client) {
       setInterval(() => {
         updateStatusEmbed(guild, statusChannel);
       }, 300000);
+
+      try {
+        const shareMsg = await channel.messages.fetch(SHARE_MSG_ID).catch(() => null);
+        if (shareMsg) {
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('share_live').setStyle(ButtonStyle.Primary).setLabel('음성채널 이용 현황 공유'),
+            new ButtonBuilder().setCustomId('share_top10').setStyle(ButtonStyle.Secondary).setLabel('음성채널 TOP10 공유')
+          );
+          await shareMsg.edit({ components: [row] });
+        }
+      } catch (e) {}
+
+      client.on('interactionCreate', async (interaction) => {
+        try {
+          if (!interaction.isButton()) return;
+          if (interaction.customId !== 'share_live' && interaction.customId !== 'share_top10') return;
+          const member = interaction.guild.members.cache.get(interaction.user.id);
+          if (!member || !member.voice || !member.voice.channelId) {
+            await interaction.reply({ content: '음성채널에 접속 중일 때만 공유할 수 있어요!', ephemeral: true });
+            return;
+          }
+          if (interaction.customId === 'share_live') {
+            const embed = await buildLiveEmbed();
+            await interaction.channel.send({ embeds: [embed] });
+            await interaction.reply({ content: '현재 음성채널 이용 현황을 공유했어요!', ephemeral: true });
+          } else if (interaction.customId === 'share_top10') {
+            const embed = await buildTop10Embed('7');
+            await interaction.channel.send({ embeds: [embed] });
+            await interaction.reply({ content: '최근 7일 음성채널 TOP10을 공유했어요!', ephemeral: true });
+          }
+        } catch (e) {
+          try {
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: '처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.', ephemeral: true });
+            }
+          } catch {}
+        }
+      });
 
       client.on('voiceStateUpdate', (oldState, newState) => {
         const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID];
