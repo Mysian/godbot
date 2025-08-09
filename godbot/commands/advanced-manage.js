@@ -202,8 +202,8 @@ async function fetchLongInactive(guild, days, warnedObj) {
     if (EXEMPT_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
     if (member.user.bot) continue;
     const userData = activityData[member.id];
-    const isBooster = member.roles.cache.has('1207437971037356142');
-    const isDonor   = member.roles.cache.has('1397076919127900171');
+    const isBooster = member.roles.cache.has(BOOSTER_ROLE_ID);
+    const isDonor   = member.roles.cache.has(DONOR_ROLE_ID);
     if (!userData || !getMostRecentDate(userData)) {
       if (isBooster || isDonor) continue;
       arr.push({
@@ -642,7 +642,8 @@ module.exports = {
           const targets = userList.filter(u => u.warned);
           const loading = await interaction.followUp({
             embeds: [progressEmbed('전체 추방 진행중', targets.length, 0, 0)],
-            ephemeral: true
+            ephemeral: true,
+            fetchReply: true
           });
           let success = 0;
           let failed = 0;
@@ -657,7 +658,7 @@ module.exports = {
             } catch {
               failed++;
             }
-            await loading.edit({ embeds: [progressEmbed('전체 추방 진행중', targets.length, success, failed)], ephemeral: true });
+            await loading.edit({ embeds: [progressEmbed('전체 추방 진행중', targets.length, success, failed)] });
           });
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
@@ -687,8 +688,7 @@ module.exports = {
                 .setDescription(`성공 ${success} | 실패 ${failed} | 총 ${targets.length}`)
                 .setColor('#2ecc71')
                 .setTimestamp()
-            ],
-            ephemeral: true
+            ]
           });
         } else if (i.customId === 'warn') {
           await i.deferUpdate();
@@ -698,7 +698,8 @@ module.exports = {
           const targets = userList.filter(u => !warnedObj[u.id]);
           const loading = await interaction.followUp({
             embeds: [progressEmbed('전체 경고 DM 진행중', targets.length, 0, 0)],
-            ephemeral: true
+            ephemeral: true,
+            fetchReply: true
           });
           await runWithConcurrency(targets, 5, async (u) => {
             try {
@@ -711,7 +712,7 @@ module.exports = {
             } catch {
               failed++;
             }
-            await loading.edit({ embeds: [progressEmbed('전체 경고 DM 진행중', targets.length, warned, failed)], ephemeral: true });
+            await loading.edit({ embeds: [progressEmbed('전체 경고 DM 진행중', targets.length, warned, failed)] });
           });
           saveWarnHistory(warnedObj);
           if (option === 'long') {
@@ -753,8 +754,7 @@ module.exports = {
                 .setDescription(`성공 ${warned} | 실패 ${failed} | 총 ${targets.length}`)
                 .setColor('#2ecc71')
                 .setTimestamp()
-            ],
-            ephemeral: true
+            ]
           });
           await msg.edit({ embeds, components: [
             new ActionRowBuilder().addComponents(
