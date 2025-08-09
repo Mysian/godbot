@@ -68,7 +68,7 @@ module.exports = {
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
 
-      const load = os.loadavg()[0]; // 1분 평균 CPU load
+      const load = os.loadavg()[0];
       const cpuCount = os.cpus().length;
 
       const uptimeSec = Math.floor(process.uptime());
@@ -79,28 +79,23 @@ module.exports = {
         return `${h}시간 ${m}분 ${s}초`;
       })();
 
-      // 메모리 상태
       let memState = "🟢";
       if (rssMB > 800) memState = "🔴";
       else if (rssMB > 400) memState = "🟡";
 
-      // CPU 상태
       let cpuState = "🟢";
       if (load > cpuCount) cpuState = "🔴";
       else if (load > cpuCount / 2) cpuState = "🟡";
 
-      // 전체 상태 평가
       let total = "🟢 안정적";
       if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
       else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
-      // 상태별 코멘트
       let comment = "";
       if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
       else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
       else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
 
-      // 호스트 정보
       let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
       if (process.env.RAILWAY_STATIC_URL) {
         hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
@@ -382,7 +377,7 @@ module.exports = {
           await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
           return;
         }
-        await showUserInfo(selectedUserId, i, collector, i); // i를 parentInteraction으로 전달!
+        await showUserInfo(selectedUserId, i, collector, i);
       });
 
       async function showUserInfo(targetUserId, userInteraction, collector, parentInteraction) {
