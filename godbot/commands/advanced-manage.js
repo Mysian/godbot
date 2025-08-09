@@ -623,6 +623,15 @@ module.exports = {
       componentType: ComponentType.StringSelect
     });
 
+    function makeProgressEditor(interactionObj, messageObj) {
+      const id = messageObj.id;
+      return async (embed) => {
+        try {
+          await interactionObj.webhook.editMessage(id, { embeds: [embed] });
+        } catch (e) {}
+      };
+    }
+
     collector.on('collect', async i => {
       try {
         if (i.customId === 'prev') {
@@ -645,6 +654,7 @@ module.exports = {
             ephemeral: true,
             fetchReply: true
           });
+          const editLoading = makeProgressEditor(interaction, loading);
           let success = 0;
           let failed = 0;
           let kickedList = [];
@@ -658,7 +668,7 @@ module.exports = {
             } catch {
               failed++;
             }
-            await loading.edit({ embeds: [progressEmbed('전체 추방 진행중', targets.length, success, failed)] });
+            await editLoading(progressEmbed('전체 추방 진행중', targets.length, success, failed));
           });
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
@@ -681,15 +691,13 @@ module.exports = {
               });
             logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
-          await loading.edit({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('전체 추방 완료')
-                .setDescription(`성공 ${success} | 실패 ${failed} | 총 ${targets.length}`)
-                .setColor('#2ecc71')
-                .setTimestamp()
-            ]
-          });
+          await editLoading(
+            new EmbedBuilder()
+              .setTitle('전체 추방 완료')
+              .setDescription(`성공 ${success} | 실패 ${failed} | 총 ${targets.length}`)
+              .setColor('#2ecc71')
+              .setTimestamp()
+          );
         } else if (i.customId === 'warn') {
           await i.deferUpdate();
           let warned = 0, failed = 0;
@@ -701,6 +709,7 @@ module.exports = {
             ephemeral: true,
             fetchReply: true
           });
+          const editLoading = makeProgressEditor(interaction, loading);
           await runWithConcurrency(targets, 5, async (u) => {
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
@@ -712,7 +721,7 @@ module.exports = {
             } catch {
               failed++;
             }
-            await loading.edit({ embeds: [progressEmbed('전체 경고 DM 진행중', targets.length, warned, failed)] });
+            await editLoading(progressEmbed('전체 경고 DM 진행중', targets.length, warned, failed));
           });
           saveWarnHistory(warnedObj);
           if (option === 'long') {
@@ -747,15 +756,13 @@ module.exports = {
               });
             logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
-          await loading.edit({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('전체 경고 DM 완료')
-                .setDescription(`성공 ${warned} | 실패 ${failed} | 총 ${targets.length}`)
-                .setColor('#2ecc71')
-                .setTimestamp()
-            ]
-          });
+          await editLoading(
+            new EmbedBuilder()
+              .setTitle('전체 경고 DM 완료')
+              .setDescription(`성공 ${warned} | 실패 ${failed} | 총 ${targets.length}`)
+              .setColor('#2ecc71')
+              .setTimestamp()
+          );
           await msg.edit({ embeds, components: [
             new ActionRowBuilder().addComponents(
               new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
