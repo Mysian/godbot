@@ -25,6 +25,10 @@ const PAGE_SIZE = 1900;
 const dataDir = path.join(__dirname, "../data");
 const adminpwPath = path.join(dataDir, "adminpw.json");
 
+// 🔽 추가: 제한 역할 상수
+const SERVER_LOCK_ROLE_ID = "1403748042666151936";      // 서버 활동 제한
+const XP_LOCK_ROLE_ID = "1286237811959140363";          // 경험치 획득 제한
+
 function loadAdminPw() {
   if (!fs.existsSync(adminpwPath)) return null;
   try {
@@ -56,7 +60,6 @@ module.exports = {
           { name: "활동 이력", value: "activity_log" }
         )
     )
-    // ✅ 유저 닉네임(멘션)으로 선택하는 옵션 추가 (두 기능 공용)
     .addUserOption((option) =>
       option
         .setName("유저선택")
@@ -70,9 +73,6 @@ module.exports = {
     const guild = interaction.guild;
     const activityStats = activityTracker.getStats({});
 
-    // ─────────────────────────────────────────────────────────
-    // 서버 상태
-    // ─────────────────────────────────────────────────────────
     if (option === "status") {
       await interaction.deferReply({ ephemeral: true });
 
@@ -130,9 +130,6 @@ module.exports = {
       return;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // JSON 백업
-    // ─────────────────────────────────────────────────────────
     if (option === "json_backup") {
       const modal = new ModalBuilder()
         .setCustomId("adminpw_json_backup")
@@ -152,9 +149,6 @@ module.exports = {
       return;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // 스팸 의심 계정 추방
-    // ─────────────────────────────────────────────────────────
     if (option === "spam_kick") {
       await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
@@ -258,9 +252,6 @@ module.exports = {
       return;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // 활동 이력: 슬래시 옵션으로 받은 유저로 바로 조회
-    // ─────────────────────────────────────────────────────────
     if (option === "activity_log") {
       if (!targetUserOpt) {
         await interaction.reply({ content: "❗ `유저선택` 옵션이 필요해. `/관리 옵션:활동 이력 유저선택:@닉네임` 으로 호출해줘.", ephemeral: true });
@@ -273,11 +264,10 @@ module.exports = {
         return;
       }
 
-      let activityCollector; // 페이지 네비게이션용 수집기
+      let activityCollector;
       await showUserActivityLog(selectedMember.id, interaction, 0);
 
       async function showUserActivityLog(userId, parentInteraction, page = 0) {
-        // 이전 수집기 종료
         if (activityCollector) activityCollector.stop("refresh");
 
         const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
@@ -353,9 +343,6 @@ module.exports = {
       return;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // 유저 관리: 슬래시 옵션으로 받은 유저로 바로 조회
-    // ─────────────────────────────────────────────────────────
     if (option === "user") {
       if (!targetUserOpt) {
         await interaction.reply({ content: "❗ `유저선택` 옵션이 필요해. `/관리 옵션:유저 관리 유저선택:@닉네임` 으로 호출해줘.", ephemeral: true });
@@ -369,11 +356,10 @@ module.exports = {
         return;
       }
 
-      let userCollector; // 버튼 핸들링용 수집기
+      let userCollector;
       await showUserInfo(selectedMember.id, interaction);
 
       async function showUserInfo(targetUserId, parentInteraction) {
-        // 기존 수집기 종료
         if (userCollector) userCollector.stop("refresh");
 
         function formatSeconds(sec) {
@@ -437,6 +423,9 @@ module.exports = {
         const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
         const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
 
+        const hasServerLock = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
+        const hasXpLock = member.roles.cache.has(XP_LOCK_ROLE_ID);
+
         const embed = new EmbedBuilder()
           .setTitle(`유저 정보: ${target.tag}`)
           .setThumbnail(target.displayAvatarURL())
@@ -450,7 +439,15 @@ module.exports = {
             { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
             ...(timeoutActive
               ? [{ name: "⏱️ 타임아웃", value: `**활성화 중**\n만료: ${timeoutExpireStr}`, inline: false }]
-              : [])
+              : []),
+            {
+              name: "제한 상태",
+              value: [
+                `• 서버 활동 제한: ${hasServerLock ? "🟥 ON" : "⬜ OFF"} (${SERVER_LOCK_ROLE_ID})`,
+                `• 경험치 획득 제한: ${hasXpLock ? "🟥 ON" : "⬜ OFF"} (${XP_LOCK_ROLE_ID})`
+              ].join("\n"),
+              inline: false
+            }
           )
           .setColor(0x00bfff);
 
@@ -484,16 +481,32 @@ module.exports = {
             .setStyle(ButtonStyle.Secondary)
         );
 
+        // 🔽 추가: 3번째 줄 - 제한 역할 토글
+        const restrictRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("toggle_server_lock")
+            .setLabel(hasServerLock ? "서버 활동 제한 해제" : "서버 활동 제한 적용")
+            .setStyle(hasServerLock ? ButtonStyle.Secondary : ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId("toggle_xp_lock")
+            .setLabel(hasXpLock ? "경험치 제한 해제" : "경험치 제한 적용")
+            .setStyle(hasXpLock ? ButtonStyle.Secondary : ButtonStyle.Danger)
+        );
+
         await parentInteraction.editReply({
           embeds: [embed],
-          components: [row, roleRow],
+          components: [row, roleRow, restrictRow],
           content: "",
           ephemeral: true
         });
 
         userCollector = parentInteraction.channel.createMessageComponentCollector({
           filter: (i) => i.user.id === interaction.user.id &&
-            ["refresh_userinfo", "timeout", "kick", "timeout_release", "toggle_longstay", "receive_monthly", "view_activity_log"].includes(i.customId),
+            [
+              "refresh_userinfo", "timeout", "kick", "timeout_release",
+              "toggle_longstay", "receive_monthly", "view_activity_log",
+              "toggle_server_lock", "toggle_xp_lock"
+            ].includes(i.customId),
           time: 300 * 1000,
         });
 
@@ -575,6 +588,54 @@ module.exports = {
           } else if (i.customId === "view_activity_log") {
             await i.deferUpdate();
             await showUserActivityLog(targetUserId, parentInteraction, 0);
+
+          } else if (i.customId === "toggle_server_lock") {
+            await i.deferReply({ ephemeral: true });
+            const hasNow = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
+            try {
+              if (hasNow) {
+                await member.roles.remove(SERVER_LOCK_ROLE_ID, "서버 활동 제한 해제");
+              } else {
+                await member.roles.add(SERVER_LOCK_ROLE_ID, "서버 활동 제한 적용");
+              }
+              await interaction.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle("서버 활동 제한 변경")
+                    .setDescription(`${hasNow ? "❌ 해제" : "🟥 적용"}: <@${targetUserId}> (${member.user.tag})\n- 처리자: <@${i.user.id}> (${i.user.tag})`)
+                    .setColor(hasNow ? 0x4caf50 : 0xe53935)
+                    .setTimestamp()
+                ]
+              });
+              await i.editReply({ content: `서버 활동 제한을 ${hasNow ? "해제" : "적용"}했습니다.` });
+            } catch (e) {
+              await i.editReply({ content: "변경 실패 (권한/위치 문제일 수 있음)" });
+            }
+            await showUserInfo(targetUserId, parentInteraction);
+
+          } else if (i.customId === "toggle_xp_lock") {
+            await i.deferReply({ ephemeral: true });
+            const hasNow = member.roles.cache.has(XP_LOCK_ROLE_ID);
+            try {
+              if (hasNow) {
+                await member.roles.remove(XP_LOCK_ROLE_ID, "경험치 획득 제한 해제");
+              } else {
+                await member.roles.add(XP_LOCK_ROLE_ID, "경험치 획득 제한 적용");
+              }
+              await interaction.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle("경험치 획득 제한 변경")
+                    .setDescription(`${hasNow ? "❌ 해제" : "🟥 적용"}: <@${targetUserId}> (${member.user.tag})\n- 처리자: <@${i.user.id}> (${i.user.tag})`)
+                    .setColor(hasNow ? 0x4caf50 : 0xe53935)
+                    .setTimestamp()
+                ]
+              });
+              await i.editReply({ content: `경험치 획득 제한을 ${hasNow ? "해제" : "적용"}했습니다.` });
+            } catch (e) {
+              await i.editReply({ content: "변경 실패 (권한/위치 문제일 수 있음)" });
+            }
+            await showUserInfo(targetUserId, parentInteraction);
           }
         });
 
@@ -634,7 +695,6 @@ module.exports = {
             ephemeral: true
           });
 
-          // 활동 로그 페이지네이션은 별도 수집기 사용 (유저 관리 수집기는 그대로 둠)
           const actCollector = parent.channel.createMessageComponentCollector({
             filter: (btn) =>
               btn.user.id === interaction.user.id &&
