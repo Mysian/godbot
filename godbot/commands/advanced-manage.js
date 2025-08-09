@@ -21,10 +21,12 @@ const BOOSTER_ROLE_ID = '1207437971037356142';
 const DONOR_ROLE_ID = '1397076919127900171';
 
 // ====== 대량 처리 안전 설정(속도 ↑, 리밋 안정) ======
+// ※ 너무 작게 잡으면 느리고, 너무 크게 잡으면 리밋 위험.
+//   필요 시 아래 값만 조정해도 됨.
 const BULK_CONCURRENCY_DM = 3;      // 경고 DM 동시 처리 개수
 const BULK_CONCURRENCY_KICK = 2;    // 추방 동시 처리 개수
-const DM_DELAY_MS = 300;            // 각 DM 사이 지연(안전용)
-const KICK_DELAY_MS = 500;          // 각 추방 사이 지연(안전용)
+const DM_DELAY_MS = 250;            // 각 DM 사이 지연(안전용)
+const KICK_DELAY_MS = 400;          // 각 추방 사이 지연(안전용)
 const PROGRESS_UPDATE_INTERVAL = 1000; // 진행률 임베드 업데이트 최소 간격(ms)
 
 // 색상 역할 ID
@@ -59,7 +61,7 @@ function buildProgressBar(percent, width = 20) {
   return `【${'█'.repeat(filled)}${'░'.repeat(empty)}】 ${percent}%`;
 }
 function makeProgressEmbed(title, subtitle, current, total) {
-  const percent = total > 0 ? Math.floor((current / total) * 100) : 0;
+  const percent = total > 0 ? Math.floor((current / total) * 100) : 100;
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription([
@@ -71,6 +73,13 @@ function makeProgressEmbed(title, subtitle, current, total) {
     ].filter(Boolean).join('\n'))
     .setColor(0x5865F2)
     .setTimestamp();
+}
+
+// ====== 유틸: 안전 편집(예외 삼켜서 진행 멈춤 방지) ======
+async function safeEditProgress(msg, title, subtitle, current, total) {
+  try {
+    await msg.edit({ embeds: [makeProgressEmbed(title, subtitle, current, total)] });
+  } catch (_) { /* 무시: 에페메랄 만료/권한 등으로 실패해도 메인 플로우는 계속 */ }
 }
 
 // ====== 유틸: 제한 동시성 처리기 ======
@@ -89,10 +98,13 @@ async function processInBatches(items, worker, {
     const item = items[i];
     try {
       await worker(item, i);
+    } catch (_) {
+      // worker 내부에서 최대한 예외 처리하지만, 혹시라도 여기로 튀면 무시하고 진행 유지
     } finally {
       done++;
-      onProgress(done, total);
-      // 각 작업 사이에 약간의 지연을 둬서 리밋 여유 확보
+      try {
+        await onProgress(done, total);
+      } catch (_) { /* onProgress 실패 무시 */ }
       if (delayMs > 0) await sleep(delayMs);
       await next();
     }
@@ -704,11 +716,14 @@ module.exports = {
           // ===== 전체 추방: 빠르고 안전하게 + 진행률 임베드 =====
           await i.deferUpdate();
 
-          // 진행률 임베드 생성
-          const targets = userList.filter(u => u.warned); // 경고된 대상만 추방
+          // 대상 산정: 경고된 대상만 추방
+          const targets = userList.filter(u => u.warned);
           const total = targets.length;
+
+          // 진행률 임베드 생성
+          const subtitle = `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`;
           const progressMsg = await interaction.followUp({
-            embeds: [makeProgressEmbed('🚨 전체 추방 실행 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, 0, total)],
+            embeds: [makeProgressEmbed('🚨 전체 추방 실행 중', subtitle, 0, total)],
             ephemeral: true
           });
 
@@ -739,7 +754,11 @@ module.exports = {
           let kicked = 0;
           const kickedList = [];
           const failed = [];
-          let lastUpdate = Date.now();
+
+          // 소량 대상(<=5)은 매 항목 즉시 업데이트, 그 외에는 스로틀
+          const updateInterval = total <= 5 ? 0 : PROGRESS_UPDATE_INTERVAL;
+          let lastUpdate = 0;
+          let doneCount = 0;
 
           await processInBatches(
             targets,
@@ -750,16 +769,17 @@ module.exports = {
                   await m.kick(`고급관리 - ${title} 일괄 추방`);
                   kicked++;
                   kickedList.push({ nickname: u.nickname, id: u.id });
+                } else {
+                  failed.push({ nickname: u.nickname, id: u.id });
                 }
               } catch {
                 failed.push({ nickname: u.nickname, id: u.id });
               } finally {
+                doneCount++;
                 const now = Date.now();
-                if (now - lastUpdate >= PROGRESS_UPDATE_INTERVAL) {
+                if (updateInterval === 0 || now - lastUpdate >= updateInterval || doneCount === total) {
                   lastUpdate = now;
-                  await progressMsg.edit({
-                    embeds: [makeProgressEmbed('🚨 전체 추방 실행 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, kicked + failed.length, total)]
-                  }).catch(() => {});
+                  await safeEditProgress(progressMsg, '🚨 전체 추방 실행 중', subtitle, doneCount, total);
                 }
               }
             },
@@ -767,11 +787,9 @@ module.exports = {
               concurrency: BULK_CONCURRENCY_KICK,
               delayMs: KICK_DELAY_MS,
               onProgress: async (done, tot) => {
-                // 최종 100% 보정용
+                // 보강: 어떤 이유로든 위 편집이 실패했어도 마지막엔 100%로 고정
                 if (done === tot) {
-                  await progressMsg.edit({
-                    embeds: [makeProgressEmbed('✅ 전체 추방 완료', `기준: ${title} / ${selectedDays}일`, done, tot)]
-                  }).catch(() => {});
+                  await safeEditProgress(progressMsg, '✅ 전체 추방 완료', `기준: ${title} / ${selectedDays}일`, done, tot);
                 }
               }
             }
@@ -854,8 +872,9 @@ module.exports = {
           const total = targets.length;
 
           // 진행률 임베드 생성
+          const subtitle = `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`;
           const progressMsg = await interaction.followUp({
-            embeds: [makeProgressEmbed('📣 전체 경고 DM 발송 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, 0, total)],
+            embeds: [makeProgressEmbed('📣 전체 경고 DM 발송 중', subtitle, 0, total)],
             ephemeral: true
           });
 
@@ -885,7 +904,11 @@ module.exports = {
 
           let warned = 0, failed = [];
           const warnedList = [];
-          let lastUpdate = Date.now();
+
+          // 소량 대상(<=5)은 매 항목 즉시 업데이트, 그 외에는 스로틀
+          const updateInterval = total <= 5 ? 0 : PROGRESS_UPDATE_INTERVAL;
+          let lastUpdate = 0;
+          let doneCount = 0;
 
           await processInBatches(
             targets,
@@ -893,24 +916,34 @@ module.exports = {
               try {
                 const m = await guild.members.fetch(u.id).catch(() => null);
                 if (m) {
-                  // 안내 DM 전송
-                  await m.send(
-                    `⚠️ [${guild.name}] 비활동(${selectedDays}일 기준) 상태로 **추방 대상**이 될 수 있습니다.\n` +
-                    `서버 활동을 진행해주세요. (${title})`
-                  ).catch(() => { failed.push({ id: u.id, nickname: u.nickname }); });
-                  warnedObj[u.id] = { ts: Date.now() };
-                  warned++;
-                  warnedList.push({ nickname: u.nickname, id: u.id });
+                  // 안내 DM 전송 (성공/실패 분리)
+                  let dmOk = true;
+                  try {
+                    await m.send(
+                      `⚠️ [${guild.name}] 비활동(${selectedDays}일 기준) 상태로 **추방 대상**이 될 수 있습니다.\n` +
+                      `서버 활동을 진행해주세요. (${title})`
+                    );
+                  } catch (_) {
+                    dmOk = false;
+                  }
+                  if (dmOk) {
+                    warnedObj[u.id] = { ts: Date.now() };
+                    warned++;
+                    warnedList.push({ nickname: u.nickname, id: u.id });
+                  } else {
+                    failed.push({ id: u.id, nickname: u.nickname });
+                  }
+                } else {
+                  failed.push({ id: u.id, nickname: u.nickname });
                 }
               } catch {
                 failed.push({ id: u.id, nickname: u.nickname });
               } finally {
+                doneCount++;
                 const now = Date.now();
-                if (now - lastUpdate >= PROGRESS_UPDATE_INTERVAL) {
+                if (updateInterval === 0 || now - lastUpdate >= updateInterval || doneCount === total) {
                   lastUpdate = now;
-                  await progressMsg.edit({
-                    embeds: [makeProgressEmbed('📣 전체 경고 DM 발송 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, warned + failed.length, total)]
-                  }).catch(() => {});
+                  await safeEditProgress(progressMsg, '📣 전체 경고 DM 발송 중', subtitle, doneCount, total);
                 }
               }
             },
@@ -918,11 +951,9 @@ module.exports = {
               concurrency: BULK_CONCURRENCY_DM,
               delayMs: DM_DELAY_MS,
               onProgress: async (done, tot) => {
-                // 최종 100% 보정용
+                // 보강: 어떤 이유로든 위 편집이 실패했어도 마지막엔 100%로 고정
                 if (done === tot) {
-                  await progressMsg.edit({
-                    embeds: [makeProgressEmbed('✅ 전체 경고 DM 완료', `기준: ${title} / ${selectedDays}일`, done, tot)]
-                  }).catch(() => {});
+                  await safeEditProgress(progressMsg, '✅ 전체 경고 DM 완료', `기준: ${title} / ${selectedDays}일`, done, tot);
                 }
               }
             }
@@ -1017,7 +1048,7 @@ module.exports = {
           ),
         ], ephemeral: true });
         collector.resetTimer();
-      } catch (err) { }
+      } catch (err) { /* 인터랙션 중 예외는 조용히 무시(UX 유지) */ }
     });
 
     selectCollector.on('collect', async i => {
@@ -1054,7 +1085,7 @@ module.exports = {
         ], ephemeral: true });
         collector.resetTimer();
         selectCollector.resetTimer();
-      } catch (err) { }
+      } catch (err) { /* 무시 */ }
     });
 
     collector.on('end', async () => {
