@@ -1,3 +1,4 @@
+// manage.js
 const {
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -54,13 +55,24 @@ module.exports = {
           { name: "스팸의심 계정 추방", value: "spam_kick" },
           { name: "활동 이력", value: "activity_log" }
         )
+    )
+    // ✅ 유저 닉네임(멘션)으로 선택하는 옵션 추가 (두 기능 공용)
+    .addUserOption((option) =>
+      option
+        .setName("유저선택")
+        .setDescription("대상 유저를 선택하세요. (유저 관리/활동 이력에서 필요)")
+        .setRequired(false)
     ),
 
   async execute(interaction) {
     const option = interaction.options.getString("옵션");
+    const targetUserOpt = interaction.options.getUser("유저선택");
     const guild = interaction.guild;
     const activityStats = activityTracker.getStats({});
 
+    // ─────────────────────────────────────────────────────────
+    // 서버 상태
+    // ─────────────────────────────────────────────────────────
     if (option === "status") {
       await interaction.deferReply({ ephemeral: true });
 
@@ -68,7 +80,7 @@ module.exports = {
       const rssMB = (memory.rss / 1024 / 1024);
       const heapMB = (memory.heapUsed / 1024 / 1024);
 
-      const load = os.loadavg()[0]; // 1분 평균 CPU load
+      const load = os.loadavg()[0];
       const cpuCount = os.cpus().length;
 
       const uptimeSec = Math.floor(process.uptime());
@@ -79,28 +91,23 @@ module.exports = {
         return `${h}시간 ${m}분 ${s}초`;
       })();
 
-      // 메모리 상태
       let memState = "🟢";
       if (rssMB > 800) memState = "🔴";
       else if (rssMB > 400) memState = "🟡";
 
-      // CPU 상태
       let cpuState = "🟢";
       if (load > cpuCount) cpuState = "🔴";
       else if (load > cpuCount / 2) cpuState = "🟡";
 
-      // 전체 상태 평가
       let total = "🟢 안정적";
       if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
       else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
 
-      // 상태별 코멘트
       let comment = "";
       if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
       else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
       else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
 
-      // 호스트 정보
       let hostInfo = `플랫폼: ${os.platform()} (${os.arch()})\n호스트: ${os.hostname()}`;
       if (process.env.RAILWAY_STATIC_URL) {
         hostInfo += `\nRailway URL: ${process.env.RAILWAY_STATIC_URL}`;
@@ -122,7 +129,10 @@ module.exports = {
       await interaction.editReply({ embeds: [embed], ephemeral: true });
       return;
     }
-    
+
+    // ─────────────────────────────────────────────────────────
+    // JSON 백업
+    // ─────────────────────────────────────────────────────────
     if (option === "json_backup") {
       const modal = new ModalBuilder()
         .setCustomId("adminpw_json_backup")
@@ -142,6 +152,9 @@ module.exports = {
       return;
     }
 
+    // ─────────────────────────────────────────────────────────
+    // 스팸 의심 계정 추방
+    // ─────────────────────────────────────────────────────────
     if (option === "spam_kick") {
       await interaction.deferReply({ ephemeral: true });
       const members = await guild.members.fetch();
@@ -245,38 +258,28 @@ module.exports = {
       return;
     }
 
+    // ─────────────────────────────────────────────────────────
+    // 활동 이력: 슬래시 옵션으로 받은 유저로 바로 조회
+    // ─────────────────────────────────────────────────────────
     if (option === "activity_log") {
+      if (!targetUserOpt) {
+        await interaction.reply({ content: "❗ `유저선택` 옵션이 필요해. `/관리 옵션:활동 이력 유저선택:@닉네임` 으로 호출해줘.", ephemeral: true });
+        return;
+      }
       await interaction.deferReply({ ephemeral: true });
-      const userSelectRow = new ActionRowBuilder().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("activity_user_select_menu")
-          .setPlaceholder("활동 이력 조회할 유저 선택")
-          .setMinValues(1)
-          .setMaxValues(1)
-      );
-      await interaction.editReply({
-        content: "활동 이력을 조회할 유저를 선택하세요.",
-        components: [userSelectRow],
-        ephemeral: true
-      });
+      const selectedMember = await guild.members.fetch(targetUserOpt.id).catch(() => null);
+      if (!selectedMember) {
+        await interaction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
+        return;
+      }
 
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id && i.customId === "activity_user_select_menu",
-        time: 180 * 1000,
-      });
-
-      collector.on("collect", async (i) => {
-        const selectedUserId = i.values[0];
-        const member = await guild.members.fetch(selectedUserId).catch(() => null);
-        if (!member) {
-          await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
-          return;
-        }
-        await i.deferReply({ ephemeral: true });
-        await showUserActivityLog(selectedUserId, i, 0);
-      });
+      let activityCollector; // 페이지 네비게이션용 수집기
+      await showUserActivityLog(selectedMember.id, interaction, 0);
 
       async function showUserActivityLog(userId, parentInteraction, page = 0) {
+        // 이전 수집기 종료
+        if (activityCollector) activityCollector.stop("refresh");
+
         const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
         if (!user) {
           await parentInteraction.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
@@ -312,8 +315,7 @@ module.exports = {
           .setFooter({ text: `페이지 ${page + 1} / ${Math.ceil(activities.length / perPage)}` })
           .setColor(0x7fdfff);
 
-        const navRow = new ActionRowBuilder();
-        navRow.addComponents(
+        const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("activity_prev")
             .setLabel("◀ 이전")
@@ -332,67 +334,47 @@ module.exports = {
           ephemeral: true
         });
 
-        const buttonCollector = parentInteraction.channel.createMessageComponentCollector({
+        activityCollector = parentInteraction.channel.createMessageComponentCollector({
           filter: (btn) =>
             btn.user.id === interaction.user.id &&
             ["activity_prev", "activity_next"].includes(btn.customId),
           time: 180 * 1000,
         });
 
-        buttonCollector.on("collect", async (btn) => {
+        activityCollector.on("collect", async (btn) => {
           await btn.deferUpdate();
           if (btn.customId === "activity_prev" && page > 0) {
             await showUserActivityLog(userId, parentInteraction, page - 1);
-            buttonCollector.stop();
           } else if (btn.customId === "activity_next" && startIdx + perPage < activities.length) {
             await showUserActivityLog(userId, parentInteraction, page + 1);
-            buttonCollector.stop();
           }
         });
       }
       return;
     }
 
+    // ─────────────────────────────────────────────────────────
+    // 유저 관리: 슬래시 옵션으로 받은 유저로 바로 조회
+    // ─────────────────────────────────────────────────────────
     if (option === "user") {
+      if (!targetUserOpt) {
+        await interaction.reply({ content: "❗ `유저선택` 옵션이 필요해. `/관리 옵션:유저 관리 유저선택:@닉네임` 으로 호출해줘.", ephemeral: true });
+        return;
+      }
       await interaction.deferReply({ ephemeral: true });
 
-      const userSelectRow = new ActionRowBuilder().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("user_select_menu")
-          .setPlaceholder("관리할 유저 선택 (닉네임 일부 입력 가능)")
-          .setMinValues(1)
-          .setMaxValues(1)
-      );
+      const selectedMember = await guild.members.fetch(targetUserOpt.id).catch(() => null);
+      if (!selectedMember) {
+        await interaction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
+        return;
+      }
 
-      await interaction.editReply({
-        content: "관리할 유저를 선택하세요.\n(닉네임 일부 입력 시 자동 검색/필터)",
-        components: [userSelectRow],
-        ephemeral: true
-      });
+      let userCollector; // 버튼 핸들링용 수집기
+      await showUserInfo(selectedMember.id, interaction);
 
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id && i.customId === "user_select_menu",
-        time: 300 * 1000,
-      });
-
-      collector.on("collect", async (i) => {
-        const selectedUserId = i.values[0];
-        const member = await guild.members.fetch(selectedUserId).catch(() => null);
-        if (!member) {
-          await i.reply({ content: "❌ 해당 유저를 찾을 수 없습니다.", ephemeral: true });
-          return;
-        }
-        await showUserInfo(selectedUserId, i, collector, i); // i를 parentInteraction으로 전달!
-      });
-
-      async function showUserInfo(targetUserId, userInteraction, collector, parentInteraction) {
-        if (!userInteraction.deferred && !userInteraction.replied) {
-          if (userInteraction.isButton?.() || userInteraction.isStringSelectMenu?.() || userInteraction.isUserSelectMenu?.()) {
-            await userInteraction.deferUpdate();
-          } else {
-            await userInteraction.deferReply({ ephemeral: true });
-          }
-        }
+      async function showUserInfo(targetUserId, parentInteraction) {
+        // 기존 수집기 종료
+        if (userCollector) userCollector.stop("refresh");
 
         function formatSeconds(sec) {
           sec = Math.floor(sec || 0);
@@ -403,13 +385,11 @@ module.exports = {
           if (m) return `${m}분 ${s}초`;
           return `${s}초`;
         }
+
         const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
         const member = await guild.members.fetch(targetUserId).catch(() => null);
         if (!member || !target) {
-          const errorReply = { content: "❌ 해당 유저를 찾을 수 없습니다." };
-          userInteraction.editReply
-            ? await userInteraction.editReply(errorReply)
-            : await userInteraction.update({ ...errorReply, embeds: [], components: [] });
+          await parentInteraction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다." });
           return;
         }
 
@@ -497,22 +477,30 @@ module.exports = {
           new ButtonBuilder()
             .setCustomId("receive_monthly")
             .setLabel("월세 받기")
-            .setStyle(ButtonStyle.Primary)
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId("view_activity_log")
+            .setLabel("활동 이력 보기")
+            .setStyle(ButtonStyle.Secondary)
         );
 
-        await userInteraction.editReply({
+        await parentInteraction.editReply({
           embeds: [embed],
           components: [row, roleRow],
           content: "",
           ephemeral: true
         });
 
-        if (!collector) return;
-        collector.on("collect", async (i) => {
-          if (i.user.id !== interaction.user.id) return;
+        userCollector = parentInteraction.channel.createMessageComponentCollector({
+          filter: (i) => i.user.id === interaction.user.id &&
+            ["refresh_userinfo", "timeout", "kick", "timeout_release", "toggle_longstay", "receive_monthly", "view_activity_log"].includes(i.customId),
+          time: 300 * 1000,
+        });
+
+        userCollector.on("collect", async (i) => {
           if (i.customId === "refresh_userinfo") {
             await i.deferUpdate();
-            await showUserInfo(targetUserId, i, collector, parentInteraction);
+            await showUserInfo(targetUserId, parentInteraction);
 
           } else if (i.customId === "timeout" || i.customId === "kick") {
             const modal = new ModalBuilder()
@@ -539,12 +527,12 @@ module.exports = {
             } catch (err) {
               await i.followUp({ content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)", ephemeral: true });
             }
-            await showUserInfo(targetUserId, i, collector, parentInteraction);
+            await showUserInfo(targetUserId, parentInteraction);
 
           } else if (i.customId === "toggle_longstay") {
-            const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
+            const hasLongStayNow = member.roles.cache.has(EXCLUDE_ROLE_ID);
             let action, logMsg;
-            if (hasLongStay) {
+            if (hasLongStayNow) {
               await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
               action = "해제";
               logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
@@ -559,15 +547,15 @@ module.exports = {
                 new EmbedBuilder()
                   .setTitle("장기 투숙객 역할 변경")
                   .setDescription(logMsg)
-                  .setColor(hasLongStay ? 0xff5555 : 0x55ff55)
+                  .setColor(hasLongStayNow ? 0xff5555 : 0x55ff55)
                   .setTimestamp()
               ]
             });
-            await showUserInfo(targetUserId, i, collector, parentInteraction);
+            await showUserInfo(targetUserId, parentInteraction);
 
           } else if (i.customId === "receive_monthly") {
-            const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
-            if (!hasMonthly) {
+            const hasMonthlyNow = member.roles.cache.has(MONTHLY_ROLE_ID);
+            if (!hasMonthlyNow) {
               await i.reply({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
               return;
             }
@@ -582,7 +570,7 @@ module.exports = {
                   .setTimestamp()
               ]
             });
-            await showUserInfo(targetUserId, i, collector, parentInteraction);
+            await showUserInfo(targetUserId, parentInteraction);
 
           } else if (i.customId === "view_activity_log") {
             await i.deferUpdate();
@@ -590,15 +578,15 @@ module.exports = {
           }
         });
 
-        async function showUserActivityLog(userId, parentInteraction, page = 0) {
+        async function showUserActivityLog(userId, parent, page = 0) {
           const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
           if (!user) {
-            await parentInteraction.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
+            await parent.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
             return;
           }
           const activities = activityLogger.getUserActivities(userId).sort((a, b) => b.time - a.time);
           if (!activities.length) {
-            await parentInteraction.editReply({ content: "최근 활동 기록이 없거나 디스코드 활동 기능을 OFF한 유저", ephemeral: true });
+            await parent.editReply({ content: "최근 활동 기록이 없거나 디스코드 활동 기능을 OFF한 유저", ephemeral: true });
             return;
           }
 
@@ -640,33 +628,34 @@ module.exports = {
               .setDisabled(startIdx + perPage >= activities.length)
           );
 
-          await parentInteraction.editReply({
+          await parent.editReply({
             embeds: [embed],
             components: [navRow],
             ephemeral: true
           });
 
-          const buttonCollector = parentInteraction.channel.createMessageComponentCollector({
+          // 활동 로그 페이지네이션은 별도 수집기 사용 (유저 관리 수집기는 그대로 둠)
+          const actCollector = parent.channel.createMessageComponentCollector({
             filter: (btn) =>
               btn.user.id === interaction.user.id &&
               ["activity_prev", "activity_next"].includes(btn.customId),
             time: 180 * 1000,
           });
 
-          buttonCollector.on("collect", async (btn) => {
+          actCollector.on("collect", async (btn) => {
             await btn.deferUpdate();
             if (btn.customId === "activity_prev" && page > 0) {
-              await showUserActivityLog(userId, parentInteraction, page - 1);
-              buttonCollector.stop();
+              await showUserActivityLog(userId, parent, page - 1);
+              actCollector.stop("refresh");
             } else if (btn.customId === "activity_next" && startIdx + perPage < activities.length) {
-              await showUserActivityLog(userId, parentInteraction, page + 1);
-              buttonCollector.stop();
+              await showUserActivityLog(userId, parent, page + 1);
+              actCollector.stop("refresh");
             }
           });
         }
       }
       return;
-    } 
+    }
   },
 
   async modalSubmit(interaction) {
