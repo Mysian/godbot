@@ -1,3 +1,4 @@
+// activity-stats.js
 const cron = require('node-cron');
 const activityTracker = require('../utils/activity-tracker');
 const client = require('../index').client;
@@ -7,6 +8,7 @@ const { addBE } = require('../commands/be-util.js'); // 추가
 const TARGET_CHANNEL_ID = "1202425624061415464";
 const SERVER_ICON_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389194104424108223/2D.png?ex=6863bb54&is=686269d4&hm=59f7fbfb39d474b2577fbc87765daa533f636fa3e702285c24eda0fd51aebaa3&=&format=webp&quality=lossless";
 const THUMBNAIL_URL = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=6863b968&is=686267e8&hm=f5cd94557360f427a8a3bfca9b8c27290ce29d5e655871541c309133b0082e85&=&format=webp";
+const DONOR_ROLE_ID = "1397076919127900171"; // 💜 𝕯𝖔𝖓𝖔𝖗 역할
 
 const userCache = new Map();
 async function getDisplayName(userId) {
@@ -61,6 +63,36 @@ function getWeekRangeKST() {
     from: start.toISOString().slice(0,10),
     to: end.toISOString().slice(0,10)
   };
+}
+
+// 길드의 𝕯𝖔𝖓𝖔𝖗 닉네임 목록 문자열 생성 (최대 20명, 초과 시 "외 N인")
+async function buildDonorLine(guild) {
+  try {
+    if (!guild) return null;
+    // 역할 객체 보장
+    const role = guild.roles.cache.get(DONOR_ROLE_ID) || await guild.roles.fetch(DONOR_ROLE_ID).catch(() => null);
+    if (!role) return "현재 후원자 없음";
+
+    const members = await guild.members.fetch();
+    const donors = members.filter(m => m.roles.cache.has(DONOR_ROLE_ID));
+
+    if (!donors.size) return "현재 후원자 없음";
+
+    // 닉네임(없으면 사용자명) 기준으로 정렬
+    const names = donors
+      .map(m => (m.nickname || m.user.username))
+      .sort((a, b) => a.localeCompare(b, 'ko'));
+
+    const maxShow = 20;
+    const shown = names.slice(0, maxShow).map(n => `${n}님`);
+    const extra = names.length - shown.length;
+
+    return extra > 0
+      ? `${shown.join(', ')} 외 ${extra}인`
+      : shown.join(', ');
+  } catch {
+    return "현재 후원자 없음";
+  }
 }
 
 // [1] 매일 오전 9시 (한국시간)
@@ -122,6 +154,14 @@ cron.schedule('0 9 * * *', async () => {
       inline: false
     });
   }
+
+  // 💜 후원자 감사 라인 (최대 20명, 초과 시 "외 N인")
+  const donorLine = await buildDonorLine(channel.guild);
+  embed.addFields({
+    name: '💜 후원 혜택을 받는 𝕯𝖔𝖓𝖔𝖗',
+    value: donorLine || "현재 후원자 없음",
+    inline: false
+  });
 
   embed.addFields({
     name: '\u200b',
