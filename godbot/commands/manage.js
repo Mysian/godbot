@@ -24,10 +24,9 @@ const SPAM_ROLE_ID = "1205052922296016906";
 const PAGE_SIZE = 1900;
 const dataDir = path.join(__dirname, "../data");
 const adminpwPath = path.join(dataDir, "adminpw.json");
-
-// 🔽 추가: 제한 역할 상수
-const SERVER_LOCK_ROLE_ID = "1403748042666151936";      // 서버 활동 제한
-const XP_LOCK_ROLE_ID = "1286237811959140363";          // 경험치 획득 제한
+const SERVER_LOCK_ROLE_ID = "1403748042666151936";
+const XP_LOCK_ROLE_ID = "1286237811959140363";
+const VOICE_REDIRECT_CHANNEL_ID = "1202971727915651092";
 
 function loadAdminPw() {
   if (!fs.existsSync(adminpwPath)) return null;
@@ -481,7 +480,6 @@ module.exports = {
             .setStyle(ButtonStyle.Secondary)
         );
 
-        // 🔽 추가: 3번째 줄 - 제한 역할 토글
         const restrictRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("toggle_server_lock")
@@ -597,6 +595,20 @@ module.exports = {
                 await member.roles.remove(SERVER_LOCK_ROLE_ID, "서버 활동 제한 해제");
               } else {
                 await member.roles.add(SERVER_LOCK_ROLE_ID, "서버 활동 제한 적용");
+                const currentVcId = member.voice && member.voice.channelId;
+                if (currentVcId && currentVcId !== VOICE_REDIRECT_CHANNEL_ID) {
+                  const dest = i.guild.channels.cache.get(VOICE_REDIRECT_CHANNEL_ID);
+                  if (dest) {
+                    try {
+                      await member.voice.setChannel(dest, "서버 활동 제한 적용: 지정 음성채널로 이동");
+                      await i.followUp({ content: `🔒 서버 활동 제한 적용됨. 현재 음성채널에 있어 ${dest.name}로 이동시켰습니다.`, ephemeral: true });
+                    } catch {
+                      await i.followUp({ content: "⚠️ 이동 실패: 권한 또는 대상 채널 상태를 확인하세요.", ephemeral: true });
+                    }
+                  } else {
+                    await i.followUp({ content: "⚠️ 이동 실패: 대상 음성채널을 찾을 수 없습니다.", ephemeral: true });
+                  }
+                }
               }
               await interaction.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
                 embeds: [
