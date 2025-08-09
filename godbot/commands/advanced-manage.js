@@ -20,6 +20,13 @@ const LOG_CHANNEL_ID = '1380874052855529605';
 const BOOSTER_ROLE_ID = '1207437971037356142';
 const DONOR_ROLE_ID = '1397076919127900171';
 
+// ====== 대량 처리 안전 설정(속도 ↑, 리밋 안정) ======
+const BULK_CONCURRENCY_DM = 3;      // 경고 DM 동시 처리 개수
+const BULK_CONCURRENCY_KICK = 2;    // 추방 동시 처리 개수
+const DM_DELAY_MS = 300;            // 각 DM 사이 지연(안전용)
+const KICK_DELAY_MS = 500;          // 각 추방 사이 지연(안전용)
+const PROGRESS_UPDATE_INTERVAL = 1000; // 진행률 임베드 업데이트 최소 간격(ms)
+
 // 색상 역할 ID
 const COLOR_ROLE_IDS = [
   '1294259058102239305', '1374740411662209085', '1296493619359780925',
@@ -41,6 +48,59 @@ const PERIODS = [
   { label: '60일', value: '60' },
   { label: '90일', value: '90' }
 ];
+
+// ====== 유틸: 지연 함수 ======
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+// ====== 유틸: 진행 바/임베드 ======
+function buildProgressBar(percent, width = 20) {
+  const filled = Math.round((percent / 100) * width);
+  const empty = width - filled;
+  return `【${'█'.repeat(filled)}${'░'.repeat(empty)}】 ${percent}%`;
+}
+function makeProgressEmbed(title, subtitle, current, total) {
+  const percent = total > 0 ? Math.floor((current / total) * 100) : 0;
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription([
+      subtitle ? `> ${subtitle}` : '',
+      '',
+      buildProgressBar(percent),
+      '',
+      `처리: **${current} / ${total}**`
+    ].filter(Boolean).join('\n'))
+    .setColor(0x5865F2)
+    .setTimestamp();
+}
+
+// ====== 유틸: 제한 동시성 처리기 ======
+async function processInBatches(items, worker, {
+  concurrency = 2,
+  delayMs = 250,
+  onProgress = () => {}
+} = {}) {
+  let index = 0;
+  let done = 0;
+  const total = items.length;
+
+  async function next() {
+    const i = index++;
+    if (i >= total) return;
+    const item = items[i];
+    try {
+      await worker(item, i);
+    } finally {
+      done++;
+      onProgress(done, total);
+      // 각 작업 사이에 약간의 지연을 둬서 리밋 여유 확보
+      if (delayMs > 0) await sleep(delayMs);
+      await next();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, total) }, () => next());
+  await Promise.all(workers);
+}
 
 // ====== 음성채널 자동이동 관련 ======
 let voiceAutoEnabled = false;
@@ -216,8 +276,8 @@ async function fetchLongInactive(guild, days, warnedObj) {
     if (member.user.bot) continue;
 
     const userData = activityData[member.id];
-    const isBooster = member.roles.cache.has('1207437971037356142');
-    const isDonor   = member.roles.cache.has('1397076919127900171');
+    const isBooster = member.roles.cache.has(BOOSTER_ROLE_ID);
+    const isDonor   = member.roles.cache.has(DONOR_ROLE_ID);
 
     if (!userData || !getMostRecentDate(userData)) {
       if (isBooster || isDonor) continue;
@@ -404,7 +464,7 @@ module.exports = {
         .setTitle('음성채널 장시간 1인 자동이동 설정')
         .setDescription(
           `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
-          `- 감시 카테고리 내에서 1명이 120분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+          `- 감시 카테고리 내에서 1명이 **${VOICE_AUTO_MINUTES}분** 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
           `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
         )
         .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555);
@@ -430,7 +490,7 @@ module.exports = {
               .setTitle('음성채널 장시간 1인 자동이동 설정')
               .setDescription(
                 `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
-                `- 감시 카테고리 내에서 1명이 60분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+                `- 감시 카테고리 내에서 1명이 **${VOICE_AUTO_MINUTES}분** 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
                 `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
               )
               .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555)
@@ -551,6 +611,7 @@ module.exports = {
       });
       return;
     }
+
     // ============= 기존 기능(유저 목록) ============
     if (option === 'long') {
       title = '장기 미접속 유저';
@@ -640,28 +701,89 @@ module.exports = {
             userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
           }
         } else if (i.customId === 'kick') {
+          // ===== 전체 추방: 빠르고 안전하게 + 진행률 임베드 =====
           await i.deferUpdate();
+
+          // 진행률 임베드 생성
+          const targets = userList.filter(u => u.warned); // 경고된 대상만 추방
+          const total = targets.length;
+          const progressMsg = await interaction.followUp({
+            embeds: [makeProgressEmbed('🚨 전체 추방 실행 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, 0, total)],
+            ephemeral: true
+          });
+
+          // UI 잠금(중복 클릭 방지)
+          await msg.edit({
+            components: [
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(true),
+                new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+                new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
+              ),
+              new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                  .setCustomId('period')
+                  .setPlaceholder(`비활동 기간(일) 선택`)
+                  .setDisabled(true)
+                  .addOptions(PERIODS.map(p => ({
+                    label: p.label,
+                    value: p.value,
+                    default: String(selectedDays) === p.value
+                  })))
+              ),
+            ]
+          });
+
           let kicked = 0;
-          let kickedList = [];
-          for (const u of userList) {
-            if (!u.warned) continue;
-            try {
-              const m = await guild.members.fetch(u.id).catch(() => null);
-              if (m) {
-                await m.kick(`고급관리 - ${title} 일괄 추방`);
-                kicked++;
-                kickedList.push({ nickname: u.nickname, id: u.id });
-                await new Promise(res => setTimeout(res, 1500));
+          const kickedList = [];
+          const failed = [];
+          let lastUpdate = Date.now();
+
+          await processInBatches(
+            targets,
+            async (u) => {
+              try {
+                const m = await guild.members.fetch(u.id).catch(() => null);
+                if (m) {
+                  await m.kick(`고급관리 - ${title} 일괄 추방`);
+                  kicked++;
+                  kickedList.push({ nickname: u.nickname, id: u.id });
+                }
+              } catch {
+                failed.push({ nickname: u.nickname, id: u.id });
+              } finally {
+                const now = Date.now();
+                if (now - lastUpdate >= PROGRESS_UPDATE_INTERVAL) {
+                  lastUpdate = now;
+                  await progressMsg.edit({
+                    embeds: [makeProgressEmbed('🚨 전체 추방 실행 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, kicked + failed.length, total)]
+                  }).catch(() => {});
+                }
               }
-            } catch { }
-          }
+            },
+            {
+              concurrency: BULK_CONCURRENCY_KICK,
+              delayMs: KICK_DELAY_MS,
+              onProgress: async (done, tot) => {
+                // 최종 100% 보정용
+                if (done === tot) {
+                  await progressMsg.edit({
+                    embeds: [makeProgressEmbed('✅ 전체 추방 완료', `기준: ${title} / ${selectedDays}일`, done, tot)]
+                  }).catch(() => {});
+                }
+              }
+            }
+          );
+
           const kickTitle = option === 'long' ? '장기 미접속 유저 일괄 추방' : '비활동 신규 유저 일괄 추방';
           const kickDesc =
             `관리자: <@${interaction.user.id}>\n` +
             `기준: ${option === 'long' ? '장기 미접속 유저' : '비활동 신규 유저'}\n` +
             `비활동 일수: ${selectedDays}일\n` +
-            `전체 대상: ${userList.filter(u => u.warned).length}명\n` +
-            `추방 성공: ${kicked}명`;
+            `전체 대상: ${targets.length}명\n` +
+            `추방 성공: ${kicked}명 / 실패: ${failed.length}명`;
 
           const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
           if (logChannel) {
@@ -675,30 +797,138 @@ module.exports = {
                 name: `추방 닉네임(ID) [${kickedList.length}명]`,
                 value: getUserDisplay(kickedList)
               });
+            if (failed.length)
+              logEmbed.addFields({
+                name: `실패 닉네임(ID) [${failed.length}명]`,
+                value: getUserDisplay(failed)
+              });
             logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
-          await interaction.followUp({ content: `${kicked}명 추방 완료!`, ephemeral: true });
-        } else if (i.customId === 'warn') {
-          await i.deferUpdate();
-          let warned = 0, failed = [];
-          let warnedList = [];
-          warnedObj = readWarnHistory();
-          for (const u of userList) {
-            if (warnedObj[u.id]) continue;
-            try {
-              const m = await guild.members.fetch(u.id).catch(() => null);
-              if (m) {
-                await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`)
-                  .catch(() => { failed.push({ id: u.id, nickname: u.nickname }); });
-                warnedObj[u.id] = { ts: Date.now() };
-                warned++;
-                warnedList.push({ nickname: u.nickname, id: u.id });
-                await new Promise(res => setTimeout(res, 1200));
-              }
-            } catch {
-              failed.push({ id: u.id, nickname: u.nickname });
-            }
+
+          await interaction.followUp({
+            content: `🚨 전체 추방 완료!\n성공: **${kicked}명** / 실패: **${failed.length}명**`,
+            ephemeral: true
+          });
+
+          // 리스트 갱신
+          if (option === 'long') {
+            warnedObj = readWarnHistory();
+            userList = await fetchLongInactive(guild, selectedDays, warnedObj);
+          } else if (option === 'newbie') {
+            warnedObj = readWarnHistory();
+            userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
           }
+          embeds = getEmbeds(userList, page, title, selectedDays);
+
+          // UI 복구
+          await msg.edit({
+            embeds,
+            components: [
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+                new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
+                new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
+              ),
+              new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                  .setCustomId('period')
+                  .setPlaceholder(`비활동 기간(일) 선택`)
+                  .addOptions(PERIODS.map(p => ({
+                    label: p.label,
+                    value: p.value,
+                    default: String(selectedDays) === p.value
+                  })))
+              ),
+            ],
+          });
+
+        } else if (i.customId === 'warn') {
+          // ===== 전체 경고 DM: 빠르고 안전하게 + 진행률 임베드 =====
+          await i.deferUpdate();
+
+          // 대상 산정(아직 경고 안한 유저 우선)
+          warnedObj = readWarnHistory();
+          const targets = userList.filter(u => !warnedObj[u.id]);
+          const total = targets.length;
+
+          // 진행률 임베드 생성
+          const progressMsg = await interaction.followUp({
+            embeds: [makeProgressEmbed('📣 전체 경고 DM 발송 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, 0, total)],
+            ephemeral: true
+          });
+
+          // UI 잠금(중복 클릭 방지)
+          await msg.edit({
+            components: [
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(true),
+                new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+                new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
+              ),
+              new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                  .setCustomId('period')
+                  .setPlaceholder(`비활동 기간(일) 선택`)
+                  .setDisabled(true)
+                  .addOptions(PERIODS.map(p => ({
+                    label: p.label,
+                    value: p.value,
+                    default: String(selectedDays) === p.value
+                  })))
+              ),
+            ]
+          });
+
+          let warned = 0, failed = [];
+          const warnedList = [];
+          let lastUpdate = Date.now();
+
+          await processInBatches(
+            targets,
+            async (u) => {
+              try {
+                const m = await guild.members.fetch(u.id).catch(() => null);
+                if (m) {
+                  // 안내 DM 전송
+                  await m.send(
+                    `⚠️ [${guild.name}] 비활동(${selectedDays}일 기준) 상태로 **추방 대상**이 될 수 있습니다.\n` +
+                    `서버 활동을 진행해주세요. (${title})`
+                  ).catch(() => { failed.push({ id: u.id, nickname: u.nickname }); });
+                  warnedObj[u.id] = { ts: Date.now() };
+                  warned++;
+                  warnedList.push({ nickname: u.nickname, id: u.id });
+                }
+              } catch {
+                failed.push({ id: u.id, nickname: u.nickname });
+              } finally {
+                const now = Date.now();
+                if (now - lastUpdate >= PROGRESS_UPDATE_INTERVAL) {
+                  lastUpdate = now;
+                  await progressMsg.edit({
+                    embeds: [makeProgressEmbed('📣 전체 경고 DM 발송 중', `대상 ${total}명 | 기준: ${title} / ${selectedDays}일`, warned + failed.length, total)]
+                  }).catch(() => {});
+                }
+              }
+            },
+            {
+              concurrency: BULK_CONCURRENCY_DM,
+              delayMs: DM_DELAY_MS,
+              onProgress: async (done, tot) => {
+                // 최종 100% 보정용
+                if (done === tot) {
+                  await progressMsg.edit({
+                    embeds: [makeProgressEmbed('✅ 전체 경고 DM 완료', `기준: ${title} / ${selectedDays}일`, done, tot)]
+                  }).catch(() => {});
+                }
+              }
+            }
+          );
+
+          // 기록 저장 + 리스트 갱신
           saveWarnHistory(warnedObj);
           if (option === 'long') {
             userList = await fetchLongInactive(guild, selectedDays, warnedObj);
@@ -707,6 +937,7 @@ module.exports = {
           }
           embeds = getEmbeds(userList, page, title, selectedDays);
 
+          // 로그 채널 보고
           const warnTitle = option === 'long' ? '장기 미접속 유저 경고 DM' : '비활동 신규 유저 경고 DM';
           const warnDesc =
             `관리자: <@${interaction.user.id}>\n` +
@@ -735,35 +966,38 @@ module.exports = {
             logChannel.send({ embeds: [logEmbed] }).catch(() => {});
           }
 
+          // 결과 에페메랄
           let resultMsg = `✅ DM 발송: ${warned}명 / 실패: ${failed.length}명`;
           if (failed.length > 0) {
             resultMsg += "\n\n❌ 실패 닉네임(ID):\n";
             resultMsg += getUserDisplay(failed);
           }
           await interaction.followUp({ content: resultMsg, ephemeral: true });
+
+          // UI 복구
           await msg.edit({ embeds, components: [
             new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(true),
-              new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary).setDisabled(true),
-              new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(true),
-              new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
-              new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
+              new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+              new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
+              new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
+              new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger),
+              new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
             ),
             new ActionRowBuilder().addComponents(
               new StringSelectMenuBuilder()
                 .setCustomId('period')
                 .setPlaceholder(`비활동 기간(일) 선택`)
-                .setDisabled(true)
                 .addOptions(PERIODS.map(p => ({
                   label: p.label,
                   value: p.value,
                   default: String(selectedDays) === p.value
                 })))
             ),
-          ] });
+          ], ephemeral: true });
         }
+        // 일반 페이지 조작 시 갱신
         embeds = getEmbeds(userList, page, title, selectedDays);
-        await i.update({ embeds, components: [
+        await i.update?.({ embeds, components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
             new ButtonBuilder().setCustomId('refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
