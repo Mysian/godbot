@@ -2,15 +2,13 @@ const fs = require("fs");
 const path = require("path");
 const dataPath = path.join(__dirname, "../activity-data.json");
 
-// === 집계 대상 필터 ===
-const includedCategoryIds = []; // 이 카테고리만 집계
+const includedCategoryIds = [];
 const includedChannelIds = [];
-const excludedCategoryIds = [1318529703480397954, 1318445879455125514, 1204329649530998794]; // 이 카테고리 제외
+const excludedCategoryIds = [1318529703480397954, 1318445879455125514, 1204329649530998794];
 const excludedChannelIds = ["1202971727915651092"];
 
 function isTracked(channel, type = "all") {
   if (!channel) return false;
-  // 메시지/음성 구분 필터
   if (type === "message") {
     if (includedCategoryIds.length && !includedCategoryIds.includes(channel.parentId)) return false;
     if (includedChannelIds.length && !includedChannelIds.includes(channel.id)) return false;
@@ -25,11 +23,9 @@ function isTracked(channel, type = "all") {
     if (excludedChannelIds.includes(channel.id)) return false;
     return true;
   }
-  // 종합
   return isTracked(channel, "message") || isTracked(channel, "voice");
 }
 
-// === 데이터 입출력 ===
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
   return JSON.parse(fs.readFileSync(dataPath));
@@ -37,56 +33,87 @@ function loadData() {
 function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
 }
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+function kstParts(at = new Date()) {
+  const base = at instanceof Date ? at : new Date(at);
+  const k = new Date(base.getTime() + 9 * 60 * 60 * 1000);
+  const y = k.getUTCFullYear();
+  const m = pad2(k.getUTCMonth() + 1);
+  const d = pad2(k.getUTCDate());
+  const h = pad2(k.getUTCHours());
+  return { dateStr: `${y}-${m}-${d}`, hourStr: h };
+}
+function nowKstMs() {
+  return Date.now() + 9 * 60 * 60 * 1000;
+}
+function kstMidnightMs(dateStr) {
+  return new Date(`${dateStr}T00:00:00+09:00`).getTime();
+}
 function pruneOld(data) {
   const keepDays = 90;
-  const now = new Date();
+  const nowMs = nowKstMs();
   for (const userId in data) {
     for (const dateStr of Object.keys(data[userId])) {
-      const date = new Date(dateStr);
-      const diff = (now - date) / (1000 * 60 * 60 * 24);
+      const diff = (nowMs - kstMidnightMs(dateStr)) / (1000 * 60 * 60 * 24);
       if (diff > keepDays) delete data[userId][dateStr];
     }
     if (Object.keys(data[userId]).length === 0) delete data[userId];
   }
 }
 
-// === 메시지/음성 기록 ===
-function addMessage(userId, channel) {
-  if (!isTracked(channel, "message")) return;
-  const today = new Date();
-  const dateStr = today.toISOString().slice(0, 10);
-  const data = loadData();
+function ensureDay(data, userId, dateStr) {
   if (!data[userId]) data[userId] = {};
-  if (!data[userId][dateStr]) data[userId][dateStr] = { message: 0, voice: 0 };
-  data[userId][dateStr].message += 1;
+  if (!data[userId][dateStr]) {
+    data[userId][dateStr] = { message: 0, voice: 0, hours: {}, voiceByChannel: {} };
+  }
+  const d = data[userId][dateStr];
+  if (!d.hours) d.hours = {};
+  if (!d.voiceByChannel) d.voiceByChannel = {};
+  return d;
+}
+function bumpHourBucket(dayObj, hour, kind, amount) {
+  if (!dayObj.hours[hour]) dayObj.hours[hour] = { message: 0, voice: 0 };
+  dayObj.hours[hour][kind] += amount;
+}
+
+function addMessage(userId, channel, at = new Date()) {
+  if (!isTracked(channel, "message")) return;
+  const { dateStr, hourStr } = kstParts(at);
+  const data = loadData();
+  const day = ensureDay(data, userId, dateStr);
+  day.message += 1;
+  bumpHourBucket(day, hourStr, "message", 1);
   pruneOld(data);
   saveData(data);
 }
-function addVoice(userId, seconds, channel) {
+function addVoice(userId, seconds, channel, at = new Date()) {
   if (!isTracked(channel, "voice")) return;
-  const today = new Date();
-  const dateStr = today.toISOString().slice(0, 10);
+  const { dateStr, hourStr } = kstParts(at);
   const data = loadData();
-  if (!data[userId]) data[userId] = {};
-  if (!data[userId][dateStr]) data[userId][dateStr] = { message: 0, voice: 0 };
-  data[userId][dateStr].voice += seconds;
+  const day = ensureDay(data, userId, dateStr);
+  day.voice += seconds;
+  bumpHourBucket(day, hourStr, "voice", seconds);
+  const cid = String(channel.id);
+  day.voiceByChannel[cid] = (day.voiceByChannel[cid] || 0) + seconds;
   pruneOld(data);
   saveData(data);
 }
 
-// === 통계 ===
 function getStats({ from, to, filterType = "all", userId = null }) {
-  // filterType: "all"|"message"|"voice"
   const data = loadData();
-  let result = [];
+  const result = [];
   for (const uid in data) {
     if (userId && uid !== userId) continue;
     let totalMsg = 0, totalVoice = 0;
     for (const date of Object.keys(data[uid])) {
       if (from && date < from) continue;
       if (to && date > to) continue;
-      totalMsg += data[uid][date].message || 0;
-      totalVoice += data[uid][date].voice || 0;
+      const day = data[uid][date] || {};
+      totalMsg += day.message || 0;
+      totalVoice += day.voice || 0;
     }
     if (filterType === "message" && totalMsg === 0) continue;
     if (filterType === "voice" && totalVoice === 0) continue;
@@ -95,7 +122,6 @@ function getStats({ from, to, filterType = "all", userId = null }) {
   return result;
 }
 
-// === 등급 ===
 function getRoleLevel({ message = 0, voice = 0 }) {
   if (voice >= 3600 * 100) return "음성채팅 고인물";
   if (voice >= 3600 * 10) return "음성 매니아";
@@ -104,15 +130,70 @@ function getRoleLevel({ message = 0, voice = 0 }) {
   return null;
 }
 
-// === 마지막 활동일 (가장 최근 날짜) ===
 function getLastActiveDate(userId) {
   const data = loadData();
   const userData = data[userId];
   if (!userData) return null;
   const dates = Object.keys(userData).sort().reverse();
   if (!dates.length) return null;
-  // Date 객체 반환 (시간은 00:00)
-  return new Date(dates[0]);
+  return new Date(`${dates[0]}T00:00:00+09:00`);
+}
+
+function getVoiceChannelUsage({ from, to, userId = null }) {
+  const data = loadData();
+  if (userId) {
+    const user = data[userId] || {};
+    const agg = {};
+    for (const date of Object.keys(user)) {
+      if (from && date < from) continue;
+      if (to && date > to) continue;
+      const vbc = user[date].voiceByChannel || {};
+      for (const cid in vbc) agg[cid] = (agg[cid] || 0) + (vbc[cid] || 0);
+    }
+    return agg;
+  }
+  const list = [];
+  for (const uid in data) {
+    const agg = {};
+    for (const date of Object.keys(data[uid])) {
+      if (from && date < from) continue;
+      if (to && date > to) continue;
+      const vbc = data[uid][date].voiceByChannel || {};
+      for (const cid in vbc) agg[cid] = (agg[cid] || 0) + (vbc[cid] || 0);
+    }
+    list.push({ userId: uid, channels: agg });
+  }
+  return list;
+}
+
+function getDailyHourlyStats({ from, to, userId = null }) {
+  const data = loadData();
+  const out = {};
+  const pushHour = (date, hour, kind, val) => {
+    if (!out[date]) out[date] = {};
+    if (!out[date][hour]) out[date][hour] = { message: 0, voice: 0 };
+    out[date][hour][kind] += val;
+  };
+  const iterUser = (uData) => {
+    for (const date of Object.keys(uData)) {
+      if (from && date < from) continue;
+      if (to && date > to) continue;
+      const day = uData[date] || {};
+      const hours = day.hours || {};
+      for (let h = 0; h < 24; h++) {
+        const hh = pad2(h);
+        const bucket = hours[hh] || { message: 0, voice: 0 };
+        if (bucket.message) pushHour(date, hh, "message", bucket.message);
+        if (bucket.voice) pushHour(date, hh, "voice", bucket.voice);
+      }
+    }
+  };
+  if (userId) {
+    iterUser(data[userId] || {});
+  } else {
+    for (const uid in data) iterUser(data[uid]);
+  }
+  return out;
 }
 
 module.exports = {
@@ -125,5 +206,7 @@ module.exports = {
   excludedCategoryIds,
   excludedChannelIds,
   isTracked,
-  getLastActiveDate, 
+  getLastActiveDate,
+  getVoiceChannelUsage,
+  getDailyHourlyStats
 };
