@@ -96,4 +96,61 @@ async function transferBE(fromId, toId, amount, feePercent, reasonInput) {
   }
 }
 
-module.exports = { loadBE, saveBE, loadConfig, saveConfig, getBE, addBE, transferBE };
+/**
+ * ✅ 서버에 존재하지 않는 유저들의 BE 데이터를 완전 삭제(금액 + 히스토리 전부)
+ * - guild: Discord.Guild 인스턴스
+ * - 반환: { removed: number } 제거된 계정 수
+ */
+async function cleanupBELeftMembers(guild) {
+  let release;
+  try {
+    const members = await guild.members.fetch();
+    const existingIds = new Set(members.map(m => m.id));
+
+    release = await lockfile.lock(bePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 120 } });
+    const be = loadBE();
+    let removed = 0;
+
+    for (const uid of Object.keys(be)) {
+      if (!existingIds.has(uid)) {
+        delete be[uid];      // 금액/히스토리 포함해 해당 유저 키 전체 제거
+        removed++;
+      }
+    }
+
+    saveBE(be);
+    return { removed };
+  } finally {
+    if (release) await release();
+  }
+}
+
+/**
+ * ✅ (대안) 멤버 ID 집합을 직접 넘겨서 청소할 수도 있음
+ * - existingIds: Set<string>
+ */
+async function cleanupBEByIdSet(existingIds) {
+  let release;
+  try {
+    release = await lockfile.lock(bePath, { retries: { retries: 10, minTimeout: 30, maxTimeout: 120 } });
+    const be = loadBE();
+    let removed = 0;
+
+    for (const uid of Object.keys(be)) {
+      if (!existingIds.has(uid)) {
+        delete be[uid];
+        removed++;
+      }
+    }
+
+    saveBE(be);
+    return { removed };
+  } finally {
+    if (release) await release();
+  }
+}
+
+module.exports = {
+  loadBE, saveBE, loadConfig, saveConfig, getBE, addBE, transferBE,
+  cleanupBELeftMembers, cleanupBEByIdSet
+};
