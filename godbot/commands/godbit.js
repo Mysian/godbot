@@ -157,8 +157,11 @@ function getSampledHistory(info, chartRange, chartInterval, chartValue) {
 }
 
 async function ensureBaseCoin(coins) {
-  if (!coins['까리코인']) {
-    const now = new Date().toISOString();
+  const now = new Date().toISOString();
+  const base = coins['까리코인'];
+
+  if (!base) {
+    // 없을 때만 최초 생성 (기본값은 이후 /타입변경으로 자유 변경 가능)
     coins['까리코인'] = {
       price: 1000,
       history: [1000],
@@ -168,8 +171,19 @@ async function ensureBaseCoin(coins) {
       trend: 0.003,
       coinType: "base"
     };
+    return;
   }
-}
+
+  // 이미 있을 경우: 값 "보존". 빠진 필드만 채워넣기 (타입/변동성/트렌드 절대 덮어쓰지 않음)
+  base.price    ??= 1000;
+  base.history  ??= [base.price];
+  base.historyT ??= [base.listedAt || now];
+  base.listedAt ??= now;
+  // 아래 3개는 존재할 경우 유지됨 (타입변경 반영 보존)
+  base.volatility ??= { min: -0.06, max: 0.07 };
+  base.trend      ??= 0.003;
+  base.coinType   ??= "base";
+ }
 
 async function addHistory(info, price) {
   if (!info.history) info.history = [];
