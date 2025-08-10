@@ -221,8 +221,8 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
 
   // 1) activity 유틸에 전용 함수가 있는 경우
   try {
-    if (typeof activity.getVoiceChannelStats === "function") {
-      const stats = activity.getVoiceChannelStats({ from, to, userId }) || {};
+    if (typeof activity.getVoiceChannelUsage === "function") {
+      const stats = activity.getVoiceChannelUsage({ from, to, userId }) || {};
       const top = Object.entries(stats).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
       if (top) {
         const [chId, seconds] = top;
