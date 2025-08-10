@@ -129,14 +129,9 @@ function renderRadarPng({ labels, values }) {
   ctx.fillStyle = "#0a2340";
   ctx.fillRect(0,0,W,H);
 
-  // 제목
-  ctx.fillStyle = "#e7f2ff";
-  ctx.font = "bold 28px Pretendard, Malgun Gothic, sans-serif";
-  ctx.fillText("최근 30일 오각형 스탯", 32, 46);
-
   // 차트 영역
   const cx = W * 0.55, cy = H * 0.52;
-  const rMax = Math.min(W,H) * 0.28;
+  const rMax = Math.min(W,H) * 0.38;
   const axisN = 5;
   const angles = [];
   for (let i=0;i<axisN;i++) angles.push(-Math.PI/2 + i*(2*Math.PI/axisN));
@@ -209,17 +204,6 @@ function renderRadarPng({ labels, values }) {
     const mw = ctx.measureText(label).width;
     ctx.fillText(label, x - mw/2, y - 8);
   }
-
-  // 범례(스케일 설명)
-  ctx.fillStyle = "#9ecaff";
-  ctx.font = "16px Pretendard, Malgun Gothic, sans-serif";
-  const legend = [
-    "스피킹: 30일 30시간 = 100",
-    "타이핑: 30일 1500회 = 100",
-    "친화력: 서로 다른 음성채널 10곳 = 100",
-    "주행성/야행성: 활동 비율(%)"
-  ];
-  legend.forEach((t,i)=> ctx.fillText(t, 32, H - 28 - i*22));
 
   return canvas.toBuffer("image/png");
 }
