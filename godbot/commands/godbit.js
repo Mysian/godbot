@@ -854,8 +854,21 @@ module.exports = {
       if (isDelisted) {
         delistMsg = `⚠️ ${toKSTString(info.delistedAt)}에 상장폐지된 코인입니다.`;
       }
-      const h = (info.history || []).slice(-HISTORY_MAX).reverse();
-      const ht = (info.historyT || []).slice(-HISTORY_MAX).reverse();
+      let rawH = (info.history || []).slice(-HISTORY_MAX).reverse();
+let rawT = (info.historyT || []).slice(-HISTORY_MAX).reverse();
+
+let seenTimes = new Set();
+let h = [];
+let ht = [];
+
+for (let i = 0; i < rawH.length; i++) {
+  let timeKey = toKSTString(rawT[i]); // 같은 시간대인지 판별
+  if (!seenTimes.has(timeKey)) {
+    seenTimes.add(timeKey);
+    h.push(rawH[i]);
+    ht.push(rawT[i]);
+  }
+}
       if (!h.length) {
         return interaction.editReply({ content: `📉 [${coin}] 가격 이력 데이터 없음${delistMsg ? `\n${delistMsg}` : ''}` });
       }
