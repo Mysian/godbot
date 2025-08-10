@@ -170,6 +170,73 @@ function decayRelationships(decayAmount = 0.5, thresholdMs = 1000 * 60 * 60 * 24
   }
 }
 
+/**
+ * ✅ 서버를 나간 유저(길드에 존재하지 않는 ID)와의 관계/교류를 자동 삭제
+ * - guild: Discord.Guild 인스턴스 (guild.members.fetch() 사용)
+ */
+async function cleanupLeftMembers(guild) {
+  try {
+    const members = await guild.members.fetch();
+    const existingIds = new Set(members.map(m => m.id));
+
+    // 관계도 정리
+    for (const userA of Object.keys(data)) {
+      // userA 자체가 나간 경우 전체 삭제
+      if (!existingIds.has(userA)) {
+        delete data[userA];
+        delete lastInteraction[userA];
+        continue;
+      }
+
+      // userA는 남아있고, 상대 userB가 나간 경우만 정리
+      for (const userB of Object.keys(data[userA])) {
+        if (!existingIds.has(userB) || userA === userB) {
+          delete data[userA][userB];
+        }
+      }
+
+      // 비어있으면 가지치기
+      if (Object.keys(data[userA]).length === 0) {
+        delete data[userA];
+      }
+    }
+
+    // 마지막 교류 정리 (상대만 사라진 경우)
+    for (const userA of Object.keys(lastInteraction)) {
+      if (!existingIds.has(userA)) {
+        delete lastInteraction[userA];
+        continue;
+      }
+      for (const userB of Object.keys(lastInteraction[userA])) {
+        if (!existingIds.has(userB) || userA === userB) {
+          delete lastInteraction[userA][userB];
+        }
+      }
+      if (Object.keys(lastInteraction[userA]).length === 0) {
+        delete lastInteraction[userA];
+      }
+    }
+
+    saveData();
+    saveLastInteraction();
+  } catch (e) {
+    console.error("❌ 멤버 정리 실패", e);
+  }
+}
+
+/**
+ * ✅ 유지보수 편의 함수
+ * - 길드 기준으로 나간 유저 데이터 정리 → 점수 감소(감쇠) 순서로 실행
+ * - 사용 예: setInterval(() => maintainRelationships(guild), 1000 * 60 * 10)
+ */
+async function maintainRelationships(guild, opts = {}) {
+  const { decayAmount = 0.5, thresholdMs = 1000 * 60 * 60 * 24 * 3 } = opts;
+  if (guild) {
+    await cleanupLeftMembers(guild);
+  }
+  decayRelationships(decayAmount, thresholdMs);
+}
+
 function getRelation(userA, userB) {
   return getRelationshipLevel(getScore(userA, userB));
 }
@@ -214,13 +281,29 @@ function onMute(userA, userB) {
 function onReport(userA, userB) {}
 
 module.exports = {
-  getScore, setScore, addScore, getRelation, getRelationshipLevel,
+  // 점수/등급
+  getScore,
+  setScore,
+  addScore,
+  getRelation,
+  getRelationshipLevel,
   getTopRelations,
-  onMute, onReport, onStrongNegative, onPositive,
+  getAllScores,
+
+  // 이벤트 훅
+  onMute,
+  onReport,
+  onStrongNegative,
+  onPositive,
+
+  // 유지보수/저장
   loadData: () => data,
   saveData,
   decayRelationships,
   recordInteraction,
   loadLastInteraction: () => lastInteraction,
-  getAllScores
+
+  // 🔥 나간 유저 정리 & 통합 유지보수
+  cleanupLeftMembers,
+  maintainRelationships,
 };
