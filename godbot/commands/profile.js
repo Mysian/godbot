@@ -260,73 +260,103 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
   return "데이터 없음";
 }
 
-// ---- 폴백 포함: 자주 등장하는 시간대(30일, KST) ----
+// ---- 폴백 포함: 자주 등장하는 시간대(30일, KST, 평일/주말 분리) ----
 async function getFavTimeRangeText(userId, now = new Date()) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
+  // 시간대 최다 1시간 구간을 "HH시 ~ HH+1시"로 반환 (없으면 "데이터 없음")
+  const topHourLabel = (hoursMap) => {
+    const top = Object.entries(hoursMap).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
+    if (!top || (top[1] || 0) <= 0) return "데이터 없음";
+    const hour = Number(top[0]);
+    return `${hour}시 ~ ${((hour + 1) % 24)}시`;
+  };
+
+  // 일자(로컬 KST 기준) -> 평일/주말 판별
+  const isWeekday = (d) => {
+    const day = d.getDay(); // 0=일, 6=토
+    return day >= 1 && day <= 5;
+  };
+  const isWeekend = (d) => {
+    const day = d.getDay();
+    return day === 0 || day === 6;
+  };
+
+  // 공통 누적 버킷 준비
+  const emptyHours = () => {
+    const obj = {};
+    for (let h = 0; h < 24; h++) obj[String(h).padStart(2, "0")] = 0;
+    return obj;
+  };
+
+  // 1) 정식 경로: activity.getDailyHourlyStats 사용 (요일 판별 가능)
   try {
     if (typeof activity.getDailyHourlyStats === "function") {
       const dailyHourly = activity.getDailyHourlyStats({ from, to, userId }) || {};
-      const hours = {};
-      for (let h = 0; h < 24; h++) hours[String(h).padStart(2, "0")] = 0;
-      for (const day of Object.keys(dailyHourly)) {
-        const byHour = dailyHourly[day] || {};
+
+      const weekdayHours = emptyHours();
+      const weekendHours = emptyHours();
+
+      for (const dateStr of Object.keys(dailyHourly)) {
+        const dateKst = new Date(`${dateStr}T00:00:00+09:00`);
+        const byHour = dailyHourly[dateStr] || {};
+        const bucketTarget = isWeekday(dateKst) ? weekdayHours : isWeekend(dateKst) ? weekendHours : null;
+        if (!bucketTarget) continue;
+
         for (let h = 0; h < 24; h++) {
           const hh = String(h).padStart(2, "0");
           const b = byHour[hh] || { message: 0, voice: 0 };
+          // 채팅 1건 = 1점, 음성 60초 = 1점
           const score = (b.message || 0) + (b.voice || 0) / 60;
-          hours[hh] += score;
+          bucketTarget[hh] += score;
         }
       }
-      const top = Object.entries(hours).sort((a, b) => b[1] - a[1])[0];
-      if (top && top[1] > 0) {
-        const hour = Number(top[0]);
-        return `${hour}시 ~ ${((hour + 1) % 24)}시`;
-      }
+
+      const weekdayRange = topHourLabel(weekdayHours);
+      const weekendRange = topHourLabel(weekendHours);
+      return `평일: ${weekdayRange}\n주말: ${weekendRange}`;
     }
   } catch {}
 
-  try {
-    if (typeof activity.getHourlyStats === "function") {
-      const hourly = activity.getHourlyStats({ from, to, userId }) || {};
-      const norm = {};
-      for (let h = 0; h < 24; h++) {
-        const hh = String(h).padStart(2, "0");
-        const v = hourly[hh];
-        if (typeof v === "number") norm[hh] = v;
-        else {
-          const score = (v?.message || 0) + (v?.voice || 0) / 60;
-          norm[hh] = score;
-        }
-      }
-      const top = Object.entries(norm).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
-      if (top && (top[1] || 0) > 0) {
-        const hour = Number(top[0]);
-        return `${hour}시 ~ ${((hour + 1) % 24)}시`;
-      }
-    }
-  } catch {}
+  // 2) 폴백: activity.getHourlyStats 는 요일정보가 없어 분리 불가 → 마지막 폴백으로 이동
 
+  // 3) 최종 폴백: raw activity logs로 요일 분리
   try {
     const logs = activityLogger.getUserActivities?.(userId) || [];
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-    const hours = new Array(24).fill(0);
+
+    const weekdayArr = new Array(24).fill(0);
+    const weekendArr = new Array(24).fill(0);
+
     for (const l of logs) {
       if (!l || typeof l.time !== "number" || l.time < cutoff) continue;
+      // KST 보정
       const kst = new Date(l.time + 9 * 3600 * 1000);
       const h = kst.getHours();
-      let weight = 1;
+      const target = isWeekday(kst) ? weekdayArr : isWeekend(kst) ? weekendArr : null;
+      if (!target) continue;
+
+      let weight = 1;                 // 기본 가중치
       if (isMessageLog(l)) weight += 0.5;
       if (isVoiceLog(l)) {
         const dur = pickDurationFromLog(l);
-        if (dur > 0) weight += Math.min(10, Math.round(dur / 300));
+        if (dur > 0) weight += Math.min(10, Math.round(dur / 300)); // 5분당 +1, 최대 +10
         else weight += 1;
       }
-      hours[h] += weight;
+      target[h] += weight;
     }
-    const idx = hours.findIndex(v => v === Math.max(...hours));
-    if (hours[idx] > 0) return `${idx}시 ~ ${(idx + 1) % 24}시`;
+
+    const arrTopLabel = (arr) => {
+      const max = Math.max(...arr);
+      if (!isFinite(max) || max <= 0) return "데이터 없음";
+      const idx = arr.findIndex(v => v === max);
+      return `${idx}시 ~ ${(idx + 1) % 24}시`;
+    };
+
+    const weekdayRange = arrTopLabel(weekdayArr);
+    const weekendRange = arrTopLabel(weekendArr);
+    return `평일: ${weekdayRange}\n주말: ${weekendRange}`;
   } catch {}
 
   return "데이터 없음";
