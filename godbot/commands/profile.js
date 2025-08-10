@@ -107,7 +107,7 @@ const affinityScore = clamp01(distinctVoiceCh / 10) * 100;    // (10회)
   const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0;
 
   return {
-    labels: ["스피킹","타이핑","친화력","주행성","야행성"],
+    labels: ["스피킹","타이핑","다양성","주행성","야행성"],
     values: [
       Math.round(speakingScore),
       Math.round(typingScore),
@@ -131,7 +131,7 @@ function renderRadarPng({ labels, values }) {
 
   // 차트 영역
   const cx = W * 0.55, cy = H * 0.52;
-  const rMax = Math.min(W,H) * 0.38;
+  const rMax = Math.min(W,H) * 0.58;
   const axisN = 5;
   const angles = [];
   for (let i=0;i<axisN;i++) angles.push(-Math.PI/2 + i*(2*Math.PI/axisN));
@@ -164,17 +164,17 @@ function renderRadarPng({ labels, values }) {
 
   // 레이블
   ctx.fillStyle = "#cfe6ff";
-  ctx.font = "600 20px Pretendard, Malgun Gothic, sans-serif";
-  for (let i=0;i<axisN;i++){
-    const a = angles[i];
-    const rx = cx + (rMax+22)*Math.cos(a);
-    const ry = cy + (rMax+22)*Math.sin(a);
-    const text = labels[i];
-    const metrics = ctx.measureText(text);
-    const tx = rx - metrics.width/2;
-    const ty = ry + 7;
-    ctx.fillText(text, tx, ty);
-  }
+ctx.font = "600 32px Pretendard, Malgun Gothic, sans-serif"; 
+
+const labelRadius = rMax + 34; 
+for (let i = 0; i < axisN; i++) {
+  const a = angles[i];
+  const rx = cx + labelRadius * Math.cos(a);
+  const ry = cy + labelRadius * Math.sin(a);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(labels[i], rx, ry);
+}
 
   // 값 폴리곤
   const pts = values.map((v,i)=>{
