@@ -26,7 +26,7 @@ const formatVoice = sec => {
 };
 const getFavorEmoji = v => (v >= 15 ? "💖" : v >= 5 ? "😊" : v >= 0 ? "🤝" : "💢");
 function getTierEmoji(str = "") {
-  const lower = str.toLowerCase();
+  const lower = String(str || "").toLowerCase();
   if (!str) return "❔";
   if (str.includes("챌린저") || lower.includes("challenger")) return "🌟";
   if (str.includes("마스터") || lower.includes("master")) return "🔱";
@@ -44,16 +44,50 @@ function getPlayStyle(member) {
   }
   return "미설정";
 }
+// ---- 유틸: 로그 구조 다양성 대응 ----
+const toLower = v => String(v || "").toLowerCase();
+function isVoiceLog(log) {
+  const t = toLower(log.activityType || log.type || log.event || "");
+  return t.includes("voice");
+}
+function isMessageLog(log) {
+  const t = toLower(log.activityType || log.type || log.event || "");
+  return t.includes("message") || t.includes("chat") || t.includes("text");
+}
+function pickChannelIdFromLog(log) {
+  return (
+    log.details?.channelId ||
+    log.details?.channel?.id ||
+    log.channelId ||
+    log.channel?.id ||
+    log.details?.voiceChannelId ||
+    log.details?.channel_id ||
+    null
+  );
+}
+function pickDurationFromLog(log) {
+  // 초 단위로 추정되는 필드들 우선순위
+  return (
+    log.details?.durationSec ??
+    log.durationSec ??
+    log.details?.lengthSec ??
+    log.lengthSec ??
+    0
+  );
+}
 function formatActivityName(log) {
   if (!log) return "";
   if (log.activityType === "game" && log.details?.name) return log.details.name;
-  if (log.activityType === "music" && log.details?.song) {
+  if (toLower(log.activityType) === "music" && log.details?.song) {
     return `🎵 ${log.details.song} - ${log.details.artist || ""}`.trim();
   }
-  if (log.activityType && log.details?.name) return `${log.activityType}: ${log.details.name}`;
-  return log.activityType || "활동";
+  if ((log.activityType || log.type) && (log.details?.name || log.name)) {
+    return `${log.activityType || log.type}: ${log.details?.name || log.name}`;
+  }
+  return log.activityType || log.type || "활동";
 }
 function formatTimeString(ms) {
+  // KST(+9) 보정
   const date = new Date(ms + 9 * 60 * 60 * 1000);
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -77,14 +111,15 @@ function dayNightBuckets(hoursObj) {
   }
   return { day, night, total: day + night };
 }
+// ---- 30일 레이더 데이터 ----
 function buildRadarStats30d(userId) {
   const now = new Date();
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const stat = activity.getStats({ from, to, userId })?.[0] || { message: 0, voice: 0 };
+  const stat = activity.getStats?.({ from, to, userId })?.[0] || { message: 0, voice: 0 };
   const voiceSec = stat.voice || 0;
   const msgCnt = stat.message || 0;
-  const dailyHourly = activity.getDailyHourlyStats({ from, to, userId });
+  const dailyHourly = activity.getDailyHourlyStats?.({ from, to, userId }) || {};
   let dayAct = 0, nightAct = 0, totalAct = 0;
   for (const date of Object.keys(dailyHourly)) {
     const { day, night, total } = dayNightBuckets(dailyHourly[date] || {});
@@ -92,7 +127,7 @@ function buildRadarStats30d(userId) {
     nightAct += night;
     totalAct += total;
   }
-  const last = relationship.loadLastInteraction();
+  const last = relationship.loadLastInteraction?.() || {};
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
   let distinctUsersCount = 0;
   if (last[userId]) {
@@ -106,7 +141,6 @@ function buildRadarStats30d(userId) {
   return {
     labels: ["스피킹", "타이핑", "친화력", "주행성", "야행성"],
     values: [Math.round(speakingScore), Math.round(typingScore), Math.round(affinityScore), Math.round(dayRatio), Math.round(nightRatio)],
-    raw: { voiceSec, msgCnt, distinctUsersCount, dayAct, nightAct, totalAct }
   };
 }
 function renderRadarPng({ labels, values }) {
@@ -180,6 +214,135 @@ function renderRadarPng({ labels, values }) {
   return canvas.toBuffer("image/png");
 }
 
+// ---- 폴백 포함: 자주 사용하는 음성채널(30일) ----
+async function getFavVoiceChannelText(userId, guild, now = new Date()) {
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+  // 1) activity 유틸에 전용 함수가 있는 경우
+  try {
+    if (typeof activity.getVoiceChannelStats === "function") {
+      const stats = activity.getVoiceChannelStats({ from, to, userId }) || {};
+      const top = Object.entries(stats).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
+      if (top) {
+        const [chId, seconds] = top;
+        return `<#${chId}> (${formatVoice(seconds || 0)})`;
+      }
+    }
+    if (typeof activity.getVoiceTopChannels === "function") {
+      const arr = activity.getVoiceTopChannels({ from, to, userId }) || [];
+      // 기대 형태: [{channelId, seconds}] or [[chId, seconds], ...]
+      if (Array.isArray(arr) && arr.length) {
+        const first = arr[0];
+        const chId = first.channelId || first[0];
+        const seconds = first.seconds || first[1] || 0;
+        if (chId) return `<#${chId}> (${formatVoice(seconds)})`;
+      }
+    }
+  } catch {}
+
+  // 2) logger 기반 폴백 (join/leave/voice 등 다양한 키 대응)
+  try {
+    const logs = activityLogger.getUserActivities?.(userId) || [];
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    const count = {};
+    for (const l of logs) {
+      if (!l || typeof l.time !== "number" || l.time < cutoff) continue;
+      if (!isVoiceLog(l)) continue;
+      const chId = pickChannelIdFromLog(l);
+      if (!chId) continue;
+      // duration 있으면 가중치 부여(분 단위), 없으면 1 카운트
+      const dur = pickDurationFromLog(l);
+      const weight = dur > 0 ? Math.max(1, Math.round(dur / 60)) : 1;
+      count[chId] = (count[chId] || 0) + weight;
+    }
+    const top = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
+    if (top) {
+      // weight는 대략 분으로 간주
+      return `<#${top[0]}> (이용 지수 ${top[1]}점)`;
+    }
+  } catch {}
+
+  return "데이터 없음";
+}
+
+// ---- 폴백 포함: 자주 등장하는 시간대(30일, KST) ----
+async function getFavTimeRangeText(userId, now = new Date()) {
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+  // 1) activity의 일자-시간대 집계 활용
+  try {
+    if (typeof activity.getDailyHourlyStats === "function") {
+      const dailyHourly = activity.getDailyHourlyStats({ from, to, userId }) || {};
+      const hours = {};
+      for (let h = 0; h < 24; h++) hours[String(h).padStart(2, "0")] = 0;
+      for (const day of Object.keys(dailyHourly)) {
+        const byHour = dailyHourly[day] || {};
+        for (let h = 0; h < 24; h++) {
+          const hh = String(h).padStart(2, "0");
+          const b = byHour[hh] || { message: 0, voice: 0 };
+          const score = (b.message || 0) + (b.voice || 0) / 60;
+          hours[hh] += score;
+        }
+      }
+      const top = Object.entries(hours).sort((a, b) => b[1] - a[1])[0];
+      if (top && top[1] > 0) {
+        const hour = Number(top[0]);
+        return `${hour}시 ~ ${((hour + 1) % 24)}시`;
+      }
+    }
+  } catch {}
+
+  // 2) activity.getHourlyStats가 있다면
+  try {
+    if (typeof activity.getHourlyStats === "function") {
+      // 기대 형태: { "00": {message, voice}, ... } 또는 { "00": score }
+      const hourly = activity.getHourlyStats({ from, to, userId }) || {};
+      const norm = {};
+      for (let h = 0; h < 24; h++) {
+        const hh = String(h).padStart(2, "0");
+        const v = hourly[hh];
+        if (typeof v === "number") norm[hh] = v;
+        else {
+          const score = (v?.message || 0) + (v?.voice || 0) / 60;
+          norm[hh] = score;
+        }
+      }
+      const top = Object.entries(norm).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
+      if (top && (top[1] || 0) > 0) {
+        const hour = Number(top[0]);
+        return `${hour}시 ~ ${((hour + 1) % 24)}시`;
+      }
+    }
+  } catch {}
+
+  // 3) logger 기반 폴백: 최근 30일 로그를 시간대별로 카운트 (KST 기준)
+  try {
+    const logs = activityLogger.getUserActivities?.(userId) || [];
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    const hours = new Array(24).fill(0);
+    for (const l of logs) {
+      if (!l || typeof l.time !== "number" || l.time < cutoff) continue;
+      // KST로 변환해서 시간만 추출
+      const kst = new Date(l.time + 9 * 3600 * 1000);
+      const h = kst.getHours(); // 0~23
+      let weight = 1;
+      if (isMessageLog(l)) weight += 0.5; // 메시지는 가벼운 가중치
+      if (isVoiceLog(l)) {
+        const dur = pickDurationFromLog(l);
+        if (dur > 0) weight += Math.min(10, Math.round(dur / 300)); // 5분당 +1, 상한 10
+        else weight += 1;
+      }
+      hours[h] += weight;
+    }
+    const idx = hours.findIndex(v => v === Math.max(...hours));
+    if (hours[idx] > 0) return `${idx}시 ~ ${(idx + 1) % 24}시`;
+  } catch {}
+
+  return "데이터 없음";
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("프로필")
@@ -188,17 +351,22 @@ module.exports = {
   async execute(interaction) {
     const target = interaction.options.getUser("유저") || interaction.user;
     const userId = target.id;
+
     const profiles = readJson(profilesPath);
     const favor = readJson(favorPath);
     const be = readJson(bePath);
+
     const defaultProfile = { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "" };
     const profile = profiles[userId] || defaultProfile;
+
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
     const playStyle = getPlayStyle(member);
     const favorVal = favor[userId] ?? 0;
     const beAmount = formatAmount(be[userId]?.amount ?? 0);
     const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
     const joinedStr = `<t:${Math.floor((member?.joinedAt || new Date()).getTime() / 1000)}:R>`;
+
+    // 교류 TOP3
     let friendsStr = "없음";
     try {
       const rawTop = relationship?.getTopRelations ? relationship.getTopRelations(userId, 3) : [];
@@ -215,6 +383,8 @@ module.exports = {
       }
       if (names.length) friendsStr = names.map(n => `• ${n}`).join("\n");
     } catch {}
+
+    // 최근 7일 숫자
     let recentMsg = 0, recentVoice = 0;
     try {
       const now = new Date();
@@ -225,13 +395,13 @@ module.exports = {
         recentVoice = stat[0].voice ?? 0;
       }
     } catch {}
-    
-    // 최근 활동 1개만
+
+    // 최근 활동 이력: 1개만
     let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
     try {
-      const logs = activityLogger.getUserActivities(userId) || [];
-      logs.sort((a, b) => b.time - a.time);
-      const recentLogs = logs.slice(0, 1); // 1개만
+      const logs = activityLogger.getUserActivities?.(userId) || [];
+      logs.sort((a, b) => (b.time || 0) - (a.time || 0));
+      const recentLogs = logs.slice(0, 1);
       if (recentLogs.length) {
         recentActivitiesStr = recentLogs.map(log => `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`).join("\n");
       }
@@ -239,36 +409,15 @@ module.exports = {
       recentActivitiesStr = "불러오기 실패";
     }
 
-    // 자주 사용하는 음성채널 (30일)
-    let favVoiceChannel = "데이터 없음";
-    try {
-      const now = new Date();
-      const to = now.toISOString().slice(0, 10);
-      const from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const voiceStats = activity.getVoiceChannelStats({ from, to, userId }) || {};
-      const sortedChannels = Object.entries(voiceStats).sort((a, b) => b[1] - a[1]);
-      if (sortedChannels.length) {
-        favVoiceChannel = `<#${sortedChannels[0][0]}> (${formatVoice(sortedChannels[0][1])})`;
-      }
-    } catch {}
+    // 자주 사용하는 음성채널 & 시간대 (로버스트 폴백)
+    const favVoiceChannel = await getFavVoiceChannelText(userId, interaction.guild).catch(() => "데이터 없음");
+    const favTimeRange = await getFavTimeRangeText(userId).catch(() => "데이터 없음");
 
-    // 자주 등장하는 시간대 (30일)
-    let favTimeRange = "데이터 없음";
-    try {
-      const now = new Date();
-      const to = now.toISOString().slice(0, 10);
-      const from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const hourlyStats = activity.getHourlyStats({ from, to, userId }) || {};
-      const sortedHours = Object.entries(hourlyStats).sort((a, b) => b[1] - a[1]);
-      if (sortedHours.length) {
-        const hour = sortedHours[0][0];
-        favTimeRange = `${hour}시 ~ ${Number(hour)+1}시`;
-      }
-    } catch {}
-
+    // 레이더 PNG
     const radar = buildRadarStats30d(userId);
     const png = renderRadarPng(radar);
     const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
+
     const embed = new EmbedBuilder()
       .setTitle("프로필 정보")
       .setThumbnail(target.displayAvatarURL())
@@ -296,6 +445,7 @@ module.exports = {
         text: userId === interaction.user.id ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!" : "혁신적 종합게임서버, 까리한디스코드",
         iconURL: interaction.client.user.displayAvatarURL()
       });
+
     await interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
   }
 };
