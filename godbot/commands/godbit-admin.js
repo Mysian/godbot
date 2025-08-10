@@ -410,7 +410,7 @@ module.exports = {
     // ========== 12. 떡상/떡락 (다음 갱신 주기에 1회 즉시 적용 예약) ==========
     if (sub === '떡상' || sub === '떡락') {
       const coin = interaction.options.getString('코인명');
-      const priceTarget = interaction.options.getInteger('금액');
+      const priceTarget = interaction.options.getNumber('금액');
       if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
 
       // ✅ 즉시 히스토리 누적/단계적 반영 안 함
