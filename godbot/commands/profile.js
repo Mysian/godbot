@@ -98,11 +98,11 @@ function buildRadarStats30d(userId) {
   if (last[userId]) {
     distinctUsersCount = Object.entries(last[userId]).filter(([, t]) => t >= cutoff).length;
   }
-  const speakingScore = clamp01(voiceSec / (3600 * 300)) * 100;
-  const typingScore = clamp01(msgCnt / 10000) * 100;
-  const affinityScore = clamp01(distinctUsersCount / 20) * 100;
-  const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0;
-  const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0;
+  const speakingScore = clamp01(voiceSec / (3600 * 400)) * 100; // 30일간 말한 음성채팅 카운트
+  const typingScore = clamp01(msgCnt / 20000) * 100; // 30일간 입력한 채팅 카운트
+  const affinityScore = clamp01(distinctUsersCount / 30) * 100; // 30일간 친하게 지내는 유저 카운트
+  const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0; // 주행성
+  const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0; // 야행성
   return {
     labels: ["스피킹", "타이핑", "친화력", "주행성", "야행성"],
     values: [Math.round(speakingScore), Math.round(typingScore), Math.round(affinityScore), Math.round(dayRatio), Math.round(nightRatio)],
