@@ -1,8 +1,8 @@
 // commands/profile.js
-
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const fs   = require("fs");
 const path = require("path");
+const { createCanvas } = require("canvas");
 
 const relationship = require("../utils/relationship.js"); 
 const activity     = require("../utils/activity-tracker.js");
@@ -45,23 +45,15 @@ function getPlayStyle(member) {
   }
   return "미설정";
 }
-
 function formatActivityName(log) {
   if (!log) return '';
-  // 활동 타입별로 예쁘게 표시
-  if (log.activityType === 'game' && log.details?.name) {
-    return log.details.name;
-  }
+  if (log.activityType === 'game' && log.details?.name) return log.details.name;
   if (log.activityType === 'music' && log.details?.song) {
     return `🎵 ${log.details.song} - ${log.details.artist || ""}`.trim();
   }
-  // 그 외 기타
-  if (log.activityType && log.details?.name) {
-    return `${log.activityType}: ${log.details.name}`;
-  }
+  if (log.activityType && log.details?.name) return `${log.activityType}: ${log.details.name}`;
   return log.activityType || '활동';
 }
-
 function formatTimeString(ms) {
   const date = new Date(ms + 9 * 60 * 60 * 1000);
   const y = date.getFullYear();
@@ -72,6 +64,165 @@ function formatTimeString(ms) {
   return `${y}-${m}-${d} ${h}:${mi}`;
 }
 
+// ===== Radar(오각형) 스탯 계산 =====
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function dayNightBuckets(hoursObj) {
+  let day = 0;   // 07~20
+  let night = 0; // 21~23, 00~06
+  for (let h = 0; h < 24; h++) {
+    const hh = String(h).padStart(2, "0");
+    const b = hoursObj[hh] || { message:0, voice:0 };
+    const act = (b.message || 0) + (b.voice || 0) / 60; // 메시지 1회 ≈ 보이스 1분 가중
+    if (h >= 7 && h <= 20) day += act;
+    else night += act;
+  }
+  return { day, night, total: day + night };
+}
+function buildRadarStats30d(userId) {
+  const now = new Date();
+  const to = now.toISOString().slice(0,10);
+  const from = new Date(now.getTime() - 29*24*3600*1000).toISOString().slice(0,10);
+
+  const stat = activity.getStats({ from, to, userId })?.[0] || { message:0, voice:0 };
+  const voiceSec = stat.voice || 0;
+  const msgCnt   = stat.message || 0;
+
+  const channelsMap = activity.getVoiceChannelUsage({ from, to, userId }) || {};
+  const distinctVoiceCh = Object.keys(channelsMap).filter(cid => (channelsMap[cid]||0) > 0).length;
+
+  // 시간대 통계
+  const dailyHourly = activity.getDailyHourlyStats({ from, to, userId });
+  let dayAct = 0, nightAct = 0, totalAct = 0;
+  for (const date of Object.keys(dailyHourly)) {
+    const { day, night, total } = dayNightBuckets(dailyHourly[date] || {});
+    dayAct += day; nightAct += night; totalAct += total;
+  }
+
+  // 스케일링
+  // 스피킹: 30일 동안 30시간(=1시간/일) => 100점
+  const speakingScore = clamp01(voiceSec / (3600 * 300)) * 100; // 300시간 = 100점
+const typingScore   = clamp01(msgCnt / 10000) * 100;          // 10,000회 = 100점
+const affinityScore = clamp01(distinctVoiceCh / 10) * 100;    // (10회)
+  const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0;
+  const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0;
+
+  return {
+    labels: ["스피킹","타이핑","친화력","주행성","야행성"],
+    values: [
+      Math.round(speakingScore),
+      Math.round(typingScore),
+      Math.round(affinityScore),
+      Math.round(dayRatio),
+      Math.round(nightRatio),
+    ],
+    raw: { voiceSec, msgCnt, distinctVoiceCh, dayAct, nightAct, totalAct }
+  };
+}
+
+// ===== Radar 이미지 생성(PNG) =====
+function renderRadarPng({ labels, values }) {
+  const W = 1100, H = 680;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+
+  // 배경
+  ctx.fillStyle = "#0a2340";
+  ctx.fillRect(0,0,W,H);
+
+  // 제목
+  ctx.fillStyle = "#e7f2ff";
+  ctx.font = "bold 28px Pretendard, Malgun Gothic, sans-serif";
+  ctx.fillText("최근 30일 오각형 스탯", 32, 46);
+
+  // 차트 영역
+  const cx = W * 0.55, cy = H * 0.52;
+  const rMax = Math.min(W,H) * 0.28;
+  const axisN = 5;
+  const angles = [];
+  for (let i=0;i<axisN;i++) angles.push(-Math.PI/2 + i*(2*Math.PI/axisN));
+
+  // 그리드(5단계)
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  for (let ring=1; ring<=5; ring++){
+    const rr = (rMax * ring)/5;
+    ctx.beginPath();
+    for (let i=0;i<axisN;i++){
+      const a = angles[i];
+      const x = cx + rr*Math.cos(a);
+      const y = cy + rr*Math.sin(a);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // 축선
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  for (let i=0;i<axisN;i++){
+    const a = angles[i];
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx + rMax*Math.cos(a), cy + rMax*Math.sin(a));
+    ctx.stroke();
+  }
+
+  // 레이블
+  ctx.fillStyle = "#cfe6ff";
+  ctx.font = "600 20px Pretendard, Malgun Gothic, sans-serif";
+  for (let i=0;i<axisN;i++){
+    const a = angles[i];
+    const rx = cx + (rMax+22)*Math.cos(a);
+    const ry = cy + (rMax+22)*Math.sin(a);
+    const text = labels[i];
+    const metrics = ctx.measureText(text);
+    const tx = rx - metrics.width/2;
+    const ty = ry + 7;
+    ctx.fillText(text, tx, ty);
+  }
+
+  // 값 폴리곤
+  const pts = values.map((v,i)=>{
+    const a = angles[i];
+    const rr = rMax * (v/100);
+    return [cx + rr*Math.cos(a), cy + rr*Math.sin(a)];
+  });
+
+  ctx.beginPath();
+  pts.forEach(([x,y],i)=>{ if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  ctx.closePath();
+  ctx.fillStyle = "rgba(93, 183, 255, 0.35)";
+  ctx.strokeStyle = "rgba(93, 183, 255, 0.95)";
+  ctx.lineWidth = 3;
+  ctx.fill();
+  ctx.stroke();
+
+  // 값 숫자
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px Pretendard, Malgun Gothic, sans-serif";
+  for (let i=0;i<axisN;i++){
+    const a = angles[i];
+    const rr = rMax * (values[i]/100);
+    const x = cx + rr*Math.cos(a);
+    const y = cy + rr*Math.sin(a);
+    const label = `${values[i]}%`;
+    const mw = ctx.measureText(label).width;
+    ctx.fillText(label, x - mw/2, y - 8);
+  }
+
+  // 범례(스케일 설명)
+  ctx.fillStyle = "#9ecaff";
+  ctx.font = "16px Pretendard, Malgun Gothic, sans-serif";
+  const legend = [
+    "스피킹: 30일 30시간 = 100",
+    "타이핑: 30일 1500회 = 100",
+    "친화력: 서로 다른 음성채널 10곳 = 100",
+    "주행성/야행성: 활동 비율(%)"
+  ];
+  legend.forEach((t,i)=> ctx.fillText(t, 32, H - 28 - i*22));
+
+  return canvas.toBuffer("image/png");
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -87,12 +238,10 @@ module.exports = {
     const target = interaction.options.getUser("유저") || interaction.user;
     const userId = target.id;
 
-    // ---- JSON 로드 ----
     const profiles = readJson(profilesPath);
     const favor    = readJson(favorPath);
     const be       = readJson(bePath);
 
-    // ---- 프로필 기본값 ----
     const defaultProfile = {
       statusMsg: "",
       favGames: [],
@@ -104,40 +253,31 @@ module.exports = {
     };
     const profile = profiles[userId] || defaultProfile;
 
-    // ---- 길드 멤버 ----
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
 
-    // ---- 주요 값 ----
     const playStyle = getPlayStyle(member);
     const favorVal  = favor[userId] ?? 0;
     const beAmount  = formatAmount(be[userId]?.amount ?? 0);
     const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
     const joinedStr = `<t:${Math.floor((member?.joinedAt || new Date()).getTime() / 1000)}:R>`;
 
-    // ---- 친구 TOP3 ----
     let friendsStr = "없음";
     try {
       const rawTop = relationship?.getTopRelations ? relationship.getTopRelations(userId, 3) : [];
       const names  = [];
-
       for (const rel of rawTop) {
         const fid = typeof rel === "string" ? rel : rel.userId ?? rel.id;
         if (!fid) continue;
-
         const m = await interaction.guild.members.fetch(fid).catch(() => null);
-        if (m) {
-          names.push(m.displayName);
-        } else {
+        if (m) names.push(m.displayName);
+        else {
           const u = await interaction.client.users.fetch(fid).catch(() => null);
           names.push(u ? `${u.username} (탈주)` : "(탈주)");
         }
       }
       if (names.length) friendsStr = names.map(n => `• ${n}`).join("\n");
-    } catch (e) {
-      console.error("[TopRelations]", e);
-    }
+    } catch (e) { /* noop */ }
 
-    // ---- 최근 7일 활동 ----
     let recentMsg = 0, recentVoice = 0;
     try {
       const now  = new Date();
@@ -153,27 +293,25 @@ module.exports = {
         recentMsg   = stat[0].message ?? 0;
         recentVoice = stat[0].voice   ?? 0;
       }
-    } catch (e) {
-      console.error("[ActivityStats]", e);
-    }
+    } catch {}
 
-    // ---- 최근 활동 이력 5개 ----
     let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
     try {
       const logs = activityLogger.getUserActivities(userId) || [];
-      // 최신순 정렬(이미 최신순일 수도 있으나, 보장)
       logs.sort((a, b) => b.time - a.time);
       const recentLogs = logs.slice(0, 5);
       if (recentLogs.length) {
-        recentActivitiesStr = recentLogs.map(log => {
-          return `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`;
-        }).join('\n');
+        recentActivitiesStr = recentLogs.map(log => `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`).join('\n');
       }
-    } catch (e) {
+    } catch {
       recentActivitiesStr = "불러오기 실패";
     }
 
-    // ---- Embed ----
+    // 30일 오각형 스탯 생성
+    const radar = buildRadarStats30d(userId);
+    const png = renderRadarPng(radar);
+    const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
+
     const embed = new EmbedBuilder()
       .setTitle("프로필 정보")
       .setThumbnail(target.displayAvatarURL())
@@ -198,6 +336,7 @@ module.exports = {
         { name: "🔊 최근 7일 음성",    value: formatVoice(recentVoice),                inline: true },
         { name: "📝 최근 활동 이력",   value: recentActivitiesStr,                      inline: false },
       )
+      .setImage("attachment://profile-stats.png")
       .setFooter({
         text: userId === interaction.user.id
           ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!"
@@ -205,6 +344,6 @@ module.exports = {
         iconURL: interaction.client.user.displayAvatarURL(),
       });
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
   },
 };
