@@ -131,7 +131,7 @@ function renderRadarPng({ labels, values }) {
 
   // 차트 영역
   const cx = W * 0.55, cy = H * 0.52;
-  const rMax = Math.min(W,H) * 0.58;
+  const rMax = Math.min(W,H) * 0.40;
   const axisN = 5;
   const angles = [];
   for (let i=0;i<axisN;i++) angles.push(-Math.PI/2 + i*(2*Math.PI/axisN));
