@@ -201,13 +201,13 @@ module.exports = {
       sub.setName('떡상')
         .setDescription('특정 코인을 다음 갱신 주기에 지정 금액으로 즉시 떡상 처리(1회 적용)')
         .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-        .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
+        .addNumberOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(0.001).setRequired(true))
     )
     .addSubcommand(sub =>
       sub.setName('떡락')
         .setDescription('특정 코인을 다음 갱신 주기에 지정 금액으로 즉시 떡락 처리(1회 적용)')
         .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
-        .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
+        .addNumberOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(0.001).setRequired(true))
     )
     .addSubcommand(sub =>
       sub.setName('이벤트')
