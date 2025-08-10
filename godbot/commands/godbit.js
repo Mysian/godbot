@@ -271,6 +271,32 @@ async function autoMarketUpdate(members, client = global.client) {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
 
+  for (const [name, info] of Object.entries(coins)) {
+    if (!info || name.startsWith('_')) continue;
+    if (info.delistedAt) continue;
+
+    if (typeof info._nextSetPrice === 'number' && isFinite(info._nextSetPrice) && info._nextSetPrice > 0) {
+      const newP = Math.max(0.001, Number(info._nextSetPrice.toFixed(3)));
+
+      // 가격/히스토리 반영
+      info.price    = newP;
+      info.history  = info.history  || [];
+      info.historyT = info.historyT || [];
+      info.history.push(newP);
+      info.historyT.push(new Date().toISOString());
+      while (info.history.length  > HISTORY_MAX) info.history.shift();
+      while (info.historyT.length > HISTORY_MAX) info.historyT.shift();
+
+      // 이번 틱의 일반 변동 루프는 건너뛰도록 플래그
+      info._justApplied = true;
+
+      // 1회성 필드 제거
+      delete info._nextSetPrice;
+      delete info._nextSetMode;
+      delete info._nextSetAt;
+    }
+  }
+
   // === 까리코인 시세 ===
 const base = coins['까리코인'];
 const deltaBase = (Math.random() * 0.2) - 0.1;
@@ -340,29 +366,52 @@ for (const [name, info] of Object.entries(coins)) {
 
 
   // === 이벤트 확률 상폐  (까리코인 예외, 상장 후 5일~만) ===
-  for (const [name, info] of Object.entries(coins)) {
-    if (name.startsWith('_')) continue;
-    if (name === '까리코인') continue;
-    if (info.delistedAt) continue;
-    const listedAt = info.listedAt;
-    if (!listedAt || getMinutesAgo(listedAt) < 7200) continue;
+  const _opt = coins._delistOption || {};
+for (const [name, info] of Object.entries(coins)) {
+  if (name.startsWith('_')) continue;
+  if (name === '까리코인') continue;
+  if (!info || info.delistedAt) continue;
 
-    const h = info.history || [];
-    let pct = 0;
-    if (h.length >= 6) {
-      const prev = h.at(-6);
-      const now = h.at(-1);
-      if (prev > 0) pct = ((now - prev) / prev) * 100;
+  // 상장 후 5일(7200분) 경과만 대상
+  if (!info.listedAt || getMinutesAgo(info.listedAt) < 7200) continue;
+
+  // 최근 5틱 전 대비 등락률(대략 5회 샘플링)
+  const h = info.history || [];
+  let pct = 0;
+  if (h.length >= 6) {
+    const prev = h.at(-6);
+    const now  = h.at(-1);
+    if (prev > 0) pct = ((now - prev) / prev) * 100;
+  }
+
+  // 기본 확률
+  let delistProb = 0.002;
+  if (pct >= 50 || pct <= -50) delistProb = 0.008;
+
+  // 관리자 옵션 반영
+  if (_opt.type === 'random') {
+    // 확률(%)을 그대로 사용
+    if (typeof _opt.prob === 'number' && _opt.prob > 0) {
+      delistProb = Math.min(1, _opt.prob / 100);
     }
-    let delistProb = 0.002; // 상장 폐지 확률
-    if (pct >= 50 || pct <= -50) delistProb = 0.008; // 급등락시 상장 폐지 확률
-    if (Math.random() < delistProb) {
-  // 50% 확률로 상장폐지 극복 이벤트
-  if (Math.random() < 0.5) {
-    await postLogMsg('survive', name, client); // 극복 성공 메시지
-  } else {
-    info.delistedAt = new Date().toISOString(); // 상장폐지 처리
-    await postLogMsg('delist', name, client);   // 상장폐지 메시지
+  } else if (_opt.type === 'profitlow') {
+    // 하락 구간에서만 확률 가중 (기본 0.003, 하락폭 커질수록 ↑, 최대 3배)
+    const base = (typeof _opt.prob === 'number' && _opt.prob > 0) ? (_opt.prob / 100) : 0.003;
+    if (pct < 0) {
+      const factor = Math.min(3, 1 + (Math.abs(pct) / 100));
+      delistProb = base * factor;
+    } else {
+      delistProb = 0; // 상승/보합일 땐 상폐 안 함(원하면 여기 값 조정)
+    }
+  }
+
+  if (Math.random() < delistProb) {
+    // 50% 확률로 상장폐지 극복 이벤트
+    if (Math.random() < 0.5) {
+      await postLogMsg('survive', name, client);
+    } else {
+      info.delistedAt = new Date().toISOString();
+      await postLogMsg('delist', name, client);
     }
   }
 }
@@ -491,6 +540,7 @@ for (const [name, info] of Object.entries(coins)) {
   for (const [name, info] of Object.entries(coins)) {
     if (name.startsWith('_')) continue;
     if (name === '까리코인') continue;
+    if (info && info._justApplied) { delete info._justApplied; continue; }
     const h = info.history || [];
     if (!info.delistedAt) {
       let minVar = -0.1, maxVar = 0.1;
