@@ -29,13 +29,14 @@ module.exports = {
     let mainPage = 0;
 
     function getDateRange(period) {
-      if (period === 'all') return { from: null, to: null };
-      const now = new Date();
-      const to = now.toISOString().slice(0, 10);
-      now.setDate(now.getDate() - (parseInt(period, 10) - 1));
-      const from = now.toISOString().slice(0, 10);
-      return { from, to };
-    }
+  if (period === 'all') return { from: null, to: null };
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const to = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  now.setDate(now.getUTCDate() - (parseInt(period, 10) - 1));
+  const from = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  return { from, to };
+}
+
 
     function getFilterLabel(type) {
       if (type === "message") return "💬 채팅";
@@ -307,3 +308,4 @@ module.exports = {
     });
   }
 };
+
