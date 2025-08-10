@@ -98,11 +98,11 @@ function buildRadarStats30d(userId) {
   if (last[userId]) {
     distinctUsersCount = Object.entries(last[userId]).filter(([, t]) => t >= cutoff).length;
   }
-  const speakingScore = clamp01(voiceSec / (3600 * 400)) * 100; // 30일간 말한 음성채팅 카운트
-  const typingScore = clamp01(msgCnt / 20000) * 100; // 30일간 입력한 채팅 카운트
-  const affinityScore = clamp01(distinctUsersCount / 150) * 100; // 30일간 친하게 지내는 유저 카운트
-  const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0; // 주행성
-  const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0; // 야행성
+  const speakingScore = clamp01(voiceSec / (3600 * 400)) * 100;
+  const typingScore = clamp01(msgCnt / 20000) * 100;
+  const affinityScore = clamp01(distinctUsersCount / 150) * 100;
+  const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0;
+  const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0;
   return {
     labels: ["스피킹", "타이핑", "친화력", "주행성", "야행성"],
     values: [Math.round(speakingScore), Math.round(typingScore), Math.round(affinityScore), Math.round(dayRatio), Math.round(nightRatio)],
@@ -225,17 +225,47 @@ module.exports = {
         recentVoice = stat[0].voice ?? 0;
       }
     } catch {}
+    
+    // 최근 활동 1개만
     let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
     try {
       const logs = activityLogger.getUserActivities(userId) || [];
       logs.sort((a, b) => b.time - a.time);
-      const recentLogs = logs.slice(0, 5);
+      const recentLogs = logs.slice(0, 1); // 1개만
       if (recentLogs.length) {
         recentActivitiesStr = recentLogs.map(log => `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`).join("\n");
       }
     } catch {
       recentActivitiesStr = "불러오기 실패";
     }
+
+    // 자주 사용하는 음성채널 (30일)
+    let favVoiceChannel = "데이터 없음";
+    try {
+      const now = new Date();
+      const to = now.toISOString().slice(0, 10);
+      const from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const voiceStats = activity.getVoiceChannelStats({ from, to, userId }) || {};
+      const sortedChannels = Object.entries(voiceStats).sort((a, b) => b[1] - a[1]);
+      if (sortedChannels.length) {
+        favVoiceChannel = `<#${sortedChannels[0][0]}> (${formatVoice(sortedChannels[0][1])})`;
+      }
+    } catch {}
+
+    // 자주 등장하는 시간대 (30일)
+    let favTimeRange = "데이터 없음";
+    try {
+      const now = new Date();
+      const to = now.toISOString().slice(0, 10);
+      const from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const hourlyStats = activity.getHourlyStats({ from, to, userId }) || {};
+      const sortedHours = Object.entries(hourlyStats).sort((a, b) => b[1] - a[1]);
+      if (sortedHours.length) {
+        const hour = sortedHours[0][0];
+        favTimeRange = `${hour}시 ~ ${Number(hour)+1}시`;
+      }
+    } catch {}
+
     const radar = buildRadarStats30d(userId);
     const png = renderRadarPng(radar);
     const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
@@ -257,7 +287,9 @@ module.exports = {
         { name: "🤗 교류가 활발한 3인", value: friendsStr, inline: false },
         { name: "📊 최근 7일 채팅", value: `${recentMsg}회`, inline: true },
         { name: "🔊 최근 7일 음성", value: formatVoice(recentVoice), inline: true },
-        { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false }
+        { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false },
+        { name: "🎤 자주 사용하는 음성채널", value: favVoiceChannel, inline: false },
+        { name: "⏱️ 자주 등장하는 시간대", value: favTimeRange, inline: false }
       )
       .setImage("attachment://profile-stats.png")
       .setFooter({
