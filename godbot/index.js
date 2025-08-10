@@ -96,11 +96,23 @@ setInterval(async () => {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
-  // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
   const guild = client.guilds.cache.get(GUILD_ID);
+
+  // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
   if (guild) {
     await relationship.cleanupLeftMembers(guild);
     console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
+  }
+
+  // 🔥 재시작 시 서버 나간 유저의 BE(파랑 정수) 데이터 전부 제거
+  try {
+    if (guild) {
+      const { cleanupBELeftMembers } = require('./commands/be-util.js');
+      const { removed } = await cleanupBELeftMembers(guild);
+      console.log(`[BE 정리] 서버 나간 유저 ${removed}명 데이터 제거 완료`);
+    }
+  } catch (e) {
+    console.error('[BE 정리 오류]', e);
   }
 
   const activityMessages = [
