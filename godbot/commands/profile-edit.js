@@ -17,14 +17,20 @@ const profilesPath = path.join(__dirname, '../data/profiles.json');
 async function readProfiles() {
   if (!fs.existsSync(profilesPath)) return {};
   const release = await lockfile.lock(profilesPath, { retries: 3 });
-  const data = JSON.parse(fs.readFileSync(profilesPath));
-  await release();
-  return data;
+  try {
+    const data = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
+    return data;
+  } finally {
+    await release();
+  }
 }
 async function saveProfiles(data) {
   const release = await lockfile.lock(profilesPath, { retries: 3 });
-  fs.writeFileSync(profilesPath, JSON.stringify(data, null, 2));
-  await release();
+  try {
+    fs.writeFileSync(profilesPath, JSON.stringify(data, null, 2));
+  } finally {
+    await release();
+  }
 }
 
 function buildRows(profile) {
@@ -66,19 +72,36 @@ module.exports = {
 
     const [row1, row2] = buildRows(profile);
 
+    // 🔒 이 메시지 한정 콜렉터 (채널 전체 X)
     await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+    const msg = await interaction.fetchReply();
 
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => i.user.id === userId,
+    const validIds = new Set([
+      'statusMsg','favGames','owTier','lolTier','steamNick','lolNick','bnetNick',
+      'togglePrivacy','submitProfile'
+    ]);
+
+    const collector = msg.createMessageComponentCollector({
+      filter: (i) => i.user.id === userId && i.message.id === msg.id,
       time: 10 * 60 * 1000,
     });
 
     collector.on('collect', async i => {
+      // 혹시 이 메시지가 아닌 컴포넌트거나, 모르는 ID면 조용히 무시
+      if (i.message.id !== msg.id || !validIds.has(i.customId)) {
+        try { await i.deferUpdate(); } catch {}
+        return;
+      }
+
       if (i.customId === 'submitProfile') {
         profiles[userId] = profile;
         await saveProfiles(profiles);
-        await i.update({ content: '✅ 프로필 수정이 완료되었습니다!', embeds: [], components: [], ephemeral: true });
-        collector.stop();
+        try {
+          await i.update({ content: '✅ 프로필 수정이 완료되었습니다!', embeds: [], components: [], ephemeral: true });
+        } catch {
+          // 이미 사라졌다면 별도 처리 없음
+        }
+        collector.stop('submitted');
         return;
       }
 
@@ -86,6 +109,7 @@ module.exports = {
         profile.isPrivate = !profile.isPrivate;
         profiles[userId] = profile;
         await saveProfiles(profiles);
+
         const [nr1, nr2] = buildRows(profile);
         await i.update({
           embeds: [embed],
@@ -96,7 +120,9 @@ module.exports = {
         return;
       }
 
+      // ====== 이하 각 항목 모달 ======
       let modal = null;
+
       if (i.customId === 'statusMsg') {
         modal = new ModalBuilder()
           .setCustomId('modalStatusMsg')
@@ -211,14 +237,14 @@ module.exports = {
       }
 
       if (!modal) {
-        await i.reply({ content: '잘못된 버튼입니다.', ephemeral: true });
+        // 이 메시지용이 아닌 이상한 신호면 무시
+        try { await i.deferUpdate(); } catch {}
         return;
       }
 
       try {
         await i.showModal(modal);
         const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
-
         if (modalSubmit.customId === 'modalStatusMsg')
           profile.statusMsg = modalSubmit.fields.getTextInputValue('statusMsgInput');
         if (modalSubmit.customId === 'modalFavGames') {
@@ -237,8 +263,22 @@ module.exports = {
 
         await modalSubmit.reply({ content: '수정 완료! 다른 항목도 계속 수정하려면 버튼을 눌러주세요.', ephemeral: true });
       } catch (err) {
-        await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
+        try {
+          await i.followUp({ content: '⏳ 입력 시간이 초과되었습니다. 다시 시도해 주세요.', ephemeral: true });
+        } catch {}
       }
+    });
+
+    collector.on('end', async () => {
+      // 끝났으면 버튼 비활성화해서 더 이상 눌리지 않게
+      const disabledRows = msg.components.map(row => {
+        const r = ActionRowBuilder.from(row);
+        r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+        return r;
+      });
+      try {
+        await msg.edit({ components: disabledRows });
+      } catch {}
     });
   },
 };
