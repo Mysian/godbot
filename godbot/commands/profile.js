@@ -100,7 +100,7 @@ function buildRadarStats30d(userId) {
   }
   const speakingScore = clamp01(voiceSec / (3600 * 400)) * 100; // 30일간 말한 음성채팅 카운트
   const typingScore = clamp01(msgCnt / 20000) * 100; // 30일간 입력한 채팅 카운트
-  const affinityScore = clamp01(distinctUsersCount / 30) * 100; // 30일간 친하게 지내는 유저 카운트
+  const affinityScore = clamp01(distinctUsersCount / 100) * 100; // 30일간 친하게 지내는 유저 카운트
   const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0; // 주행성
   const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0; // 야행성
   return {
