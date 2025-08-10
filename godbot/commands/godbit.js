@@ -407,7 +407,8 @@ for (const [name, info] of Object.entries(coins)) {
     { coinType: 'dead', volatility: { min: -0.01, max: 0.01 }, trend: -0.005 },
     { coinType: 'neutral', volatility: { min: -0.1, max: 0.1 }, trend: 0 },
     { coinType: 'long', volatility: { min: -0.04, max: 0.06 }, trend: 0.015 },
-    { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 }
+    { coinType: 'short', volatility: { min: -0.2, max: 0.22 }, trend: 0.01 },
+    { coinType: 'downonly', volatility: { min: -0.2, max: 0.01 }, trend: -0.0005}
   ];
   const pick = pickRandom(types);
 
@@ -448,6 +449,7 @@ for (const [name, info] of Object.entries(coins)) {
         { coinType: 'dailyboom',  volatility: { min: -0.0001,  max: 0.004  }, trend: 0 },
         { coinType: 'bubble',     volatility: { min: -0.004,   max: 0.006  }, trend: 0.00015 },
         { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011 },
+        { coinType: 'downonly',   volatility: { min: -0.2,     max: 0.01 },    trend: -0.0005}
       ];
       const pick = pickRandom(types);
 
