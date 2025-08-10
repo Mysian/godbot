@@ -96,6 +96,13 @@ setInterval(async () => {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
+  // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
+  const guild = client.guilds.cache.get(GUILD_ID);
+  if (guild) {
+    await relationship.cleanupLeftMembers(guild);
+    console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
+  }
+
   const activityMessages = [
     "/갓비트 로 코인 투자를 진행해보세요.",
     "/도움말 을 통해 까리한 기능들을 확인해보세요.",
