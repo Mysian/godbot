@@ -17,6 +17,9 @@ const PLAY_STYLE_ROLES = {
   "즐겜러": "1210762420151394354"
 };
 
+// 🔓 비공개 무시 열람 권한(관리용 등)
+const PRIVACY_BYPASS_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
+
 const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p)) : {});
 const formatAmount = n => Number(n ?? 0).toLocaleString("ko-KR");
 const formatVoice = sec => {
@@ -44,7 +47,6 @@ function getPlayStyle(member) {
   }
   return "미설정";
 }
-// ---- 유틸: 로그 구조 다양성 대응 ----
 const toLower = v => String(v || "").toLowerCase();
 function isVoiceLog(log) {
   const t = toLower(log.activityType || log.type || log.event || "");
@@ -66,7 +68,6 @@ function pickChannelIdFromLog(log) {
   );
 }
 function pickDurationFromLog(log) {
-  // 초 단위로 추정되는 필드들 우선순위
   return (
     log.details?.durationSec ??
     log.durationSec ??
@@ -87,7 +88,6 @@ function formatActivityName(log) {
   return log.activityType || log.type || "활동";
 }
 function formatTimeString(ms) {
-  // KST(+9) 보정
   const date = new Date(ms + 9 * 60 * 60 * 1000);
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -111,7 +111,6 @@ function dayNightBuckets(hoursObj) {
   }
   return { day, night, total: day + night };
 }
-// ---- 30일 레이더 데이터 ----
 function buildRadarStats30d(userId) {
   const now = new Date();
   const to = now.toISOString().slice(0, 10);
@@ -219,7 +218,6 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-  // 1) activity 유틸에 전용 함수가 있는 경우
   try {
     if (typeof activity.getVoiceChannelUsage === "function") {
       const stats = activity.getVoiceChannelUsage({ from, to, userId }) || {};
@@ -231,7 +229,6 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
     }
     if (typeof activity.getVoiceTopChannels === "function") {
       const arr = activity.getVoiceTopChannels({ from, to, userId }) || [];
-      // 기대 형태: [{channelId, seconds}] or [[chId, seconds], ...]
       if (Array.isArray(arr) && arr.length) {
         const first = arr[0];
         const chId = first.channelId || first[0];
@@ -241,7 +238,6 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
     }
   } catch {}
 
-  // 2) logger 기반 폴백 (join/leave/voice 등 다양한 키 대응)
   try {
     const logs = activityLogger.getUserActivities?.(userId) || [];
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
@@ -251,14 +247,12 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
       if (!isVoiceLog(l)) continue;
       const chId = pickChannelIdFromLog(l);
       if (!chId) continue;
-      // duration 있으면 가중치 부여(분 단위), 없으면 1 카운트
       const dur = pickDurationFromLog(l);
       const weight = dur > 0 ? Math.max(1, Math.round(dur / 60)) : 1;
       count[chId] = (count[chId] || 0) + weight;
     }
     const top = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
     if (top) {
-      // weight는 대략 분으로 간주
       return `<#${top[0]}> (이용 지수 ${top[1]}점)`;
     }
   } catch {}
@@ -271,7 +265,6 @@ async function getFavTimeRangeText(userId, now = new Date()) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-  // 1) activity의 일자-시간대 집계 활용
   try {
     if (typeof activity.getDailyHourlyStats === "function") {
       const dailyHourly = activity.getDailyHourlyStats({ from, to, userId }) || {};
@@ -294,10 +287,8 @@ async function getFavTimeRangeText(userId, now = new Date()) {
     }
   } catch {}
 
-  // 2) activity.getHourlyStats가 있다면
   try {
     if (typeof activity.getHourlyStats === "function") {
-      // 기대 형태: { "00": {message, voice}, ... } 또는 { "00": score }
       const hourly = activity.getHourlyStats({ from, to, userId }) || {};
       const norm = {};
       for (let h = 0; h < 24; h++) {
@@ -317,21 +308,19 @@ async function getFavTimeRangeText(userId, now = new Date()) {
     }
   } catch {}
 
-  // 3) logger 기반 폴백: 최근 30일 로그를 시간대별로 카운트 (KST 기준)
   try {
     const logs = activityLogger.getUserActivities?.(userId) || [];
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
     const hours = new Array(24).fill(0);
     for (const l of logs) {
       if (!l || typeof l.time !== "number" || l.time < cutoff) continue;
-      // KST로 변환해서 시간만 추출
       const kst = new Date(l.time + 9 * 3600 * 1000);
-      const h = kst.getHours(); // 0~23
+      const h = kst.getHours();
       let weight = 1;
-      if (isMessageLog(l)) weight += 0.5; // 메시지는 가벼운 가중치
+      if (isMessageLog(l)) weight += 0.5;
       if (isVoiceLog(l)) {
         const dur = pickDurationFromLog(l);
-        if (dur > 0) weight += Math.min(10, Math.round(dur / 300)); // 5분당 +1, 상한 10
+        if (dur > 0) weight += Math.min(10, Math.round(dur / 300));
         else weight += 1;
       }
       hours[h] += weight;
@@ -341,6 +330,11 @@ async function getFavTimeRangeText(userId, now = new Date()) {
   } catch {}
 
   return "데이터 없음";
+}
+
+function hasAnyRole(member, roleIds = []) {
+  if (!member) return false;
+  return roleIds.some(rid => member.roles.cache.has(rid));
 }
 
 module.exports = {
@@ -356,15 +350,32 @@ module.exports = {
     const favor = readJson(favorPath);
     const be = readJson(bePath);
 
-    const defaultProfile = { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "" };
-    const profile = profiles[userId] || defaultProfile;
+    // 기본 프로필 + 비공개 플래그 폴백
+    const defaultProfile = { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false };
+    const profile = { ...defaultProfile, ...(profiles[userId] || {}) };
 
-    const member = await interaction.guild.members.fetch(userId).catch(() => null);
-    const playStyle = getPlayStyle(member);
+    const viewerId = interaction.user.id;
+    const isSelf = viewerId === userId;
+
+    // 대상/열람자 멤버
+    const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
+    const viewerMember = interaction.member ?? (await interaction.guild.members.fetch(viewerId).catch(() => null));
+
+    // 🔒 비공개 처리
+    if (!isSelf && profile.isPrivate) {
+      const canBypass = hasAnyRole(viewerMember, PRIVACY_BYPASS_ROLE_IDS);
+      if (!canBypass) {
+        await interaction.reply({ content: "해당 유저는 프로필 비공개 상태 입니다.", ephemeral: true });
+        return;
+      }
+      // bypass 시 안내만 첨언하고 계속 진행
+    }
+
+    const playStyle = getPlayStyle(targetMember);
     const favorVal = favor[userId] ?? 0;
     const beAmount = formatAmount(be[userId]?.amount ?? 0);
     const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
-    const joinedStr = `<t:${Math.floor((member?.joinedAt || new Date()).getTime() / 1000)}:R>`;
+    const joinedStr = `<t:${Math.floor((targetMember?.joinedAt || new Date()).getTime() / 1000)}:R>`;
 
     // 교류 TOP3
     let friendsStr = "없음";
@@ -409,7 +420,6 @@ module.exports = {
       recentActivitiesStr = "불러오기 실패";
     }
 
-    // 자주 사용하는 음성채널 & 시간대 (로버스트 폴백)
     const favVoiceChannel = await getFavVoiceChannelText(userId, interaction.guild).catch(() => "데이터 없음");
     const favTimeRange = await getFavTimeRangeText(userId).catch(() => "데이터 없음");
 
@@ -418,11 +428,21 @@ module.exports = {
     const png = renderRadarPng(radar);
     const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
 
+    // 🔔 비공개 우회 열람 안내 문구 구성
+    const privacyNotice =
+      (!isSelf && profile.isPrivate && hasAnyRole(viewerMember, PRIVACY_BYPASS_ROLE_IDS))
+        ? "⚠️ 해당 유저는 프로필 비공개를 설정한 유저입니다.\n"
+        : "";
+
     const embed = new EmbedBuilder()
       .setTitle("프로필 정보")
       .setThumbnail(target.displayAvatarURL())
       .setColor(favorVal >= 15 ? 0xff71b3 : favorVal >= 5 ? 0x82d8ff : 0xbcbcbc)
-      .setDescription([`<@${userId}> 님의 프로필`, statusMsg, `🔷 파랑 정수(BE): **${beAmount} BE**`].join("\n"))
+      .setDescription([
+        privacyNotice + `<@${userId}> 님의 프로필`,
+        statusMsg,
+        `🔷 파랑 정수(BE): **${beAmount} BE**`
+      ].join("\n"))
       .addFields(
         { name: "🎮 플레이 스타일", value: playStyle, inline: true },
         { name: `${getFavorEmoji(favorVal)} 호감도`, value: String(favorVal), inline: true },
