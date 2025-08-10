@@ -132,13 +132,13 @@ function buildRadarStats30d(userId) {
   if (last[userId]) {
     distinctUsersCount = Object.entries(last[userId]).filter(([, t]) => t >= cutoff).length;
   }
-  const speakingScore = clamp01(voiceSec / (3600 * 400)) * 100;
-  const typingScore = clamp01(msgCnt / 20000) * 100;
-  const affinityScore = clamp01(distinctUsersCount / 150) * 100;
+  const speakingScore = clamp01(voiceSec / (3600 * 300)) * 100;
+  const typingScore = clamp01(msgCnt / 9000) * 100;
+  const affinityScore = clamp01(distinctUsersCount / 120) * 100;
   const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0;
   const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0;
   return {
-    labels: ["스피킹", "타이핑", "친화력", "주행성", "야행성"],
+    labels: ["스피킹", "채팅", "포용력", "모닝", "이브닝"],
     values: [Math.round(speakingScore), Math.round(typingScore), Math.round(affinityScore), Math.round(dayRatio), Math.round(nightRatio)],
   };
 }
