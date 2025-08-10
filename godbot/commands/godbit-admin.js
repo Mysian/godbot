@@ -1,5 +1,10 @@
 // ==== commands/godbit-admin.js ====
 // 관리자 통합: 타입/시장/로그 멘트 완전체
+// ✅ 떡상/떡락: "다음 갱신 주기"에 1회에 한해 지정 금액으로 즉시 적용되도록 예약만 설정함
+//    - coins[coin]._nextSetPrice = <목표가>
+//    - coins[coin]._nextSetMode  = 'surge' | 'plunge'
+//    - coins[coin]._nextSetAt    = ISO 타임스탬프 (요청 시각)
+//    ※ autoMarketUpdate에서 이 필드를 감지해 1번만 적용 후 필드 제거하도록 처리 필요
 
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
@@ -194,13 +199,13 @@ module.exports = {
     )
     .addSubcommand(sub =>
       sub.setName('떡상')
-        .setDescription('특정 코인을 입력한 금액까지 점진적/자연스럽게 떡상시킴')
+        .setDescription('특정 코인을 다음 갱신 주기에 지정 금액으로 즉시 떡상 처리(1회 적용)')
         .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
     )
     .addSubcommand(sub =>
       sub.setName('떡락')
-        .setDescription('특정 코인을 입력한 금액까지 점진적/자연스럽게 떡락시킴')
+        .setDescription('특정 코인을 다음 갱신 주기에 지정 금액으로 즉시 떡락 처리(1회 적용)')
         .addStringOption(opt => opt.setName('코인명').setDescription('코인명').setRequired(true))
         .addIntegerOption(opt => opt.setName('금액').setDescription('목표 금액').setMinValue(1).setRequired(true))
     )
@@ -402,32 +407,25 @@ module.exports = {
       return interaction.reply({ content: `🗑️ [${coin}] 우하향 목록에서 제거됨.`, ephemeral: true });
     }
 
-    // ========== 12. 떡상/떡락 ==========
+    // ========== 12. 떡상/떡락 (다음 갱신 주기에 1회 즉시 적용 예약) ==========
     if (sub === '떡상' || sub === '떡락') {
       const coin = interaction.options.getString('코인명');
       const priceTarget = interaction.options.getInteger('금액');
       if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
-      const now = coins[coin].price;
-      const delta = priceTarget - now;
-      const step = Math.ceil(Math.abs(delta) / 10);
-      let pArr = [];
-      for (let i=1; i<=10; i++) {
-        let next = sub === '떡상'
-          ? now + (step*i)
-          : now - (step*i);
-        if (sub === '떡상' && next > priceTarget) next = priceTarget;
-        if (sub === '떡락' && next < priceTarget) next = priceTarget;
-        pArr.push(next);
-      }
-      coins[coin].history = coins[coin].history || [];
-      coins[coin].historyT = coins[coin].historyT || [];
-      pArr.forEach(p => {
-        coins[coin].history.push(p);
-        coins[coin].historyT.push(new Date().toISOString());
-      });
-      coins[coin].price = priceTarget;
+
+      // ✅ 즉시 히스토리 누적/단계적 반영 안 함
+      // ✅ 다음 autoMarketUpdate 틱에서 1회에 한해 바로 priceTarget으로 세팅하도록 예약만 기록
+      coins[coin]._nextSetPrice = priceTarget;
+      coins[coin]._nextSetMode  = (sub === '떡상') ? 'surge' : 'plunge';
+      coins[coin]._nextSetAt    = new Date().toISOString();
+
       await saveJson(coinsPath, coins);
-      return interaction.reply({ content: `🚀 [${coin}] ${sub==='떡상'?'떡상':'떡락'} 완료!`, ephemeral: true });
+
+      const now = coins[coin].price ?? 0;
+      return interaction.reply({
+        content: `🗓️ [${coin}] ${sub === '떡상' ? '떡상' : '떡락'} 예약 완료!\n• 현재가: ${now.toLocaleString()} BE → 목표가: ${priceTarget.toLocaleString()} BE\n• 다음 갱신 주기에 **한 번에** 적용됨.`,
+        ephemeral: true
+      });
     }
 
     // ========== 13. 이벤트 ==========
@@ -713,4 +711,3 @@ module.exports = {
     }
   }
 };
-
