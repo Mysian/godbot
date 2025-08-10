@@ -168,14 +168,14 @@ module.exports = {
         const s = stats[i];
         if (filterType === "message") {
           const msgStr = s.message.toLocaleString();
-          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개\n`;
+          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}회\n`;
         } else if (filterType === "voice") {
           const voiceStr = formatHourMinute(s.voice);
           list += `**${i + 1}위** <@${s.userId}> — 🔊 ${voiceStr}\n`;
         } else {
           const msgStr = s.message.toLocaleString();
           const voiceStr = formatHourMinute(s.voice);
-          list += `**${i + 1}위** <@${s.userId}> — 💬 ${msgStr}개, 🔊 ${voiceStr}\n`;
+          list += `**${i + 1}위** <@${s.userId}> — 🔊 ${voiceStr}, 💬 ${msgStr}회\n`;
         }
       }
       const periodLabel = PERIODS.find(p => p.value === period)?.label || "전체";
@@ -308,4 +308,5 @@ module.exports = {
     });
   }
 };
+
 
