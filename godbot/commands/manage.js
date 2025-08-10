@@ -381,12 +381,13 @@ module.exports = {
         const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
 
         let lastActiveStr = "기록 없음";
-        try {
-          const lastActiveDate = activityTracker.getLastActiveDate(target.id);
-          if (lastActiveDate) {
-            lastActiveStr = lastActiveDate.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-          }
-        } catch (err) {}
+try {
+  const lastActiveDate = activityTracker.getLastActiveDate(target.id);
+  if (lastActiveDate) {
+    lastActiveStr = lastActiveDate.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
+  }
+} catch (err) {}
+
 
         const joinedAt = member.joinedAt;
         const joinedAtStr = joinedAt
@@ -442,8 +443,8 @@ module.exports = {
             {
               name: "제한 상태",
               value: [
-                `• 서버 활동 제한: ${hasServerLock ? "🟥 ON" : "⬜ OFF"} (${SERVER_LOCK_ROLE_ID})`,
-                `• 경험치 획득 제한: ${hasXpLock ? "🟥 ON" : "⬜ OFF"} (${XP_LOCK_ROLE_ID})`
+                `• 서버 활동 제한: ${hasServerLock ? "🟥 ON" : "⬜ OFF"}`,
+                `• 경험치 획득 제한: ${hasXpLock ? "🟥 ON" : "⬜ OFF"}`
               ].join("\n"),
               inline: false
             }
