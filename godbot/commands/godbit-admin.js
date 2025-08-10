@@ -24,6 +24,7 @@ const COIN_TYPES = [
   { coinType: 'dailyboom',  volatility: { min: -0.0001,  max: 0.004  }, trend: 0,      desc: '일확천금' },
   { coinType: 'bubble',     volatility: { min: -0.004,   max: 0.006  }, trend: 0.00015, desc: '초반 급등 후 폭락' },
   { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011,desc: '악재 민감, 하락' },
+  { coinType: 'downonly', volatility: { min: -0.002, max: 0 }, trend: -0.0005, desc: '계속 떨어지는 전형적인 하락형 코인'},
 ];
 
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
