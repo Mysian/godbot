@@ -8,25 +8,32 @@ const {
   Events,
 } = require("discord.js");
 
-// ✅ 모니터링할 카테고리 (기존+신규)
-const MONITORED_CATEGORY_IDS = new Set([
-  "1318445879455125514", // 기존
-  "1318529703480397954", // 신규
+// === 카테고리 설정 ===
+// FULL: 채널 보기 강제 X + 장기 미사용 잠금
+// VIEW_ONLY: 채널 보기 강제 X 만 (잠금 로직 없음)
+const FULL_CATEGORY_IDS = new Set([
+  "1318445879455125514", // 기존 카테고리: 풀 모드
+]);
+const VIEW_ONLY_CATEGORY_IDS = new Set([
+  "1318529703480397954", // 신규 카테고리: 채널 보기만 강제 X
 ]);
 
 // 제외 채널
-const EXCLUDE_CHANNEL_IDS = new Set(["1318532838751998055"]);
+const EXCLUDE_CHANNEL_IDS = new Set([
+  "1318532838751998055",
+]);
 
-// 보고(로그) 채널
+// 로그 채널
 const REPORT_CHANNEL_ID = "1393144927155785759";
 
-// 비활성 기준 (일)
+// 풀 모드에서만 쓰는 비활성 기준(일)
 const INACTIVE_DAYS_TO_LOCK = 30;
 
-// === 내부 저장소 ===
+// === 저장소 경로 ===
 const dataDir = path.join(__dirname, "../data");
 const storePath = path.join(dataDir, "channel-usage.json");
 
+// === 공통 유틸 ===
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
@@ -65,14 +72,27 @@ function durationMsToText(ms) {
   return parts.join(" ");
 }
 
-// === 유틸 ===
-function isWatchedCategoryId(id) {
-  return id && MONITORED_CATEGORY_IDS.has(String(id));
+// === 채널 판별 ===
+function isWatchedCategoryId(catId) {
+  const s = String(catId);
+  return FULL_CATEGORY_IDS.has(s) || VIEW_ONLY_CATEGORY_IDS.has(s);
+}
+function isFullChannel(ch) {
+  if (!ch || !ch.parentId) return false;
+  if (!FULL_CATEGORY_IDS.has(String(ch.parentId))) return false;
+  if (EXCLUDE_CHANNEL_IDS.has(String(ch.id))) return false;
+  return isSupportedType(ch.type);
+}
+function isViewOnlyChannel(ch) {
+  if (!ch || !ch.parentId) return false;
+  if (!VIEW_ONLY_CATEGORY_IDS.has(String(ch.parentId))) return false;
+  if (EXCLUDE_CHANNEL_IDS.has(String(ch.id))) return false;
+  return isSupportedType(ch.type);
 }
 function isMonitoredChannel(ch) {
-  if (!ch || !ch.parentId) return false;
-  if (!isWatchedCategoryId(String(ch.parentId))) return false;
-  if (EXCLUDE_CHANNEL_IDS.has(String(ch.id))) return false;
+  return isFullChannel(ch) || isViewOnlyChannel(ch);
+}
+function isSupportedType(t) {
   return [
     ChannelType.GuildText,
     ChannelType.GuildVoice,
@@ -80,11 +100,11 @@ function isMonitoredChannel(ch) {
     ChannelType.GuildAnnouncement,
     ChannelType.GuildForum,
     ChannelType.GuildMedia,
-  ].includes(ch.type);
+  ].includes(t);
 }
 
+// === 레코드 ===
 function channelKey(chId) { return String(chId); }
-
 function ensureChannelRecord(store, ch) {
   const key = channelKey(ch.id);
   store[key] = store[key] || {
@@ -100,6 +120,7 @@ function ensureChannelRecord(store, ch) {
   return store[key];
 }
 
+// === 활동 마킹(풀/뷰온리 공통 수집 — 리포트용) ===
 async function markActivity(client, chId, kind) {
   try {
     const ch = await client.channels.fetch(chId).catch(() => null);
@@ -113,18 +134,23 @@ async function markActivity(client, chId, kind) {
   } catch {}
 }
 
+// === 카테고리별 채널 수집 ===
 async function fetchCategoryChannels(client) {
   const out = [];
-  for (const catId of MONITORED_CATEGORY_IDS) {
+  const catIds = new Set([...FULL_CATEGORY_IDS, ...VIEW_ONLY_CATEGORY_IDS]);
+  for (const catId of catIds) {
     const category = await client.channels.fetch(catId).catch(() => null);
     if (!category) continue;
     const guild = category.guild;
-    const all = guild.channels.cache.filter((c) => c.parentId === category.id);
-    out.push(...all.filter((c) => isMonitoredChannel(c)).toJSON());
+    const children = guild.channels.cache.filter(c => c.parentId === category.id);
+    for (const ch of children.values()) {
+      if (isMonitoredChannel(ch)) out.push(ch);
+    }
   }
   return out;
 }
 
+// === 리포트 임베드 ===
 function buildEmbedReport(items) {
   const nowText = formatKST(nowMs());
   const eb = new EmbedBuilder()
@@ -170,7 +196,7 @@ function buildEmbedReport(items) {
   return eb;
 }
 
-// === everyone '채널 보기' 강제 거부(X) ===
+// === @everyone '채널 보기' 상태 조회/강제 ===
 function getEveryoneViewState(ch) {
   const everyone = ch.guild.roles.everyone;
   const ow = ch.permissionOverwrites.resolve(everyone.id);
@@ -189,7 +215,7 @@ async function enforceEveryoneViewLock(ch, reason = "auto-enforce") {
     if (stateBefore === "거부") return false; // 이미 거부(X)
 
     const everyone = ch.guild.roles.everyone;
-    // false => 명시적인 거부(X)
+    // 명시적 거부
     await ch.permissionOverwrites.edit(everyone, { ViewChannel: false }, { reason });
 
     // 로그
@@ -197,19 +223,20 @@ async function enforceEveryoneViewLock(ch, reason = "auto-enforce") {
       const reportCh = await ch.client.channels.fetch(REPORT_CHANNEL_ID).catch(() => null);
       if (reportCh && reportCh.isTextBased()) {
         await reportCh.send(
-          `🚫 **@everyone의 '채널 보기'를 거부(X)로 강제 설정**했습니다.\n- 대상: <#${ch.id}> \`(${ch.name})\`\n- 이전 상태: **${stateBefore}** → 현재: **거부**\n- 사유: ${reason}\n- 시각: ${formatKST(nowMs())}`
+          `🚫 **@everyone '채널 보기'를 거부(X)로 강제 설정**\n- 대상: <#${ch.id}> \`(${ch.name})\`\n- 이전: **${stateBefore}** → 현재: **거부**\n- 사유: ${reason}\n- 시각: ${formatKST(nowMs())}`
         );
       }
     } catch {}
-
     return true;
   } catch {
     return false;
   }
 }
 
-// === 비활성 채널 자동 잠금(기존 기능) ===
+// === (풀 모드 전용) 장기 미사용 잠금 ===
 async function lockChannelIfInactive(ch, rec) {
+  if (!isFullChannel(ch)) return false; // 뷰온리 카테고리엔 적용 안 함
+
   const guild = ch.guild;
   const everyone = guild.roles.everyone;
   const alreadyLocked = !!rec.locked;
@@ -231,10 +258,10 @@ async function lockChannelIfInactive(ch, rec) {
     }
 
     const baseDeny = [PermissionFlagsBits.ViewChannel];
-    if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement || ch.type === ChannelType.GuildForum || ch.type === ChannelType.GuildMedia) {
+    if ([ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildMedia].includes(ch.type)) {
       baseDeny.push(PermissionFlagsBits.SendMessages);
     }
-    if (ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildStageVoice) {
+    if ([ChannelType.GuildVoice, ChannelType.GuildStageVoice].includes(ch.type)) {
       baseDeny.push(PermissionFlagsBits.Connect, PermissionFlagsBits.Speak);
     }
 
@@ -249,12 +276,13 @@ async function lockChannelIfInactive(ch, rec) {
     rec.locked = true;
     rec.lockedAt = nowMs();
 
+    // 로그
     try {
       const reportCh = await ch.client.channels.fetch(REPORT_CHANNEL_ID).catch(() => null);
       if (reportCh && reportCh.isTextBased()) {
         const lastText = last ? `${formatKST(last)} (${durationMsToText(diffMs)} 경과)` : "기록 없음";
         await reportCh.send(
-          `🔒 <#${ch.id}> 채널을 **비공개 처리**했습니다.\n- 사유: ${INACTIVE_DAYS_TO_LOCK}일 이상 미사용\n- 마지막 활동: ${lastText}\n- 처리 시각: ${formatKST(rec.lockedAt)}`
+          `🔒 <#${ch.id}> **비공개 처리**\n- 사유: ${INACTIVE_DAYS_TO_LOCK}일 이상 미사용(풀 모드)\n- 마지막 활동: ${lastText}\n- 시각: ${formatKST(rec.lockedAt)}`
         );
       }
     } catch {}
@@ -265,7 +293,7 @@ async function lockChannelIfInactive(ch, rec) {
   }
 }
 
-// === 주기 스캔 + 리포트 ===
+// === 스캔 & 리포트 ===
 async function scanAndReport(client) {
   const reportCh = await client.channels.fetch(REPORT_CHANNEL_ID).catch(() => null);
   const channels = await fetchCategoryChannels(client);
@@ -273,6 +301,8 @@ async function scanAndReport(client) {
 
   for (const ch of channels) {
     const rec = ensureChannelRecord(store, ch);
+
+    // 초기 lastActivityAt 보정(있으면 유지)
     if (!rec.lastActivityAt) {
       try {
         if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement) {
@@ -283,10 +313,14 @@ async function scanAndReport(client) {
         }
       } catch {}
     }
-    // 1) everyone '채널 보기' 강제 거부
+
+    // 1) 모든 감시 채널: @everyone '채널 보기' 강제 X
     await enforceEveryoneViewLock(ch, "주기 스캔(enforce)");
-    // 2) 장기 미사용 잠금 로직(기존)
-    await lockChannelIfInactive(ch, rec);
+
+    // 2) 풀 모드만: 장기 미사용 잠금
+    if (isFullChannel(ch)) {
+      await lockChannelIfInactive(ch, rec);
+    }
   }
 
   const items = channels
@@ -301,9 +335,9 @@ async function scanAndReport(client) {
   }
 }
 
-// === 이벤트 바인딩 ===
+// === 이벤트 ===
 function wireListeners(client) {
-  // 메시지 활동 기록
+  // 텍스트 활동
   client.on(Events.MessageCreate, async (msg) => {
     try {
       if (msg.author?.bot) return;
@@ -313,7 +347,7 @@ function wireListeners(client) {
     } catch {}
   });
 
-  // 보이스 활동 기록
+  // 보이스 활동
   client.on(Events.VoiceStateUpdate, async (oldS, newS) => {
     try {
       const newCh = newS.channel;
@@ -327,7 +361,7 @@ function wireListeners(client) {
     } catch {}
   });
 
-  // 채널 업데이트 감지: 권한 변경 즉시 강제
+  // 채널 권한 변경 감지 → 즉시 '채널 보기' 강제 X
   client.on(Events.ChannelUpdate, async (oldCh, newCh) => {
     try {
       if (!isMonitoredChannel(newCh)) return;
@@ -339,7 +373,7 @@ function wireListeners(client) {
       rec.type = newCh.type || rec.type;
       saveStore(store);
 
-      // everyone '채널 보기' 허용/중립으로 바뀐 경우 즉시 되돌림
+      // everyone '채널 보기' 허용/중립으로 바뀌면 즉시 되돌리기
       await enforceEveryoneViewLock(newCh, "권한 변경 감지(enforce)");
     } catch {}
   });
