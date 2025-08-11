@@ -6,6 +6,9 @@ const {
   ChannelType,
   PermissionFlagsBits,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require('discord.js');
 
 // ======== 기본 설정 ========
@@ -14,12 +17,11 @@ const DEFAULT_DAYS = 7;
 
 const DEFAULT_OPTIONS = {
   rootDir: path.resolve(process.cwd()),
-  adminRoleIds: [], // 위험 명령(킥/뮤트/이동 등) 허용 역할 ID 목록
+  adminRoleIds: [], // 위험/학습 명령 허용 역할 ID
   logChannelId: null, // 작업 로그 남길 채널
   guildId: process.env.GUILD_ID || null,
+  enableAutoLearn: true,
   voiceAliases: {
-    // 필요시 덮어쓰기: { '101호': '1222085152600096778', ... }
-    // 예시(있으면 사용, 없으면 이름으로 검색):
     '101호': '1222085152600096778',
     '102호': '1222085194706587730',
     '201호': '1230536383941050368',
@@ -34,6 +36,10 @@ const DEFAULT_OPTIONS = {
     '602호': '1209157492207255572',
   },
 };
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const LEARN_DB_PATH = path.join(DATA_DIR, 'ai-learn.json');
+const UNKNOWN_LOG_PATH = path.join(DATA_DIR, 'ai-unknown.jsonl');
 
 // ======== 선택적 모듈 로딩(있으면 사용) ========
 function tryLoadActivityModule() {
@@ -91,7 +97,6 @@ function buildCodeIndex(rootDir) {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
     const tokens = tokenize(text + ' ' + file);
-    // 간단한 export 함수 이름 추출
     const funcs = [];
     const funcRegexes = [
       /export\s+function\s+([a-zA-Z0-9_]+)/g,
@@ -122,9 +127,7 @@ function buildCodeIndex(rootDir) {
 }
 
 function ensureCodeIndex(options) {
-  const key = JSON.stringify({
-    rootDir: options.rootDir,
-  });
+  const key = JSON.stringify({ rootDir: options.rootDir });
   if (!codeIndexCache || codeIndexOptionsKey !== key) {
     codeIndexCache = buildCodeIndex(options.rootDir);
     codeIndexOptionsKey = key;
@@ -145,7 +148,6 @@ function searchCodeIndex(query, options, limit = 5) {
   for (const it of idx) {
     let score = 0;
     for (const qt of qTokens) {
-      // 파일경로/토큰/익스포트 이름에서 가중치
       const inFile = it.file.toLowerCase().includes(qt) ? 3 : 0;
       const inTokens = it.tokens.includes(qt) ? 1 : 0;
       const inExports = it.exports.some(n => n.toLowerCase().includes(qt)) ? 5 : 0;
@@ -167,11 +169,9 @@ function normalize(s) {
 async function findMemberByText(guild, text) {
   const t = normalize(text).toLowerCase();
   if (!t) return null;
-  // ID 직접
   if (/^\d{16,23}$/.test(t)) {
     try { return await guild.members.fetch(t); } catch { /* pass */ }
   }
-  // 전체 페치 후 퍼지
   let members;
   try { members = await guild.members.fetch(); } catch { return null; }
   const exact = members.find(m =>
@@ -180,7 +180,6 @@ async function findMemberByText(guild, text) {
     (m.user.username && m.user.username.toLowerCase() === t)
   );
   if (exact) return exact;
-  // 포함 일치
   const partial = members.find(m =>
     (m.displayName && m.displayName.toLowerCase().includes(t)) ||
     (m.user.username && m.user.username.toLowerCase().includes(t)) ||
@@ -195,7 +194,6 @@ function mapAliasToChannelId(nameOrId, guild, options) {
   if (/^\d{16,23}$/.test(t)) return t;
   const aliasId = (options.voiceAliases && options.voiceAliases[t]) || null;
   if (aliasId) return aliasId;
-  // 이름으로 찾기
   const ch = guild.channels.cache.find(c =>
     (c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice) &&
     (c.name === t || c.name.includes(t))
@@ -219,11 +217,86 @@ async function logAction(client, options, embed) {
   } catch { /* ignore */ }
 }
 
-// ======== 자연어 → 의도 해석 ========
-function parseQuery(q) {
+// ======== 동의어/오타 보정 & 엔티티 추출 ========
+function normalizeForMatch(s) {
+  let t = String(s || '').toLowerCase();
+  const rep = [
+    [/음소거|뮤트|마익|마이크\s*꺼/gu, '마이크끄기'],
+    [/추방|킥|kick/giu, '추방'],
+    [/이동|옮겨|보내/gu, '이동'],
+    [/음성|보이스/gu, '음성'],
+    [/이력|기록|로그|사용량/gu, '이력'],
+    [/채널|방/gu,'채널'],
+    [/지금|현재/gu, '지금'],
+    [/인기|활발|활동|북적/gu,'인기'],
+    [/유저|사람|회원/gu,'유저'],
+    [/나|본인|자기|내/gu, '나'],
+  ];
+  for (const [re, r] of rep) t = t.replace(re, r);
+  return t.replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();
+}
+
+function extractDays(text) {
+  const m = text.match(/(\d+)\s*일/);
+  if (m) return parseInt(m[1], 10) || DEFAULT_DAYS;
+  if (/일주일|7일|칠일/.test(text)) return 7;
+  return DEFAULT_DAYS;
+}
+function extractChannelText(text) {
+  const m1 = text.match(/(\d{2,4})\s*호/);
+  if (m1) return `${m1[1]}호`;
+  const m2 = text.match(/채널\s*([^\s]+)/);
+  if (m2) return m2[1];
+  return null;
+}
+function extractUserCue(text) {
+  // 멘션/태그 우선, 없으면 '유저' 앞 단어들
+  const men = text.match(/<@!?(\d+)>/);
+  if (men) return men[0];
+  const m = text.match(/(.+?)\s*유저/);
+  return m ? m[1].trim() : null;
+}
+
+// ======== 간단 유사도 매칭(Jaccard) ========
+function jaccard(a, b) {
+  const A = new Set(String(a).split(/\s+/).filter(Boolean));
+  const B = new Set(String(b).split(/\s+/).filter(Boolean));
+  const inter = [...A].filter(x => B.has(x)).length;
+  const union = new Set([...A, ...B]).size;
+  return union ? inter / union : 0;
+}
+
+// ======== 학습 DB ========
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+function loadLearnDB() {
+  ensureDataDir();
+  try {
+    const j = JSON.parse(fs.readFileSync(LEARN_DB_PATH, 'utf8'));
+    if (j && Array.isArray(j.examples)) return j;
+  } catch {}
+  return { examples: [] };
+}
+function saveLearnDB(db) {
+  try { fs.writeFileSync(LEARN_DB_PATH, JSON.stringify(db, null, 2)); } catch {}
+}
+function appendUnknownLog(obj) {
+  try {
+    const line = JSON.stringify({ t: new Date().toISOString(), ...obj });
+    fs.appendFileSync(UNKNOWN_LOG_PATH, line + '\n');
+  } catch {}
+}
+
+// 메모리 보류표(버튼용)
+const pendingLearn = new Map(); // key: messageId, val: { q, authorId }
+
+// ======== 자연어 → 의도 해석(규칙 → 학습 → 코드인덱스) ========
+function parseQueryRuleBased(q) {
   const text = q.trim();
+
   // 7일간 음성채팅 이력
-  const mHist = text.match(/(.+?)\s*유저의?\s*(\d+|일주일|7일|칠일|7일간|7일동안)?\s*(?:음성|보이스)\s*(?:채팅)?\s*(?:이력|기록)/);
+  const mHist = text.match(/(.+?)\s*유저의?\s*(\d+|일주일|7일|칠일|7일간|7일동안)?\s*(?:음성|보이스)\s*(?:채팅)?\s*(?:이력|기록|로그|사용량)/);
   if (mHist) {
     const userText = mHist[1].trim();
     let days = DEFAULT_DAYS;
@@ -255,20 +328,66 @@ function parseQuery(q) {
   }
 
   // 나를 502호로 이동
-  const mMove = text.match(/(나|본인|자기|내)\s*(?:를)?\s*(.+?)\s*(?:호|방|채널)?\s*(?:로)?\s*(?:이동|옮겨)\s*줘?/);
+  const mMove = text.match(/(나|본인|자기|내)\s*(?:를)?\s*(.+?)\s*(?:호|방|채널)?\s*(?:로)?\s*(?:이동|옮겨|보내)\s*줘?/);
   if (mMove) {
     const channelText = mMove[2].trim();
     return { type: 'move_me', channelText };
   }
 
   // 범용: "X 로/으로 이동시켜줘"
-  const mMoveAny = text.match(/(.+?)\s*(?:로|으로)\s*(?:이동|옮겨)\s*줘?/);
+  const mMoveAny = text.match(/(.+?)\s*(?:로|으로)\s*(?:이동|옮겨|보내)\s*줘?/);
   if (mMoveAny) {
     const channelText = mMoveAny[1].trim();
     return { type: 'move_me', channelText };
   }
 
-  return { type: 'unknown', raw: text };
+  return null;
+}
+
+function parseQueryLearned(q, db) {
+  const qn = normalizeForMatch(q);
+  let best = null;
+  for (const ex of db.examples) {
+    const en = ex.qn || normalizeForMatch(ex.q);
+    const s = jaccard(qn, en);
+    const th = ex.threshold ?? 0.5;
+    if (s >= th) {
+      if (!best || s > best.score) best = { intent: ex.intent, score: s };
+    }
+  }
+  if (!best) return null;
+
+  // 슬롯 추출(일반 규칙)
+  if (best.intent === 'voice_history') {
+    const userText = extractUserCue(q) || null;
+    const days = extractDays(q);
+    return { type: 'voice_history', userText, days };
+  }
+  if (best.intent === 'top_channel_now') return { type: 'top_channel_now' };
+  if (best.intent === 'mute_user') {
+    const userText = extractUserCue(q);
+    if (userText) return { type: 'mute_user', userText };
+    return { type: 'mute_user' }; // 이후 단계에서 실패 시 안내
+  }
+  if (best.intent === 'kick_user') {
+    const userText = extractUserCue(q);
+    if (userText) return { type: 'kick_user', userText };
+    return { type: 'kick_user' };
+  }
+  if (best.intent === 'move_me') {
+    const channelText = extractChannelText(q);
+    if (channelText) return { type: 'move_me', channelText };
+    return { type: 'move_me' };
+  }
+  return null;
+}
+
+function parseQuery(q, db) {
+  return (
+    parseQueryRuleBased(q) ||
+    parseQueryLearned(q, db) ||
+    { type: 'unknown', raw: q.trim() }
+  );
 }
 
 // ======== 핸들러 구현 ========
@@ -281,7 +400,6 @@ async function handleVoiceHistory({ guild, targetMember, days }) {
   let summary = null;
 
   if (activity && typeof activity.getDailyHourlyStats === 'function') {
-    // 기대 구조: { 'YYYY-MM-DD': { '00': {message, voice}, ... } }
     const dailyHourly = activity.getDailyHourlyStats({ from, to, userId: targetMember.id }) || {};
     const perDay = [];
     for (const day of Object.keys(dailyHourly).sort()) {
@@ -297,14 +415,12 @@ async function handleVoiceHistory({ guild, targetMember, days }) {
     summary = perDay;
   }
 
-  // 다른 API 시도
   if (!summary && activity && typeof activity.getVoiceSummary === 'function') {
     try {
       summary = await activity.getVoiceSummary({ from, to, userId: targetMember.id });
     } catch {}
   }
 
-  // 데이터 파일 폴백(있을 때만)
   if (!summary) {
     try {
       const guess = path.join(process.cwd(), 'data', 'voice-activity.json');
@@ -333,7 +449,6 @@ function formatMinutes(mins) {
 }
 
 async function handleTopChannelNow(guild) {
-  // "지금" 기준: 현재 접속자 수가 가장 많은 보이스/스테이지 채널
   const targets = guild.channels.cache.filter(c =>
     (c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice)
   );
@@ -381,8 +496,30 @@ async function handleMoveMe(member, guild, channelText, options) {
   }
 }
 
+// ======== 학습용 버튼/명령 ========
+const LEARN_INTENTS = [
+  { id: 'voice_history', label: '음성 이력' },
+  { id: 'top_channel_now', label: '지금 인기채널' },
+  { id: 'mute_user', label: '마이크 끄기' },
+  { id: 'kick_user', label: '추방' },
+  { id: 'move_me', label: '나 이동' },
+];
+
+function makeLearnButtons(rowId) {
+  const row = new ActionRowBuilder();
+  for (const it of LEARN_INTENTS) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`ai.learn|intent=${it.id}|row=${rowId}`)
+        .setLabel(it.label)
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+  return [row];
+}
+
 // ======== 메인 진입 ========
-async function handleAIMessage(client, options, message) {
+async function handleAIMessage(client, options, message, learnDB) {
   if (!message.guild || message.author.bot) return;
   const content = message.content?.trim() || '';
   if (!content.startsWith(PREFIX)) return;
@@ -393,24 +530,24 @@ async function handleAIMessage(client, options, message) {
   const guild = message.guild;
   const invoker = message.member;
 
-  const intent = parseQuery(q);
+  const intent = parseQuery(q, learnDB);
   const resEmbed = new EmbedBuilder().setColor(0x9155ff).setTimestamp();
 
-  // 위험 명령 보호
   const needAdmin = (type) => ['mute_user', 'kick_user', 'move_me'].includes(type);
 
   if (needAdmin(intent.type) && !hasAdminPower(invoker, options)) {
     await message.reply({
       embeds: [resEmbed
         .setTitle('권한 부족')
-        .setDescription('해당 요청은 관리자 권한이 필요합니다. 관리자 역할이 없으면 실행할 수 없습니다.')]
+        .setDescription('해당 요청은 관리자 권한이 필요합니다.')],
     });
     return;
   }
 
-  // 의도별 처리
   if (intent.type === 'voice_history') {
-    const targetMember = await findMemberByText(guild, intent.userText);
+    const targetMember =
+      (intent.userText && await findMemberByText(guild, intent.userText)) ||
+      (await findMemberByText(guild, invoker.id)); // fallback: 자기 자신
     if (!targetMember) {
       await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했습니다').setDescription(`요청: ${q}`)] });
       return;
@@ -459,7 +596,12 @@ async function handleAIMessage(client, options, message) {
   }
 
   if (intent.type === 'mute_user') {
-    const targetMember = await findMemberByText(guild, intent.userText);
+    const userText = intent.userText || extractUserCue(q);
+    if (!userText) {
+      await message.reply({ embeds: [resEmbed.setTitle('유저 지정 필요').setDescription('누구를 음소거할지 알려줘. 예) `홍길동 유저 마이크 꺼줘`')] });
+      return;
+    }
+    const targetMember = await findMemberByText(guild, userText);
     if (!targetMember) {
       await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했습니다').setDescription(`요청: ${q}`)] });
       return;
@@ -475,12 +617,16 @@ async function handleAIMessage(client, options, message) {
   }
 
   if (intent.type === 'kick_user') {
-    const targetMember = await findMemberByText(guild, intent.userText);
+    const userText = intent.userText || extractUserCue(q);
+    if (!userText) {
+      await message.reply({ embeds: [resEmbed.setTitle('유저 지정 필요').setDescription('누구를 추방할지 알려줘. 예) `홍길동 유저 추방`')] });
+      return;
+    }
+    const targetMember = await findMemberByText(guild, userText);
     if (!targetMember) {
       await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했어').setDescription(`요청: ${q}`)] });
       return;
     }
-    // 자신/관리자 보호
     if (targetMember.id === invoker.id) {
       await message.reply({ embeds: [resEmbed.setTitle('실패').setDescription('스스로는 추방할 수 없습니다.')] });
       return;
@@ -500,7 +646,12 @@ async function handleAIMessage(client, options, message) {
   }
 
   if (intent.type === 'move_me') {
-    const r = await handleMoveMe(invoker, guild, intent.channelText, options);
+    const channelText = intent.channelText || extractChannelText(q);
+    if (!channelText) {
+      await message.reply({ embeds: [resEmbed.setTitle('채널 지정 필요').setDescription('어디로 이동할지 알려줘. 예) `나 502호로 이동`')] });
+      return;
+    }
+    const r = await handleMoveMe(invoker, guild, channelText, options);
     if (r.ok) {
       const ch = guild.channels.cache.get(r.channelId);
       await message.reply({ embeds: [resEmbed.setTitle('이동 완료').setDescription(`${ch ? ch.name : r.channelId} 로 이동 완료`)] });
@@ -511,26 +662,30 @@ async function handleAIMessage(client, options, message) {
     return;
   }
 
-  // 미해석: 코드 검색 결과 반환(봇이 스스로 코드 분석)
+  // 미해석 → 학습 유도
   const suggestions = searchCodeIndex(q, options, 6);
-  if (suggestions.length) {
-    const desc = suggestions
-      .map((s, i) => `**${i + 1}.** \`${path.relative(options.rootDir, s.file)}\` — exports: ${s.exports.slice(0, 6).join(', ')}`)
-      .join('\n');
-    await message.reply({
-      embeds: [resEmbed
-        .setTitle('요청을 정확히 해석하지 못했지만, 유사한 값을 처리했습니다')
-        .setDescription(desc)
-        .setFooter({ text: `index: ${codeIndexHash || 'n/a'}` })],
-    });
-    return;
-  }
+  const learnRowId = crypto.randomBytes(6).toString('hex');
+  pendingLearn.set(learnRowId, { q, authorId: invoker.id });
+  appendUnknownLog({ guildId: guild.id, userId: invoker.id, q });
 
-  await message.reply({
+  const descSuggest = suggestions.length
+    ? '\n\n비슷한 파일:\n' + suggestions
+        .map((s, i) => `**${i + 1}.** \`${path.relative(options.rootDir, s.file)}\` — exports: ${s.exports.slice(0, 6).join(', ')}`)
+        .join('\n')
+    : '';
+
+  const reply = await message.reply({
     embeds: [resEmbed
-      .setTitle('요청을 이해하지 못했습니다')
-      .setDescription('좀 더 구체적으로 이야기하거나 다른 단어를 사용해주세요')],
+      .setTitle('요청을 이해하지 못했어')
+      .setDescription('아래 버튼으로 의도를 한 번만 눌러서 학습시켜줘! (관리자만 가능)\n' +
+                      '또는 이 메시지에 댓글로 `갓봇! 학습 <intent>` 형태로 보내도 돼.\n' +
+                      '`intent`: voice_history | top_channel_now | mute_user | kick_user | move_me' +
+                      descSuggest)
+      .setFooter({ text: `index: ${codeIndexHash || 'n/a'}  |  learn:${learnRowId}` })],
+    components: options.enableAutoLearn ? makeLearnButtons(learnRowId) : [],
   });
+
+  return;
 }
 
 // ======== 퍼블릭 API ========
@@ -540,7 +695,116 @@ function initAI(client, userOptions = {}) {
     ...userOptions,
     voiceAliases: { ...DEFAULT_OPTIONS.voiceAliases, ...(userOptions.voiceAliases || {}) },
   };
-  client.on('messageCreate', (msg) => handleAIMessage(client, options, msg));
+
+  // 학습 DB 메모리
+  const learnDB = loadLearnDB();
+
+  // 메시지 핸들
+  client.on('messageCreate', (msg) => handleAIMessage(client, options, msg, learnDB));
+
+  // 버튼 학습
+  client.on('interactionCreate', async (i) => {
+    try {
+      if (!i.isButton()) return;
+      if (!i.customId.startsWith('ai.learn|')) return;
+      if (!hasAdminPower(i.member, options)) {
+        await i.reply({ content: '관리자만 학습 가능해.', ephemeral: true });
+        return;
+      }
+      const kv = Object.fromEntries(i.customId.split('|').slice(1).map(s => s.split('=')));
+      const rowId = kv.row;
+      const intent = kv.intent;
+      const pending = pendingLearn.get(rowId);
+      if (!pending) {
+        await i.reply({ content: '학습 대상 정보를 찾지 못했어(만료됨).', ephemeral: true });
+        return;
+      }
+      learnDB.examples.push({
+        q: pending.q,
+        qn: normalizeForMatch(pending.q),
+        intent,
+        threshold: 0.5,
+        createdAt: Date.now(),
+        by: i.user.id,
+      });
+      saveLearnDB(learnDB);
+      pendingLearn.delete(rowId);
+      await i.update({
+        components: [],
+        embeds: [
+          EmbedBuilder.from(i.message.embeds?.[0] ?? new EmbedBuilder())
+            .setColor(0x21c274)
+            .setTitle('학습 완료')
+            .setDescription(`다음 표현을 **${intent}** 로 학습했어:\n\`\`\`\n${pending.q}\n\`\`\``)
+        ],
+      });
+    } catch (e) {
+      try { await i.reply({ content: '학습 처리 중 오류가 발생했어.', ephemeral: true }); } catch {}
+    }
+  });
+
+  // 텍스트 명령 학습: "갓봇! 학습 <intent>" / "갓봇! 학습목록" / "갓봇! 학습삭제 <번호>"
+  client.on('messageCreate', async (m) => {
+    try {
+      if (m.author.bot) return;
+      if (!m.content?.startsWith(PREFIX)) return;
+      const cmd = m.content.slice(PREFIX.length).trim();
+      if (cmd === '학습목록') {
+        if (!hasAdminPower(m.member, options)) return;
+        const list = learnDB.examples.slice(-10).map((ex, i) =>
+          `${learnDB.examples.length - 10 + i + 1}. [${ex.intent}] ${ex.q}`
+        ).join('\n') || '비어있음';
+        await m.reply({ content: `최근 학습 10개:\n${list}` });
+        return;
+      }
+      const delMatch = cmd.match(/^학습삭제\s+(\d+)/);
+      if (delMatch) {
+        if (!hasAdminPower(m.member, options)) return;
+        const idx = parseInt(delMatch[1], 10) - 1;
+        if (idx >= 0 && idx < learnDB.examples.length) {
+          const removed = learnDB.examples.splice(idx, 1)[0];
+          saveLearnDB(learnDB);
+          await m.reply({ content: `삭제 완료: [${removed.intent}] ${removed.q}` });
+        } else {
+          await m.reply({ content: '범위를 벗어났어.' });
+        }
+        return;
+      }
+      const lrn = cmd.match(/^학습\s+(voice_history|top_channel_now|mute_user|kick_user|move_me)\b/i);
+      if (lrn) {
+        if (!hasAdminPower(m.member, options)) {
+          await m.reply('관리자만 가능해.');
+          return;
+        }
+        // 답글로 온 경우 그 원문을 학습
+        let targetText = null;
+        if (m.reference?.messageId) {
+          try {
+            const ref = await m.channel.messages.fetch(m.reference.messageId);
+            targetText = ref?.embeds?.[0]?.data?.footer?.text?.includes('learn:')
+              ? (ref.embeds?.[0]?.data?.description?.match(/```([\s\S]*?)```/)?.[1]?.trim())
+              : null;
+          } catch {}
+        }
+        if (!targetText) {
+          await m.reply('이전 "이해 못함" 메시지에 **답글**로 보내줘. 버튼이 더 편해!');
+          return;
+        }
+        const intent = lrn[1];
+        learnDB.examples.push({
+          q: targetText,
+          qn: normalizeForMatch(targetText),
+          intent,
+          threshold: 0.5,
+          createdAt: Date.now(),
+          by: m.author.id,
+        });
+        saveLearnDB(learnDB);
+        await m.reply(`학습 완료: **${intent}** ← \`${targetText}\``);
+      }
+    } catch {}
+  });
+
   return {
     searchCodeIndex: (q, limit = 5) => searchCodeIndex(q, options, limit),
   };
@@ -548,7 +812,6 @@ function initAI(client, userOptions = {}) {
 
 module.exports = {
   initAI,
-  // 아래 함수들은 필요 시 외부에서 직접 호출/테스트 가능하게 export
-  _parseQuery: parseQuery,
+  _parseQuery: (q) => parseQuery(q, loadLearnDB()),
   _searchCodeIndex: (q, options = DEFAULT_OPTIONS, limit = 5) => searchCodeIndex(q, options, limit),
 };
