@@ -132,6 +132,7 @@ function buildEmbedReport(items) {
     .setDescription(`모니터링 채널 목록 (KST 기준)\n마지막 업데이트: **${nowText}**`)
     .setColor(0x5865f2);
 
+  // 음성/스테이지 제외
   const visible = items.filter((it) => ![ChannelType.GuildVoice, ChannelType.GuildStageVoice].includes(it.type));
 
   const lines = visible.map((it) => {
@@ -142,10 +143,24 @@ function buildEmbedReport(items) {
     return `[채널명: ${it.name}]${warnBadge}\n> 마지막 활동: ${lastAtText} │ 비이용: ${usedAgoText}`;
   });
 
-  eb.addFields({ name: "목록", value: lines.join("\n") || "대상 채널이 없습니다." });
+  // ✅ 1024자 제한 회피: 동일한 필드명 '목록'으로 자동 분할(‘목록 (계속)’ 안 뜸)
+  if (lines.length === 0) {
+    eb.addFields({ name: "목록", value: "대상 채널이 없습니다." });
+    return eb;
+  }
+  let buf = "";
+  for (const line of lines) {
+    // +1은 줄바꿈 문자 고려
+    if (buf.length + line.length + 1 > 1000) {
+      eb.addFields({ name: "목록", value: buf });
+      buf = line;
+    } else {
+      buf = buf ? `${buf}\n${line}` : line;
+    }
+  }
+  if (buf) eb.addFields({ name: "목록", value: buf });
   return eb;
 }
-
 
 function getEveryoneViewState(ch) {
   const everyone = ch.guild.roles.everyone;
