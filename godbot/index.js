@@ -74,7 +74,8 @@ if (fs.existsSync(eventsPath)) {
 require('./utils/voiceWatcher')(client);
 // 🚫 특정 역할 활동 제한
 require('./utils/restricted-role-guard')(client);
-
+// 후원 역할 자동 만료 제거
+require('./utils/donor-role-expirer')(client);
 
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
