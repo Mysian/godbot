@@ -59,7 +59,22 @@ function saveStore(data) {
 
 const sessions = new Map();
 function newSession(userId) {
-  const s = { step: 0, createdAt: Date.now(), data: {}, mode: null, commandName: null, expectedOptions: [], currIndex: 0, channelId: null, messageId: null, pendingConfirm: null };
+  const s = {
+    step: 0,
+    createdAt: Date.now(),
+    data: {},
+    mode: null,
+    commandName: null,
+    expectedOptions: [],
+    requiredOptions: [],
+    optionalOptions: [],
+    optionalDecided: false, // false: 아직 결정 전, 'waiting': 버튼 대기, true: 결정 완료
+    currIndex: 0,
+    channelId: null,
+    messageId: null,
+    pendingConfirm: null,
+    origText: ""
+  };
   sessions.set(userId, s);
   return s;
 }
@@ -234,6 +249,31 @@ async function askNextOption(message, session, learned) {
       return;
     }
   }
+  if (session.expectedOptions === session.requiredOptions && session.optionalDecided === false) {
+    const remainOptional = (session.optionalOptions || []).filter(o => session.data[o.name] == null);
+    if (remainOptional.length > 0) {
+      const ebAsk = new EmbedBuilder()
+        .setTitle("선택 옵션도 설정할래?")
+        .setDescription("필수값은 다 모았어. 선택값(사유, 역할, 채널, boolean 등)도 더 설정할지 결정해줘.");
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`godbot_opt_yes_${learned.name}_${message.id}`)
+          .setLabel("예, 선택옵션 설정")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`godbot_opt_no_${learned.name}_${message.id}`)
+          .setLabel("아니오, 바로 진행")
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      const q = await channel.send({ embeds: [ebAsk], components: [row], reply: { messageReference: message.id } });
+      session.messageId = q.id;
+      session.optionalDecided = 'waiting';
+      return;
+    }
+  }
+
   const summary = summarizePlan(guild, learned, session.data);
   const runRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`godbot_run_${learned.name}_${message.id}`).setLabel("실행").setStyle(ButtonStyle.Success),
@@ -242,7 +282,6 @@ async function askNextOption(message, session, learned) {
   const eb = new EmbedBuilder().setTitle("실행 전 확인").setDescription(summary);
   await channel.send({ embeds: [eb], components: [runRow], reply: { messageReference: message.id } });
   session.pendingConfirm = true;
-}
 
 function extractFromText(guild, text, learned) {
   const res = {};
@@ -501,8 +540,14 @@ async function startNlpFlow(client, message, content) {
   s.mode = "exec";
   s.commandName = match.name;
   s.channelId = message.channelId;
-  s.expectedOptions = (match.options || []).slice(0);
+
+  const allOpts = (match.options || []).slice(0);
+  s.requiredOptions = allOpts.filter(o => o.required);
+  s.optionalOptions = allOpts.filter(o => !o.required);
+  s.expectedOptions = s.requiredOptions.slice(0); // ⬅️ 처음엔 필수만
   s.currIndex = 0;
+  s.origText = content;
+
   const prefill = extractFromText(message.guild, content, match);
   s.data = { ...prefill };
   for (let i = 0; i < s.expectedOptions.length; i++) {
