@@ -55,9 +55,9 @@ module.exports = {
     let embed = new EmbedBuilder()
       .setTitle('🎁 내 후원 현황')
       .setDescription([
-        '💡 아래는 내 디스코드 후원 내역과 보유 혜택 정보야.',
-        '※ 후원 내역이 누적되어 있을 수 있어.',
-        '※ 후원 혜택(역할) 만료 시 자동으로 사라짐.'
+        '💡 후원 내역과 관련 정보입니다.',
+        '※ 서버에 힘이 되어주셔서 감사합니다.',
+        '※ 후원 혜택(역할) 만료 시 자동으로 사라집니다.'
       ].join('\n'))
       .setColor(0x9be7ff);
 
@@ -93,7 +93,7 @@ module.exports = {
           item.situation ? `- 희망상황: ${item.situation}` : '',
           `- 후원일: ${formatDateKST(item.date)}`
         ].filter(Boolean).join('\n')).join('\n\n') +
-        (userItems.length > 10 ? `\n\n...외 ${userItems.length - 10}건 더 있음. (관리진에게 문의)` : ''),
+        (userItems.length > 10 ? `\n\n...외 ${userItems.length - 10}건 더 있습니다.` : ''),
         inline: false
       });
     } else {
