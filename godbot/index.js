@@ -78,6 +78,11 @@ require('./utils/restricted-role-guard')(client);
 require('./utils/donor-role-expirer')(client);
 // 카테고리 채널 감시 + 현황 보고 + 30일 미사용시 비공개 처리
 require('./utils/category-channel-watcher').initChannelWatcher(client);
+// 갓봇 ai
+require('./utils/godbot-router').init(client, {
+  roleId: '1404486995564167218',          // 권한 역할
+  commandsDir: path.join(__dirname, './commands') // 슬래시 명령 폴더
+});
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
