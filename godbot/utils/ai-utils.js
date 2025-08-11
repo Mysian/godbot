@@ -403,7 +403,7 @@ async function handleAIMessage(client, options, message) {
     await message.reply({
       embeds: [resEmbed
         .setTitle('권한 부족')
-        .setDescription('해당 요청은 관리자 권한이 필요해. 관리자 역할이 없으면 실행할 수 없어.')]
+        .setDescription('해당 요청은 관리자 권한이 필요합니다. 관리자 역할이 없으면 실행할 수 없습니다.')]
     });
     return;
   }
@@ -412,7 +412,7 @@ async function handleAIMessage(client, options, message) {
   if (intent.type === 'voice_history') {
     const targetMember = await findMemberByText(guild, intent.userText);
     if (!targetMember) {
-      await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했어').setDescription(`요청: ${q}`)] });
+      await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했습니다').setDescription(`요청: ${q}`)] });
       return;
     }
     const data = await handleVoiceHistory({ guild, targetMember, days: intent.days || DEFAULT_DAYS });
@@ -420,7 +420,7 @@ async function handleAIMessage(client, options, message) {
       await message.reply({
         embeds: [resEmbed
           .setTitle(`음성채팅 이력 (최근 ${intent.days || DEFAULT_DAYS}일)`)
-          .setDescription(`${targetMember.displayName}의 집계 데이터를 찾지 못했어.`)],
+          .setDescription(`${targetMember.displayName}의 집계 데이터를 찾지 못했습니다.`)],
       });
       return;
     }
@@ -442,7 +442,7 @@ async function handleAIMessage(client, options, message) {
   if (intent.type === 'top_channel_now') {
     const arr = await handleTopChannelNow(guild);
     if (!arr.length) {
-      await message.reply({ embeds: [resEmbed.setTitle('보이스 채널이 없어').setDescription('또는 현재 인원이 없어.')] });
+      await message.reply({ embeds: [resEmbed.setTitle('보이스 채널이 없습니다').setDescription('또는 현재 인원이 없습니다.')] });
       return;
     }
     const top = arr[0];
@@ -461,7 +461,7 @@ async function handleAIMessage(client, options, message) {
   if (intent.type === 'mute_user') {
     const targetMember = await findMemberByText(guild, intent.userText);
     if (!targetMember) {
-      await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했어').setDescription(`요청: ${q}`)] });
+      await message.reply({ embeds: [resEmbed.setTitle('유저를 찾지 못했습니다').setDescription(`요청: ${q}`)] });
       return;
     }
     const r = await handleMuteUser(invoker, guild, targetMember);
@@ -482,11 +482,11 @@ async function handleAIMessage(client, options, message) {
     }
     // 자신/관리자 보호
     if (targetMember.id === invoker.id) {
-      await message.reply({ embeds: [resEmbed.setTitle('실패').setDescription('스스로는 추방 못해.')] });
+      await message.reply({ embeds: [resEmbed.setTitle('실패').setDescription('스스로는 추방할 수 없습니다.')] });
       return;
     }
     if (targetMember.permissions.has(PermissionFlagsBits.Administrator)) {
-      await message.reply({ embeds: [resEmbed.setTitle('실패').setDescription('관리자는 추방할 수 없어.')] });
+      await message.reply({ embeds: [resEmbed.setTitle('실패').setDescription('관리자는 추방할 수 없습니다.')] });
       return;
     }
     const r = await handleKickUser(guild, targetMember, invoker);
@@ -519,7 +519,7 @@ async function handleAIMessage(client, options, message) {
       .join('\n');
     await message.reply({
       embeds: [resEmbed
-        .setTitle('요청을 정확히 해석하지 못했어. 가까운 코드들을 찾았어')
+        .setTitle('요청을 정확히 해석하지 못했지만, 유사한 값을 처리했습니다')
         .setDescription(desc)
         .setFooter({ text: `index: ${codeIndexHash || 'n/a'}` })],
     });
@@ -528,8 +528,8 @@ async function handleAIMessage(client, options, message) {
 
   await message.reply({
     embeds: [resEmbed
-      .setTitle('요청을 이해하지 못했어')
-      .setDescription('질문을 조금 다르게 말해줘. 예) "영갓 유저의 7일간 음성채팅 이력" / "지금 가장 인기 채널" / "도롱 유저 마이크 꺼줘" / "나를 502호로 이동"')],
+      .setTitle('요청을 이해하지 못했습니다')
+      .setDescription('좀 더 구체적으로 이야기하거나 다른 단어를 사용해주세요')],
   });
 }
 
