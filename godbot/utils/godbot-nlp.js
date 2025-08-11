@@ -282,6 +282,7 @@ async function askNextOption(message, session, learned) {
   const eb = new EmbedBuilder().setTitle("실행 전 확인").setDescription(summary);
   await channel.send({ embeds: [eb], components: [runRow], reply: { messageReference: message.id } });
   session.pendingConfirm = true;
+}
 
 function extractFromText(guild, text, learned) {
   const res = {};
