@@ -9,6 +9,7 @@ const {
 } = require("discord.js");
 
 const CATEGORY_ID = "1318445879455125514";
+the
 const EXCLUDE_CHANNEL_IDS = new Set(["1318532838751998055"]);
 const REPORT_CHANNEL_ID = "1393144927155785759";
 const INACTIVE_DAYS_TO_LOCK = 30;
@@ -148,6 +149,8 @@ function buildEmbedReport(items) {
   }
   return eb;
 }
+
+// ✅ 비공개 처리 시 즉시 로그 전송 추가
 async function lockChannelIfInactive(ch, rec) {
   const guild = ch.guild;
   const everyone = guild.roles.everyone;
@@ -181,17 +184,30 @@ async function lockChannelIfInactive(ch, rec) {
       {
         id: everyone.id,
         deny: baseDeny.reduce((a, b) => a | BigInt(b), 0n),
-        type: 0,
+        type: 0, // Role
       },
     ]);
 
     rec.locked = true;
     rec.lockedAt = nowMs();
+
+    // 🔔 보고 채널로 즉시 로그 전송
+    try {
+      const reportCh = await ch.client.channels.fetch(REPORT_CHANNEL_ID).catch(() => null);
+      if (reportCh && reportCh.isTextBased()) {
+        const lastText = last ? `${formatKST(last)} (${durationMsToText(diffMs)} 경과)` : "기록 없음";
+        await reportCh.send(
+          `🔒 <#${ch.id}> 채널을 **비공개 처리**했습니다.\n- 사유: 30일 이상 미사용\n- 마지막 활동: ${lastText}\n- 처리 시각: ${formatKST(rec.lockedAt)}`
+        );
+      }
+    } catch {}
+
     return true;
   } catch {
     return false;
   }
 }
+
 async function scanAndReport(client) {
   const reportCh = await client.channels.fetch(REPORT_CHANNEL_ID).catch(() => null);
   const channels = await fetchCategoryChannels(client);
@@ -223,6 +239,7 @@ async function scanAndReport(client) {
     await reportCh.send({ embeds: [eb] }).catch(() => {});
   }
 }
+
 function wireListeners(client) {
   client.on(Events.MessageCreate, async (msg) => {
     try {
@@ -257,6 +274,7 @@ function wireListeners(client) {
     } catch {}
   });
 }
+
 function initChannelWatcher(client) {
   wireListeners(client);
 
