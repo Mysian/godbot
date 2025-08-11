@@ -78,8 +78,14 @@ require('./utils/restricted-role-guard')(client);
 require('./utils/donor-role-expirer')(client);
 // 카테고리 채널 감시 + 현황 보고 + 30일 미사용시 비공개 처리
 require('./utils/category-channel-watcher').initChannelWatcher(client);
-// 자체 ai 기능 '갓봇 자비스 버전'
-// 아직 못넣었음
+// === 자연어 AI 트리거: "갓봇!" ===
+require('./utils/ai-utils').initAI(client, {
+  adminRoleIds: ['1404486995564167218'],
+  logChannelId: LOG_CHANNEL_ID,
+  rootDir: path.resolve(__dirname),     // 코드 루트
+  // 필요 시 음성채널 별칭 커스텀(기본 매핑 이미 포함되어 있음)
+  // voiceAliases: { '502호': '1209157352771682304' }
+});
 
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
