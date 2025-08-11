@@ -1,12 +1,7 @@
 // utils/category-channel-watcher.js
 const fs = require("fs");
 const path = require("path");
-const {
-  ChannelType,
-  PermissionFlagsBits,
-  EmbedBuilder,
-  Events,
-} = require("discord.js");
+const { ChannelType, PermissionFlagsBits, EmbedBuilder, Events } = require("discord.js");
 
 const CATEGORY_ID = "1318445879455125514";
 const EXCLUDE_CHANNEL_IDS = new Set(["1318532838751998055"]);
@@ -15,6 +10,9 @@ const INACTIVE_DAYS_TO_LOCK = 30;
 
 const dataDir = path.join(__dirname, "../data");
 const storePath = path.join(dataDir, "channel-usage.json");
+
+// 메타 저장 위치 (임베드 메시지 ID 등)
+const META_KEY = "_meta";
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -32,9 +30,7 @@ function saveStore(obj) {
   ensureDir(dataDir);
   fs.writeFileSync(storePath, JSON.stringify(obj, null, 2), "utf8");
 }
-function nowMs() {
-  return Date.now();
-}
+function nowMs() { return Date.now(); }
 function formatKST(d) {
   const date = typeof d === "number" ? new Date(d) : d instanceof Date ? d : new Date(d || Date.now());
   return new Intl.DateTimeFormat("ko-KR", {
@@ -68,9 +64,7 @@ function isMonitoredChannel(ch) {
     ChannelType.GuildMedia,
   ].includes(ch.type);
 }
-function channelKey(chId) {
-  return String(chId);
-}
+function channelKey(chId) { return String(chId); }
 function ensureChannelRecord(store, ch) {
   const key = channelKey(ch.id);
   store[key] = store[key] || {
@@ -127,29 +121,30 @@ function buildEmbedReport(items) {
     return `${lockBadge}<#${it.id}> · ${typeText} · 사용량 ${usageSum} (텍스트 ${it.usage?.textMessages || 0}, 음성 ${it.usage?.voiceJoins || 0}) · 마지막 활동: ${lastAtText} · 비이용: ${usedAgoText}`;
   });
 
+  // 너무 길어지면 필드 수 제한(25) 넘을 수 있으니, 25개 단위로 끊음
+  const MAX_FIELD = 25;
   const chunks = [];
-  let buf = "";
+  let acc = [];
   for (const line of lines) {
-    if ((buf + "\n" + line).length > 1000) {
-      chunks.push(buf);
-      buf = line;
-    } else {
-      buf = buf ? buf + "\n" + line : line;
+    acc.push(line);
+    if (acc.length === 20) { // 여유있게 20줄씩
+      chunks.push(acc.join("\n"));
+      acc = [];
     }
   }
-  if (buf) chunks.push(buf);
+  if (acc.length) chunks.push(acc.join("\n"));
 
   if (!chunks.length) {
     eb.addFields({ name: "정보", value: "대상 채널이 없습니다." });
   } else {
-    chunks.forEach((chunk, i) => {
-      eb.addFields({ name: i === 0 ? "목록" : "목록 (계속)", value: chunk });
+    chunks.slice(0, MAX_FIELD).forEach((chunk, i) => {
+      eb.addFields({ name: i === 0 ? "목록" : `목록 (계속 ${i + 1})`, value: chunk });
     });
   }
   return eb;
 }
 
-// ✅ 비공개 처리 시 즉시 로그 전송 추가
+// ✅ 비공개 처리 시 즉시 로그 전송(텍스트 메시지)
 async function lockChannelIfInactive(ch, rec) {
   const guild = ch.guild;
   const everyone = guild.roles.everyone;
@@ -207,11 +202,37 @@ async function lockChannelIfInactive(ch, rec) {
   }
 }
 
-async function scanAndReport(client) {
+// ✅ 보고 임베드: 최초 1회 전송 후 같은 메시지 계속 수정
+async function upsertReportMessage(client, embed) {
+  const store = loadStore();
+  const meta = (store[META_KEY] = store[META_KEY] || {});
   const reportCh = await client.channels.fetch(REPORT_CHANNEL_ID).catch(() => null);
+  if (!reportCh || !reportCh.isTextBased()) return;
+
+  // 기존 메시지 있으면 edit 시도
+  if (meta.reportMessageId) {
+    try {
+      const msg = await reportCh.messages.fetch(meta.reportMessageId);
+      await msg.edit({ embeds: [embed] });
+      return; // 성공 시 끝
+    } catch {
+      // 못 찾으면 새로 생성
+    }
+  }
+
+  // 새로 보냄 + ID 저장
+  const sent = await reportCh.send({ embeds: [embed] }).catch(() => null);
+  if (sent) {
+    meta.reportMessageId = sent.id;
+    saveStore(store);
+  }
+}
+
+async function scanAndReport(client) {
   const channels = await fetchCategoryChannels(client);
   const store = loadStore();
 
+  // 초기 lastActivityAt 추정 & 잠금 처리
   for (const ch of channels) {
     const rec = ensureChannelRecord(store, ch);
     if (!rec.lastActivityAt) {
@@ -233,10 +254,8 @@ async function scanAndReport(client) {
 
   saveStore(store);
 
-  if (reportCh) {
-    const eb = buildEmbedReport(items);
-    await reportCh.send({ embeds: [eb] }).catch(() => {});
-  }
+  const eb = buildEmbedReport(items);
+  await upsertReportMessage(client, eb);
 }
 
 function wireListeners(client) {
@@ -288,7 +307,7 @@ function initChannelWatcher(client) {
   }
   client.on(Events.ShardResume, run);
 
-  setInterval(run, 60 * 60 * 1000);
+  setInterval(run, 60 * 60 * 1000); // 1시간마다
 }
 
 module.exports = { initChannelWatcher };
