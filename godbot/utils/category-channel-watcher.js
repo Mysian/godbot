@@ -9,7 +9,6 @@ const {
 } = require("discord.js");
 
 const CATEGORY_ID = "1318445879455125514";
-the
 const EXCLUDE_CHANNEL_IDS = new Set(["1318532838751998055"]);
 const REPORT_CHANNEL_ID = "1393144927155785759";
 const INACTIVE_DAYS_TO_LOCK = 30;
