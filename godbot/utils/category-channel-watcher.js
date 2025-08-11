@@ -140,7 +140,7 @@ function buildEmbedReport(items) {
     const usedAgoText = it.lastActivityAt ? `${durationMsToText(usedAgoMs)} 전` : "기록 없음";
     const lastAtText = it.lastActivityAt ? formatKST(it.lastActivityAt) : "-";
     const warnBadge = (usedAgoMs >= 25 * 24 * 3600 * 1000) ? "⚠️" : "";
-    return `[채널명: ${it.name}]${warnBadge}\n> 마지막 활동: ${lastAtText} │ 비이용: ${usedAgoText}`;
+    return `[채널명: <#${it.id}>]${warnBadge}\n> 마지막 활동: ${lastAtText} │ 비이용: ${usedAgoText}`;
   });
 
   // ✅ 1024자 제한 회피: 동일한 필드명 '목록'으로 자동 분할(‘목록 (계속)’ 안 뜸)
