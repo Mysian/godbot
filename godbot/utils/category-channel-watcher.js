@@ -127,46 +127,25 @@ async function fetchCategoryChannels(client) {
 
 function buildEmbedReport(items) {
   const nowText = formatKST(nowMs());
-  const eb = new EmbedBuilder().setTitle("채널 이용 현황").setDescription(`모니터링 채널 목록 (KST 기준)\n마지막 업데이트: **${nowText}**`).setColor(0x5865f2);
+  const eb = new EmbedBuilder()
+    .setTitle("채널 이용 현황")
+    .setDescription(`모니터링 채널 목록 (KST 기준)\n마지막 업데이트: **${nowText}**`)
+    .setColor(0x5865f2);
+
   const visible = items.filter((it) => ![ChannelType.GuildVoice, ChannelType.GuildStageVoice].includes(it.type));
+
   const lines = visible.map((it) => {
     const usedAgoMs = nowMs() - (it.lastActivityAt || 0);
     const usedAgoText = it.lastActivityAt ? `${durationMsToText(usedAgoMs)} 전` : "기록 없음";
     const lastAtText = it.lastActivityAt ? formatKST(it.lastActivityAt) : "-";
-    const usageText = it.usage?.textMessages || 0;
-    const typeText =
-      it.type === ChannelType.GuildText
-        ? "텍스트"
-        : it.type === ChannelType.GuildAnnouncement
-        ? "공지"
-        : it.type === ChannelType.GuildForum
-        ? "포럼"
-        : it.type === ChannelType.GuildMedia
-        ? "미디어"
-        : "기타";
-    const lockBadge = it.locked ? "🔒" : "";
-    return `${lockBadge}<#${it.id}> · ${typeText} · 사용량 ${usageText} · 마지막 활동: ${lastAtText} · 비이용: ${usedAgoText}`;
+    const warnBadge = (usedAgoMs >= 25 * 24 * 3600 * 1000) ? "⚠️" : "";
+    return `[채널명: ${it.name}]${warnBadge}\n> 마지막 활동: ${lastAtText} │ 비이용: ${usedAgoText}`;
   });
-  const chunks = [];
-  let buf = "";
-  for (const line of lines) {
-    if ((buf + "\n" + line).length > 1000) {
-      chunks.push(buf);
-      buf = line;
-    } else {
-      buf = buf ? buf + "\n" + line : line;
-    }
-  }
-  if (buf) chunks.push(buf);
-  if (!chunks.length) {
-    eb.addFields({ name: "정보", value: "대상 채널이 없습니다." });
-  } else {
-    chunks.forEach((chunk, i) => {
-      eb.addFields({ name: i === 0 ? "목록" : "목록 (계속)", value: chunk });
-    });
-  }
+
+  eb.addFields({ name: "목록", value: lines.join("\n") || "대상 채널이 없습니다." });
   return eb;
 }
+
 
 function getEveryoneViewState(ch) {
   const everyone = ch.guild.roles.everyone;
@@ -261,7 +240,12 @@ async function scanAndReport(client) {
       await lockChannelIfInactive(ch, rec);
     }
   }
-  const items = channels.map((ch) => ensureChannelRecord(store, ch)).sort((a, b) => (a.locked === b.locked ? (b.lastActivityAt || 0) - (a.lastActivityAt || 0) : a.locked ? 1 : -1));
+  const items = channels.map((ch) => ensureChannelRecord(store, ch))
+  .sort((a, b) => {
+    const diffA = nowMs() - (a.lastActivityAt || 0);
+    const diffB = nowMs() - (b.lastActivityAt || 0);
+    return diffB - diffA;
+  });
   saveStore(store);
   if (reportCh && reportCh.isTextBased()) {
     const eb = buildEmbedReport(items);
