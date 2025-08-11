@@ -133,8 +133,8 @@ function buildRadarStats30d(userId) {
     distinctUsersCount = Object.entries(last[userId]).filter(([, t]) => t >= cutoff).length;
   }
   const speakingScore = clamp01(voiceSec / (3600 * 360)) * 100;
-  const typingScore = clamp01(msgCnt / 12000) * 100;
-  const affinityScore = clamp01(distinctUsersCount / 120) * 100;
+  const typingScore = clamp01(msgCnt / 15000) * 100;
+  const affinityScore = clamp01(distinctUsersCount / 130) * 100;
   const dayRatio = totalAct > 0 ? (dayAct / totalAct) * 100 : 0;
   const nightRatio = totalAct > 0 ? (nightAct / totalAct) * 100 : 0;
   return {
