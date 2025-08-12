@@ -903,36 +903,61 @@ if (!targets.length) {
   }
 
   if (textIncludesAny(lc, MOVE_VERBS) && /(으로|로)/.test(lc)) {
-    if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
-      await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
-      return true;
-    }
-    let members = findAllMembersInText(guild, body, author);
-    const voiceChs = findAllVoiceChannelsInText(guild, body);
-    if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
-      const me = guild.members.cache.get(author.id);
-      const ch = me?.voice?.channel;
-      if (ch) members = Array.from(ch.members.values());
-    }
-    if (!members.length) {
-      await message.reply("이동할 유저를 못 찾았어.");
-      return true;
-    }
+  if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
+    await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
+    return true;
+  }
+
+  const wantAll = ALL_TOKENS.some(t => lc.includes(t));
+
+  let members = findAllMembersInText(guild, body, author);
+  const voiceChs = findAllVoiceChannelsInText(guild, body); 
+  let targetCh = null;
+
+  if (wantAll && voiceChs.length >= 2) {
+    targetCh = voiceChs[voiceChs.length - 1];
+    const srcs = voiceChs.slice(0, -1);
+    const map = new Map();
+    for (const ch of srcs) for (const [, m] of ch.members) map.set(m.id, m);
+    members = Array.from(map.values());
+  }
+
+  if (wantAll && !members.length && voiceChs.length === 1 && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
+    const me = guild.members.cache.get(author.id);
+    const here = me?.voice?.channel;
+    if (here) members = Array.from(here.members.values());
+    targetCh = voiceChs[0];
+  }
+
+  if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
+    const me = guild.members.cache.get(author.id);
+    const ch = me?.voice?.channel;
+    if (ch) members = Array.from(ch.members.values());
+  }
+
+  if (!targetCh) {
     if (!voiceChs.length) {
       await message.reply("이동할 음성채널을 못 찾았어.");
       return true;
     }
-    const targetCh = voiceChs[0];
-    let moved = 0;
-    for (const m of members) {
-      try {
-        await m.voice.setChannel(targetCh.id, "갓봇 이동");
-        moved++;
-      } catch {}
-    }
-    await message.reply(`${moved}명 → ${targetCh.name} 이동 완료`);
+    targetCh = voiceChs[voiceChs.length - 1] || voiceChs[0];
+  }
+
+  if (!members.length) {
+    await message.reply("이동할 유저를 못 찾았어.");
     return true;
   }
+
+  let moved = 0;
+  for (const m of members) {
+    try {
+      await m.voice.setChannel(targetCh.id, "갓봇 이동");
+      moved++;
+    } catch {}
+  }
+  await message.reply(`${moved}명 → ${targetCh.name} 이동 완료`);
+  return true;
+}
 
   if (textIncludesAny(lc, CHANGE_VERBS) && NICK_LABELS.some(k=>lc.includes(k)) ) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageNicknames)) {
