@@ -109,15 +109,33 @@ function parseFloatAny(str) {
   return parseFloat(m[0].replace(",", "."));
 }
 
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripTrigger(text) {
+  if (!text) return "";
+  return text.split(TRIGGER).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeKey(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 function findMemberByToken(guild, token) {
   if (!guild || !token) return null;
-  const t0 = token.replace(/^@+/, "").trim();
-  const t = t0.toLowerCase().replace(/\s+/g, "");
-  let found = guild.members.cache.find(m => (m.displayName || "").toLowerCase().replace(/\s+/g, "") === t);
+  const t = normalizeKey(token);
+  if (!t) return null;
+  let found = guild.members.cache.find(m => normalizeKey(m.displayName) === t);
   if (found) return found;
-  found = guild.members.cache.find(m => (m.user.username || "").toLowerCase().replace(/\s+/g, "") === t);
+  found = guild.members.cache.find(m => normalizeKey(m.user.username) === t);
   if (found) return found;
-  found = guild.members.cache.find(m => (m.displayName || "").toLowerCase().replace(/\s+/g, "").includes(t));
+  found = guild.members.cache.find(m => normalizeKey(m.displayName).includes(t));
+  if (found) return found;
+  found = guild.members.cache.find(m => normalizeKey(m.user.username).includes(t));
   if (found) return found;
   return null;
 }
@@ -224,8 +242,8 @@ function summarizePlan(guild, learned, collected) {
 }
 
 function extractFromText(guild, text, learned, author) {
-  const res = {};
-  const content = normalizeKorean(text);
+  const base = stripTrigger(text);
+  const content = normalizeKorean(base);
   const lower = content.toLowerCase();
 
   const userOpt = (learned.options || []).find(o => o.type === "USER");
@@ -233,23 +251,28 @@ function extractFromText(guild, text, learned, author) {
     let m = content.match(/<@!?(\d+)>/);
     if (m) {
       const member = guild.members.cache.get(m[1]);
-      if (member) res[userOpt.name] = member.user;
+      if (member) {
+        res[userOpt.name] = member.user;
+      }
+    }
+  }
+
+  const res = {};
+  if (!res[userOpt?.name] && userOpt) {
+    const selfHit = /(나|저|내|본인|자신)(?:에게|한테|게)?/.test(content);
+    if (selfHit && author) {
+      res[userOpt.name] = author;
     } else {
-      const selfHit = /(나|저|내|본인|자신)(?:에게|한테|게)?/.test(content);
-      if (selfHit && author) {
-        res[userOpt.name] = author;
+      const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
+      const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+      const mm = content.match(rgx);
+      if (mm) {
+        const token = mm[1].trim().replace(/^['"“”‘’`]+|['"“”‘’`]+$/g, "");
+        const member = findMemberByToken(guild, token);
+        if (member) res[userOpt.name] = member.user;
       } else {
-        const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
-        const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-        const mm = content.match(rgx);
-        if (mm) {
-          const token = mm[1].trim().replace(/^['"“”‘’`]+|['"“”‘’`]+$/g, "");
-          const member = findMemberByToken(guild, token);
-          if (member) res[userOpt.name] = member.user;
-        } else {
-          const selfAny = /(나|저|내|본인|자신)/.test(content);
-          if (selfAny && author) res[userOpt.name] = author;
-        }
+        const selfAny = /(나|저|내|본인|자신)/.test(content);
+        if (selfAny && author) res[userOpt.name] = author;
       }
     }
   }
@@ -379,9 +402,9 @@ async function tryExecuteLearned(client, baseMessage, learned, collected) {
 }
 
 async function finishAndRun(baseMessage, session, learned) {
-  const summary = summarizePlan(baseMessage.guild, learned, session.data);
   const execRes = await tryExecuteLearned(baseMessage.client, baseMessage, learned, session.data);
   if (!execRes.ok) {
+    const summary = summarizePlan(baseMessage.guild, learned, session.data);
     await baseMessage.channel.send(`실행 실패: /${learned.name} (${execRes.reason})\n${summary}`);
   }
   endSession(baseMessage.author.id);
@@ -440,7 +463,7 @@ async function handleLearnInput(message) {
     await message.reply("세션이 만료되었어. 다시 학습을 시작해줘.");
     return true;
   }
-  const txt = normalizeKorean(message.content);
+  const txt = normalizeKorean(stripTrigger(message.content));
   if (CANCEL_WORDS.includes(txt)) {
     endSession(message.author.id);
     await message.reply("학습을 취소했어.");
@@ -494,7 +517,9 @@ async function startNlpFlow(client, message, content) {
     await message.reply("아직 학습된 명령어가 없어. '갓봇! 학습 /명령어'로 먼저 학습시켜줘.");
     return;
   }
-  const lc = content.toLowerCase();
+  const body = stripTrigger(content);
+  const lc = body.toLowerCase();
+
   let match = null;
   for (const c of entries) {
     const hitName = lc.includes(c.name);
@@ -505,6 +530,7 @@ async function startNlpFlow(client, message, content) {
     await message.reply("무슨 명령인지 못 알아들었어. '갓봇! 학습 목록'에서 가능한 명령을 확인해줘.");
     return;
   }
+
   const s = newSession(message.author.id);
   s.mode = "exec";
   s.commandName = match.name;
@@ -515,9 +541,9 @@ async function startNlpFlow(client, message, content) {
   s.optionalOptions = allOpts.filter(o => !o.required);
   s.expectedOptions = s.requiredOptions.slice(0);
   s.currIndex = 0;
-  s.origText = content;
+  s.origText = body;
 
-  const prefill = extractFromText(message.guild, content, match, message.author);
+  const prefill = extractFromText(message.guild, body, match, message.author);
   s.data = { ...prefill };
   for (let i = 0; i < s.expectedOptions.length; i++) {
     const o = s.expectedOptions[i];
@@ -538,7 +564,7 @@ async function handleExecInput(message) {
     await message.reply("세션이 만료되었어. 다시 시도해줘.");
     return true;
   }
-  const txt = normalizeKorean(message.content);
+  const txt = normalizeKorean(stripTrigger(message.content));
   if (CANCEL_WORDS.includes(txt)) {
     endSession(message.author.id);
     await message.reply("취소했어.");
