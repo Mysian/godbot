@@ -2035,7 +2035,7 @@ async function handleFallbackTeachInput(client, message) {
     return true;
   }
   if (s.step === 0) {
-    const m = txt.match(/^\/([a-z0-9._-]+)/i);
+    const m = txt.match(/^\/([\p{L}\p{N}._-]{1,32})/u);
     if (!m) { await message.reply('"/명령어" 형태로 적어줘. 예) /정수지급'); return true; }
     s.commandName = m[1];
     const schema = await fetchSlashSchema(client, message.guild, s.commandName);
