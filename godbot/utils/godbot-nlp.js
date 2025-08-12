@@ -642,6 +642,7 @@ function autoLearnAfterSuccess(baseMessage, learned, collected, originalBody) {
     const verbs = [...MOVE_VERBS, ...CHANGE_VERBS, ...GIVE_ROLE_VERBS, ...REMOVE_ROLE_VERBS, ...DELETE_VERBS];
     const hitVerbs = verbs.filter(v => body.includes(v));
     if (hitVerbs.length) cmd.synonyms = Array.from(new Set([...(cmd.synonyms || []), ...hitVerbs]));
+    promotePendingNumberSynonyms(store, learned);
     saveStore(store);
   } catch {}
 }
@@ -1456,7 +1457,7 @@ async function handleBuiltinIntent(message, content) {
       const fetched = await targetCh.messages.fetch({ limit: Math.min(100, n + 1) });
       const filtered = fetched.filter(m => m.id !== message.id);
       const toDelete = filtered.first(n);
-      const col = await targetCh.bulkDelete(toDelete, true);
+      const col = await targetCh.bulkDelete(new Collection(toDelete.map(m => [m.id, m])), true);
       const ok = col?.size || 0;
       const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
       await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
