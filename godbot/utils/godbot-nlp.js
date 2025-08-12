@@ -2366,6 +2366,31 @@ async function onMessage(client, message) {
     await handleCancelLearn(message, rest.trim());
     return;
   }
+  if (lowered.startsWith(`${TRIGGER} 폴백 삭제`)) {
+  const rest = content.split("폴백 삭제")[1]?.trim() || "";
+  const store = loadStore();
+  if (!rest) return await message.reply("삭제할 ID나 패턴 일부를 적어줘.");
+  const key = normalizeKorean(rest);
+  const list = (store.fallbacks||[]);
+  const idx = list.findIndex(f =>
+    String(f.id||"").includes(rest) ||
+    normalizeKorean(f.pattern||"").includes(key) ||
+    String(f.command||"").includes(rest)
+  );
+  if (idx < 0) return await message.reply("찾을 수 없어.");
+  const gone = list.splice(idx,1)[0];
+  saveStore(store);
+  await message.reply(`삭제 완료: ${gone.id||"-"} • ${gone.pattern||"-"} → /${gone.command||"-"}`);
+  return;
+}
+if (lowered.startsWith(`${TRIGGER} 폴백 목록`)) {
+  const store = loadStore();
+  const arr = (store.fallbacks||[]);
+  if (!arr.length) return await message.reply("폴백이 없어.");
+  const lines = arr.slice(0,10).map((f,i)=>`${i+1}. ${f.id||"-"} • ${f.pattern||"-"} → /${f.command||"-"}`);
+  await message.reply(lines.join("\n"));
+  return;
+}
   if (lowered.startsWith(`${TRIGGER} 학습 내보내기`) || lowered.startsWith(`${TRIGGER} 학습 백업`)) {
     await handleExportLearn(message);
     return;
