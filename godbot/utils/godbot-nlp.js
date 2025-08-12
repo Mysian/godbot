@@ -15,9 +15,12 @@ const ADMIN_ROLE_ID = "1404486995564167218";
 const TRIGGER = "갓봇!";
 const DATA_DIR = path.join(__dirname, "../data");
 const STORE_PATH = path.join(DATA_DIR, "godbot-learning.json");
+const DATA_INDEX_PATH = path.join(DATA_DIR, "godbot-data-index.json");
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const SESSION_SWEEP_MS = 60 * 1000;
 const PAGE_SIZE = 10;
+const MAX_JSON_BYTES = 5 * 1024 * 1024;
+const DATA_INDEX_TTL_MS = 5 * 60 * 1000;
 
 const AppOptType = {
   SUB_COMMAND: 1,
@@ -45,6 +48,16 @@ const DefaultOptionSynonyms = {
   ATTACHMENT: ["파일", "첨부", "이미지", "스크린샷", "사진", "문서", "증빙", "첨부파일", "스샷", "캡처", "캡쳐"]
 };
 
+const DATA_QUERY_TOKENS = ["알려줘","조회","보여줘","검색","찾아","리포트","정보","데이터","json","값","수치","통계","리스트","목록","현황","상세","세부"];
+const KNOWN_KEY_SYNONYMS = {
+  warn: ["경고","경고수","경고횟수","warning","warn","warnings","제재","경고로그","주의"],
+  balance: ["잔액","소지금","코인","갓비트","보유","balance","amount","money","cash","자산","재화","통장"],
+  level: ["레벨","level","lv","랭크","등급","숙련도"],
+  exp: ["경험치","exp","xp","경험","경험포인트"],
+  history: ["기록","히스토리","내역","history","log","logs","이력","트래킹"],
+  id: ["id","아이디","유저id","userId","user_id","memberId","discordId","uid"]
+};
+
 const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해", "멈춰", "그만해", "그만", "스탑", "거기까지", "멈춰줘", "종료", "종료해"];
 
 const MOVE_VERBS = ["옮겨", "이동", "보내", "데려", "워프", "전송", "텔포", "텔레포트", "넣어", "이사"];
@@ -64,18 +77,19 @@ const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그�
 
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(STORE_PATH)) fs.writeFileSync(STORE_PATH, JSON.stringify({ commands: {} }, null, 2));
+  if (!fs.existsSync(STORE_PATH)) fs.writeFileSync(STORE_PATH, JSON.stringify({ commands: {}, stats: {} }, null, 2));
 }
 function loadStore() {
   ensureStore();
   try {
     return JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
   } catch {
-    return { commands: {} };
+    return { commands: {}, stats: {} };
   }
 }
 function saveStore(data) {
   ensureStore();
+  if (!data.stats) data.stats = {};
   fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2));
 }
 
@@ -161,22 +175,21 @@ function buildGrabber(joins = [], extraStops = "") {
 
 const rgxNUM = /(-?\d+(?:[.,]\d+)?)(?=\s|[%원개점천만억kKmMbB]|$)/u;
 
-const SPACE_TOK = "__SPACE__";  // 학습 저장용 특수 토큰
+const SPACE_TOK = "__SPACE__";
 function parseSynonymsInput(txt) {
   return String(txt || "")
     .split(",")
-    .map(v => v.replace(/\u00A0/g, " "))       // NBSP → 일반 공백
+    .map(v => v.replace(/\u00A0/g, " "))
     .map(v => {
       const raw = v;
-      if (/^\s+$/.test(raw)) return SPACE_TOK; // 진짜 공백만 들어온 경우
+      if (/^\s+$/.test(raw)) return SPACE_TOK;
       const t = raw.trim();
-      if (/^(공백|\(공백\)|\[space\]|space|␣)$/i.test(t)) return SPACE_TOK; // 표기식
+      if (/^(공백|\(공백\)|\[space\]|space|␣)$/i.test(t)) return SPACE_TOK;
       return t;
     })
     .filter(x => x && x !== "");
 }
 const prettySyn = s => s === SPACE_TOK ? "(공백)" : s;
-
 
 function parseFloatAny(str) {
   if (!str) return null;
@@ -213,7 +226,6 @@ function findMemberByToken(guild, token) {
   return null;
 }
 
-// ===== 역할명 퍼지 매칭 헬퍼들 =====
 function makeNGrams(s, n = 2) {
   const arr = [];
   for (let i = 0; i <= s.length - n; i++) arr.push(s.slice(i, i + n));
@@ -230,7 +242,7 @@ function diceCoef(a, b) {
   for (const [g, v] of A) if (B.has(g)) inter += Math.min(v, B.get(g));
   return (sizeA + sizeB) ? (2 * inter) / (sizeA + sizeB) : 0;
 }
-function lcsLen(a, b) { // 최대 공통 부분수열(비연속 허용, 순서 유지)
+function lcsLen(a, b) {
   const m = a.length, n = b.length;
   const dp = new Array(n + 1).fill(0);
   for (let i = 1; i <= m; i++) {
@@ -244,25 +256,19 @@ function lcsLen(a, b) { // 최대 공통 부분수열(비연속 허용, 순서 �
   return dp[n];
 }
 function roleSimilarity(queryText, roleName) {
-  const a = norm(queryText);   // 사용자가 친 문장 전체를 비교 대상으로 사용
+  const a = norm(queryText);
   const b = norm(roleName);
   if (!a || !b) return 0;
-
-  // 우선순위: 완전일치 > 포함/접두 > LCS+Dice 종합
-  if (a === b) return 2.0;                    // 최상
-  if (a.includes(b)) return 1.5;              // 문장에 역할명이 연속으로 들어가면 강함
-  if (b.includes(a)) return 1.2;              // 짧게 쓴 경우(‘활동제한’ vs ‘서버활동제한’)
-
-  const lcs = lcsLen(b, a);                   // 역할명이 문장에 '순서 유지'로 얼마나 들어있나
-  const lcsRatio = lcs / b.length;            // ‘서버제한’도 ‘서버활동제한’에 높은 점수
-  const dice = diceCoef(b, a);                // n-그램 유사도(연속성 반영)
-
+  if (a === b) return 2.0;
+  if (a.includes(b)) return 1.5;
+  if (b.includes(a)) return 1.2;
+  const lcs = lcsLen(b, a);
+  const lcsRatio = lcs / b.length;
+  const dice = diceCoef(b, a);
   let score = lcsRatio * 0.7 + dice * 0.3;
-  if (b.startsWith(a)) score += 0.05;         // 접두 보너스
-  return score;                                // 0~1.x 대역
+  if (b.startsWith(a)) score += 0.05;
+  return score;
 }
-
-
 
 function getTypeLabel(t) {
   switch (t) {
@@ -442,13 +448,13 @@ function extractFromText(guild, text, learned, author) {
   if (numberOpt) {
     let num = null;
     const joins = (numberOpt.synonyms || DefaultOptionSynonyms.NUMBER);
-const near = new RegExp(`(-?\\d+(?:[.,]\\d+)?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "u");
-const m1 = content.match(near);
-if (m1) num = parseFloat(m1[1].replace(",", "."));
-if (num == null) {
-  const m2 = content.match(rgxNUM);
-  if (m2) num = parseFloat(m2[1].replace(",", "."));
-}
+    const near = new RegExp(`(-?\\d+(?:[.,]\\d+)?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "u");
+    const m1 = content.match(near);
+    if (m1) num = parseFloat(m1[1].replace(",", "."));
+    if (num == null) {
+      const m2 = content.match(rgxNUM);
+      if (m2) num = parseFloat(m2[1].replace(",", "."));
+    }
     if (num != null) res[numberOpt.name] = num;
   }
 
@@ -554,8 +560,37 @@ function buildFakeInteraction(baseMessage, learned, collected) {
   return interaction;
 }
 
+function ensureStatsScaffold(store, cmdName) {
+  if (!store.stats) store.stats = {};
+  if (!store.stats[cmdName]) store.stats[cmdName] = {};
+  return store.stats[cmdName];
+}
+function recordOptionLastUsed(store, cmdName, userId, optionName, value) {
+  const st = ensureStatsScaffold(store, cmdName);
+  if (!st.optionDefaultsByUser) st.optionDefaultsByUser = {};
+  if (!st.optionDefaultsByUser[userId]) st.optionDefaultsByUser[userId] = {};
+  st.optionDefaultsByUser[userId][optionName] = value;
+}
+function getOptionLastUsed(store, cmdName, userId, optionName) {
+  const st = store.stats && store.stats[cmdName];
+  const v = st && st.optionDefaultsByUser && st.optionDefaultsByUser[userId] && st.optionDefaultsByUser[userId][optionName];
+  return v === undefined ? null : v;
+}
+function mineUnitTokensAroundNumbers(text) {
+  const out = new Set();
+  const re = /(-?\d+(?:[.,]\d+)?)[\s]*([가-힣A-Za-z%₩]*?)(?=\s|$)/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const unit = (m[2] || "").trim();
+    if (!unit) continue;
+    if (/^\d+$/.test(unit)) continue;
+    if (unit.length > 8) continue;
+    out.add(unit);
+  }
+  return Array.from(out);
+}
 
-async function tryExecuteLearned(client, baseMessage, learned, collected) {
+async function tryExecuteLearned(client, baseMessage, learned, collected, originalBody) {
   const col = client.commands || client.slashCommands || new Collection();
   let cmd = col.get(learned.name);
   if (!cmd && col instanceof Map) cmd = col.get(learned.name);
@@ -565,25 +600,54 @@ async function tryExecuteLearned(client, baseMessage, learned, collected) {
   try {
     if (typeof cmd.execute === "function") {
       await cmd.execute(interaction);
-      return { ok: true };
-    }
-    if (typeof cmd.run === "function") {
+    } else if (typeof cmd.run === "function") {
       await cmd.run(interaction);
-      return { ok: true };
-    }
-    if (typeof cmd.chatInputRun === "function") {
+    } else if (typeof cmd.chatInputRun === "function") {
       await cmd.chatInputRun(interaction);
-      return { ok: true };
+    } else {
+      return { ok: false, reason: "NO_EXECUTOR" };
     }
-    return { ok: false, reason: "NO_EXECUTOR" };
+    autoLearnAfterSuccess(baseMessage, learned, collected, originalBody);
+    return { ok: true };
   } catch (e) {
     console.error("godbot-nlp execute error:", e);
     return { ok: false, reason: "EXEC_ERROR", error: e };
   }
 }
 
+function autoLearnAfterSuccess(baseMessage, learned, collected, originalBody) {
+  try {
+    const store = loadStore();
+    const cmd = store.commands[learned.name];
+    if (!cmd) return;
+    const body = normalizeKorean(originalBody || "");
+    for (const o of (cmd.options || [])) {
+      const val = collected[o.name];
+      if (val !== undefined && val !== null && val !== "") {
+        recordOptionLastUsed(store, learned.name, baseMessage.author.id, o.name, val);
+      }
+      if (o.type === "NUMBER") {
+        const mined = mineUnitTokensAroundNumbers(body);
+        const baseSyn = new Set([...(o.synonyms || []), ...(DefaultOptionSynonyms.NUMBER || [])]);
+        const add = mined.filter(t => !baseSyn.has(t));
+        if (add.length) {
+          o.synonyms = Array.from(new Set([...(o.synonyms || []), ...add]));
+        }
+      }
+      if (o.type === "STRING") {
+        const hinted = ["사유","메모","내용","설명","코멘트","메시지","타이틀","제목"].filter(t => body.includes(t));
+        if (hinted.length) o.synonyms = Array.from(new Set([...(o.synonyms || []), ...hinted]));
+      }
+    }
+    const verbs = [...MOVE_VERBS, ...CHANGE_VERBS, ...GIVE_ROLE_VERBS, ...REMOVE_ROLE_VERBS, ...DELETE_VERBS];
+    const hitVerbs = verbs.filter(v => body.includes(v));
+    if (hitVerbs.length) cmd.synonyms = Array.from(new Set([...(cmd.synonyms || []), ...hitVerbs]));
+    saveStore(store);
+  } catch {}
+}
+
 async function finishAndRun(baseMessage, session, learned) {
-  const execRes = await tryExecuteLearned(baseMessage.client, baseMessage, learned, session.data);
+  const execRes = await tryExecuteLearned(baseMessage.client, baseMessage, learned, session.data, session.origText || "");
   if (!execRes.ok) {
     const summary = summarizePlan(baseMessage.guild, learned, session.data);
     await baseMessage.channel.send(`실행 실패: /${learned.name} (${execRes.reason})\n${summary}`);
@@ -606,6 +670,7 @@ function getInlineHintByType(t) {
 }
 
 async function askNextOption(message, session, learned) {
+  await fillMissingOptions(message, session, learned);
   while (session.currIndex < session.expectedOptions.length) {
     const opt = session.expectedOptions[session.currIndex];
     if (!opt) break;
@@ -785,7 +850,7 @@ async function handleLearnInput(message) {
   }
   if (s.awaiting?.type === "LEARN_SYNONYMS") {
     const syns = parseSynonymsInput(txt);
-learned.synonyms = Array.from(new Set([...(learned.synonyms || []), ...syns]));
+    learned.synonyms = Array.from(new Set([...(learned.synonyms || []), ...syns]));
     saveStore(store);
     s.awaiting = { type: "LEARN_OPT_SYNONYMS", idx: 0 };
     const next = learned.options?.[0];
@@ -807,7 +872,7 @@ learned.synonyms = Array.from(new Set([...(learned.synonyms || []), ...syns]));
     }
     if (txt !== "건너뛰기") {
       const syns = parseSynonymsInput(txt);
-opt.synonyms = Array.from(new Set([...(opt.synonyms || []), ...syns]));
+      opt.synonyms = Array.from(new Set([...(opt.synonyms || []), ...syns]));
       saveStore(store);
     }
     const nextIdx = idx + 1;
@@ -933,26 +998,21 @@ function fuzzyFindAnyChannelInText(guild, content) {
     const ch = guild.channels.cache.get(cm[1]);
     if (ch) return ch;
   }
-
   const texts = [String(content || "")].concat(splitByListDelims(content));
   let best = null;
-
   for (const [, ch] of guild.channels.cache) {
     const cn = norm(ch.name);
     if (!cn || cn.length < 2) continue; 
-    
     let score = 0;
     for (const t of texts) {
       const s = roleSimilarity(t, ch.name); 
       if (s > score) score = s;
     }
-
     if (score > 0 && (!best || score > best.score ||
         (score === best.score && cn.length < norm(best.ch.name).length))) {
       best = { ch, score };
     }
   }
-
   return (best && best.score >= 0.45) ? best.ch : null;
 }
 
@@ -967,7 +1027,6 @@ function fuzzyFindRoleInText(guild, content) {
     const rExact = guild.roles.cache.find(x => norm(x.name) === norm(tok));
     if (rExact) return rExact;
   }
-
   let best = null;
   for (const [, role] of guild.roles.cache) {
     const score = roleSimilarity(content, role.name);
@@ -977,7 +1036,6 @@ function fuzzyFindRoleInText(guild, content) {
   }
   return (best && best.score >= 0.45) ? best.role : null;
 }
-
 
 function findAllMembersInText(guild, content, author) {
   const out = new Map();
@@ -1106,49 +1164,245 @@ function hasBotPerm(guild, flag) {
   return !!(me && me.permissions && me.permissions.has(flag));
 }
 
+let DATA_CACHE = { builtAt: 0, sig: "", items: [], tokenIndex: {}, userIndex: {} };
+
+function isDiscordIdLike(v) {
+  return typeof v === "string" && /^\d{15,22}$/.test(v);
+}
+function fileSig(file) {
+  try {
+    const st = fs.statSync(file);
+    return `${path.basename(file)}:${st.size}:${st.mtimeMs}`;
+  } catch { return `${path.basename(file)}:0:0`; }
+}
+function buildDirSignature(dir) {
+  const files = [];
+  (function walk(p) {
+    const ent = fs.readdirSync(p, { withFileTypes: true });
+    for (const e of ent) {
+      const fp = path.join(p, e.name);
+      if (e.isDirectory()) walk(fp);
+      else if (e.isFile() && /\.json$/i.test(e.name) && fp !== STORE_PATH && fp !== DATA_INDEX_PATH) files.push(fp);
+    }
+  })(dir);
+  const parts = [];
+  for (const f of files) parts.push(fileSig(f));
+  return parts.sort().join("|");
+}
+function tokensFromPath(p) {
+  const segs = String(p).split(/[\.\[\]\/#]+/g).filter(Boolean);
+  const toks = new Set();
+  for (const s of segs) {
+    const n = normalizeKey(s);
+    if (n) toks.add(n);
+    for (const [base, syns] of Object.entries(KNOWN_KEY_SYNONYMS)) {
+      if (n === base || syns.some(x => normalizeKey(x) === n)) {
+        toks.add(base);
+        for (const sx of syns) toks.add(normalizeKey(sx));
+      }
+    }
+  }
+  return Array.from(toks);
+}
+function flattenJson(obj, basePath = "", acc = [], foundUserIds = new Set()) {
+  if (obj === null || obj === undefined) return;
+  const t = typeof obj;
+  if (t !== "object") {
+    acc.push({ path: basePath || "$", value: obj, type: t });
+    return;
+  }
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      flattenJson(obj[i], basePath ? `${basePath}[${i}]` : `[${i}]`, acc, foundUserIds);
+    }
+    return;
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    const p = basePath ? `${basePath}.${k}` : k;
+    if (isDiscordIdLike(k)) foundUserIds.add(k);
+    if (typeof v === "string" && isDiscordIdLike(v)) foundUserIds.add(v);
+    if (typeof v === "object" && v && typeof v.id === "string" && isDiscordIdLike(v.id)) foundUserIds.add(v.id);
+    if (typeof v === "object" && v && ("userId" in v) && isDiscordIdLike(`${v.userId}`)) foundUserIds.add(`${v.userId}`);
+    flattenJson(v, p, acc, foundUserIds);
+  }
+}
+function ensureDataIndex(force = false) {
+  ensureStore();
+  const now = Date.now();
+  if (!force && now - DATA_CACHE.builtAt < DATA_INDEX_TTL_MS) return DATA_CACHE;
+  const sig = buildDirSignature(DATA_DIR);
+  if (!force && DATA_CACHE.sig && DATA_CACHE.sig === sig) {
+    DATA_CACHE.builtAt = now;
+    return DATA_CACHE;
+  }
+  const items = [];
+  const tokenIndex = {};
+  const userIndex = {};
+  const files = [];
+  (function walk(p) {
+    const ent = fs.readdirSync(p, { withFileTypes: true });
+    for (const e of ent) {
+      const fp = path.join(p, e.name);
+      if (e.isDirectory()) walk(fp);
+      else if (e.isFile() && /\.json$/i.test(e.name) && fp !== STORE_PATH && fp !== DATA_INDEX_PATH) files.push(fp);
+    }
+  })(DATA_DIR);
+  for (const f of files) {
+    try {
+      const st = fs.statSync(f);
+      if (st.size > MAX_JSON_BYTES) continue;
+      const raw = fs.readFileSync(f, "utf8");
+      const data = JSON.parse(raw);
+      const rows = [];
+      const users = new Set();
+      flattenJson(data, "", rows, users);
+      for (const r of rows) {
+        const toks = tokensFromPath(r.path);
+        const rec = { file: f, path: r.path, tokens: toks, userIds: Array.from(users), type: r.type, value: r.value };
+        items.push(rec);
+        for (const t of toks) {
+          if (!tokenIndex[t]) tokenIndex[t] = [];
+          tokenIndex[t].push(rec);
+        }
+      }
+      for (const uid of users) {
+        if (!userIndex[uid]) userIndex[uid] = [];
+        userIndex[uid].push(f);
+      }
+    } catch {}
+  }
+  DATA_CACHE = { builtAt: now, sig, items, tokenIndex, userIndex };
+  try {
+    fs.writeFileSync(DATA_INDEX_PATH, JSON.stringify({ builtAt: now, sig, count: items.length }, null, 2));
+  } catch {}
+  return DATA_CACHE;
+}
+function isDataQueryIntent(text) {
+  const lc = text.toLowerCase();
+  return DATA_QUERY_TOKENS.some(t => lc.includes(t)) || /\bjson\b/i.test(text) || /데이터|정보|값|수치|현황/.test(text);
+}
+function extractKeyTokensFromQuery(content) {
+  const br = extractBracketTokens(content).map(normalizeKey);
+  const q = [];
+  const words = String(content || "").split(/\s+/g).map(w => normalizeKey(w)).filter(Boolean);
+  for (const w of words) {
+    if (w.length < 2) continue;
+    if (/^\d+$/.test(w)) continue;
+    if (["알려줘","조회","보여줘","검색","찾아","정보","데이터","json","현황","목록","리스트","수치","값","좀","해줘","해주세요","해주세요"].includes(w)) continue;
+    q.push(w);
+  }
+  const uniq = Array.from(new Set([...br, ...q]));
+  if (!uniq.length) return [];
+  const expanded = new Set(uniq);
+  for (const [base, syns] of Object.entries(KNOWN_KEY_SYNONYMS)) {
+    if (uniq.some(x => x === base || syns.map(normalizeKey).includes(x))) {
+      expanded.add(base);
+      for (const s of syns) expanded.add(normalizeKey(s));
+    }
+  }
+  return Array.from(expanded).filter(Boolean);
+}
+function bestDataMatchesForUser(index, userId, keyTokens, content) {
+  const scored = [];
+  const seen = new Set();
+  for (const rec of index.items) {
+    if (!rec.userIds || !rec.userIds.includes(userId)) continue;
+    let matchCount = 0;
+    for (const kt of keyTokens) if (rec.tokens.includes(kt)) matchCount++;
+    if (matchCount === 0) continue;
+    const sim = roleSimilarity(content, `${rec.path}`);
+    const score = matchCount * 1.0 + sim;
+    const key = `${rec.file}|${rec.path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      scored.push({ rec, score, matchCount, sim });
+    }
+  }
+  scored.sort((a,b)=> b.score - a.score);
+  return scored.slice(0, 8);
+}
+async function handleDataQuery(message, content) {
+  const index = ensureDataIndex(false);
+  const members = findAllMembersInText(message.guild, content, message.author);
+  let targets = members.map(m => m.id);
+  if (!targets.length && /(나|저|내|본인|자신)/.test(content)) targets = [message.author.id];
+  const keyTokens = extractKeyTokensFromQuery(content);
+  if (!targets.length) {
+    await message.reply("대상 유저를 못 찾았어.");
+    return true;
+  }
+  if (!keyTokens.length) {
+    await message.reply('조회 키워드를 "따옴표"나 [대괄호]로 적어줘.');
+    return true;
+  }
+  const lines = [];
+  for (const uid of targets.slice(0,3)) {
+    const best = bestDataMatchesForUser(index, uid, keyTokens, content).filter(x => x.score >= 1.0);
+    if (!best.length) continue;
+    lines.push(`유저 <@${uid}>`);
+    for (const b of best.slice(0,3)) {
+      const v = b.rec.value;
+      let sv;
+      if (typeof v === "object") {
+        try { sv = JSON.stringify(v).slice(0, 400); } catch { sv = String(v); }
+      } else {
+        sv = String(v);
+      }
+      lines.push(`• ${path.basename(b.rec.file)} :: ${b.rec.path} = ${sv}`);
+    }
+    lines.push("");
+  }
+  if (!lines.length) {
+    await message.reply("일치하는 데이터가 없어.");
+  } else {
+    await message.reply(lines.join("\n").trim());
+  }
+  return true;
+}
+
 async function handleBuiltinIntent(message, content) {
   const guild = message.guild;
   const author = message.author;
   const body = normalizeKorean(stripTrigger(content));
   const lc = body.toLowerCase();
 
-if (
-  (CHAT_LABELS.some(k => lc.includes(k)) && DELETE_VERBS.some(v => lc.includes(v))) ||
-  /\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)
-) {
-  let n = parseFloatAny(body);
-  n = Number.isFinite(n) ? Math.trunc(n) : 5;
-  n = Math.max(1, Math.min(100, n));
-
-  let targetCh = fuzzyFindAnyChannelInText(guild, body) || message.channel;
-
-  const me = guild.members.me;
-  if (!me || !targetCh.permissionsFor(me)?.has(PermissionsBitField.Flags.ManageMessages)) {
-    await message.reply("실패: 봇에 해당 채널의 **메시지 관리** 권한이 없어.");
-    return true;
-  }
-  if (!targetCh.isTextBased?.() || typeof targetCh.bulkDelete !== "function") {
-    await message.reply("실패: 이 채널 유형은 일괄 삭제를 지원하지 않아.");
-    return true;
+  if (isDataQueryIntent(lc)) {
+    const ok = await handleDataQuery(message, body);
+    if (ok) return true;
   }
 
-  try {
-    const fetched = await targetCh.messages.fetch({ limit: Math.min(100, n + 1) });
-    const filtered = fetched.filter(m => m.id !== message.id);
-    const toDelete = filtered.first(n); // n개까지만
-
-    const col = await targetCh.bulkDelete(toDelete, true);
-    const ok = col?.size || 0;
-    const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
-    await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
-  } catch (e) {
+  if (
+    (CHAT_LABELS.some(k => lc.includes(k)) && DELETE_VERBS.some(v => lc.includes(v))) ||
+    /\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)
+  ) {
+    let n = parseFloatAny(body);
+    n = Number.isFinite(n) ? Math.trunc(n) : 5;
+    n = Math.max(1, Math.min(100, n));
+    let targetCh = fuzzyFindAnyChannelInText(guild, body) || message.channel;
+    const me = guild.members.me;
+    if (!me || !targetCh.permissionsFor(me)?.has(PermissionsBitField.Flags.ManageMessages)) {
+      await message.reply("실패: 봇에 해당 채널의 **메시지 관리** 권한이 없어.");
+      return true;
+    }
+    if (!targetCh.isTextBased?.() || typeof targetCh.bulkDelete !== "function") {
+      await message.reply("실패: 이 채널 유형은 일괄 삭제를 지원하지 않아.");
+      return true;
+    }
     try {
-      await message.channel.send("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘.");
-    } catch {}
+      const fetched = await targetCh.messages.fetch({ limit: Math.min(100, n + 1) });
+      const filtered = fetched.filter(m => m.id !== message.id);
+      const toDelete = filtered.first(n);
+      const col = await targetCh.bulkDelete(toDelete, true);
+      const ok = col?.size || 0;
+      const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
+      await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
+    } catch (e) {
+      try {
+        await message.channel.send("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘.");
+      } catch {}
+    }
+    return true;
   }
-  return true;
-}
-
 
   if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각/.test(lc)) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.MuteMembers) && !hasBotPerm(guild, PermissionsBitField.Flags.DeafenMembers)) {
@@ -1164,7 +1418,7 @@ if (
         for (const ch of chs) {
           for (const [, mem] of ch.members) map.set(mem.id, mem);
         }
-        targets = Array.from(map.values()); 
+        targets = Array.from(map.values());
       }
     }
     if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
@@ -1203,7 +1457,7 @@ if (
     }
     const wantAll = ALL_TOKENS.some(t => lc.includes(t));
     let members = findAllMembersInText(guild, body, author);
-    const voiceChs = findAllVoiceChannelsInText(guild, body); 
+    const voiceChs = findAllVoiceChannelsInText(guild, body);
     let targetCh = null;
     if (wantAll && voiceChs.length >= 2) {
       targetCh = voiceChs[voiceChs.length - 1];
@@ -1348,6 +1602,25 @@ if (
   }
 
   return false;
+}
+
+async function fillMissingOptions(message, session, learned) {
+  const store = loadStore();
+  for (let i = 0; i < session.expectedOptions.length; i++) {
+    const o = session.expectedOptions[i];
+    const has = session.data[o.name] !== undefined && session.data[o.name] !== null && session.data[o.name] !== "";
+    if (has) continue;
+    const last = getOptionLastUsed(store, learned.name, message.author.id, o.name);
+    if (last != null) {
+      session.data[o.name] = last;
+    }
+  }
+  for (let i = 0; i < session.expectedOptions.length; i++) {
+    const o = session.expectedOptions[i];
+    const has = session.data[o.name] !== undefined && session.data[o.name] !== null && session.data[o.name] !== "";
+    if (!has) { session.currIndex = i; return; }
+  }
+  session.currIndex = session.expectedOptions.length;
 }
 
 async function startNlpFlow(client, message, content) {
