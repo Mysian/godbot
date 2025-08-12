@@ -744,22 +744,22 @@ async function tryExecuteLearned(client, baseMessage, learned, collected, origin
   const interaction = buildFakeInteraction(baseMessage, learned, collected);
 
   try {
-    if (typeof cmd.execute === "function") {
-      await cmd.execute(interaction);
-    } else if (typeof cmd.run === "function") {
-      await cmd.run(interaction);
-    } else if (typeof cmd.chatInputRun === "function") {
-      await cmd.chatInputRun(interaction);
-    } else {
-      return { ok: false, reason: "NO_EXECUTOR" };
-    }
-    autoLearnAfterSuccess(baseMessage, learned, collected, originalBody);
-    return { ok: true };
-  } catch (e) {
-    console.error("godbot-nlp execute error:", e);
-    const reason = classifyExecError(e);
-    return { ok: false, reason, error: e };
+  if (typeof cmd.execute === "function") {
+    await cmd.execute(interaction);
+  } else if (typeof cmd.run === "function") {
+    await cmd.run(interaction);
+  } else if (typeof cmd.chatInputRun === "function") {
+    await cmd.chatInputRun(interaction);
+  } else {
+    return { ok: false, reason: "NO_EXECUTOR" };
   }
+  autoLearnAfterSuccess(baseMessage, learned, collected, originalBody);
+  return { ok: true };
+} catch (e) {
+  console.error("godbot-nlp execute error:", e);
+  const reason = classifyExecError(e);
+  return { ok: false, reason, error: e, errorMsg: String(e?.message || e) };
+ }
 }
 
 
@@ -815,7 +815,7 @@ function promotePendingNumberSynonyms(store, learned) {
     o.synonyms = Array.from(new Set([...(o.synonyms || []), ...toPromote]));
   }
 }
-function autoLearnAfterFailure(baseMessage, learned, collected, originalBody, reason) {
+function autoLearnAfterFailure(baseMessage, learned, collected, originalBody, reason, note) {
   try {
     const store = loadStore();
     ensureStatsScaffold(store, learned.name);
@@ -835,12 +835,13 @@ function autoLearnAfterFailure(baseMessage, learned, collected, originalBody, re
     for (const u of minedUnits) incrementCount(st.failUnitCounts, u, 1);
 
     st.failLog.push({
-      at: now,
-      userId,
-      reason: String(reason || "UNKNOWN"),
-      missing,
-      text: String(originalBody || "").slice(0, 400)
-    });
+  at: now,
+  userId,
+  reason: String(reason || "UNKNOWN"),
+  missing,
+  text: String(originalBody || "").slice(0, 400),
+  note: note ? String(note).slice(0, 200) : undefined
+});
     if (st.failLog.length > 50) st.failLog.splice(0, st.failLog.length - 50);
     promotePendingNumberSynonyms(store, learned);
     saveStore(store);
@@ -851,7 +852,7 @@ function autoLearnAfterFailure(baseMessage, learned, collected, originalBody, re
 async function finishAndRun(baseMessage, session, learned) {
   const execRes = await tryExecuteLearned(baseMessage.client, baseMessage, learned, session.data, session.origText || "");
   if (!execRes.ok) {
-    autoLearnAfterFailure(baseMessage, learned, session.data, session.origText || "", execRes.reason);
+    autoLearnAfterFailure(baseMessage, learned, session.data, session.origText || "", execRes.reason, execRes.errorMsg);
     const summary = summarizePlan(baseMessage.guild, learned, session.data);
     await baseMessage.channel.send(`실행 실패: /${learned.name} (${execRes.reason})\n${summary}`);
   }
