@@ -313,6 +313,57 @@ function getTypeLabel(t) {
   }
 }
 
+function toDisplayName(guild, user) {
+  const mem = user?.id ? guild.members.cache.get(user.id) : null;
+  return mem?.displayName || user?.globalName || user?.username || user?.id || "";
+}
+
+async function buildSlotContext(guild, slots, captured, author) {
+  const ctx = {}; 
+  for (let i = 0; i < (slots || []).length; i++) {
+    const lbl = slots[i].label;
+    const type = slots[i].type || "STRING";
+    const seg  = (captured[i] || "").trim();
+    let resolved = seg;
+    let name = seg, mention = seg, id = "";
+
+    if (type === "USER") {
+      const u = await resolveByType(guild, "USER", seg, author);
+      if (u) { name = toDisplayName(guild, u); mention = `<@${u.id}>`; id = u.id; }
+    } else if (type === "ROLE") {
+      const r = await resolveByType(guild, "ROLE", seg, author);
+      if (r) { name = r.name; mention = `<@&${r.id}>`; id = r.id; }
+    } else if (type === "CHANNEL") {
+      const c = await resolveByType(guild, "CHANNEL", seg, author);
+      if (c) { name = c.name; mention = `<#${c.id}>`; id = c.id; }
+    } else if (type === "NUMBER") {
+      name = seg; mention = seg;
+    } else { // STRING 등
+      name = seg; mention = seg;
+    }
+
+    ctx[lbl] = { raw: seg, type, name, mention, id };
+  }
+  return ctx;
+}
+
+function applyTemplate(str, ctx, slots) {
+  if (!str) return str;
+  return String(str).replace(/\(([^\)]+)\)/g, (m, inside) => {
+    const [labelRaw, modRaw] = inside.split(".");
+    const label = normalizeKorean(labelRaw || "");
+    const slot = (slots || []).find(s => normalizeKorean(s.label) === label);
+    if (!slot) return m;
+    const sctx = ctx[slot.label];
+    if (!sctx) return m;
+    const mod = normalizeKorean(modRaw || "");
+    if (mod === "멘션") return sctx.mention;
+    if (mod === "아이디" || mod === "id") return sctx.id || "";
+    return sctx.name; 
+  });
+}
+
+
 function flattenOptions(options = []) {
   const out = [];
   for (const opt of options) {
@@ -2031,13 +2082,20 @@ async function tryFallbackExecFromStore(client, message, content) {
     const { regex, slots } = compileFallbackPattern(fb.pattern);
     const m = body.match(regex);
     if (!m) continue;
+
     const captured = m.slice(1);
     const learned = await fetchSlashSchema(client, message.guild, fb.command);
     if (!learned) continue;
+
+    const slotCtx = await buildSlotContext(message.guild, slots, captured, message.author);
+
     const collected = {};
-    for (const [opt, bind] of Object.entries(fb.bindings || {})) {
+    const usedBindings = fb.bindings || {};
+
+    for (const [opt, bind] of Object.entries(usedBindings)) {
       if (bind.source === "literal") {
-        collected[opt] = bind.value;
+        const templated = applyTemplate(bind.value, slotCtx, slots);
+        collected[opt] = templated;
         continue;
       }
       const idx = slots.findIndex(s => s.label === bind.name);
@@ -2047,10 +2105,11 @@ async function tryFallbackExecFromStore(client, message, content) {
       collected[opt] = await resolveByType(message.guild, t, seg, message.author);
     }
     await invokeSlashWithBindings(client, message, fb.command, {}, collected);
-return true;
+    return true;
   }
   return false;
 }
+
 
 function suggestPatternFromText(guild, body) {
   let p = String(body || "");
@@ -2099,10 +2158,21 @@ function wireBindingTypes(bindings, slots) {
 }
 function bindingToString(b) {
   if (b == null) return null;
-  if (typeof b === "string" || typeof b === "number" || typeof b === "boolean") return String(b);
+  if (typeof b === "string" || typeof b === "number" || typeof b === "boolean") {
+    return String(b);
+  }
+  if (typeof b === "object" && ("type" in b || "source" in b)) {
+    if (b.type === "fixed" || b.source === "literal") {
+      return b.value != null ? String(b.value) : null;
+    }
+    if (b.type === "slot") {
+      return b.value != null ? String(b.value) : null;
+    }
+  }
   if (typeof b === "object") {
-    if (b.type === "fixed") return b.value != null ? String(b.value) : null;
-    if (b.type === "slot") return b.value != null ? String(b.value) : null;
+    if (b.name) return String(b.name);
+    if (b.username || b.globalName) return String(b.globalName || b.username);
+    if (b.id) return String(b.id);
   }
   return null;
 }
