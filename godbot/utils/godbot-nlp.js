@@ -203,6 +203,20 @@ function parseFloatAny(str) {
   if (!m) return null;
   return parseFloat(m[0].replace(",", "."));
 }
+function classifyExecError(e) {
+  const msg = String(e?.message || e || "");
+  if (/SUBCOMMAND_REQUIRED/i.test(msg)) return "SUBCOMMAND_REQUIRED";
+  if (/SUBCOMMAND_GROUP_REQUIRED/i.test(msg)) return "SUBCOMMAND_GROUP_REQUIRED";
+  if (/Missing Permissions|50013/i.test(msg)) return "MISSING_PERMISSIONS";
+  if (/Missing Access|50001/i.test(msg)) return "MISSING_ACCESS";
+  if (/Unknown Channel|10003/i.test(msg)) return "UNKNOWN_CHANNEL";
+  if (/Unknown Member|10007/i.test(msg)) return "UNKNOWN_MEMBER";
+  if (/Unknown Role|10011/i.test(msg)) return "UNKNOWN_ROLE";
+  if (/Invalid Form Body/i.test(msg)) return "BAD_PAYLOAD";
+  if (/request entity too large/i.test(msg)) return "PAYLOAD_TOO_LARGE";
+  if (/Cannot read (properties|property) of/i.test(msg)) return "NULL_REFERENCE";
+  return "HANDLER_EXCEPTION";
+}
 function stripTrigger(text) {
   if (!text) return "";
   return text.split(TRIGGER).join(" ").replace(/\s+/g, " ").trim();
@@ -332,8 +346,11 @@ async function fetchSlashSchema(client, guild, name) {
     } catch {}
   }
   if (!cmd) return null;
+  
   const flat = flattenOptions(cmd.options || []);
   const options = flat.filter(o => o.type !== "SUB");
+  const subcommands = flat.filter(o => o.type === "SUB").map(o => o.name);
+
   return {
     id: cmd.id,
     name: cmd.name,
@@ -345,6 +362,7 @@ async function fetchSlashSchema(client, guild, name) {
       description: o.description,
       synonyms: (DefaultOptionSynonyms[o.type] || []).slice(0),
     })),
+    subcommands,
   };
 }
 
@@ -550,6 +568,8 @@ function buildFakeInteraction(baseMessage, learned, collected) {
   const now = Date.now();
   let _deferred = false;
   let _replied = false;
+  let _lastMsg = null;   
+  let _ephemeral = false; 
 
   const get = name => collected[name];
   const options = {
@@ -563,8 +583,29 @@ function buildFakeInteraction(baseMessage, learned, collected) {
     getBoolean: n => { const v = get(n); if (typeof v === "boolean") return v; if (typeof v === "string") return ["예","네","true","True","TRUE","y","yes"].includes(v); return null; },
     getMentionable: n => (get(n) && get(n).id ? get(n) : null),
     getAttachment: n => (get(n) && get(n).name ? get(n) : null),
-    getSubcommand: () => null,
-    getSubcommandGroup: () => null,
+
+    getSubcommand(required = false) {
+      const list = Array.isArray(learned.subcommands) ? learned.subcommands : [];
+      const raw = String(baseMessage.content || "").toLowerCase();
+      
+      let found = null;
+      for (const full of list) {
+        const leaf = String(full).split(".").pop().toLowerCase();
+        if (raw.includes(leaf)) { found = leaf; break; }
+      }
+      if (found) return found;
+      if (required) throw new Error("SUBCOMMAND_REQUIRED");
+      return null;
+    },
+    getSubcommandGroup(required = false) {
+      const list = Array.isArray(learned.subcommands) ? learned.subcommands : [];
+      const any = list.find(n => n.includes("."));
+      const group = any ? String(any).split(".")[0] : null;
+      if (group) return group;
+      if (required) throw new Error("SUBCOMMAND_GROUP_REQUIRED");
+      return null;
+    },
+
     get: n => get(n),
   };
 
@@ -596,30 +637,35 @@ function buildFakeInteraction(baseMessage, learned, collected) {
     get replied() { return _replied; },
 
     reply: async (p = {}) => {
+      if (p?.ephemeral != null) _ephemeral = !!p.ephemeral;
       const msg = await baseMessage.channel.send(toMessageOptions(p));
+      _lastMsg = msg;
       _replied = true;
       return msg;
     },
-    deferReply: async () => { _deferred = true; },
+    deferReply: async (p = {}) => { if (p?.ephemeral != null) _ephemeral = !!p.ephemeral; _deferred = true; },
     editReply: async (p = {}) => {
       const opts = toMessageOptions(p);
       const tag = _deferred && !_replied ? "[deferred] " : "";
       const msg = await baseMessage.channel.send({ ...opts, content: tag + (opts.content || "") });
+      _lastMsg = msg;
       _replied = true;
       return msg;
     },
     followUp: async (p = {}) => {
       const msg = await baseMessage.channel.send(toMessageOptions(p));
+      _lastMsg = msg;
       _replied = true;
       return msg;
     },
 
-    fetchReply: async () => null,
+    fetchReply: async () => _lastMsg,
     deleteReply: async () => {},
   };
 
   return interaction;
 }
+
 
 function ensureStatsScaffold(store, cmdName) {
   if (!store.stats) store.stats = {};
@@ -652,12 +698,18 @@ function mineUnitTokensAroundNumbers(text) {
 }
 
 async function tryExecuteLearned(client, baseMessage, learned, collected, originalBody) {
+  const missing = getMissingRequiredOptions(learned, collected);
+  if (missing.length) {
+    return { ok: false, reason: "MISSING_OPTIONS", missing };
+  }
   const col = client.commands || client.slashCommands || new Collection();
   let cmd = col.get(learned.name);
   if (!cmd && col instanceof Map) cmd = col.get(learned.name);
   if (!cmd && typeof col.find === "function") cmd = col.find(c => c?.data?.name === learned.name || c?.name === learned.name);
   if (!cmd) return { ok: false, reason: "HANDLER_NOT_FOUND" };
+
   const interaction = buildFakeInteraction(baseMessage, learned, collected);
+
   try {
     if (typeof cmd.execute === "function") {
       await cmd.execute(interaction);
@@ -672,9 +724,11 @@ async function tryExecuteLearned(client, baseMessage, learned, collected, origin
     return { ok: true };
   } catch (e) {
     console.error("godbot-nlp execute error:", e);
-    return { ok: false, reason: "EXEC_ERROR", error: e };
+    const reason = classifyExecError(e);
+    return { ok: false, reason, error: e };
   }
 }
+
 
 function autoLearnAfterSuccess(baseMessage, learned, collected, originalBody) {
   try {
@@ -941,7 +995,7 @@ async function startLearnFlow(client, message, slashName) {
   }
   const store = loadStore();
   if (!store.commands[name]) {
-    store.commands[name] = { name: schema.name, id: schema.id, description: schema.description, options: schema.options, synonyms: [] };
+    store.commands[name] = { name: schema.name, id: schema.id, description: schema.description, options: schema.options, subcommands: schema.subcommands || [], synonyms: [] };
     saveStore(store);
   }
 
