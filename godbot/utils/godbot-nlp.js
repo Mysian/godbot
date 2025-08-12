@@ -646,14 +646,69 @@ function autoLearnAfterSuccess(baseMessage, learned, collected, originalBody) {
   } catch {}
 }
 
+function getMissingRequiredOptions(learned, collected) {
+  const req = (learned.options || []).filter(o => o.required);
+  return req.filter(o => collected[o.name] === undefined || collected[o.name] === null || collected[o.name] === "").map(o => o.name);
+}
+function incrementCount(map, key, by = 1) {
+  if (!map[key]) map[key] = 0;
+  map[key] += by;
+}
+function promotePendingNumberSynonyms(store, learned) {
+  const cmd = store.commands[learned.name];
+  if (!cmd) return;
+  const st = ensureStatsScaffold(store, learned.name);
+  const pending = st.failUnitCounts || {};
+  const toPromote = Object.entries(pending).filter(([, c]) => c >= 3).map(([t]) => t);
+  if (!toPromote.length) return;
+  const numOpts = (cmd.options || []).filter(o => o.type === "NUMBER");
+  for (const o of numOpts) {
+    o.synonyms = Array.from(new Set([...(o.synonyms || []), ...toPromote]));
+  }
+}
+function autoLearnAfterFailure(baseMessage, learned, collected, originalBody, reason) {
+  try {
+    const store = loadStore();
+    ensureStatsScaffold(store, learned.name);
+    const st = store.stats[learned.name];
+    if (!st.lastMissingByUser) st.lastMissingByUser = {};
+    if (!st.failLog) st.failLog = [];
+    if (!st.failUnitCounts) st.failUnitCounts = {};
+
+    const userId = baseMessage.author.id;
+    if (!st.lastMissingByUser[userId]) st.lastMissingByUser[userId] = {};
+
+    const missing = getMissingRequiredOptions(learned, collected);
+    const now = Date.now();
+    for (const optName of missing) st.lastMissingByUser[userId][optName] = now;
+
+    const minedUnits = mineUnitTokensAroundNumbers(String(originalBody || ""));
+    for (const u of minedUnits) incrementCount(st.failUnitCounts, u, 1);
+
+    st.failLog.push({
+      at: now,
+      userId,
+      reason: String(reason || "UNKNOWN"),
+      missing,
+      text: String(originalBody || "").slice(0, 400)
+    });
+    if (st.failLog.length > 50) st.failLog.splice(0, st.failLog.length - 50);
+    promotePendingNumberSynonyms(store, learned);
+    saveStore(store);
+  } catch {}
+}
+
+
 async function finishAndRun(baseMessage, session, learned) {
   const execRes = await tryExecuteLearned(baseMessage.client, baseMessage, learned, session.data, session.origText || "");
   if (!execRes.ok) {
+    autoLearnAfterFailure(baseMessage, learned, session.data, session.origText || "", execRes.reason);
     const summary = summarizePlan(baseMessage.guild, learned, session.data);
     await baseMessage.channel.send(`실행 실패: /${learned.name} (${execRes.reason})\n${summary}`);
   }
   endSession(baseMessage.author.id);
 }
+
 
 function getInlineHintByType(t) {
   switch (t) {
@@ -677,10 +732,19 @@ async function askNextOption(message, session, learned) {
     const name = opt.name;
     if (session.data[name] == null || session.data[name] === "") {
       session.awaiting = { type: opt.type, name };
-      const reqText = opt.required ? "[필수]" : "[선택]";
-      const hint = getInlineHintByType(opt.type);
-      await message.channel.send(`값을 알려줘 ${reqText} ${name} (${opt.type}) ${hint}`);
-      return;
+const reqText = opt.required ? "[필수]" : "[선택]";
+const hint = getInlineHintByType(opt.type);
+
+let prevHint = "";
+try {
+  const store = loadStore();
+  const st = store.stats && store.stats[learned.name];
+  const last = st && st.lastMissingByUser && st.lastMissingByUser[message.author.id] && st.lastMissingByUser[message.author.id][name];
+  if (last) prevHint = " (지난번에 빠졌던 옵션)";
+} catch {}
+
+await message.channel.send(`값을 알려줘 ${reqText} ${name} (${opt.type})${prevHint} ${hint}`);
+return;
     } else {
       session.currIndex++;
     }
