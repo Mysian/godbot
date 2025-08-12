@@ -1044,7 +1044,7 @@ async function startLearnFlow(client, message, slashName) {
   s.channelId = message.channelId;
   s.expectedOptions = [];
   s.currIndex = 0;
-  await message.channel.send(`/${name} 키워드를 ,로 적어줘. 예: 정수,지급,송금,보내`);
+  await message.channel.send(`/${name} 키워드를 ,로 적어줘. 예: 정수,지급`);
   s.awaiting = { type: "LEARN_SYNONYMS" };
 }
 
