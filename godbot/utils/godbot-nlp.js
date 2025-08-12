@@ -1924,7 +1924,7 @@ function normalizeQuickBindingLine(raw) {
   const line = String(raw||"").trim();
   if (!line) return "";
   const pairs = [];
-  const re = /([a-z0-9._-]+)\s*[:=]\s*("([^"]*)"|'([^']*)'|[^,]+?)(?=(?:\s+[a-z0-9._-]+\s*[:=]|,|$))/ig;
+  const re = /([\p{L}\p{N}._-]+)\s*[:=]\s*("([^"]*)"|'([^']*)'|[^,]+?)(?=(?:\s+[\p{L}\p{N}._-]+\s*[:=]|,|$))/giu;
   let m;
   while ((m = re.exec(line))) {
     const k = m[1];
@@ -2076,7 +2076,7 @@ function parseBindingsInput(txt) {
   const map = {};
   const pairs = String(txt||"").split(/[,\n]+/).map(v=>v.trim()).filter(Boolean);
   for (const pair of pairs) {
-    const m = pair.match(/^([a-z0-9._-]+)\s*[:=]\s*(.+)$/i);
+    const m = pair.match(/^([\p{L}\p{N}._-]+)\s*[:=]\s*(.+)$/iu);
     if (!m) continue;
     const k = m[1];
     const v = m[2];
