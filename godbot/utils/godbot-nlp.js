@@ -49,6 +49,7 @@ const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해", "멈춰", "�
 const MOVE_VERBS = ["옮겨", "이동", "보내", "데려", "워프", "전송", "텔포", "텔레포트", "넣어", "이사"];
 const CHANGE_VERBS = ["바꿔", "변경", "수정", "교체", "rename", "이름바꿔", "이름변경", "바꾸면"];
 const GIVE_ROLE_VERBS = ["지급", "넣어", "부여", "추가", "달아", "줘", "부착", "부여해줘", "넣어줘", "추가해"];
+const REMOVE_ROLE_VERBS = ["빼", "빼줘", "제거", "삭제", "해제", "회수", "박탈", "없애", "떼", "벗겨", "빼앗아"];
 const NICK_LABELS = ["닉네임", "별명", "이름", "네임"];
 const CHANNEL_LABELS = ["채널", "음성채널", "보이스채널", "보이스", "음성", "vc", "VC"];
 const ROLE_LABELS = ["역할", "롤", "role", "ROLE"];
@@ -957,6 +958,31 @@ async function handleBuiltinIntent(message, content) {
       } catch {}
     }
     await message.reply(`${ok}개 채널 이름을 '${newName}'(으)로 변경했어`);
+    return true;
+  }
+
+  if (ROLE_LABELS.some(k=>lc.includes(k)) && REMOVE_ROLE_VERBS.some(v=>lc.includes(v))) {
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
+      await message.reply("실패: 봇에 역할 관리 권한이 없어.");
+      return true;
+    }
+    const members = findAllMembersInText(guild, body, author);
+    const roles = findAllRolesInText(guild, body);
+    if (!members.length) {
+      await message.reply("역할을 뺄 유저를 못 찾았어.");
+      return true;
+    }
+    if (!roles.length) {
+      await message.reply("제거할 역할을 못 찾았어.");
+      return true;
+    }
+    let ok = 0;
+    for (const mem of members) {
+      for (const role of roles) {
+        try { await mem.roles.remove(role, "갓봇 역할 제거"); ok++; } catch {}
+      }
+    }
+    await message.reply(`${members.length}명에게 ${roles.length}개 역할 제거 완료 (${ok}회 적용)`);
     return true;
   }
 
