@@ -2021,6 +2021,14 @@ const PLACEHOLDER_TYPES = {
   "내용":"STRING","사유":"STRING","메모":"STRING","메시지":"STRING","텍스트":"STRING","문구":"STRING","제목":"STRING"
 };
 
+function escRWC(s) {
+  return String(normalizeKorean(s || ""))
+    .split("*")
+    .map(escR) 
+    .join(".*?")
+    .replace(/\s+/g, "\\s*");
+}
+
 function compileFallbackPattern(pat) {
   const raw = String(pat || "");
   const slots = [];
@@ -2029,14 +2037,14 @@ function compileFallbackPattern(pat) {
   let last = 0, m;
   while ((m = re.exec(raw))) {
     const before = raw.slice(last, m.index);
-    rx += escR(normalizeKorean(before)).replace(/\s+/g, "\\s*");
+    rx += escRWC(before);          // ← 여기
     const lbl = normalizeKorean(m[1]);
     const t = PLACEHOLDER_TYPES[lbl] || "STRING";
     slots.push({ label: lbl, type: t });
     rx += "(.+?)";
     last = m.index + m[0].length;
   }
-  rx += escR(normalizeKorean(raw.slice(last))).replace(/\s+/g, "\\s*");
+  rx += escRWC(raw.slice(last)); 
   rx += "$";
   return { regex: new RegExp(rx, "iu"), slots };
 }
