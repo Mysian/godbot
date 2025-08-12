@@ -520,16 +520,17 @@ async function startNlpFlow(client, message, content) {
   const body = stripTrigger(content);
   const lc = body.toLowerCase();
 
-  let match = null;
-  for (const c of entries) {
+    const candidates = entries.filter(c => {
     const hitName = lc.includes(c.name);
     const hitSyn = (c.synonyms || []).some(s => s && lc.includes(String(s).toLowerCase()));
-    if (hitName || hitSyn) { match = c; break; }
-  }
-  if (!match) {
+    return hitName || hitSyn;
+  });
+  if (!candidates.length) {
     await message.reply("무슨 명령인지 못 알아들었어. '갓봇! 학습 목록'에서 가능한 명령을 확인해줘.");
     return;
   }
+  const picked = pickBestCommand(message.guild, body, candidates, message.author);
+  const match = picked.cmd;
 
   const s = newSession(message.author.id);
   s.mode = "exec";
