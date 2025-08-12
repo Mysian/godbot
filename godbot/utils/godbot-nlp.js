@@ -418,11 +418,13 @@ function buildFailLogEmbed(store, page, cmdFilter, userIdFilter) {
   const start = (p - 1) * FAIL_PAGE_SIZE;
   const slice = all.slice(start, start + FAIL_PAGE_SIZE);
   const desc = slice.map((it, i) => {
-    const idx = start + i + 1;
-    const miss = (it.missing && it.missing.length) ? ` • 누락:${it.missing.join(",")}` : "";
-    const preview = String(it.text || "").replace(/\s+/g, " ").slice(0, 120);
-    return `**${idx}.** /${it.cmd} • <@${it.userId}> • ${fmtTS(it.at)} • ${it.reason}${miss}\n${preview}`;
-  }).join("\n\n") || "기록이 없어.";
+  const idx = start + i + 1;
+  const miss = (it.missing && it.missing.length) ? ` • 누락:${it.missing.join(",")}` : "";
+  const preview = String(it.text || "").replace(/\s+/g, " ").slice(0, 120);
+  const noteLine = it.note ? `\n에러: ${String(it.note).replace(/\s+/g, " ").slice(0, 120)}` : "";
+  return `**${idx}.** /${it.cmd} • <@${it.userId}> • ${fmtTS(it.at)} • ${it.reason}${miss}\n${preview}${noteLine}`;
+}).join("\n\n") || "기록이 없어.";
+
   const titleParts = ["갓봇! 실패 로그"];
   if (cmdFilter) titleParts.push(`/${cmdFilter}`);
   if (userIdFilter) titleParts.push(`<@${userIdFilter}>`);
