@@ -19,6 +19,7 @@ const DATA_INDEX_PATH = path.join(DATA_DIR, "godbot-data-index.json");
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const SESSION_SWEEP_MS = 60 * 1000;
 const PAGE_SIZE = 10;
+const FAIL_PAGE_SIZE = 6;
 const MAX_JSON_BYTES = 5 * 1024 * 1024;
 const DATA_INDEX_TTL_MS = 5 * 60 * 1000;
 
@@ -364,6 +365,61 @@ function buildListEmbed(data, page) {
   );
   return { eb, row, page: p, pages };
 }
+
+function fmtTS(ts) {
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function collectFailLogs(store, cmdFilter, userIdFilter) {
+  const out = [];
+  for (const [cmd, st] of Object.entries(store.stats || {})) {
+    const arr = (st && st.failLog) || [];
+    for (const it of arr) {
+      if (cmdFilter && cmd !== cmdFilter) continue;
+      if (userIdFilter && it.userId !== userIdFilter) continue;
+      out.push({ cmd, ...it });
+    }
+  }
+  out.sort((a, b) => b.at - a.at);
+  return out;
+}
+function buildFailLogEmbed(store, page, cmdFilter, userIdFilter) {
+  const all = collectFailLogs(store, cmdFilter, userIdFilter);
+  const total = all.length;
+  const pages = Math.max(1, Math.ceil(total / FAIL_PAGE_SIZE));
+  const p = Math.min(Math.max(1, page), pages);
+  const start = (p - 1) * FAIL_PAGE_SIZE;
+  const slice = all.slice(start, start + FAIL_PAGE_SIZE);
+  const desc = slice.map((it, i) => {
+    const idx = start + i + 1;
+    const miss = (it.missing && it.missing.length) ? ` • 누락:${it.missing.join(",")}` : "";
+    const preview = String(it.text || "").replace(/\s+/g, " ").slice(0, 120);
+    return `**${idx}.** /${it.cmd} • <@${it.userId}> • ${fmtTS(it.at)} • ${it.reason}${miss}\n${preview}`;
+  }).join("\n\n") || "기록이 없어.";
+  const titleParts = ["갓봇! 실패 로그"];
+  if (cmdFilter) titleParts.push(`/${cmdFilter}`);
+  if (userIdFilter) titleParts.push(`<@${userIdFilter}>`);
+  const eb = new EmbedBuilder().setTitle(titleParts.join(" ")).setDescription(desc).setFooter({ text: `페이지 ${p}/${pages} • 총 ${total}건` });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`godbot_fail_prev_${p}_${cmdFilter || "-"}_${userIdFilter || "-"}`).setLabel("이전").setStyle(ButtonStyle.Secondary).setDisabled(p <= 1),
+    new ButtonBuilder().setCustomId(`godbot_fail_next_${p}_${cmdFilter || "-"}_${userIdFilter || "-"}`).setLabel("다음").setStyle(ButtonStyle.Secondary).setDisabled(p >= pages),
+  );
+  return { eb, row, page: p, pages };
+}
+async function handleFailLogCommand(message) {
+  const store = loadStore();
+  const body = stripTrigger(message.content).replace(/^실패로그/i, "").trim();
+  let cmd = null, uid = null;
+  const mC = body.match(/\/([a-z0-9._-]+)/i);
+  if (mC) cmd = mC[1];
+  const mU = body.match(/<@!?(\d+)>/);
+  if (mU) uid = mU[1];
+  const built = buildFailLogEmbed(store, 1, cmd, uid);
+  const msg = await message.channel.send({ embeds: [built.eb], components: [built.row], reply: { messageReference: message.id } });
+  setTimeout(() => { if (msg.editable) msg.edit({ components: [] }).catch(() => {}); }, 120000);
+}
+
 
 function summarizePlan(guild, learned, collected) {
   const lines = [];
@@ -1980,6 +2036,10 @@ async function onMessage(client, message) {
     await handleExportLearn(message);
     return;
   }
+  if (lowered.startsWith(`${TRIGGER} 실패로그`)) {
+  await handleFailLogCommand(message);
+  return;
+  }
   if (lowered.startsWith(`${TRIGGER} 학습`)) {
     const rest = content.split("학습")[1] || "";
     await startLearnFlow(client, message, rest.trim());
@@ -2014,6 +2074,20 @@ async function onInteraction(client, interaction) {
     } catch {}
     return;
   }
+  if (id.startsWith("godbot_fail_prev_") || id.startsWith("godbot_fail_next_")) {
+  const store = loadStore();
+  const isPrev = id.includes("_prev_");
+  const parts = id.split("_");
+  const page = parseInt(parts[3] || "1", 10);
+  const cmd = parts[4] && parts[4] !== "-" ? parts[4] : null;
+  const uid = parts[5] && parts[5] !== "-" ? parts[5] : null;
+  const next = isPrev ? Math.max(1, page - 1) : page + 1;
+  const built = buildFailLogEmbed(store, next, cmd, uid);
+  try {
+    await interaction.update({ embeds: [built.eb], components: [built.row] });
+  } catch {}
+  return;
+ }
 }
 
 function initGodbotNLP(client) {
