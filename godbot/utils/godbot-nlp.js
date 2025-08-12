@@ -8,6 +8,7 @@ const {
   ChannelType,
   Collection,
   PermissionsBitField,
+  AttachmentBuilder
 } = require("discord.js");
 
 const ADMIN_ROLE_ID = "1404486995564167218";
@@ -15,6 +16,7 @@ const TRIGGER = "갓봇!";
 const DATA_DIR = path.join(__dirname, "../data");
 const STORE_PATH = path.join(DATA_DIR, "godbot-learning.json");
 const SESSION_TTL_MS = 5 * 60 * 1000;
+const SESSION_SWEEP_MS = 60 * 1000;
 const PAGE_SIZE = 10;
 
 const AppOptType = {
@@ -38,6 +40,8 @@ const DefaultOptionSynonyms = {
   BOOLEAN: ["여부", "할까", "할까요", "진행", "포함"],
   ROLE: ["역할", "롤"],
   CHANNEL: ["채널", "으로", "로"],
+  MENTIONABLE: ["대상", "멘션", "대상자"],
+  ATTACHMENT: ["파일", "첨부", "이미지", "스크린샷"]
 };
 
 const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해", "멈춰", "그만해", "그만", "스탑", "거기까지", "멈춰줘", "종료", "종료해"];
@@ -72,9 +76,11 @@ function saveStore(data) {
 
 const sessions = new Map();
 function newSession(userId) {
+  const now = Date.now();
   const s = {
     step: 0,
-    createdAt: Date.now(),
+    createdAt: now,
+    lastActive: now,
     data: {},
     mode: null,
     commandName: null,
@@ -94,44 +100,50 @@ function newSession(userId) {
 function getSession(userId) {
   const s = sessions.get(userId);
   if (!s) return null;
-  if (Date.now() - (s.createdAt || 0) > SESSION_TTL_MS) {
+  const t = s.lastActive || s.createdAt || 0;
+  if (Date.now() - t > SESSION_TTL_MS) {
     sessions.delete(userId);
     return null;
   }
+  s.lastActive = Date.now();
   return s;
 }
 function endSession(userId) {
   sessions.delete(userId);
 }
+function sweepSessions() {
+  const now = Date.now();
+  for (const [k, s] of sessions) {
+    const t = s.lastActive || s.createdAt || 0;
+    if (now - t > SESSION_TTL_MS) sessions.delete(k);
+  }
+}
 
 function isAdminAllowed(member) {
   if (!member) return false;
-  return member.roles?.cache?.has(ADMIN_ROLE_ID) || false;
+  if (member.roles?.cache?.has(ADMIN_ROLE_ID)) return true;
+  return member.permissions?.has(PermissionsBitField.Flags.Administrator) || false;
 }
 
 function normalizeKorean(str) {
   return (str || "").replace(/\s+/g, " ").trim();
 }
-
 function parseFloatAny(str) {
   if (!str) return null;
   const m = String(str).match(/-?\d+(?:[.,]\d+)?/);
   if (!m) return null;
   return parseFloat(m[0].replace(",", "."));
 }
-
 function stripTrigger(text) {
   if (!text) return "";
   return text.split(TRIGGER).join(" ").replace(/\s+/g, " ").trim();
 }
-
 function normalizeKey(s) {
   return String(s || "")
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }
-
 function findMemberByToken(guild, token) {
   if (!guild || !token) return null;
   const t = normalizeKey(token);
@@ -156,6 +168,8 @@ function getTypeLabel(t) {
     case AppOptType.BOOLEAN: return "BOOLEAN";
     case AppOptType.ROLE: return "ROLE";
     case AppOptType.CHANNEL: return "CHANNEL";
+    case AppOptType.MENTIONABLE: return "MENTIONABLE";
+    case AppOptType.ATTACHMENT: return "ATTACHMENT";
     default: return "STRING";
   }
 }
@@ -188,9 +202,18 @@ function flattenOptions(options = []) {
   return out;
 }
 
-async function fetchSlashSchema(client, name) {
-  await client.application.commands.fetch();
-  const cmd = client.application.commands.cache.find(c => c.name === name);
+async function fetchSlashSchema(client, guild, name) {
+  let cmd = null;
+  try {
+    await client.application.commands.fetch();
+    cmd = client.application.commands.cache.find(c => c.name === name) || null;
+  } catch {}
+  if (!cmd && guild) {
+    try {
+      await guild.commands.fetch();
+      cmd = guild.commands.cache.find(c => c.name === name) || null;
+    } catch {}
+  }
   if (!cmd) return null;
   const flat = flattenOptions(cmd.options || []);
   const options = flat.filter(o => o.type !== "SUB");
@@ -209,7 +232,7 @@ async function fetchSlashSchema(client, name) {
 }
 
 function buildListEmbed(data, page) {
-  const entries = Object.values(data.commands || {});
+  const entries = Object.values(data.commands || {}).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const total = entries.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const p = Math.min(Math.max(1, page), pages);
@@ -238,10 +261,12 @@ function summarizePlan(guild, learned, collected) {
   for (const o of opts) {
     const key = o.name;
     let val = collected[key];
-    if (o.type === "USER" && val && typeof val === "object") val = `<@${val.id}>`;
-    if (o.type === "ROLE" && val && typeof val === "object") val = `<@&${val.id}>`;
-    if (o.type === "CHANNEL" && val && typeof val === "object") val = `<#${val.id}>`;
+    if (o.type === "USER" && val && typeof val === "object" && val.id) val = `<@${val.id}>`;
+    if (o.type === "ROLE" && val && typeof val === "object" && val.id) val = `<@&${val.id}>`;
+    if (o.type === "CHANNEL" && val && typeof val === "object" && val.id) val = `<#${val.id}>`;
+    if (o.type === "MENTIONABLE" && val && typeof val === "object" && val.id) val = val.tag ? `<@${val.id}>` : `<@&${val.id}>`;
     if (o.type === "BOOLEAN" && typeof val === "boolean") val = val ? "예" : "아니오";
+    if (o.type === "ATTACHMENT" && val && val.name) val = val.name;
     if (val === undefined || val === null || val === "") continue;
     lines.push(`${key}: ${val}`);
   }
@@ -289,6 +314,24 @@ function extractFromText(guild, text, learned, author) {
         }
       }
     }
+  }
+
+  const mentionableOpt = (learned.options || []).find(o => o.type === "MENTIONABLE");
+  if (mentionableOpt) {
+    let v = null;
+    const mU = content.match(/<@!?(\d+)>/);
+    if (mU) {
+      const member = guild.members.cache.get(mU[1]);
+      if (member) v = member.user;
+    }
+    if (!v) {
+      const mR = content.match(/<@&(\d+)>/);
+      if (mR) {
+        const role = guild.roles.cache.get(mR[1]);
+        if (role) v = { id: role.id, name: role.name };
+      }
+    }
+    if (v) res[mentionableOpt.name] = v;
   }
 
   const numberOpt = (learned.options || []).find(o => o.type === "NUMBER");
@@ -363,6 +406,16 @@ function buildFakeInteraction(baseMessage, learned, collected) {
       const v = get(n);
       if (typeof v === "boolean") return v;
       if (typeof v === "string") return ["예", "네", "true", "True", "TRUE", "y", "yes"].includes(v);
+      return null;
+    },
+    getMentionable: n => {
+      const v = get(n);
+      if (v && v.id) return v;
+      return null;
+    },
+    getAttachment: n => {
+      const v = get(n);
+      if (v && v.name) return v;
       return null;
     },
     get: n => get(n),
@@ -453,7 +506,7 @@ async function startLearnFlow(client, message, slashName) {
     await message.reply("학습할 슬래시 명령어를 '/명령어' 형태로 적어줘.");
     return;
   }
-  const schema = await fetchSlashSchema(client, name);
+  const schema = await fetchSlashSchema(client, message.guild, name);
   if (!schema) {
     await message.reply(`/${name} 명령어를 찾을 수 없어.`);
     return;
@@ -752,6 +805,11 @@ function extractRenameTarget(content) {
   return null;
 }
 
+function hasBotPerm(guild, flag) {
+  const me = guild.members.me;
+  return !!(me && me.permissions && me.permissions.has(flag));
+}
+
 async function handleBuiltinIntent(message, content) {
   const guild = message.guild;
   const author = message.author;
@@ -759,7 +817,16 @@ async function handleBuiltinIntent(message, content) {
   const lc = body.toLowerCase();
 
   if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각/.test(lc)) {
-    const targets = findAllMembersInText(guild, body, author);
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.MuteMembers) && !hasBotPerm(guild, PermissionsBitField.Flags.DeafenMembers)) {
+      await message.reply("실패: 봇에 음소거/청각 차단 권한이 없어.");
+      return true;
+    }
+    let targets = findAllMembersInText(guild, body, author);
+    if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
+      const me = guild.members.cache.get(author.id);
+      const ch = me?.voice?.channel;
+      if (ch) targets = Array.from(ch.members.values());
+    }
     if (!targets.length) {
       await message.reply("대상 유저를 못 찾았어.");
       return true;
@@ -769,13 +836,15 @@ async function handleBuiltinIntent(message, content) {
     const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc));
     const wantDeafOff = DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && (/켜|열|풀|해제/.test(lc)));
     try {
+      let ok = 0;
       for (const mem of targets) {
         const v = mem.voice;
         if (!v) continue;
         if (wantMuteOn || wantMuteOff) await v.setMute(!!wantMuteOn, "갓봇 명령");
         if (wantDeafOn || wantDeafOff) await v.setDeaf(!!wantDeafOn, "갓봇 명령");
+        ok++;
       }
-      await message.reply(`${targets.map(t=>t.displayName).join(", ")} 처리 완료`);
+      await message.reply(`${ok}명 처리 완료`);
     } catch {
       await message.reply("실패했어. 권한 또는 보이스 상태를 확인해줘.");
     }
@@ -783,8 +852,17 @@ async function handleBuiltinIntent(message, content) {
   }
 
   if (textIncludesAny(lc, MOVE_VERBS) && /(으로|로)/.test(lc)) {
-    const members = findAllMembersInText(guild, body, author);
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
+      await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
+      return true;
+    }
+    let members = findAllMembersInText(guild, body, author);
     const voiceChs = findAllVoiceChannelsInText(guild, body);
+    if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
+      const me = guild.members.cache.get(author.id);
+      const ch = me?.voice?.channel;
+      if (ch) members = Array.from(ch.members.values());
+    }
     if (!members.length) {
       await message.reply("이동할 유저를 못 찾았어.");
       return true;
@@ -806,6 +884,10 @@ async function handleBuiltinIntent(message, content) {
   }
 
   if (textIncludesAny(lc, CHANGE_VERBS) && NICK_LABELS.some(k=>lc.includes(k)) ) {
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageNicknames)) {
+      await message.reply("실패: 봇에 닉네임 변경 권한이 없어.");
+      return true;
+    }
     const targets = findAllMembersInText(guild, body, author);
     if (!targets.length) {
       await message.reply("닉네임을 바꿀 유저를 못 찾았어.");
@@ -854,6 +936,10 @@ async function handleBuiltinIntent(message, content) {
   }
 
   if (ROLE_LABELS.some(k=>lc.includes(k)) && GIVE_ROLE_VERBS.some(v=>lc.includes(v))) {
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
+      await message.reply("실패: 봇에 역할 관리 권한이 없어.");
+      return true;
+    }
     const members = findAllMembersInText(guild, body, author);
     const roles = findAllRolesInText(guild, body);
     if (!members.length) {
@@ -1028,6 +1114,43 @@ async function handleExecInput(message) {
     return true;
   }
 
+  if (awaiting.type === "MENTIONABLE") {
+    let v = null;
+    const mu = txt.match(/<@!?(\d+)>/);
+    if (mu) {
+      const member = message.guild.members.cache.get(mu[1]);
+      if (member) v = member.user;
+    } else {
+      const mr = txt.match(/<@&(\d+)>/);
+      if (mr) {
+        const role = message.guild.roles.cache.get(mr[1]);
+        if (role) v = { id: role.id, name: role.name };
+      }
+    }
+    if (!v) {
+      await message.reply("멘션 가능한 대상(유저/역할)을 멘션해줘.");
+      return true;
+    }
+    s.data[awaiting.name] = v;
+    s.currIndex++;
+    s.awaiting = null;
+    await askNextOption(message, s, learned);
+    return true;
+  }
+
+  if (awaiting.type === "ATTACHMENT") {
+    const att = message.attachments.first();
+    if (!att) {
+      await message.reply("파일을 첨부해줘.");
+      return true;
+    }
+    s.data[awaiting.name] = { name: att.name, size: att.size, url: att.url, contentType: att.contentType || null };
+    s.currIndex++;
+    s.awaiting = null;
+    await askNextOption(message, s, learned);
+    return true;
+  }
+
   if (awaiting.type === "STRING") {
     s.data[awaiting.name] = txt;
     s.currIndex++;
@@ -1064,6 +1187,13 @@ async function handleCancelLearn(message, slashName) {
   await message.reply(`/${name} 학습을 취소(삭제)했어.`);
 }
 
+async function handleExportLearn(message) {
+  const store = loadStore();
+  const buf = Buffer.from(JSON.stringify(store, null, 2), "utf8");
+  const file = new AttachmentBuilder(buf, { name: "godbot-learning.json" });
+  await message.reply({ content: "학습 데이터 백업 파일이야.", files: [file] });
+}
+
 function isCancelIntentAfterTrigger(content) {
   const rest = content.split(TRIGGER).slice(1).join(TRIGGER).trim();
   const kw = rest.replace(/^[!:]+/, "").trim();
@@ -1079,7 +1209,7 @@ async function onMessage(client, message) {
   if (!isAdminAllowed(member)) return;
 
   const lowered = content.toLowerCase();
-  if (isCancelIntentAfterTrigger(lowered)) {
+  if (isCancelIntentAfterTrigger(content)) {
     const s = getSession(message.author.id);
     if (s) endSession(message.author.id);
     await message.reply("취소했어.");
@@ -1097,7 +1227,7 @@ async function onMessage(client, message) {
     const lines = (picked.cmd.options||[]).map(o=>{
       const v = pre[o.name];
       const src = pre[`__src_${o.name}`];
-      return `${o.name}(${o.type}) = ${v==null?'-':(o.type==='USER'&&v.id?`<@${v.id}>`:v)}${src?` [${src}]`:''}`;
+      return `${o.name}(${o.type}) = ${v==null?'-':(o.type==='USER'&&v.id?`<@${v.id}>`:o.type==='ROLE'&&v.id?`<@&${v.id}>`:typeof v==='object'&&v.name?v.name:v)}${src?` [${src}]`:''}`;
     });
     await message.reply(`명령어: /${picked.cmd.name}\n`+lines.join("\n"));
     return;
@@ -1110,6 +1240,10 @@ async function onMessage(client, message) {
   if (lowered.startsWith(`${TRIGGER} 학습 취소`)) {
     const rest = content.split("학습 취소")[1] || "";
     await handleCancelLearn(message, rest.trim());
+    return;
+  }
+  if (lowered.startsWith(`${TRIGGER} 학습 내보내기`) || lowered.startsWith(`${TRIGGER} 학습 백업`)) {
+    await handleExportLearn(message);
     return;
   }
   if (lowered.startsWith(`${TRIGGER} 학습`)) {
@@ -1151,6 +1285,7 @@ async function onInteraction(client, interaction) {
 function initGodbotNLP(client) {
   client.on("messageCreate", (m) => onMessage(client, m));
   client.on("interactionCreate", (i) => onInteraction(client, i));
+  setInterval(sweepSessions, SESSION_SWEEP_MS);
 }
 
 module.exports = { initGodbotNLP };
