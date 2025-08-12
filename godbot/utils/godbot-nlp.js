@@ -1943,12 +1943,12 @@ function normalizeQuickBindingLine(raw) {
 async function handleFallbackQuickAdd(client, message, body) {
   const txt = String(body||"").trim();
   if (!txt) {
-    await message.reply('형식: 폴백 추가 [패턴] -> /명령어 옵션=값, 옵션="값"...\n예: 폴백 추가 안녕 -> /할말 내용="나도 안녕!"');
+    await message.reply('형식: 폴백 추가 [패턴] -> /명령어 옵션=값, 옵션="값"...\n예: 폴백 추가 안녕 -> /할말 내용:"나도 안녕!"');
     return;
   }
   const spl = txt.split(/\s*(?:->|=>|→|=)\s*/);
   if (spl.length < 2) {
-    await message.reply('구분자 "->" 또는 "=>" 또는 "→" 또는 "=" 를 써줘.\n예: 안녕 -> /할말 내용="나도 안녕!"');
+    await message.reply('구분자 "->" 또는 "=>" 또는 "→" 또는 "=" 를 써줘.\n예: 안녕 -> /할말 내용:"나도 안녕!"');
     return;
   }
   const leftRaw = spl[0].trim().replace(/^[“"]|[”"]$/g, "");
@@ -2539,9 +2539,9 @@ if (lowered.startsWith(`${TRIGGER} 폴백 도움말`)) {
   await message.reply(
     [
       "폴백 한 줄 등록 예시:",
-      "갓봇! 폴백 추가 안녕 -> /할말 내용=\"나도 안녕!\"",
-      "갓봇! 폴백 추가 \"안녕 해줘\" => /할말 내용='오키 도키'",
-      "갓봇! 폴백 추가 (유저명)한테 인사 -> /할말 채널=고정:\"여기\", 내용=유저명",
+      "갓봇! 폴백 추가 안녕 -> /할말 내용:\"나도 안녕!\"",
+      "갓봇! 폴백 추가 \"안녕 해줘\" => /할말 내용:'오키 도키'",
+      "갓봇! 폴백 추가 (유저명)한테 인사 -> /할말 채널=고정:\"여기\", 내용:유저명",
       "",
       "문법:",
       "- [패턴] (→ 또는 -> 또는 => 또는 =) [/명령어] [옵션=값, 옵션=값,...]",
