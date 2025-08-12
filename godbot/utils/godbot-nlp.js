@@ -139,12 +139,44 @@ function normalizeKorean(str) {
 }
 const K_PART = "을를이가은는에와과도만으로부터까지에서처럼조차마저께께서의";
 const escR = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-function buildGrabber(joins = [], extraStops = "") {
-  const rxJoins = joins.map(escR).join("|");
-  const stop = extraStops ? `|(?=[${extraStops}])` : "";
-  return new RegExp(`(.+?)(?:\\s*(?:${rxJoins})${stop}|\\s|$)`, "u");
+
+function joinsToPattern(joins = []) {
+  const parts = [];
+  for (const s of (joins || [])) {
+    if (s === SPACE_TOK) {
+      parts.push("(?:(?<=\\p{L}|\\p{N})\\s(?!\\s))");
+    } else {
+      parts.push(escR(s));
+    }
+  }
+  return parts.join("|");
 }
+
+function buildGrabber(joins = [], extraStops = "") {
+  const rxJoins = joinsToPattern(joins);
+  const stop = extraStops ? `|(?=[${extraStops}])` : "";
+  const sep = rxJoins ? `(?:\\s*(?:${rxJoins}))` : `\\s+`;
+  return new RegExp(`(.+?)(?:${sep}${stop}|\\s|$)`, "u");
+}
+
 const rgxNUM = /(-?\d+(?:[.,]\d+)?)(?=\s|[%원개점천만억kKmMbB]|$)/u;
+
+const SPACE_TOK = "__SPACE__";  // 학습 저장용 특수 토큰
+function parseSynonymsInput(txt) {
+  return String(txt || "")
+    .split(",")
+    .map(v => v.replace(/\u00A0/g, " "))       // NBSP → 일반 공백
+    .map(v => {
+      const raw = v;
+      if (/^\s+$/.test(raw)) return SPACE_TOK; // 진짜 공백만 들어온 경우
+      const t = raw.trim();
+      if (/^(공백|\(공백\)|\[space\]|space|␣)$/i.test(t)) return SPACE_TOK; // 표기식
+      return t;
+    })
+    .filter(x => x && x !== "");
+}
+const prettySyn = s => s === SPACE_TOK ? "(공백)" : s;
+
 
 function parseFloatAny(str) {
   if (!str) return null;
@@ -316,7 +348,7 @@ function buildListEmbed(data, page) {
     .setDescription(total === 0 ? "학습된 명령어가 없어요." : slice.map((c, i) => {
       const idx = start + i + 1;
       const optText = (c.options || []).map(o => `${o.required ? "필수" : "선택"}:${o.type} ${o.name}`).join(" · ");
-      const syn = (c.synonyms || []).slice(0, 6).join(", ");
+      const syn = (c.synonyms || []).slice(0, 6).map(prettySyn).join(", ");
       return `**${idx}. /**${c.name}  | 키워드: ${syn || "-"}\n옵션: ${optText || "-"}`;
     }).join("\n\n"))
     .setFooter({ text: `페이지 ${p}/${pages} • 총 ${total}개` });
@@ -752,8 +784,8 @@ async function handleLearnInput(message) {
     return true;
   }
   if (s.awaiting?.type === "LEARN_SYNONYMS") {
-    const syns = txt.split(",").map(v => v.trim()).filter(Boolean);
-    learned.synonyms = Array.from(new Set([...(learned.synonyms || []), ...syns]));
+    const syns = parseSynonymsInput(txt);
+learned.synonyms = Array.from(new Set([...(learned.synonyms || []), ...syns]));
     saveStore(store);
     s.awaiting = { type: "LEARN_OPT_SYNONYMS", idx: 0 };
     const next = learned.options?.[0];
@@ -774,8 +806,8 @@ async function handleLearnInput(message) {
       return true;
     }
     if (txt !== "건너뛰기") {
-      const syns = txt.split(",").map(v => v.trim()).filter(Boolean);
-      opt.synonyms = Array.from(new Set([...(opt.synonyms || []), ...syns]));
+      const syns = parseSynonymsInput(txt);
+opt.synonyms = Array.from(new Set([...(opt.synonyms || []), ...syns]));
       saveStore(store);
     }
     const nextIdx = idx + 1;
