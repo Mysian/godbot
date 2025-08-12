@@ -1920,6 +1920,79 @@ function compileFallbackPattern(pat) {
   return { regex: new RegExp(rx, "iu"), slots };
 }
 
+function normalizeQuickBindingLine(raw) {
+  const line = String(raw||"").trim();
+  if (!line) return "";
+  const pairs = [];
+  const re = /([a-z0-9._-]+)\s*[:=]\s*("([^"]*)"|'([^']*)'|[^,]+?)(?=(?:\s+[a-z0-9._-]+\s*[:=]|,|$))/ig;
+  let m;
+  while ((m = re.exec(line))) {
+    const k = m[1];
+    const vFull = m[2].trim();
+    const v = vFull.replace(/^\s+|\s+$/g, "");
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      const inner = v.slice(1, -1);
+      pairs.push(`${k}=고정:"${inner}"`);
+    } else {
+      pairs.push(`${k}=${v}`);
+    }
+  }
+  return pairs.join(", ");
+}
+
+async function handleFallbackQuickAdd(client, message, body) {
+  const txt = String(body||"").trim();
+  if (!txt) {
+    await message.reply('형식: 폴백 추가 [패턴] -> /명령어 옵션=값, 옵션="값"...\n예: 폴백 추가 안녕 -> /할말 내용="나도 안녕!"');
+    return;
+  }
+  const spl = txt.split(/\s*(?:->|=>|→|=)\s*/);
+  if (spl.length < 2) {
+    await message.reply('구분자 "->" 또는 "=>" 또는 "→" 또는 "=" 를 써줘.\n예: 안녕 -> /할말 내용="나도 안녕!"');
+    return;
+  }
+  const leftRaw = spl[0].trim().replace(/^[“"]|[”"]$/g, "");
+  let right = spl.slice(1).join(" ").trim();               
+
+  const mCmd = right.match(/^\/([\p{L}\p{N}._-]{1,32})/u);
+  if (!mCmd) {
+    await message.reply('"/명령어" 형태로 적어줘. 예: /할말');
+    return;
+  }
+  const cmd = mCmd[1];
+  const restMap = right.slice(mCmd[0].length).trim();
+  const bindingsLine = normalizeQuickBindingLine(restMap);
+
+  const { regex, slots } = compileFallbackPattern(leftRaw);
+  let bindings = {};
+  if (bindingsLine) {
+    bindings = parseBindingsInput(bindingsLine);
+    bindings = wireBindingTypes(bindings, slots);
+  }
+
+  const schema = await fetchSlashSchema(client, message.guild, cmd);
+  if (!schema) {
+    await message.reply(`/${cmd} 명령어를 찾을 수 없어.`);
+    return;
+  }
+  const store = loadStore();
+  store.fallbacks = store.fallbacks || [];
+  store.fallbacks.push({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    pattern: leftRaw,
+    command: cmd,
+    bindings,
+    by: message.author.id,
+    createdAt: Date.now()
+  });
+  saveStore(store);
+
+  await message.reply(`추가 완료: "${leftRaw}" → /${cmd}`);
+  if (!(slots && slots.length)) {
+    await tryFallbackExecFromStore(client, message, `${TRIGGER} ${leftRaw}`);
+  }
+}
+
 async function resolveByType(guild, type, seg, author) {
   const s = String(seg || "").trim();
   switch (type) {
@@ -2381,6 +2454,33 @@ async function onMessage(client, message) {
   const gone = list.splice(idx,1)[0];
   saveStore(store);
   await message.reply(`삭제 완료: ${gone.id||"-"} • ${gone.pattern||"-"} → /${gone.command||"-"}`);
+  return;
+}
+if (lowered.startsWith(`${TRIGGER} 폴백 도움말`)) {
+  await message.reply(
+    [
+      "폴백 한 줄 등록 예시:",
+      "갓봇! 폴백 추가 안녕 -> /할말 내용=\"나도 안녕!\"",
+      "갓봇! 폴백 추가 \"안녕 해줘\" => /할말 내용='오키 도키'",
+      "갓봇! 폴백 추가 (유저명)한테 인사 -> /할말 채널=고정:\"여기\", 내용=유저명",
+      "",
+      "문법:",
+      "- [패턴] (→ 또는 -> 또는 => 또는 =) [/명령어] [옵션=값, 옵션=값,...]",
+      "- 값이 따옴표로 감싸져 있으면 자동으로 고정값으로 처리됨(고정: 생략 가능)",
+      "- 패턴 안 괄호(예: (유저명), (채널명), (숫자), (내용))은 자리표시자",
+    ].join("\n")
+  );
+  return;
+}
+
+if (lowered.startsWith(`${TRIGGER} 폴백 추가`)) {
+  const rest = content.split("폴백 추가")[1]?.trim() || "";
+  await handleFallbackQuickAdd(client, message, rest);
+  return;
+}
+
+if (lowered.startsWith(`${TRIGGER} 학습 내보내기`) || lowered.startsWith(`${TRIGGER} 학습 백업`)) {
+  await handleExportLearn(message);
   return;
 }
 if (lowered.startsWith(`${TRIGGER} 폴백 목록`)) {
