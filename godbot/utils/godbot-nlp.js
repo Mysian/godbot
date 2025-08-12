@@ -1368,7 +1368,7 @@ async function startNlpFlow(client, message, content) {
     return hitName || hitSyn;
   });
   if (!candidates.length) {
-    await message.reply("무슨 명령인지 못 알아들었어. '갓봇! 학습 목록'에서 가능한 명령을 확인해줘.");
+    await message.reply("크으억! 무슨 명령인지 이해하지 못했습니다, 마스터!!");
     return;
   }
   const picked = pickBestCommand(message.guild, body, candidates, message.author);
