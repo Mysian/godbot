@@ -370,79 +370,93 @@ function extractFromText(guild, text, learned, author) {
   return res;
 }
 
+function toMessageOptions(p) {
+  if (typeof p === "string") return { content: p };
+  if (!p || typeof p !== "object") return {};
+  const out = {};
+  if (p.content) out.content = p.content;
+  if (p.embeds) out.embeds = p.embeds;
+  if (p.components) out.components = p.components;
+  if (p.files) out.files = p.files;
+  if (p.allowedMentions) out.allowedMentions = p.allowedMentions;
+  return out;
+}
+
 function buildFakeInteraction(baseMessage, learned, collected) {
+  const now = Date.now();
+  let _deferred = false;
+  let _replied = false;
+
   const get = name => collected[name];
   const options = {
-    getString: n => {
-      const v = get(n);
-      return typeof v === "string" ? v : null;
-    },
-    getInteger: n => {
-      const v = get(n);
-      if (typeof v === "number") return Math.trunc(v);
-      const f = parseFloatAny(v);
-      return Number.isFinite(f) ? Math.trunc(f) : null;
-    },
-    getNumber: n => {
-      const v = get(n);
-      if (typeof v === "number") return v;
-      const f = parseFloatAny(v);
-      return Number.isFinite(f) ? f : null;
-    },
-    getUser: n => {
-      const v = get(n);
-      if (v && v.id) return v;
-      return null;
-    },
-    getMember: n => {
-      const v = get(n);
-      if (v && v.id && baseMessage.guild) return baseMessage.guild.members.cache.get(v.id) || null;
-      return null;
-    },
-    getRole: n => {
-      const v = get(n);
-      if (v && v.id) return v;
-      return null;
-    },
-    getChannel: n => {
-      const v = get(n);
-      if (v && v.id) return v;
-      return null;
-    },
-    getBoolean: n => {
-      const v = get(n);
-      if (typeof v === "boolean") return v;
-      if (typeof v === "string") return ["예", "네", "true", "True", "TRUE", "y", "yes"].includes(v);
-      return null;
-    },
-    getMentionable: n => {
-      const v = get(n);
-      if (v && v.id) return v;
-      return null;
-    },
-    getAttachment: n => {
-      const v = get(n);
-      if (v && v.name) return v;
-      return null;
-    },
+    getString: n => { const v = get(n); return typeof v === "string" ? v : null; },
+    getInteger: n => { const v = get(n); if (typeof v === "number") return Math.trunc(v); const f = parseFloatAny(v); return Number.isFinite(f) ? Math.trunc(f) : null; },
+    getNumber: n => { const v = get(n); if (typeof v === "number") return v; const f = parseFloatAny(v); return Number.isFinite(f) ? f : null; },
+    getUser: n => (get(n) && get(n).id ? get(n) : null),
+    getMember: n => { const v = get(n); return v && v.id && baseMessage.guild ? baseMessage.guild.members.cache.get(v.id) || null : null; },
+    getRole: n => (get(n) && get(n).id ? get(n) : null),
+    getChannel: n => (get(n) && get(n).id ? get(n) : null),
+    getBoolean: n => { const v = get(n); if (typeof v === "boolean") return v; if (typeof v === "string") return ["예","네","true","True","TRUE","y","yes"].includes(v); return null; },
+    getMentionable: n => (get(n) && get(n).id ? get(n) : null),
+    getAttachment: n => (get(n) && get(n).name ? get(n) : null),
+    getSubcommand: () => null,
+    getSubcommandGroup: () => null,
     get: n => get(n),
   };
+
   const interaction = {
+    id: `${now}`,
+    applicationId: baseMessage.client?.application?.id || null,
+    commandId: learned.id || null,
+    commandName: learned.name,
+    createdTimestamp: now,
+
     client: baseMessage.client,
     user: baseMessage.author,
     member: baseMessage.member,
     guild: baseMessage.guild,
+    guildId: baseMessage.guild?.id || null,
     channel: baseMessage.channel,
-    commandName: learned.name,
+    channelId: baseMessage.channel?.id || null,
+    appPermissions: baseMessage.guild?.members?.me?.permissions || null,
+
     options,
+
     isChatInputCommand: () => true,
-    reply: async p => await baseMessage.channel.send(p),
-    deferReply: async () => {},
-    editReply: async p => await baseMessage.channel.send(p),
-    followUp: async p => await baseMessage.channel.send(p),
+    inGuild: () => !!baseMessage.guild,
+    inCachedGuild: () => !!baseMessage.guild,
+    inRawGuild: () => !!baseMessage.guild,
+    isRepliable: () => true,
+
+    get deferred() { return _deferred; },
+    get replied() { return _replied; },
+
+    reply: async (p = {}) => {
+      const msg = await baseMessage.channel.send(toMessageOptions(p));
+      _replied = true;
+      return msg;
+    },
+    deferReply: async () => { _deferred = true; },
+    editReply: async (p = {}) => {
+      const opts = toMessageOptions(p);
+      const tag = _deferred && !_replied ? "[deferred] " : "";
+      const msg = await baseMessage.channel.send({ ...opts, content: tag + (opts.content || "") });
+      _replied = true;
+      return msg;
+    },
+    followUp: async (p = {}) => {
+      const msg = await baseMessage.channel.send(toMessageOptions(p));
+      _replied = true;
+      return msg;
+    },
+
+    fetchReply: async () => null,
+    deleteReply: async () => {},
   };
+
   return interaction;
 }
+
 
 async function tryExecuteLearned(client, baseMessage, learned, collected) {
   const col = client.commands || client.slashCommands || new Collection();
