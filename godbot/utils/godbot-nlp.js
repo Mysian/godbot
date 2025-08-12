@@ -34,14 +34,15 @@ const AppOptType = {
 };
 
 const DefaultOptionSynonyms = {
-  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "게이머", "플레이어"],
-  NUMBER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트", "만큼", "씩"],
-  STRING: ["내용", "사유", "메모", "메시지", "설명", "텍스트"],
-  BOOLEAN: ["여부", "할까", "할까요", "진행", "포함"],
-  ROLE: ["역할", "롤"],
-  CHANNEL: ["채널", "으로", "로"],
-  MENTIONABLE: ["대상", "멘션", "대상자"],
-  ATTACHMENT: ["파일", "첨부", "이미지", "스크린샷"]
+  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "게이머", "플레이어", "사람", "상대", "상대방", "상대유저", "아이디", "ID", "유저ID"],
+  NUMBER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트", "만큼", "씩", "수치", "개수", "갯수", "퍼센트", "%", "점수", "레벨", "가격", "비용", "횟수"],
+  INTEGER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트", "만큼", "씩", "수치", "개수", "갯수", "점수", "레벨", "횟수"],
+  STRING: ["내용", "사유", "메모", "메시지", "설명", "텍스트", "문구", "제목", "타이틀", "이유", "코멘트", "댓글", "채팅", "채팅내용", "설명문"],
+  BOOLEAN: ["여부", "할까", "할까요", "진행", "포함", "활성화", "비활성화", "허용", "허가", "금지", "참", "거짓", "켜", "끄기", "켜기", "끄자"],
+  ROLE: ["역할", "롤", "역할명", "태그", "직책", "등급", "클랜", "길드역할"],
+  CHANNEL: ["채널", "으로", "로", "채널명", "방", "룸", "보이스", "보이스채널", "음성채널", "음성방", "텍스트채널", "텍스트방", "채팅채널"],
+  MENTIONABLE: ["대상", "멘션", "대상자", "멘션가능", "멘션대상", "유저/역할"],
+  ATTACHMENT: ["파일", "첨부", "이미지", "스크린샷", "사진", "문서", "증빙", "첨부파일", "스샷", "캡처", "캡쳐"]
 };
 
 const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해", "멈춰", "그만해", "그만", "스탑", "거기까지", "멈춰줘", "종료", "종료해"];
@@ -155,15 +156,14 @@ function findMemberByToken(guild, token) {
   found = guild.members.cache.find(m => normalizeKey(m.user.username) === t);
   if (found) return found;
   found = guild.members.cache.find(m => normalizeKey(m.displayName).includes(t));
-if (found) return found;
-found = guild.members.cache.find(m => normalizeKey(m.user.username).includes(t));
-if (found) return found;
-found = guild.members.cache.find(m => t.includes(normalizeKey(m.displayName)));
-if (found) return found;
-found = guild.members.cache.find(m => t.includes(normalizeKey(m.user.username)));
-if (found) return found;
-
-return null;
+  if (found) return found;
+  found = guild.members.cache.find(m => normalizeKey(m.user.username).includes(t));
+  if (found) return found;
+  found = guild.members.cache.find(m => t.includes(normalizeKey(m.displayName)));
+  if (found) return found;
+  found = guild.members.cache.find(m => t.includes(normalizeKey(m.user.username)));
+  if (found) return found;
+  return null;
 }
 
 function getTypeLabel(t) {
@@ -539,7 +539,6 @@ function getTypeHintLine(opt) {
 }
 
 function buildUsageExamples(schema) {
-  // 옵션들로 샘플 문장 2종 구성: 자연어형/키워드형
   const opts = schema.options || [];
   const partsNatural = [];
   const partsKeyword = [];
@@ -553,7 +552,6 @@ function buildUsageExamples(schema) {
         break;
       case "NUMBER":
         partsNatural.push("2.5 갓비트");
-        // NUMBER는 정규식이 [숫자]+[단위]에 강함. 키워드형은 보조로만 안내.
         partsKeyword.push(`${nm}: 2.5`);
         break;
       case "STRING":
@@ -614,6 +612,19 @@ function buildLearnGuide(schema) {
   return lines.join("\n");
 }
 
+function escapeRegex(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function extractBracketTokens(text) {
+  const out = [];
+  const re = /\[\s*([^\[\]]{1,64})\s*\]/g;
+  let m;
+  while ((m = re.exec(String(text || "")))) {
+    const t = m[1].trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
 
 async function startLearnFlow(client, message, slashName) {
   const name = (slashName || "").replace(/^\/+/, "").trim();
@@ -632,11 +643,9 @@ async function startLearnFlow(client, message, slashName) {
     saveStore(store);
   }
 
-  // ✅ 옵션 가이드 + 예시까지 한 번에 안내
   const guide = buildLearnGuide(schema);
   await message.channel.send(guide);
 
-  // 이후 기존 흐름 동일
   const s = newSession(message.author.id);
   s.mode = "learn";
   s.commandName = name;
@@ -830,6 +839,11 @@ function fuzzyFindRoleInText(guild, content) {
     const role = guild.roles.cache.get(rm[1]);
     if (role) return role;
   }
+  const bracketTokens = extractBracketTokens(content);
+  for (const tok of bracketTokens) {
+    const r = guild.roles.cache.find(x => norm(x.name) === norm(tok));
+    if (r) return r;
+  }
   let best = null;
   const ntext = norm(content);
   for (const [, role] of guild.roles.cache) {
@@ -874,13 +888,19 @@ function findAllRolesInText(guild, content) {
     const role = guild.roles.cache.get(m[1]);
     if (role) out.set(role.id, role);
   }
-  const ntext = norm(content);
+  const raw = String(content || "");
+  const bracketTokens = extractBracketTokens(raw);
+  for (const tok of bracketTokens) {
+    const r = guild.roles.cache.find(x => norm(x.name) === norm(tok));
+    if (r) out.set(r.id, r);
+  }
+  const ntext = norm(raw);
   for (const [, role] of guild.roles.cache) {
     const rn = norm(role.name);
-    if (!rn || rn.length < 2) continue;
-    if (ntext.includes(rn)) out.set(role.id, role);
+    if (!rn) continue;
+    if (rn.length >= 2 && ntext.includes(rn)) out.set(role.id, role);
   }
-  for (const tok of splitByListDelims(content)) {
+  for (const tok of splitByListDelims(raw)) {
     const t = norm(tok);
     if (!t) continue;
     const role = findRoleByToken(guild, t);
@@ -972,28 +992,26 @@ async function handleBuiltinIntent(message, content) {
       return true;
     }
     let targets = findAllMembersInText(guild, body, author);
-const wantAll = ALL_TOKENS.some(t => lc.includes(t));
-if (!targets.length && wantAll) {
-  const chs = findAllVoiceChannelsInText(guild, body);
-  if (chs.length) {
-    const map = new Map();
-    for (const ch of chs) {
-      for (const [, mem] of ch.members) map.set(mem.id, mem);
+    const wantAll = ALL_TOKENS.some(t => lc.includes(t));
+    if (!targets.length && wantAll) {
+      const chs = findAllVoiceChannelsInText(guild, body);
+      if (chs.length) {
+        const map = new Map();
+        for (const ch of chs) {
+          for (const [, mem] of ch.members) map.set(mem.id, mem);
+        }
+        targets = Array.from(map.values()); 
+      }
     }
-    targets = Array.from(map.values()); 
-  }
-}
-    
-if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
-  const me = guild.members.cache.get(author.id);
-  const ch = me?.voice?.channel;
-  if (ch) targets = Array.from(ch.members.values());
-}
-
-if (!targets.length) {
-  await message.reply("대상 유저를 못 찾았어.");
-  return true;
-}
+    if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
+      const me = guild.members.cache.get(author.id);
+      const ch = me?.voice?.channel;
+      if (ch) targets = Array.from(ch.members.values());
+    }
+    if (!targets.length) {
+      await message.reply("대상 유저를 못 찾았어.");
+      return true;
+    }
     const wantMuteOn = MUTE_ON_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && /꺼|off/.test(lc)) || /입\s*막/.test(lc);
     const wantMuteOff = MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && (/켜|on|해제/.test(lc)));
     const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc));
@@ -1015,61 +1033,53 @@ if (!targets.length) {
   }
 
   if (textIncludesAny(lc, MOVE_VERBS) && /(으로|로)/.test(lc)) {
-  if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
-    await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
-    return true;
-  }
-
-  const wantAll = ALL_TOKENS.some(t => lc.includes(t));
-
-  let members = findAllMembersInText(guild, body, author);
-  const voiceChs = findAllVoiceChannelsInText(guild, body); 
-  let targetCh = null;
-
-  if (wantAll && voiceChs.length >= 2) {
-    targetCh = voiceChs[voiceChs.length - 1];
-    const srcs = voiceChs.slice(0, -1);
-    const map = new Map();
-    for (const ch of srcs) for (const [, m] of ch.members) map.set(m.id, m);
-    members = Array.from(map.values());
-  }
-
-  if (wantAll && !members.length && voiceChs.length === 1 && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
-    const me = guild.members.cache.get(author.id);
-    const here = me?.voice?.channel;
-    if (here) members = Array.from(here.members.values());
-    targetCh = voiceChs[0];
-  }
-
-  if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
-    const me = guild.members.cache.get(author.id);
-    const ch = me?.voice?.channel;
-    if (ch) members = Array.from(ch.members.values());
-  }
-
-  if (!targetCh) {
-    if (!voiceChs.length) {
-      await message.reply("이동할 음성채널을 못 찾았어.");
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
+      await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
       return true;
     }
-    targetCh = voiceChs[voiceChs.length - 1] || voiceChs[0];
-  }
-
-  if (!members.length) {
-    await message.reply("이동할 유저를 못 찾았어.");
+    const wantAll = ALL_TOKENS.some(t => lc.includes(t));
+    let members = findAllMembersInText(guild, body, author);
+    const voiceChs = findAllVoiceChannelsInText(guild, body); 
+    let targetCh = null;
+    if (wantAll && voiceChs.length >= 2) {
+      targetCh = voiceChs[voiceChs.length - 1];
+      const srcs = voiceChs.slice(0, -1);
+      const map = new Map();
+      for (const ch of srcs) for (const [, m] of ch.members) map.set(m.id, m);
+      members = Array.from(map.values());
+    }
+    if (wantAll && !members.length && voiceChs.length === 1 && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
+      const me = guild.members.cache.get(author.id);
+      const here = me?.voice?.channel;
+      if (here) members = Array.from(here.members.values());
+      targetCh = voiceChs[0];
+    }
+    if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
+      const me = guild.members.cache.get(author.id);
+      const ch = me?.voice?.channel;
+      if (ch) members = Array.from(ch.members.values());
+    }
+    if (!targetCh) {
+      if (!voiceChs.length) {
+        await message.reply("이동할 음성채널을 못 찾았어.");
+        return true;
+      }
+      targetCh = voiceChs[voiceChs.length - 1] || voiceChs[0];
+    }
+    if (!members.length) {
+      await message.reply("이동할 유저를 못 찾았어.");
+      return true;
+    }
+    let moved = 0;
+    for (const m of members) {
+      try {
+        await m.voice.setChannel(targetCh.id, "갓봇 이동");
+        moved++;
+      } catch {}
+    }
+    await message.reply(`${moved}명 → ${targetCh.name} 이동 완료`);
     return true;
   }
-
-  let moved = 0;
-  for (const m of members) {
-    try {
-      await m.voice.setChannel(targetCh.id, "갓봇 이동");
-      moved++;
-    } catch {}
-  }
-  await message.reply(`${moved}명 → ${targetCh.name} 이동 완료`);
-  return true;
-}
 
   if (textIncludesAny(lc, CHANGE_VERBS) && NICK_LABELS.some(k=>lc.includes(k)) ) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageNicknames)) {
@@ -1299,10 +1309,17 @@ async function handleExecInput(message) {
     let role = null;
     const m = txt.match(/<@&(\d+)>/);
     if (m) role = message.guild.roles.cache.get(m[1]);
+    if (!role) {
+      const bracketTokens = extractBracketTokens(txt);
+      for (const tok of bracketTokens) {
+        const r = message.guild.roles.cache.find(x => norm(x.name) === norm(tok));
+        if (r) { role = r; break; }
+      }
+    }
     if (!role) role = message.guild.roles.cache.find(r => norm(r.name) === norm(txt)) || null;
     if (!role) role = fuzzyFindRoleInText(message.guild, txt);
     if (!role) {
-      await message.reply("역할을 못 찾았어. 역할명만 적어도 돼.");
+      await message.reply("역할을 못 찾었어. 역할명만 적어도 돼.");
       return true;
     }
     s.data[awaiting.name] = { id: role.id, name: role.name };
