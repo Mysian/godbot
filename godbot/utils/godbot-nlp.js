@@ -154,10 +154,15 @@ function findMemberByToken(guild, token) {
   found = guild.members.cache.find(m => normalizeKey(m.user.username) === t);
   if (found) return found;
   found = guild.members.cache.find(m => normalizeKey(m.displayName).includes(t));
-  if (found) return found;
-  found = guild.members.cache.find(m => normalizeKey(m.user.username).includes(t));
-  if (found) return found;
-  return null;
+if (found) return found;
+found = guild.members.cache.find(m => normalizeKey(m.user.username).includes(t));
+if (found) return found;
+found = guild.members.cache.find(m => t.includes(normalizeKey(m.displayName)));
+if (found) return found;
+found = guild.members.cache.find(m => t.includes(normalizeKey(m.user.username)));
+if (found) return found;
+
+return null;
 }
 
 function getTypeLabel(t) {
@@ -735,9 +740,15 @@ function findAllMembersInText(guild, content, author) {
     const self = guild.members.cache.get(author.id);
     if (self) out.set(self.id, self);
   }
-  for (const tok of splitByListDelims(content)) {
-    const mem = findMemberByToken(guild, tok);
+  for (const chunk of splitByListDelims(content)) {
+    const mem =
+      findMemberByToken(guild, chunk) ||
+      fuzzyFindMemberInText(guild, chunk, author);
     if (mem) out.set(mem.id, mem);
+  }
+  if (!out.size) {
+    const one = fuzzyFindMemberInText(guild, content, author);
+    if (one) out.set(one.id, one);
   }
   return Array.from(out.values());
 }
