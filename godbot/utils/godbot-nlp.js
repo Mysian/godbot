@@ -75,6 +75,11 @@ const MUTE_OFF_TOKENS = ["마이크를 켜", "마이크 켜", "음소거 해제"
 const DEAF_ON_TOKENS = ["스피커를 꺼", "헤드셋을 닫아", "귀 막아", "청각 차단", "귀 닫아", "귀닫", "못듣"];
 const DEAF_OFF_TOKENS = ["스피커를 켜", "헤드셋을 열어", "귀 열어", "청각 해제", "귀 열어", "귀열", "들을", "듣게"];
 const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그리","다"];
+const SERVER_QUERY_HINTS = ["서버", "길드", "서버현황", "서버상태", "서버통계", "서버정보", "전체", "전서버"];
+
+function hasUserTargetInText(text) {
+  return /<@!?(\d+)>/.test(text) || /(나|저|내|본인|자신)/.test(text);
+}
 
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -1442,18 +1447,60 @@ function bestDataMatchesForUser(index, userId, keyTokens, content) {
   scored.sort((a,b)=> b.score - a.score);
   return scored.slice(0, 8);
 }
-async function handleDataQuery(message, content) {
+function bestDataMatchesGlobal(index, keyTokens, content) {
+  const scored = [];
+  const seen = new Set();
+  for (const rec of index.items) {
+    let matchCount = 0;
+    for (const kt of keyTokens) if (rec.tokens.includes(kt)) matchCount++;
+    if (matchCount === 0) continue;
+    const sim = roleSimilarity(content, `${rec.path}`);
+    const score = matchCount * 1.0 + sim;
+    const key = `${rec.file}|${rec.path}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      scored.push({ rec, score, matchCount, sim });
+    }
+  }
+  scored.sort((a,b)=> b.score - a.score);
+  return scored.slice(0, 8);
+}
+async function handleDataQuery(message, content, opts = {}) {
+  const serverMode = !!opts.serverMode; // NEW
   const index = ensureDataIndex(false);
+
   const members = findAllMembersInText(message.guild, content, message.author);
   let targets = members.map(m => m.id);
   if (!targets.length && /(나|저|내|본인|자신)/.test(content)) targets = [message.author.id];
   const keyTokens = extractKeyTokensFromQuery(content);
-  if (!targets.length) {
+
+  if (!keyTokens.length) {
+    await message.reply('조회 키워드를 "따옴표"나 [대괄호]로 적어줘.');
+    return true;
+  }
+  if (!targets.length && !serverMode) {
+    if (SERVER_QUERY_HINTS.some(t => content.includes(t))) {
+      return false; 
+    }
     await message.reply("대상 유저를 못 찾았어.");
     return true;
   }
-  if (!keyTokens.length) {
-    await message.reply('조회 키워드를 "따옴표"나 [대괄호]로 적어줘.');
+  if (serverMode) {
+    const best = bestDataMatchesGlobal(index, keyTokens, content).filter(x => x.score >= 1.0);
+    if (!best.length) return false; 
+    const lines = [];
+    lines.push(`서버 데이터`);
+    for (const b of best.slice(0, 5)) {
+      const v = b.rec.value;
+      let sv;
+      if (typeof v === "object") {
+        try { sv = JSON.stringify(v).slice(0, 400); } catch { sv = String(v); }
+      } else {
+        sv = String(v);
+      }
+      lines.push(`• ${path.basename(b.rec.file)} :: ${b.rec.path} = ${sv}`);
+    }
+    await message.reply(lines.join("\n"));
     return true;
   }
   const lines = [];
@@ -1481,6 +1528,7 @@ async function handleDataQuery(message, content) {
   return true;
 }
 
+
 async function handleBuiltinIntent(message, content) {
   const guild = message.guild;
   const author = message.author;
@@ -1488,9 +1536,14 @@ async function handleBuiltinIntent(message, content) {
   const lc = body.toLowerCase();
 
   if (isDataQueryIntent(lc)) {
+  if (hasUserTargetInText(body)) {
     const ok = await handleDataQuery(message, body);
     if (ok) return true;
+  } else if ( SERVER_QUERY_HINTS.some(t => body.includes(t)) ) {
+    const ok = await handleDataQuery(message, body, { serverMode: true });
+    if (ok) return true;
   }
+}
 
   if (
     (CHAT_LABELS.some(k => lc.includes(k)) && DELETE_VERBS.some(v => lc.includes(v))) ||
