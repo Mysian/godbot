@@ -34,7 +34,7 @@ const AppOptType = {
 };
 
 const DefaultOptionSynonyms = {
-  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "게이머", "플레이어", "사람", "상대", "상대방", "상대유저", "아이디", "ID", "유저ID"],
+  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "게이머", "플레이어", "사람", "상대", "상대방", "상대유저", "아이디", "ID", "유저ID","을", "를", "이", "가"],
   NUMBER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트", "만큼", "씩", "수치", "개수", "갯수", "퍼센트", "%", "점수", "레벨", "가격", "비용", "횟수"],
   INTEGER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트", "만큼", "씩", "수치", "개수", "갯수", "점수", "레벨", "횟수"],
   STRING: ["내용", "사유", "메모", "메시지", "설명", "텍스트", "문구", "제목", "타이틀", "이유", "코멘트", "댓글", "채팅", "채팅내용", "설명문"],
@@ -131,8 +131,21 @@ function isAdminAllowed(member) {
 }
 
 function normalizeKorean(str) {
-  return (str || "").replace(/\s+/g, " ").trim();
+  return (str || "")
+    .normalize("NFKC")
+    .replace(/[\u00A0\u200B\u200C\u200D]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
+const K_PART = "을를이가은는에와과도만으로부터까지에서처럼조차마저께께서의";
+const escR = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function buildGrabber(joins = [], extraStops = "") {
+  const rxJoins = joins.map(escR).join("|");
+  const stop = extraStops ? `|(?=[${extraStops}])` : "";
+  return new RegExp(`(.+?)(?:\\s*(?:${rxJoins})${stop}|\\s|$)`, "u");
+}
+const rgxNUM = /(-?\d+(?:[.,]\d+)?)(?=\s|[%원개점천만억kKmMbB]|$)/u;
+
 function parseFloatAny(str) {
   if (!str) return null;
   const m = String(str).match(/-?\d+(?:[.,]\d+)?/);
@@ -362,8 +375,7 @@ function extractFromText(guild, text, learned, author) {
         res[userOpt.name] = author;
       } else {
         const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
-        const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-        const mm = content.match(rgx);
+        const mm = content.match(buildGrabber(joins, K_PART));
         if (mm) {
           const token = mm[1].trim().replace(/^['"“”‘’`]+|['"“”‘’`]+$/g, "");
           const member = findMemberByToken(guild, token);
@@ -398,13 +410,13 @@ function extractFromText(guild, text, learned, author) {
   if (numberOpt) {
     let num = null;
     const joins = (numberOpt.synonyms || DefaultOptionSynonyms.NUMBER);
-    const near = new RegExp(`(-?\\d+(?:[.,]\\d+)?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-    const m1 = content.match(near);
-    if (m1) num = parseFloat(m1[1].replace(",", "."));
-    if (num == null) {
-      const m2 = content.match(/-?\d+(?:[.,]\d+)?/);
-      if (m2) num = parseFloat(m2[0].replace(",", "."));
-    }
+const near = new RegExp(`(-?\\d+(?:[.,]\\d+)?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "u");
+const m1 = content.match(near);
+if (m1) num = parseFloat(m1[1].replace(",", "."));
+if (num == null) {
+  const m2 = content.match(rgxNUM);
+  if (m2) num = parseFloat(m2[1].replace(",", "."));
+}
     if (num != null) res[numberOpt.name] = num;
   }
 
