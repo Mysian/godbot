@@ -348,7 +348,7 @@ async function buildSlotContext(guild, slots, captured, author) {
       if (c) { name = c.name; mention = `<#${c.id}>`; id = c.id; }
     } else if (type === "NUMBER") {
       name = seg; mention = seg;
-    } else { // STRING 등
+    } else { 
       name = seg; mention = seg;
     }
 
@@ -1271,10 +1271,10 @@ function tokenCoverage(ptoks, ttoks) {
 function fuzzyMatchPattern(body, pattern) {
   const b = stripPlaceholdersText(body);
   const p = stripPlaceholdersText(pattern);
-  const sim = diceCoef(norm(b), norm(p)); // 0~1
+  const sim = diceCoef(norm(b), norm(p));
   const cov = tokenCoverage(getPatternTokens(pattern), getTextTokens(body));
   const allTokens = cov === 1;
-  const goodSim = sim >= 0.72 && cov >= 0.6; // 임계치
+  const goodSim = sim >= 0.72 && cov >= 0.6;
   return { ok: allTokens || goodSim, sim, cov, allTokens };
 }
 
@@ -1468,7 +1468,7 @@ function findAllAnyChannelsInText(guild, content) {
   const cm = /<#(\d+)>/g;
   let m;
   while ((m = cm.exec(content))) {
-    const ch = guild.channels.cache.get(m[1]);
+    const ch = guild.channels.cache.get(cm[1]);
     if (ch) out.set(ch.id, ch);
   }
   const ntext = norm(content);
@@ -1494,7 +1494,7 @@ function extractRenameTarget(content) {
   if (q && q[1]) return q[1].trim();
   const m1 = content.match(/이름(?:을|를)?\s+(.+?)\s*(?:으로|로)\s*(?:[^ ]+)?\s*(?:바꿔|변경|수정|교체|rename)/i);
   if (m1 && m1[1]) return m1[1].trim();
-  const m2 = content.match(new RegExp(`(?:${NICK_LABELS.concat(["이름"]).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})(?:을|를)?\\s+(.+?)\\s*(?:으로|로)\\s*(?:${CHANGE_VERBS.map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})`,"i"));
+  const m2 = content.match(new RegExp(`(?:${NICK_LABELS.concat(["이름"]).map(x=>x.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\$&")).join("|")})(?:을|를)?\\s+(.+?)\\s*(?:으로|로)\\s*(?:${CHANGE_VERBS.map(x=>x.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\$&")).join("|")})`,"i"));
   if (m2 && m2[1]) return m2[1].trim();
   const m3 = content.match(/(?:을|를)\s+(.+?)\s*(?:으로|로)\s*(?:바꿔|변경|수정|교체|rename)/i);
   if (m3 && m3[1]) return m3[1].trim();
