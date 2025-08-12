@@ -205,6 +205,9 @@ function parseFloatAny(str) {
 }
 function classifyExecError(e) {
   const msg = String(e?.message || e || "");
+  if (e?.code === "REQUIRED_OPTION" || /REQUIRED_OPTION:/i.test(msg) || /Required option/i.test(msg)) {
+  return "MISSING_OPTIONS";
+}
   if (/SUBCOMMAND_REQUIRED/i.test(msg)) return "SUBCOMMAND_REQUIRED";
   if (/SUBCOMMAND_GROUP_REQUIRED/i.test(msg)) return "SUBCOMMAND_GROUP_REQUIRED";
   if (/Missing Permissions|50013/i.test(msg)) return "MISSING_PERMISSIONS";
@@ -564,6 +567,15 @@ function toMessageOptions(p) {
   return out;
 }
 
+function requiredGuard(name, val, required) {
+  if (required && (val === null || val === undefined)) {
+    const err = new Error(`REQUIRED_OPTION:${name}`);
+    err.code = "REQUIRED_OPTION";
+    throw err;
+  }
+  return val;
+}
+
 function buildFakeInteraction(baseMessage, learned, collected) {
   const now = Date.now();
   let _deferred = false;
@@ -573,41 +585,62 @@ function buildFakeInteraction(baseMessage, learned, collected) {
 
   const get = name => collected[name];
   const options = {
-    getString: n => { const v = get(n); return typeof v === "string" ? v : null; },
-    getInteger: n => { const v = get(n); if (typeof v === "number") return Math.trunc(v); const f = parseFloatAny(v); return Number.isFinite(f) ? Math.trunc(f) : null; },
-    getNumber: n => { const v = get(n); if (typeof v === "number") return v; const f = parseFloatAny(v); return Number.isFinite(f) ? f : null; },
-    getUser: n => (get(n) && get(n).id ? get(n) : null),
-    getMember: n => { const v = get(n); return v && v.id && baseMessage.guild ? baseMessage.guild.members.cache.get(v.id) || null : null; },
-    getRole: n => (get(n) && get(n).id ? get(n) : null),
-    getChannel: n => (get(n) && get(n).id ? get(n) : null),
-    getBoolean: n => { const v = get(n); if (typeof v === "boolean") return v; if (typeof v === "string") return ["예","네","true","True","TRUE","y","yes"].includes(v); return null; },
-    getMentionable: n => (get(n) && get(n).id ? get(n) : null),
-    getAttachment: n => (get(n) && get(n).name ? get(n) : null),
-
-    getSubcommand(required = false) {
-      const list = Array.isArray(learned.subcommands) ? learned.subcommands : [];
-      const raw = String(baseMessage.content || "").toLowerCase();
-      
-      let found = null;
-      for (const full of list) {
-        const leaf = String(full).split(".").pop().toLowerCase();
-        if (raw.includes(leaf)) { found = leaf; break; }
-      }
-      if (found) return found;
-      if (required) throw new Error("SUBCOMMAND_REQUIRED");
-      return null;
-    },
-    getSubcommandGroup(required = false) {
-      const list = Array.isArray(learned.subcommands) ? learned.subcommands : [];
-      const any = list.find(n => n.includes("."));
-      const group = any ? String(any).split(".")[0] : null;
-      if (group) return group;
-      if (required) throw new Error("SUBCOMMAND_GROUP_REQUIRED");
-      return null;
-    },
-
-    get: n => get(n),
-  };
+  getString: (n, required = false) => requiredGuard(n, (typeof get(n) === "string" ? get(n) : null), required),
+  getInteger: (n, required = false) => {
+    const x = get(n);
+    const v = (typeof x === "number") ? Math.trunc(x) : (() => {
+      const f = parseFloatAny(x);
+      return Number.isFinite(f) ? Math.trunc(f) : null;
+    })();
+    return requiredGuard(n, v, required);
+  },
+  getNumber: (n, required = false) => {
+    const x = get(n);
+    const v = (typeof x === "number") ? x : (() => {
+      const f = parseFloatAny(x);
+      return Number.isFinite(f) ? f : null;
+    })();
+    return requiredGuard(n, v, required);
+  },
+  getUser: (n, required = false) => requiredGuard(n, (get(n) && get(n).id ? get(n) : null), required),
+  getMember: (n, required = false) => {
+    const v = get(n);
+    const mem = v && v.id && baseMessage.guild ? baseMessage.guild.members.cache.get(v.id) || null : null;
+    return requiredGuard(n, mem, required);
+  },
+  getRole: (n, required = false) => requiredGuard(n, (get(n) && get(n).id ? get(n) : null), required),
+  getChannel: (n, required = false) => requiredGuard(n, (get(n) && get(n).id ? get(n) : null), required),
+  getBoolean: (n, required = false) => {
+    const x = get(n);
+    const v = typeof x === "boolean"
+      ? x
+      : (typeof x === "string" ? ["예","네","true","True","TRUE","y","yes"].includes(x) : null);
+    return requiredGuard(n, v, required);
+  },
+  getMentionable: (n, required = false) => requiredGuard(n, (get(n) && get(n).id ? get(n) : null), required),
+  getAttachment: (n, required = false) => requiredGuard(n, (get(n) && get(n).name ? get(n) : null), required),
+  getSubcommand(required = false) {
+    const list = Array.isArray(learned.subcommands) ? learned.subcommands : [];
+    const raw = String(baseMessage.content || "").toLowerCase();
+    let found = null;
+    for (const full of list) {
+      const leaf = String(full).split(".").pop().toLowerCase();
+      if (raw.includes(leaf)) { found = leaf; break; }
+    }
+    if (found) return found;
+    if (required) throw new Error("SUBCOMMAND_REQUIRED");
+    return null;
+  },
+  getSubcommandGroup(required = false) {
+    const list = Array.isArray(learned.subcommands) ? learned.subcommands : [];
+    const any = list.find(n => n.includes("."));
+    const group = any ? String(any).split(".")[0] : null;
+    if (group) return group;
+    if (required) throw new Error("SUBCOMMAND_GROUP_REQUIRED");
+    return null;
+  },
+  get: n => get(n),
+};
 
   const interaction = {
     id: `${now}`,
