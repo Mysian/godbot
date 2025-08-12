@@ -32,12 +32,12 @@ const AppOptType = {
 };
 
 const DefaultOptionSynonyms = {
-  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "상대", "상대방"],
+  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "게이머", "플레이어"],
   NUMBER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트"],
   STRING: ["내용", "사유", "메모", "메시지", "설명", "텍스트"],
   BOOLEAN: ["여부", "할까", "할까요", "진행", "포함"],
   ROLE: ["역할", "롤"],
-  CHANNEL: ["채널"],
+  CHANNEL: ["채널", "으로", "로"],
 };
 
 const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해"];
@@ -107,10 +107,6 @@ function parseFloatAny(str) {
   const m = String(str).match(/-?\d+(?:[.,]\d+)?/);
   if (!m) return null;
   return parseFloat(m[0].replace(",", "."));
-}
-
-function escapeRegExp(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripTrigger(text) {
@@ -241,38 +237,45 @@ function summarizePlan(guild, learned, collected) {
   return lines.join("  ");
 }
 
+function parseStringSegment(content, keys=[]) {
+  const mQ = content.match(/["“]([^"”]+)["”]/);
+  if (mQ) return { value: mQ[1].slice(0,2000), from: "quoted" };
+  if (keys.length) {
+    const rx = new RegExp(`(?:${keys.map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})\\s*[:：]?\\s*(.+)$`,"i");
+    const mK = content.match(rx);
+    if (mK) return { value: mK[1].slice(0,2000), from: "keyword" };
+  }
+  return { value: null, from: null };
+}
+
 function extractFromText(guild, text, learned, author) {
   const base = stripTrigger(text);
   const content = normalizeKorean(base);
-  const lower = content.toLowerCase();
+  const res = {};
 
   const userOpt = (learned.options || []).find(o => o.type === "USER");
   if (userOpt) {
-    let m = content.match(/<@!?(\d+)>/);
+    const m = content.match(/<@!?(\d+)>/);
     if (m) {
       const member = guild.members.cache.get(m[1]);
-      if (member) {
-        res[userOpt.name] = member.user;
-      }
+      if (member) res[userOpt.name] = member.user;
     }
-  }
-
-  const res = {};
-  if (!res[userOpt?.name] && userOpt) {
-    const selfHit = /(나|저|내|본인|자신)(?:에게|한테|게)?/.test(content);
-    if (selfHit && author) {
-      res[userOpt.name] = author;
-    } else {
-      const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
-      const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-      const mm = content.match(rgx);
-      if (mm) {
-        const token = mm[1].trim().replace(/^['"“”‘’`]+|['"“”‘’`]+$/g, "");
-        const member = findMemberByToken(guild, token);
-        if (member) res[userOpt.name] = member.user;
+    if (!res[userOpt.name]) {
+      const selfHit = /(나|저|내|본인|자신)(?:에게|한테|게)?/.test(content);
+      if (selfHit && author) {
+        res[userOpt.name] = author;
       } else {
-        const selfAny = /(나|저|내|본인|자신)/.test(content);
-        if (selfAny && author) res[userOpt.name] = author;
+        const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
+        const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+        const mm = content.match(rgx);
+        if (mm) {
+          const token = mm[1].trim().replace(/^['"“”‘’`]+|['"“”‘’`]+$/g, "");
+          const member = findMemberByToken(guild, token);
+          if (member) res[userOpt.name] = member.user;
+        } else {
+          const selfAny = /(나|저|내|본인|자신)/.test(content);
+          if (selfAny && author) res[userOpt.name] = author;
+        }
       }
     }
   }
@@ -281,12 +284,12 @@ function extractFromText(guild, text, learned, author) {
   if (numberOpt) {
     let num = null;
     const joins = (numberOpt.synonyms || DefaultOptionSynonyms.NUMBER);
-    const near = new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+    const near = new RegExp(`(-?\\d+(?:[.,]\\d+)?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
     const m1 = content.match(near);
     if (m1) num = parseFloat(m1[1].replace(",", "."));
     if (num == null) {
-      const m2 = content.match(/(\d+(?:[.,]\d+)?)/);
-      if (m2) num = parseFloat(m2[1].replace(",", "."));
+      const m2 = content.match(/-?\d+(?:[.,]\d+)?/);
+      if (m2) num = parseFloat(m2[0].replace(",", "."));
     }
     if (num != null) res[numberOpt.name] = num;
   }
@@ -294,13 +297,12 @@ function extractFromText(guild, text, learned, author) {
   for (const o of (learned.options || [])) {
     if (res[o.name] != null) continue;
     if (o.type === "STRING") {
-      const quoted = content.match(/["“](.+?)["”]/);
-      if (quoted && quoted[1]) {
-        res[o.name] = quoted[1].slice(0, 2000);
-        continue;
+      const keys = (o.synonyms || DefaultOptionSynonyms.STRING);
+      const r = parseStringSegment(content, keys);
+      if (r.value) {
+        res[o.name] = r.value;
+        res[`__src_${o.name}`] = r.from;
       }
-      const after = content.replace(/.*?\b(?:사유|메모|내용|설명|메시지)\b[:：]?\s*/i, "");
-      if (after && after !== content) res[o.name] = after.slice(0, 2000);
     }
   }
 
@@ -354,8 +356,6 @@ function buildFakeInteraction(baseMessage, learned, collected) {
     },
     get: n => get(n),
   };
-  let deferred = false;
-  let replied = false;
   const interaction = {
     client: baseMessage.client,
     user: baseMessage.author,
@@ -365,10 +365,10 @@ function buildFakeInteraction(baseMessage, learned, collected) {
     commandName: learned.name,
     options,
     isChatInputCommand: () => true,
-    reply: async p => { replied = true; return await baseMessage.channel.send(p); },
-    deferReply: async () => { deferred = true; },
-    editReply: async p => { return await baseMessage.channel.send(p); },
-    followUp: async p => { return await baseMessage.channel.send(p); },
+    reply: async p => await baseMessage.channel.send(p),
+    deferReply: async () => {},
+    editReply: async p => await baseMessage.channel.send(p),
+    followUp: async p => await baseMessage.channel.send(p),
   };
   return interaction;
 }
@@ -379,7 +379,6 @@ async function tryExecuteLearned(client, baseMessage, learned, collected) {
   if (!cmd && col instanceof Map) cmd = col.get(learned.name);
   if (!cmd && typeof col.find === "function") cmd = col.find(c => c?.data?.name === learned.name || c?.name === learned.name);
   if (!cmd) return { ok: false, reason: "HANDLER_NOT_FOUND" };
-
   const interaction = buildFakeInteraction(baseMessage, learned, collected);
   try {
     if (typeof cmd.execute === "function") {
@@ -427,6 +426,16 @@ async function askNextOption(message, session, learned) {
   await finishAndRun(message, session, learned);
 }
 
+function buildLearnGuide(schema) {
+  const lines = [];
+  lines.push(`명령어: /${schema.name}`);
+  lines.push(`문자열: 큰따옴표로 묶거나 (${DefaultOptionSynonyms.STRING.join("/")}) 뒤 텍스트로 인식`);
+  lines.push(`숫자: 소수점·음수 허용, 단위(${DefaultOptionSynonyms.NUMBER.join("/")}) 근처 숫자 우선`);
+  lines.push(`유저: 멘션, '나/저/본인', 닉네임 모두 인식`);
+  lines.push(`취소: ${CANCEL_WORDS.join(", ")}`);
+  return lines.join("\n");
+}
+
 async function startLearnFlow(client, message, slashName) {
   const name = (slashName || "").replace(/^\/+/, "").trim();
   if (!name) {
@@ -443,6 +452,8 @@ async function startLearnFlow(client, message, slashName) {
     store.commands[name] = { name: schema.name, id: schema.id, description: schema.description, options: schema.options, synonyms: [] };
     saveStore(store);
   }
+  const guide = buildLearnGuide(schema);
+  await message.channel.send(guide);
   const s = newSession(message.author.id);
   s.mode = "learn";
   s.commandName = name;
@@ -503,11 +514,45 @@ async function handleLearnInput(message) {
       await message.reply("학습 완료!");
       return true;
     }
-    s.awaiting = { type: "LEARN_OPT_SYNONYMS", idx: nextIdx };
     await message.reply(`${next.name} (${next.type}) 인식 키워드를 ,로 적어줘. 건너뛰려면 '건너뛰기'`);
+    s.awaiting = { type: "LEARN_OPT_SYNONYMS", idx: nextIdx };
     return true;
   }
   return false;
+}
+
+function optionCoverage(learned, prefill) {
+  const req = (learned.options || []).filter(o => o.required);
+  const filled = req.filter(o => prefill[o.name] !== undefined && prefill[o.name] !== null && prefill[o.name] !== "").length;
+  return { reqCount: req.length, filled };
+}
+
+function scoreCommandByText(guild, body, learned, author) {
+  const lc = body.toLowerCase();
+  let score = 0;
+  if (lc.includes(learned.name)) score += 5;
+  const synHits = (learned.synonyms || []).reduce((a, s) => a + (s && lc.includes(String(s).toLowerCase()) ? 1 : 0), 0);
+  score += synHits * 2;
+  const prefill = extractFromText(guild, body, learned, author);
+  const { reqCount, filled } = optionCoverage(learned, prefill);
+  score += filled * 6;
+  score -= (reqCount - filled) * 4;
+  const types = new Set((learned.options || []).map(o => o.type));
+  if (types.has("NUMBER") && /-?\d+(?:[.,]\d+)?/.test(body)) score += 2;
+  if (types.has("USER") && /(나|저|내|본인|자신)|<@!?\d+>/.test(body)) score += 2;
+  if (types.has("CHANNEL") && /<#\d+>/.test(body)) score += 2;
+  return { score, prefill };
+}
+
+function pickBestCommand(guild, body, entries, author) {
+  let best = null;
+  for (const c of entries) {
+    const { score, prefill } = scoreCommandByText(guild, body, c, author);
+    if (!best || score > best.score || (score === best.score && (prefill && Object.keys(prefill).length) > (best.prefill && Object.keys(best.prefill).length))) {
+      best = { cmd: c, score, prefill };
+    }
+  }
+  return best;
 }
 
 async function startNlpFlow(client, message, content) {
@@ -520,7 +565,7 @@ async function startNlpFlow(client, message, content) {
   const body = stripTrigger(content);
   const lc = body.toLowerCase();
 
-    const candidates = entries.filter(c => {
+  const candidates = entries.filter(c => {
     const hitName = lc.includes(c.name);
     const hitSyn = (c.synonyms || []).some(s => s && lc.includes(String(s).toLowerCase()));
     return hitName || hitSyn;
@@ -544,7 +589,7 @@ async function startNlpFlow(client, message, content) {
   s.currIndex = 0;
   s.origText = body;
 
-  const prefill = extractFromText(message.guild, body, match, message.author);
+  const prefill = picked.prefill || extractFromText(message.guild, body, match, message.author);
   s.data = { ...prefill };
   for (let i = 0; i < s.expectedOptions.length; i++) {
     const o = s.expectedOptions[i];
@@ -714,6 +759,23 @@ async function onMessage(client, message) {
     const s = getSession(message.author.id);
     if (s) endSession(message.author.id);
     await message.reply("취소했어.");
+    return;
+  }
+
+  if (lowered.startsWith(`${TRIGGER} 파싱`)) {
+    const body = stripTrigger(content).replace(/^파싱/i,"").trim();
+    const store = loadStore();
+    const entries = Object.values(store.commands || {});
+    if (!entries.length) return message.reply("후보가 없어.");
+    const picked = pickBestCommand(message.guild, body, entries, message.author);
+    if (!picked) return message.reply("후보가 없어.");
+    const pre = extractFromText(message.guild, body, picked.cmd, message.author);
+    const lines = (picked.cmd.options||[]).map(o=>{
+      const v = pre[o.name];
+      const src = pre[`__src_${o.name}`];
+      return `${o.name}(${o.type}) = ${v==null?'-':(o.type==='USER'&&v.id?`<@${v.id}>`:v)}${src?` [${src}]`:''}`;
+    });
+    await message.reply(`명령어: /${picked.cmd.name}\n`+lines.join("\n"));
     return;
   }
 
