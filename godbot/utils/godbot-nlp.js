@@ -166,6 +166,57 @@ function findMemberByToken(guild, token) {
   return null;
 }
 
+// ===== 역할명 퍼지 매칭 헬퍼들 =====
+function makeNGrams(s, n = 2) {
+  const arr = [];
+  for (let i = 0; i <= s.length - n; i++) arr.push(s.slice(i, i + n));
+  return arr;
+}
+function diceCoef(a, b) {
+  if (!a || !b) return 0;
+  const A = new Map(), B = new Map();
+  for (const g of makeNGrams(a)) A.set(g, (A.get(g) || 0) + 1);
+  for (const g of makeNGrams(b)) B.set(g, (B.get(g) || 0) + 1);
+  let inter = 0, sizeA = 0, sizeB = 0;
+  for (const [, v] of A) sizeA += v;
+  for (const [, v] of B) sizeB += v;
+  for (const [g, v] of A) if (B.has(g)) inter += Math.min(v, B.get(g));
+  return (sizeA + sizeB) ? (2 * inter) / (sizeA + sizeB) : 0;
+}
+function lcsLen(a, b) { // 최대 공통 부분수열(비연속 허용, 순서 유지)
+  const m = a.length, n = b.length;
+  const dp = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    let prev = 0;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] = (a[i - 1] === b[j - 1]) ? prev + 1 : Math.max(dp[j], dp[j - 1]);
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+function roleSimilarity(queryText, roleName) {
+  const a = norm(queryText);   // 사용자가 친 문장 전체를 비교 대상으로 사용
+  const b = norm(roleName);
+  if (!a || !b) return 0;
+
+  // 우선순위: 완전일치 > 포함/접두 > LCS+Dice 종합
+  if (a === b) return 2.0;                    // 최상
+  if (a.includes(b)) return 1.5;              // 문장에 역할명이 연속으로 들어가면 강함
+  if (b.includes(a)) return 1.2;              // 짧게 쓴 경우(‘활동제한’ vs ‘서버활동제한’)
+
+  const lcs = lcsLen(b, a);                   // 역할명이 문장에 '순서 유지'로 얼마나 들어있나
+  const lcsRatio = lcs / b.length;            // ‘서버제한’도 ‘서버활동제한’에 높은 점수
+  const dice = diceCoef(b, a);                // n-그램 유사도(연속성 반영)
+
+  let score = lcsRatio * 0.7 + dice * 0.3;
+  if (b.startsWith(a)) score += 0.05;         // 접두 보너스
+  return score;                                // 0~1.x 대역
+}
+
+
+
 function getTypeLabel(t) {
   switch (t) {
     case AppOptType.STRING: return "STRING";
@@ -855,19 +906,20 @@ function fuzzyFindRoleInText(guild, content) {
   }
   const bracketTokens = extractBracketTokens(content);
   for (const tok of bracketTokens) {
-    const r = guild.roles.cache.find(x => norm(x.name) === norm(tok));
-    if (r) return r;
+    const rExact = guild.roles.cache.find(x => norm(x.name) === norm(tok));
+    if (rExact) return rExact;
   }
+
   let best = null;
-  const ntext = norm(content);
   for (const [, role] of guild.roles.cache) {
-    const rn = norm(role.name);
-    if (!rn) continue;
-    const hit = ntext.includes(rn) ? rn.length : 0;
-    if (hit > 0 && (!best || hit > best.hit)) best = { role, hit };
+    const score = roleSimilarity(content, role.name);
+    if (!best || score > best.score || (score === best.score && role.name.length < best.role.name.length)) {
+      best = { role, score };
+    }
   }
-  return best ? best.role : null;
+  return (best && best.score >= 0.45) ? best.role : null;
 }
+
 
 function findAllMembersInText(guild, content, author) {
   const out = new Map();
@@ -904,23 +956,25 @@ function findAllRolesInText(guild, content) {
   }
   const raw = String(content || "");
   const bracketTokens = extractBracketTokens(raw);
+  const exactByBracket = [];
   for (const tok of bracketTokens) {
     const r = guild.roles.cache.find(x => norm(x.name) === norm(tok));
-    if (r) out.set(r.id, r);
+    if (r) exactByBracket.push(r);
   }
-  const ntext = norm(raw);
-  for (const [, role] of guild.roles.cache) {
-    const rn = norm(role.name);
-    if (!rn) continue;
-    if (rn.length >= 2 && ntext.includes(rn)) out.set(role.id, role);
+  if (exactByBracket.length) {
+    for (const r of exactByBracket) out.set(r.id, r);
+    return Array.from(out.values());
   }
-  for (const tok of splitByListDelims(raw)) {
-    const t = norm(tok);
-    if (!t) continue;
-    const role = findRoleByToken(guild, t);
-    if (role) out.set(role.id, role);
+  const listTokens = splitByListDelims(raw);
+  if (listTokens.length >= 2) {
+    for (const tok of listTokens) {
+      const best = fuzzyFindRoleInText(guild, tok);
+      if (best) out.set(best.id, best);
+    }
+    if (out.size) return Array.from(out.values());
   }
-  return Array.from(out.values());
+  const best = fuzzyFindRoleInText(guild, raw);
+  return best ? [best] : [];
 }
 
 function findAllVoiceChannelsInText(guild, content) {
