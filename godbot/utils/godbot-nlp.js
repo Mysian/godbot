@@ -57,6 +57,7 @@ const MUTE_ON_TOKENS = ["마이크를 꺼", "마이크 꺼", "음소거", "뮤�
 const MUTE_OFF_TOKENS = ["마이크를 켜", "마이크 켜", "음소거 해제", "뮤트 해제", "입 풀어", "입을 풀어", "입막 해제", "입 열어", "입열", "말할", "말하게"];
 const DEAF_ON_TOKENS = ["스피커를 꺼", "헤드셋을 닫아", "귀 막아", "청각 차단", "귀 닫아", "귀닫", "못듣"];
 const DEAF_OFF_TOKENS = ["스피커를 켜", "헤드셋을 열어", "귀 열어", "청각 해제", "귀 열어", "귀열", "들을", "듣게"];
+const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그리","다"];
 
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -859,15 +860,28 @@ async function handleBuiltinIntent(message, content) {
       return true;
     }
     let targets = findAllMembersInText(guild, body, author);
-    if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
-      const me = guild.members.cache.get(author.id);
-      const ch = me?.voice?.channel;
-      if (ch) targets = Array.from(ch.members.values());
+const wantAll = ALL_TOKENS.some(t => lc.includes(t));
+if (!targets.length && wantAll) {
+  const chs = findAllVoiceChannelsInText(guild, body);
+  if (chs.length) {
+    const map = new Map();
+    for (const ch of chs) {
+      for (const [, mem] of ch.members) map.set(mem.id, mem);
     }
-    if (!targets.length) {
-      await message.reply("대상 유저를 못 찾았어.");
-      return true;
-    }
+    targets = Array.from(map.values()); 
+  }
+}
+    
+if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
+  const me = guild.members.cache.get(author.id);
+  const ch = me?.voice?.channel;
+  if (ch) targets = Array.from(ch.members.values());
+}
+
+if (!targets.length) {
+  await message.reply("대상 유저를 못 찾았어.");
+  return true;
+}
     const wantMuteOn = MUTE_ON_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && /꺼|off/.test(lc)) || /입\s*막/.test(lc);
     const wantMuteOff = MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && (/켜|on|해제/.test(lc)));
     const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc));
