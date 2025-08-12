@@ -357,6 +357,37 @@ async function buildSlotContext(guild, slots, captured, author) {
   return ctx;
 }
 
+async function buildSlotContextHeuristic(guild, slots, body, author) {
+  const ctx = {};
+  for (const s of (slots || [])) {
+    const type = s.type || "STRING";
+    let name = "", mention = "", id = "", raw = "";
+
+    if (type === "USER") {
+      const mem = fuzzyFindMemberInText(guild, body, author);
+      if (mem) { name = toDisplayName(guild, mem.user); mention = `<@${mem.id}>`; id = mem.id; raw = name; }
+    } else if (type === "ROLE") {
+      const r = fuzzyFindRoleInText(guild, body);
+      if (r) { name = r.name; mention = `<@&${r.id}>`; id = r.id; raw = name; }
+    } else if (type === "CHANNEL") {
+      const ch = fuzzyFindAnyChannelInText(guild, body);
+      if (ch) { name = ch.name; mention = `<#${ch.id}>`; id = ch.id; raw = name; }
+    } else if (type === "NUMBER") {
+      const m = body.match(rgxNUM);
+      if (m) { raw = m[0]; name = m[1]; mention = name; }
+    } else {
+      const r = parseStringSegment(body, DefaultOptionSynonyms.STRING);
+      if (r.value) { raw = r.value; name = r.value; mention = r.value; }
+      else { raw = body; name = body; mention = body; }
+    }
+
+    ctx[s.label] = { raw, type, name, mention, id };
+  }
+  return ctx;
+}
+
+
+
 function applyTemplate(str, ctx, slots) {
   if (!str) return str;
   return String(str).replace(/\(([^\)]+)\)/g, (m, inside) => {
@@ -1218,6 +1249,33 @@ function splitByListDelims(text) {
     .split(/[,，、·]+/g)
     .map(s => s.trim())
     .filter(Boolean);
+}
+
+function stripPlaceholdersText(p) {
+  return normalizeKorean(String(p || "")).replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+}
+function getPatternTokens(p) {
+  const base = stripPlaceholdersText(p);
+  return base.split(/\s+/g).map(normalizeKey).filter(t => t && t.length >= 2);
+}
+function getTextTokens(s) {
+  return normalizeKorean(String(s || "")).split(/\s+/g).map(normalizeKey).filter(Boolean);
+}
+function tokenCoverage(ptoks, ttoks) {
+  if (!ptoks.length) return 0;
+  const T = new Set(ttoks);
+  let hit = 0;
+  for (const t of ptoks) if (T.has(t)) hit++;
+  return hit / ptoks.length;
+}
+function fuzzyMatchPattern(body, pattern) {
+  const b = stripPlaceholdersText(body);
+  const p = stripPlaceholdersText(pattern);
+  const sim = diceCoef(norm(b), norm(p)); // 0~1
+  const cov = tokenCoverage(getPatternTokens(pattern), getTextTokens(body));
+  const allTokens = cov === 1;
+  const goodSim = sim >= 0.72 && cov >= 0.6; // 임계치
+  return { ok: allTokens || goodSim, sim, cov, allTokens };
 }
 
 function findRoleByToken(guild, token) {
@@ -2090,16 +2148,32 @@ async function resolveByType(guild, type, seg, author) {
 async function tryFallbackExecFromStore(client, message, content) {
   const store = loadStore();
   const body = normalizeKorean(stripTrigger(content));
+
   for (const fb of (store.fallbacks || [])) {
     const { regex, slots } = compileFallbackPattern(fb.pattern);
-    const m = body.match(regex);
-    if (!m) continue;
+    let captured = null;
+    let slotCtx = null;
+    let matched = false;
 
-    const captured = m.slice(1);
+    const m = body.match(regex);
+    if (m) {
+      captured = m.slice(1);
+      matched = true;
+    } else {
+      const fm = fuzzyMatchPattern(body, fb.pattern); // ← 퍼지 매칭
+      if (fm.ok) matched = true;
+    }
+
+    if (!matched) continue;
+
     const learned = await fetchSlashSchema(client, message.guild, fb.command);
     if (!learned) continue;
 
-    const slotCtx = await buildSlotContext(message.guild, slots, captured, message.author);
+    if (captured) {
+      slotCtx = await buildSlotContext(message.guild, slots, captured, message.author);
+    } else {
+      slotCtx = await buildSlotContextHeuristic(message.guild, slots, body, message.author);
+    }
 
     const collected = {};
     const usedBindings = fb.bindings || {};
@@ -2110,22 +2184,31 @@ async function tryFallbackExecFromStore(client, message, content) {
         collected[opt] = templated;
         continue;
       }
-      const idx = slots.findIndex(s => s.label === bind.name);
-      if (idx < 0) continue;
-      const seg = captured[idx] || "";
-      const t = bind.type || (slots[idx] && slots[idx].type) || "STRING";
-      collected[opt] = await resolveByType(message.guild, t, seg, message.author);
+      const hit = slots.find(s => s.label === bind.name);
+      const t = bind.type || (hit && hit.type) || "STRING";
+      const sctx = slotCtx[bind.name];
+
+      if (!sctx) {
+        collected[opt] = null;
+      } else if (t === "USER" || t === "ROLE" || t === "CHANNEL") {
+        collected[opt] = sctx.id ? { id: sctx.id, name: sctx.name } : sctx.name;
+      } else if (t === "NUMBER") {
+        const f = parseFloatAny(sctx.raw || sctx.name);
+        collected[opt] = Number.isFinite(f) ? f : null;
+      } else {
+        collected[opt] = sctx.name || sctx.raw || "";
+      }
     }
+
     await invokeSlashWithBindings(
-   client, message, fb.command,
-   {}, collected,
-   { silent: true, suppress: [/^✅\s*메시지\s*전송\s*완료!?$/u, /^처리\s*완료!?$/u] }
- );
+      client, message, fb.command,
+      {}, collected,
+      { silent: true, suppress: [/^✅\s*메시지\s*전송\s*완료!?$/u, /^처리\s*완료!?$/u] }
+    );
     return true;
   }
   return false;
 }
-
 
 function suggestPatternFromText(guild, body) {
   let p = String(body || "");
