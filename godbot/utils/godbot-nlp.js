@@ -48,6 +48,8 @@ const DefaultOptionSynonyms = {
 const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해", "멈춰", "그만해", "그만", "스탑", "거기까지", "멈춰줘", "종료", "종료해"];
 
 const MOVE_VERBS = ["옮겨", "이동", "보내", "데려", "워프", "전송", "텔포", "텔레포트", "넣어", "이사"];
+const CHAT_LABELS = ["채팅","메시지","메세지","이야기","얘기","말","문자","내용","데이터","대화","로그","기록"];
+const DELETE_VERBS = ["지워","지워줘","삭제","삭제해","제거","제거해","없애","없애줘","날려","날려줘","비워","비워줘","청소","청소해","클리어","clear","purge","취소"];
 const CHANGE_VERBS = ["바꿔", "변경", "수정", "교체", "rename", "이름바꿔", "이름변경", "바꾸면"];
 const GIVE_ROLE_VERBS = ["지급", "넣어", "부여", "추가", "달아", "줘", "부착", "부여해줘", "넣어줘", "추가해"];
 const REMOVE_ROLE_VERBS = ["빼", "빼줘", "제거", "삭제", "해제", "회수", "박탈", "없애", "떼", "벗겨", "빼앗아"];
@@ -887,15 +889,27 @@ function fuzzyFindAnyChannelInText(guild, content) {
     const ch = guild.channels.cache.get(cm[1]);
     if (ch) return ch;
   }
+
+  const texts = [String(content || "")].concat(splitByListDelims(content));
   let best = null;
-  const ntext = norm(content);
+
   for (const [, ch] of guild.channels.cache) {
     const cn = norm(ch.name);
-    if (!cn) continue;
-    const hit = ntext.includes(cn) ? cn.length : 0;
-    if (hit > 0 && (!best || hit > best.hit)) best = { ch, hit };
+    if (!cn || cn.length < 2) continue; 
+    
+    let score = 0;
+    for (const t of texts) {
+      const s = roleSimilarity(t, ch.name); 
+      if (s > score) score = s;
+    }
+
+    if (score > 0 && (!best || score > best.score ||
+        (score === best.score && cn.length < norm(best.ch.name).length))) {
+      best = { ch, score };
+    }
   }
-  return best ? best.ch : null;
+
+  return (best && best.score >= 0.45) ? best.ch : null;
 }
 
 function fuzzyFindRoleInText(guild, content) {
@@ -1053,6 +1067,33 @@ async function handleBuiltinIntent(message, content) {
   const author = message.author;
   const body = normalizeKorean(stripTrigger(content));
   const lc = body.toLowerCase();
+
+  if (
+    (CHAT_LABELS.some(k => lc.includes(k)) && DELETE_VERBS.some(v => lc.includes(v))) ||
+    /\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)
+  ) {
+    let n = parseFloatAny(body);
+    n = Number.isFinite(n) ? Math.trunc(n) : 5;
+    n = Math.max(1, Math.min(100, n)); 
+
+    let targetCh = fuzzyFindAnyChannelInText(guild, body) || message.channel;
+
+    const me = guild.members.me;
+    if (!me || !targetCh.permissionsFor(me)?.has(PermissionsBitField.Flags.ManageMessages)) {
+      await message.reply("실패: 봇에 해당 채널의 **메시지 관리** 권한이 없어.");
+      return true;
+    }
+
+    try {
+      const col = await targetCh.bulkDelete(n, true);
+      const ok = col?.size || 0;
+      const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
+      await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
+    } catch (e) {
+      await message.reply("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘.");
+    }
+    return true;
+  }
 
   if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각/.test(lc)) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.MuteMembers) && !hasBotPerm(guild, PermissionsBitField.Flags.DeafenMembers)) {
