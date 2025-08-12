@@ -177,6 +177,16 @@ function joinsToPattern(joins = []) {
   return parts.join("|");
 }
 
+const DEFAULT_SUPPRESS = [/^✅\s*메시지\s*전송\s*완료!?$/u];
+
+function shouldSuppressOut(payload, custom = DEFAULT_SUPPRESS) {
+  const text =
+    typeof payload === "string"
+      ? payload
+      : (payload && typeof payload === "object" ? String(payload.content || "") : "");
+  return custom.some((rx) => rx.test((text || "").trim()));
+}
+
 function buildGrabber(joins = [], extraStops = "") {
   const rxJoins = joinsToPattern(joins);
   const stop = extraStops ? `|(?=[${extraStops}])` : "";
@@ -736,6 +746,7 @@ function buildFakeInteraction(baseMessage, learned, collected) {
     },
     deferReply: async (p = {}) => { if (p?.ephemeral != null) _ephemeral = !!p.ephemeral; _deferred = true; },
     editReply: async (p = {}) => {
+      if (shouldSuppressOut(p)) return null;
       const opts = toMessageOptions(p);
       const tag = _deferred && !_replied ? "[deferred] " : "";
       const msg = await baseMessage.channel.send({ ...opts, content: tag + (opts.content || "") });
@@ -744,6 +755,7 @@ function buildFakeInteraction(baseMessage, learned, collected) {
       return msg;
     },
     followUp: async (p = {}) => {
+      if (shouldSuppressOut(p)) return null;
       const msg = await baseMessage.channel.send(toMessageOptions(p));
       _lastMsg = msg;
       _replied = true;
@@ -2104,7 +2116,11 @@ async function tryFallbackExecFromStore(client, message, content) {
       const t = bind.type || (slots[idx] && slots[idx].type) || "STRING";
       collected[opt] = await resolveByType(message.guild, t, seg, message.author);
     }
-    await invokeSlashWithBindings(client, message, fb.command, {}, collected);
+    await invokeSlashWithBindings(
+   client, message, fb.command,
+   {}, collected,
+   { silent: true, suppress: [/^✅\s*메시지\s*전송\s*완료!?$/u, /^처리\s*완료!?$/u] }
+ );
     return true;
   }
   return false;
@@ -2188,7 +2204,10 @@ function resolveChannelByAny(guild, raw, fallback) {
   return byName || fallback;
 }
 
-async function invokeSlashWithBindings(client, message, cmdName, bindings = {}, slotValues = {}) {
+async function invokeSlashWithBindings(
+   client, message, cmdName,
+   bindings = {}, slotValues = {}, opts = {} 
+ ) {
   const commands = client.commands || client.slashCommands || new Map();
   const cmd = commands.get(cmdName) || commands.get(`/${cmdName}`);
   if (!cmd || typeof cmd.execute !== "function") {
@@ -2201,6 +2220,13 @@ async function invokeSlashWithBindings(client, message, cmdName, bindings = {}, 
   for (const [k, v] of Object.entries(slotValues)) if (flat[k] == null) flat[k] = bindingToString(v);
 
   const targetChannel = resolveChannelByAny(message.guild, flat["채널"], message.channel);
+
+  const silent = !!opts.silent;
+ const suppressRules = opts.suppress || DEFAULT_SUPPRESS;
+ async function maybeSend(fn, payload) {
+   if (silent && shouldSuppressOut(payload, suppressRules)) return null;
+   return fn(payload);
+ }
 
   const fakeInteraction = {
     guild: message.guild,
@@ -2233,9 +2259,15 @@ async function invokeSlashWithBindings(client, message, cmdName, bindings = {}, 
       getRole: () => null,
     },
     async reply(payload) {
-      this.replied = true;
-      try { return await message.reply(payload); } catch { return null; }
-    },
+     this.replied = true;
+     try { return await maybeSend((p)=>message.reply(p), payload); } catch { return null; }
+   },
+   async editReply(payload) {
+     try { return await maybeSend((p)=>message.channel.send(p), payload); } catch { return null; }
+   },
+   async followUp(payload) {
+     try { return await maybeSend((p)=>message.channel.send(p), payload); } catch { return null; }
+   },
     async deferReply() { this.deferred = true; },
     isRepliable() { return true; }
   };
