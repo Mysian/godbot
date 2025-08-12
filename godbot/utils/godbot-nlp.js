@@ -83,19 +83,24 @@ function hasUserTargetInText(text) {
 
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(STORE_PATH)) fs.writeFileSync(STORE_PATH, JSON.stringify({ commands: {}, stats: {} }, null, 2));
+  if (!fs.existsSync(STORE_PATH)) fs.writeFileSync(STORE_PATH, JSON.stringify({ commands: {}, stats: {}, fallbacks: [] }, null, 2));
 }
 function loadStore() {
   ensureStore();
   try {
-    return JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
+    const s = JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
+    if (!s.fallbacks) s.fallbacks = [];
+    if (!s.stats) s.stats = {};
+    if (!s.commands) s.commands = {};
+    return s;
   } catch {
-    return { commands: {}, stats: {} };
+    return { commands: {}, stats: {}, fallbacks: [] };
   }
 }
 function saveStore(data) {
   ensureStore();
   if (!data.stats) data.stats = {};
+  if (!data.fallbacks) data.fallbacks = [];
   fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2));
 }
 
@@ -1118,7 +1123,7 @@ function scoreCommandByText(guild, body, learned, author) {
   const synHits = (learned.synonyms || []).reduce((a, s) => a + (s && lc.includes(String(s).toLowerCase()) ? 1 : 0), 0);
   score += synHits * 2;
   const prefill = extractFromText(guild, body, learned, author);
-  const { reqCount, filled } = optionCoverage(learned, prefill);
+  const { reqCount, filled } = optionCoverage(guild ? learned : learned, prefill);
   score += filled * 6;
   score -= (reqCount - filled) * 4;
   const types = new Set((learned.options || []).map(o => o.type));
@@ -1556,7 +1561,7 @@ function bestDataMatchesGlobal(index, keyTokens, content) {
   return scored.slice(0, 8);
 }
 async function handleDataQuery(message, content, opts = {}) {
-  const serverMode = !!opts.serverMode; // NEW
+  const serverMode = !!opts.serverMode;
   const index = ensureDataIndex(false);
 
   const members = findAllMembersInText(message.guild, content, message.author);
@@ -1570,14 +1575,14 @@ async function handleDataQuery(message, content, opts = {}) {
   }
   if (!targets.length && !serverMode) {
     if (SERVER_QUERY_HINTS.some(t => content.includes(t))) {
-      return false; 
+      return false;
     }
     await message.reply("대상 유저를 못 찾았어.");
     return true;
   }
   if (serverMode) {
     const best = bestDataMatchesGlobal(index, keyTokens, content).filter(x => x.score >= 1.0);
-    if (!best.length) return false; 
+    if (!best.length) return false;
     const lines = [];
     lines.push(`서버 데이터`);
     for (const b of best.slice(0, 5)) {
@@ -1887,6 +1892,190 @@ async function fillMissingOptions(message, session, learned) {
   session.currIndex = session.expectedOptions.length;
 }
 
+const PLACEHOLDER_TYPES = {
+  "유저명":"USER","유저":"USER","닉네임":"USER","사용자":"USER","플레이어":"USER","상대":"USER","나":"USER","본인":"USER","자신":"USER",
+  "채널명":"CHANNEL","채널":"CHANNEL","음성채널":"CHANNEL","보이스":"CHANNEL","룸":"CHANNEL","방":"CHANNEL","텍스트채널":"CHANNEL","채팅채널":"CHANNEL",
+  "역할명":"ROLE","역할":"ROLE","롤":"ROLE",
+  "숫자":"NUMBER","수":"NUMBER","수치":"NUMBER","금액":"NUMBER","개수":"NUMBER","갯수":"NUMBER","퍼센트":"NUMBER","점수":"NUMBER","레벨":"NUMBER",
+  "내용":"STRING","사유":"STRING","메모":"STRING","메시지":"STRING","텍스트":"STRING","문구":"STRING","제목":"STRING"
+};
+
+function compileFallbackPattern(pat) {
+  const raw = String(pat || "");
+  const slots = [];
+  let rx = "^";
+  const re = /\(([^()]{1,32})\)/g;
+  let last = 0, m;
+  while ((m = re.exec(raw))) {
+    const before = raw.slice(last, m.index);
+    rx += escR(normalizeKorean(before)).replace(/\s+/g, "\\s*");
+    const lbl = normalizeKorean(m[1]);
+    const t = PLACEHOLDER_TYPES[lbl] || "STRING";
+    slots.push({ label: lbl, type: t });
+    rx += "(.+?)";
+    last = m.index + m[0].length;
+  }
+  rx += escR(normalizeKorean(raw.slice(last))).replace(/\s+/g, "\\s*");
+  rx += "$";
+  return { regex: new RegExp(rx, "iu"), slots };
+}
+
+async function resolveByType(guild, type, seg, author) {
+  const s = String(seg || "").trim();
+  switch (type) {
+    case "USER": {
+      if (/(나|저|내|본인|자신)/.test(s) && author) return author;
+      const m = s.match(/<@!?(\d+)>/);
+      if (m) { const mem = guild.members.cache.get(m[1]); return mem ? mem.user : null; }
+      const mem = findMemberByToken(guild, s) || fuzzyFindMemberInText(guild, s, author);
+      return mem ? mem.user : null;
+    }
+    case "CHANNEL": {
+      const m = s.match(/<#(\d+)>/);
+      if (m) { const ch = guild.channels.cache.get(m[1]); return ch ? { id: ch.id, name: ch.name } : null; }
+      const ch = fuzzyFindAnyChannelInText(guild, s);
+      return ch ? { id: ch.id, name: ch.name } : null;
+    }
+    case "ROLE": {
+      const m = s.match(/<@&(\d+)>/);
+      if (m) { const r = guild.roles.cache.get(m[1]); return r ? { id: r.id, name: r.name } : null; }
+      const r = fuzzyFindRoleInText(guild, s);
+      return r ? { id: r.id, name: r.name } : null;
+    }
+    case "NUMBER": {
+      const n = parseFloatAny(s);
+      return Number.isFinite(n) ? n : null;
+    }
+    default:
+      return s;
+  }
+}
+
+async function tryFallbackExecFromStore(client, message, content) {
+  const store = loadStore();
+  const body = normalizeKorean(stripTrigger(content));
+  for (const fb of (store.fallbacks || [])) {
+    const { regex, slots } = compileFallbackPattern(fb.pattern);
+    const m = body.match(regex);
+    if (!m) continue;
+    const captured = m.slice(1);
+    const learned = await fetchSlashSchema(client, message.guild, fb.command);
+    if (!learned) continue;
+    const collected = {};
+    for (const [opt, bind] of Object.entries(fb.bindings || {})) {
+      if (bind.source === "literal") {
+        collected[opt] = bind.value;
+        continue;
+      }
+      const idx = slots.findIndex(s => s.label === bind.name);
+      if (idx < 0) continue;
+      const seg = captured[idx] || "";
+      const t = bind.type || (slots[idx] && slots[idx].type) || "STRING";
+      collected[opt] = await resolveByType(message.guild, t, seg, message.author);
+    }
+    const res = await tryExecuteLearned(client, message, learned, collected, content);
+    if (res.ok) return true;
+  }
+  return false;
+}
+
+function suggestPatternFromText(guild, body) {
+  let p = String(body || "");
+  p = p.replace(/<@!?(\d+)>/g, "(유저명)");
+  p = p.replace(/<@&(\d+)>/g, "(역할명)");
+  p = p.replace(/<#(\d+)>/g, "(채널명)");
+  p = p.replace(/-?\d+(?:[.,]\d+)?\s*[가-힣A-Za-z%₩]*?/g, "(숫자)");
+  const q = p.match(/["“]([^"”]+)["”]/);
+  if (q) p = p.replace(q[0], "(내용)");
+  return normalizeKorean(p).trim();
+}
+
+async function startFallbackTeachFlow(client, message, content) {
+  const body = normalizeKorean(stripTrigger(content));
+  const s = newSession(message.author.id);
+  s.mode = "fbteach";
+  s.origText = body;
+  s.step = 0;
+  await message.reply('이 문장을 어떤 /명령어로 연결할까? "/명령어" 형태로 알려줘.');
+}
+
+function parseBindingsInput(txt) {
+  const map = {};
+  const pairs = String(txt||"").split(/[,\n]+/).map(v=>v.trim()).filter(Boolean);
+  for (const pair of pairs) {
+    const m = pair.match(/^([a-z0-9._-]+)\s*[:=]\s*(.+)$/i);
+    if (!m) continue;
+    const k = m[1];
+    const v = m[2];
+    if (v.startsWith("고정:")) {
+      map[k] = { source: "literal", value: v.slice(3).replace(/^["“]|["”]$/g,"") };
+    } else {
+      map[k] = { source: "slot", name: v.trim() };
+    }
+  }
+  return map;
+}
+function wireBindingTypes(bindings, slots) {
+  for (const [k, b] of Object.entries(bindings)) {
+    if (b.source === "literal") continue;
+    const hit = slots.find(s => s.label === b.name);
+    b.type = hit ? hit.type : null;
+    b.source = "placeholder";
+  }
+  return bindings;
+}
+
+async function handleFallbackTeachInput(client, message) {
+  const s = getSession(message.author.id);
+  if (!s || s.mode !== "fbteach") return false;
+  const txt = normalizeKorean(stripTrigger(message.content));
+  if (CANCEL_WORDS.includes(txt)) {
+    endSession(message.author.id);
+    await message.reply("취소했어.");
+    return true;
+  }
+  if (s.step === 0) {
+    const m = txt.match(/^\/([a-z0-9._-]+)/i);
+    if (!m) { await message.reply('"/명령어" 형태로 적어줘. 예) /정수지급'); return true; }
+    s.commandName = m[1];
+    const schema = await fetchSlashSchema(client, message.guild, s.commandName);
+    if (!schema) { await message.reply(`/${s.commandName} 스키마를 못 찾았어.`); return true; }
+    s.schema = schema;
+    const guess = suggestPatternFromText(message.guild, s.origText);
+    await message.reply(`매칭 패턴을 적어줘. 괄호로 자리표시자 사용 가능. 예)\n${guess}`);
+    s.step = 1;
+    return true;
+  }
+  if (s.step === 1) {
+    s.fallbackPattern = txt;
+    const { slots } = compileFallbackPattern(s.fallbackPattern);
+    s.slots = slots;
+    const optLine = (s.schema.options||[]).map(o => `${o.name}(${o.type}${o.required?":필수":""})`).join(", ");
+    await message.reply(`옵션 매핑을 적어줘. 형식: 옵션=자리표시자 또는 옵션=고정:"값"\n예) user=유저명, amount=숫자, reason=내용\n대상 옵션: ${optLine || "-"}`);
+    s.step = 2;
+    return true;
+  }
+  if (s.step === 2) {
+    const raw = parseBindingsInput(txt);
+    const bindings = wireBindingTypes(raw, s.slots || []);
+    const store = loadStore();
+    store.fallbacks.push({
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+      pattern: s.fallbackPattern,
+      command: s.commandName,
+      bindings,
+      by: message.author.id,
+      createdAt: Date.now()
+    });
+    saveStore(store);
+    await message.reply(`매핑 저장 완료: "${s.fallbackPattern}" → /${s.commandName}`);
+    endSession(message.author.id);
+    await tryFallbackExecFromStore(client, message, s.origText);
+    return true;
+  }
+  return false;
+}
+
 async function startNlpFlow(client, message, content) {
   const handled = await handleBuiltinIntent(message, content);
   if (handled) return;
@@ -1905,7 +2094,9 @@ async function startNlpFlow(client, message, content) {
     return hitName || hitSyn;
   });
   if (!candidates.length) {
-    await message.reply("크으억! 무슨 명령인지 이해하지 못했습니다, 마스터!!");
+    const tried = await tryFallbackExecFromStore(client, message, content);
+    if (tried) return;
+    await startFallbackTeachFlow(client, message, content);
     return;
   }
   const picked = pickBestCommand(message.guild, body, candidates, message.author);
@@ -2020,7 +2211,7 @@ async function handleExecInput(message) {
     if (!role) role = message.guild.roles.cache.find(r => norm(r.name) === norm(txt)) || null;
     if (!role) role = fuzzyFindRoleInText(message.guild, txt);
     if (!role) {
-      await message.reply("역할을 못 찾었어. 역할명만 적어도 돼.");
+      await message.reply("역할을 못 찾았어. 역할명만 적어도 돼.");
       return true;
     }
     s.data[awaiting.name] = { id: role.id, name: role.name };
@@ -2197,6 +2388,11 @@ async function onMessage(client, message) {
   const sExec = getSession(message.author.id);
   if (sExec && sExec.mode === "exec") {
     await handleExecInput(message);
+    return;
+  }
+  const sFb = getSession(message.author.id);
+  if (sFb && sFb.mode === "fbteach") {
+    await handleFallbackTeachInput(client, message);
     return;
   }
 
