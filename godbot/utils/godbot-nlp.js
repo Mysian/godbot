@@ -1068,32 +1068,43 @@ async function handleBuiltinIntent(message, content) {
   const body = normalizeKorean(stripTrigger(content));
   const lc = body.toLowerCase();
 
-  if (
-    (CHAT_LABELS.some(k => lc.includes(k)) && DELETE_VERBS.some(v => lc.includes(v))) ||
-    /\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)
-  ) {
-    let n = parseFloatAny(body);
-    n = Number.isFinite(n) ? Math.trunc(n) : 5;
-    n = Math.max(1, Math.min(100, n)); 
+if (
+  (CHAT_LABELS.some(k => lc.includes(k)) && DELETE_VERBS.some(v => lc.includes(v))) ||
+  /\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)
+) {
+  let n = parseFloatAny(body);
+  n = Number.isFinite(n) ? Math.trunc(n) : 5;
+  n = Math.max(1, Math.min(100, n));
 
-    let targetCh = fuzzyFindAnyChannelInText(guild, body) || message.channel;
+  let targetCh = fuzzyFindAnyChannelInText(guild, body) || message.channel;
 
-    const me = guild.members.me;
-    if (!me || !targetCh.permissionsFor(me)?.has(PermissionsBitField.Flags.ManageMessages)) {
-      await message.reply("실패: 봇에 해당 채널의 **메시지 관리** 권한이 없어.");
-      return true;
-    }
-
-    try {
-      const col = await targetCh.bulkDelete(n, true);
-      const ok = col?.size || 0;
-      const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
-      await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
-    } catch (e) {
-      await message.reply("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘.");
-    }
+  const me = guild.members.me;
+  if (!me || !targetCh.permissionsFor(me)?.has(PermissionsBitField.Flags.ManageMessages)) {
+    await message.reply("실패: 봇에 해당 채널의 **메시지 관리** 권한이 없어.");
     return true;
   }
+  if (!targetCh.isTextBased?.() || typeof targetCh.bulkDelete !== "function") {
+    await message.reply("실패: 이 채널 유형은 일괄 삭제를 지원하지 않아.");
+    return true;
+  }
+
+  try {
+    const fetched = await targetCh.messages.fetch({ limit: Math.min(100, n + 1) });
+    const filtered = fetched.filter(m => m.id !== message.id);
+    const toDelete = filtered.first(n); // n개까지만
+
+    const col = await targetCh.bulkDelete(toDelete, true);
+    const ok = col?.size || 0;
+    const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
+    await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
+  } catch (e) {
+    try {
+      await message.channel.send("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘.");
+    } catch {}
+  }
+  return true;
+}
+
 
   if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각/.test(lc)) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.MuteMembers) && !hasBotPerm(guild, PermissionsBitField.Flags.DeafenMembers)) {
