@@ -2046,8 +2046,8 @@ async function tryFallbackExecFromStore(client, message, content) {
       const t = bind.type || (slots[idx] && slots[idx].type) || "STRING";
       collected[opt] = await resolveByType(message.guild, t, seg, message.author);
     }
-    const res = await tryExecuteLearned(client, message, learned, collected, content);
-    if (res.ok) return true;
+    await invokeSlashWithBindings(client, message, fb.command, {}, collected);
+return true;
   }
   return false;
 }
@@ -2096,6 +2096,85 @@ function wireBindingTypes(bindings, slots) {
     b.source = "placeholder";
   }
   return bindings;
+}
+function bindingToString(b) {
+  if (b == null) return null;
+  if (typeof b === "string" || typeof b === "number" || typeof b === "boolean") return String(b);
+  if (typeof b === "object") {
+    if (b.type === "fixed") return b.value != null ? String(b.value) : null;
+    if (b.type === "slot") return b.value != null ? String(b.value) : null;
+  }
+  return null;
+}
+function resolveChannelByAny(guild, raw, fallback) {
+  const s = (raw || "").trim();
+  if (!s) return fallback;
+  if (s === "여기") return fallback;
+  const id = s.replace(/[<#>]/g, "");
+  if (/^\d{15,}$/.test(id)) return guild.channels.cache.get(id) || fallback;
+  const norm = s.toLowerCase();
+  const byName = guild.channels.cache.find(ch => (ch.name || "").toLowerCase() === norm) ||
+                 guild.channels.cache.find(ch => (ch.name || "").toLowerCase().includes(norm));
+  return byName || fallback;
+}
+
+async function invokeSlashWithBindings(client, message, cmdName, bindings = {}, slotValues = {}) {
+  const commands = client.commands || client.slashCommands || new Map();
+  const cmd = commands.get(cmdName) || commands.get(`/${cmdName}`);
+  if (!cmd || typeof cmd.execute !== "function") {
+    await message.reply(`/${cmdName} 명령어를 찾을 수 없어.`);
+    return;
+  }
+
+  const flat = {};
+  for (const [k, v] of Object.entries(bindings)) flat[k] = bindingToString(v);
+  for (const [k, v] of Object.entries(slotValues)) if (flat[k] == null) flat[k] = bindingToString(v);
+
+  const targetChannel = resolveChannelByAny(message.guild, flat["채널"], message.channel);
+
+  const fakeInteraction = {
+    guild: message.guild,
+    channel: targetChannel,
+    user: message.author,
+    member: message.member,
+    client,
+    replied: false,
+    deferred: false,
+    options: {
+      getString: (name) => flat[name] ?? null,
+      getBoolean: (name) => {
+        const val = flat[name];
+        if (val == null) return null;
+        if (val === "true" || val === "1" || val === "예" || val === "y") return true;
+        if (val === "false" || val === "0" || val === "아니오" || val === "n") return false;
+        return null;
+      },
+      getInteger: (name) => {
+        const n = Number(flat[name]);
+        return Number.isInteger(n) ? n : null;
+      },
+      getNumber: (name) => {
+        const n = Number(flat[name]);
+        return Number.isFinite(n) ? n : null;
+      },
+      getChannel: (name) => resolveChannelByAny(message.guild, flat[name], targetChannel),
+      getAttachment: () => null,
+      getUser: () => null,
+      getRole: () => null,
+    },
+    async reply(payload) {
+      this.replied = true;
+      try { return await message.reply(payload); } catch { return null; }
+    },
+    async deferReply() { this.deferred = true; },
+    isRepliable() { return true; }
+  };
+
+  try {
+    await cmd.execute(fakeInteraction);
+  } catch (e) {
+    try { await message.reply(`/${cmdName} 실행 중 오류: ${e.message||e}`); } catch {}
+  }
 }
 
 async function handleFallbackTeachInput(client, message) {
