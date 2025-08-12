@@ -32,13 +32,15 @@ const AppOptType = {
 };
 
 const DefaultOptionSynonyms = {
-  USER: ["에게", "한테", "님에게", "유저", "사용자", "님께", "님한테", "님에"],
-  NUMBER: ["원", "정수", "금액", "포인트", "수량", "숫자"],
+  USER: ["에게", "한테", "님에게", "유저", "사용자", "님", "상대", "상대방"],
+  NUMBER: ["원", "정수", "금액", "포인트", "수량", "숫자", "코인", "갓비트"],
   STRING: ["내용", "사유", "메모", "메시지", "설명", "텍스트"],
   BOOLEAN: ["여부", "할까", "할까요", "진행", "포함"],
   ROLE: ["역할", "롤"],
   CHANNEL: ["채널"],
 };
+
+const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해"];
 
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -68,7 +70,7 @@ function newSession(userId) {
     expectedOptions: [],
     requiredOptions: [],
     optionalOptions: [],
-    optionalDecided: false, // false: 아직 결정 전, 'waiting': 버튼 대기, true: 결정 완료
+    optionalDecided: false,
     currIndex: 0,
     channelId: null,
     messageId: null,
@@ -109,12 +111,13 @@ function parseFloatAny(str) {
 
 function findMemberByToken(guild, token) {
   if (!guild || !token) return null;
-  const t = token.replace(/^@+/, "").toLowerCase();
-  let found = guild.members.cache.find(m => (m.displayName || "").toLowerCase() === t);
+  const t0 = token.replace(/^@+/, "").trim();
+  const t = t0.toLowerCase().replace(/\s+/g, "");
+  let found = guild.members.cache.find(m => (m.displayName || "").toLowerCase().replace(/\s+/g, "") === t);
   if (found) return found;
-  found = guild.members.cache.find(m => (m.user.username || "").toLowerCase() === t);
+  found = guild.members.cache.find(m => (m.user.username || "").toLowerCase().replace(/\s+/g, "") === t);
   if (found) return found;
-  found = guild.members.cache.find(m => (m.displayName || "").toLowerCase().includes(t));
+  found = guild.members.cache.find(m => (m.displayName || "").toLowerCase().replace(/\s+/g, "").includes(t));
   if (found) return found;
   return null;
 }
@@ -220,71 +223,7 @@ function summarizePlan(guild, learned, collected) {
   return lines.join("  ");
 }
 
-function makeYesNoRow(prefix) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`${prefix}:yes`).setLabel("예").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${prefix}:no`).setLabel("아니오").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${prefix}:skip`).setLabel("건너뛰기").setStyle(ButtonStyle.Secondary)
-  );
-}
-
-async function askNextOption(message, session, learned) {
-  const guild = message.guild;
-  const channel = message.channel;
-  while (session.currIndex < session.expectedOptions.length) {
-    const opt = session.expectedOptions[session.currIndex];
-    if (!opt) break;
-    if (opt.type === "BOOLEAN") {
-      const q = new EmbedBuilder().setTitle("선택 옵션 포함할까요?").setDescription(`${opt.name} (${opt.description || "-"})`).setFooter({ text: "예/아니오/건너뛰기 버튼을 눌러주세요." });
-      const row = makeYesNoRow(`godbot_bool_${opt.name}_${message.id}`);
-      const msg = await channel.send({ embeds: [q], components: [row], reply: { messageReference: message.id } });
-      session.messageId = msg.id;
-      session.awaiting = { type: "BOOLEAN", name: opt.name };
-      return;
-    } else {
-      const ask = new EmbedBuilder().setTitle("값을 알려주세요").setDescription(`${opt.name} (${opt.type}) ${opt.required ? "필수" : "선택"}\n${opt.description || "-"}`).setFooter({ text: "메시지로 값을 입력하세요. 취소하려면 '취소'라고 입력" });
-      const msg = await channel.send({ embeds: [ask], reply: { messageReference: message.id } });
-      session.messageId = msg.id;
-      session.awaiting = { type: opt.type, name: opt.name };
-      return;
-    }
-  }
-  if (session.expectedOptions === session.requiredOptions && session.optionalDecided === false) {
-    const remainOptional = (session.optionalOptions || []).filter(o => session.data[o.name] == null);
-    if (remainOptional.length > 0) {
-      const ebAsk = new EmbedBuilder()
-        .setTitle("선택 옵션도 설정할래?")
-        .setDescription("필수값은 다 모았어. 선택값(사유, 역할, 채널, boolean 등)도 더 설정할지 결정해줘.");
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`godbot_opt_yes_${learned.name}_${message.id}`)
-          .setLabel("예, 선택옵션 설정")
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId(`godbot_opt_no_${learned.name}_${message.id}`)
-          .setLabel("아니오, 바로 진행")
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      const q = await channel.send({ embeds: [ebAsk], components: [row], reply: { messageReference: message.id } });
-      session.messageId = q.id;
-      session.optionalDecided = 'waiting';
-      return;
-    }
-  }
-
-  const summary = summarizePlan(guild, learned, session.data);
-  const runRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`godbot_run_${learned.name}_${message.id}`).setLabel("실행").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`godbot_cancel_${message.id}`).setLabel("취소").setStyle(ButtonStyle.Danger)
-  );
-  const eb = new EmbedBuilder().setTitle("실행 전 확인").setDescription(summary);
-  await channel.send({ embeds: [eb], components: [runRow], reply: { messageReference: message.id } });
-  session.pendingConfirm = true;
-}
-
-function extractFromText(guild, text, learned) {
+function extractFromText(guild, text, learned, author) {
   const res = {};
   const content = normalizeKorean(text);
   const lower = content.toLowerCase();
@@ -296,13 +235,21 @@ function extractFromText(guild, text, learned) {
       const member = guild.members.cache.get(m[1]);
       if (member) res[userOpt.name] = member.user;
     } else {
-      const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
-      const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-      const mm = content.match(rgx);
-      if (mm) {
-        const token = mm[1].trim();
-        const member = findMemberByToken(guild, token);
-        if (member) res[userOpt.name] = member.user;
+      const selfHit = /(나|저|내|본인|자신)(?:에게|한테|게)?/.test(content);
+      if (selfHit && author) {
+        res[userOpt.name] = author;
+      } else {
+        const joins = (userOpt.synonyms || DefaultOptionSynonyms.USER);
+        const rgx = new RegExp(`(.+?)\\s*(?:${joins.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+        const mm = content.match(rgx);
+        if (mm) {
+          const token = mm[1].trim().replace(/^['"“”‘’`]+|['"“”‘’`]+$/g, "");
+          const member = findMemberByToken(guild, token);
+          if (member) res[userOpt.name] = member.user;
+        } else {
+          const selfAny = /(나|저|내|본인|자신)/.test(content);
+          if (selfAny && author) res[userOpt.name] = author;
+        }
       }
     }
   }
@@ -323,7 +270,12 @@ function extractFromText(guild, text, learned) {
 
   for (const o of (learned.options || [])) {
     if (res[o.name] != null) continue;
-    if (o.type === "STRING" && o.required) {
+    if (o.type === "STRING") {
+      const quoted = content.match(/["“](.+?)["”]/);
+      if (quoted && quoted[1]) {
+        res[o.name] = quoted[1].slice(0, 2000);
+        continue;
+      }
       const after = content.replace(/.*?\b(?:사유|메모|내용|설명|메시지)\b[:：]?\s*/i, "");
       if (after && after !== content) res[o.name] = after.slice(0, 2000);
     }
@@ -426,6 +378,32 @@ async function tryExecuteLearned(client, baseMessage, learned, collected) {
   }
 }
 
+async function finishAndRun(baseMessage, session, learned) {
+  const summary = summarizePlan(baseMessage.guild, learned, session.data);
+  const execRes = await tryExecuteLearned(baseMessage.client, baseMessage, learned, session.data);
+  if (!execRes.ok) {
+    await baseMessage.channel.send(`실행 실패: /${learned.name} (${execRes.reason})\n${summary}`);
+  }
+  endSession(baseMessage.author.id);
+}
+
+async function askNextOption(message, session, learned) {
+  while (session.currIndex < session.expectedOptions.length) {
+    const opt = session.expectedOptions[session.currIndex];
+    if (!opt) break;
+    const name = opt.name;
+    if (session.data[name] == null || session.data[name] === "") {
+      session.awaiting = { type: opt.type, name };
+      const reqText = opt.required ? "[필수]" : "[선택]";
+      await message.channel.send(`값을 알려줘 ${reqText} ${name} (${opt.type})`);
+      return;
+    } else {
+      session.currIndex++;
+    }
+  }
+  await finishAndRun(message, session, learned);
+}
+
 async function startLearnFlow(client, message, slashName) {
   const name = (slashName || "").replace(/^\/+/, "").trim();
   if (!name) {
@@ -448,12 +426,7 @@ async function startLearnFlow(client, message, slashName) {
   s.channelId = message.channelId;
   s.expectedOptions = [];
   s.currIndex = 0;
-  const eb = new EmbedBuilder()
-    .setTitle("갓봇! 학습")
-    .setDescription(`/${name} 명령어를 학습할게. 먼저 이 명령어를 떠올리면 자연어에서 쓸 법한 키워드를 ,로 적어줘.\n예) 정수, 송금, 지급, 보내`)
-    .setFooter({ text: "예: 정수,지급,송금,보내" });
-  const msg = await message.channel.send({ embeds: [eb], reply: { messageReference: message.id } });
-  s.messageId = msg.id;
+  await message.channel.send(`/${name} 키워드를 ,로 적어줘. 예: 정수,지급,송금,보내`);
   s.awaiting = { type: "LEARN_SYNONYMS" };
 }
 
@@ -468,7 +441,7 @@ async function handleLearnInput(message) {
     return true;
   }
   const txt = normalizeKorean(message.content);
-  if (txt === "취소") {
+  if (CANCEL_WORDS.includes(txt)) {
     endSession(message.author.id);
     await message.reply("학습을 취소했어.");
     return true;
@@ -484,10 +457,7 @@ async function handleLearnInput(message) {
       await message.reply("옵션이 없는 명령어라 학습 완료!");
       return true;
     }
-    const eb = new EmbedBuilder().setTitle(`옵션 키워드 등록`)
-      .setDescription(`${next.name} (${next.type})에 대해 인식 키워드를 ,로 적어줘. 건너뛰려면 '건너뛰기'라고 적어.`)
-      .setFooter({ text: "예: 유저,사용자,에게,한테" });
-    await message.reply({ embeds: [eb] });
+    await message.reply(`${next.name} (${next.type}) 인식 키워드를 ,로 적어줘. 건너뛰려면 '건너뛰기'`);
     return true;
   }
   if (s.awaiting?.type === "LEARN_OPT_SYNONYMS") {
@@ -511,9 +481,7 @@ async function handleLearnInput(message) {
       return true;
     }
     s.awaiting = { type: "LEARN_OPT_SYNONYMS", idx: nextIdx };
-    const eb = new EmbedBuilder().setTitle(`옵션 키워드 등록`)
-      .setDescription(`${next.name} (${next.type})에 대해 인식 키워드를 ,로 적어줘. 건너뛰려면 '건너뛰기'라고 적어.`);
-    await message.reply({ embeds: [eb] });
+    await message.reply(`${next.name} (${next.type}) 인식 키워드를 ,로 적어줘. 건너뛰려면 '건너뛰기'`);
     return true;
   }
   return false;
@@ -545,11 +513,11 @@ async function startNlpFlow(client, message, content) {
   const allOpts = (match.options || []).slice(0);
   s.requiredOptions = allOpts.filter(o => o.required);
   s.optionalOptions = allOpts.filter(o => !o.required);
-  s.expectedOptions = s.requiredOptions.slice(0); // ⬅️ 처음엔 필수만
+  s.expectedOptions = s.requiredOptions.slice(0);
   s.currIndex = 0;
   s.origText = content;
 
-  const prefill = extractFromText(message.guild, content, match);
+  const prefill = extractFromText(message.guild, content, match, message.author);
   s.data = { ...prefill };
   for (let i = 0; i < s.expectedOptions.length; i++) {
     const o = s.expectedOptions[i];
@@ -571,7 +539,7 @@ async function handleExecInput(message) {
     return true;
   }
   const txt = normalizeKorean(message.content);
-  if (txt === "취소") {
+  if (CANCEL_WORDS.includes(txt)) {
     endSession(message.author.id);
     await message.reply("취소했어.");
     return true;
@@ -601,11 +569,15 @@ async function handleExecInput(message) {
       const member = message.guild.members.cache.get(m[1]);
       if (member) v = member.user;
     } else {
-      const mem = findMemberByToken(message.guild, txt);
-      if (mem) v = mem.user;
+      const selfHit = /(나|저|내|본인|자신)/.test(txt);
+      if (selfHit) v = message.author;
+      if (!v) {
+        const mem = findMemberByToken(message.guild, txt);
+        if (mem) v = mem.user;
+      }
     }
     if (!v) {
-      await message.reply("유저를 찾지 못했어. 멘션하거나 닉네임/아이디 정확히 적어줘.");
+      await message.reply("유저를 못 찾았어. 닉네임만 적어도 돼.");
       return true;
     }
     s.data[awaiting.name] = v;
@@ -634,7 +606,7 @@ async function handleExecInput(message) {
     if (m) role = message.guild.roles.cache.get(m[1]);
     if (!role) role = message.guild.roles.cache.find(r => r.name === txt) || null;
     if (!role) {
-      await message.reply("역할을 찾지 못했어. 멘션하거나 정확한 역할명을 적어줘.");
+      await message.reply("역할을 못 찾았어. 역할명만 적어줘.");
       return true;
     }
     s.data[awaiting.name] = { id: role.id, name: role.name };
@@ -650,7 +622,7 @@ async function handleExecInput(message) {
     if (m) ch = message.guild.channels.cache.get(m[1]);
     if (!ch) ch = message.guild.channels.cache.find(c => c.name === txt) || null;
     if (!ch) {
-      await message.reply("채널을 찾지 못했어. 멘션하거나 정확한 채널명을 적어줘.");
+      await message.reply("채널을 못 찾았어. 채널명만 적어줘.");
       return true;
     }
     s.data[awaiting.name] = { id: ch.id, name: ch.name };
@@ -696,6 +668,12 @@ async function handleCancelLearn(message, slashName) {
   await message.reply(`/${name} 학습을 취소(삭제)했어.`);
 }
 
+function isCancelIntentAfterTrigger(content) {
+  const rest = content.split(TRIGGER).slice(1).join(TRIGGER).trim();
+  const kw = rest.replace(/^[!:]+/, "").trim();
+  return CANCEL_WORDS.some(w => kw.startsWith(w));
+}
+
 async function onMessage(client, message) {
   if (!message.guild) return;
   if (message.author.bot) return;
@@ -705,6 +683,13 @@ async function onMessage(client, message) {
   if (!isAdminAllowed(member)) return;
 
   const lowered = content.toLowerCase();
+  if (isCancelIntentAfterTrigger(lowered)) {
+    const s = getSession(message.author.id);
+    if (s) endSession(message.author.id);
+    await message.reply("취소했어.");
+    return;
+  }
+
   if (lowered.startsWith(`${TRIGGER} 학습 목록`)) {
     await handleListCommand(message);
     return;
@@ -746,65 +731,6 @@ async function onInteraction(client, interaction) {
     try {
       await interaction.update({ embeds: [built.eb], components: [built.row] });
     } catch {}
-    return;
-  }
-
-  if (id.startsWith("godbot_bool_")) {
-    const parts = id.split(":");
-    const last = parts.pop();
-    const base = parts.join(":");
-    const yesNo = last;
-    const seg = base.split("_");
-    const optName = seg.slice(2, seg.length - 1).join("_"); // tolerant
-    const srcMsgId = seg[seg.length - 1];
-    const s = getSession(interaction.user.id);
-    if (!s || s.mode !== "exec") return;
-    const store = loadStore();
-    const learned = store.commands[s.commandName];
-    if (!learned) return;
-    if (yesNo === "yes") s.data[optName] = true;
-    else if (yesNo === "no") s.data[optName] = false;
-    else {}
-    s.currIndex++;
-    s.awaiting = null;
-    try { await interaction.update({ components: [] }); } catch {}
-    const channel = await interaction.channel.fetch();
-    const refMsg = await channel.messages.fetch(srcMsgId).catch(() => null);
-    const baseMessage = refMsg || interaction.message;
-    await askNextOption(baseMessage, s, learned);
-    return;
-  }
-
-  if (id.startsWith("godbot_run_")) {
-    const parts = id.split("_");
-    const cmdName = parts[2];
-    const srcMsgId = parts[3];
-    const s = getSession(interaction.user.id);
-    if (!s || s.mode !== "exec" || s.commandName !== cmdName) {
-      try { await interaction.reply({ content: "세션이 만료되었어. 다시 시도해줘.", ephemeral: true }); } catch {}
-      return;
-    }
-    const store = loadStore();
-    const learned = store.commands[cmdName];
-    const channel = await interaction.channel.fetch();
-    const refMsg = await channel.messages.fetch(srcMsgId).catch(() => null);
-    const baseMessage = refMsg || interaction.message;
-    const summary = summarizePlan(interaction.guild, learned, s.data);
-    try { await interaction.update({ components: [] }); } catch {}
-    const execRes = await tryExecuteLearned(interaction.client, baseMessage, learned, s.data);
-    if (execRes.ok) {
-      await channel.send({ embeds: [new EmbedBuilder().setTitle("실행됨").setDescription(summary)] });
-    } else {
-      await channel.send({ embeds: [new EmbedBuilder().setTitle("실행 준비됨").setDescription(summary + "\n\n핸들러를 찾지 못해 채널에 결과만 출력했어. 직접 슬래시 명령을 실행해도 돼.")] });
-    }
-    endSession(interaction.user.id);
-    return;
-  }
-
-  if (id.startsWith("godbot_cancel_")) {
-    endSession(interaction.user.id);
-    try { await interaction.update({ components: [] }); } catch {}
-    try { await interaction.followUp({ content: "취소했어.", ephemeral: true }); } catch {}
     return;
   }
 }
