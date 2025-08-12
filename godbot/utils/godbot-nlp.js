@@ -480,6 +480,20 @@ async function finishAndRun(baseMessage, session, learned) {
   endSession(baseMessage.author.id);
 }
 
+function getInlineHintByType(t) {
+  switch (t) {
+    case "STRING": return `→ "내용" 또는 사유: 내용`;
+    case "NUMBER": return `→ 숫자 먼저, 단위 뒤 (예: 2.5 갓비트)`;
+    case "USER": return `→ 멘션/닉네임/‘나’ 가능`;
+    case "ROLE": return `→ 역할 멘션/이름`;
+    case "CHANNEL": return `→ 채널 멘션/이름`;
+    case "BOOLEAN": return `→ 예/아니오`;
+    case "MENTIONABLE": return `→ 유저/역할 멘션`;
+    case "ATTACHMENT": return `→ 파일 첨부`;
+    default: return ``;
+  }
+}
+
 async function askNextOption(message, session, learned) {
   while (session.currIndex < session.expectedOptions.length) {
     const opt = session.expectedOptions[session.currIndex];
@@ -488,7 +502,8 @@ async function askNextOption(message, session, learned) {
     if (session.data[name] == null || session.data[name] === "") {
       session.awaiting = { type: opt.type, name };
       const reqText = opt.required ? "[필수]" : "[선택]";
-      await message.channel.send(`값을 알려줘 ${reqText} ${name} (${opt.type})`);
+      const hint = getInlineHintByType(opt.type);
+      await message.channel.send(`값을 알려줘 ${reqText} ${name} (${opt.type}) ${hint}`);
       return;
     } else {
       session.currIndex++;
@@ -497,15 +512,108 @@ async function askNextOption(message, session, learned) {
   await finishAndRun(message, session, learned);
 }
 
+function getTypeHintLine(opt) {
+  const nm = opt.name;
+  const syn = (opt.synonyms || []).slice(0, 6).join("/");
+  const req = opt.required ? "필수" : "선택";
+  switch (opt.type) {
+    case "STRING":
+      return `• ${req} ${nm} [STRING] → "내용" 또는 (${syn || DefaultOptionSynonyms.STRING.join("/")}) : 내용  예) 사유: 출석 보상  /  "출석 보상"`;
+    case "NUMBER":
+      return `• ${req} ${nm} [NUMBER] → 소수점/음수 가능. [숫자] [단위] 형태 추천  예) 2.5 갓비트,  -10 원`;
+    case "USER":
+      return `• ${req} ${nm} [USER] → 멘션/닉네임/‘나’ 인식  예) 민수에게, <@1234567890>에게`;
+    case "ROLE":
+      return `• ${req} ${nm} [ROLE] → 역할 멘션/이름 인식  예) <@&987654321> 역할`;
+    case "CHANNEL":
+      return `• ${req} ${nm} [CHANNEL] → 채널 멘션/이름 인식  예) <#12345>  /  302호`;
+    case "BOOLEAN":
+      return `• ${req} ${nm} [BOOLEAN] → 예/네/yes/true  또는  아니오/no/false`;
+    case "MENTIONABLE":
+      return `• ${req} ${nm} [MENTIONABLE] → 유저/역할 멘션 인식`;
+    case "ATTACHMENT":
+      return `• ${req} ${nm} [ATTACHMENT] → 파일 첨부`;
+    default:
+      return `• ${req} ${nm} [${opt.type}]`;
+  }
+}
+
+function buildUsageExamples(schema) {
+  // 옵션들로 샘플 문장 2종 구성: 자연어형/키워드형
+  const opts = schema.options || [];
+  const partsNatural = [];
+  const partsKeyword = [];
+
+  for (const o of opts) {
+    const nm = o.name;
+    switch (o.type) {
+      case "USER":
+        partsNatural.push("민수에게");
+        partsKeyword.push(`${nm}: @민수`);
+        break;
+      case "NUMBER":
+        partsNatural.push("2.5 갓비트");
+        // NUMBER는 정규식이 [숫자]+[단위]에 강함. 키워드형은 보조로만 안내.
+        partsKeyword.push(`${nm}: 2.5`);
+        break;
+      case "STRING":
+        partsNatural.push(`사유 "출석 보상"`);
+        partsKeyword.push(`${nm}: 출석 보상`);
+        break;
+      case "ROLE":
+        partsNatural.push("관리자 역할");
+        partsKeyword.push(`${nm}: @관리자`);
+        break;
+      case "CHANNEL":
+        partsNatural.push("302호로");
+        partsKeyword.push(`${nm}: 302호`);
+        break;
+      case "BOOLEAN":
+        partsNatural.push("포함 예");
+        partsKeyword.push(`${nm}: 예`);
+        break;
+      case "MENTIONABLE":
+        partsNatural.push("대상 @VIP");
+        partsKeyword.push(`${nm}: @VIP`);
+        break;
+      case "ATTACHMENT":
+        partsNatural.push("파일 첨부");
+        partsKeyword.push(`${nm}: (파일첨부)`);
+        break;
+    }
+  }
+
+  const nat = partsNatural.join(" ");
+  const key = partsKeyword.join("  ");
+
+  return [
+    `예시(자연어형): 갓봇! ${nat}`.trim(),
+    `예시(키워드형): 갓봇! ${schema.name}  ${key}`.trim(),
+  ].filter(Boolean);
+}
+
 function buildLearnGuide(schema) {
   const lines = [];
   lines.push(`명령어: /${schema.name}`);
-  lines.push(`문자열: 큰따옴표로 묶거나 (${DefaultOptionSynonyms.STRING.join("/")}) 뒤 텍스트로 인식`);
-  lines.push(`숫자: 소수점·음수 허용, 단위(${DefaultOptionSynonyms.NUMBER.join("/")}) 근처 숫자 우선`);
-  lines.push(`유저: 멘션, '나/저/본인', 닉네임 모두 인식`);
-  lines.push(`취소: ${CANCEL_WORDS.join(", ")}`);
+  lines.push(`— 입력 규칙 요약 —`);
+  lines.push(`· 문자열: "내용" 또는 (${DefaultOptionSynonyms.STRING.join("/")}) : 내용`);
+  lines.push(`· 숫자: 소수점/음수 가능, [숫자][단위] 근접 우선 (${DefaultOptionSynonyms.NUMBER.join("/")})`);
+  lines.push(`· 유저: 멘션/닉네임/‘나’ 인식`);
+  lines.push(`· 취소: ${CANCEL_WORDS.join(", ")}`);
+  lines.push(``);
+  if ((schema.options || []).length) {
+    lines.push(`— 옵션별 안내 —`);
+    for (const o of schema.options) lines.push(getTypeHintLine(o));
+    lines.push(``);
+  }
+  const ex = buildUsageExamples(schema);
+  if (ex.length) {
+    lines.push(`— 사용 예시 —`);
+    for (const e of ex) lines.push(e);
+  }
   return lines.join("\n");
 }
+
 
 async function startLearnFlow(client, message, slashName) {
   const name = (slashName || "").replace(/^\/+/, "").trim();
@@ -523,8 +631,12 @@ async function startLearnFlow(client, message, slashName) {
     store.commands[name] = { name: schema.name, id: schema.id, description: schema.description, options: schema.options, synonyms: [] };
     saveStore(store);
   }
+
+  // ✅ 옵션 가이드 + 예시까지 한 번에 안내
   const guide = buildLearnGuide(schema);
   await message.channel.send(guide);
+
+  // 이후 기존 흐름 동일
   const s = newSession(message.author.id);
   s.mode = "learn";
   s.commandName = name;
