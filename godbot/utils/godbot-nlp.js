@@ -749,8 +749,16 @@ function findAllRolesInText(guild, content) {
     const role = guild.roles.cache.get(m[1]);
     if (role) out.set(role.id, role);
   }
+  const ntext = norm(content);
+  for (const [, role] of guild.roles.cache) {
+    const rn = norm(role.name);
+    if (!rn || rn.length < 2) continue;
+    if (ntext.includes(rn)) out.set(role.id, role);
+  }
   for (const tok of splitByListDelims(content)) {
-    const role = findRoleByToken(guild, tok);
+    const t = norm(tok);
+    if (!t) continue;
+    const role = findRoleByToken(guild, t);
     if (role) out.set(role.id, role);
   }
   return Array.from(out.values());
@@ -764,12 +772,21 @@ function findAllVoiceChannelsInText(guild, content) {
     const ch = guild.channels.cache.get(m[1]);
     if (ch && ch.type === ChannelType.GuildVoice) out.set(ch.id, ch);
   }
+  const ntext = norm(content);
+  for (const [, ch] of guild.channels.cache) {
+    if (ch.type !== ChannelType.GuildVoice) continue;
+    const cn = norm(ch.name);
+    if (!cn || cn.length < 2) continue;
+    if (ntext.includes(cn)) out.set(ch.id, ch);
+  }
   for (const tok of splitByListDelims(content)) {
     const t = norm(tok);
     if (!t) continue;
     for (const [, ch] of guild.channels.cache) {
       if (ch.type !== ChannelType.GuildVoice) continue;
-      if (norm(ch.name).includes(t)) out.set(ch.id, ch);
+      const cn = norm(ch.name);
+      if (!cn) continue;
+      if (cn.includes(t) || t.includes(cn)) out.set(ch.id, ch);
     }
   }
   return Array.from(out.values());
@@ -783,11 +800,19 @@ function findAllAnyChannelsInText(guild, content) {
     const ch = guild.channels.cache.get(m[1]);
     if (ch) out.set(ch.id, ch);
   }
+  const ntext = norm(content);
+  for (const [, ch] of guild.channels.cache) {
+    const cn = norm(ch.name);
+    if (!cn || cn.length < 2) continue;
+    if (ntext.includes(cn)) out.set(ch.id, ch);
+  }
   for (const tok of splitByListDelims(content)) {
     const t = norm(tok);
     if (!t) continue;
     for (const [, ch] of guild.channels.cache) {
-      if (norm(ch.name).includes(t)) out.set(ch.id, ch);
+      const cn = norm(ch.name);
+      if (!cn) continue;
+      if (cn.includes(t) || t.includes(cn)) out.set(ch.id, ch);
     }
   }
   return Array.from(out.values());
@@ -1086,9 +1111,10 @@ async function handleExecInput(message) {
     let role = null;
     const m = txt.match(/<@&(\d+)>/);
     if (m) role = message.guild.roles.cache.get(m[1]);
-    if (!role) role = message.guild.roles.cache.find(r => r.name === txt) || null;
+    if (!role) role = message.guild.roles.cache.find(r => norm(r.name) === norm(txt)) || null;
+    if (!role) role = fuzzyFindRoleInText(message.guild, txt);
     if (!role) {
-      await message.reply("역할을 못 찾았어. 역할명만 적어줘.");
+      await message.reply("역할을 못 찾았어. 역할명만 적어도 돼.");
       return true;
     }
     s.data[awaiting.name] = { id: role.id, name: role.name };
@@ -1102,7 +1128,8 @@ async function handleExecInput(message) {
     let ch = null;
     const m = txt.match(/<#(\d+)>/);
     if (m) ch = message.guild.channels.cache.get(m[1]);
-    if (!ch) ch = message.guild.channels.cache.find(c => c.name === txt) || null;
+    if (!ch) ch = message.guild.channels.cache.find(c => norm(c.name) === norm(txt)) || null;
+    if (!ch) ch = fuzzyFindAnyChannelInText(message.guild, txt);
     if (!ch) {
       await message.reply("채널을 못 찾았어. 채널명만 적어줘.");
       return true;
@@ -1128,7 +1155,7 @@ async function handleExecInput(message) {
       }
     }
     if (!v) {
-      await message.reply("멘션 가능한 대상(유저/역할)을 멘션해줘.");
+      await message.reply("멘션 가능한 대상(유저/역할)을 멘션하거나 이름을 적어줘.");
       return true;
     }
     s.data[awaiting.name] = v;
