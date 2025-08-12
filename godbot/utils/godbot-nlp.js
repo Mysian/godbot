@@ -42,6 +42,17 @@ const DefaultOptionSynonyms = {
 
 const CANCEL_WORDS = ["취소", "취소해", "중단", "중단해"];
 
+const MOVE_VERBS = ["옮겨", "이동", "보내", "데려", "워프", "전송", "텔포", "텔레포트", "넣어", "이사"];
+const CHANGE_VERBS = ["바꿔", "변경", "수정", "교체", "rename", "이름바꿔", "이름변경"];
+const GIVE_ROLE_VERBS = ["지급", "넣어", "부여", "추가", "달아", "줘", "부착", "부여해줘", "넣어줘", "추가해"];
+const NICK_LABELS = ["닉네임", "별명", "이름", "네임"];
+const CHANNEL_LABELS = ["채널", "음성채널", "보이스채널", "보이스", "음성", "vc", "VC"];
+const ROLE_LABELS = ["역할", "롤", "role", "ROLE"];
+const MUTE_ON_TOKENS = ["마이크를 꺼", "마이크 꺼", "음소거", "뮤트", "입 막아", "입막아", "입을 막아"];
+const MUTE_OFF_TOKENS = ["마이크를 켜", "마이크 켜", "음소거 해제", "뮤트 해제", "입 풀어", "입을 풀어", "입막 해제"];
+const DEAF_ON_TOKENS = ["스피커를 꺼", "헤드셋을 닫아", "귀 막아", "청각 차단", "디프", "디afen", "디프너"];
+const DEAF_OFF_TOKENS = ["스피커를 켜", "헤드셋을 열어", "귀 열어", "청각 해제", "디프 해제", "디프너 해제"];
+
 function ensureStore() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(STORE_PATH)) fs.writeFileSync(STORE_PATH, JSON.stringify({ commands: {} }, null, 2));
@@ -555,7 +566,226 @@ function pickBestCommand(guild, body, entries, author) {
   return best;
 }
 
+function norm(s) {
+  return normalizeKey(s || "");
+}
+
+function textIncludesAny(text, arr) {
+  const n = norm(text);
+  return arr.some(t => n.includes(norm(t)));
+}
+
+function fuzzyFindMemberInText(guild, content, author) {
+  const m = content.match(/<@!?(\d+)>/);
+  if (m) {
+    const member = guild.members.cache.get(m[1]);
+    if (member) return member;
+  }
+  if (/(나|저|내|본인|자신)/.test(content) && author) {
+    const self = guild.members.cache.get(author.id);
+    if (self) return self;
+  }
+  let best = null;
+  const ntext = norm(content);
+  for (const [, member] of guild.members.cache) {
+    const dn = norm(member.displayName);
+    const un = norm(member.user.username);
+    const hit = dn && ntext.includes(dn) ? dn.length : un && ntext.includes(un) ? un.length : 0;
+    if (hit > 0 && (!best || hit > best.hit)) best = { member, hit };
+  }
+  return best ? best.member : null;
+}
+
+function fuzzyFindVoiceChannelInText(guild, content) {
+  const cm = content.match(/<#(\d+)>/);
+  if (cm) {
+    const ch = guild.channels.cache.get(cm[1]);
+    if (ch && ch.type === ChannelType.GuildVoice) return ch;
+  }
+  let best = null;
+  const ntext = norm(content);
+  for (const [, ch] of guild.channels.cache) {
+    if (ch.type !== ChannelType.GuildVoice) continue;
+    const cn = norm(ch.name);
+    if (!cn) continue;
+    const hit = ntext.includes(cn) ? cn.length : 0;
+    if (hit > 0 && (!best || hit > best.hit)) best = { ch, hit };
+  }
+  return best ? best.ch : null;
+}
+
+function fuzzyFindAnyChannelInText(guild, content) {
+  const cm = content.match(/<#(\d+)>/);
+  if (cm) {
+    const ch = guild.channels.cache.get(cm[1]);
+    if (ch) return ch;
+  }
+  let best = null;
+  const ntext = norm(content);
+  for (const [, ch] of guild.channels.cache) {
+    const cn = norm(ch.name);
+    if (!cn) continue;
+    const hit = ntext.includes(cn) ? cn.length : 0;
+    if (hit > 0 && (!best || hit > best.hit)) best = { ch, hit };
+  }
+  return best ? best.ch : null;
+}
+
+function fuzzyFindRoleInText(guild, content) {
+  const rm = content.match(/<@&(\d+)>/);
+  if (rm) {
+    const role = guild.roles.cache.get(rm[1]);
+    if (role) return role;
+  }
+  let best = null;
+  const ntext = norm(content);
+  for (const [, role] of guild.roles.cache) {
+    const rn = norm(role.name);
+    if (!rn) continue;
+    const hit = ntext.includes(rn) ? rn.length : 0;
+    if (hit > 0 && (!best || hit > best.hit)) best = { role, hit };
+  }
+  return best ? best.role : null;
+}
+
+function extractRenameTarget(content) {
+  const q = content.match(/["“]([^"”]+)["”]/);
+  if (q && q[1]) return q[1].trim();
+  const m1 = content.match(/이름(?:을|를)?\s+(.+?)\s*(?:으로|로)\s*(?:[^ ]+)?\s*(?:바꿔|변경|수정|교체|rename)/i);
+  if (m1 && m1[1]) return m1[1].trim();
+  const m2 = content.match(new RegExp(`(?:${NICK_LABELS.concat(["이름"]).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})(?:을|를)?\\s+(.+?)\\s*(?:으로|로)\\s*(?:${CHANGE_VERBS.map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")})`,"i"));
+  if (m2 && m2[1]) return m2[1].trim();
+  const m3 = content.match(/(?:을|를)\s+(.+?)\s*(?:으로|로)\s*(?:바꿔|변경|수정|교체|rename)/i);
+  if (m3 && m3[1]) return m3[1].trim();
+  return null;
+}
+
+async function handleBuiltinIntent(message, content) {
+  const guild = message.guild;
+  const author = message.author;
+  const body = normalizeKorean(stripTrigger(content));
+  const lc = body.toLowerCase();
+
+  if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각/.test(lc)) {
+    const targetMember = fuzzyFindMemberInText(guild, body, author);
+    if (!targetMember) {
+      await message.reply("대상 유저를 못 찾았어.");
+      return true;
+    }
+    const wantMuteOn = MUTE_ON_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && /꺼|off/.test(lc)) || /입\s*막/.test(lc);
+    const wantMuteOff = MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && (/켜|on|해제/.test(lc)));
+    const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc));
+    const wantDeafOff = DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && (/켜|열|풀|해제/.test(lc)));
+    try {
+      if (wantMuteOn || wantMuteOff) {
+        const v = targetMember.voice;
+        if (!v) throw new Error("VOICE_STATE_NONE");
+        await v.setMute(!!wantMuteOn, "갓봇 명령");
+        await message.reply(`${targetMember.displayName} 마이크 ${wantMuteOn ? "끄기" : "해제"} 완료`);
+        return true;
+      }
+      if (wantDeafOn || wantDeafOff) {
+        const v = targetMember.voice;
+        if (!v) throw new Error("VOICE_STATE_NONE");
+        await v.setDeaf(!!wantDeafOn, "갓봇 명령");
+        await message.reply(`${targetMember.displayName} 청각 ${wantDeafOn ? "차단" : "해제"} 완료`);
+        return true;
+      }
+      await message.reply("어떤 동작인지 더 정확히 말해줘.");
+    } catch (e) {
+      await message.reply("실패했어. 권한 또는 보이스 상태를 확인해줘.");
+    }
+    return true;
+  }
+
+  if (textIncludesAny(lc, MOVE_VERBS) && /(으로|로)/.test(lc)) {
+    const targetMember = fuzzyFindMemberInText(guild, body, author);
+    const targetCh = fuzzyFindVoiceChannelInText(guild, body);
+    if (!targetMember) {
+      await message.reply("이동할 유저를 못 찾았어.");
+      return true;
+    }
+    if (!targetCh || targetCh.type !== ChannelType.GuildVoice) {
+      await message.reply("이동할 음성채널을 못 찾았어.");
+      return true;
+    }
+    try {
+      await targetMember.voice.setChannel(targetCh.id, "갓봇 이동");
+      await message.reply(`${targetMember.displayName} → ${targetCh.name} 이동 완료`);
+    } catch (e) {
+      await message.reply("이동에 실패했어. 권한과 연결 상태를 확인해줘.");
+    }
+    return true;
+  }
+
+  if (textIncludesAny(lc, CHANGE_VERBS) && NICK_LABELS.some(k=>lc.includes(k)) ) {
+    const targetMember = fuzzyFindMemberInText(guild, body, author);
+    if (!targetMember) {
+      await message.reply("닉네임을 바꿀 유저를 못 찾았어.");
+      return true;
+    }
+    const newNick = extractRenameTarget(body);
+    if (!newNick) {
+      await message.reply("바꿀 닉네임을 알려줘.");
+      return true;
+    }
+    try {
+      await targetMember.setNickname(newNick.slice(0, 32), "갓봇 닉네임 변경");
+      await message.reply(`${targetMember.displayName} 닉네임을 '${newNick}'(으)로 변경했어`);
+    } catch (e) {
+      await message.reply("닉네임 변경에 실패했어. 권한을 확인해줘.");
+    }
+    return true;
+  }
+
+  if (textIncludesAny(lc, CHANGE_VERBS) && CHANNEL_LABELS.some(k=>lc.includes(k)) && lc.includes("이름")) {
+    let targetChannel = null;
+    if (/음성|보이스|voice|vc/i.test(body)) targetChannel = fuzzyFindVoiceChannelInText(guild, body);
+    if (!targetChannel) targetChannel = fuzzyFindAnyChannelInText(guild, body);
+    if (!targetChannel) {
+      await message.reply("이름을 바꿀 채널을 못 찾았어.");
+      return true;
+    }
+    const newName = extractRenameTarget(body);
+    if (!newName) {
+      await message.reply("바꿀 채널 이름을 알려줘.");
+      return true;
+    }
+    try {
+      await targetChannel.setName(newName.slice(0, 100), "갓봇 채널 이름 변경");
+      await message.reply(`#${targetChannel.name} 이름을 '${newName}'(으)로 변경했어`);
+    } catch (e) {
+      await message.reply("채널 이름 변경에 실패했어. 권한을 확인해줘.");
+    }
+    return true;
+  }
+
+  if (ROLE_LABELS.some(k=>lc.includes(k)) && GIVE_ROLE_VERBS.some(v=>lc.includes(v))) {
+    const targetMember = fuzzyFindMemberInText(guild, body, author);
+    const role = fuzzyFindRoleInText(guild, body);
+    if (!targetMember) {
+      await message.reply("역할을 줄 유저를 못 찾았어.");
+      return true;
+    }
+    if (!role) {
+      await message.reply("지급할 역할을 못 찾았어.");
+      return true;
+    }
+    try {
+      await targetMember.roles.add(role, "갓봇 역할 지급");
+      await message.reply(`${targetMember.displayName}에게 역할 '${role.name}' 지급 완료`);
+    } catch (e) {
+      await message.reply("역할 지급에 실패했어. 권한과 역할 위치를 확인해줘.");
+    }
+    return true;
+  }
+
+  return false;
+}
+
 async function startNlpFlow(client, message, content) {
+  const handled = await handleBuiltinIntent(message, content);
+  if (handled) return;
   const store = loadStore();
   const entries = Object.values(store.commands || {});
   if (!entries.length) {
