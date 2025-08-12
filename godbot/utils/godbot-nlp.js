@@ -625,7 +625,7 @@ async function askNextOption(message, session, learned) {
 
 function getTypeHintLine(opt) {
   const nm = opt.name;
-  const syn = (opt.synonyms || []).slice(0, 6).join("/");
+  const syn = (opt.synonyms || []).slice(0, 6).map(prettySyn).join("/");
   const req = opt.required ? "필수" : "선택";
   switch (opt.type) {
     case "STRING":
