@@ -98,6 +98,22 @@ setInterval(async () => {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
+  // 캐시 로딩
+  for (const g of client.guilds.cache.values()) {
+    try {
+      await g.members.fetch();
+      await g.roles.fetch();
+      await g.channels.fetch();
+    } catch (e) {
+      console.error("[warmup]", g.id, e);
+    }
+  }
+
+  // 갓봇 자연어 명령 처리 활성화
+  require('./utils/godbot-nlp').initGodbotNLP(client);
+  console.log("[OK] godbot-nlp ready");
+});
+
   const guild = client.guilds.cache.get(GUILD_ID);
 
   // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
