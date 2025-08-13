@@ -78,6 +78,9 @@ require('./utils/restricted-role-guard')(client);
 require('./utils/donor-role-expirer')(client);
 // 카테고리 채널 감시 + 현황 보고 + 30일 미사용시 비공개 처리
 require('./utils/category-channel-watcher').initChannelWatcher(client);
+// 갓봇 자연어 명령 처리 + ai
+require('./utils/godbot-nlp').initGodbotNLP(client);
+
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
@@ -96,39 +99,26 @@ setInterval(async () => {
 
 // ✅ 봇 준비 완료 시 로그 전송 + 활동 상태 번갈아 표시
 client.once(Events.ClientReady, async () => {
-  console.log(`✅ 로그인됨! ${client.user.tag}`);
+  console.log(✅ 로그인됨! ${client.user.tag});
 
-  // 캐시 로딩
-  for (const g of client.guilds.cache.values()) {
-    try {
-      await g.members.fetch();
-      await g.roles.fetch();
-      await g.channels.fetch();
-    } catch (e) {
-      console.error("[warmup]", g.id, e);
-    }
-  }
-
-  // 갓봇 자연어 명령 처리 활성화
-  require('./utils/godbot-nlp').initGodbotNLP(client);
-  console.log("[OK] godbot-nlp ready");
+  const guild = client.guilds.cache.get(GUILD_ID);
 
   // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
-  const guild = client.guilds.cache.get(GUILD_ID);
   if (guild) {
     await relationship.cleanupLeftMembers(guild);
     console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
+  }
 
-    // 🔥 재시작 시 서버 나간 유저의 BE 데이터 제거
-    try {
+  // 🔥 재시작 시 서버 나간 유저의 BE(파랑 정수) 데이터 전부 제거
+  try {
+    if (guild) {
       const { cleanupBELeftMembers } = require('./commands/be-util.js');
       const { removed } = await cleanupBELeftMembers(guild);
-      console.log(`[BE 정리] 서버 나간 유저 ${removed}명 데이터 제거 완료`);
-    } catch (e) {
-      console.error('[BE 정리 오류]', e);
+      console.log([BE 정리] 서버 나간 유저 ${removed}명 데이터 제거 완료);
     }
+  } catch (e) {
+    console.error('[BE 정리 오류]', e);
   }
-});
 
   const activityMessages = [
     "/갓비트 로 코인 투자를 진행해보세요.",
