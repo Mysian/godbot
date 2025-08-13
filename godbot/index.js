@@ -111,7 +111,7 @@ client.once(Events.ClientReady, async () => {
     if (guild) {
       const { cleanupBELeftMembers } = require('./commands/be-util.js');
       const { removed } = await cleanupBELeftMembers(guild);
-      console.log([BE 정리] 서버 나간 유저 ${removed}명 데이터 제거 완료);
+      console.log(`[BE 정리] 서버 나간 유저 ${removed}명 데이터 제거 완료`);
     }
   } catch (e) {
     console.error('[BE 정리 오류]', e);
