@@ -96,7 +96,7 @@ setInterval(async () => {
 
 // ✅ 봇 준비 완료 시 로그 전송 + 활동 상태 번갈아 표시
 client.once(Events.ClientReady, async () => {
-  console.log(✅ 로그인됨! ${client.user.tag});
+  console.log(`✅ 로그인됨! ${client.user.tag}`);
 
   const guild = client.guilds.cache.get(GUILD_ID);
 
