@@ -12,20 +12,23 @@ const {
 } = require("discord.js");
 
 const ADMIN_ROLE_ID = "1404486995564167218";
+const PENALTY_ROLE_ID = "1403748042666151936";
 const TRIGGER = "갓봇!";
 
-const MOVE_VERBS = ["옮겨","이동","보내","데려","워프","전송","텔포","텔레포트","넣어","이사"];
-const CHANGE_VERBS = ["바꿔","변경","수정","교체","rename","이름바꿔","이름변경","바꾸면"];
-const GIVE_ROLE_VERBS = ["지급","넣어","부여","추가","달아","줘","부착","부여해줘","넣어줘","추가해"];
-const REMOVE_ROLE_VERBS = ["빼","빼줘","제거","삭제","해제","회수","박탈","없애","떼","벗겨","빼앗아"];
+const MOVE_VERBS = ["옮겨","이동","보내","데려","워프","전송","텔포","텔레포트","넣어","이사","무브","이주시켜","이사시켜","옮겨줘","옮겨라","이동시켜","이동해","이동해줘","보내줘","보내라","전이"];
+const CHANGE_VERBS = ["바꿔","변경","수정","교체","rename","이름바꿔","이름변경","바꾸면","고쳐","개명","리네임"];
+const GIVE_ROLE_VERBS = ["지급","넣어","부여","추가","달아","줘","부착","부여해줘","넣어줘","추가해","박아","꼽아","셋업","세팅","부여해"];
+const REMOVE_ROLE_VERBS = ["빼","빼줘","제거","삭제","해제","회수","박탈","없애","떼","벗겨","빼앗아","해지","삭제해","삭제해줘"];
+const BLOCK_VERBS = ["차단","서버 차단","제한","서버 제한","이용 제한","금지","밴","ban","block","블락","블랙리스트","블랙"];
 const NICK_LABELS = ["닉네임","별명","이름","네임"];
 const CHANNEL_LABELS = ["채널","음성채널","보이스채널","보이스","음성","vc","VC"];
+const CATEGORY_LABELS = ["카테고리","분류","category","CATEGORY","폴더"];
 const ROLE_LABELS = ["역할","롤","role","ROLE"];
-const MUTE_ON_TOKENS = ["마이크를 꺼","마이크 꺼","음소거","뮤트","입 막아","입막아","입을 막아","입 닫아","입닫아","못말"];
-const MUTE_OFF_TOKENS = ["마이크를 켜","마이크 켜","음소거 해제","뮤트 해제","입 풀어","입을 풀어","입막 해제","입 열어","입열","말할","말하게"];
-const DEAF_ON_TOKENS = ["스피커를 꺼","헤드셋을 닫아","귀 막아","청각 차단","귀 닫아","귀닫","못듣"];
-const DEAF_OFF_TOKENS = ["스피커를 켜","헤드셋을 열어","귀 열어","청각 해제","귀 열어","귀열","들을","듣게"];
-const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그리","다"];
+const MUTE_ON_TOKENS = ["마이크를 꺼","마이크 꺼","음소거","뮤트","입 막아","입막아","입을 막아","입 닫아","입닫아","못말","말 못하게","입틀어막"];
+const MUTE_OFF_TOKENS = ["마이크를 켜","마이크 켜","음소거 해제","뮤트 해제","입 풀어","입을 풀어","입막 해제","입 열어","입열","말할","말하게","입트여"];
+const DEAF_ON_TOKENS = ["스피커를 꺼","헤드셋을 닫아","귀 막아","청각 차단","귀 닫아","귀닫","못듣","소리 못 듣게","청각차단","듣지 못하게"];
+const DEAF_OFF_TOKENS = ["스피커를 켜","헤드셋을 열어","귀 열어","청각 해제","귀 열어","귀열","들을","듣게","청각해제","소리 들리게"];
+const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그리","다","유저들","사람들","인원","인원들","인간들"];
 
 function isAdminAllowed(member) {
   if (!member) return false;
@@ -258,6 +261,64 @@ function findAllVoiceChannelsInText(guild, content) {
   return Array.from(out.values());
 }
 
+function fuzzyFindCategoryInText(guild, content) {
+  let best = null;
+  const texts = [String(content || "")].concat(splitByListDelims(content));
+  for (const [, ch] of guild.channels.cache) {
+    if (ch.type !== ChannelType.GuildCategory) continue;
+    const cn = norm(ch.name);
+    if (!cn || cn.length < 1) continue;
+    let score = 0;
+    for (const t of texts) {
+      const s = roleSimilarity(t, ch.name);
+      if (s > score) score = s;
+    }
+    if (!best || score > best.score || (score === best.score && cn.length < norm(best.ch.name).length)) {
+      best = { ch, score };
+    }
+  }
+  return (best && best.score >= 0.45) ? best.ch : null;
+}
+function findAllCategoriesInText(guild, content) {
+  const out = new Map();
+  const ntext = norm(content);
+  for (const [, ch] of guild.channels.cache) {
+    if (ch.type !== ChannelType.GuildCategory) continue;
+    const cn = norm(ch.name);
+    if (!cn) continue;
+    if (ntext.includes(cn)) out.set(ch.id, ch);
+  }
+  for (const tok of splitByListDelims(content)) {
+    const t = norm(tok);
+    if (!t) continue;
+    for (const [, ch] of guild.channels.cache) {
+      if (ch.type !== ChannelType.GuildCategory) continue;
+      const cn = norm(ch.name);
+      if (!cn) continue;
+      if (cn.includes(t) || t.includes(cn)) out.set(ch.id, ch);
+    }
+  }
+  if (!out.size) {
+    const one = fuzzyFindCategoryInText(guild, content);
+    if (one) out.set(one.id, one);
+  }
+  return Array.from(out.values());
+}
+function collectMembersFromVoiceChannels(chs) {
+  const map = new Map();
+  for (const ch of chs) for (const [, mem] of ch.members) map.set(mem.id, mem);
+  return Array.from(map.values());
+}
+function collectVoiceChannelsFromCategories(guild, cats) {
+  const out = [];
+  for (const cat of cats) {
+    for (const [, ch] of guild.channels.cache) {
+      if (ch.parentId === cat.id && ch.type === ChannelType.GuildVoice) out.push(ch);
+    }
+  }
+  return out;
+}
+
 function extractRenameTarget(content) {
   const q = content.match(/["“]([^"”]+)["”]/);
   if (q && q[1]) return q[1].trim();
@@ -317,20 +378,41 @@ async function handleBuiltin(message, content) {
     return true;
   }
 
-  if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각/.test(lc)) {
+  if (BLOCK_VERBS.some(v=>lc.includes(v))) {
+    if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
+      await message.reply("실패: 봇에 역할 관리 권한이 없어.");
+      return true;
+    }
+    const members = findAllMembersInText(guild, body, author);
+    if (!members.length) {
+      await message.reply("대상 유저를 못 찾았어.");
+      return true;
+    }
+    const role = guild.roles.cache.get(PENALTY_ROLE_ID);
+    if (!role) {
+      await message.reply("실패: 제재 역할을 찾지 못했어.");
+      return true;
+    }
+    let ok = 0;
+    for (const mem of members) {
+      try { await mem.roles.add(role, "갓봇 제재 역할 지급"); ok++; } catch {}
+    }
+    await message.reply(`${members.length}명 중 ${ok}명에게 제재 역할을 부여했어`);
+    return true;
+  }
+
+  if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각|입\s*(열|닫)|켜|꺼/.test(lc)) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.MuteMembers) && !hasBotPerm(guild, PermissionsBitField.Flags.DeafenMembers)) {
       await message.reply("실패: 봇에 음소거/청각 차단 권한이 없어.");
       return true;
     }
     let targets = findAllMembersInText(guild, body, author);
     const wantAll = ALL_TOKENS.some(t => lc.includes(t));
-    if (!targets.length && wantAll) {
-      const chs = findAllVoiceChannelsInText(guild, body);
-      if (chs.length) {
-        const map = new Map();
-        for (const ch of chs) for (const [, mem] of ch.members) map.set(mem.id, mem);
-        targets = Array.from(map.values());
-      }
+    const chsInText = findAllVoiceChannelsInText(guild, body);
+    const catsInText = findAllCategoriesInText(guild, body);
+    if (!targets.length && (chsInText.length || catsInText.length || wantAll)) {
+      const fromChannels = [...chsInText, ...collectVoiceChannelsFromCategories(guild, catsInText)];
+      if (fromChannels.length) targets = collectMembersFromVoiceChannels(fromChannels);
     }
     if (!targets.length && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
       const me = guild.members.cache.get(author.id);
@@ -341,10 +423,10 @@ async function handleBuiltin(message, content) {
       await message.reply("대상 유저를 못 찾았어.");
       return true;
     }
-    const wantMuteOn = MUTE_ON_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && /꺼|off/.test(lc)) || /입\s*막/.test(lc);
-    const wantMuteOff = MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && (/켜|on|해제/.test(lc)));
-    const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc));
-    const wantDeafOff = DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && (/켜|열|풀|해제/.test(lc)));
+    const wantMuteOn = MUTE_ON_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && /꺼|off/.test(lc)) || /입\s*닫|입\s*막/.test(lc) || /\b꺼/.test(lc);
+    const wantMuteOff = MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && (/켜|on|해제/.test(lc))) || /입\s*열/.test(lc) || /\b켜/.test(lc);
+    const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc)) || /\b꺼/.test(lc);
+    const wantDeafOff = DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && (/켜|열|풀|해제/.test(lc))) || /\b켜/.test(lc);
     try {
       let ok = 0;
       for (const mem of targets) {
@@ -366,34 +448,48 @@ async function handleBuiltin(message, content) {
       await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
       return true;
     }
-    const wantAll = ALL_TOKENS.some(t => lc.includes(t));
+    const wantAll = ALL_TOKENS.some(t => lc.includes(t)) || /(유저들|사람들|인원|인원들)/.test(lc);
     let members = findAllMembersInText(guild, body, author);
     const voiceChs = findAllVoiceChannelsInText(guild, body);
+    const catsInText = findAllCategoriesInText(guild, body);
     let targetCh = null;
-    if (wantAll && voiceChs.length >= 2) {
-      targetCh = voiceChs[voiceChs.length - 1];
-      const srcs = voiceChs.slice(0, -1);
-      const map = new Map();
-      for (const ch of srcs) for (const [, m] of ch.members) map.set(m.id, m);
-      members = Array.from(map.values());
+
+    if ((voiceChs.length + catsInText.length) >= 2) {
+      const resolved = [...voiceChs];
+      if (catsInText.length) {
+        const vcFromCats = collectVoiceChannelsFromCategories(guild, catsInText);
+        for (const c of vcFromCats) resolved.push(c);
+      }
+      targetCh = resolved[resolved.length - 1];
+      const srcs = resolved.slice(0, -1).filter(c => c && c.type === ChannelType.GuildVoice);
+      if (wantAll || !members.length) {
+        members = collectMembersFromVoiceChannels(srcs);
+      }
     }
-    if (wantAll && !members.length && voiceChs.length === 1 && /(여기|이 방|현재 방|이 채널|현재 채널)/.test(lc)) {
-      const me = guild.members.cache.get(author.id);
-      const here = me?.voice?.channel;
-      if (here) members = Array.from(here.members.values());
-      targetCh = voiceChs[0];
+
+    if (!targetCh) {
+      if (voiceChs.length >= 1) {
+        targetCh = voiceChs[voiceChs.length - 1];
+      } else if (catsInText.length >= 1) {
+        const vs = collectVoiceChannelsFromCategories(guild, [catsInText[catsInText.length - 1]]);
+        targetCh = vs[0] || null;
+      }
     }
-    if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다)/.test(lc)) {
+
+    if (!members.length && (voiceChs.length || catsInText.length)) {
+      const srcs = [...voiceChs, ...collectVoiceChannelsFromCategories(guild, catsInText)];
+      members = collectMembersFromVoiceChannels(srcs);
+    }
+
+    if (!members.length && /(여기|이 방|현재 방|이 채널|현재 채널|모두|다|전부)/.test(lc)) {
       const me = guild.members.cache.get(author.id);
       const ch = me?.voice?.channel;
       if (ch) members = Array.from(ch.members.values());
     }
+
     if (!targetCh) {
-      if (!voiceChs.length) {
-        await message.reply("이동할 음성채널을 못 찾았어.");
-        return true;
-      }
-      targetCh = voiceChs[voiceChs.length - 1] || voiceChs[0];
+      await message.reply("이동할 음성채널을 못 찾았어.");
+      return true;
     }
     if (!members.length) {
       await message.reply("이동할 유저를 못 찾았어.");
@@ -478,7 +574,7 @@ async function handleBuiltin(message, content) {
     return true;
   }
 
-  if (ROLE_LABELS.some(k=>lc.includes(k)) && GIVE_ROLE_VERBS.some(v=>lc.includes(v))) {
+  if ((ROLE_LABELS.some(k=>lc.includes(k)) || /역활/.test(lc)) && GIVE_ROLE_VERBS.some(v=>lc.includes(v))) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
       await message.reply("실패: 봇에 역할 관리 권한이 없어.");
       return true;
@@ -520,6 +616,12 @@ function findAllRolesInText(guild, content) {
   let mm;
   while ((mm = re.exec(raw))) {
     const t = mm[1].trim();
+    if (t) bracketTokens.push(t);
+  }
+  const quoteRe = /["“]([^"”]{1,64})["”]/g;
+  let mq;
+  while ((mq = quoteRe.exec(raw))) {
+    const t = mq[1].trim();
     if (t) bracketTokens.push(t);
   }
   const exactByBracket = [];
