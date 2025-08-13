@@ -141,7 +141,7 @@ client.once(Events.ClientReady, async () => {
 
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (logChannel && logChannel.isTextBased()) {
-    logChannel.send(`🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR")})`);
+    logChannel.send(`🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`);
   }
 });
 
