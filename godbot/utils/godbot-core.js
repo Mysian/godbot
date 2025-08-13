@@ -14,6 +14,7 @@ const {
 const ADMIN_ROLE_ID = "1404486995564167218";
 const PENALTY_ROLE_ID = "1403748042666151936";
 const TRIGGER = "갓봇!";
+const LOG_CHANNEL_ID = "1382168527015776287";
 
 const MOVE_VERBS = ["옮겨","이동","보내","데려","워프","전송","텔포","텔레포트","넣어","이사","무브","이주시켜","이사시켜","옮겨줘","옮겨라","이동시켜","이동해","이동해줘","보내줘","보내라","전이"];
 const CHANGE_VERBS = ["바꿔","변경","수정","교체","rename","이름바꿔","이름변경","바꾸면","고쳐","개명","리네임"];
@@ -262,7 +263,7 @@ function findAllVoiceChannelsInText(guild, content) {
   const cm = /<#(\d+)>/g;
   let m;
   while ((m = cm.exec(content))) {
-    const ch = guild.channels.cache.get(cm[1]);
+    const ch = guild.channels.cache.get(m[1]);
     if (ch && ch.type === ChannelType.GuildVoice) out.set(ch.id, ch);
   }
   const ntext = norm(content);
@@ -365,6 +366,50 @@ function stripTrigger(text) {
   return text.split(TRIGGER).join(" ").replace(/\s+/g, " ").trim();
 }
 
+function statusColor(s) {
+  if (s === "OK") return 0x2ecc71;
+  if (s === "FAIL") return 0xe74c3c;
+  return 0x3498db;
+}
+function cut(s, n) {
+  const t = String(s || "");
+  return t.length > n ? t.slice(0, n - 1) + "…" : t;
+}
+function listMembers(members) {
+  return cut((members || []).map(m => `${m.displayName}(${m.id})`).join(", "), 1024);
+}
+function listChannels(chs) {
+  return cut((chs || []).map(c => `#${c.name}(${c.id})`).join(", "), 1024);
+}
+function listRoles(roles) {
+  return cut((roles || []).map(r => `${r.name}(${r.id})`).join(", "), 1024);
+}
+async function sendLog(message, intent, status, data = {}) {
+  try {
+    const client = message.client;
+    let ch = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (!ch) ch = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    if (!ch || !ch.isTextBased?.()) return;
+    const embed = new EmbedBuilder()
+      .setTitle(`[${status}] ${intent}`)
+      .setColor(statusColor(status))
+      .setDescription(`서버: ${message.guild?.name || "-"} (${message.guild?.id || "-"})\n요청자: ${message.author?.tag || "-"} (${message.author?.id || "-"})\n입력 채널: #${message.channel?.name || "-"} (${message.channel?.id || "-"})`)
+      .setTimestamp(new Date());
+    const fields = [];
+    if (data.details) fields.push({ name: "세부", value: cut(data.details, 1024), inline: false });
+    if (data.members && data.members.length) fields.push({ name: `대상 유저 (${data.members.length})`, value: listMembers(data.members), inline: false });
+    if (data.channels && data.channels.length) fields.push({ name: `대상 채널 (${data.channels.length})`, value: listChannels(data.channels), inline: false });
+    if (data.targetChannel) fields.push({ name: "목표 채널", value: listChannels([data.targetChannel]), inline: false });
+    if (data.roles && data.roles.length) fields.push({ name: `대상 역할 (${data.roles.length})`, value: listRoles(data.roles), inline: false });
+    if (typeof data.count === "number") fields.push({ name: "처리 개수", value: String(data.count), inline: true });
+    if (data.newName) fields.push({ name: "변경 이름", value: cut(data.newName, 256), inline: true });
+    if (data.error) fields.push({ name: "오류", value: cut(String(data.error), 1024), inline: false });
+    fields.push({ name: "원문", value: cut(message.content || "", 1024), inline: false });
+    embed.addFields(fields);
+    await ch.send({ embeds: [embed] });
+  } catch {}
+}
+
 async function handleBuiltin(message, content) {
   const guild = message.guild;
   const author = message.author;
@@ -372,8 +417,7 @@ async function handleBuiltin(message, content) {
   const lc = body.toLowerCase();
 
   if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
-    const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-    await message.reply(msg);
+    await sendLog(message, "인사 감지", "OK", { details: "인사 감지됨. 응답은 로그에만 기록." });
     return true;
   }
 
@@ -387,11 +431,11 @@ async function handleBuiltin(message, content) {
     let targetCh = fuzzyFindAnyChannelInText(guild, body) || message.channel;
     const me = guild.members.me;
     if (!me || !targetCh.permissionsFor(me)?.has(PermissionsBitField.Flags.ManageMessages)) {
-      await message.reply("실패: 봇에 해당 채널의 메시지 관리 권한이 없어.");
+      await sendLog(message, "채팅 삭제", "FAIL", { details: "봇에 메시지 관리 권한 없음", targetChannel: targetCh, count: n });
       return true;
     }
     if (!targetCh.isTextBased?.() || typeof targetCh.bulkDelete !== "function") {
-      await message.reply("실패: 이 채널 유형은 일괄 삭제를 지원하지 않아.");
+      await sendLog(message, "채팅 삭제", "FAIL", { details: "채널 유형이 일괄 삭제 미지원", targetChannel: targetCh, count: n });
       return true;
     }
     try {
@@ -399,36 +443,40 @@ async function handleBuiltin(message, content) {
       const filtered = fetched.filter(m => m.id !== message.id);
       const toDelete = filtered.first(n);
       await targetCh.bulkDelete(new Collection(toDelete.map(m => [m.id, m])), true);
-    } catch {
-      try { await message.channel.send("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘."); } catch {}
+      await sendLog(message, "채팅 삭제", "OK", { targetChannel: targetCh, count: toDelete.length });
+    } catch (e) {
+      await sendLog(message, "채팅 삭제", "FAIL", { details: "14일 경과 메시지 또는 스레드/채널 상태 이슈", targetChannel: targetCh, count: n, error: e?.message || e });
     }
     return true;
   }
 
   if (BLOCK_VERBS.some(v=>lc.includes(v))) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
-      await message.reply("실패: 봇에 역할 관리 권한이 없어.");
+      await sendLog(message, "제재 역할 지급", "FAIL", { details: "봇에 역할 관리 권한 없음" });
       return true;
     }
     const members = findAllMembersInText(guild, body, author);
     if (!members.length) {
-      await message.reply("대상 유저를 못 찾았어.");
+      await sendLog(message, "제재 역할 지급", "FAIL", { details: "대상 유저를 찾지 못함" });
       return true;
     }
     const role = guild.roles.cache.get(PENALTY_ROLE_ID);
     if (!role) {
-      await message.reply("실패: 제재 역할을 찾지 못했어.");
+      await sendLog(message, "제재 역할 지급", "FAIL", { details: "제재 역할을 찾지 못함" });
       return true;
     }
+    let ok = 0;
     for (const mem of members) {
-      try { await mem.roles.add(role, "갓봇 제재 역할 지급"); } catch {}
+      try { await mem.roles.add(role, "갓봇 제재 역할 지급"); ok++; } catch {}
     }
+    const status = ok ? "OK" : "FAIL";
+    await sendLog(message, "제재 역할 지급", status, { members, roles: [role], count: ok, details: ok ? "일부 또는 전체 성공" : "모두 실패" });
     return true;
   }
 
   if (MUTE_ON_TOKENS.some(t=>lc.includes(t)) || MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || DEAF_ON_TOKENS.some(t=>lc.includes(t)) || DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || /마이크|스피커|헤드셋|귀|음소거|뮤트|청각|입\s*(열|닫)|켜|꺼/.test(lc)) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.MuteMembers) && !hasBotPerm(guild, PermissionsBitField.Flags.DeafenMembers)) {
-      await message.reply("실패: 봇에 음소거/청각 차단 권한이 없어.");
+      await sendLog(message, "음소거/청각 제어", "FAIL", { details: "봇에 음소거/청각 차단 권한 없음" });
       return true;
     }
     let targets = findAllMembersInText(guild, body, author);
@@ -445,29 +493,32 @@ async function handleBuiltin(message, content) {
       if (ch) targets = Array.from(ch.members.values());
     }
     if (!targets.length) {
-      await message.reply("대상 유저를 못 찾았어.");
+      await sendLog(message, "음소거/청각 제어", "FAIL", { details: "대상 유저를 찾지 못함" });
       return true;
     }
     const wantMuteOn = MUTE_ON_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && /꺼|off/.test(lc)) || /입\s*닫|입\s*막/.test(lc) || /\b꺼/.test(lc);
     const wantMuteOff = MUTE_OFF_TOKENS.some(t=>lc.includes(t)) || (/마이크/.test(lc) && (/켜|on|해제/.test(lc))) || /입\s*열/.test(lc) || /\b켜/.test(lc);
     const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc)) || /\b꺼/.test(lc);
     const wantDeafOff = DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && (/켜|열|풀|해제/.test(lc))) || /\b켜/.test(lc);
+    let ok = 0;
     try {
       for (const mem of targets) {
         const v = mem.voice;
         if (!v) continue;
         if (wantMuteOn || wantMuteOff) await v.setMute(!!wantMuteOn, "갓봇 명령");
         if (wantDeafOn || wantDeafOff) await v.setDeaf(!!wantDeafOn, "갓봇 명령");
+        ok++;
       }
-    } catch {
-      await message.reply("실패했어. 권한 또는 보이스 상태를 확인해줘.");
+      await sendLog(message, "음소거/청각 제어", ok ? "OK" : "FAIL", { members: targets, count: ok, details: `mute:${wantMuteOn ? "on" : (wantMuteOff ? "off" : "-")} deaf:${wantDeafOn ? "on" : (wantDeafOff ? "off" : "-")}` });
+    } catch (e) {
+      await sendLog(message, "음소거/청각 제어", "FAIL", { members: targets, error: e?.message || e });
     }
     return true;
   }
 
   if (textIncludesAny(lc, MOVE_VERBS) && /(으로|로)/.test(lc)) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
-      await message.reply("실패: 봇에 멤버 이동 권한이 없어.");
+      await sendLog(message, "보이스 이동", "FAIL", { details: "봇에 멤버 이동 권한 없음" });
       return true;
     }
     const wantAll = ALL_TOKENS.some(t => lc.includes(t)) || /(유저들|사람들|인원|인원들)/.test(lc);
@@ -510,37 +561,42 @@ async function handleBuiltin(message, content) {
     }
 
     if (!targetCh) {
-      await message.reply("이동할 음성채널을 못 찾았어.");
+      await sendLog(message, "보이스 이동", "FAIL", { details: "이동할 음성채널을 찾지 못함", members });
       return true;
     }
     if (!members.length) {
-      await message.reply("이동할 유저를 못 찾았어.");
+      await sendLog(message, "보이스 이동", "FAIL", { details: "이동할 유저를 찾지 못함", targetChannel: targetCh });
       return true;
     }
+    let ok = 0;
     for (const m of members) {
-      try { await m.voice.setChannel(targetCh.id, "갓봇 이동"); } catch {}
+      try { await m.voice.setChannel(targetCh.id, "갓봇 이동"); ok++; } catch {}
     }
+    const status = ok ? "OK" : "FAIL";
+    await sendLog(message, "보이스 이동", status, { members, targetChannel: targetCh, count: ok, details: ok ? "일부 또는 전체 성공" : "모두 실패" });
     return true;
   }
 
   if (textIncludesAny(lc, CHANGE_VERBS) && NICK_LABELS.some(k=>lc.includes(k))) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageNicknames)) {
-      await message.reply("실패: 봇에 닉네임 변경 권한이 없어.");
+      await sendLog(message, "닉네임 변경", "FAIL", { details: "봇에 닉네임 변경 권한 없음" });
       return true;
     }
     const targets = findAllMembersInText(guild, body, author);
     if (!targets.length) {
-      await message.reply("닉네임을 바꿀 유저를 못 찾았어.");
+      await sendLog(message, "닉네임 변경", "FAIL", { details: "대상 유저를 찾지 못함" });
       return true;
     }
     const newNick = extractRenameTarget(body);
     if (!newNick) {
-      await message.reply("바꿀 닉네임을 알려줘.");
+      await sendLog(message, "닉네임 변경", "FAIL", { details: "변경할 닉네임 미지정", members: targets });
       return true;
     }
+    let ok = 0;
     for (const mem of targets) {
-      try { await mem.setNickname(newNick.slice(0, 32), "갓봇 닉네임 변경"); } catch {}
+      try { await mem.setNickname(newNick.slice(0, 32), "갓봇 닉네임 변경"); ok++; } catch {}
     }
+    await sendLog(message, "닉네임 변경", ok ? "OK" : "FAIL", { members: targets, newName: newNick, count: ok });
     return true;
   }
 
@@ -551,63 +607,69 @@ async function handleBuiltin(message, content) {
       if (single) targets = [single];
     }
     if (!targets.length) {
-      await message.reply("이름을 바꿀 채널을 못 찾았어.");
+      await sendLog(message, "채널 이름 변경", "FAIL", { details: "대상 채널을 찾지 못함" });
       return true;
     }
     const newName = extractRenameTarget(body);
     if (!newName) {
-      await message.reply("바꿀 채널 이름을 알려줘.");
+      await sendLog(message, "채널 이름 변경", "FAIL", { details: "변경할 채널 이름 미지정", channels: targets });
       return true;
     }
+    let ok = 0;
     for (const ch of targets) {
-      try { await ch.setName(newName.slice(0, 100), "갓봇 채널 이름 변경"); } catch {}
+      try { await ch.setName(newName.slice(0, 100), "갓봇 채널 이름 변경"); ok++; } catch {}
     }
+    await sendLog(message, "채널 이름 변경", ok ? "OK" : "FAIL", { channels: targets, newName, count: ok });
     return true;
   }
 
   if (ROLE_LABELS.some(k=>lc.includes(k)) && REMOVE_ROLE_VERBS.some(v=>lc.includes(v))) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
-      await message.reply("실패: 봇에 역할 관리 권한이 없어.");
+      await sendLog(message, "역할 제거", "FAIL", { details: "봇에 역할 관리 권한 없음" });
       return true;
     }
     const members = findAllMembersInText(guild, body, author);
     const roles = findAllRolesInText(guild, body);
     if (!members.length) {
-      await message.reply("역할을 뺄 유저를 못 찾았어.");
+      await sendLog(message, "역할 제거", "FAIL", { details: "대상 유저를 찾지 못함" });
       return true;
     }
     if (!roles.length) {
-      await message.reply("제거할 역할을 못 찾았어.");
+      await sendLog(message, "역할 제거", "FAIL", { details: "제거할 역할을 찾지 못함", members });
       return true;
     }
+    let ok = 0;
     for (const mem of members) {
       for (const role of roles) {
-        try { await mem.roles.remove(role, "갓봇 역할 제거"); } catch {}
+        try { await mem.roles.remove(role, "갓봇 역할 제거"); ok++; } catch {}
       }
     }
+    await sendLog(message, "역할 제거", ok ? "OK" : "FAIL", { members, roles, count: ok });
     return true;
   }
 
   if ((ROLE_LABELS.some(k=>lc.includes(k)) || /역활/.test(lc)) && GIVE_ROLE_VERBS.some(v=>lc.includes(v))) {
     if (!hasBotPerm(guild, PermissionsBitField.Flags.ManageRoles)) {
-      await message.reply("실패: 봇에 역할 관리 권한이 없어.");
+      await sendLog(message, "역할 지급", "FAIL", { details: "봇에 역할 관리 권한 없음" });
       return true;
     }
     const members = findAllMembersInText(guild, body, author);
     const roles = findAllRolesInText(guild, body);
     if (!members.length) {
-      await message.reply("역할을 줄 유저를 못 찾았어.");
+      await sendLog(message, "역할 지급", "FAIL", { details: "대상 유저를 찾지 못함" });
       return true;
     }
     if (!roles.length) {
-      await message.reply("지급할 역할을 못 찾았어.");
+      await sendLog(message, "역할 지급", "FAIL", { details: "지급할 역할을 찾지 못함", members });
       return true;
     }
+    let ok = 0;
     for (const mem of members) {
       for (const role of roles) {
-        try { await mem.roles.add(role, "갓봇 역할 지급"); } catch {}
+        try { await mem.roles.add(role, "갓봇 역할 지급"); ok++; } catch {}
       }
     }
+    await sendLog(message, "역할 지급", ok ? "OK" : "FAIL", { members, roles, count: ok });
     return true;
   }
 
@@ -682,8 +744,14 @@ async function onMessage(client, message) {
   const content = message.content || "";
   if (!stripTriggerGuard(content)) return;
   const member = message.member;
-  if (!isAdminAllowed(member)) return;
-  await handleBuiltin(message, content);
+  if (!isAdminAllowed(member)) {
+    await sendLog(message, "인가 실패", "FAIL", { details: "요청자가 권한 없음" });
+    return;
+  }
+  const handled = await handleBuiltin(message, content);
+  if (!handled) {
+    await sendLog(message, "미해석", "FAIL", { details: "패턴 불일치로 처리하지 않음" });
+  }
 }
 
 function initGodbotCore(client) {
