@@ -30,6 +30,30 @@ const DEAF_ON_TOKENS = ["스피커를 꺼","헤드셋을 닫아","귀 막아","�
 const DEAF_OFF_TOKENS = ["스피커를 켜","헤드셋을 열어","귀 열어","청각 해제","귀 열어","귀열","들을","듣게","청각해제","소리 들리게"];
 const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그리","다","유저들","사람들","인원","인원들","인간들"];
 
+const GREET_TOKENS = ["안녕","안뇽","안녕하세요","하이","hi","hello","헬로","ㅎㅇ","반가워"];
+const GREETINGS = [
+  "안녕! 뭐 도와줄까?",
+  "왔네! 오늘 뭐 할까?",
+  "하이! 준비됐어.",
+  "ㅎㅇ 고마워 불러줘서.",
+  "반가워! 명령 내려줘."
+];
+const ACTION_HINTS = [].concat(
+  MOVE_VERBS,
+  CHANGE_VERBS,
+  GIVE_ROLE_VERBS,
+  REMOVE_ROLE_VERBS,
+  BLOCK_VERBS,
+  NICK_LABELS,
+  CHANNEL_LABELS,
+  CATEGORY_LABELS,
+  ROLE_LABELS,
+  MUTE_ON_TOKENS,
+  MUTE_OFF_TOKENS,
+  DEAF_ON_TOKENS,
+  DEAF_OFF_TOKENS
+);
+
 function isAdminAllowed(member) {
   if (!member) return false;
   if (member.roles?.cache?.has(ADMIN_ROLE_ID)) return true;
@@ -238,7 +262,7 @@ function findAllVoiceChannelsInText(guild, content) {
   const cm = /<#(\d+)>/g;
   let m;
   while ((m = cm.exec(content))) {
-    const ch = guild.channels.cache.get(m[1]);
+    const ch = guild.channels.cache.get(cm[1]);
     if (ch && ch.type === ChannelType.GuildVoice) out.set(ch.id, ch);
   }
   const ntext = norm(content);
@@ -347,6 +371,12 @@ async function handleBuiltin(message, content) {
   const body = normalizeKorean(stripTrigger(content));
   const lc = body.toLowerCase();
 
+  if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
+    const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+    await message.reply(msg);
+    return true;
+  }
+
   if (
     (/\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)) ||
     (lc.includes("채팅") && /(지워|삭제|제거|없애|청소|클리어|clear|purge)/.test(lc))
@@ -368,10 +398,7 @@ async function handleBuiltin(message, content) {
       const fetched = await targetCh.messages.fetch({ limit: Math.min(100, n + 1) });
       const filtered = fetched.filter(m => m.id !== message.id);
       const toDelete = filtered.first(n);
-      const col = await targetCh.bulkDelete(new Collection(toDelete.map(m => [m.id, m])), true);
-      const ok = col?.size || 0;
-      const where = (targetCh.id === message.channel.id) ? "" : `#${targetCh.name}에서 `;
-      await message.reply(`${where}${ok}개 삭제 완료 (요청: ${n}개)`);
+      await targetCh.bulkDelete(new Collection(toDelete.map(m => [m.id, m])), true);
     } catch {
       try { await message.channel.send("삭제 실패: 14일 지난 메시지는 삭제할 수 없거나, 스레드/채널 상태를 확인해줘."); } catch {}
     }
@@ -393,11 +420,9 @@ async function handleBuiltin(message, content) {
       await message.reply("실패: 제재 역할을 찾지 못했어.");
       return true;
     }
-    let ok = 0;
     for (const mem of members) {
-      try { await mem.roles.add(role, "갓봇 제재 역할 지급"); ok++; } catch {}
+      try { await mem.roles.add(role, "갓봇 제재 역할 지급"); } catch {}
     }
-    await message.reply(`${members.length}명 중 ${ok}명에게 제재 역할을 부여했어`);
     return true;
   }
 
@@ -428,15 +453,12 @@ async function handleBuiltin(message, content) {
     const wantDeafOn = DEAF_ON_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && /꺼|닫|막|차단/.test(lc)) || /\b꺼/.test(lc);
     const wantDeafOff = DEAF_OFF_TOKENS.some(t=>lc.includes(t)) || ((/스피커|헤드셋|귀|청각/.test(lc)) && (/켜|열|풀|해제/.test(lc))) || /\b켜/.test(lc);
     try {
-      let ok = 0;
       for (const mem of targets) {
         const v = mem.voice;
         if (!v) continue;
         if (wantMuteOn || wantMuteOff) await v.setMute(!!wantMuteOn, "갓봇 명령");
         if (wantDeafOn || wantDeafOff) await v.setDeaf(!!wantDeafOn, "갓봇 명령");
-        ok++;
       }
-      await message.reply(`${ok}명 처리 완료`);
     } catch {
       await message.reply("실패했어. 권한 또는 보이스 상태를 확인해줘.");
     }
@@ -495,11 +517,9 @@ async function handleBuiltin(message, content) {
       await message.reply("이동할 유저를 못 찾았어.");
       return true;
     }
-    let moved = 0;
     for (const m of members) {
-      try { await m.voice.setChannel(targetCh.id, "갓봇 이동"); moved++; } catch {}
+      try { await m.voice.setChannel(targetCh.id, "갓봇 이동"); } catch {}
     }
-    await message.reply(`${moved}명 → ${targetCh.name} 이동 완료`);
     return true;
   }
 
@@ -518,11 +538,9 @@ async function handleBuiltin(message, content) {
       await message.reply("바꿀 닉네임을 알려줘.");
       return true;
     }
-    let ok = 0;
     for (const mem of targets) {
-      try { await mem.setNickname(newNick.slice(0, 32), "갓봇 닉네임 변경"); ok++; } catch {}
+      try { await mem.setNickname(newNick.slice(0, 32), "갓봇 닉네임 변경"); } catch {}
     }
-    await message.reply(`${ok}명 닉네임을 '${newNick}'(으)로 변경했어`);
     return true;
   }
 
@@ -541,11 +559,9 @@ async function handleBuiltin(message, content) {
       await message.reply("바꿀 채널 이름을 알려줘.");
       return true;
     }
-    let ok = 0;
     for (const ch of targets) {
-      try { await ch.setName(newName.slice(0, 100), "갓봇 채널 이름 변경"); ok++; } catch {}
+      try { await ch.setName(newName.slice(0, 100), "갓봇 채널 이름 변경"); } catch {}
     }
-    await message.reply(`${ok}개 채널 이름을 '${newName}'(으)로 변경했어`);
     return true;
   }
 
@@ -564,13 +580,11 @@ async function handleBuiltin(message, content) {
       await message.reply("제거할 역할을 못 찾았어.");
       return true;
     }
-    let ok = 0;
     for (const mem of members) {
       for (const role of roles) {
-        try { await mem.roles.remove(role, "갓봇 역할 제거"); ok++; } catch {}
+        try { await mem.roles.remove(role, "갓봇 역할 제거"); } catch {}
       }
     }
-    await message.reply(`${members.length}명에게 ${roles.length}개 역할 제거 완료 (${ok}회 적용)`);
     return true;
   }
 
@@ -589,13 +603,11 @@ async function handleBuiltin(message, content) {
       await message.reply("지급할 역할을 못 찾았어.");
       return true;
     }
-    let ok = 0;
     for (const mem of members) {
       for (const role of roles) {
-        try { await mem.roles.add(role, "갓봇 역할 지급"); ok++; } catch {}
+        try { await mem.roles.add(role, "갓봇 역할 지급"); } catch {}
       }
     }
-    await message.reply(`${members.length}명에게 ${roles.length}개 역할 지급 완료 (${ok}회 적용)`);
     return true;
   }
 
