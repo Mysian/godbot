@@ -35,9 +35,10 @@ const GREET_TOKENS = ["안녕","안뇽","안녕하세요","하이","hi","hello",
 const GREETINGS = [
   "안녕! 뭐 도와줄까?",
   "왔네! 오늘 뭐 할까?",
-  "하이! 준비됐어.",
+  "어 왔어? 난 준비됐어!",
   "ㅎㅇ 고마워 불러줘서.",
-  "반가워! 명령 내려줘."
+  "반가워! 명령 내려줘.",
+  "어 그래 어서오고~"
 ];
 const ACTION_HINTS = [].concat(
   MOVE_VERBS,
@@ -417,9 +418,12 @@ async function handleBuiltin(message, content) {
   const lc = body.toLowerCase();
 
   if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
-    await sendLog(message, "인사 감지", "OK", { details: "인사 감지됨. 응답은 로그에만 기록." });
-    return true;
-  }
+  const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+  await message.reply(msg); 
+  await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
+  return true;
+}
+
 
   if (
     (/\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)) ||
