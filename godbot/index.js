@@ -112,26 +112,23 @@ client.once(Events.ClientReady, async () => {
   // 갓봇 자연어 명령 처리 활성화
   require('./utils/godbot-nlp').initGodbotNLP(client);
   console.log("[OK] godbot-nlp ready");
-});
-
-  const guild = client.guilds.cache.get(GUILD_ID);
 
   // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
+  const guild = client.guilds.cache.get(GUILD_ID);
   if (guild) {
     await relationship.cleanupLeftMembers(guild);
     console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
-  }
 
-  // 🔥 재시작 시 서버 나간 유저의 BE(파랑 정수) 데이터 전부 제거
-  try {
-    if (guild) {
+    // 🔥 재시작 시 서버 나간 유저의 BE 데이터 제거
+    try {
       const { cleanupBELeftMembers } = require('./commands/be-util.js');
       const { removed } = await cleanupBELeftMembers(guild);
       console.log(`[BE 정리] 서버 나간 유저 ${removed}명 데이터 제거 완료`);
+    } catch (e) {
+      console.error('[BE 정리 오류]', e);
     }
-  } catch (e) {
-    console.error('[BE 정리 오류]', e);
   }
+});
 
   const activityMessages = [
     "/갓비트 로 코인 투자를 진행해보세요.",
