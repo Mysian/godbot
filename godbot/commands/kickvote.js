@@ -89,14 +89,17 @@ module.exports = {
       return submitted.reply({ content: "❌ 유효한 음성 채널이 아닙니다.", ephemeral: true });
     }
 
-    let usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
-    let totalUsers = usersInChannel.size;
-    let requiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
+    let voters = voiceChannel.members.filter((m) => !m.user.bot && m.id !== targetUser.id);
+    let totalVoters = voters.size;
+    let requiredVotes = totalVoters === 1 ? 1 : Math.floor(totalVoters / 2) + 1;
 
     const voterChoices = {};
-    voterChoices[interaction.user.id] = "yes";
-    let yesCount = 1;
+    let yesCount = 0;
     let noCount = 0;
+    if (voters.has(interaction.user.id)) {
+      voterChoices[interaction.user.id] = "yes";
+      yesCount = 1;
+    }
 
     let votingFinished = false;
     let leftSeconds = 30;
@@ -104,7 +107,7 @@ module.exports = {
     const makeDescription = () =>
       `**<@${targetUser.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
       `🗳️ **과반수 ${requiredVotes}명** 찬성 시 이동됩니다.\n\n사유: **${reason}**\n\n` +
-      `총 투표 인원: ${totalUsers}명\n` +
+      `총 투표 인원: ${totalVoters}명\n` +
       `👍 찬성: ${yesCount} / 👎 반대: ${noCount}\n\n버튼을 눌러 투표(변경)하세요. (최대 30초)`;
 
     const embed = new EmbedBuilder()
@@ -151,12 +154,16 @@ module.exports = {
         .catch(() => {});
     }
 
+    if (yesCount >= requiredVotes) {
+      collector.stop("success");
+    }
+
     const interval = setInterval(async () => {
       if (votingFinished) return;
       leftSeconds -= 1;
-      usersInChannel = voiceChannel.members.filter((m) => !m.user.bot);
-      totalUsers = usersInChannel.size;
-      const newRequiredVotes = totalUsers === 2 ? 1 : Math.floor(totalUsers / 2) + 1;
+      voters = voiceChannel.members.filter((m) => !m.user.bot && m.id !== targetUser.id);
+      totalVoters = voters.size;
+      const newRequiredVotes = totalVoters === 1 ? 1 : Math.floor(totalVoters / 2) + 1;
       if (newRequiredVotes !== requiredVotes) {
         requiredVotes = newRequiredVotes;
         await updateEmbed();
@@ -170,39 +177,49 @@ module.exports = {
           })
           .catch(() => {});
       }
-      if (totalUsers < 2) collector.stop("not_enough_members");
+      if (totalVoters < 1) collector.stop("not_enough_members");
       if (leftSeconds <= 0) {
-        if (yesCount > noCount && yesCount >= requiredVotes) collector.stop("success");
+        if (yesCount >= requiredVotes) collector.stop("success");
         else collector.stop("fail");
       }
     }, 1000);
 
     collector.on("collect", async (i) => {
       if (i.user.bot) return;
+
       const vMem =
         interaction.guild.members.resolve(i.user.id) ||
         (await interaction.guild.members.fetch({ user: i.user.id, force: true }).catch(() => null));
       if (!vMem || !vMem.voice?.channel || vMem.voice.channel.id !== voiceChannel.id) {
         return i.reply({ content: "❌ 이 투표는 현재 음성채널에 있는 사람만 참여할 수 있어요.", ephemeral: true });
       }
+      if (i.user.id === targetUser.id) {
+        return i.reply({ content: "❌ 대상은 투표에 참여할 수 없습니다.", ephemeral: true });
+      }
 
       const prev = voterChoices[i.user.id] || null;
       if (i.customId === "vote_yes") {
-        if (prev === "yes") return i.reply({ content: "이미 찬성으로 투표하셨습니다.", ephemeral: true });
-        if (prev === "no") noCount--;
-        voterChoices[i.user.id] = "yes";
-        yesCount++;
-        await i.reply({ content: "찬성(👍)으로 투표가 반영되었습니다.", ephemeral: true });
+        if (prev !== "yes") {
+          if (prev === "no") noCount--;
+          voterChoices[i.user.id] = "yes";
+          yesCount++;
+          await i.reply({ content: "찬성(👍)으로 투표가 반영되었습니다.", ephemeral: true });
+        } else {
+          await i.reply({ content: "이미 찬성으로 투표하셨습니다.", ephemeral: true });
+        }
       } else if (i.customId === "vote_no") {
-        if (prev === "no") return i.reply({ content: "이미 반대로 투표하셨습니다.", ephemeral: true });
-        if (prev === "yes") yesCount--;
-        voterChoices[i.user.id] = "no";
-        noCount++;
-        await i.reply({ content: "반대(👎)로 투표가 반영되었습니다.", ephemeral: true });
+        if (prev !== "no") {
+          if (prev === "yes") yesCount--;
+          voterChoices[i.user.id] = "no";
+          noCount++;
+          await i.reply({ content: "반대(👎)로 투표가 반영되었습니다.", ephemeral: true });
+        } else {
+          await i.reply({ content: "이미 반대로 투표하셨습니다.", ephemeral: true });
+        }
       }
       await updateEmbed();
       if (yesCount >= requiredVotes && !votingFinished) collector.stop("success");
-      if (noCount > yesCount && noCount >= requiredVotes && !votingFinished) collector.stop("fail");
+      if (noCount >= requiredVotes && !votingFinished) collector.stop("fail");
     });
 
     collector.on("end", async (_, endReasonRaw) => {
@@ -222,17 +239,17 @@ module.exports = {
       if (endReason === "fail") {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
-          .setDescription(`동점 또는 반대표가 더 많아 이동되지 않았습니다.`)
-          .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+          .setDescription(`과반수 미달 또는 반대표 과반으로 이동되지 않았습니다.`)
+          .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalVoters}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
           .setColor(0xff0000);
         return interaction.followUp({ embeds: [failEmbed] });
       }
       if (endReason === "timeout") {
-        if (yesCount > noCount && yesCount >= requiredVotes) endReason = "success";
+        if (yesCount >= requiredVotes) endReason = "success";
         else endReason = "fail";
       }
 
-      if (endReason === "success" && yesCount > noCount) {
+      if (endReason === "success") {
         const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
         const afkChannel = await interaction.guild.channels.fetch(AFK_CHANNEL_ID).catch(() => null);
         if (!afkChannel || !afkChannel.isVoiceBased()) {
@@ -251,7 +268,7 @@ module.exports = {
             .setDescription(
               `<#${voiceChannel.id}> 에서 (사유: ${reason})로 인해 <@${targetUser.id}> 님을 잠수 채널로 이동시켰습니다.`
             )
-            .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+            .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalVoters}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
             .setColor(0x00cc66);
           await interaction.followUp({ embeds: [resultEmbed] });
           if (resultLogChannel?.isTextBased()) await resultLogChannel.send({ embeds: [resultEmbed] });
@@ -273,7 +290,7 @@ module.exports = {
         const failEmbed = new EmbedBuilder()
           .setTitle("🛑 강퇴 투표 종료")
           .setDescription(`과반수 미달로 이동되지 않았습니다.`)
-          .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalUsers}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
+          .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalVoters}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
           .setColor(0xffaa00);
         await interaction.followUp({ embeds: [failEmbed] });
       }
