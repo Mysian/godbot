@@ -89,6 +89,8 @@ module.exports = {
       return submitted.reply({ content: "❌ 유효한 음성 채널이 아닙니다.", ephemeral: true });
     }
 
+    await submitted.deferReply({ ephemeral: true });
+
     let voters = voiceChannel.members.filter((m) => !m.user.bot && m.id !== targetUser.id);
     let totalVoters = voters.size;
     let requiredVotes = totalVoters === 1 ? 1 : Math.floor(totalVoters / 2) + 1;
@@ -100,9 +102,6 @@ module.exports = {
       voterChoices[interaction.user.id] = "yes";
       yesCount = 1;
     }
-
-    let votingFinished = false;
-    let leftSeconds = 30;
 
     const makeDescription = () =>
       `**<@${targetUser.id}>** 님을 **<#${AFK_CHANNEL_ID}>** 채널로 이동할까요?\n` +
@@ -121,15 +120,13 @@ module.exports = {
       new ButtonBuilder().setCustomId("vote_no").setLabel("반대 👎").setStyle(ButtonStyle.Danger)
     );
 
-    await submitted.reply({
-      content: `⏰ 남은 시간: **${leftSeconds}초**`,
+    const voteMsg = await interaction.channel.send({
+      content: `⏰ 남은 시간: **30초**`,
       embeds: [embed],
       components: [row],
-      fetchReply: true,
     });
-    const message = await submitted.fetchReply();
 
-    const collector = message.createMessageComponentCollector({ time: 30000 });
+    const collector = voteMsg.createMessageComponentCollector({ time: 30000 });
 
     const voiceStateListener = (oldState, newState) => {
       if (targetMember.id !== oldState.id) return;
@@ -142,10 +139,9 @@ module.exports = {
     };
     interaction.client.on("voiceStateUpdate", voiceStateListener);
 
-    async function updateEmbed(extraMsg) {
+    async function updateCard(leftSeconds) {
       embed.setDescription(makeDescription());
-      if (extraMsg) embed.setFooter({ text: extraMsg });
-      await message
+      await voteMsg
         .edit({
           content: `⏰ 남은 시간: **${leftSeconds}초**`,
           embeds: [embed],
@@ -158,24 +154,17 @@ module.exports = {
       collector.stop("success");
     }
 
+    let leftSeconds = 30;
     const interval = setInterval(async () => {
-      if (votingFinished) return;
       leftSeconds -= 1;
       voters = voiceChannel.members.filter((m) => !m.user.bot && m.id !== targetUser.id);
       totalVoters = voters.size;
       const newRequiredVotes = totalVoters === 1 ? 1 : Math.floor(totalVoters / 2) + 1;
       if (newRequiredVotes !== requiredVotes) {
         requiredVotes = newRequiredVotes;
-        await updateEmbed();
       }
       if (leftSeconds >= 0) {
-        await message
-          .edit({
-            content: `⏰ 남은 시간: **${leftSeconds}초**`,
-            embeds: [embed],
-            components: [row],
-          })
-          .catch(() => {});
+        await updateCard(leftSeconds);
       }
       if (totalVoters < 1) collector.stop("not_enough_members");
       if (leftSeconds <= 0) {
@@ -185,23 +174,23 @@ module.exports = {
     }, 1000);
 
     collector.on("collect", async (i) => {
-      if (i.user.bot) return;
-
+      const userId = i.user.id;
+      if (i.user.bot) return i.deferUpdate().catch(() => {});
       const vMem =
-        interaction.guild.members.resolve(i.user.id) ||
-        (await interaction.guild.members.fetch({ user: i.user.id, force: true }).catch(() => null));
+        interaction.guild.members.resolve(userId) ||
+        (await interaction.guild.members.fetch({ user: userId, force: true }).catch(() => null));
       if (!vMem || !vMem.voice?.channel || vMem.voice.channel.id !== voiceChannel.id) {
         return i.reply({ content: "❌ 이 투표는 현재 음성채널에 있는 사람만 참여할 수 있어요.", ephemeral: true });
       }
-      if (i.user.id === targetUser.id) {
+      if (userId === targetUser.id) {
         return i.reply({ content: "❌ 대상은 투표에 참여할 수 없습니다.", ephemeral: true });
       }
 
-      const prev = voterChoices[i.user.id] || null;
+      const prev = voterChoices[userId] || null;
       if (i.customId === "vote_yes") {
         if (prev !== "yes") {
           if (prev === "no") noCount--;
-          voterChoices[i.user.id] = "yes";
+          voterChoices[userId] = "yes";
           yesCount++;
           await i.reply({ content: "찬성(👍)으로 투표가 반영되었습니다.", ephemeral: true });
         } else {
@@ -210,31 +199,34 @@ module.exports = {
       } else if (i.customId === "vote_no") {
         if (prev !== "no") {
           if (prev === "yes") yesCount--;
-          voterChoices[i.user.id] = "no";
+          voterChoices[userId] = "no";
           noCount++;
           await i.reply({ content: "반대(👎)로 투표가 반영되었습니다.", ephemeral: true });
         } else {
           await i.reply({ content: "이미 반대로 투표하셨습니다.", ephemeral: true });
         }
+      } else {
+        return i.deferUpdate().catch(() => {});
       }
-      await updateEmbed();
-      if (yesCount >= requiredVotes && !votingFinished) collector.stop("success");
-      if (noCount >= requiredVotes && !votingFinished) collector.stop("fail");
+
+      await updateCard(leftSeconds);
+      if (yesCount >= requiredVotes) collector.stop("success");
+      if (noCount >= requiredVotes) collector.stop("fail");
     });
 
     collector.on("end", async (_, endReasonRaw) => {
       let endReason = endReasonRaw;
-      votingFinished = true;
       clearInterval(interval);
       interaction.client.removeListener("voiceStateUpdate", voiceStateListener);
       activeVotes.delete(voteKey);
-      await message.delete().catch(() => {});
+
+      await voteMsg.delete().catch(() => {});
 
       if (endReason === "target_left") {
-        return interaction.followUp({ content: "❌ 투표 대상이 음성채널에서 나가 투표가 종료되었습니다.", ephemeral: true });
+        return submitted.editReply({ content: "❌ 투표 대상이 음성채널에서 나가 투표가 종료되었습니다." }).catch(() => {});
       }
       if (endReason === "not_enough_members") {
-        return interaction.followUp({ content: "❗ 인원 부족으로 투표가 종료되었습니다.", ephemeral: true });
+        return submitted.editReply({ content: "❗ 인원 부족으로 투표가 종료되었습니다." }).catch(() => {});
       }
       if (endReason === "fail") {
         const failEmbed = new EmbedBuilder()
@@ -242,7 +234,7 @@ module.exports = {
           .setDescription(`과반수 미달 또는 반대표 과반으로 이동되지 않았습니다.`)
           .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalVoters}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
           .setColor(0xff0000);
-        return interaction.followUp({ embeds: [failEmbed] });
+        return submitted.editReply({ content: " ", embeds: [failEmbed] }).catch(() => {});
       }
       if (endReason === "timeout") {
         if (yesCount >= requiredVotes) endReason = "success";
@@ -253,14 +245,14 @@ module.exports = {
         const resultLogChannel = await interaction.client.channels.fetch(RESULT_LOG_CHANNEL_ID).catch(() => null);
         const afkChannel = await interaction.guild.channels.fetch(AFK_CHANNEL_ID).catch(() => null);
         if (!afkChannel || !afkChannel.isVoiceBased()) {
-          return interaction.followUp({ content: "❌ 잠수 채널이 존재하지 않거나 음성 채널이 아닙니다.", ephemeral: true });
+          return submitted.editReply({ content: "❌ 잠수 채널이 존재하지 않거나 음성 채널이 아닙니다." }).catch(() => {});
         }
         try {
           const freshTarget =
             interaction.guild.members.resolve(targetUser.id) ||
             (await interaction.guild.members.fetch({ user: targetUser.id, force: true }).catch(() => null));
           if (!freshTarget || !freshTarget.voice?.channel) {
-            return interaction.followUp({ content: "❗ 대상이 이미 채널을 떠났습니다.", ephemeral: true });
+            return submitted.editReply({ content: "❗ 대상이 이미 채널을 떠났습니다." }).catch(() => {});
           }
           await freshTarget.voice.setChannel(afkChannel);
           const resultEmbed = new EmbedBuilder()
@@ -270,10 +262,10 @@ module.exports = {
             )
             .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalVoters}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
             .setColor(0x00cc66);
-          await interaction.followUp({ embeds: [resultEmbed] });
+          await submitted.editReply({ content: " ", embeds: [resultEmbed] }).catch(() => {});
           if (resultLogChannel?.isTextBased()) await resultLogChannel.send({ embeds: [resultEmbed] });
         } catch (err) {
-          await interaction.followUp({ content: "❌ 채널 이동 중 오류가 발생했어요.", ephemeral: true });
+          await submitted.editReply({ content: "❌ 채널 이동 중 오류가 발생했어요." }).catch(() => {});
           const errorLog = await interaction.client.channels.fetch(ERROR_LOG_CHANNEL_ID).catch(() => null);
           if (errorLog?.isTextBased()) {
             await errorLog.send({
@@ -292,7 +284,7 @@ module.exports = {
           .setDescription(`과반수 미달로 이동되지 않았습니다.`)
           .addFields({ name: "투표 결과", value: `총 투표 인원: ${totalVoters}명\n👍 찬성: ${yesCount} / 👎 반대: ${noCount}` })
           .setColor(0xffaa00);
-        await interaction.followUp({ embeds: [failEmbed] });
+        await submitted.editReply({ content: " ", embeds: [failEmbed] }).catch(() => {});
       }
     });
   },
