@@ -4,23 +4,25 @@ const dataPath = path.join(__dirname, "../activity-data.json");
 
 const includedCategoryIds = [];
 const includedChannelIds = [];
-const excludedCategoryIds = [1318529703480397954, 1318445879455125514, 1204329649530998794];
+const excludedCategoryIds = ["1318529703480397954", "1318445879455125514", "1204329649530998794"];
 const excludedChannelIds = ["1202971727915651092"];
 
 function isTracked(channel, type = "all") {
   if (!channel) return false;
+  const parentId = channel.parentId != null ? String(channel.parentId) : null;
+  const channelId = channel.id != null ? String(channel.id) : null;
   if (type === "message") {
-    if (includedCategoryIds.length && !includedCategoryIds.includes(channel.parentId)) return false;
-    if (includedChannelIds.length && !includedChannelIds.includes(channel.id)) return false;
-    if (excludedCategoryIds.includes(channel.parentId)) return false;
-    if (excludedChannelIds.includes(channel.id)) return false;
+    if (includedCategoryIds.length && !includedCategoryIds.includes(parentId)) return false;
+    if (includedChannelIds.length && !includedChannelIds.includes(channelId)) return false;
+    if (parentId && excludedCategoryIds.includes(parentId)) return false;
+    if (channelId && excludedChannelIds.includes(channelId)) return false;
     return true;
   }
   if (type === "voice") {
-    if (includedCategoryIds.length && !includedCategoryIds.includes(channel.parentId)) return false;
-    if (includedChannelIds.length && !includedChannelIds.includes(channel.id)) return false;
-    if (excludedCategoryIds.includes(channel.parentId)) return false;
-    if (excludedChannelIds.includes(channel.id)) return false;
+    if (includedCategoryIds.length && !includedCategoryIds.includes(parentId)) return false;
+    if (includedChannelIds.length && !includedChannelIds.includes(channelId)) return false;
+    if (parentId && excludedCategoryIds.includes(parentId)) return false;
+    if (channelId && excludedChannelIds.includes(channelId)) return false;
     return true;
   }
   return isTracked(channel, "message") || isTracked(channel, "voice");
@@ -28,7 +30,7 @@ function isTracked(channel, type = "all") {
 
 function loadData() {
   if (!fs.existsSync(dataPath)) return {};
-  return JSON.parse(fs.readFileSync(dataPath));
+  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
 }
 function saveData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
