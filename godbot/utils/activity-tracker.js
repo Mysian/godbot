@@ -69,11 +69,14 @@ function pruneOld(data) {
 function ensureDay(data, userId, dateStr) {
   if (!data[userId]) data[userId] = {};
   if (!data[userId][dateStr]) {
-    data[userId][dateStr] = { message: 0, voice: 0, hours: {}, voiceByChannel: {} };
+    data[userId][dateStr] = { message: 0, voice: 0, hours: {}, voiceByChannel: {}, messageByChannel: {}, hourVoiceByChannel: {}, hourMessageByChannel: {} };
   }
   const d = data[userId][dateStr];
   if (!d.hours) d.hours = {};
   if (!d.voiceByChannel) d.voiceByChannel = {};
+  if (!d.messageByChannel) d.messageByChannel = {};
+  if (!d.hourVoiceByChannel) d.hourVoiceByChannel = {};
+  if (!d.hourMessageByChannel) d.hourMessageByChannel = {};
   return d;
 }
 function bumpHourBucket(dayObj, hour, kind, amount) {
@@ -88,6 +91,12 @@ function addMessage(userId, channel, at = new Date()) {
   const day = ensureDay(data, userId, dateStr);
   day.message += 1;
   bumpHourBucket(day, hourStr, "message", 1);
+  const cid = channel?.id != null ? String(channel.id) : null;
+  if (cid) {
+    day.messageByChannel[cid] = (day.messageByChannel[cid] || 0) + 1;
+    if (!day.hourMessageByChannel[hourStr]) day.hourMessageByChannel[hourStr] = {};
+    day.hourMessageByChannel[hourStr][cid] = (day.hourMessageByChannel[hourStr][cid] || 0) + 1;
+  }
   pruneOld(data);
   saveData(data);
 }
@@ -98,8 +107,12 @@ function addVoice(userId, seconds, channel, at = new Date()) {
   const day = ensureDay(data, userId, dateStr);
   day.voice += seconds;
   bumpHourBucket(day, hourStr, "voice", seconds);
-  const cid = String(channel.id);
-  day.voiceByChannel[cid] = (day.voiceByChannel[cid] || 0) + seconds;
+  const cid = channel?.id != null ? String(channel.id) : null;
+  if (cid) {
+    day.voiceByChannel[cid] = (day.voiceByChannel[cid] || 0) + seconds;
+    if (!day.hourVoiceByChannel[hourStr]) day.hourVoiceByChannel[hourStr] = {};
+    day.hourVoiceByChannel[hourStr][cid] = (day.hourVoiceByChannel[hourStr][cid] || 0) + seconds;
+  }
   pruneOld(data);
   saveData(data);
 }
@@ -198,6 +211,88 @@ function getDailyHourlyStats({ from, to, userId = null }) {
   return out;
 }
 
+function buildChannelIndexFromGuild(guild) {
+  const idx = {};
+  guild?.channels?.cache?.forEach((c) => {
+    idx[String(c.id)] = { parentId: c.parentId != null ? String(c.parentId) : null };
+  });
+  return idx;
+}
+
+function purgeExcludedHistory(channelIndex) {
+  const data = loadData();
+  const isExcluded = (cid) => {
+    if (!cid) return false;
+    if (excludedChannelIds.includes(cid)) return true;
+    const parentId = channelIndex?.[cid]?.parentId ? String(channelIndex[cid].parentId) : null;
+    if (parentId && excludedCategoryIds.includes(parentId)) return true;
+    return false;
+  };
+  for (const uid in data) {
+    const dates = Object.keys(data[uid]);
+    for (const date of dates) {
+      const day = data[uid][date] || {};
+      let removedVoice = 0;
+      let removedMsg = 0;
+      const vbc = day.voiceByChannel || {};
+      for (const cid of Object.keys(vbc)) {
+        const scid = String(cid);
+        if (isExcluded(scid)) {
+          removedVoice += vbc[scid] || 0;
+          delete vbc[scid];
+        }
+      }
+      const mbc = day.messageByChannel || {};
+      for (const cid of Object.keys(mbc)) {
+        const scid = String(cid);
+        if (isExcluded(scid)) {
+          removedMsg += mbc[scid] || 0;
+          delete mbc[scid];
+        }
+      }
+      const hvbc = day.hourVoiceByChannel || {};
+      for (const hour of Object.keys(hvbc)) {
+        const map = hvbc[hour] || {};
+        for (const cid of Object.keys(map)) {
+          const scid = String(cid);
+          if (isExcluded(scid)) {
+            const sec = map[scid] || 0;
+            if (day.hours?.[hour]) {
+              day.hours[hour].voice = Math.max(0, (day.hours[hour].voice || 0) - sec);
+            }
+            removedVoice += sec;
+            delete map[scid];
+          }
+        }
+        if (Object.keys(map).length === 0) delete hvbc[hour];
+      }
+      const hmbc = day.hourMessageByChannel || {};
+      for (const hour of Object.keys(hmbc)) {
+        const map = hmbc[hour] || {};
+        for (const cid of Object.keys(map)) {
+          const scid = String(cid);
+          if (isExcluded(scid)) {
+            const cnt = map[scid] || 0;
+            if (day.hours?.[hour]) {
+              day.hours[hour].message = Math.max(0, (day.hours[hour].message || 0) - cnt);
+            }
+            removedMsg += cnt;
+            delete map[scid];
+          }
+        }
+        if (Object.keys(map).length === 0) delete hmbc[hour];
+      }
+      if (removedVoice) day.voice = Math.max(0, (day.voice || 0) - removedVoice);
+      if (removedMsg) day.message = Math.max(0, (day.message || 0) - removedMsg);
+      if (!day.message && !day.voice && Object.keys(day.voiceByChannel || {}).length === 0 && Object.keys(day.messageByChannel || {}).length === 0) {
+        delete data[uid][date];
+      }
+    }
+    if (Object.keys(data[uid]).length === 0) delete data[uid];
+  }
+  saveData(data);
+}
+
 module.exports = {
   addMessage,
   addVoice,
@@ -210,5 +305,7 @@ module.exports = {
   isTracked,
   getLastActiveDate,
   getVoiceChannelUsage,
-  getDailyHourlyStats
+  getDailyHourlyStats,
+  buildChannelIndexFromGuild,
+  purgeExcludedHistory
 };
