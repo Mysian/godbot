@@ -1176,19 +1176,26 @@ async function onMessage(client, message) {
   }
 
   if (priv === "supporter") {
-    const moved = await handleSupporterSelfMove(message, content);
-    if (moved) return;
+    
+  const lc = normalizeKorean(stripTrigger(content)).toLowerCase();
 
-    const handled = await handleBuiltin(message, content);
-    if (handled) return;
-
-    const learned = await handleChatAndLearning(message, content);
-    if (learned) return;
-
-    await message.reply("후원자는 '나를 ~로 옮겨줘'와 대화/학습 기능만 사용 가능해.");
-    await sendLog(message, "후원자 제한", "FAIL", { details: "허용되지 않은 기능" });
+  if (/^(도움말|help|명령어|사용법|\?)\b/i.test(lc)) {
+    const embeds = buildHelpEmbeds();
+    await message.reply({ embeds });
+    await sendLog(message, "도움말", "OK", { details: "도움말 전송(후원자)" });
     return;
   }
+
+  const moved = await handleSupporterSelfMove(message, content);
+  if (moved) return;
+
+  const learned = await handleChatAndLearning(message, content);
+  if (learned) return;
+
+  await message.reply("후원자는 '나를 ~로 옮겨줘'와 대화/학습 기능만 사용 가능해.");
+  await sendLog(message, "후원자 제한", "FAIL", { details: "허용되지 않은 기능" });
+  return;
+ }
 }
 
 function initGodbotCore(client) {
