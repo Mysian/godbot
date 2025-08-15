@@ -34,17 +34,6 @@ const MUTE_OFF_TOKENS = ["마이크를 켜","마이크 켜","음소거 해제","
 const DEAF_ON_TOKENS = ["스피커를 꺼","헤드셋을 닫아","귀 막아","청각 차단","귀 닫아","귀닫","못듣","소리 못 듣게","청각차단","듣지 못하게","스피커 닫아","스피커 닫아줘","스피커 꺼줘"];
 const DEAF_OFF_TOKENS = ["스피커를 켜","헤드셋을 열어","귀 열어","청각 해제","귀 열어","귀열","들을","듣게","청각해제","소리 들리게","스피커 열어","스피커 열어줘","스피커 켜줘"];
 const ALL_TOKENS = ["전원","모두","전체","싹다","전부","all","싸그리","다","유저들","사람들","인원","인원들","인간들"];
-
-const GREET_TOKENS = ["안녕","안뇽","안녕하세요","하이","hi","hello","헬로","ㅎㅇ","반가워","하위","안넝"];
-const GREETINGS = [
-  "안녕! 어서와!!",
-  "왔네! 오늘은 뭐하면서 놀까?",
-  "어 왔어? 아주 그냥 반갑고만 그래!",
-  "움움 구래구래 어서오고",
-  "반가워! 얼굴 보니 좋네 아주ㅋ",
-  "어 그래 어서오고~~",
-  "응 그래~"
-];
 const ACTION_HINTS = [].concat(
   MOVE_VERBS,
   CHANGE_VERBS,
@@ -562,13 +551,6 @@ async function handleChatAndLearning(message, content) {
   const body = normalizeKorean(stripTrigger(content));
   const lc = body.toLowerCase();
 
-  if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
-    const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-    await message.reply(msg);
-    await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
-    return true;
-  }
-
   if (/^답변\s*(제거|삭제)\b/.test(lc)) {
     if (!isAdminAllowed(message.member)) {
       await message.reply("관리자만 답변 제거가 가능해.");
@@ -781,13 +763,6 @@ async function handleBuiltin(message, content) {
     const embeds = buildHelpEmbeds();
     await message.reply({ embeds });
     await sendLog(message, "도움말", "OK", { details: "도움말 전송" });
-    return true;
-  }
-
-  if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
-    const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-    await message.reply(msg); 
-    await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
     return true;
   }
 
