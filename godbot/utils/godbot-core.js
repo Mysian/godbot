@@ -161,6 +161,13 @@ function splitByListDelims(text) {
     .filter(Boolean);
 }
 
+function splitMultiAnswers(a) {
+  return String(a || "")
+    .split(/\s*(?:,|，|\/|\|| 또는 | 혹은 )\s*/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
 function findMemberByToken(guild, token) {
   if (!guild || !token) return null;
   const t = normalizeKey(token);
@@ -291,7 +298,7 @@ function findAllVoiceChannelsInText(guild, content) {
   const cm = /<#(\d+)>/g;
   let m;
   while ((m = cm.exec(content))) {
-    const ch = guild.channels.cache.get(cm[1]);
+    const ch = guild.channels.cache.get(m[1]);
     if (ch && ch.type === ChannelType.GuildVoice) out.set(ch.id, ch);
   }
   const ntext = norm(content);
@@ -439,12 +446,12 @@ async function sendLog(message, intent, status, data = {}) {
   } catch {}
 }
 
-/* ---------------------- 학습/응답 엔진 ---------------------- */
+/* ---------------------- 학습/응답 엔진 (랜덤 응답 지원 + 복수 답변 등록 + 답변 제거) ---------------------- */
 
-function bestLearnedAnswer(query) {
+function bestLearnedAnswers(query) {
   const store = loadLearn();
   const qn = norm(query);
-  let best = null;
+  const scored = [];
   for (const e of store.entries) {
     const en = norm(e.q || "");
     if (!en) continue;
@@ -453,10 +460,23 @@ function bestLearnedAnswer(query) {
     let score = dice * 0.6 + lcsR * 0.4;
     if (qn.includes(en)) score += 0.2;
     if (en.includes(qn)) score += 0.1;
-    if (!best || score > best.score) best = { entry: e, score };
+    scored.push({ e, en, score });
   }
-  if (best && best.score >= 0.55) return best.entry;
-  return null;
+  if (!scored.length) return [];
+  scored.sort((a,b)=>b.score-a.score);
+  const top = scored[0];
+  if (top.score < 0.55) return [];
+  const group = scored.filter(x =>
+    x.score >= Math.max(0.6, top.score - 0.07) &&
+    diceCoef(x.en, top.en) >= 0.88
+  );
+  if (group.length) return group.map(x => x.e);
+  return [top.e];
+}
+
+function existsQA(store, q, a) {
+  const Q = norm(q), A = norm(a);
+  return store.entries.some(e => norm(e.q) === Q && norm(e.a) === A);
 }
 
 async function handleChatAndLearning(message, content) {
@@ -469,6 +489,45 @@ async function handleChatAndLearning(message, content) {
     const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
     await message.reply(msg);
     await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
+    return true;
+  }
+
+  if (/^답변\s*(제거|삭제)\b/.test(lc)) {
+    if (!isAdminAllowed(message.member)) {
+      await message.reply("관리자만 답변 제거가 가능해.");
+      await sendLog(message, "답변 제거", "FAIL", { details: "권한 없음" });
+      return true;
+    }
+    const raw = body.replace(/^답변\s*(제거|삭제)\s*:?\s*/i, "");
+    if (!raw) {
+      await message.reply("제거할 답변 내용을 적어줘. 예) 갓봇! 답변제거 그건 비밀이야");
+      await sendLog(message, "답변 제거", "FAIL", { details: "대상 미지정" });
+      return true;
+    }
+    const store = loadLearn();
+    const idm = raw.match(/#?\s*(\d+)/);
+    let removed = 0;
+    if (idm) {
+      const id = parseInt(idm[1] || "0", 10);
+      const idx = store.entries.findIndex(e => e.id === id);
+      if (idx >= 0) {
+        store.entries.splice(idx, 1);
+        removed = 1;
+      }
+    } else {
+      const key = norm(raw);
+      const before = store.entries.length;
+      store.entries = store.entries.filter(e => !norm(e.a || "").includes(key));
+      removed = before - store.entries.length;
+    }
+    if (removed > 0) {
+      saveLearn(store);
+      await message.reply(`답변 ${removed}개 제거 완료.`);
+      await sendLog(message, "답변 제거", "OK", { count: removed, details: `raw=${cut(raw,120)}` });
+    } else {
+      await message.reply("일치하는 답변을 찾지 못했어.");
+      await sendLog(message, "답변 제거", "FAIL", { details: `raw=${cut(raw,120)}` });
+    }
     return true;
   }
 
@@ -577,7 +636,6 @@ async function handleChatAndLearning(message, content) {
   }
 
   if (/^(답변\s*학습\s*시키기|학습\s*시키기|학습)\s*:\s*/.test(lc) || /^질문\s*:/.test(lc) || /->|=>/.test(body)) {
-    const store = loadLearn();
     let q = null, a = null;
 
     const qa1 = body.match(/질문\s*[:=]\s*([\s\S]+?)\s*답변\s*[:=]\s*([\s\S]+)/i);
@@ -589,31 +647,45 @@ async function handleChatAndLearning(message, content) {
 
     if (!q) q = pendingTeach.get(author.id) || null;
     if (!q || !a) {
-      await message.reply("형식: `갓봇! 질문: ... 답변: ...` 또는 `갓봇! (질문) -> (답변)` 또는 방금 물은 문장에 대해 `갓봇! 답변 학습시키기: (원하는 답변)`");
+      await message.reply("형식: `갓봇! 질문: ... 답변: ...` 또는 `갓봇! (질문) -> (답변1,답변2,...)` 또는 방금 물음에 대해 `갓봇! 답변 학습시키기: (답변1,답변2,...)`");
       await sendLog(message, "학습 등록", "FAIL", { details: "형식 오류" });
       return true;
     }
 
-    const entry = { id: (loadLearn().lastId || 0) + 1, q, a, ts: Date.now(), addedBy: `${author.tag} (${author.id})` };
-    const fresh = loadLearn();
-    fresh.lastId = entry.id;
-    fresh.entries.push(entry);
-    saveLearn(fresh);
-    pendingTeach.delete(author.id);
-    await message.reply(`학습 완료! #${entry.id}`);
-    await sendLog(message, "학습 등록", "OK", { details: `id=${entry.id}`, count: 1 });
+    const store = loadLearn();
+    let idCursor = store.lastId || 0;
+    const answers = splitMultiAnswers(a);
+    const toAdd = [];
+    for (const ans of answers) {
+      if (!existsQA(store, q, ans)) toAdd.push(ans);
+    }
+    for (const ans of toAdd) {
+      idCursor += 1;
+      store.entries.push({ id: idCursor, q, a: ans, ts: Date.now(), addedBy: `${author.tag} (${author.id})` });
+    }
+    store.lastId = idCursor;
+    if (toAdd.length > 0) {
+      saveLearn(store);
+      pendingTeach.delete(author.id);
+      await message.reply(`학습 완료! 총 ${toAdd.length}개 등록.`);
+      await sendLog(message, "학습 등록", "OK", { details: `등록 ${toAdd.length}개`, count: toAdd.length });
+    } else {
+      await message.reply("이미 동일한 질문/답변이 등록되어 있어.");
+      await sendLog(message, "학습 등록", "FAIL", { details: "중복으로 추가되지 않음" });
+    }
     return true;
   }
 
-  const entry = bestLearnedAnswer(body);
-  if (entry) {
-    await message.reply(String(entry.a || ""));
-    await sendLog(message, "학습 응답", "OK", { details: `match:#${entry.id}` });
+  const entries = bestLearnedAnswers(body);
+  if (entries.length) {
+    const pick = entries[Math.floor(Math.random() * entries.length)];
+    await message.reply(String(pick.a || ""));
+    await sendLog(message, "학습 응답", "OK", { details: `match:${entries.length>1 ? "random " : ""}#${pick.id}`, count: entries.length });
     return true;
   }
 
   pendingTeach.set(author.id, body);
-  await message.reply(`죄송해요! 이해하지 못했어. '${cut(body, 120)}' 물음에 내가 어떻게 답변하기를 원해?\n→ \`갓봇! 답변 학습시키기: (원하는 답변)\``);
+  await message.reply(`죄송해요! 이해하지 못했어. '${cut(body, 120)}' 물음에 내가 어떻게 답변하기를 원해?\n→ \`갓봇! 답변 학습시키기: (원하는 답변1,답변2,...)\``);
   await sendLog(message, "학습 요청", "FAIL", { details: "미학습 문장" });
   return true;
 }
