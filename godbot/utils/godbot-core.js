@@ -12,9 +12,13 @@ const {
 } = require("discord.js");
 
 const ADMIN_ROLE_ID = "1404486995564167218";
+const SUPPORTER_ROLE_ID = "1397076919127900171";
 const PENALTY_ROLE_ID = "1403748042666151936";
 const TRIGGER = "갓봇!";
 const LOG_CHANNEL_ID = "1404513982403842282";
+
+const DATA_DIR = path.join(__dirname, "../data");
+const LEARN_PATH = path.join(DATA_DIR, "godbot-learn.json");
 
 const MOVE_VERBS = ["옮겨","이동","보내","데려","워프","전송","텔포","텔레포트","넣어","이사","무브","이주시켜","이사시켜","옮겨줘","옮겨라","이동시켜","이동해","이동해줘","보내줘","보내라","전이","이동시켜드려"];
 const CHANGE_VERBS = ["바꿔","변경","수정","교체","rename","이름바꿔","이름변경","바꾸면","고쳐","개명","리네임"];
@@ -25,7 +29,7 @@ const NICK_LABELS = ["닉네임","별명","이름","네임"];
 const CHANNEL_LABELS = ["채널","음성채널","보이스채널","보이스","음성","vc","VC"];
 const CATEGORY_LABELS = ["카테고리","분류","category","CATEGORY","폴더"];
 const ROLE_LABELS = ["역할","롤","role","ROLE"];
-const MUTE_ON_TOKENS = ["마이크를 꺼","마이크 꺼","음소거","뮤트","입 막아","입막아","입을 막아","입 닫아","입닫아","못말","말 못하게","입틀어막", "입 틀어막", "입 틀어 막"];
+const MUTE_ON_TOKENS = ["마이크를 꺼","마이크 꺼","음소거","뮤트","입 막아","입막아","입을 막아","입 닫아","입닫아","못말","말 못하게","입틀어막","입 틀어막","입 틀어 막"];
 const MUTE_OFF_TOKENS = ["마이크를 켜","마이크 켜","음소거 해제","뮤트 해제","입 풀어","입을 풀어","입막 해제","입 열어","입열","말할","말하게","입트여"];
 const DEAF_ON_TOKENS = ["스피커를 꺼","헤드셋을 닫아","귀 막아","청각 차단","귀 닫아","귀닫","못듣","소리 못 듣게","청각차단","듣지 못하게"];
 const DEAF_OFF_TOKENS = ["스피커를 켜","헤드셋을 열어","귀 열어","청각 해제","귀 열어","귀열","들을","듣게","청각해제","소리 들리게"];
@@ -56,10 +60,33 @@ const ACTION_HINTS = [].concat(
   DEAF_OFF_TOKENS
 );
 
+const pendingTeach = new Map();
+
+function ensureData() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(LEARN_PATH)) fs.writeFileSync(LEARN_PATH, JSON.stringify({ lastId: 0, entries: [] }, null, 2), "utf8");
+}
+function loadLearn() {
+  ensureData();
+  try { return JSON.parse(fs.readFileSync(LEARN_PATH, "utf8")); } catch { return { lastId: 0, entries: [] }; }
+}
+function saveLearn(store) {
+  ensureData();
+  fs.writeFileSync(LEARN_PATH, JSON.stringify(store, null, 2), "utf8");
+}
+
 function isAdminAllowed(member) {
   if (!member) return false;
   if (member.roles?.cache?.has(ADMIN_ROLE_ID)) return true;
   return member.permissions?.has(PermissionsBitField.Flags.Administrator) || false;
+}
+function isSupporter(member) {
+  return !!member?.roles?.cache?.has(SUPPORTER_ROLE_ID);
+}
+function getPrivilege(member) {
+  if (isAdminAllowed(member)) return "admin";
+  if (isSupporter(member)) return "supporter";
+  return "none";
 }
 
 function normalizeKorean(str) {
@@ -264,7 +291,7 @@ function findAllVoiceChannelsInText(guild, content) {
   const cm = /<#(\d+)>/g;
   let m;
   while ((m = cm.exec(content))) {
-    const ch = guild.channels.cache.get(m[1]);
+    const ch = guild.channels.cache.get(cm[1]);
     if (ch && ch.type === ChannelType.GuildVoice) out.set(ch.id, ch);
   }
   const ntext = norm(content);
@@ -405,11 +432,193 @@ async function sendLog(message, intent, status, data = {}) {
     if (typeof data.count === "number") fields.push({ name: "처리 개수", value: String(data.count), inline: true });
     if (data.newName) fields.push({ name: "변경 이름", value: cut(data.newName, 256), inline: true });
     if (data.error) fields.push({ name: "오류", value: cut(String(data.error), 1024), inline: false });
+    if (data.file) fields.push({ name: "파일", value: String(data.file), inline: true });
     fields.push({ name: "원문", value: cut(message.content || "", 1024), inline: false });
     embed.addFields(fields);
     await ch.send({ embeds: [embed] });
   } catch {}
 }
+
+/* ---------------------- 학습/응답 엔진 ---------------------- */
+
+function bestLearnedAnswer(query) {
+  const store = loadLearn();
+  const qn = norm(query);
+  let best = null;
+  for (const e of store.entries) {
+    const en = norm(e.q || "");
+    if (!en) continue;
+    const dice = diceCoef(qn, en);
+    const lcsR = en.length ? (lcsLen(qn, en) / en.length) : 0;
+    let score = dice * 0.6 + lcsR * 0.4;
+    if (qn.includes(en)) score += 0.2;
+    if (en.includes(qn)) score += 0.1;
+    if (!best || score > best.score) best = { entry: e, score };
+  }
+  if (best && best.score >= 0.55) return best.entry;
+  return null;
+}
+
+async function handleChatAndLearning(message, content) {
+  const guild = message.guild;
+  const author = message.author;
+  const body = normalizeKorean(stripTrigger(content));
+  const lc = body.toLowerCase();
+
+  if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
+    const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+    await message.reply(msg);
+    await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
+    return true;
+  }
+
+  if (/^학습\s*목록\b|^학습\s*리스트\b|^학습\s*검색\b|^학습\s*보기\b|^학습\s*수정\b|^학습\s*삭제\b|^학습\s*내보내기\b/.test(lc)) {
+    if (!isAdminAllowed(message.member)) {
+      await message.reply("관리자만 학습 관리가 가능해.");
+      await sendLog(message, "학습 관리", "FAIL", { details: "권한 없음" });
+      return true;
+    }
+    const store = loadLearn();
+
+    if (/^학습\s*목록\b|^학습\s*리스트\b/.test(lc)) {
+      const page = Math.max(1, parseInt((body.match(/페이지\s*[:=]?\s*(\d+)/i)?.[1] || "1"), 10));
+      const per = 10;
+      const total = store.entries.length;
+      const pages = Math.max(1, Math.ceil(total / per));
+      const slice = store.entries.slice((page - 1) * per, (page - 1) * per + per);
+      const desc = slice.map(e => `#${e.id} • Q: ${cut(e.q, 60)} • A: ${cut(e.a, 60)}`).join("\n") || "없음";
+      const embed = new EmbedBuilder().setTitle(`학습 목록 ${page}/${pages} (${total})`).setColor(0x5865F2).setDescription(desc);
+      await message.reply({ embeds: [embed] });
+      await sendLog(message, "학습 목록", "OK", { details: `page=${page}` });
+      return true;
+    }
+
+    if (/^학습\s*검색\b/.test(lc)) {
+      const kw = body.split(/\s+/).slice(1).join(" ").trim();
+      if (!kw) {
+        await message.reply("검색어를 넣어줘.");
+        await sendLog(message, "학습 검색", "FAIL", { details: "검색어 없음" });
+        return true;
+      }
+      const list = store.entries.filter(e => (e.q||"").includes(kw) || (e.a||"").includes(kw)).slice(0, 20);
+      const desc = list.map(e => `#${e.id} • Q: ${cut(e.q, 60)} • A: ${cut(e.a, 60)}`).join("\n") || "없음";
+      const embed = new EmbedBuilder().setTitle(`학습 검색: ${kw}`).setColor(0x2ecc71).setDescription(desc);
+      await message.reply({ embeds: [embed] });
+      await sendLog(message, "학습 검색", "OK", { details: `kw=${kw}`, count: list.length });
+      return true;
+    }
+
+    if (/^학습\s*보기\b/.test(lc)) {
+      const id = parseInt(body.match(/#?\s*(\d+)/)?.[1] || "0", 10);
+      const e = store.entries.find(x => x.id === id);
+      if (!e) {
+        await message.reply("해당 ID를 찾지 못했어.");
+        await sendLog(message, "학습 보기", "FAIL", { details: `id=${id}` });
+        return true;
+      }
+      const embed = new EmbedBuilder().setTitle(`학습 #${e.id}`).setColor(0x3498db).addFields(
+        { name: "질문", value: cut(e.q, 1024) || "-" },
+        { name: "답변", value: cut(e.a, 1024) || "-" },
+        { name: "작성자", value: `${e.addedBy || "-"}`, inline: true },
+        { name: "시각", value: new Date(e.ts || Date.now()).toLocaleString("ko-KR"), inline: true }
+      );
+      await message.reply({ embeds: [embed] });
+      await sendLog(message, "학습 보기", "OK", { details: `id=${id}` });
+      return true;
+    }
+
+    if (/^학습\s*수정\b/.test(lc)) {
+      const id = parseInt(body.match(/#?\s*(\d+)/)?.[1] || "0", 10);
+      const e = store.entries.find(x => x.id === id);
+      if (!e) {
+        await message.reply("해당 ID를 찾지 못했어.");
+        await sendLog(message, "학습 수정", "FAIL", { details: `id=${id}` });
+        return true;
+      }
+      const newQ = body.match(/질문\s*[:=]\s*([\s\S]+)/i)?.[1]?.trim();
+      const newA = body.match(/답변\s*[:=]\s*([\s\S]+)/i)?.[1]?.trim();
+      if (!newQ && !newA) {
+        await message.reply("질문 또는 답변 중 최소 하나는 수정해야 해. 예) 갓봇! 학습 수정 12 질문:새질문");
+        await sendLog(message, "학습 수정", "FAIL", { details: "변경값 없음" });
+        return true;
+      }
+      if (newQ) e.q = newQ;
+      if (newA) e.a = newA;
+      saveLearn(store);
+      await message.reply(`#${e.id} 수정 완료.`);
+      await sendLog(message, "학습 수정", "OK", { details: `id=${id}` });
+      return true;
+    }
+
+    if (/^학습\s*삭제\b/.test(lc)) {
+      const id = parseInt(body.match(/#?\s*(\d+)/)?.[1] || "0", 10);
+      const idx = store.entries.findIndex(x => x.id === id);
+      if (idx < 0) {
+        await message.reply("해당 ID를 찾지 못했어.");
+        await sendLog(message, "학습 삭제", "FAIL", { details: `id=${id}` });
+        return true;
+      }
+      store.entries.splice(idx, 1);
+      saveLearn(store);
+      await message.reply(`#${id} 삭제 완료.`);
+      await sendLog(message, "학습 삭제", "OK", { details: `id=${id}` });
+      return true;
+    }
+
+    if (/^학습\s*내보내기\b/.test(lc)) {
+      const buf = Buffer.from(JSON.stringify(loadLearn(), null, 2), "utf8");
+      const file = new AttachmentBuilder(buf, { name: "godbot-learn-export.json" });
+      await message.reply({ files: [file] });
+      await sendLog(message, "학습 내보내기", "OK", { file: "godbot-learn-export.json" });
+      return true;
+    }
+
+    return true;
+  }
+
+  if (/^(답변\s*학습\s*시키기|학습\s*시키기|학습)\s*:\s*/.test(lc) || /^질문\s*:/.test(lc) || /->|=>/.test(body)) {
+    const store = loadLearn();
+    let q = null, a = null;
+
+    const qa1 = body.match(/질문\s*[:=]\s*([\s\S]+?)\s*답변\s*[:=]\s*([\s\S]+)/i);
+    if (qa1) { q = qa1[1].trim(); a = qa1[2].trim(); }
+    const qa2 = !a && body.match(/([\s\S]+?)\s*(?:->|=>)\s*([\s\S]+)/);
+    if (!a && qa2) { q = qa2[1].trim(); a = qa2[2].trim(); }
+    const qa3 = body.match(/^(?:답변\s*학습\s*시키기|학습\s*시키기|학습)\s*:\s*([\s\S]+)/i);
+    if (!a && qa3) { a = qa3[1].trim(); q = pendingTeach.get(author.id) || null; }
+
+    if (!q) q = pendingTeach.get(author.id) || null;
+    if (!q || !a) {
+      await message.reply("형식: `갓봇! 질문: ... 답변: ...` 또는 `갓봇! (질문) -> (답변)` 또는 방금 물은 문장에 대해 `갓봇! 답변 학습시키기: (원하는 답변)`");
+      await sendLog(message, "학습 등록", "FAIL", { details: "형식 오류" });
+      return true;
+    }
+
+    const entry = { id: (loadLearn().lastId || 0) + 1, q, a, ts: Date.now(), addedBy: `${author.tag} (${author.id})` };
+    const fresh = loadLearn();
+    fresh.lastId = entry.id;
+    fresh.entries.push(entry);
+    saveLearn(fresh);
+    pendingTeach.delete(author.id);
+    await message.reply(`학습 완료! #${entry.id}`);
+    await sendLog(message, "학습 등록", "OK", { details: `id=${entry.id}`, count: 1 });
+    return true;
+  }
+
+  const entry = bestLearnedAnswer(body);
+  if (entry) {
+    await message.reply(String(entry.a || ""));
+    await sendLog(message, "학습 응답", "OK", { details: `match:#${entry.id}` });
+    return true;
+  }
+
+  pendingTeach.set(author.id, body);
+  await message.reply(`죄송해요! 이해하지 못했어. '${cut(body, 120)}' 물음에 내가 어떻게 답변하기를 원해?\n→ \`갓봇! 답변 학습시키기: (원하는 답변)\``);
+  await sendLog(message, "학습 요청", "FAIL", { details: "미학습 문장" });
+  return true;
+}
+
+/* ---------------------- 기본 내장 액션 ---------------------- */
 
 async function handleBuiltin(message, content) {
   const guild = message.guild;
@@ -418,12 +627,11 @@ async function handleBuiltin(message, content) {
   const lc = body.toLowerCase();
 
   if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
-  const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-  await message.reply(msg); 
-  await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
-  return true;
-}
-
+    const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+    await message.reply(msg); 
+    await sendLog(message, "인사 응답", "OK", { details: `인사말 전송: ${msg}` });
+    return true;
+  }
 
   if (
     (/\d+\s*개\s*(?:씩)?\s*(?:지워|삭제|제거|없애|날려|비워|청소|클리어|clear|purge)/.test(lc)) ||
@@ -742,23 +950,85 @@ function stripTriggerGuard(content) {
   return content.includes(TRIGGER);
 }
 
+/* ---------------------- 후원자 전용: 본인 이동 ---------------------- */
+
+async function handleSupporterSelfMove(message, content) {
+  const guild = message.guild;
+  const member = message.member;
+  const body = normalizeKorean(stripTrigger(content));
+  const lc = body.toLowerCase();
+  if (!(textIncludesAny(lc, MOVE_VERBS) && /(으로|로)/.test(lc))) return false;
+  if (!/(나|저|내|본인|자신)/.test(lc)) return false;
+
+  if (!hasBotPerm(guild, PermissionsBitField.Flags.MoveMembers)) {
+    await sendLog(message, "후원자 본인이동", "FAIL", { details: "봇에 멤버 이동 권한 없음" });
+    return true;
+  }
+
+  const targetCh = fuzzyFindVoiceChannelInText(guild, body);
+  if (!targetCh) {
+    await message.reply("이동할 음성채널을 못 찾았어.");
+    await sendLog(message, "후원자 본인이동", "FAIL", { details: "목표 채널 없음" });
+    return true;
+  }
+
+  const meVoice = member?.voice?.channel;
+  if (!meVoice) {
+    await message.reply("현재 음성 채널에 접속 중이어야 이동할 수 있어.");
+    await sendLog(message, "후원자 본인이동", "FAIL", { details: "요청자 음성 미참여" });
+    return true;
+  }
+
+  try {
+    await member.voice.setChannel(targetCh.id, "후원자 본인 이동");
+    await message.reply(`이동 완료! → #${targetCh.name}`);
+    await sendLog(message, "후원자 본인이동", "OK", { members: [member], targetChannel: targetCh, count: 1 });
+  } catch (e) {
+    await message.reply("이동에 실패했어.");
+    await sendLog(message, "후원자 본인이동", "FAIL", { error: e?.message || e, targetChannel: targetCh });
+  }
+  return true;
+}
+
+/* ---------------------- 메시지 엔트리 ---------------------- */
+
 async function onMessage(client, message) {
   if (!message.guild) return;
   if (message.author.bot) return;
   const content = message.content || "";
   if (!stripTriggerGuard(content)) return;
+
   const member = message.member;
-  if (!isAdminAllowed(member)) {
+  const priv = getPrivilege(member);
+
+  if (priv === "none") {
+    await message.reply("당신은 '갓봇 마스터' 또는 '서버 후원자'가 아니라서 사용할 수 없어.");
     await sendLog(message, "인가 실패", "FAIL", { details: "요청자가 권한 없음" });
     return;
   }
-  const handled = await handleBuiltin(message, content);
-  if (!handled) {
+
+  if (priv === "admin") {
+    const handled = await handleBuiltin(message, content);
+    if (handled) return;
+    const learned = await handleChatAndLearning(message, content);
+    if (learned) return;
     await sendLog(message, "미해석", "FAIL", { details: "패턴 불일치로 처리하지 않음" });
+    return;
+  }
+
+  if (priv === "supporter") {
+    const moved = await handleSupporterSelfMove(message, content);
+    if (moved) return;
+    const learned = await handleChatAndLearning(message, content);
+    if (learned) return;
+    await message.reply("후원자는 '나를 ~로 옮겨줘'와 대화/학습 기능만 사용 가능해.");
+    await sendLog(message, "후원자 제한", "FAIL", { details: "허용되지 않은 기능" });
+    return;
   }
 }
 
 function initGodbotCore(client) {
+  ensureData();
   client.on("messageCreate", (m) => onMessage(client, m));
 }
 
