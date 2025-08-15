@@ -446,6 +446,82 @@ async function sendLog(message, intent, status, data = {}) {
   } catch {}
 }
 
+/* ---------------------- 도움말 ---------------------- */
+function buildHelpEmbeds() {
+  const e1 = new EmbedBuilder()
+    .setTitle("갓봇! 도움말")
+    .setColor(0x5865F2)
+    .setDescription([
+      "트리거: 메세지 안에 **갓봇!** 이 포함되면 동작.",
+      "우선순위: **동작/관리 커맨드 > 학습/답변 응답** (동작이 우선).",
+      "권한:",
+      "• 관리자: 모든 기능 사용",
+      "• 서버 후원자: **본인 보이스 이동** + **대화/학습**만 사용"
+    ].join("\n"))
+    .addFields(
+      {
+        name: "보이스 이동",
+        value: [
+          "예) `갓봇! 닉1,닉2 를 [레이드1] 로 옮겨줘`",
+          "예) `갓봇! 전원 [보이스1]로 이동`",
+          "카테고리 인식: `갓봇! [A카테고리]에서 [B보이스]로 옮겨`",
+          "다수 채널 언급 시 **마지막이 타겟**"
+        ].join("\n")
+      },
+      {
+        name: "음소거/청각 제어",
+        value: [
+          "예) `갓봇! 여기 전원 마이크 꺼줘`",
+          "예) `갓봇! 닉1,닉2 스피커 켜줘`"
+        ].join("\n")
+      },
+      {
+        name: "닉네임/채널명 변경",
+        value: [
+          "예) `갓봇! 닉1 닉네임을 \"새닉\"으로 바꿔`",
+          "예) `갓봇! [채널A] 이름을 \"공지사항\"으로 변경`"
+        ].join("\n")
+      }
+    );
+
+  const e2 = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .addFields(
+      {
+        name: "역할 지급/제거",
+        value: [
+          "예) `갓봇! 닉1,닉2에게 [i],[게이머] 역할 지급`",
+          "예) `갓봇! 닉1에서 [i] 역할 빼줘`"
+        ].join("\n")
+      },
+      {
+        name: "채팅 삭제",
+        value: [
+          "예) `갓봇! 채팅 30개 지워`",
+          "예) `갓봇! #잡담 15개 삭제`"
+        ].join("\n")
+      },
+      {
+        name: "제재(페널티) 역할 지급",
+        value: [
+          "예) `갓봇! 닉1 차단`",
+          "내부적으로 페널티 역할 부여"
+        ].join("\n")
+      },
+      {
+        name: "학습/대화 (복수 답변 지원)",
+        value: [
+          "등록) `갓봇! 질문: 오늘 뭐해 답변: 쉬어,일해,겜하자`",
+          "`갓봇! 오늘 뭐해 -> 쉬어, 일해 / 겜하자`",
+          "조회/수정/삭제/내보내기: `갓봇! 학습 목록`, `갓봇! 학습 보기 12`, `갓봇! 학습 수정 12 질문:새Q`, `갓봇! 학습 삭제 12`, `갓봇! 학습 내보내기`",
+          "답변 제거(관리자): `갓봇! 답변제거 (문자열)` 또는 `갓봇! 답변 삭제 #12`"
+        ].join("\n")
+      }
+    );
+
+  return [e1, e2];
+}
+
 /* ---------------------- 학습/응답 엔진 (랜덤 응답 지원 + 복수 답변 등록 + 답변 제거) ---------------------- */
 
 function bestLearnedAnswers(query) {
@@ -692,11 +768,20 @@ async function handleChatAndLearning(message, content) {
 
 /* ---------------------- 기본 내장 액션 ---------------------- */
 
+
+
 async function handleBuiltin(message, content) {
   const guild = message.guild;
   const author = message.author;
   const body = normalizeKorean(stripTrigger(content));
   const lc = body.toLowerCase();
+
+  if (/^(도움말|help|명령어|사용법|\?)\b/i.test(lc)) {
+    const embeds = buildHelpEmbeds();
+    await message.reply({ embeds });
+    await sendLog(message, "도움말", "OK", { details: "도움말 전송" });
+    return true;
+  }
 
   if (GREET_TOKENS.some(t => lc.includes(t)) && !ACTION_HINTS.some(t => lc.includes(t))) {
     const msg = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
@@ -1082,17 +1167,24 @@ async function onMessage(client, message) {
   if (priv === "admin") {
     const handled = await handleBuiltin(message, content);
     if (handled) return;
+
     const learned = await handleChatAndLearning(message, content);
     if (learned) return;
-    await sendLog(message, "미해석", "FAIL", { details: "패턴 불일치로 처리하지 않음" });
+
+    await sendLog(message, "미해석", "FAIL", { details: "패턴 불일치" });
     return;
   }
 
   if (priv === "supporter") {
     const moved = await handleSupporterSelfMove(message, content);
     if (moved) return;
+
+    const handled = await handleBuiltin(message, content);
+    if (handled) return;
+
     const learned = await handleChatAndLearning(message, content);
     if (learned) return;
+
     await message.reply("후원자는 '나를 ~로 옮겨줘'와 대화/학습 기능만 사용 가능해.");
     await sendLog(message, "후원자 제한", "FAIL", { details: "허용되지 않은 기능" });
     return;
