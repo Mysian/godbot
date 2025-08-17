@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const { createCanvas } = require("canvas");
@@ -17,7 +17,6 @@ const PLAY_STYLE_ROLES = {
   "즐겜러": "1210762420151394354"
 };
 
-// 🔓 비공개 무시 열람 권한(관리용 등)
 const PRIVACY_BYPASS_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 
 const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p)) : {});
@@ -213,11 +212,9 @@ function renderRadarPng({ labels, values }) {
   return canvas.toBuffer("image/png");
 }
 
-// ---- 폴백 포함: 자주 사용하는 음성채널(30일) ----
 async function getFavVoiceChannelText(userId, guild, now = new Date()) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-
   try {
     if (typeof activity.getVoiceChannelUsage === "function") {
       const stats = activity.getVoiceChannelUsage({ from, to, userId }) || {};
@@ -237,7 +234,6 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
       }
     }
   } catch {}
-
   try {
     const logs = activityLogger.getUserActivities?.(userId) || [];
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
@@ -256,115 +252,197 @@ async function getFavVoiceChannelText(userId, guild, now = new Date()) {
       return `<#${top[0]}> (이용 지수 ${top[1]}점)`;
     }
   } catch {}
-
   return "데이터 없음";
 }
 
-// ---- 폴백 포함: 자주 등장하는 시간대(30일, KST, 평일/주말 분리) ----
 async function getFavTimeRangeText(userId, now = new Date()) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-
-  // 시간대 최다 1시간 구간을 "HH시 ~ HH+1시"로 반환 (없으면 "데이터 없음")
   const topHourLabel = (hoursMap) => {
     const top = Object.entries(hoursMap).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0];
     if (!top || (top[1] || 0) <= 0) return "데이터 없음";
     const hour = Number(top[0]);
     return `${hour}시 ~ ${((hour + 1) % 24)}시`;
   };
-
-  // 일자(로컬 KST 기준) -> 평일/주말 판별
   const isWeekday = (d) => {
-    const day = d.getDay(); // 0=일, 6=토
+    const day = d.getDay();
     return day >= 1 && day <= 5;
   };
   const isWeekend = (d) => {
     const day = d.getDay();
     return day === 0 || day === 6;
   };
-
-  // 공통 누적 버킷 준비
   const emptyHours = () => {
     const obj = {};
     for (let h = 0; h < 24; h++) obj[String(h).padStart(2, "0")] = 0;
     return obj;
   };
-
-  // 1) 정식 경로: activity.getDailyHourlyStats 사용 (요일 판별 가능)
   try {
     if (typeof activity.getDailyHourlyStats === "function") {
       const dailyHourly = activity.getDailyHourlyStats({ from, to, userId }) || {};
-
       const weekdayHours = emptyHours();
       const weekendHours = emptyHours();
-
       for (const dateStr of Object.keys(dailyHourly)) {
         const dateKst = new Date(`${dateStr}T00:00:00+09:00`);
         const byHour = dailyHourly[dateStr] || {};
         const bucketTarget = isWeekday(dateKst) ? weekdayHours : isWeekend(dateKst) ? weekendHours : null;
         if (!bucketTarget) continue;
-
         for (let h = 0; h < 24; h++) {
           const hh = String(h).padStart(2, "0");
           const b = byHour[hh] || { message: 0, voice: 0 };
-          // 채팅 1건 = 1점, 음성 60초 = 1점
           const score = (b.message || 0) + (b.voice || 0) / 60;
           bucketTarget[hh] += score;
         }
       }
-
       const weekdayRange = topHourLabel(weekdayHours);
       const weekendRange = topHourLabel(weekendHours);
       return `평일: ${weekdayRange}\n주말: ${weekendRange}`;
     }
   } catch {}
-
-  // 2) 폴백: activity.getHourlyStats 는 요일정보가 없어 분리 불가 → 마지막 폴백으로 이동
-
-  // 3) 최종 폴백: raw activity logs로 요일 분리
   try {
     const logs = activityLogger.getUserActivities?.(userId) || [];
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-
     const weekdayArr = new Array(24).fill(0);
     const weekendArr = new Array(24).fill(0);
-
     for (const l of logs) {
       if (!l || typeof l.time !== "number" || l.time < cutoff) continue;
-      // KST 보정
       const kst = new Date(l.time + 9 * 3600 * 1000);
       const h = kst.getHours();
       const target = isWeekday(kst) ? weekdayArr : isWeekend(kst) ? weekendArr : null;
       if (!target) continue;
-
-      let weight = 1;                 // 기본 가중치
+      let weight = 1;
       if (isMessageLog(l)) weight += 0.5;
       if (isVoiceLog(l)) {
         const dur = pickDurationFromLog(l);
-        if (dur > 0) weight += Math.min(10, Math.round(dur / 300)); // 5분당 +1, 최대 +10
+        if (dur > 0) weight += Math.min(10, Math.round(dur / 300));
         else weight += 1;
       }
       target[h] += weight;
     }
-
     const arrTopLabel = (arr) => {
       const max = Math.max(...arr);
       if (!isFinite(max) || max <= 0) return "데이터 없음";
       const idx = arr.findIndex(v => v === max);
       return `${idx}시 ~ ${(idx + 1) % 24}시`;
     };
-
     const weekdayRange = arrTopLabel(weekdayArr);
     const weekendRange = arrTopLabel(weekendArr);
     return `평일: ${weekdayRange}\n주말: ${weekendRange}`;
   } catch {}
-
   return "데이터 없음";
 }
 
 function hasAnyRole(member, roleIds = []) {
   if (!member) return false;
   return roleIds.some(rid => member.roles.cache.has(rid));
+}
+
+async function buildProfileView(interaction, targetUser) {
+  const userId = targetUser.id;
+  const profiles = readJson(profilesPath);
+  const favor = readJson(favorPath);
+  const be = readJson(bePath);
+  const defaultProfile = { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false };
+  const profile = { ...defaultProfile, ...(profiles[userId] || {}) };
+  const viewerId = interaction.user.id;
+  const isSelf = viewerId === userId;
+  const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
+  const viewerMember = interaction.member ?? (await interaction.guild.members.fetch(viewerId).catch(() => null));
+  if (!isSelf && profile.isPrivate) {
+    const canBypass = hasAnyRole(viewerMember, PRIVACY_BYPASS_ROLE_IDS);
+    if (!canBypass) {
+      return { ephemeral: true, content: "해당 유저는 프로필 비공개 상태 입니다." };
+    }
+  }
+  const playStyle = getPlayStyle(targetMember);
+  const favorVal = favor[userId] ?? 0;
+  const beAmount = formatAmount(be[userId]?.amount ?? 0);
+  const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
+  const joinedStr = `<t:${Math.floor((targetMember?.joinedAt || new Date()).getTime() / 1000)}:R>`;
+  let friendsStr = "없음";
+  try {
+    const rawTop = relationship?.getTopRelations ? relationship.getTopRelations(userId, 3) : [];
+    const names = [];
+    for (const rel of rawTop) {
+      const fid = typeof rel === "string" ? rel : rel.userId ?? rel.id;
+      if (!fid) continue;
+      const m = await interaction.guild.members.fetch(fid).catch(() => null);
+      if (m) names.push(m.displayName);
+      else {
+        const u = await interaction.client.users.fetch(fid).catch(() => null);
+        names.push(u ? `${u.username} (탈주)` : "(탈주)");
+      }
+    }
+    if (names.length) friendsStr = names.map(n => `• ${n}`).join("\n");
+  } catch {}
+  let recentMsg = 0, recentVoice = 0;
+  try {
+    const now = new Date();
+    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const stat = activity?.getStats ? activity.getStats({ from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10), userId }) : [];
+    if (stat?.length) {
+      recentMsg = stat[0].message ?? 0;
+      recentVoice = stat[0].voice ?? 0;
+    }
+  } catch {}
+  let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
+  try {
+    const logs = activityLogger.getUserActivities?.(userId) || [];
+    logs.sort((a, b) => (b.time || 0) - (a.time || 0));
+    const recentLogs = logs.slice(0, 1);
+    if (recentLogs.length) {
+      recentActivitiesStr = recentLogs.map(log => `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`).join("\n");
+    }
+  } catch {
+    recentActivitiesStr = "불러오기 실패";
+  }
+  const favVoiceChannel = await getFavVoiceChannelText(userId, interaction.guild).catch(() => "데이터 없음");
+  const favTimeRange = await getFavTimeRangeText(userId).catch(() => "데이터 없음");
+  const radar = buildRadarStats30d(userId);
+  const png = renderRadarPng(radar);
+  const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
+  const privacyNotice =
+    (!isSelf && profile.isPrivate && hasAnyRole(viewerMember, PRIVACY_BYPASS_ROLE_IDS))
+      ? "⚠️ 해당 유저는 프로필 비공개를 설정한 유저입니다.\n"
+      : "";
+  const embed = new EmbedBuilder()
+    .setTitle("프로필 정보")
+    .setThumbnail(targetUser.displayAvatarURL())
+    .setColor(favorVal >= 15 ? 0xff71b3 : favorVal >= 5 ? 0x82d8ff : 0xbcbcbc)
+    .setDescription([
+      privacyNotice + `<@${userId}> 님의 프로필`,
+      statusMsg,
+      `🔷 파랑 정수(BE): **${beAmount} BE**`
+    ].join("\n"))
+    .addFields(
+      { name: "🎮 플레이 스타일", value: playStyle, inline: true },
+      { name: `${getFavorEmoji(favorVal)} 호감도`, value: String(favorVal), inline: true },
+      { name: "⏰ 서버 입장", value: joinedStr, inline: true },
+      { name: "🎲 선호 게임", value: profile.favGames.length ? profile.favGames.map(g => `• ${g}`).join("\n") : "없음", inline: false },
+      { name: "🟠 오버워치", value: `${getTierEmoji(profile.owTier)} ${profile.owTier || "없음"}`, inline: true },
+      { name: "🔵 롤", value: `${getTierEmoji(profile.lolTier)} ${profile.lolTier || "없음"}`, inline: true },
+      { name: "💻 스팀", value: profile.steamNick || "없음", inline: true },
+      { name: "🔖 롤 닉네임", value: profile.lolNick || "없음", inline: true },
+      { name: "🟦 배틀넷", value: profile.bnetNick || "없음", inline: true },
+      { name: "🤗 교류가 활발한 3인", value: friendsStr, inline: false },
+      { name: "📊 최근 7일 채팅", value: `${recentMsg}회`, inline: true },
+      { name: "🔊 최근 7일 음성", value: formatVoice(recentVoice), inline: true },
+      { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false },
+      { name: "🎤 자주 사용하는 음성채널", value: favVoiceChannel, inline: false },
+      { name: "⏱️ 자주 등장하는 시간대", value: favTimeRange, inline: false }
+    )
+    .setImage("attachment://profile-stats.png")
+    .setFooter({
+      text: userId === interaction.user.id ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!" : "혁신적 종합게임서버, 까리한디스코드",
+      iconURL: interaction.client.user.displayAvatarURL()
+    });
+
+  const nav = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`goto_be:${userId}`).setLabel("💙 정수 보기").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`goto_profile:${userId}`).setLabel("👤 프로필 보기").setStyle(ButtonStyle.Secondary).setDisabled(true)
+  );
+
+  return { embeds: [embed], files: [attachment], components: [nav], ephemeral: true };
 }
 
 module.exports = {
@@ -374,128 +452,27 @@ module.exports = {
     .addUserOption(opt => opt.setName("유저").setDescription("확인할 유저 (입력 안하면 본인)").setRequired(false)),
   async execute(interaction) {
     const target = interaction.options.getUser("유저") || interaction.user;
-    const userId = target.id;
-
-    const profiles = readJson(profilesPath);
-    const favor = readJson(favorPath);
-    const be = readJson(bePath);
-
-    // 기본 프로필 + 비공개 플래그 폴백
-    const defaultProfile = { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false };
-    const profile = { ...defaultProfile, ...(profiles[userId] || {}) };
-
-    const viewerId = interaction.user.id;
-    const isSelf = viewerId === userId;
-
-    // 대상/열람자 멤버
-    const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
-    const viewerMember = interaction.member ?? (await interaction.guild.members.fetch(viewerId).catch(() => null));
-
-    // 🔒 비공개 처리
-    if (!isSelf && profile.isPrivate) {
-      const canBypass = hasAnyRole(viewerMember, PRIVACY_BYPASS_ROLE_IDS);
-      if (!canBypass) {
-        await interaction.reply({ content: "해당 유저는 프로필 비공개 상태 입니다.", ephemeral: true });
-        return;
+    const view = await buildProfileView(interaction, target);
+    if (view.content) return await interaction.reply({ content: view.content, ephemeral: true });
+    const msg = await interaction.reply({ embeds: view.embeds, files: view.files, components: view.components, ephemeral: true, fetchReply: true });
+    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300000 });
+    collector.on("collect", async i => {
+      if (i.user.id !== interaction.user.id) return await i.reply({ content: "본인만 조작 가능.", ephemeral: true });
+      const [key, uid] = i.customId.split(":");
+      const targetUser = await interaction.client.users.fetch(uid).catch(() => null) || interaction.user;
+      if (key === "goto_be") {
+        const beCheck = require("./be-check.js");
+        const beView = await beCheck.buildView(i, targetUser);
+        return await i.update({ embeds: beView.embeds, components: beView.components, files: beView.files || [] });
       }
-      // bypass 시 안내만 첨언하고 계속 진행
-    }
-
-    const playStyle = getPlayStyle(targetMember);
-    const favorVal = favor[userId] ?? 0;
-    const beAmount = formatAmount(be[userId]?.amount ?? 0);
-    const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
-    const joinedStr = `<t:${Math.floor((targetMember?.joinedAt || new Date()).getTime() / 1000)}:R>`;
-
-    // 교류 TOP3
-    let friendsStr = "없음";
-    try {
-      const rawTop = relationship?.getTopRelations ? relationship.getTopRelations(userId, 3) : [];
-      const names = [];
-      for (const rel of rawTop) {
-        const fid = typeof rel === "string" ? rel : rel.userId ?? rel.id;
-        if (!fid) continue;
-        const m = await interaction.guild.members.fetch(fid).catch(() => null);
-        if (m) names.push(m.displayName);
-        else {
-          const u = await interaction.client.users.fetch(fid).catch(() => null);
-          names.push(u ? `${u.username} (탈주)` : "(탈주)");
-        }
+      if (key === "goto_profile") {
+        const profView = await buildProfileView(interaction, targetUser);
+        return await i.update({ embeds: profView.embeds, components: profView.components, files: profView.files || [] });
       }
-      if (names.length) friendsStr = names.map(n => `• ${n}`).join("\n");
-    } catch {}
-
-    // 최근 7일 숫자
-    let recentMsg = 0, recentVoice = 0;
-    try {
-      const now = new Date();
-      const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const stat = activity?.getStats ? activity.getStats({ from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10), userId }) : [];
-      if (stat?.length) {
-        recentMsg = stat[0].message ?? 0;
-        recentVoice = stat[0].voice ?? 0;
-      }
-    } catch {}
-
-    // 최근 활동 이력: 1개만
-    let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
-    try {
-      const logs = activityLogger.getUserActivities?.(userId) || [];
-      logs.sort((a, b) => (b.time || 0) - (a.time || 0));
-      const recentLogs = logs.slice(0, 1);
-      if (recentLogs.length) {
-        recentActivitiesStr = recentLogs.map(log => `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`).join("\n");
-      }
-    } catch {
-      recentActivitiesStr = "불러오기 실패";
-    }
-
-    const favVoiceChannel = await getFavVoiceChannelText(userId, interaction.guild).catch(() => "데이터 없음");
-    const favTimeRange = await getFavTimeRangeText(userId).catch(() => "데이터 없음");
-
-    // 레이더 PNG
-    const radar = buildRadarStats30d(userId);
-    const png = renderRadarPng(radar);
-    const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
-
-    // 🔔 비공개 우회 열람 안내 문구 구성
-    const privacyNotice =
-      (!isSelf && profile.isPrivate && hasAnyRole(viewerMember, PRIVACY_BYPASS_ROLE_IDS))
-        ? "⚠️ 해당 유저는 프로필 비공개를 설정한 유저입니다.\n"
-        : "";
-
-    const embed = new EmbedBuilder()
-      .setTitle("프로필 정보")
-      .setThumbnail(target.displayAvatarURL())
-      .setColor(favorVal >= 15 ? 0xff71b3 : favorVal >= 5 ? 0x82d8ff : 0xbcbcbc)
-      .setDescription([
-        privacyNotice + `<@${userId}> 님의 프로필`,
-        statusMsg,
-        `🔷 파랑 정수(BE): **${beAmount} BE**`
-      ].join("\n"))
-      .addFields(
-        { name: "🎮 플레이 스타일", value: playStyle, inline: true },
-        { name: `${getFavorEmoji(favorVal)} 호감도`, value: String(favorVal), inline: true },
-        { name: "⏰ 서버 입장", value: joinedStr, inline: true },
-        { name: "🎲 선호 게임", value: profile.favGames.length ? profile.favGames.map(g => `• ${g}`).join("\n") : "없음", inline: false },
-        { name: "🟠 오버워치", value: `${getTierEmoji(profile.owTier)} ${profile.owTier || "없음"}`, inline: true },
-        { name: "🔵 롤", value: `${getTierEmoji(profile.lolTier)} ${profile.lolTier || "없음"}`, inline: true },
-        { name: "💻 스팀", value: profile.steamNick || "없음", inline: true },
-        { name: "🔖 롤 닉네임", value: profile.lolNick || "없음", inline: true },
-        { name: "🟦 배틀넷", value: profile.bnetNick || "없음", inline: true },
-        { name: "🤗 교류가 활발한 3인", value: friendsStr, inline: false },
-        { name: "📊 최근 7일 채팅", value: `${recentMsg}회`, inline: true },
-        { name: "🔊 최근 7일 음성", value: formatVoice(recentVoice), inline: true },
-        { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false },
-        { name: "🎤 자주 사용하는 음성채널", value: favVoiceChannel, inline: false },
-        { name: "⏱️ 자주 등장하는 시간대", value: favTimeRange, inline: false }
-      )
-      .setImage("attachment://profile-stats.png")
-      .setFooter({
-        text: userId === interaction.user.id ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!" : "혁신적 종합게임서버, 까리한디스코드",
-        iconURL: interaction.client.user.displayAvatarURL()
-      });
-
-    await interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
-  }
+    });
+    collector.on("end", async () => {
+      try { await msg.edit({ components: [] }); } catch {}
+    });
+  },
+  buildView: buildProfileView
 };
