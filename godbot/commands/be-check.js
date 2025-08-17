@@ -15,6 +15,7 @@ const path = require('path');
 const bePath = path.join(__dirname, '../data/BE.json');
 const privacyPath = path.join(__dirname, '../data/be-privacy.json');
 const DONOR_ROLE = '1397076919127900171';
+const STAFF_ROLES = ['786128824365482025','1201856430580432906'];
 
 const TIER_IMAGE = {
   champion: "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",
@@ -122,6 +123,7 @@ function sanitizeHistory(list) {
 
 function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName, opts = {}) {
   const historyHidden = !!opts.historyHidden;
+  const privacyNotice = !!opts.privacyNotice;
   let historyList = sanitizeHistory(data.history || []);
   if (!historyHidden) {
     if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
@@ -141,6 +143,8 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, dis
   const tierName = TIER_NAME[tier.key];
   const tierImage = TIER_IMAGE[tier.key];
   const profileIcon = targetUser.displayAvatarURL({ extension: "png", size: 64 });
+  let top = `🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`;
+  if (privacyNotice) top = `⚠️ 해당 유저는 정수 내역을 비공개중입니다.\n\n${top}`;
   let footerText = '';
   if (!historyHidden) {
     if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
@@ -153,7 +157,7 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, dis
   const currentMax = historyHidden ? 1 : Math.max(1, maxPage);
   const embed = new EmbedBuilder()
     .setTitle(`💙 ${nameForTitle} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`)
-    .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
+    .setDescription(top)
     .addFields({ name: `📜 최근 거래 내역 (${currentPage}/${currentMax})${historyHidden ? ' [비공개]' : ''}`, value: history })
     .setColor(0x3399ff)
     .setThumbnail(tierImage)
@@ -183,11 +187,17 @@ function buildRow(page, maxPage, filter, opts = {}) {
     row2.addComponents(
       new ButtonBuilder()
         .setCustomId('privacy_toggle')
-        .setLabel(privacyOn ? '🔒 내역 비공개 ON [💜 𝕯𝖔𝖓𝖔𝖗 권한]' : '🔓 내역 비공개 OFF [💜 𝕯𝖔𝖓𝖔𝖗 권한]')
+        .setLabel(privacyOn ? '🔒 내역 비공개 ON' : '🔓 내역 비공개 OFF')
         .setStyle(privacyOn ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
   }
   return [main, row2];
+}
+
+function hasAnyRole(member, roleIds) {
+  if (!member) return false;
+  for (const id of roleIds) if (member.roles.cache.has(id)) return true;
+  return false;
 }
 
 module.exports = {
@@ -229,14 +239,16 @@ module.exports = {
       }
     }
     const viewerIsOwner = interaction.user.id === targetId;
+    const viewerIsStaff = interaction.guild ? hasAnyRole(interaction.member, STAFF_ROLES) : false;
+    const historyHidden = privacyOn && !viewerIsOwner && !viewerIsStaff;
+    const privacyNotice = privacyOn && !viewerIsOwner && viewerIsStaff;
     let page = 1;
     let filter = FILTERS.ALL;
     let searchTerm = '';
     const historyListAll = sanitizeHistory(data.history || []);
     let filteredHistory = historyListAll;
     let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
-    const historyHidden = privacyOn && !viewerIsOwner;
-    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName, { historyHidden });
+    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName, { historyHidden, privacyNotice });
     const showPrivacyToggle = viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE);
     const rows = buildRow(historyHidden ? 1 : page, historyHidden ? 1 : maxPage, filter, { canSearch: !historyHidden, showPrivacyToggle, privacyOn });
     const msg = await interaction.reply({ embeds: [embed], components: rows, ephemeral: true, fetchReply: true });
@@ -244,8 +256,9 @@ module.exports = {
     collector.on('collect', async i => {
       if (i.user.id !== interaction.user.id) return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
       if (i.customId === 'taxinfo') {
-        const nowTax = getTax((loadBE()[targetId] || { amount: 0 }).amount);
-        const recentTaxHistory = (loadBE()[targetId]?.history || []).filter(h => h.reason && h.reason.includes('정수세')).slice(-5).reverse();
+        const freshBEAll = loadBE();
+        const nowTax = getTax((freshBEAll[targetId] || { amount: 0 }).amount);
+        const recentTaxHistory = (freshBEAll[targetId]?.history || []).filter(h => h.reason && h.reason.includes('정수세')).slice(-5).reverse();
         let taxHistoryText = recentTaxHistory.length ? recentTaxHistory.map(h => `• ${formatAmount(h.amount)} BE (${h.reason}) - <t:${Math.floor(h.timestamp/1000)}:R>`).join('\n') : '최근 정수세 납부 내역이 없습니다.';
         const tableText = TAX_TABLE.map(([cond, rate]) => `${cond.padEnd(9)}: ${rate}`).join('\n');
         const infoEmbed = new EmbedBuilder().setTitle('💸 정수세 안내').setColor(0x4bb0fd).setDescription(['※ 정수세는 매일 18:00에 자동으로 납부됩니다.', '', '**정수세 누진세율 표**', '```', tableText, '```', `**현재 잔액 기준 납부 예정 세금:**\n> ${formatAmount(nowTax)} BE`, '', '**최근 정수세 납부 기록**', taxHistoryText].join('\n')).setFooter({ text: '정수세는 [세율표]에 따라 실시간 변동될 수 있습니다.' });
@@ -261,7 +274,7 @@ module.exports = {
             delete p[interaction.user.id];
             savePrivacy(p);
             const fresh = loadBE()[targetId] || { amount: 0, history: [] };
-            const newEmbed = buildEmbed(targetUser, fresh, 1, 1, filter, '', loadBE(), displayName, { historyHidden: false });
+            const newEmbed = buildEmbed(targetUser, fresh, 1, 1, filter, '', loadBE(), displayName, { historyHidden: false, privacyNotice: false });
             const newRows = buildRow(1, 1, filter, { canSearch: true, showPrivacyToggle: false, privacyOn: false });
             await i.update({ embeds: [newEmbed], components: newRows });
             return;
@@ -275,7 +288,7 @@ module.exports = {
         else p[interaction.user.id] = true;
         savePrivacy(p);
         const fresh = loadBE()[targetId] || { amount: 0, history: [] };
-        const newEmbed = buildEmbed(targetUser, fresh, page, Math.max(1, Math.ceil((fresh.history||[]).length / PAGE_SIZE)), filter, searchTerm, loadBE(), displayName, { historyHidden: false });
+        const newEmbed = buildEmbed(targetUser, fresh, page, Math.max(1, Math.ceil((fresh.history||[]).length / PAGE_SIZE)), filter, searchTerm, loadBE(), displayName, { historyHidden: false, privacyNotice: false });
         const newRows = buildRow(page, Math.max(1, Math.ceil((fresh.history||[]).length / PAGE_SIZE)), filter, { canSearch: true, showPrivacyToggle: true, privacyOn: !now });
         await i.update({ embeds: [newEmbed], components: newRows });
         return;
@@ -302,14 +315,14 @@ module.exports = {
         await i.showModal(modal);
         return;
       }
-      if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
-      else if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
-      else filteredHistory = historyList;
-      maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
+      let filteredHistory2 = historyList;
+      if (filter === FILTERS.EARN) filteredHistory2 = historyList.filter(h => h.type === 'earn');
+      else if (filter === FILTERS.SPEND) filteredHistory2 = historyList.filter(h => h.type === 'spend');
+      maxPage = Math.max(1, Math.ceil(filteredHistory2.length / PAGE_SIZE));
       page = Math.max(1, Math.min(page, maxPage));
       const member = interaction.guild ? await interaction.guild.members.fetch(targetId).catch(() => null) : null;
       const displayNameUpdate = member && member.displayName ? member.displayName : targetUser.username;
-      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayNameUpdate, { historyHidden: false });
+      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayNameUpdate, { historyHidden: false, privacyNotice });
       const newRows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle, privacyOn });
       await i.update({ embeds: [newEmbed], components: newRows });
     });
@@ -347,8 +360,9 @@ module.exports.modal = async function(interaction) {
     }
   }
   const viewerIsOwner = interaction.user.id === ownerId;
-  if (privacyOn && !viewerIsOwner) {
-    return await interaction.reply({ content: '🔒 해당 사용자의 최근 정수 내역은 비공개입니다. 💜 𝕯𝖔𝖓𝖔𝖗 후원 권한', ephemeral: true });
+  const viewerIsStaff = interaction.guild ? hasAnyRole(interaction.member, STAFF_ROLES) : false;
+  if (privacyOn && !viewerIsOwner && !viewerIsStaff) {
+    return await interaction.reply({ content: '🔒 해당 사용자의 최근 정수 내역은 비공개입니다.', ephemeral: true });
   }
   let displayName = targetUser.username;
   try {
@@ -363,8 +377,7 @@ module.exports.modal = async function(interaction) {
   let page = 1;
   let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
   let filter = FILTERS.SEARCH;
-  const embed = buildEmbed(targetUser, { ...data, history: filteredHistory }, page, maxPage, filter, searchTerm, be, displayName, { historyHidden: false });
+  const embed = buildEmbed(targetUser, { ...data, history: filteredHistory }, page, maxPage, filter, searchTerm, be, displayName, { historyHidden: false, privacyNotice: privacyOn && !viewerIsOwner && viewerIsStaff });
   const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE), privacyOn: !!privacy[ownerId] });
   await interaction.update({ embeds: [embed], components: rows });
 };
-
