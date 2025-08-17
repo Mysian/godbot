@@ -169,6 +169,7 @@ function buildRow(page, maxPage, filter, opts = {}) {
   const canSearch = opts.canSearch !== false;
   const showPrivacyToggle = !!opts.showPrivacyToggle;
   const privacyOn = !!opts.privacyOn;
+  const privacyToggleDisabled = !!opts.privacyToggleDisabled;
   const targetId = opts.targetId;
   const main = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('prev').setLabel('◀ 이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1 || !canSearch),
@@ -190,6 +191,7 @@ function buildRow(page, maxPage, filter, opts = {}) {
         .setCustomId('privacy_toggle')
         .setLabel(privacyOn ? '🔒 내역 비공개[💜𝕯𝖔𝖓𝖔𝖗] ON' : '🔓 내역 비공개[💜𝕯𝖔𝖓𝖔𝖗] OFF')
         .setStyle(privacyOn ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setDisabled(privacyToggleDisabled)
     );
   }
   const nav = new ActionRowBuilder().addComponents(
@@ -247,8 +249,9 @@ async function buildBeView(interaction, targetUser, state = {}) {
   let maxPage = Math.max(1, Math.ceil((historyHidden ? 0 : filteredHistory.length) / PAGE_SIZE));
   page = Math.max(1, Math.min(page, maxPage));
   const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName, { historyHidden, privacyNotice });
-  const showPrivacyToggle = viewerIsOwner && interaction.member?.roles.cache.has(DONOR_ROLE);
-  const rows = buildRow(historyHidden ? 1 : page, historyHidden ? 1 : maxPage, filter, { canSearch: !historyHidden, showPrivacyToggle, privacyOn, targetId });
+  const showPrivacyToggle = viewerIsOwner;
+  const privacyToggleDisabled = !(interaction.member?.roles.cache.has(DONOR_ROLE));
+  const rows = buildRow(historyHidden ? 1 : page, historyHidden ? 1 : maxPage, filter, { canSearch: !historyHidden, showPrivacyToggle, privacyOn, privacyToggleDisabled, targetId });
   return { embeds: [embed], components: rows, files: [] };
 }
 
@@ -326,16 +329,16 @@ module.exports = {
       const privacy = loadPrivacy();
       const viewerIsOwner = interaction.user.id === targetId;
       const viewerIsStaff = interaction.guild ? hasAnyRole(interaction.member, STAFF_ROLES) : false;
-      const privacyOn = !!privacy[targetId] && (async () => {
-        if (interaction.guild) {
-          try {
-            const m = await interaction.guild.members.fetch(targetId);
-            return m.roles.cache.has(DONOR_ROLE);
-          } catch { return false; }
-        }
-        return false;
+      const privacyOnPromise = (async () => {
+        const has = !!privacy[targetId];
+        if (!has) return false;
+        if (!interaction.guild) return false;
+        try {
+          const m = await interaction.guild.members.fetch(targetId);
+          return m.roles.cache.has(DONOR_ROLE);
+        } catch { return false; }
       })();
-      const resolvedPrivacyOn = await privacyOn;
+      const resolvedPrivacyOn = await privacyOnPromise;
       const historyHidden = resolvedPrivacyOn && !viewerIsOwner && !viewerIsStaff;
       if (historyHidden) return await i.reply({ content: '해당 사용자의 최근 내역은 비공개입니다.[💜서버 후원자: 𝕯𝖔𝖓𝖔𝖗 권한]', ephemeral: true });
       if (key === 'prev') page--;
@@ -362,7 +365,18 @@ module.exports = {
         }
       } catch {}
       const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayName, { historyHidden: false, privacyNotice: false });
-      const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: i.user.id === targetId && interaction.member.roles.cache.has(DONOR_ROLE), privacyOn: !!(loadPrivacy()[targetId]), targetId });
+      const rows = buildRow(
+        page,
+        maxPage,
+        filter,
+        {
+          canSearch: true,
+          showPrivacyToggle: i.user.id === targetId,
+          privacyOn: !!(loadPrivacy()[targetId]),
+          privacyToggleDisabled: !interaction.member.roles.cache.has(DONOR_ROLE),
+          targetId
+        }
+      );
       await i.update({ embeds: [newEmbed], components: rows });
     });
     collector.on('end', async () => {
@@ -417,7 +431,7 @@ module.exports.modal = async function(interaction) {
   let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
   let filter = FILTERS.SEARCH;
   const embed = buildEmbed(targetUser, { ...data, history: filteredHistory }, page, maxPage, filter, searchTerm, be, displayName, { historyHidden: false, privacyNotice: privacyOn && !viewerIsOwner && viewerIsStaff });
-  const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE), privacyOn: !!privacy[ownerId], targetId: ownerId });
+  const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: viewerIsOwner, privacyOn: !!privacy[ownerId], privacyToggleDisabled: !interaction.member.roles.cache.has(DONOR_ROLE), targetId: ownerId });
   await interaction.update({ embeds: [embed], components: rows });
 };
 
