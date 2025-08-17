@@ -1,10 +1,11 @@
 // commands/bot-deploy-commands.js
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ApplicationCommandType } = require("discord.js");
 const { exec } = require("child_process");
 const path = require("path");
 
 const MAIN_STAFF_ROLE_ID = "786128824365482025";
-const EMBED_CHAR_LIMIT = 1000; // 각 임베드 최대 표시
+const MAX_COMMANDS = 100;
+const DESCRIPTION_LIMIT = 4000;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -27,39 +28,41 @@ module.exports = {
     const deployScriptPath = path.join(__dirname, "../deploy-commands.js");
 
     exec(`node "${deployScriptPath}"`, { cwd: process.cwd(), timeout: 30_000 }, async (err, stdout, stderr) => {
-      // 콘솔에 모든 결과 남김(디버깅용)
-      console.log('===== 봇명령어업데이트 실행 결과 =====');
-      console.log('err:', err);
-      console.log('stdout:', stdout);
-      console.log('stderr:', stderr);
+      console.log("===== 봇명령어업데이트 실행 결과 =====");
+      console.log("err:", err);
+      console.log("stdout:", stdout);
+      console.log("stderr:", stderr);
 
-      // 결과 취합
-      let resultText = '';
-      if (err) {
-        resultText += `❌ [Error]\n${err.message || ''}\n`;
-      }
-      if (stderr) {
-        resultText += `❗ [stderr]\n${stderr}\n`;
-      }
-      if (stdout) {
-        resultText += `✅ [stdout]\n${stdout}\n`;
-      }
-      if (!resultText.trim()) {
-        resultText = "업데이트 완료!";
-      }
+      let resultText = "";
+      if (err) resultText += `❌ [Error]\n${err.message || ""}\n`;
+      if (stderr) resultText += `❗ [stderr]\n${stderr}\n`;
+      if (stdout) resultText += `✅ [stdout]\n${stdout}\n`;
+      if (!resultText.trim()) resultText = "업데이트 완료!";
 
-      // 2,000자 넘으면 페이지 분할 (임베드 제한 고려)
-      const embeds = [];
-      for (let i = 0; i < resultText.length; i += EMBED_CHAR_LIMIT) {
-        embeds.push(
-          new EmbedBuilder()
-            .setTitle(`봇 명령어 업데이트 결과${embeds.length ? ` (${embeds.length + 1})` : ""}`)
-            .setDescription("```" + resultText.slice(i, i + EMBED_CHAR_LIMIT) + "```")
-            .setColor(err ? 0xED4245 : 0x57F287)
-        );
+      let guildSlash = 0, globalSlash = 0, totalSlash = 0;
+      try {
+        const [globalCmds, guildCmds] = await Promise.all([
+          interaction.client.application.commands.fetch().catch(() => null),
+          guild.commands.fetch().catch(() => null),
+        ]);
+        if (globalCmds) globalSlash = globalCmds.filter(c => c.type === ApplicationCommandType.ChatInput).size;
+        if (guildCmds) guildSlash = guildCmds.filter(c => c.type === ApplicationCommandType.ChatInput).size;
+        totalSlash = guildSlash + globalSlash;
+      } catch {
+        totalSlash = 0;
       }
 
-      await interaction.editReply({ embeds }).catch(() => {});
+      const ok = !err && !(stderr && stderr.trim().length);
+      const embed = new EmbedBuilder()
+        .setTitle(`봇 명령어 업데이트 결과 [${totalSlash}/${MAX_COMMANDS}]`)
+        .setDescription("```" + (resultText.length > DESCRIPTION_LIMIT
+            ? resultText.slice(0, DESCRIPTION_LIMIT - 20) + "\n...(길이 제한으로 일부 생략)"
+            : resultText) + "```")
+        .setColor(ok ? 0x57F287 : 0xED4245)
+        .setFooter({ text: `슬래시 명령어 수 • 길드 ${guildSlash} · 글로벌 ${globalSlash}` })
+        .setTimestamp(new Date());
+
+      await interaction.editReply({ embeds: [embed] }).catch(() => {});
     });
   }
 };
