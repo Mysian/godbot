@@ -399,33 +399,35 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
-  // === BE(정수) 버튼/셀렉트 라우팅 ===
+// === BE(정수) 버튼/셀렉트 라우팅 (비네임스페이스 ID도 포괄) ===
 if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId) {
   const id = interaction.customId;
+  const root = id.split(':')[0];
+  const fromSlashBe = interaction.message?.interaction?.commandName === '정수조회';
 
-  // 네가 쓰는 커스텀ID 접두사/아이디에 맞춰 필요하면 아래 목록 추가
+  const BE_IDS = new Set([
+    'prev','next','search','earnonly','spendonly','taxinfo','privacy_toggle',
+    'goto_profile','goto_be'
+  ]);
+
   const isBE =
     /^be[_:-]/i.test(id) ||
-    id === 'be_back' ||
-    id === 'be_refresh' ||
-    id.startsWith('be_privacy_') ||
-    id.startsWith('be_txn_') ||
-    id === 'goto_be'; // 프로필→정수 전환 버튼까지 여기서 받을 거면 유지
+    BE_IDS.has(root) ||
+    fromSlashBe;
 
   if (isBE) {
     try {
-      const beCmd = client.commands.get("정수조회");
+      const beCmd = client.commands.get('정수조회');
       if (beCmd) {
         if (typeof beCmd.component === 'function') return await beCmd.component(interaction);
         if (interaction.isButton() && typeof beCmd.handleButton === 'function') return await beCmd.handleButton(interaction);
         if (interaction.isStringSelectMenu() && typeof beCmd.handleSelect === 'function') return await beCmd.handleSelect(interaction);
       }
-      // 핸들러가 없어도 최소 ACK 해서 "상호작용 실패" 방지
       return await interaction.deferUpdate().catch(() => {});
     } catch (e) {
       console.error('[BE 컴포넌트 오류]', e);
       if (!interaction.deferred && !interaction.replied) {
-        return await interaction.reply({ content: "❌ 정수 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+        return await interaction.reply({ content: '❌ 정수 상호작용 처리 중 오류', ephemeral: true }).catch(() => {});
       }
       return;
     }
