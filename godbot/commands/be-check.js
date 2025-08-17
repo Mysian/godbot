@@ -170,7 +170,6 @@ function buildRow(page, maxPage, filter, opts = {}) {
   const showPrivacyToggle = !!opts.showPrivacyToggle;
   const privacyOn = !!opts.privacyOn;
   const privacyToggleDisabled = !!opts.privacyToggleDisabled;
-  const targetId = opts.targetId;
   const main = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('prev').setLabel('◀ 이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1 || !canSearch),
     new ButtonBuilder().setCustomId('next').setLabel('다음 ▶').setStyle(ButtonStyle.Secondary).setDisabled(page >= maxPage || !canSearch)
@@ -194,11 +193,7 @@ function buildRow(page, maxPage, filter, opts = {}) {
         .setDisabled(privacyToggleDisabled)
     );
   }
-  const nav = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`goto_profile:${targetId || 'self'}`).setLabel('👤 프로필 보기').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`goto_be:${targetId || 'self'}`).setLabel('💙 정수 보기').setStyle(ButtonStyle.Secondary).setDisabled(true)
-  );
-  return [main, row2, nav];
+  return [main, row2];
 }
 
 function hasAnyRole(member, roleIds) {
@@ -278,7 +273,7 @@ module.exports = {
     let searchTerm = '';
     collector.on('collect', async i => {
       if (i.user.id !== interaction.user.id) return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
-      const [key, arg] = i.customId.includes(':') ? i.customId.split(':') : [i.customId, null];
+      const [key] = i.customId.includes(':') ? i.customId.split(':') : [i.customId, null];
       if (key === 'taxinfo') {
         const freshBEAll = loadBE();
         const nowTax = getTax((freshBEAll[targetId] || { amount: 0 }).amount);
@@ -312,17 +307,6 @@ module.exports = {
         const re = await buildBeView(interaction, targetUser, { page, filter, searchTerm });
         await i.update({ embeds: re.embeds, components: re.components });
         return;
-      }
-      if (key === 'goto_profile') {
-        const uid = arg || targetId;
-        const profModule = require("./profile.js");
-        const userObj = await interaction.client.users.fetch(uid).catch(() => null) || interaction.user;
-        const view2 = await profModule.buildView(interaction, userObj);
-        return await i.update({ embeds: view2.embeds, components: view2.components, files: view2.files || [] });
-      }
-      if (key === 'goto_be') {
-        const re = await buildBeView(interaction, targetUser, { page, filter, searchTerm });
-        return await i.update({ embeds: re.embeds, components: re.components });
       }
       const freshBE = loadBE();
       const freshData = freshBE[targetId] || { amount: 0, history: [] };
