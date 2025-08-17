@@ -744,7 +744,7 @@ async function handleChatAndLearning(message, content) {
   }
 
   pendingTeach.set(author.id, body);
-  await message.reply(`죄송해요! 이해하지 못했어. '${cut(body, 120)}' 물음에 내가 어떻게 답변하기를 원해?\n→ \`갓봇! 답변 학습시키기: (원하는 답변1,답변2,...)\``);
+  await message.reply(`미안해! '${cut(body, 120)}' 라는 말에 적합한 답변을 아직 학습하지 못했어.\n→ \`갓봇! 질문: '내용' 답변: '원하는 답장','답장2','답장3\``);
   await sendLog(message, "학습 요청", "FAIL", { details: "미학습 문장" });
   return true;
 }
