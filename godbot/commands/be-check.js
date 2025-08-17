@@ -144,7 +144,7 @@ function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, dis
   const tierImage = TIER_IMAGE[tier.key];
   const profileIcon = targetUser.displayAvatarURL({ extension: "png", size: 64 });
   let top = `🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`;
-  if (privacyNotice) top = `⚠️ 해당 유저는 정수 내역을 비공개중입니다.\n\n${top}`;
+  if (privacyNotice) top = `⚠️ 해당 유저는 💜𝕯𝖔𝖓𝖔𝖗 권한으로 정수 내역을 비공개중입니다.\n\n${top}`;
   let footerText = '';
   if (!historyHidden) {
     if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
@@ -187,7 +187,7 @@ function buildRow(page, maxPage, filter, opts = {}) {
     row2.addComponents(
       new ButtonBuilder()
         .setCustomId('privacy_toggle')
-        .setLabel(privacyOn ? '🔒 내역 비공개 ON' : '🔓 내역 비공개 OFF')
+        .setLabel(privacyOn ? '🔒 내역 비공개[💜𝕯𝖔𝖓𝖔𝖗] ON' : '🔓 내역 비공개[💜𝕯𝖔𝖓𝖔𝖗] OFF')
         .setStyle(privacyOn ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
   }
@@ -293,7 +293,7 @@ module.exports = {
         await i.update({ embeds: [newEmbed], components: newRows });
         return;
       }
-      if (historyHidden) return await i.reply({ content: '해당 사용자의 최근 내역은 비공개입니다.', ephemeral: true });
+      if (historyHidden) return await i.reply({ content: '해당 사용자의 최근 내역은 비공개입니다.[💜서버 후원자: 𝕯𝖔𝖓𝖔𝖗 권한]', ephemeral: true });
       const freshBE = loadBE();
       const freshData = freshBE[targetId] || { amount: 0, history: [] };
       let historyList = sanitizeHistory(freshData.history || []);
@@ -362,7 +362,7 @@ module.exports.modal = async function(interaction) {
   const viewerIsOwner = interaction.user.id === ownerId;
   const viewerIsStaff = interaction.guild ? hasAnyRole(interaction.member, STAFF_ROLES) : false;
   if (privacyOn && !viewerIsOwner && !viewerIsStaff) {
-    return await interaction.reply({ content: '🔒 해당 사용자의 최근 정수 내역은 비공개입니다.', ephemeral: true });
+    return await interaction.reply({ content: '🔒 해당 사용자의 최근 정수 내역은 비공개입니다.[💜서버 후원자: 𝕯𝖔𝖓𝖔𝖗 권한]', ephemeral: true });
   }
   let displayName = targetUser.username;
   try {
@@ -381,3 +381,4 @@ module.exports.modal = async function(interaction) {
   const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE), privacyOn: !!privacy[ownerId] });
   await interaction.update({ embeds: [embed], components: rows });
 };
+
