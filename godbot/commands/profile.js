@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const { createCanvas } = require("canvas");
@@ -437,12 +437,7 @@ async function buildProfileView(interaction, targetUser) {
       iconURL: interaction.client.user.displayAvatarURL()
     });
 
-  const nav = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`goto_be:${userId}`).setLabel("💙 정수 보기").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`goto_profile:${userId}`).setLabel("👤 프로필 보기").setStyle(ButtonStyle.Secondary).setDisabled(true)
-  );
-
-  return { embeds: [embed], files: [attachment], components: [nav], ephemeral: true };
+  return { embeds: [embed], files: [attachment], ephemeral: true };
 }
 
 module.exports = {
@@ -454,25 +449,7 @@ module.exports = {
     const target = interaction.options.getUser("유저") || interaction.user;
     const view = await buildProfileView(interaction, target);
     if (view.content) return await interaction.reply({ content: view.content, ephemeral: true });
-    const msg = await interaction.reply({ embeds: view.embeds, files: view.files, components: view.components, ephemeral: true, fetchReply: true });
-    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300000 });
-    collector.on("collect", async i => {
-      if (i.user.id !== interaction.user.id) return await i.reply({ content: "본인만 조작 가능.", ephemeral: true });
-      const [key, uid] = i.customId.split(":");
-      const targetUser = await interaction.client.users.fetch(uid).catch(() => null) || interaction.user;
-      if (key === "goto_be") {
-        const beCheck = require("./be-check.js");
-        const beView = await beCheck.buildView(i, targetUser);
-        return await i.update({ embeds: beView.embeds, components: beView.components, files: beView.files || [] });
-      }
-      if (key === "goto_profile") {
-        const profView = await buildProfileView(interaction, targetUser);
-        return await i.update({ embeds: profView.embeds, components: profView.components, files: profView.files || [] });
-      }
-    });
-    collector.on("end", async () => {
-      try { await msg.edit({ components: [] }); } catch {}
-    });
+    await interaction.reply({ embeds: view.embeds, files: view.files, ephemeral: true });
   },
   buildView: buildProfileView
 };
