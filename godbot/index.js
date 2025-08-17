@@ -8,7 +8,6 @@ const activity = require("./utils/activity-tracker");
 const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
-const beCheck = require("./utils/be-check.js");
 
 const client = new Client({
   intents: [
