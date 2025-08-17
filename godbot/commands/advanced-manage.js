@@ -714,7 +714,7 @@ module.exports = {
             try {
               const m = await guild.members.fetch(u.id).catch(() => null);
               if (!m) throw new Error('notfound');
-              await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있습니다. 활동이 필요합니다.`).catch(() => { failed++; return; });
+              await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있어 활동이 필요합니다. 서버내 단 한 번의 채팅만으로도 활동 집계가 진행됩니다.`).catch(() => { failed++; return; });
               warnedObj[u.id] = { ts: Date.now() };
               warnedList.push({ nickname: u.nickname, id: u.id });
               warned++;
