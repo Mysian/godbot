@@ -110,6 +110,27 @@ async function nextRestock(item) {
 
 const userBuying = {};
 const userShopOpen = {};
+const sessions = new Map();
+
+async function cleanupSession(userId) {
+  const s = sessions.get(userId);
+  if (!s) {
+    userShopOpen[userId] = false;
+    userBuying[userId] = false;
+    return;
+  }
+  try { clearInterval(s.interval); } catch {}
+  try { await s.interaction.deleteReply(); } catch {}
+  sessions.delete(userId);
+  userShopOpen[userId] = false;
+  userBuying[userId] = false;
+}
+async function closeSession(userId, reason) {
+  const s = sessions.get(userId);
+  if (!s) return;
+  try { if (s.collector && !s.collector.ended) s.collector.stop(reason || 'replaced'); } catch {}
+  await cleanupSession(userId);
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -131,9 +152,8 @@ module.exports = {
     ),
   async execute(interaction) {
     try {
-      if (userShopOpen[interaction.user.id]) {
-        await interaction.reply({ content: '이미 상점 창이 열려있습니다. 먼저 기존 상점을 종료해주세요!', ephemeral: true });
-        return;
+      if (sessions.has(interaction.user.id)) {
+        await closeSession(interaction.user.id, 'replaced');
       }
       userShopOpen[interaction.user.id] = true;
       const expireSec = 180;
@@ -208,6 +228,8 @@ module.exports = {
           time: expireSec * 1000
         });
 
+        sessions.set(interaction.user.id, { interaction, collector, interval });
+
         collector.on('collect', async i => {
           if (i.customId === "shop_close") {
             collector.stop("user");
@@ -278,10 +300,7 @@ module.exports = {
         });
 
         collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
         });
         return;
       }
@@ -291,7 +310,7 @@ module.exports = {
         const roleList = Object.values(ROLES);
         if (roleList.length === 0) {
           await interaction.editReply('등록된 색상 역할이 없습니다.');
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
           return;
         }
         let page = 0;
@@ -360,6 +379,8 @@ module.exports = {
           time: expireSec * 1000
         });
 
+        sessions.set(interaction.user.id, { interaction, collector, interval });
+
         collector.on('collect', async i => {
           if (i.customId === 'shop_close') {
             collector.stop("user");
@@ -421,10 +442,7 @@ module.exports = {
         });
 
         collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
         });
         return;
       }
@@ -465,6 +483,9 @@ module.exports = {
           filter: i => i.user.id === interaction.user.id && i.message.id === shopMsg.id,
           time: expireSec * 1000
         });
+
+        sessions.set(interaction.user.id, { interaction, collector, interval });
+
         collector.on('collect', async i => {
           if (i.customId === 'shop_close') {
             collector.stop("user");
@@ -497,10 +518,7 @@ module.exports = {
           }
         });
         collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
         });
         return;
       }
@@ -510,7 +528,7 @@ module.exports = {
         const titleList = Object.values(TITLES);
         if (titleList.length === 0) {
           await interaction.editReply('등록된 한정판 칭호가 없습니다.');
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
           return;
         }
         let page = 0, TITLE_PER_PAGE = 1, maxPage = Math.ceil(titleList.length / TITLE_PER_PAGE);
@@ -592,6 +610,9 @@ ${stockMsg}
           filter: i => i.user.id === interaction.user.id && i.message.id === shopMsg.id,
           time: expireSec * 1000
         });
+
+        sessions.set(interaction.user.id, { interaction, collector, interval });
+
         collector.on('collect', async i => {
           if (i.customId === 'shop_close') {
             collector.stop("user");
@@ -659,10 +680,7 @@ ${stockMsg}
           }
         });
         collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
         });
         return;
       }
@@ -726,6 +744,8 @@ ${stockMsg}
           filter: i => i.user.id === interaction.user.id && i.message.id === shopMsg.id,
           time: expireSec * 1000
         });
+
+        sessions.set(interaction.user.id, { interaction, collector, interval });
 
         collector.on('collect', async i => {
           if (i.customId === "shop_close") {
@@ -796,10 +816,7 @@ ${stockMsg}
         });
 
         collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
         });
         return;
       }
@@ -879,6 +896,8 @@ ${stockMsg}
           time: expireSec * 1000
         });
 
+        sessions.set(interaction.user.id, { interaction, collector, interval });
+
         collector.on('collect', async i => {
           if (i.customId === "shop_close") {
             collector.stop("user");
@@ -933,10 +952,7 @@ ${stockMsg}
         });
 
         collector.on('end', async () => {
-          clearInterval(interval);
-          try { await interaction.deleteReply(); } catch {}
-          userBuying[interaction.user.id] = false;
-          userShopOpen[interaction.user.id] = false;
+          await cleanupSession(interaction.user.id);
         });
         return;
       }
@@ -945,8 +961,7 @@ ${stockMsg}
       try {
         await interaction.editReply({ content: `❌ 오류 발생: ${err.message}` });
       } catch {}
-      userShopOpen[interaction.user.id] = false;
-      userBuying[interaction.user.id] = false;
+      await cleanupSession(interaction.user.id);
     }
   }
 };
