@@ -183,7 +183,7 @@ function buildRow(page, maxPage, filter, opts = {}) {
     row2.addComponents(
       new ButtonBuilder()
         .setCustomId('privacy_toggle')
-        .setLabel(privacyOn ? '🔒 내역 비공개 ON' : '🔓 내역 비공개 OFF')
+        .setLabel(privacyOn ? '🔒 내역 비공개 ON [💜 𝕯𝖔𝖓𝖔𝖗 권한]' : '🔓 내역 비공개 OFF [💜 𝕯𝖔𝖓𝖔𝖗 권한]')
         .setStyle(privacyOn ? ButtonStyle.Success : ButtonStyle.Secondary)
     );
   }
@@ -367,3 +367,4 @@ module.exports.modal = async function(interaction) {
   const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE), privacyOn: !!privacy[ownerId] });
   await interaction.update({ embeds: [embed], components: rows });
 };
+
