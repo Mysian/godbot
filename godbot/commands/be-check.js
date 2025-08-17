@@ -14,31 +14,30 @@ const path = require('path');
 
 const bePath = path.join(__dirname, '../data/BE.json');
 
-// 티어별 이미지 URL 직접 입력
 const TIER_IMAGE = {
-  champion:   "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",     // 1위
-  challenger: "https://media.discordapp.net/attachments/1398143977051652217/1398156432762736731/8_.png?ex=68845626&is=688304a6&hm=f07a8c795f7086a7982f590df11709d2c53a5327a30a78d165f650d14787874b&=&format=webp&quality=lossless&width=888&height=888",   // 2~5위
-  legend:     "https://media.discordapp.net/attachments/1398143977051652217/1398156419642949824/7_.png?ex=68845622&is=688304a2&hm=18ec47803f660efa4ea6d97307501cc96831916d559b4db1da52f3b59abe550b&=&format=webp&quality=lossless&width=888&height=888",       // 6~10위
-  diamond:    "https://media.discordapp.net/attachments/1398143977051652217/1398156401238347796/6_.png?ex=6884561e&is=6883049e&hm=ce91718cd8a57c5fa9f73bd87208b48d499f05d135a5ee1e9c40bfd30a3c32a2&=&format=webp&quality=lossless&width=888&height=888",      // 11~20위
-  emerald:    "https://media.discordapp.net/attachments/1398143977051652217/1398156383018291243/5_.png?ex=6884561a&is=6883049a&hm=8910df7a7109a1b25df40212cadab46c7623d035ff2501f08837ff65f4d6b983&=&format=webp&quality=lossless&width=888&height=888",      // 상위 5%
-  platinum:   "https://media.discordapp.net/attachments/1398143977051652217/1398156369885925527/4_.png?ex=68845617&is=68830497&hm=027cf1b399799abc798d956adb3c16ae658ea17ac31bff022308fde58e3a1027&=&format=webp&quality=lossless&width=888&height=888",     // 6~15%
-  gold:       "https://media.discordapp.net/attachments/1398143977051652217/1398156357810524171/3_.png?ex=68845614&is=68830494&hm=f8b248ec38986e68259ce81d715b3b9661ba2dd9a39f50c4ba44a860fed2f062&=&format=webp&quality=lossless&width=888&height=888",         // 16~35%
-  silver:     "https://media.discordapp.net/attachments/1398143977051652217/1398156346456674356/2_.png?ex=68845611&is=68830491&hm=6423ca01333a2bb05216dcfd010fe098b2e74425175747b4258251fcc6711267&=&format=webp&quality=lossless&width=888&height=888",       // 36~65%
-  bronze:     "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888",       // 66~100%
-  default:    "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888"
+  champion: "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",
+  challenger: "https://media.discordapp.net/attachments/1398143977051652217/1398156432762736731/8_.png?ex=68845626&is=688304a6&hm=f07a8c795f7086a7982f590df11709d2c53a5327a30a78d165f650d14787874b&=&format=webp&quality=lossless&width=888&height=888",
+  legend: "https://media.discordapp.net/attachments/1398143977051652217/1398156419642949824/7_.png?ex=68845622&is=688304a2&hm=18ec47803f660efa4ea6d97307501cc96831916d559b4db1da52f3b59abe550b&=&format=webp&quality=lossless&width=888&height=888",
+  diamond: "https://media.discordapp.net/attachments/1398143977051652217/1398156401238347796/6_.png?ex=6884561e&is=6883049e&hm=ce91718cd8a57c5fa9f73bd87208b48d499f05d135a5ee1e9c40bfd30a3c32a2&=&format=webp&quality=lossless&width=888&height=888",
+  emerald: "https://media.discordapp.net/attachments/1398143977051652217/1398156383018291243/5_.png?ex=6884561a&is=6883049a&hm=8910df7a7109a1b25df40212cadab46c7623d035ff2501f08837ff65f4d6b983&=&format=webp&quality=lossless&width=888&height=888",
+  platinum: "https://media.discordapp.net/attachments/1398143977051652217/1398156369885925527/4_.png?ex=68845617&is=68830497&hm=027cf1b399799abc798d956adb3c16ae658ea17ac31bff022308fde58e3a1027&=&format=webp&quality=lossless&width=888&height=888",
+  gold: "https://media.discordapp.net/attachments/1398143977051652217/1398156357810524171/3_.png?ex=68845614&is=68830494&hm=f8b248ec38986e68259ce81d715b3b9661ba2dd9a39f50c4ba44a860fed2f062&=&format=webp&quality=lossless&width=888&height=888",
+  silver: "https://media.discordapp.net/attachments/1398143977051652217/1398156346456674356/2_.png?ex=68845611&is=68830491&hm=6423ca01333a2bb05216dcfd010fe098b2e74425175747b4258251fcc6711267&=&format=webp&quality=lossless&width=888&height=888",
+  bronze: "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888",
+  default: "https://media.discordapp.net/attachments/1398143977051652217/1398156333181698229/1_.png?ex=6884560e&is=6883048e&hm=bf4e71da293e5ee1ecf37fd456540c5273dffbd27aed42bff646f7fe9dd1e232&=&format=webp&quality=lossless&width=888&height=888"
 };
 
 const TIER_NAME = {
-  champion:   "챔피언",
+  champion: "챔피언",
   challenger: "챌린저",
-  legend:     "레전드",
-  diamond:    "다이아",
-  emerald:    "에메랄드",
-  platinum:   "플래티넘",
-  gold:       "골드",
-  silver:     "실버",
-  bronze:     "브론즈",
-  default:    "없음"
+  legend: "레전드",
+  diamond: "다이아",
+  emerald: "에메랄드",
+  platinum: "플래티넘",
+  gold: "골드",
+  silver: "실버",
+  bronze: "브론즈",
+  default: "없음"
 };
 
 function loadBE() {
@@ -51,17 +50,17 @@ const PAGE_SIZE = 10;
 const FILTERS = { ALL: 'all', EARN: 'earn', SPEND: 'spend', SEARCH: 'search' };
 
 function getTax(amount) {
-  if (amount < 5_000_000) return 0;
-  if (amount < 10_000_000) return Math.floor(amount * 0.001);
-  if (amount < 50_000_000) return Math.floor(amount * 0.005);
-  if (amount < 100_000_000) return Math.floor(amount * 0.01);
-  if (amount < 500_000_000) return Math.floor(amount * 0.015);
-  if (amount < 1_000_000_000) return Math.floor(amount * 0.02);
-  if (amount < 5_000_000_000) return Math.floor(amount * 0.035);
-  if (amount < 10_000_000_000) return Math.floor(amount * 0.05);
-  if (amount < 100_000_000_000) return Math.floor(amount * 0.075);
-  if (amount < 500_000_000_000) return Math.floor(amount * 0.10);
-  if (amount < 1_000_000_000_000) return Math.floor(amount * 0.25);
+  if (amount < 5000000) return 0;
+  if (amount < 10000000) return Math.floor(amount * 0.001);
+  if (amount < 50000000) return Math.floor(amount * 0.005);
+  if (amount < 100000000) return Math.floor(amount * 0.01);
+  if (amount < 500000000) return Math.floor(amount * 0.015);
+  if (amount < 1000000000) return Math.floor(amount * 0.02);
+  if (amount < 5000000000) return Math.floor(amount * 0.035);
+  if (amount < 10000000000) return Math.floor(amount * 0.05);
+  if (amount < 100000000000) return Math.floor(amount * 0.075);
+  if (amount < 500000000000) return Math.floor(amount * 0.10);
+  if (amount < 1000000000000) return Math.floor(amount * 0.25);
   return Math.floor(amount * 0.5);
 }
 
@@ -80,224 +79,122 @@ const TAX_TABLE = [
   ["1조 이상", "50%"]
 ];
 
-// === [순위 산정 함수] ===
 function getRankInfo(targetUserId, be) {
-  const rankArr = Object.entries(be)
-    .map(([id, d]) => ({ id, amount: d.amount }))
-    .sort((a, b) => b.amount - a.amount);
-
+  const rankArr = Object.entries(be).map(([id, d]) => ({ id, amount: d.amount })).sort((a, b) => b.amount - a.amount);
   const idx = rankArr.findIndex(e => e.id === targetUserId);
   if (idx === -1) return { rank: null, percent: 100, total: rankArr.length };
-
   const rank = idx + 1;
   const percent = Math.round((rank / rankArr.length) * 100);
-
   return { rank, percent, total: rankArr.length };
 }
 
 function getTierInfo(rank, percent) {
-  if (rank === 1)                  return { key: "champion" };
-  if (rank >= 2 && rank <= 5)      return { key: "challenger" };
-  if (rank >= 6 && rank <= 10)     return { key: "legend" };
-  if (rank >= 11 && rank <= 20)    return { key: "diamond" };
-  if (rank >= 21 && percent <= 5)  return { key: "emerald" };
+  if (rank === 1) return { key: "champion" };
+  if (rank >= 2 && rank <= 5) return { key: "challenger" };
+  if (rank >= 6 && rank <= 10) return { key: "legend" };
+  if (rank >= 11 && rank <= 20) return { key: "diamond" };
+  if (rank >= 21 && percent <= 5) return { key: "emerald" };
   if (rank >= 21 && percent <= 15) return { key: "platinum" };
   if (rank >= 21 && percent <= 35) return { key: "gold" };
   if (rank >= 21 && percent <= 65) return { key: "silver" };
-  if (rank >= 21 && percent <= 100)return { key: "bronze" };
+  if (rank >= 21 && percent <= 100) return { key: "bronze" };
   return { key: "default" };
 }
 
-// ==== 임베드 생성 (닉네임 커스텀 지원) ====
+function sanitizeHistory(list) {
+  return (list || []).map(h => {
+    const reason = typeof h.reason === 'string'
+      ? h.reason.replace(/(쿠폰\s*사용)\s+([A-Za-z0-9]{16}|[A-Za-z0-9]{4}(?:[-_.\s]?[A-Za-z0-9]{4}){3})/gi, '$1')
+      : h.reason;
+    return { ...h, reason };
+  });
+}
+
 function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be, displayName = null) {
-  let historyList = data.history || [];
+  let historyList = sanitizeHistory(data.history || []);
   if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
   if (filter === FILTERS.SPEND) historyList = historyList.filter(h => h.type === 'spend');
   if (filter === FILTERS.SEARCH && searchTerm) {
-    historyList = historyList.filter(h =>
-      (h.reason && h.reason.includes(searchTerm)) ||
-      String(h.amount).includes(searchTerm)
-    );
+    historyList = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
   }
-
   const total = historyList.length;
   const offset = (page - 1) * PAGE_SIZE;
-  const history = historyList
-    .slice()
-    .reverse()
-    .slice(offset, offset + PAGE_SIZE)
-    .map(h =>
-      `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`
-    ).join('\n') || "내역 없음";
-
+  const history = historyList.slice().reverse().slice(offset, offset + PAGE_SIZE).map(h => `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`).join('\n') || "내역 없음";
   const tax = getTax(data.amount);
-
-  // [순위 정보]
   const { rank, percent, total: totalRanked } = getRankInfo(targetUser.id, be);
   const tier = getTierInfo(rank, percent);
   const tierName = TIER_NAME[tier.key];
   const tierImage = TIER_IMAGE[tier.key];
   const profileIcon = targetUser.displayAvatarURL({ extension: "png", size: 64 });
-
   let footerText = '';
   if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
   else if (filter === FILTERS.EARN) footerText = '이익(earn)만 표시중';
   else if (filter === FILTERS.SPEND) footerText = '손해(spend)만 표시중';
   footerText += (footerText ? ' | ' : '') + `오늘 18:00 정수세 예정: ${formatAmount(tax)} BE`;
-
   const nameForTitle = displayName || targetUser.username;
-  const embed = new EmbedBuilder()
-    .setTitle(`💙 ${nameForTitle} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`)
-    .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
-    .addFields(
-      { name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }
-    )
-    .setColor(0x3399ff)
-    .setThumbnail(tierImage) // 티어(작게)
-    .setFooter({ text: footerText, iconURL: profileIcon }); // 프로필(아주 작게)
-
+  const embed = new EmbedBuilder().setTitle(`💙 ${nameForTitle} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`).setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`).addFields({ name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }).setColor(0x3399ff).setThumbnail(tierImage).setFooter({ text: footerText, iconURL: profileIcon });
   return embed;
 }
 
 function buildRow(page, maxPage, filter) {
   const mainRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('prev')
-      .setLabel('◀ 이전')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 1),
-    new ButtonBuilder()
-      .setCustomId('next')
-      .setLabel('다음 ▶')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= maxPage),
-    new ButtonBuilder()
-      .setCustomId('search')
-      .setEmoji('🔍')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId('earnonly')
-      .setLabel('🟦 이익만')
-      .setStyle(filter === FILTERS.EARN ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('spendonly')
-      .setLabel('🔻 손해만')
-      .setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId('prev').setLabel('◀ 이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
+    new ButtonBuilder().setCustomId('next').setLabel('다음 ▶').setStyle(ButtonStyle.Secondary).setDisabled(page >= maxPage),
+    new ButtonBuilder().setCustomId('search').setEmoji('🔍').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('earnonly').setLabel('🟦 이익만').setStyle(filter === FILTERS.EARN ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('spendonly').setLabel('🔻 손해만').setStyle(ButtonStyle.Danger)
   );
-  const taxInfoRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('taxinfo')
-      .setLabel('정수세 안내')
-      .setStyle(ButtonStyle.Secondary)
-  );
+  const taxInfoRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('taxinfo').setLabel('정수세 안내').setStyle(ButtonStyle.Secondary));
   return [mainRow, taxInfoRow];
 }
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('정수조회')
-    .setDescription('파랑 정수(BE) 잔액과 최근 거래내역을 확인합니다.')
-    .addUserOption(opt =>
-      opt.setName('유저')
-        .setDescription('조회할 대상 유저 (입력 안하면 본인)')
-        .setRequired(false)
-    ),
+  data: new SlashCommandBuilder().setName('정수조회').setDescription('파랑 정수(BE) 잔액과 최근 거래내역을 확인합니다.').addUserOption(opt => opt.setName('유저').setDescription('조회할 대상 유저 (입력 안하면 본인)').setRequired(false)),
   async execute(interaction) {
     const userOpt = interaction.options.getUser('유저');
     const targetUser = userOpt || interaction.user;
-
-    // ====== 닉네임 표시를 위해 GuildMember 객체 얻기 ======
     let displayName = targetUser.username;
     try {
-      // DMs 등에서는 guild가 없으니 예외처리!
       if (interaction.guild) {
         const member = await interaction.guild.members.fetch(targetUser.id);
         if (member && member.displayName) displayName = member.displayName;
       }
-    } catch (e) { /* 무시 */ }
-
+    } catch (e) {}
     const be = loadBE();
     const data = be[targetUser.id];
-
     if (!data) {
-      await interaction.reply({
-        content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`,
-        ephemeral: true
-      });
+      await interaction.reply({ content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`, ephemeral: true });
       return;
     }
-
     let page = 1;
     let filter = FILTERS.ALL;
     let searchTerm = '';
-    let historyList = data.history || [];
+    let historyList = sanitizeHistory(data.history || []);
     let filteredHistory = historyList;
     if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
     if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
     if (filter === FILTERS.SEARCH && searchTerm) {
-      filteredHistory = historyList.filter(h =>
-        (h.reason && h.reason.includes(searchTerm)) ||
-        String(h.amount).includes(searchTerm)
-      );
+      filteredHistory = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
     }
     let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
-
-    // *** displayName 전달 ***
     const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName);
     const rows = buildRow(page, maxPage, filter);
-
-    const msg = await interaction.reply({
-      embeds: [embed],
-      components: rows,
-      ephemeral: true,
-      fetchReply: true
-    });
-
-    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300_000 });
-
+    const msg = await interaction.reply({ embeds: [embed], components: rows, ephemeral: true, fetchReply: true });
+    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300000 });
     collector.on('collect', async i => {
-      if (i.user.id !== interaction.user.id)
-        return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
-
+      if (i.user.id !== interaction.user.id) return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
       if (i.customId === 'taxinfo') {
         const nowTax = getTax(data.amount);
-        const recentTaxHistory = (data.history || [])
-          .filter(h => h.reason && h.reason.includes('정수세'))
-          .slice(-5)
-          .reverse();
-
-        let taxHistoryText = recentTaxHistory.length
-          ? recentTaxHistory.map(h =>
-              `• ${formatAmount(h.amount)} BE (${h.reason}) - <t:${Math.floor(h.timestamp/1000)}:R>`
-            ).join('\n')
-          : '최근 정수세 납부 내역이 없습니다.';
-
+        const recentTaxHistory = (data.history || []).filter(h => h.reason && h.reason.includes('정수세')).slice(-5).reverse();
+        let taxHistoryText = recentTaxHistory.length ? recentTaxHistory.map(h => `• ${formatAmount(h.amount)} BE (${h.reason}) - <t:${Math.floor(h.timestamp/1000)}:R>`).join('\n') : '최근 정수세 납부 내역이 없습니다.';
         const tableText = TAX_TABLE.map(([cond, rate]) => `${cond.padEnd(9)}: ${rate}`).join('\n');
-        const infoEmbed = new EmbedBuilder()
-          .setTitle('💸 정수세 안내')
-          .setColor(0x4bb0fd)
-          .setDescription([
-            '※ 정수세는 매일 18:00에 자동으로 납부됩니다.',
-            '',
-            '**정수세 누진세율 표**',
-            '```',
-            tableText,
-            '```',
-            `**현재 잔액 기준 납부 예정 세금:**\n> ${formatAmount(nowTax)} BE`,
-            '',
-            '**최근 정수세 납부 기록**',
-            taxHistoryText
-          ].join('\n'))
-          .setFooter({ text: '정수세는 [세율표]에 따라 실시간 변동될 수 있습니다.' });
-
+        const infoEmbed = new EmbedBuilder().setTitle('💸 정수세 안내').setColor(0x4bb0fd).setDescription(['※ 정수세는 매일 18:00에 자동으로 납부됩니다.', '', '**정수세 누진세율 표**', '```', tableText, '```', `**현재 잔액 기준 납부 예정 세금:**\n> ${formatAmount(nowTax)} BE`, '', '**최근 정수세 납부 기록**', taxHistoryText].join('\n')).setFooter({ text: '정수세는 [세율표]에 따라 실시간 변동될 수 있습니다.' });
         await i.reply({ embeds: [infoEmbed], ephemeral: true });
         return;
       }
-
       const freshBE = loadBE();
       const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
-      historyList = freshData.history || [];
-
+      historyList = sanitizeHistory(freshData.history || []);
       if (i.customId === 'prev') page--;
       if (i.customId === 'next') page++;
       if (i.customId === 'earnonly') {
@@ -311,49 +208,27 @@ module.exports = {
         page = 1;
       }
       if (i.customId === 'search') {
-        const modal = new ModalBuilder()
-          .setCustomId(`be_search_modal_${targetUser.id}`)
-          .setTitle('거래내역 검색');
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('searchTerm')
-              .setLabel('검색어(금액/사유 등)')
-              .setStyle(TextInputStyle.Short)
-              .setPlaceholder('예: 강화, 1000, 송금')
-              .setRequired(true)
-          )
-        );
+        const modal = new ModalBuilder().setCustomId(`be_search_modal_${targetUser.id}`).setTitle('거래내역 검색');
+        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('searchTerm').setLabel('검색어(금액/사유 등)').setStyle(TextInputStyle.Short).setPlaceholder('예: 강화, 1000, 송금').setRequired(true)));
         await i.showModal(modal);
         return;
       }
-
       filteredHistory = historyList;
       if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
       if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
       if (filter === FILTERS.SEARCH && searchTerm) {
-        filteredHistory = historyList.filter(h =>
-          (h.reason && h.reason.includes(searchTerm)) ||
-          String(h.amount).includes(searchTerm)
-        );
+        filteredHistory = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
       }
       maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
       page = Math.max(1, Math.min(page, maxPage));
-
-      // 닉네임도 반영
       const member = interaction.guild ? await interaction.guild.members.fetch(targetUser.id).catch(() => null) : null;
       const displayNameUpdate = member && member.displayName ? member.displayName : targetUser.username;
-
       const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayNameUpdate);
       const newRows = buildRow(page, maxPage, filter);
-
       await i.update({ embeds: [newEmbed], components: newRows });
     });
-
     collector.on('end', async () => {
-      try {
-        await msg.edit({ components: [] });
-      } catch (e) { }
+      try { await msg.edit({ components: [] }); } catch (e) {}
     });
   }
 };
@@ -368,28 +243,20 @@ module.exports.modal = async function(interaction) {
   }
   const be = loadBE();
   const data = be[userId];
-
-  // 닉네임(별명) 적용
   let displayName = targetUser.username;
   try {
     if (interaction.guild) {
       const member = await interaction.guild.members.fetch(targetUser.id);
       if (member && member.displayName) displayName = member.displayName;
     }
-  } catch (e) { /* 무시 */ }
-
+  } catch (e) {}
   let searchTerm = interaction.fields.getTextInputValue('searchTerm').trim();
-  let historyList = (data?.history || []);
-  let filteredHistory = historyList.filter(h =>
-    (h.reason && h.reason.includes(searchTerm)) ||
-    String(h.amount).includes(searchTerm)
-  );
+  let historyList = sanitizeHistory(data?.history || []);
+  let filteredHistory = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
   let page = 1;
   let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
   let filter = FILTERS.SEARCH;
-
   const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName);
   const rows = buildRow(page, maxPage, filter);
-
   await interaction.update({ embeds: [embed], components: rows });
 };
