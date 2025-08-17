@@ -55,6 +55,8 @@ module.exports = {
 
     // 입장 이모지: 도너(💜) > 새역할(🐤) > 기본(🟢)
     const joinEmoji = hasDonor ? '💜' : (hasBirdRole ? '🐤' : '🟢');
+    // 퇴장 이모지: 도너(💔) > 기본(🔴)
+    const leaveEmoji = hasDonor ? '💔' : '🔴';
 
     // 입장
     if (!oldChannel && newChannel) {
@@ -72,17 +74,17 @@ module.exports = {
       if (textChannelId) {
         const textChannel = oldState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          await textChannel.send(`-# [🔴 **${member.displayName}** 님이 퇴장했습니다.]`);
+          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 퇴장했습니다.]`);
         }
       }
     }
-    // 이동 (퇴장 쪽은 🔴, 입장 쪽은 우선순위 이모지)
+    // 이동 (퇴장 쪽은 leaveEmoji, 입장 쪽은 joinEmoji)
     else if (oldChannel && newChannel && oldChannel.id !== newChannel.id) {
       const textChannelIdLeave = voiceChannelToTextChannel[oldChannel.id];
       if (textChannelIdLeave) {
         const textChannel = oldState.guild.channels.cache.get(textChannelIdLeave);
         if (textChannel) {
-          await textChannel.send(`-# [🔴 **${member.displayName}** 님이 퇴장했습니다.]`);
+          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 퇴장했습니다.]`);
         }
       }
       const textChannelIdJoin = voiceChannelToTextChannel[newChannel.id];
