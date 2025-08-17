@@ -13,6 +13,8 @@ const fs = require('fs');
 const path = require('path');
 
 const bePath = path.join(__dirname, '../data/BE.json');
+const privacyPath = path.join(__dirname, '../data/be-privacy.json');
+const DONOR_ROLE = '1397076919127900171';
 
 const TIER_IMAGE = {
   champion: "https://media.discordapp.net/attachments/1398143977051652217/1398156467059556422/10_.png?ex=6884562e&is=688304ae&hm=d472083d30da8f31b149b6818361ce456b4b6d7dc1661e2328685117e474ec80&=&format=webp&quality=lossless&width=888&height=888",
@@ -44,6 +46,14 @@ function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, '{}');
   return JSON.parse(fs.readFileSync(bePath, 'utf8'));
 }
+function loadPrivacy() {
+  if (!fs.existsSync(privacyPath)) fs.writeFileSync(privacyPath, '{}');
+  return JSON.parse(fs.readFileSync(privacyPath, 'utf8'));
+}
+function savePrivacy(p) {
+  fs.writeFileSync(privacyPath, JSON.stringify(p, null, 2));
+}
+
 const formatAmount = n => Number(n).toLocaleString('ko-KR');
 
 const PAGE_SIZE = 10;
@@ -110,91 +120,170 @@ function sanitizeHistory(list) {
   });
 }
 
-function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm = '', be, displayName = null) {
+function buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName, opts = {}) {
+  const historyHidden = !!opts.historyHidden;
   let historyList = sanitizeHistory(data.history || []);
-  if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
-  if (filter === FILTERS.SPEND) historyList = historyList.filter(h => h.type === 'spend');
-  if (filter === FILTERS.SEARCH && searchTerm) {
-    historyList = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
+  if (!historyHidden) {
+    if (filter === FILTERS.EARN) historyList = historyList.filter(h => h.type === 'earn');
+    if (filter === FILTERS.SPEND) historyList = historyList.filter(h => h.type === 'spend');
+    if (filter === FILTERS.SEARCH && searchTerm) historyList = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
+  } else {
+    historyList = [];
   }
   const total = historyList.length;
   const offset = (page - 1) * PAGE_SIZE;
-  const history = historyList.slice().reverse().slice(offset, offset + PAGE_SIZE).map(h => `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`).join('\n') || "내역 없음";
+  const history = historyHidden
+    ? "🔒 비공개 설정됨 (후원자)"
+    : (historyList.slice().reverse().slice(offset, offset + PAGE_SIZE).map(h => `${h.type === "earn" ? "🔷" : "🔻"} ${formatAmount(h.amount)} BE | ${h.reason || "사유 없음"} | <t:${Math.floor(h.timestamp / 1000)}:R>`).join('\n') || "내역 없음");
   const tax = getTax(data.amount);
-  const { rank, percent, total: totalRanked } = getRankInfo(targetUser.id, be);
+  const { rank, percent } = getRankInfo(targetUser.id, be);
   const tier = getTierInfo(rank, percent);
   const tierName = TIER_NAME[tier.key];
   const tierImage = TIER_IMAGE[tier.key];
   const profileIcon = targetUser.displayAvatarURL({ extension: "png", size: 64 });
   let footerText = '';
-  if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
-  else if (filter === FILTERS.EARN) footerText = '이익(earn)만 표시중';
-  else if (filter === FILTERS.SPEND) footerText = '손해(spend)만 표시중';
+  if (!historyHidden) {
+    if (filter === FILTERS.SEARCH && searchTerm) footerText = `검색어: "${searchTerm}"`;
+    else if (filter === FILTERS.EARN) footerText = '이익(earn)만 표시중';
+    else if (filter === FILTERS.SPEND) footerText = '손해(spend)만 표시중';
+  }
   footerText += (footerText ? ' | ' : '') + `오늘 18:00 정수세 예정: ${formatAmount(tax)} BE`;
   const nameForTitle = displayName || targetUser.username;
-  const embed = new EmbedBuilder().setTitle(`💙 ${nameForTitle} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`).setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`).addFields({ name: `📜 최근 거래 내역 (${page}/${maxPage}) [총 ${total}개]`, value: history }).setColor(0x3399ff).setThumbnail(tierImage).setFooter({ text: footerText, iconURL: profileIcon });
+  const currentPage = historyHidden ? 1 : page;
+  const currentMax = historyHidden ? 1 : Math.max(1, maxPage);
+  const embed = new EmbedBuilder()
+    .setTitle(`💙 ${nameForTitle} (${rank ? `${rank}위/${tierName}` : '랭크없음'})`)
+    .setDescription(`🔷파랑 정수(BE): **${formatAmount(data.amount)} BE**`)
+    .addFields({ name: `📜 최근 거래 내역 (${currentPage}/${currentMax})${historyHidden ? ' [비공개]' : ''}`, value: history })
+    .setColor(0x3399ff)
+    .setThumbnail(tierImage)
+    .setFooter({ text: footerText, iconURL: profileIcon });
   return embed;
 }
 
-function buildRow(page, maxPage, filter) {
-  const mainRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('prev').setLabel('◀ 이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
-    new ButtonBuilder().setCustomId('next').setLabel('다음 ▶').setStyle(ButtonStyle.Secondary).setDisabled(page >= maxPage),
-    new ButtonBuilder().setCustomId('search').setEmoji('🔍').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('earnonly').setLabel('🟦 이익만').setStyle(filter === FILTERS.EARN ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('spendonly').setLabel('🔻 손해만').setStyle(ButtonStyle.Danger)
+function buildRow(page, maxPage, filter, opts = {}) {
+  const canSearch = opts.canSearch !== false;
+  const showPrivacyToggle = !!opts.showPrivacyToggle;
+  const privacyOn = !!opts.privacyOn;
+  const main = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('prev').setLabel('◀ 이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1 || !canSearch),
+    new ButtonBuilder().setCustomId('next').setLabel('다음 ▶').setStyle(ButtonStyle.Secondary).setDisabled(page >= maxPage || !canSearch)
   );
-  const taxInfoRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('taxinfo').setLabel('정수세 안내').setStyle(ButtonStyle.Secondary));
-  return [mainRow, taxInfoRow];
+  if (canSearch) {
+    main.addComponents(
+      new ButtonBuilder().setCustomId('search').setEmoji('🔍').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('earnonly').setLabel('🟦 이익만').setStyle(filter === FILTERS.EARN ? ButtonStyle.Success : ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('spendonly').setLabel('🔻 손해만').setStyle(filter === FILTERS.SPEND ? ButtonStyle.Danger : ButtonStyle.Secondary)
+    );
+  }
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('taxinfo').setLabel('정수세 안내').setStyle(ButtonStyle.Secondary)
+  );
+  if (showPrivacyToggle) {
+    row2.addComponents(
+      new ButtonBuilder()
+        .setCustomId('privacy_toggle')
+        .setLabel(privacyOn ? '🔒 내역 비공개 ON' : '🔓 내역 비공개 OFF')
+        .setStyle(privacyOn ? ButtonStyle.Success : ButtonStyle.Secondary)
+    );
+  }
+  return [main, row2];
 }
 
 module.exports = {
-  data: new SlashCommandBuilder().setName('정수조회').setDescription('파랑 정수(BE) 잔액과 최근 거래내역을 확인합니다.').addUserOption(opt => opt.setName('유저').setDescription('조회할 대상 유저 (입력 안하면 본인)').setRequired(false)),
+  data: new SlashCommandBuilder()
+    .setName('정수조회')
+    .setDescription('파랑 정수(BE) 잔액과 최근 거래내역을 확인합니다.')
+    .addUserOption(opt => opt.setName('유저').setDescription('조회할 대상 유저 (입력 안하면 본인)').setRequired(false)),
   async execute(interaction) {
     const userOpt = interaction.options.getUser('유저');
     const targetUser = userOpt || interaction.user;
+    const targetId = targetUser.id;
     let displayName = targetUser.username;
     try {
       if (interaction.guild) {
         const member = await interaction.guild.members.fetch(targetUser.id);
         if (member && member.displayName) displayName = member.displayName;
       }
-    } catch (e) {}
+    } catch {}
     const be = loadBE();
-    const data = be[targetUser.id];
+    const data = be[targetId];
     if (!data) {
-      await interaction.reply({ content: `❌ <@${targetUser.id}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`, ephemeral: true });
+      await interaction.reply({ content: `❌ <@${targetId}>님의 🔷파랑 정수(BE) 데이터가 없습니다.`, ephemeral: true });
       return;
     }
+    const privacy = loadPrivacy();
+    let privacyOn = !!privacy[targetId];
+    if (privacyOn && interaction.guild) {
+      try {
+        const m = await interaction.guild.members.fetch(targetId);
+        if (!m.roles.cache.has(DONOR_ROLE)) {
+          delete privacy[targetId];
+          savePrivacy(privacy);
+          privacyOn = false;
+        }
+      } catch {
+        delete privacy[targetId];
+        savePrivacy(privacy);
+        privacyOn = false;
+      }
+    }
+    const viewerIsOwner = interaction.user.id === targetId;
     let page = 1;
     let filter = FILTERS.ALL;
     let searchTerm = '';
-    let historyList = sanitizeHistory(data.history || []);
-    let filteredHistory = historyList;
-    if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
-    if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
-    if (filter === FILTERS.SEARCH && searchTerm) {
-      filteredHistory = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
-    }
+    const historyListAll = sanitizeHistory(data.history || []);
+    let filteredHistory = historyListAll;
     let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
-    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName);
-    const rows = buildRow(page, maxPage, filter);
+    const historyHidden = privacyOn && !viewerIsOwner;
+    const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName, { historyHidden });
+    const showPrivacyToggle = viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE);
+    const rows = buildRow(historyHidden ? 1 : page, historyHidden ? 1 : maxPage, filter, { canSearch: !historyHidden, showPrivacyToggle, privacyOn });
     const msg = await interaction.reply({ embeds: [embed], components: rows, ephemeral: true, fetchReply: true });
     const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300000 });
     collector.on('collect', async i => {
       if (i.user.id !== interaction.user.id) return await i.reply({ content: '본인만 조작 가능.', ephemeral: true });
       if (i.customId === 'taxinfo') {
-        const nowTax = getTax(data.amount);
-        const recentTaxHistory = (data.history || []).filter(h => h.reason && h.reason.includes('정수세')).slice(-5).reverse();
+        const nowTax = getTax((loadBE()[targetId] || { amount: 0 }).amount);
+        const recentTaxHistory = (loadBE()[targetId]?.history || []).filter(h => h.reason && h.reason.includes('정수세')).slice(-5).reverse();
         let taxHistoryText = recentTaxHistory.length ? recentTaxHistory.map(h => `• ${formatAmount(h.amount)} BE (${h.reason}) - <t:${Math.floor(h.timestamp/1000)}:R>`).join('\n') : '최근 정수세 납부 내역이 없습니다.';
         const tableText = TAX_TABLE.map(([cond, rate]) => `${cond.padEnd(9)}: ${rate}`).join('\n');
         const infoEmbed = new EmbedBuilder().setTitle('💸 정수세 안내').setColor(0x4bb0fd).setDescription(['※ 정수세는 매일 18:00에 자동으로 납부됩니다.', '', '**정수세 누진세율 표**', '```', tableText, '```', `**현재 잔액 기준 납부 예정 세금:**\n> ${formatAmount(nowTax)} BE`, '', '**최근 정수세 납부 기록**', taxHistoryText].join('\n')).setFooter({ text: '정수세는 [세율표]에 따라 실시간 변동될 수 있습니다.' });
         await i.reply({ embeds: [infoEmbed], ephemeral: true });
         return;
       }
+      if (i.customId === 'privacy_toggle') {
+        if (!viewerIsOwner) return await i.reply({ content: '본인만 변경 가능.', ephemeral: true });
+        try {
+          const me = await interaction.guild.members.fetch(interaction.user.id);
+          if (!me.roles.cache.has(DONOR_ROLE)) {
+            const p = loadPrivacy();
+            delete p[interaction.user.id];
+            savePrivacy(p);
+            const fresh = loadBE()[targetId] || { amount: 0, history: [] };
+            const newEmbed = buildEmbed(targetUser, fresh, 1, 1, filter, '', loadBE(), displayName, { historyHidden: false });
+            const newRows = buildRow(1, 1, filter, { canSearch: true, showPrivacyToggle: false, privacyOn: false });
+            await i.update({ embeds: [newEmbed], components: newRows });
+            return;
+          }
+        } catch {
+          return await i.reply({ content: '길드 정보를 확인할 수 없어 변경 실패.', ephemeral: true });
+        }
+        const p = loadPrivacy();
+        const now = !!p[interaction.user.id];
+        if (now) delete p[interaction.user.id];
+        else p[interaction.user.id] = true;
+        savePrivacy(p);
+        const fresh = loadBE()[targetId] || { amount: 0, history: [] };
+        const newEmbed = buildEmbed(targetUser, fresh, page, Math.max(1, Math.ceil((fresh.history||[]).length / PAGE_SIZE)), filter, searchTerm, loadBE(), displayName, { historyHidden: false });
+        const newRows = buildRow(page, Math.max(1, Math.ceil((fresh.history||[]).length / PAGE_SIZE)), filter, { canSearch: true, showPrivacyToggle: true, privacyOn: !now });
+        await i.update({ embeds: [newEmbed], components: newRows });
+        return;
+      }
+      if (historyHidden) return await i.reply({ content: '해당 사용자의 최근 내역은 비공개입니다.', ephemeral: true });
       const freshBE = loadBE();
-      const freshData = freshBE[targetUser.id] || { amount: 0, history: [] };
-      historyList = sanitizeHistory(freshData.history || []);
+      const freshData = freshBE[targetId] || { amount: 0, history: [] };
+      let historyList = sanitizeHistory(freshData.history || []);
       if (i.customId === 'prev') page--;
       if (i.customId === 'next') page++;
       if (i.customId === 'earnonly') {
@@ -208,55 +297,73 @@ module.exports = {
         page = 1;
       }
       if (i.customId === 'search') {
-        const modal = new ModalBuilder().setCustomId(`be_search_modal_${targetUser.id}`).setTitle('거래내역 검색');
+        const modal = new ModalBuilder().setCustomId(`be_search_modal_${targetId}`).setTitle('거래내역 검색');
         modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('searchTerm').setLabel('검색어(금액/사유 등)').setStyle(TextInputStyle.Short).setPlaceholder('예: 강화, 1000, 송금').setRequired(true)));
         await i.showModal(modal);
         return;
       }
-      filteredHistory = historyList;
       if (filter === FILTERS.EARN) filteredHistory = historyList.filter(h => h.type === 'earn');
-      if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
-      if (filter === FILTERS.SEARCH && searchTerm) {
-        filteredHistory = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
-      }
+      else if (filter === FILTERS.SPEND) filteredHistory = historyList.filter(h => h.type === 'spend');
+      else filteredHistory = historyList;
       maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
       page = Math.max(1, Math.min(page, maxPage));
-      const member = interaction.guild ? await interaction.guild.members.fetch(targetUser.id).catch(() => null) : null;
+      const member = interaction.guild ? await interaction.guild.members.fetch(targetId).catch(() => null) : null;
       const displayNameUpdate = member && member.displayName ? member.displayName : targetUser.username;
-      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayNameUpdate);
-      const newRows = buildRow(page, maxPage, filter);
+      const newEmbed = buildEmbed(targetUser, freshData, page, maxPage, filter, searchTerm, freshBE, displayNameUpdate, { historyHidden: false });
+      const newRows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle, privacyOn });
       await i.update({ embeds: [newEmbed], components: newRows });
     });
     collector.on('end', async () => {
-      try { await msg.edit({ components: [] }); } catch (e) {}
+      try { await msg.edit({ components: [] }); } catch {}
     });
   }
 };
 
 module.exports.modal = async function(interaction) {
-  let userId = interaction.user.id;
+  let ownerId = interaction.user.id;
   let targetUser = interaction.user;
   const idFromCustomId = interaction.customId.split("_")[3];
   if (idFromCustomId) {
-    userId = idFromCustomId;
-    targetUser = await interaction.client.users.fetch(userId);
+    ownerId = idFromCustomId;
+    targetUser = await interaction.client.users.fetch(ownerId);
   }
   const be = loadBE();
-  const data = be[userId];
+  const data = be[ownerId];
+  if (!data) return await interaction.reply({ content: '데이터 없음', ephemeral: true });
+  const privacy = loadPrivacy();
+  let privacyOn = !!privacy[ownerId];
+  if (privacyOn && interaction.guild) {
+    try {
+      const m = await interaction.guild.members.fetch(ownerId);
+      if (!m.roles.cache.has(DONOR_ROLE)) {
+        delete privacy[ownerId];
+        savePrivacy(privacy);
+        privacyOn = false;
+      }
+    } catch {
+      delete privacy[ownerId];
+      savePrivacy(privacy);
+      privacyOn = false;
+    }
+  }
+  const viewerIsOwner = interaction.user.id === ownerId;
+  if (privacyOn && !viewerIsOwner) {
+    return await interaction.reply({ content: '🔒 해당 사용자의 최근 정수 내역은 비공개입니다. 💜 𝕯𝖔𝖓𝖔𝖗 후원 권한', ephemeral: true });
+  }
   let displayName = targetUser.username;
   try {
     if (interaction.guild) {
       const member = await interaction.guild.members.fetch(targetUser.id);
       if (member && member.displayName) displayName = member.displayName;
     }
-  } catch (e) {}
+  } catch {}
   let searchTerm = interaction.fields.getTextInputValue('searchTerm').trim();
   let historyList = sanitizeHistory(data?.history || []);
   let filteredHistory = historyList.filter(h => (h.reason && h.reason.includes(searchTerm)) || String(h.amount).includes(searchTerm));
   let page = 1;
   let maxPage = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE));
   let filter = FILTERS.SEARCH;
-  const embed = buildEmbed(targetUser, data, page, maxPage, filter, searchTerm, be, displayName);
-  const rows = buildRow(page, maxPage, filter);
+  const embed = buildEmbed(targetUser, { ...data, history: filteredHistory }, page, maxPage, filter, searchTerm, be, displayName, { historyHidden: false });
+  const rows = buildRow(page, maxPage, filter, { canSearch: true, showPrivacyToggle: viewerIsOwner && interaction.member.roles.cache.has(DONOR_ROLE), privacyOn: !!privacy[ownerId] });
   await interaction.update({ embeds: [embed], components: rows });
 };
