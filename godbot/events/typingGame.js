@@ -786,7 +786,7 @@ module.exports = {
           }
         } catch {}
 
-        if (ms < 50) {
+        if (ms < 500) {
           message.reply('❌ 복사/붙여넣기는 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)');
         } else {
           const lang = game.lang;
