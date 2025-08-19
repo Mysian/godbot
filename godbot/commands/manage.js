@@ -623,7 +623,7 @@ push(warnTrailRaw, "최근 경고·제재 이력 신호가 있을 확률", "neg"
           const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
           push(steadyRaw, "꾸준한 스테디셀러 확률", "pos", 86, 3, true);
 
-          const MIN_SHOW = 0; // 전부 보려면 0, 너무 잡음이면 10~20 정도로 올려도 됨
+          const MIN_SHOW = 50; // 전부 보려면 0, 너무 잡음이면 10~20 정도로 올려도 됨
 const result = C
   .filter(x => x.p >= MIN_SHOW)
   .sort((a, b) => b.p - a.p);
