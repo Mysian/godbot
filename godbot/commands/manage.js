@@ -437,6 +437,16 @@ module.exports = {
             relation: relationship.getRelationshipLevel(val.stage - 6),
           }));
 
+        const relEntries = Object.entries(relData);
+        const friendsByStage = relEntries.filter(([_, v]) => (v.stage || 0) > 0).sort((a, b) => (b[1].stage || 0) - (a[1].stage || 0));
+        const totalStage = friendsByStage.reduce((s, [, v]) => s + ((v.stage || 0)), 0);
+        const top2Stage = friendsByStage.slice(0, 2).reduce((s, [, v]) => s + ((v.stage || 0)), 0);
+        const top3Stage = friendsByStage.slice(0, 3).reduce((s, [, v]) => s + ((v.stage || 0)), 0);
+        const dominance2 = totalStage > 0 ? top2Stage / totalStage : 0;
+        const dominance3 = totalStage > 0 ? top3Stage / totalStage : 0;
+        const strongTies = friendsByStage.filter(([_, v]) => (v.stage || 0) >= 8);
+        const strongCount = strongTies.length;
+
         let friendsText = topFriends.length
           ? topFriends.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
           : "없음";
@@ -496,10 +506,33 @@ module.exports = {
             (uniqueGames >= 3 ? 5 : 0) -
             (voiceHours >= 1 ? 15 : 0);
           const offsiteRaw = Math.max(0, Math.min(95, offsiteBase));
+
+          const voiceBias = voiceHours > 0 ? voiceHours / (voiceHours + (msgCount / 30) + 1e-9) : 0;
+          let vcCliqueRaw = 0;
+          if (voiceHours >= 3 && strongCount > 0 && strongCount <= 3) {
+            vcCliqueRaw = Math.max(0, Math.min(95,
+              (voiceHours >= 10 ? 40 : voiceHours >= 5 ? 28 : 18) +
+              (strongCount <= 2 ? 30 : 18) +
+              Math.round(voiceBias * 25)
+            ));
+          }
+
+          let samePeersRaw = 0;
+          if ((msgCount + voiceHours * 60) >= 80 && totalStage > 0) {
+            const domScore = Math.max(dominance2, dominance3);
+            samePeersRaw = Math.max(0, Math.min(95,
+              (domScore - 0.6) * 140 +
+              (strongCount <= 3 ? 10 : 0) +
+              (voiceHours >= 5 ? 8 : 0)
+            ));
+          }
+
           push(offsiteRaw, "활동 이력은 잦은데 서버 VC가 거의 없어 ‘뒷서버’ 의심 정황일 확률", "neg", 88, 3, false);
+          push(vcCliqueRaw, "소규모 VC 고정 멤버 중심 활동(2~3인) 성향일 확률", "neutral", 86, 2, false);
+          push(samePeersRaw, "동일 인물 위주로만 소통하는 편향 성향일 확률", "neg", 86, 2, false);
 
           let friendlyRaw = Math.max(0,
-            10 + msgPlus + vcPlus + socialPlus - rulePenalty - Math.min(25, offsiteRaw * 0.4)
+            10 + msgPlus + vcPlus + socialPlus - rulePenalty - Math.min(25, offsiteRaw * 0.4) - Math.min(20, samePeersRaw * 0.2) - Math.min(15, vcCliqueRaw * 0.15)
           );
           const lowEvidence = (msgCount + voiceHours * 60) < 40 || lastActiveDays > 14;
           push(
