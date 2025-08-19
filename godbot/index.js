@@ -235,18 +235,6 @@ const modalHandlers = new Map([
     const cmd = client.commands.get("경고");
     if (cmd?.handleModal) return cmd.handleModal(interaction);
   }],
-  ["warn_option_", async (interaction) => {
-  const cmd = client.commands.get("경고");
-  if (cmd?.handleSelect) return cmd.handleSelect(interaction);
-}],
-["warn_category_", async (interaction) => {
-  const cmd = client.commands.get("경고");
-  if (cmd?.handleSelect) return cmd.handleSelect(interaction);
-}],
-["warn_reason_", async (interaction) => {
-  const cmd = client.commands.get("경고");
-  if (cmd?.handleSelect) return cmd.handleSelect(interaction);
-}],
   ["unwarn_modal_", async (interaction) => {
     const cmd = client.commands.get("경고취소");
     if (cmd?.handleModal) return cmd.handleModal(interaction);
@@ -415,23 +403,28 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
 
   // 1. 경고 카테고리/세부사유 SelectMenu warn
   if (
-    interaction.isStringSelectMenu() &&
-    (interaction.customId.startsWith("warn_category_") || interaction.customId.startsWith("warn_reason_"))
-  ) {
-    if (warnCmd && typeof warnCmd.handleSelect === "function") {
+  interaction.isStringSelectMenu() &&
+  (
+    interaction.customId.startsWith("warn_option_") ||
+    interaction.customId.startsWith("warn_category_") ||
+    interaction.customId.startsWith("warn_reason_")
+  )
+) {
+  if (warnCmd && typeof warnCmd.handleSelect === "function") {
+    try {
+      await warnCmd.handleSelect(interaction);
+    } catch (err) {
+      console.error(err);
       try {
-        await warnCmd.handleSelect(interaction);
-      } catch (err) {
-        console.error(err);
-        try {
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.update({ content: "❣️ 처리 중 오류", components: [] });
-          }
-        } catch {}
-      }
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.update({ content: "❣️ 처리 중 오류", components: [] });
+        }
+      } catch {}
     }
-    return;
   }
+  return;
+}
+
 
   // 리모콘 음성채널 상태 변경 및 빠른 이동 관련
   if (interaction.isButton() && remoteCmd && interaction.customId.startsWith("remote_move_")) {
