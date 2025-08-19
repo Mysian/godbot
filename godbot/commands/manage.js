@@ -371,6 +371,9 @@ module.exports = {
           return `${s}초`;
         }
 
+        function clamp(n) { return Math.max(0, Math.min(100, Math.round(n))); }
+        function hhash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return Math.abs(h); }
+
         const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
         const member = await guild.members.fetch(targetUserId).catch(() => null);
         if (!member || !target) {
@@ -381,13 +384,13 @@ module.exports = {
         const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
 
         let lastActiveStr = "기록 없음";
-try {
-  const lastActiveDate = activityTracker.getLastActiveDate(target.id);
-  if (lastActiveDate) {
-    lastActiveStr = lastActiveDate.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
-  }
-} catch (err) {}
-
+        let lastActiveDate = null;
+        try {
+          lastActiveDate = activityTracker.getLastActiveDate(target.id);
+          if (lastActiveDate) {
+            lastActiveStr = lastActiveDate.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
+          }
+        } catch (err) {}
 
         const joinedAt = member.joinedAt;
         const joinedAtStr = joinedAt
@@ -422,9 +425,189 @@ try {
 
         const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
         const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
-
         const hasServerLock = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
         const hasXpLock = member.roles.cache.has(XP_LOCK_ROLE_ID);
+
+        const activitiesArr = (activityLogger.getUserActivities(target.id) || []).sort((a, b) => b.time - a.time);
+        const msgCount = stat.message || 0;
+        const voiceSec = stat.voice || 0;
+        const voiceHours = voiceSec / 3600;
+        const now = Date.now();
+        const lastActiveDays = lastActiveDate ? Math.floor((now - lastActiveDate.getTime()) / 86400000) : 9999;
+        const joinDays = joinedAt ? Math.floor((now - joinedAt.getTime()) / 86400000) : 0;
+        const roleCount = member.roles.cache.filter(r => r.id !== guild.id).size;
+        const gameNames = activitiesArr.filter(a => a.activityType === "game" && a.details && a.details.name).map(a => a.details.name);
+        const uniqueGames = new Set(gameNames).size;
+        const musicCount = activitiesArr.filter(a => a.activityType === "music").length;
+        const nightCount = activitiesArr.filter(a => {
+          const h = new Date(a.time).getHours();
+          return h >= 23 || h < 5;
+        }).length;
+        const nightRate = activitiesArr.length ? nightCount / activitiesArr.length : 0;
+
+        function buildEvaluation() {
+          const C = [];
+          const add = (p, t, tone = "neutral") => C.push({ p: clamp(p), t, tone });
+
+          const friendlyScore = clamp((Math.min(60, (msgCount / 300) * 60) + Math.min(30, (voiceHours / 50) * 30) + Math.min(10, topFriends.length * 3) - enemiesArr.length * 5 - (hasServerLock || hasXpLock ? 15 : 0) - (timeoutActive ? 20 : 0)));
+          add(friendlyScore, `이 유저는 서버에 우호적일 확률 ${friendlyScore}%`, "pos");
+
+          const toxicScore = clamp(enemiesArr.length * 18 + (hasServerLock ? 25 : 0) + (hasXpLock ? 12 : 0) + (timeoutActive ? 35 : 0));
+          add(toxicScore, `이 유저는 여러 유저들을 배척할 확률 ${toxicScore}%`, "neg");
+
+          let backScore = 0;
+          if (joinDays > 30 && lastActiveDays > 7 && msgCount < 50 && voiceHours < 3) backScore += 70;
+          if (topFriends.length >= 1) backScore += 12;
+          if (roleCount >= 10) backScore += 8;
+          add(backScore, `이 유저는 뒷서버를 파고 있을 가능성 ${clamp(backScore)}%`, "neg");
+
+          add(clamp(Math.min(100, (msgCount / 500) * 100)), `이 유저는 채팅 중심 활동가일 확률 ${clamp(Math.min(100, (msgCount / 500) * 100))}%`, "neutral");
+          add(clamp(Math.min(100, (voiceHours / 40) * 100)), `이 유저는 보이스 채널 선호 성향일 확률 ${clamp(Math.min(100, (voiceHours / 40) * 100))}%`, "neutral");
+
+          const lurkScore = clamp((joinDays > 30 ? 25 : 0) + (msgCount < 30 ? 50 : 0) + (voiceHours < 2 ? 25 : 0) + (lastActiveDays > 14 ? 10 : 0));
+          add(lurkScore, `이 유저는 관망형(잠수) 성향일 확률 ${lurkScore}%`, "neutral");
+
+          const influenceScore = clamp(Math.min(40, roleCount * 4) + Math.min(40, (msgCount / 800) * 40) + Math.min(20, topFriends.length * 6));
+          add(influenceScore, `이 유저는 영향력 높은 핵심 인물일 확률 ${influenceScore}%`, "pos");
+
+          const newbieScore = clamp(joinDays <= 7 ? 80 - Math.min(60, joinDays * 8) : 0);
+          add(newbieScore, `이 유저는 신입 적응 단계일 확률 ${newbieScore}%`, "neutral");
+
+          const comebackScore = clamp((joinDays > 30 ? 20 : 0) + (lastActiveDays <= 3 ? 60 : 0) + (msgCount < 120 ? 10 : 0));
+          add(comebackScore, `이 유저는 복귀 모멘텀이 있는 편일 확률 ${comebackScore}%`, "pos");
+
+          const churnScore = clamp((lastActiveDays > 30 ? 70 : 0) + (msgCount < 10 ? 20 : 0) + (voiceHours < 1 ? 10 : 0));
+          add(churnScore, `이 유저는 이탈 위험 신호가 있을 확률 ${churnScore}%`, "neg");
+
+          const nightScore = clamp(nightRate * 100);
+          add(nightScore, `이 유저는 야행성 활동 비중이 높을 확률 ${nightScore}%`, "neutral");
+
+          const dayScore = clamp(100 - nightScore);
+          add(dayScore, `이 유저는 주간 활동 비중이 높을 확률 ${dayScore}%`, "neutral");
+
+          const gamerScore = clamp(Math.min(100, uniqueGames * 12));
+          add(gamerScore, `이 유저는 게임 중심 활동일 확률 ${gamerScore}%`, "neutral");
+
+          const musicScore = clamp(Math.min(100, musicCount * 5));
+          add(musicScore, `이 유저는 음악 감상 중심 활동일 확률 ${musicScore}%`, "neutral");
+
+          const ruleOk = clamp(100 - (hasServerLock ? 30 : 0) - (hasXpLock ? 20 : 0) - (timeoutActive ? 40 : 0));
+          add(ruleOk, `이 유저는 규칙 준수도가 높을 확률 ${ruleOk}%`, "pos");
+
+          const riskScore = clamp((hasServerLock ? 45 : 0) + (hasXpLock ? 20 : 0) + (timeoutActive ? 50 : 0));
+          add(riskScore, `이 유저는 리스크 관리가 필요한 상태일 확률 ${riskScore}%`, "neg");
+
+          const spamScore = clamp(member.roles.cache.has(SPAM_ROLE_ID) ? 85 : 0);
+          add(spamScore, `이 유저는 스팸 의심 패턴이 있을 확률 ${spamScore}%`, "neg");
+
+          const longStayScore = clamp(hasLongStay ? 80 : 0);
+          add(longStayScore, `이 유저는 장기 투숙객 성향일 확률 ${longStayScore}%`, "neutral");
+
+          const monthlyScore = clamp(hasMonthly ? 90 : 0);
+          add(monthlyScore, `이 유저는 월세 성실 납부자일 확률 ${monthlyScore}%`, "pos");
+
+          const roleCollector = clamp(Math.min(100, Math.max(0, (roleCount - 6) * 10)));
+          add(roleCollector, `이 유저는 롤(역할) 수집가 성향일 확률 ${roleCollector}%`, "neutral");
+
+          const noRoleScore = clamp(roleCount === 0 ? 80 : 0);
+          add(noRoleScore, `이 유저는 무소속(역할 無) 상태일 확률 ${noRoleScore}%`, "neutral");
+
+          const socialExpand = clamp(Math.min(100, topFriends.length * 28) - enemiesArr.length * 8 + Math.min(30, (msgCount / 300) * 30));
+          add(socialExpand, `이 유저는 사회적 확장형 성향일 확률 ${socialExpand}%`, "pos");
+
+          const isolated = clamp((topFriends.length === 0 ? 40 : 0) + (enemiesArr.length >= 1 ? 35 : 0) + (msgCount < 30 ? 25 : 0));
+          add(isolated, `이 유저는 고립형 성향일 확률 ${isolated}%`, "neg");
+
+          const mediator = clamp(Math.max(0, socialExpand - toxicScore / 2));
+          add(mediator, `이 유저는 중재자형 성향일 확률 ${mediator}%`, "pos");
+
+          const zeal = clamp(Math.min(100, (msgCount / 1000) * 60 + (voiceHours / 80) * 40));
+          add(zeal, `이 유저는 열성 참여형일 확률 ${zeal}%`, "pos");
+
+          const overheated = clamp((joinDays <= 7 ? 40 : 0) + (msgCount > 120 ? 30 : 0) + (voiceHours > 10 ? 30 : 0));
+          add(overheated, `이 유저는 단기 과열형 패턴일 확률 ${overheated}%`, "neutral");
+
+          const silentVeteran = clamp((joinDays > 180 ? 50 : 0) + (msgCount < 60 ? 30 : 0) + (voiceHours < 5 ? 20 : 0));
+          add(silentVeteran, `이 유저는 조용한 베테랑일 확률 ${silentVeteran}%`, "neutral");
+
+          const steady = clamp((joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0));
+          add(steady, `이 유저는 꾸준한 스테디셀러일 확률 ${steady}%`, "pos");
+
+          const solo = clamp((uniqueGames <= 1 ? 30 : 0) + (voiceHours < 3 ? 30 : 0));
+          add(solo, `이 유저는 솔로 플레이 성향일 확률 ${solo}%`, "neutral");
+
+          const partyLead = clamp((voiceHours > 40 ? 45 : 0) + (topFriends.length >= 2 ? 25 : 0));
+          add(partyLead, `이 유저는 파티 리더형 성향일 확률 ${partyLead}%`, "pos");
+
+          const clique = clamp((voiceHours > 10 ? 20 : 0) + (topFriends.length >= 1 ? 30 : 0) + (msgCount < 80 ? 20 : 0));
+          add(clique, `이 유저는 친목 집중형 성향일 확률 ${clique}%`, "neutral");
+
+          const infoSeeker = clamp((gameNames.length + musicCount) > 10 ? 40 : 0);
+          add(infoSeeker, `이 유저는 정보탐색형(콘텐츠 소비) 성향일 확률 ${infoSeeker}%`, "neutral");
+
+          const eventFriendly = clamp((lastActiveDays <= 14 ? 30 : 0) + (msgCount >= 80 ? 30 : 0));
+          add(eventFriendly, `이 유저는 이벤트 친화형일 확률 ${eventFriendly}%`, "pos");
+
+          const ruleSensitive = clamp((msgCount < 40 ? 20 : 0) + (!timeoutActive && !hasServerLock ? 40 : 0));
+          add(ruleSensitive, `이 유저는 규칙 민감형일 확률 ${ruleSensitive}%`, "neutral");
+
+          const warnCandidate = clamp((toxicScore > 50 ? 30 : 0) + (hasServerLock ? 30 : 0) + (timeoutActive ? 40 : 0));
+          add(warnCandidate, `이 유저는 경고 필요 후보일 확률 ${warnCandidate}%`, "neg");
+
+          const staffCandidate = clamp((influenceScore > 60 ? 30 : 0) + (ruleOk > 70 ? 40 : 0));
+          add(staffCandidate, `이 유저는 잠재적 운영진 후보일 확률 ${staffCandidate}%`, "pos");
+
+          const newLead = clamp((newbieScore > 40 ? 20 : 0) + (zeal > 50 ? 30 : 0));
+          add(newLead, `이 유저는 신규 유입 리드 가능성 ${newLead}%`, "pos");
+
+          const contributor = clamp((msgCount > 500 ? 40 : 0) + (steady > 50 ? 30 : 0));
+          add(contributor, `이 유저는 커뮤니티 기여자일 확률 ${contributor}%`, "pos");
+
+          const conflictSensitive = clamp((enemiesArr.length >= 2 ? 50 : 0) + (toxicScore / 2));
+          add(conflictSensitive, `이 유저는 분쟁 민감군일 확률 ${conflictSensitive}%`, "neg");
+
+          const learningCurve = clamp((joinDays <= 30 ? 60 : 0) + (msgCount < 120 ? 20 : 0));
+          add(learningCurve, `이 유저는 학습 곡선 진행중일 확률 ${learningCurve}%`, "neutral");
+
+          const growthSlow = clamp((joinDays > 90 ? 20 : 0) + (lastActiveDays > 14 ? 40 : 0));
+          add(growthSlow, `이 유저는 성장 곡선 둔화 신호가 있을 확률 ${growthSlow}%`, "neg");
+
+          const hybrid = clamp((msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 25 : 0));
+          add(hybrid, `이 유저는 텍스트·보이스 복합형일 확률 ${hybrid}%`, "neutral");
+
+          const reactioner = clamp((msgCount >= 30 ? 25 : 0));
+          add(reactioner, `이 유저는 텍스트 리액션 위주일 확률 ${reactioner}%`, "neutral");
+
+          const fleeting = clamp((msgCount >= 150 ? 30 : 0));
+          add(fleeting, `이 유저는 휘발성 대화 비중이 높을 확률 ${fleeting}%`, "neutral");
+
+          const longform = clamp((msgCount >= 300 ? 30 : 0));
+          add(longform, `이 유저는 장문형 대화 비중이 높을 확률 ${longform}%`, "neutral");
+
+          const disrupt = clamp((toxicScore > 60 ? 40 : 0) + (warnCandidate > 40 ? 20 : 0));
+          add(disrupt, `이 유저는 분위기 교란 위험 신호가 있을 확률 ${disrupt}%`, "neg");
+
+          const needCare = clamp((newbieScore > 30 ? 40 : 0) + (learningCurve > 40 ? 20 : 0));
+          add(needCare, `이 유저는 초심자 케어가 유효할 확률 ${needCare}%`, "pos");
+
+          const friendsOnly = clamp((clique > 40 ? 30 : 0) + (isolated > 20 ? 10 : 0));
+          add(friendsOnly, `이 유저는 지인 중심 활동일 확률 ${friendsOnly}%`, "neutral");
+
+          const offsite = clamp((backScore > 40 ? 30 : 0));
+          add(offsite, `이 유저는 서버 외부 교류 비중이 높을 확률 ${offsite}%`, "neutral");
+
+          const reportTrail = clamp((warnCandidate > 40 ? 30 : 0) + (timeoutActive ? 40 : 0));
+          add(reportTrail, `이 유저는 신고 대응 이력 가능성이 있을 확률 ${reportTrail}%`, "neg");
+
+          const ranked = C.sort((a, b) => b.p - a.p);
+          const topP = ranked.length ? ranked[0].p : 0;
+          const tops = ranked.filter(x => x.p === topP);
+          const pick = tops[(hhash(target.id) % Math.max(1, tops.length))];
+          const emoji = pick.tone === "pos" ? "✅" : pick.tone === "neg" ? "⚠️" : "ℹ️";
+          return `${emoji} ${pick.t}`;
+        }
+
+        const evalLine = buildEvaluation();
 
         const embed = new EmbedBuilder()
           .setTitle(`유저 정보: ${target.tag}`)
@@ -433,8 +616,8 @@ try {
             { name: "유저 ID", value: target.id, inline: false },
             { name: "서버 입장일", value: joinedAtStr, inline: false },
             { name: "마지막 활동일", value: lastActiveStr, inline: false },
-            { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
-            { name: "음성 이용 시간", value: formatSeconds(stat.voice), inline: true },
+            { name: "메시지 수", value: `${msgCount}`, inline: true },
+            { name: "음성 이용 시간", value: formatSeconds(voiceSec), inline: true },
             { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
             { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
             ...(timeoutActive
@@ -447,7 +630,8 @@ try {
                 `• 경험치 획득 제한: ${hasXpLock ? "🟥 ON" : "⬜ OFF"}`
               ].join("\n"),
               inline: false
-            }
+            },
+            { name: "갓봇의 평가", value: evalLine, inline: false }
           )
           .setColor(0x00bfff);
 
