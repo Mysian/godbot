@@ -108,6 +108,8 @@ const categories = [
 
 // ⚡ 강력경고(즉시 차단) 옵션
 const STRONG_WARN_OPTION = { label: "⚡ 강력경고(즉시 차단)", value: "STRONG_BAN" };
+// 🧮 카운트만 기록 옵션
+const COUNT_ONLY_OPTION = { label: "🧮 경고 카운트만(처벌/DM 없음)", value: "COUNT_ONLY" };
 
 // ---- 저장 함수 ----
 function loadWarnings() {
@@ -129,18 +131,19 @@ module.exports = {
     const target = interaction.options.getUser("유저");
     if (!target) return interaction.reply({ content: "❌ 대상 유저를 찾을 수 없습니다.", ephemeral: true });
 
-    // 카테고리 + 강력경고 SelectMenu
-    const categoryMenu = new StringSelectMenuBuilder()
-      .setCustomId(`warn_category_${target.id}`)
-      .setPlaceholder("경고 카테고리를 선택하세요.")
+    // 1단계: 처리 모드 선택 (일반 / 카운트만 / 강력경고)
+    const modeMenu = new StringSelectMenuBuilder()
+      .setCustomId(`warn_option_${target.id}`)
+      .setPlaceholder("처리 모드를 선택하세요.")
       .addOptions([
-        STRONG_WARN_OPTION,
-        ...categories.map(cat => ({ label: cat.label, value: cat.id }))
+        { label: "일반 경고(처벌/DM)", value: "NORMAL" },
+        COUNT_ONLY_OPTION,
+        STRONG_WARN_OPTION
       ]);
-    const row = new ActionRowBuilder().addComponents(categoryMenu);
+    const row = new ActionRowBuilder().addComponents(modeMenu);
 
     await interaction.reply({
-      content: `<@${target.id}>에게 적용할 **경고 카테고리**를 선택하세요.\n\n⚡ **강력경고(즉시 차단)**을 선택하면 경고 누적 없이 바로 차단 처리됩니다.`,
+      content: `<@${target.id}> 경고 처리 **모드**를 선택하세요.\n\n- 일반: 누적에 따라 타임아웃/차단 + DM 통지\n- 카운트만: 경고 이력만 기록 (처벌/DM 없음)\n- 강력경고: 즉시 차단`,
       components: [row],
       ephemeral: true
     });
@@ -148,112 +151,124 @@ module.exports = {
 
   // SelectMenu & Modal 처리 (index.js에서 interaction.customId로 호출)
   async handleSelect(interaction) {
-    // 강력경고 선택 시
-    if (
-      interaction.customId.startsWith("warn_category_") &&
-      interaction.values[0] === "STRONG_BAN"
-    ) {
-      const userId = interaction.customId.replace("warn_category_", "");
+    // 1단계: 처리 모드 선택
+    if (interaction.customId.startsWith("warn_option_")) {
+      const userId = interaction.customId.replace("warn_option_", "");
+      const selected = interaction.values[0];
 
-      // 차단 실행
-      const guild = interaction.guild;
-      const member = await guild.members.fetch(userId).catch(() => null);
-      if (member) {
-        await member.ban({ reason: "⚡ 강력경고: 관리진 즉시 차단" });
-      }
+      // 강력경고 즉시 처리
+      if (selected === "STRONG_BAN") {
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (member) {
+          await member.ban({ reason: "⚡ 강력경고: 관리진 즉시 차단" });
+        }
 
-      // 경고 기록(STRONG_BAN 기록)
-      const warnings = loadWarnings();
-      if (!warnings[userId]) warnings[userId] = [];
-      warnings[userId].push({
-        code: "STRONG_BAN",
-        desc: "강력경고(즉시 차단)",
-        detail: "-",
-        date: new Date().toISOString(),
-        mod: interaction.user.id
-      });
-      saveWarnings(warnings);
-
-      // DM
-      try {
-        const user = await interaction.client.users.fetch(userId);
-        await user.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("🚫 서버 강력경고 및 차단 알림")
-              .setDescription("⚡ **관리진의 강력경고로 인해 즉시 서버 차단 처리**되었습니다.\n(사유: 규칙 위반·도 넘는 언행 등)")
-              .setColor("DarkRed")
-              .addFields(
-                { name: "📅 일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>` }
-              )
-          ]
+        const warnings = loadWarnings();
+        if (!warnings[userId]) warnings[userId] = [];
+        warnings[userId].push({
+          code: "STRONG_BAN",
+          desc: "강력경고(즉시 차단)",
+          detail: "-",
+          date: new Date().toISOString(),
+          mod: interaction.user.id
         });
-      } catch (e) {}
+        saveWarnings(warnings);
 
-      // 로그 채널
-      try {
-        const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-        if (logChannel) {
-          await logChannel.send({
+        try {
+          const user = await interaction.client.users.fetch(userId);
+          await user.send({
             embeds: [
               new EmbedBuilder()
-                .setTitle("🚫 강력경고(즉시 차단) 처리 로그")
-                .setDescription(`<@${userId}> (${userId}) 즉시 차단됨`)
-                .addFields(
-                  { name: "코드", value: "STRONG_BAN", inline: true },
-                  { name: "설명", value: "강력경고(즉시 차단)", inline: true },
-                  { name: "처리자", value: `<@${interaction.user.id}>` },
-                  { name: "일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true }
-                )
+                .setTitle("🚫 서버 강력경고 및 차단 알림")
+                .setDescription("⚡ **관리진의 강력경고로 인해 즉시 서버 차단 처리**되었습니다.\n(사유: 규칙 위반·도 넘는 언행 등)")
                 .setColor("DarkRed")
+                .addFields({ name: "📅 일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>` })
             ]
           });
-        }
-      } catch (e) {}
+        } catch (e) {}
 
-      // 최종 응답
+        try {
+          const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+          if (logChannel) {
+            await logChannel.send({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle("🚫 강력경고(즉시 차단) 처리 로그")
+                  .setDescription(`<@${userId}> (${userId}) 즉시 차단됨`)
+                  .addFields(
+                    { name: "코드", value: "STRONG_BAN", inline: true },
+                    { name: "설명", value: "강력경고(즉시 차단)", inline: true },
+                    { name: "처리자", value: `<@${interaction.user.id}>` },
+                    { name: "일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true }
+                  )
+                  .setColor("DarkRed")
+              ]
+            });
+          }
+        } catch (e) {}
+
+        await interaction.update({
+          content: `⚡ <@${userId}> 유저에게 **강력경고**가 적용되어 즉시 차단되었습니다.`,
+          components: [],
+          ephemeral: true
+        });
+        return;
+      }
+
+      // 일반 / 카운트만 → 카테고리 선택으로 진행
+      const optFlag = selected === "COUNT_ONLY" ? "C" : "N";
+      const categoryMenu = new StringSelectMenuBuilder()
+        .setCustomId(`warn_category_${userId}_${optFlag}`)
+        .setPlaceholder("경고 카테고리를 선택하세요.")
+        .addOptions(categories.map(cat => ({ label: cat.label, value: cat.id })));
+      const row = new ActionRowBuilder().addComponents(categoryMenu);
+
       await interaction.update({
-        content: `⚡ <@${userId}> 유저에게 **강력경고**가 적용되어 즉시 차단되었습니다.`,
-        components: [],
-        ephemeral: true
-      });
-      return;
-    }
-
-    // (원래 있던 경고 분기 그대로)
-    // 카테고리 선택 → 사유 선택
-    if (interaction.customId.startsWith("warn_category_")) {
-      const userId = interaction.customId.replace("warn_category_", "");
-      const category = categories.find(cat => cat.id === interaction.values[0]);
-      if (!category) return interaction.update({ content: "❌ 카테고리 오류", components: [] });
-
-      const reasonMenu = new StringSelectMenuBuilder()
-        .setCustomId(`warn_reason_${userId}_${category.id}`)
-        .setPlaceholder("세부 경고 사유를 선택하세요.")
-        .addOptions(category.reasons);
-      const row = new ActionRowBuilder().addComponents(reasonMenu);
-
-      await interaction.update({
-        content: `<@${userId}>에게 적용할 **세부 경고 사유**를 선택하세요.`,
+        content: `<@${userId}>에게 적용할 **경고 카테고리**를 선택하세요.\n(현재 모드: ${optFlag === "C" ? "🧮 카운트만" : "일반"})`,
         components: [row],
         ephemeral: true
       });
       return;
     }
 
-    // 세부사유 선택 → 상세사유 모달
+    // 2단계: 카테고리 선택 → 사유 선택
+    if (interaction.customId.startsWith("warn_category_")) {
+      const arr = interaction.customId.split("_");
+      const userId = arr[2];
+      const optFlag = arr[3] || "N";
+      const category = categories.find(cat => cat.id === interaction.values[0]);
+      if (!category) return interaction.update({ content: "❌ 카테고리 오류", components: [] });
+
+      const reasonMenu = new StringSelectMenuBuilder()
+        .setCustomId(`warn_reason_${userId}_${category.id}_${optFlag}`)
+        .setPlaceholder("세부 경고 사유를 선택하세요.")
+        .addOptions(category.reasons);
+      const row = new ActionRowBuilder().addComponents(reasonMenu);
+
+      await interaction.update({
+        content: `<@${userId}>에게 적용할 **세부 경고 사유**를 선택하세요.\n(현재 모드: ${optFlag === "C" ? "🧮 카운트만" : "일반"})`,
+        components: [row],
+        ephemeral: true
+      });
+      return;
+    }
+
+    // 3단계: 세부사유 선택 → 상세사유 모달
     if (interaction.customId.startsWith("warn_reason_")) {
       const arr = interaction.customId.split("_");
       const userId = arr[2];
       const categoryId = arr[3];
+      const optFlag = arr[4] || "N";
       const code = interaction.values[0];
+
       const selectedReason = categories
         .find(c => c.id === categoryId)
         ?.reasons.find(r => r.value === code);
       if (!selectedReason) return interaction.update({ content: "❌ 사유 오류", components: [] });
 
       const modal = new ModalBuilder()
-        .setCustomId(`warn_modal_${userId}_${code}`)
+        .setCustomId(`warn_modal_${userId}_${code}_${optFlag}`)
         .setTitle("상세 사유 입력 (생략 가능)");
       const detailInput = new TextInputBuilder()
         .setCustomId("detail_input")
@@ -270,15 +285,18 @@ module.exports = {
   // 모달 제출 처리
   async handleModal(interaction) {
     if (!interaction.customId.startsWith("warn_modal_")) return;
+
     const arr = interaction.customId.split("_");
     const userId = arr[2];
-    const code = arr.slice(3).join("_");
+    const tokens = arr.slice(3);
+    let optFlag = "N";
+    if (tokens.length > 0 && (tokens[tokens.length - 1] === "C" || tokens[tokens.length - 1] === "N")) {
+      optFlag = tokens.pop();
+    }
+    const code = tokens.join("_");
     const detail = interaction.fields.getTextInputValue("detail_input") || "-";
 
-    // 경고 기록
-    const selectedReason = categories
-      .flatMap(c => c.reasons)
-      .find(r => r.value === code);
+    const selectedReason = categories.flatMap(c => c.reasons).find(r => r.value === code);
     const desc = selectedReason ? selectedReason.label : "";
 
     const warnings = loadWarnings();
@@ -292,10 +310,43 @@ module.exports = {
     });
     saveWarnings(warnings);
 
-    // 경고 횟수에 따른 타임아웃/추방
+    const count = warnings[userId].length;
+
+    // 카운트만 모드: 처벌/DM 스킵
+    if (optFlag === "C") {
+      try {
+        const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+        if (logChannel) {
+          await logChannel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle("🧮 경고 카운트만 기록 로그")
+                .setDescription(`<@${userId}> (${userId}) 경고 이력 기록 (처벌/DM 없음)`)
+                .addFields(
+                  { name: "코드", value: code, inline: true },
+                  { name: "설명", value: desc || "-", inline: true },
+                  { name: "상세사유", value: detail },
+                  { name: "처리자", value: `<@${interaction.user.id}>` },
+                  { name: "누적경고", value: `${count}회`, inline: true },
+                  { name: "일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true },
+                  { name: "모드", value: "🧮 카운트만", inline: true }
+                )
+                .setColor("Grey")
+            ]
+          });
+        }
+      } catch (e) {}
+
+      await interaction.reply({
+        content: `✅ <@${userId}> 경고 **카운트만** 기록했어. (총 ${count}회)\n사유코드: **${code}**\n상세사유: ${detail}\n처벌/DM 없이 이력만 남겼어.`,
+        ephemeral: true
+      });
+      return;
+    }
+
+    // 일반 모드: 경고 횟수에 따른 타임아웃/추방
     const guild = interaction.guild;
     const member = await guild.members.fetch(userId).catch(() => null);
-    const count = warnings[userId].length;
     if (member) {
       let duration = 0;
       if (count === 1) duration = 1000 * 60 * 60 * 24;
@@ -317,7 +368,7 @@ module.exports = {
             .setTitle("🚫 경고 알림")
             .setDescription(
               `[${code}${desc ? `: ${desc}` : ""}] 항목 위반으로 경고가 부여되었습니다.\n\n` +
-                "⚠️ 경고 3회 누적 시 삼진아웃(서버 차단) 처리됩니다."
+              "⚠️ 경고 3회 누적 시 삼진아웃(서버 차단) 처리됩니다."
             )
             .addFields(
               { name: "📌 사유", value: detail },
@@ -329,7 +380,7 @@ module.exports = {
       });
     } catch (e) {}
 
-    // 관리 채널 로그 Embed 전송
+    // 관리 채널 로그
     try {
       const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
       if (logChannel) {
@@ -340,11 +391,12 @@ module.exports = {
               .setDescription(`<@${userId}> (${userId})에게 경고가 부여됨`)
               .addFields(
                 { name: "코드", value: code, inline: true },
-                { name: "설명", value: desc, inline: true },
+                { name: "설명", value: desc || "-", inline: true },
                 { name: "상세사유", value: detail },
                 { name: "처리자", value: `<@${interaction.user.id}>` },
                 { name: "누적경고", value: `${count}회`, inline: true },
-                { name: "일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true }
+                { name: "일시", value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true },
+                { name: "모드", value: "일반", inline: true }
               )
               .setColor("Red")
           ]
@@ -353,7 +405,7 @@ module.exports = {
     } catch (e) {}
 
     await interaction.reply({
-      content: `✅ <@${userId}> 유저에게 경고를 부여했습니다. (총 ${count}회)\n사유코드: **${code}**\n상세사유: ${detail}`,
+      content: `✅ <@${userId}> 유저에게 경고를 부여했어. (총 ${count}회)\n사유코드: **${code}**\n상세사유: ${detail}`,
       ephemeral: true
     });
   }
