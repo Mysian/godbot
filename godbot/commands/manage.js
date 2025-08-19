@@ -572,13 +572,14 @@ module.exports = {
           const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
           push(steadyRaw, "이 유저는 꾸준한 스테디셀러일 확률", "pos", 86, 3, true);
 
-          const result = C
-            .filter(x => x.p >= 20)
-            .sort((a, b) => b.p - a.p)
-            .slice(0, 3);
+          const MIN_SHOW = 0; // 전부 보려면 0, 너무 잡음이면 10~20 정도로 올려도 됨
+const result = C
+  .filter(x => x.p >= MIN_SHOW)
+  .sort((a, b) => b.p - a.p);
 
-          if (!result.length) return ["ℹ️ 데이터가 부족해 평가를 보류합니다."];
-          return result.map(x => (x.tone === "pos" ? "✅" : x.tone === "neg" ? "⚠️" : "ℹ️") + " " + x.t);
+return result.length
+  ? result.map(x => (x.tone === "pos" ? "✅" : x.tone === "neg" ? "⚠️" : "ℹ️") + " " + x.t)
+  : ["ℹ️ 데이터가 부족해 평가를 보류합니다."];
         }
 
         const evalLines = buildEvaluations();
