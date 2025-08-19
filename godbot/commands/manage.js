@@ -37,6 +37,15 @@ function loadAdminPw() {
   }
 }
 
+const warnHistoryPath = path.join(dataDir, "warn-history.json");
+function loadWarnHistory() {
+  if (!fs.existsSync(warnHistoryPath)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(warnHistoryPath, "utf8")) || {};
+  } catch { return {}; }
+}
+
+
 const activityTracker = require("../utils/activity-tracker.js");
 const activityLogger = require("../utils/activity-logger.js");
 const relationship = require("../utils/relationship.js");
@@ -484,6 +493,31 @@ module.exports = {
         const nightRate = activitiesArr.length ? nightCount / activitiesArr.length : 0;
         const activitiesCount = activitiesArr.length;
 
+        const warnHistory = loadWarnHistory();
+const rawWarnEntry = warnHistory[String(target.id)] || null;
+function coerceWarnTsList(entry) {
+  if (!entry) return [];
+  if (Array.isArray(entry)) return entry.filter(x => typeof x === "number");
+  if (typeof entry.ts === "number") return [entry.ts];
+  if (Array.isArray(entry.ts)) return entry.ts.filter(x => typeof x === "number");
+  if (Array.isArray(entry.events)) return entry.events.filter(x => typeof x === "number");
+  return [];
+}
+const warnTsList = coerceWarnTsList(rawWarnEntry).sort((a,b)=>b-a);
+const nowMs = Date.now();
+const dayMs = 86400000;
+const countInDays = (d) => warnTsList.filter(ts => nowMs - ts <= d*dayMs).length;
+const warn7 = countInDays(7);
+const warn30 = countInDays(30);
+const warn90 = countInDays(90);
+const warnTotal = warnTsList.length;
+const lastWarnTs = warnTsList[0] || null;
+const lastWarnDays = lastWarnTs ? Math.floor((nowMs - lastWarnTs)/dayMs) : 9999;
+const warnInfoText = warnTsList.length
+  ? `최근: <t:${Math.floor(lastWarnTs/1000)}:R>\n7일:${warn7}  30일:${warn30}  90일:${warn90}  총:${warnTotal}`
+  : "없음";
+
+
         function buildEvaluations() {
           const C = [];
           const evidence = relFromEvidence(msgCount, voiceHours, activitiesCount, lastActiveDays);
@@ -494,7 +528,10 @@ module.exports = {
             C.push({ p, t: `${text} ${p}%`, tone });
           };
 
-          const rulePenalty = (hasServerLock ? 30 : 0) + (hasXpLock ? 20 : 0) + (timeoutActive ? 45 : 0);
+          const rulePenaltyBase = (hasServerLock ? 30 : 0) + (hasXpLock ? 20 : 0) + (timeoutActive ? 45 : 0);
+const rulePenaltyWarn = Math.min(35, warn30 * 15) + (lastWarnDays <= 3 ? 10 : lastWarnDays <= 7 ? 6 : 0);
+const rulePenalty = rulePenaltyBase + rulePenaltyWarn;
+
           const socialPlus = Math.min(32, (topFriends.length || 0) * 10);
           const msgPlus = Math.min(30, (msgCount / 600) * 30);
           const vcPlus = Math.min(30, (voiceHours / 50) * 30);
@@ -531,9 +568,21 @@ module.exports = {
           push(vcCliqueRaw, "소규모 중심 활동 성향 확률", "neutral", 86, 2, false);
           push(samePeersRaw, "동일 유저끼리만 소통하는 편향 성향 확률", "neg", 86, 2, false);
 
+          const warnTrailRaw = Math.min(95,
+  warn7 * 35 + warn30 * 20 + warn90 * 10 +
+  (lastWarnDays <= 3 ? 20 : lastWarnDays <= 7 ? 12 : lastWarnDays <= 14 ? 8 : 0)
+);
+push(warnTrailRaw, "최근 경고·제재 이력 신호가 있을 확률", "neg", 92, 2, false);
+
+
           let friendlyRaw = Math.max(0,
-            10 + msgPlus + vcPlus + socialPlus - rulePenalty - Math.min(25, offsiteRaw * 0.4) - Math.min(20, samePeersRaw * 0.2) - Math.min(15, vcCliqueRaw * 0.15)
-          );
+  10 + msgPlus + vcPlus + socialPlus - rulePenalty
+  - Math.min(25, offsiteRaw * 0.4)
+  - Math.min(20, samePeersRaw * 0.2)
+  - Math.min(15, vcCliqueRaw * 0.15)
+  - Math.min(20, warnTrailRaw * 0.25)
+);
+
           const lowEvidence = (msgCount + voiceHours * 60) < 40 || lastActiveDays > 14;
           push(
             friendlyRaw,
@@ -546,10 +595,12 @@ module.exports = {
           );
 
           const toxicSignals =
-            Math.min(50, enemiesArr.length * 18) +
-            (hasServerLock ? 25 : 0) +
-            (hasXpLock ? 12 : 0) +
-            (timeoutActive ? 35 : 0);
+  Math.min(50, enemiesArr.length * 18) +
+  (hasServerLock ? 25 : 0) +
+  (hasXpLock ? 12 : 0) +
+  (timeoutActive ? 35 : 0) +
+  Math.min(30, warn90 * 10) +
+  (lastWarnDays <= 14 ? 10 : 0);
           const toxicRaw = Math.min(95, 20 + toxicSignals - socialPlus / 2);
           push(toxicRaw, "분쟁/배척 성향 확률", "neg", 90, 2, false);
 
@@ -606,6 +657,7 @@ return result.length
               ].join("\n"),
               inline: false
             },
+            { name: "제재/경고 이력", value: warnInfoText, inline: false },
             { name: "갓봇의 평가", value: Array.isArray(evalLines) ? evalLines.join("\n") : String(evalLines), inline: false }
           )
           .setColor(0x00bfff);
