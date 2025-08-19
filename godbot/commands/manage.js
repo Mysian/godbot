@@ -591,7 +591,7 @@ module.exports = {
             warn7 * 35 + warn30 * 20 + warn90 * 10 +
             (lastWarnDays <= 3 ? 20 : lastWarnDays <= 7 ? 12 : lastWarnDays <= 14 ? 8 : 0)
           );
-          push(warnTrailRaw, "최근 경고·제재 이력 신호가 있을 확률", "neg", 92, 2, false);
+          push(warnTrailRaw, "도덕적이지 않을 확률", "neg", 92, 2, false);
 
           let friendlyRaw = Math.max(0,
             10 + msgPlus + vcPlus + socialPlus - rulePenalty
