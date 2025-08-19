@@ -338,8 +338,8 @@ function buildPlanEmbed(session, totalChannels) {
     .setDescription("아래 내역은 스캔/삭제 계획이며, [삭제 확정] 전에는 실제 삭제되지 않아.")
     .addFields(
       { name: "대상 ID", value: session.targetIds.join(", "), inline: false },
-      { name: "옵션", value: `메시지삭제 ${session.opts.deleteMessages ? "ON" : "OFF"} · 태그삭제 ${session.opts.deleteTagged ? "ON" : "OFF"} · JSON정리 ${session.opts.cleanJson ? "ON" : "OFF"} · 스캔기간 ${session.opts.days}일`, inline: false },
-      { name: "스캔 범위", value: `채널 ${fmtInt(totalChannels)}개 (지정된 채널/카테고리만)`, inline: false },
+      { name: "옵션", value: `메시지삭제 ${session.opts.deleteMessages ? "ON" : "OFF"} · 태그삭제 ${session.opts.deleteTagged ? "ON" : "OFF"} · JSON정리 ${session.opts.cleanJson ? "ON" : "OFF"} · 채널스캔 ${session.opts.skipChannelScan ? "OFF" : "ON"} · 스캔기간 ${session.opts.days}일`, inline: false },
+      { name: "스캔 범위", value: session.opts.skipChannelScan ? `채널 스캔 안함 (OFF)` : `채널 ${fmtInt(totalChannels)}개 (지정된 채널/카테고리만)`, inline: false },
       { name: "메시지(본인)", value: session.scanDone ? `${fmtInt(session.stats.own)}` : "스캔 전", inline: true },
       { name: "메시지(태그됨)", value: session.opts.deleteTagged ? (session.scanDone ? `${fmtInt(session.stats.tagged)}` : "스캔 전") : "OFF", inline: true },
       { name: "JSON 파일", value: session.scanDone ? `${fmtInt(session.json.matches)}개 파일에서 정리 대상 발견` : "스캔 전", inline: true },
@@ -372,8 +372,6 @@ async function ensurePermissions(interaction) {
 
 async function runScan(interaction, session) {
   const cutoffMs = session.opts.days > 0 ? Date.now() - session.opts.days * 24 * 60 * 60 * 1000 : null;
-  const channels = listTextLikeChannels(interaction.guild).sort((a, b) => a.position - b.position);
-  const totalChannels = Math.max(1, channels.length);
   const targetIdsSet = new Set(session.targetIds);
   const abortController = new AbortController();
   session.abortController = abortController;
@@ -382,55 +380,69 @@ async function runScan(interaction, session) {
   session.msgPlan = { own: new Map(), tagged: new Map() };
   session.json = { matches: 0, files: [], sample: [] };
 
-  await interaction.editReply({
-    embeds: [loadingEmbed("유저청소 · 스캔중", "지정된 채널/카테고리만 스캔 중.", 0, totalChannels, [
-      `대상: ${session.targetIds.join(", ")}`,
-      `옵션: 메시지삭제 ${session.opts.deleteMessages ? "ON" : "OFF"} · 태그삭제 ${session.opts.deleteTagged ? "ON" : "OFF"} · JSON정리 ${session.opts.cleanJson ? "ON" : "OFF"} · 기간 ${session.opts.days}일`,
-    ])],
-    components: buildButtons(session, "plan"),
-  }).catch(() => {});
-
-  let chIndex = 0;
-  for (const ch of channels) {
-    if (abortController.aborted) break;
-    chIndex += 1;
-    const res = await scanChannelForTargets(
-      ch,
-      targetIdsSet,
-      cutoffMs,
-      session.opts.deleteTagged,
-      async () => {
-        if (throttle(session)) {
-          await interaction.editReply({
-            embeds: [loadingEmbed("유저청소 · 스캔중", "지정된 채널/카테고리만 스캔 중.", chIndex - 1, totalChannels, [
-              `발견: 본인메시지 ${fmtInt(session.stats.own)} · 태그됨 ${fmtInt(session.stats.tagged)}`,
-            ])],
-            components: buildButtons(session, "plan"),
-          }).catch(() => {});
-        }
-      },
-      abortController.signal
-    );
-    session.stats.own += res.ownCount;
-    session.stats.tagged += res.taggedCount;
-    if (res.own.size) {
-      for (const [cid, arr] of res.own.entries()) {
-        const prev = session.msgPlan.own.get(cid) || [];
-        session.msgPlan.own.set(cid, prev.concat(arr));
-      }
-    }
-    if (res.tagged.size) {
-      for (const [cid, arr] of res.tagged.entries()) {
-        const prev = session.msgPlan.tagged.get(cid) || [];
-        session.msgPlan.tagged.set(cid, prev.concat(arr));
-      }
-    }
+  if (session.opts.skipChannelScan) {
+    session._totalChannels = 0;
     await interaction.editReply({
-      embeds: [loadingEmbed("유저청소 · 스캔중", "지정된 채널/카테고리만 스캔 중.", chIndex, totalChannels, [
-        `발견: 본인메시지 ${fmtInt(session.stats.own)} · 태그됨 ${fmtInt(session.stats.tagged)}`,
+      embeds: [loadingEmbed("유저청소 · 스캔중", "채널 스캔을 생략하고 JSON만 스캔 중.", 0, 1, [
+        `현재까지 발견: 본인 ${fmtInt(0)} · 태그 ${fmtInt(0)}`,
       ])],
       components: buildButtons(session, "plan"),
     }).catch(() => {});
+  } else {
+    const channels = listTextLikeChannels(interaction.guild).sort((a, b) => a.position - b.position);
+    const totalChannels = Math.max(1, channels.length);
+    session._totalChannels = channels.length;
+
+    await interaction.editReply({
+      embeds: [loadingEmbed("유저청소 · 스캔중", "지정된 채널/카테고리만 스캔 중.", 0, totalChannels, [
+        `대상: ${session.targetIds.join(", ")}`,
+        `옵션: 메시지삭제 ${session.opts.deleteMessages ? "ON" : "OFF"} · 태그삭제 ${session.opts.deleteTagged ? "ON" : "OFF"} · JSON정리 ${session.opts.cleanJson ? "ON" : "OFF"} · 기간 ${session.opts.days}일`,
+      ])],
+      components: buildButtons(session, "plan"),
+    }).catch(() => {});
+
+    let chIndex = 0;
+    for (const ch of channels) {
+      if (abortController.aborted) break;
+      chIndex += 1;
+      const res = await scanChannelForTargets(
+        ch,
+        targetIdsSet,
+        cutoffMs,
+        session.opts.deleteTagged,
+        async () => {
+          if (throttle(session)) {
+            await interaction.editReply({
+              embeds: [loadingEmbed("유저청소 · 스캔중", "지정된 채널/카테고리만 스캔 중.", chIndex - 1, totalChannels, [
+                `발견: 본인메시지 ${fmtInt(session.stats.own)} · 태그됨 ${fmtInt(session.stats.tagged)}`,
+              ])],
+              components: buildButtons(session, "plan"),
+            }).catch(() => {});
+          }
+        },
+        abortController.signal
+      );
+      session.stats.own += res.ownCount;
+      session.stats.tagged += res.taggedCount;
+      if (res.own.size) {
+        for (const [cid, arr] of res.own.entries()) {
+          const prev = session.msgPlan.own.get(cid) || [];
+          session.msgPlan.own.set(cid, prev.concat(arr));
+        }
+      }
+      if (res.tagged.size) {
+        for (const [cid, arr] of res.tagged.entries()) {
+          const prev = session.msgPlan.tagged.get(cid) || [];
+          session.msgPlan.tagged.set(cid, prev.concat(arr));
+        }
+      }
+      await interaction.editReply({
+        embeds: [loadingEmbed("유저청소 · 스캔중", "지정된 채널/카테고리만 스캔 중.", chIndex, totalChannels, [
+          `발견: 본인메시지 ${fmtInt(session.stats.own)} · 태그됨 ${fmtInt(session.stats.tagged)}`,
+        ])],
+        components: buildButtons(session, "plan"),
+      }).catch(() => {});
+    }
   }
 
   await interaction.editReply({
@@ -456,7 +468,6 @@ async function runScan(interaction, session) {
   session.json.matches = jsonMatches;
   session.json.sample = sampleShows;
   session.scanDone = true;
-  session._totalChannels = totalChannels;
 }
 
 async function deletePlannedMessages(interaction, session, onTick) {
@@ -552,15 +563,15 @@ module.exports = {
     )
     .addBooleanOption((opt) =>
       opt.setName("json정리").setDescription("봇 데이터(JSON)에서 대상 흔적 제거 (기본 ON)")
+    )
+    .addBooleanOption((opt) =>
+      opt.setName("채널스캔안하기").setDescription("채널 메시지 스캔을 건너뛰고 JSON만 스캔/정리 (기본 OFF)")
     ),
   async execute(interaction) {
     if (!interaction.inGuild()) {
       return interaction.reply({ ephemeral: true, content: "길드에서만 사용 가능해." });
     }
-    const ok = await ensurePermissions(interaction);
-    if (!ok) {
-      return interaction.reply({ ephemeral: true, content: "권한 부족: 메시지 관리/메시지 기록 보기/스레드 관리가 필요해." });
-    }
+
     const raw = interaction.options.getString("대상");
     const ids = parseIds(raw);
     if (!ids.length) {
@@ -570,12 +581,25 @@ module.exports = {
     const deleteMessages = interaction.options.getBoolean("메시지삭제");
     const deleteTagged = interaction.options.getBoolean("태그삭제");
     const cleanJson = interaction.options.getBoolean("json정리");
+    const skipChannelScan = interaction.options.getBoolean("채널스캔안하기");
+
     const opts = {
       days,
       deleteMessages: deleteMessages !== false,
       deleteTagged: deleteTagged !== false,
       cleanJson: cleanJson !== false,
+      skipChannelScan: skipChannelScan === true,
     };
+
+    let needDiscordPerms = true;
+    if (opts.skipChannelScan) needDiscordPerms = false;
+    if (needDiscordPerms) {
+      const ok = await ensurePermissions(interaction);
+      if (!ok) {
+        return interaction.reply({ ephemeral: true, content: "권한 부족: 메시지 관리/메시지 기록 보기/스레드 관리가 필요해." });
+      }
+    }
+
     const sessionId = crypto.randomBytes(6).toString("hex");
     const session = {
       id: sessionId,
@@ -592,7 +616,7 @@ module.exports = {
     };
     sessions.set(sessionId, session);
 
-    const totalChannels = listTextLikeChannels(interaction.guild).length || 0;
+    const totalChannels = opts.skipChannelScan ? 0 : (listTextLikeChannels(interaction.guild).length || 0);
 
     await interaction.reply({
       ephemeral: true,
@@ -633,7 +657,7 @@ module.exports = {
       } finally {
         activeJobs.delete(sessionId);
       }
-      const totalChannels = session._totalChannels || listTextLikeChannels(interaction.guild).length || 0;
+      const totalChannels = session._totalChannels ?? (session.opts.skipChannelScan ? 0 : (listTextLikeChannels(interaction.guild).length || 0));
       const embed = buildPlanEmbed(session, totalChannels);
       if (session.json.sample?.length) {
         embed.addFields({ name: "JSON 샘플", value: session.json.sample.map((s) => `• ${s}`).join("\n").slice(0, 1024) });
@@ -652,7 +676,7 @@ module.exports = {
       await interaction.deferUpdate();
       const summary = { deletedOwn: 0, deletedTagged: 0, jsonFiles: 0, jsonKeys: 0 };
 
-      if (session.opts.deleteMessages) {
+      if (session.opts.deleteMessages && !session.opts.skipChannelScan) {
         const totalOwn = Array.from(session.msgPlan.own.values()).reduce((a, b) => a + b.length, 0);
         const totalTagged = session.opts.deleteTagged ? Array.from(session.msgPlan.tagged.values()).reduce((a, b) => a + b.length, 0) : 0;
         const total = Math.max(1, totalOwn + totalTagged);
@@ -704,8 +728,8 @@ module.exports = {
         .setDescription("요청한 정리 작업을 마쳤어.")
         .addFields(
           { name: "대상 ID", value: session.targetIds.join(", "), inline: false },
-          { name: "삭제된 메시지(본인)", value: fmtInt(summary.deletedOwn), inline: true },
-          { name: "삭제된 메시지(태그됨)", value: session.opts.deleteTagged ? fmtInt(summary.deletedTagged) : "OFF", inline: true },
+          { name: "삭제된 메시지(본인)", value: session.opts.skipChannelScan ? "OFF" : fmtInt(summary.deletedOwn), inline: true },
+          { name: "삭제된 메시지(태그됨)", value: session.opts.skipChannelScan ? "OFF" : (session.opts.deleteTagged ? fmtInt(summary.deletedTagged) : "OFF"), inline: true },
           { name: "JSON 정리", value: `${fmtInt(summary.jsonFiles)}개 파일, ${fmtInt(summary.jsonKeys)}건 제거`, inline: true }
         )
         .setFooter({ text: `세션 ${session.id}` });
@@ -723,8 +747,8 @@ module.exports = {
             .setDescription("처리가 완료되었어.")
             .addFields(
               { name: "대상 ID", value: session.targetIds.join(", "), inline: false },
-              { name: "메시지(본인)", value: fmtInt(summary.deletedOwn), inline: true },
-              { name: "메시지(태그됨)", value: session.opts.deleteTagged ? fmtInt(summary.deletedTagged) : "OFF", inline: true },
+              { name: "메시지(본인)", value: session.opts.skipChannelScan ? "OFF" : fmtInt(summary.deletedOwn), inline: true },
+              { name: "메시지(태그됨)", value: session.opts.skipChannelScan ? "OFF" : (session.opts.deleteTagged ? fmtInt(summary.deletedTagged) : "OFF"), inline: true },
               { name: "JSON", value: `${fmtInt(summary.jsonFiles)}개 파일, ${fmtInt(summary.jsonKeys)}건 제거`, inline: true },
               { name: "처리자", value: `<@${interaction.user.id}>`, inline: true },
               { name: "세션", value: session.id, inline: true }
