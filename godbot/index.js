@@ -1041,6 +1041,26 @@ const setStatus = require('./commands/setstatus.js');
 const removeStatus = require('./commands/removestatus.js');
 
 client.on(Events.InteractionCreate, async interaction => {
+
+  if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId?.startsWith("usercleanup_")) {
+  const cmd = client.commands.get("유저청소");
+  if (cmd?.component) {
+    try {
+      await cmd.component(interaction); // 내부에서 deferUpdate/update/editReply 처리함
+    } catch (err) {
+      console.error("[유저청소 component 오류]", err);
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.reply({ content: "❌ 처리 중 오류가 발생했어.", ephemeral: true }).catch(() => {});
+      }
+    }
+  } else {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({ content: "❌ 유저청소 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+    }
+  }
+  return; // 다른 핸들러가 중복 처리하지 않도록 종료
+}
+  
   // 갓비트 시세 요약 버튼 처리
   if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
   interaction.options = { getString: () => null };
