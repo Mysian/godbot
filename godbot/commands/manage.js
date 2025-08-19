@@ -641,7 +641,7 @@ module.exports = {
           const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
           push(steadyRaw, "꾸준한 스테디셀러 확률", "pos", 86, 3, true);
 
-          const MIN_SHOW = 0;
+          const MIN_SHOW = 40;
           const result = C
             .filter(x => x.p >= MIN_SHOW)
             .sort((a, b) => b.p - a.p);
