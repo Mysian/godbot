@@ -44,7 +44,6 @@ module.exports = {
         .setColor(0xf47fff)
         .setTitle("🚀 서버 부스트 시작")
         .setDescription(`<@${userId}> 님이 서버 부스트를 시작했습니다!`)
-        .addFields({ name: "지속 기간", value: "1개월째", inline: true })
         .setTimestamp(now);
 
       await logChannel.send({ embeds: [embed] });
@@ -68,7 +67,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setColor(0xf47fff)
             .setTitle("🎉 서버 부스트 꾸준히 유지 중!")
-            .setDescription(`<@${userId}> 님이 서버 부스트를 **${months}개월째** 유지하고 있습니다! 진심으로 감사합니다.`)
+            .setDescription(`<@${userId}> 님이 서버 부스트를 유지하고 계십니다! 진심으로 감사합니다.`)
             .setTimestamp(now);
 
           await logChannel.send({ embeds: [embed] });
@@ -88,7 +87,7 @@ module.exports = {
         saveBoostData(data);
       }
       // 작게 -# 형식
-      await logChannel.send(`-# <@${userId}> 님이 서버 부스트를 해제했습니다. (총 ${months}개월 유지)`);
+      await logChannel.send(`-# <@${userId}> 님이 서버 부스트를 해제했습니다.`);
     }
   }
 };
