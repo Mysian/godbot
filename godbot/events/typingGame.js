@@ -1,4 +1,4 @@
-const { Events, EmbedBuilder } = require('discord.js');
+const { Events, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -6,7 +6,6 @@ const ALLOWED_CHANNEL = '1393421229083328594';
 const DATA_PATH = path.join(__dirname, '../data/typing-rank.json');
 const { addBE } = require('../commands/be-util.js');
 const { createCanvas, registerFont } = require('canvas');
-const { AttachmentBuilder } = require('discord.js');
 registerFont(path.join(__dirname, '../fonts/NotoSansKR-Regular.ttf'), { family: 'NotoSansKR' });
 
 function renderTextToImage(text) {
@@ -18,7 +17,7 @@ function renderTextToImage(text) {
   ctx.font = '32px NotoSansKR';
   ctx.fillStyle = '#111';
   ctx.textBaseline = 'middle';
-  // 여러 줄 지원
+
   let lines = [];
   let line = '', words = text.split(' ');
   for (let word of words) {
@@ -541,7 +540,29 @@ const ENGLISH = [
 ];
 
 let rankData = { ko: {}, en: {} };
-const ACTIVE = {}; // { userId: { answer, lang, startTime, timeout, finished } }
+const ACTIVE = {}; // { userId: { answer, lang, promptTime, inputStartTime, timeout, finished } }
+let TYPING_LISTENER_BOUND = false;
+
+function ensureTypingListener(client) {
+  if (TYPING_LISTENER_BOUND) return;
+  client.on(Events.TypingStart, (typing) => {
+    try {
+      if (!typing || !typing.user || typing.user.bot) return;
+      const userId = typing.user.id;
+      const ch = typing.channel;
+      if (!ch || ch.id !== ALLOWED_CHANNEL) return;
+      const game = ACTIVE[userId];
+      if (!game || game.finished) return;
+
+      // 첫 타이핑 시작 시각만 기록 (프롬프트 발송 이후의 타이핑만 인정)
+      const started = typing.startedTimestamp || Date.now();
+      if (!game.inputStartTime && started >= (game.promptTime || 0)) {
+        game.inputStartTime = started;
+      }
+    } catch {}
+  });
+  TYPING_LISTENER_BOUND = true;
+}
 
 // 랭킹 파일 불러오기/저장
 function loadRank() {
@@ -562,7 +583,6 @@ function getRankArray(lang) {
     wpm: record.wpm,
     acc: record.acc
   }));
-  // CPM 내림차순, 동률이면 time 빠른 순
   return arr.sort((a, b) => {
     if (b.cpm !== a.cpm) return b.cpm - a.cpm;
     return a.time - b.time;
@@ -573,26 +593,22 @@ function getUserRank(lang, userId) {
     userId: id,
     cpm: record.cpm,
     time: record.time
-  }))
-    .sort((a, b) => {
-      if (b.cpm !== a.cpm) return b.cpm - a.cpm;
-      return a.time - b.time;
-    });
+  })).sort((a, b) => {
+    if (b.cpm !== a.cpm) return b.cpm - a.cpm;
+    return a.time - b.time;
+  });
   const idx = arr.findIndex(e => e.userId === userId);
   return idx === -1 ? null : idx + 1;
 }
-
 
 function calcCPM(input, ms) {
   return Math.round((input.length / ms) * 60000);
 }
 function calcWPM(input, ms, lang) {
   if (lang === 'ko') {
-    // 한글은 2자 = 1단어
     const words = Math.max(1, Math.round(input.length / 2));
     return Math.round((words / ms) * 60000);
   } else {
-    // 영어는 띄어쓰기 단위
     const words = Math.max(1, input.trim().split(/\s+/).length);
     return Math.round((words / ms) * 60000);
   }
@@ -606,21 +622,19 @@ function calcACC(target, input) {
 }
 function firstDiff(a, b) {
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if (a[i] !== b[i]) {
-      return i;
-    }
+    if (a[i] !== b[i]) return i;
   }
   return -1;
 }
-
-// 오타난 부분만 추출
 function getMistypedSegment(answer, input) {
   const diffIdx = firstDiff(answer, input);
   if (diffIdx === -1) return '길이가 다릅니다.';
-  // 오타 지점부터 최대 5글자만
   const correctSeg = answer.slice(diffIdx, diffIdx + 5);
   const inputSeg = input.slice(diffIdx, diffIdx + 5);
   return `정답: "${correctSeg}", 입력: "${inputSeg}"`;
+}
+function normalizeQuote(str) {
+  return str.replace(/’|‘/g, "'").replace(/“|”/g, '"');
 }
 
 module.exports = {
@@ -629,9 +643,9 @@ module.exports = {
     if (message.author.bot) return;
     if (message.channel.id !== ALLOWED_CHANNEL) return;
 
+    ensureTypingListener(message.client);
     loadRank();
 
-    // !도움말 처리
     if (message.content === '!도움말') {
       const embed = new EmbedBuilder()
         .setTitle('타자 연습 안내 및 명령어')
@@ -660,39 +674,42 @@ module.exports = {
       return message.reply({ embeds: [embed] });
     }
 
-// 타자 시작
-if (message.content === '!한타' || message.content === '!영타') {
-  if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-    return message.reply('이미 진행 중인 타자 게임이 있습니다! 먼저 완료하거나 90초 기다려주세요.');
-  }
-  const isKo = message.content === '!한타';
-  const arr = isKo ? HANGUL : ENGLISH;
-  const answer = arr[Math.floor(Math.random() * arr.length)];
-  const image = renderTextToImage(answer);
-
-  return message.reply({
-    content: '아래 문장을 **똑같이** 입력하세요. (90초)',
-    files: [image]
-  }).then(sentMsg => {
-    const timeout = setTimeout(() => {
+    if (message.content === '!한타' || message.content === '!영타') {
       if (ACTIVE[message.author.id] && !ACTIVE[message.author.id].finished) {
-        message.reply(`⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.`);
-        ACTIVE[message.author.id].finished = true;
-        delete ACTIVE[message.author.id];
+        return message.reply('이미 진행 중인 타자 게임이 있습니다! 먼저 완료하거나 90초 기다려주세요.');
       }
-    }, 90 * 1000);
 
-    ACTIVE[message.author.id] = {
-      answer,
-      lang: isKo ? 'ko' : 'en',
-      startTime: Date.now(), 
-      timeout,
-      finished: false
-    };
-  });
-}
+      const isKo = message.content === '!한타';
+      const arr = isKo ? HANGUL : ENGLISH;
+      if (!arr || arr.length === 0) {
+        return message.reply('문장 풀이가 비어있습니다. 문장 리스트를 설정해 주세요.');
+      }
+      const answer = arr[Math.floor(Math.random() * arr.length)];
+      const image = renderTextToImage(answer);
 
-    // 종료 명령어: 5초 뒤 닫힘
+      const promptTime = Date.now();
+      message.reply({ content: '아래 문장을 **똑같이** 입력하세요. (90초)', files: [image] });
+
+      const timeout = setTimeout(() => {
+        const g = ACTIVE[message.author.id];
+        if (g && !g.finished) {
+          message.reply('⏰ 90초가 지났습니다! 타자 게임이 종료됩니다.');
+          g.finished = true;
+          delete ACTIVE[message.author.id];
+        }
+      }, 90 * 1000);
+
+      ACTIVE[message.author.id] = {
+        answer,
+        lang: isKo ? 'ko' : 'en',
+        promptTime,
+        inputStartTime: null, // typingStart로 세팅
+        timeout,
+        finished: false
+      };
+      return;
+    }
+
     if (message.content === '!종료') {
       const game = ACTIVE[message.author.id];
       if (!game || game.finished) return message.reply('진행 중인 타자 게임이 없습니다.');
@@ -708,7 +725,6 @@ if (message.content === '!한타' || message.content === '!영타') {
       return;
     }
 
-    // 랭킹 출력 (한글/영문)
     if (message.content === '!한타 순위' || message.content === '!영타 순위') {
       const lang = message.content === '!한타 순위' ? 'ko' : 'en';
       const top = getRankArray(lang);
@@ -725,81 +741,77 @@ if (message.content === '!한타' || message.content === '!영타') {
               ).join('\n')
             : '아직 기록이 없습니다!'
         )
-        .setFooter({ text: myRank && myRec
-          ? `내 순위: ${myRank}위 | 기록: ${myRec.time}s, CPM: ${myRec.cpm}, WPM: ${myRec.wpm}, ACC: ${myRec.acc}%`
-          : '아직 기록이 없습니다. 먼저 타자 게임을 완료해보세요!' });
+        .setFooter({
+          text: myRank && myRec
+            ? `내 순위: ${myRank}위 | 기록: ${myRec.time}s, CPM: ${myRec.cpm}, WPM: ${myRec.wpm}, ACC: ${myRec.acc}%`
+            : '아직 기록이 없습니다. 먼저 타자 게임을 완료해보세요!'
+        });
 
       return message.reply({ embeds: [embed] });
     }
 
+    // 타자 정답/오타 처리
+    const game = ACTIVE[message.author.id];
+    if (game && !game.finished) {
+      if (message.content.startsWith('!')) return;
 
-function normalizeQuote(str) {
-  return str
-    .replace(/’|‘/g, "'")
-    .replace(/“|”/g, '"');
-}
-    
-    // 타자 정답 처리
-const game = ACTIVE[message.author.id];
-if (game && !game.finished) {
-  if (message.content.startsWith('!')) return;
-  const now = Date.now();
-  const ms = now - game.startTime;
-  if (now - game.startTime > 90 * 1000) {
-    clearTimeout(game.timeout);
-    game.finished = true;
-    delete ACTIVE[message.author.id];
-    return;
-  }
+      // 입력 시작 시각 폴백: typingStart 못 잡았으면 첫 메시지 시점으로 세팅
+      if (!game.inputStartTime) game.inputStartTime = Date.now();
 
-  const normAnswer = normalizeQuote(game.answer);
-  const normInput = normalizeQuote(message.content);
+      const now = Date.now();
+      const ms = now - game.inputStartTime;
 
-  if (normInput === normAnswer) {
-    clearTimeout(game.timeout);
-    const time = (ms / 1000).toFixed(2);
-    const cpm = calcCPM(normAnswer, ms);  
-    const wpm = calcWPM(normAnswer, ms, game.lang);
-    const acc = calcACC(normAnswer, normInput);
+      if (now - (game.promptTime || 0) > 90 * 1000) {
+        clearTimeout(game.timeout);
+        game.finished = true;
+        delete ACTIVE[message.author.id];
+        return;
+      }
 
-    try {
-    const member = await message.guild.members.fetch(message.author.id);
-    if (member.roles.cache.has("1397076919127900171")) {
-      await addBE(member.id, 30, "타자 연습 𝕯𝖔𝖓𝖔𝖗 추가 보상");
-      await message.reply("💜 𝕯𝖔𝖓𝖔𝖗 혜택: 30 BE가 추가 지급되었습니다!");
+      const normAnswer = normalizeQuote(game.answer);
+      const normInput = normalizeQuote(message.content);
+
+      if (normInput === normAnswer) {
+        clearTimeout(game.timeout);
+        const time = (ms / 1000).toFixed(2);
+        const cpm = calcCPM(normAnswer, ms);
+        const wpm = calcWPM(normAnswer, ms, game.lang);
+        const acc = calcACC(normAnswer, normInput);
+
+        try {
+          const member = await message.guild.members.fetch(message.author.id);
+          if (member.roles.cache.has('1397076919127900171')) {
+            await addBE(member.id, 30, '타자 연습 𝕯𝖔𝖓𝖔𝖗 추가 보상');
+            await message.reply('💜 𝕯𝖔𝖓𝖔𝖗 혜택: 30 BE가 추가 지급되었습니다!');
+          }
+        } catch {}
+
+        if (ms < 2500) {
+          message.reply('❌ 복사/붙여넣기는 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)');
+        } else {
+          const lang = game.lang;
+          const old = rankData[lang][message.author.id];
+          if (!old || cpm > old.cpm) {
+            rankData[lang][message.author.id] = {
+              username: message.author.username,
+              time: Number(time),
+              cpm,
+              wpm,
+              acc
+            };
+            saveRank();
+            message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
+          } else {
+            message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.cpm}CPM)`);
+          }
+        }
+
+        game.finished = true;
+        delete ACTIVE[message.author.id];
+      } else {
+        const hint = getMistypedSegment(normAnswer, normInput);
+        message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
+      }
     }
-  } catch {}
-
-    // 복붙 방지(2.5초 이내 정답은 랭킹 미등록)
-    if (ms < 2500) {
-      message.reply(`❌ 복사/붙여넣기는 랭킹에 기록되지 않습니다!\n(타자 연습은 이미지를 보고 입력해야 합니다.)`);
-    } else {
-      // 기록 갱신: 기존 기록 없거나 더 빠를 때만 저장
-      const lang = game.lang;
-      const old = rankData[lang][message.author.id];
-      if (!old || cpm > old.cpm) {
-  // 기록 갱신!
-  rankData[lang][message.author.id] = {
-    username: message.author.username,
-    time: Number(time),
-    cpm,
-    wpm,
-    acc
-  };
-  saveRank();
-  message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n최고 기록이 갱신되었습니다!`);
-} else {
-  message.reply(`정답! ⏱️ ${time}초 | CPM: ${cpm} | WPM: ${wpm} | ACC: ${acc}%\n(기존 최고 기록: ${old.cpm}CPM)`);
-}
-
-    }
-    game.finished = true;
-    delete ACTIVE[message.author.id];
-  } else {
-    // 오타 안내 기존대로
-    const hint = getMistypedSegment(normAnswer, normInput);
-    message.reply(`-# 오타! : [${hint}] 다시 시도하세요!`);
-  }
-}
   }
 };
