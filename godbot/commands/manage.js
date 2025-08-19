@@ -527,9 +527,9 @@ module.exports = {
             ));
           }
 
-          push(offsiteRaw, "활동 이력은 잦은데 서버 VC가 거의 없어 ‘뒷서버’ 의심 정황일 확률", "neg", 88, 3, false);
-          push(vcCliqueRaw, "소규모 VC 고정 멤버 중심 활동(2~3인) 성향일 확률", "neutral", 86, 2, false);
-          push(samePeersRaw, "동일 인물 위주로만 소통하는 편향 성향일 확률", "neg", 86, 2, false);
+          push(offsiteRaw, "활동 이력 대비 ‘뒷서버’ 의심 정황 확률", "neg", 88, 3, false);
+          push(vcCliqueRaw, "소규모 중심 활동 성향 확률", "neutral", 86, 2, false);
+          push(samePeersRaw, "동일 유저끼리만 소통하는 편향 성향 확률", "neg", 86, 2, false);
 
           let friendlyRaw = Math.max(0,
             10 + msgPlus + vcPlus + socialPlus - rulePenalty - Math.min(25, offsiteRaw * 0.4) - Math.min(20, samePeersRaw * 0.2) - Math.min(15, vcCliqueRaw * 0.15)
@@ -537,7 +537,7 @@ module.exports = {
           const lowEvidence = (msgCount + voiceHours * 60) < 40 || lastActiveDays > 14;
           push(
             friendlyRaw,
-            "이 유저는 서버에 우호적일 확률",
+            "서버에 우호적일 확률",
             "pos",
             90,
             2,
@@ -551,26 +551,26 @@ module.exports = {
             (hasXpLock ? 12 : 0) +
             (timeoutActive ? 35 : 0);
           const toxicRaw = Math.min(95, 20 + toxicSignals - socialPlus / 2);
-          push(toxicRaw, "이 유저는 분쟁/배척 성향 신호가 있을 확률", "neg", 90, 2, false);
+          push(toxicRaw, "분쟁/배척 성향 확률", "neg", 90, 2, false);
 
           const churnRaw = Math.max(0,
             (lastActiveDays > 30 ? 65 : lastActiveDays > 14 ? 40 : 0) +
             (msgCount < 10 ? 20 : msgCount < 40 ? 10 : 0) +
             (voiceHours < 1 ? 15 : 0)
           );
-          push(churnRaw, "이 유저는 이탈 위험 신호가 보일 확률", "neg", 90, 2, false);
+          push(churnRaw, "이탈 위험 확률", "neg", 90, 2, false);
 
           const ruleOkRaw = Math.max(0, 85 - rulePenalty);
-          push(ruleOkRaw, "이 유저는 규칙 준수도가 높을 확률", "pos", 88, 3, true);
+          push(ruleOkRaw, "규칙 준수 확률", "pos", 88, 3, true);
 
           const riskMgmtRaw = Math.min(95, rulePenalty + (toxicSignals / 2));
-          push(riskMgmtRaw, "이 유저는 운영 리스크 관리가 필요한 상태일 확률", "neg", 92, 2, false);
+          push(riskMgmtRaw, "관리가 필요한 상태일 확률", "neg", 92, 2, false);
 
           const influenceRaw = Math.min(40, roleCount * 4) + Math.min(40, (msgCount / 800) * 40) + Math.min(20, (topFriends.length || 0) * 6);
-          push(influenceRaw, "이 유저는 영향력 있는 핵심 인물일 확률", "pos", 86, 2, true);
+          push(influenceRaw, "영향력 있는 핵심 인물 확률", "pos", 86, 2, true);
 
           const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
-          push(steadyRaw, "이 유저는 꾸준한 스테디셀러일 확률", "pos", 86, 3, true);
+          push(steadyRaw, "꾸준한 스테디셀러 확률", "pos", 86, 3, true);
 
           const MIN_SHOW = 0; // 전부 보려면 0, 너무 잡음이면 10~20 정도로 올려도 됨
 const result = C
