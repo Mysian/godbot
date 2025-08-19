@@ -235,6 +235,18 @@ const modalHandlers = new Map([
     const cmd = client.commands.get("경고");
     if (cmd?.handleModal) return cmd.handleModal(interaction);
   }],
+  ["warn_option_", async (interaction) => {
+  const cmd = client.commands.get("경고");
+  if (cmd?.handleSelect) return cmd.handleSelect(interaction);
+}],
+["warn_category_", async (interaction) => {
+  const cmd = client.commands.get("경고");
+  if (cmd?.handleSelect) return cmd.handleSelect(interaction);
+}],
+["warn_reason_", async (interaction) => {
+  const cmd = client.commands.get("경고");
+  if (cmd?.handleSelect) return cmd.handleSelect(interaction);
+}],
   ["unwarn_modal_", async (interaction) => {
     const cmd = client.commands.get("경고취소");
     if (cmd?.handleModal) return cmd.handleModal(interaction);
