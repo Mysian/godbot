@@ -372,182 +372,130 @@ module.exports = {
         }
 
         function clamp(n) { return Math.max(0, Math.min(100, Math.round(n))); }
-        function hhash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return Math.abs(h); }
-        function capProb(p, cap, floor) { return Math.max(floor, Math.min(cap, Math.round(p))); }
-        function relFromEvidence(msg, vhr, ev) {
-          const a = Math.log1p(msg) / Math.log(1 + 300);
-          const b = Math.log1p(vhr) / Math.log(1 + 50);
-          const c = Math.log1p(ev) / Math.log(1 + 200);
-          const r = Math.max(0.25, Math.min(1, (a + b + c) / 3));
-          return r;
-        }
-        function scoreToProb(raw, evidence, cap = 93, floor = 2) {
-          const shrink = 0.55 + evidence * 0.45;
-          const p = raw * shrink;
-          return capProb(p, cap, floor);
-        }
+function hhash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return Math.abs(h); }
+function capProb(p, cap, floor) { return Math.max(floor, Math.min(cap, Math.round(p))); }
 
-        const target = await guild.members.fetch(targetUserId).then(m => m.user).catch(() => null);
-        const member = await guild.members.fetch(targetUserId).catch(() => null);
-        if (!member || !target) {
-          await parentInteraction.editReply({ content: "❌ 해당 유저를 찾을 수 없습니다." });
-          return;
-        }
+// 최근활동 반영: 최근일수에 강한 패널티
+function recencyFactor(days) {
+  if (!Number.isFinite(days)) return 0.0;
+  if (days <= 3) return 1.0;
+  if (days <= 7) return 0.85;
+  if (days <= 14) return 0.7;
+  if (days <= 30) return 0.45;
+  if (days <= 45) return 0.3;
+  return 0.2;
+}
 
-        const stat = activityStats.find((x) => x.userId === target.id) || { message: 0, voice: 0 };
+// 증거보정에 '최근활동' 포함(기존 0.55~1.0 → 0.4~0.8로 축소)
+function relFromEvidence(msg, vhr, ev, days) {
+  const a = Math.log1p(msg) / Math.log(1 + 300);
+  const b = Math.log1p(vhr) / Math.log(1 + 50);
+  const c = Math.log1p(ev) / Math.log(1 + 200);
+  const d = recencyFactor(days);
+  const mix = (0.25 * a) + (0.35 * b) + (0.2 * c) + (0.2 * d);
+  return Math.max(0.15, Math.min(1, mix));
+}
 
-        let lastActiveStr = "기록 없음";
-        let lastActiveDate = null;
-        try {
-          lastActiveDate = activityTracker.getLastActiveDate(target.id);
-          if (lastActiveDate) {
-            lastActiveStr = lastActiveDate.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
-          }
-        } catch (err) {}
+function scoreToProb(raw, evidence, cap = 93, floor = 2) {
+  const shrink = 0.4 + evidence * 0.4; // 0.4~0.8
+  const p = raw * shrink;
+  return capProb(p, cap, floor);
+}
 
-        const joinedAt = member.joinedAt;
-        const joinedAtStr = joinedAt
-          ? joinedAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
-          : "기록 없음";
+// 최근활동에 따른 '긍정 지표 상한' 강제
+function posCapByRecency(p, days) {
+  if (days > 45) return Math.min(p, 25);
+  if (days > 30) return Math.min(p, 35);
+  if (days > 14) return Math.min(p, 45);
+  return p;
+}
 
-        const topFriends = relationship.getTopRelations(target.id, 3);
-        const relData = relationship.loadData()[target.id] || {};
-        const enemiesArr = Object.entries(relData)
-          .sort((a, b) => (a[1].stage - b[1].stage) || (a[1].remain - b[1].remain))
-          .slice(0, 3)
-          .map(([id, val]) => ({
-            userId: id,
-            stage: val.stage,
-            remain: val.remain,
-            relation: relationship.getRelationshipLevel(val.stage - 6),
-          }));
+function buildEvaluations() {
+  const C = [];
+  const evidence = relFromEvidence(msgCount, voiceHours, activitiesCount, lastActiveDays);
 
-        let friendsText = topFriends.length
-          ? topFriends.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
-          : "없음";
-        let enemiesText = enemiesArr.length
-          ? enemiesArr.map((x, i) => `#${i + 1} <@${x.userId}> (${x.relation})`).join("\n")
-          : "없음";
+  const push = (raw, text, tone, cap = 93, floor = 2, isPositive = false, extraCap = null) => {
+    let p = scoreToProb(raw, evidence, cap, floor);
+    if (isPositive) p = posCapByRecency(p, lastActiveDays);
+    if (typeof extraCap === "number") p = Math.min(p, extraCap);
+    C.push({ p, t: `${text} ${p}%`, tone });
+  };
 
-        let timeoutActive = false;
-        let timeoutExpireStr = "";
-        if (member.communicationDisabledUntil && member.communicationDisabledUntilTimestamp > Date.now()) {
-          timeoutActive = true;
-          timeoutExpireStr = `<t:${Math.floor(member.communicationDisabledUntilTimestamp / 1000)}:R>`;
-        }
+  const rulePenalty = (hasServerLock ? 30 : 0) + (hasXpLock ? 20 : 0) + (timeoutActive ? 45 : 0);
+  const socialPlus = Math.min(32, (topFriends.length || 0) * 10);
+  const msgPlus = Math.min(30, (msgCount / 600) * 30);
+  const vcPlus = Math.min(30, (voiceHours / 50) * 30);
 
-        const hasLongStay = member.roles.cache.has(EXCLUDE_ROLE_ID);
-        const hasMonthly = member.roles.cache.has(MONTHLY_ROLE_ID);
-        const hasServerLock = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
-        const hasXpLock = member.roles.cache.has(XP_LOCK_ROLE_ID);
+  // 1) 먼저 '뒷서버 의심'을 계산
+  const offsiteBase =
+    (activitiesCount >= 50 ? 45 : activitiesCount >= 25 ? 30 : 10) +
+    (voiceHours < 0.1 ? 40 : voiceHours < 0.5 ? 25 : 0) +
+    (msgCount >= 150 ? 10 : 0) +
+    (uniqueGames >= 3 ? 5 : 0) -
+    (voiceHours >= 1 ? 15 : 0);
+  const offsiteRaw = Math.max(0, Math.min(95, offsiteBase));
+  push(offsiteRaw, "활동 이력은 잦은데 서버 VC가 거의 없어 ‘뒷서버’ 의심 정황일 확률", "neg", 88, 3, false);
 
-        const activitiesArr = (activityLogger.getUserActivities(target.id) || []).sort((a, b) => b.time - a.time);
-        const msgCount = stat.message || 0;
-        const voiceSec = stat.voice || 0;
-        const voiceHours = voiceSec / 3600;
-        const now = Date.now();
-        const lastActiveDays = lastActiveDate ? Math.floor((now - lastActiveDate.getTime()) / 86400000) : 9999;
-        const joinDays = joinedAt ? Math.floor((now - joinedAt.getTime()) / 86400000) : 0;
-        const roleCount = member.roles.cache.filter(r => r.id !== guild.id).size;
-        const gameNames = activitiesArr.filter(a => a.activityType === "game" && a.details && a.details.name).map(a => a.details.name);
-        const uniqueGames = new Set(gameNames).size;
-        const musicCount = activitiesArr.filter(a => a.activityType === "music").length;
-        const nightCount = activitiesArr.filter(a => {
-          const h = new Date(a.time).getHours();
-          return h >= 23 || h < 5;
-        }).length;
-        const nightRate = activitiesArr.length ? nightCount / activitiesArr.length : 0;
-        const activitiesCount = activitiesArr.length;
+  // 2) 우호도는 보수적으로: 낮은 베이스, 규칙패널티 강하게, 뒷서버 의심을 직접 감점
+  let friendlyRaw = Math.max(0,
+    10 + msgPlus + vcPlus + socialPlus - rulePenalty - Math.min(25, offsiteRaw * 0.4)
+  );
 
-        function buildEvaluations() {
-          const C = [];
-          const push = (raw, text, tone, cap = 93, floor = 2) => {
-            const evidence = relFromEvidence(msgCount, voiceHours, activitiesCount);
-            const p = scoreToProb(raw, evidence, cap, floor);
-            C.push({ p, t: `${text} ${p}%`, tone });
-          };
+  // 증거가 박한 경우(텍스트+VC 환산 < 40 또는 최근 14일 초과) 긍정지표 상한 40으로 제한
+  const lowEvidence = (msgCount + voiceHours * 60) < 40 || lastActiveDays > 14;
 
-          const rulePenalty = (hasServerLock ? 30 : 0) + (hasXpLock ? 20 : 0) + (timeoutActive ? 45 : 0);
-          const socialPlus = Math.min(35, (topFriends.length || 0) * 12);
-          const msgPlus = Math.min(40, (msgCount / 600) * 40);
-          const vcPlus = Math.min(40, (voiceHours / 50) * 40);
-          const friendlyRaw = Math.max(0, 50 + socialPlus + msgPlus + vcPlus - rulePenalty);
-          push(friendlyRaw, "이 유저는 서버에 우호적일 확률", "pos", 92, 3);
+  push(
+    friendlyRaw,
+    "이 유저는 서버에 우호적일 확률",
+    "pos",
+    90, // cap
+    2,  // floor
+    true, // isPositive → 최근활동 상한 적용
+    lowEvidence ? 40 : null // 추가 상한
+  );
 
-          const toxicSignals = Math.min(50, enemiesArr.length * 18) + (hasServerLock ? 25 : 0) + (hasXpLock ? 12 : 0) + (timeoutActive ? 35 : 0);
-          const toxicRaw = Math.min(95, 20 + toxicSignals - socialPlus / 2);
-          push(toxicRaw, "이 유저는 분쟁/배척 성향 신호가 있을 확률", "neg", 90, 2);
+  // 3) 분쟁/배척 성향
+  const toxicSignals =
+    Math.min(50, enemiesArr.length * 18) +
+    (hasServerLock ? 25 : 0) +
+    (hasXpLock ? 12 : 0) +
+    (timeoutActive ? 35 : 0);
+  const toxicRaw = Math.min(95, 20 + toxicSignals - socialPlus / 2);
+  push(toxicRaw, "이 유저는 분쟁/배척 성향 신호가 있을 확률", "neg", 90, 2, false);
 
-          const offsiteBase = (activitiesCount >= 50 ? 45 : activitiesCount >= 25 ? 30 : 10)
-            + (voiceHours < 0.1 ? 40 : voiceHours < 0.5 ? 25 : 0)
-            + (msgCount >= 150 ? 10 : 0)
-            + (uniqueGames >= 3 ? 5 : 0)
-            - (voiceHours >= 1 ? 15 : 0);
-          const offsiteRaw = Math.max(0, Math.min(95, offsiteBase));
-          push(offsiteRaw, "활동 이력은 잦은데 서버 VC가 거의 없어 ‘뒷서버’ 의심 정황일 확률", "neg", 88, 3);
+  // 4) 이탈 위험
+  const churnRaw = Math.max(0,
+    (lastActiveDays > 30 ? 65 : lastActiveDays > 14 ? 40 : 0) +
+    (msgCount < 10 ? 20 : msgCount < 40 ? 10 : 0) +
+    (voiceHours < 1 ? 15 : 0)
+  );
+  push(churnRaw, "이 유저는 이탈 위험 신호가 보일 확률", "neg", 90, 2, false);
 
-          const churnRaw = Math.max(0,
-            (lastActiveDays > 30 ? 65 : lastActiveDays > 14 ? 40 : 0)
-            + (msgCount < 10 ? 20 : msgCount < 40 ? 10 : 0)
-            + (voiceHours < 1 ? 15 : 0)
-          );
-          push(churnRaw, "이 유저는 이탈 위험 신호가 보일 확률", "neg", 90, 2);
+  // 5) 규칙 준수(긍정)도 최근활동 상한 적용
+  const ruleOkRaw = Math.max(0, 85 - rulePenalty);
+  push(ruleOkRaw, "이 유저는 규칙 준수도가 높을 확률", "pos", 88, 3, true);
 
-          const lurkRaw = Math.max(0,
-            (activitiesCount >= 30 ? 25 : 10)
-            + (msgCount < 40 ? 35 : 0)
-            + (voiceHours < 2 ? 30 : 0)
-          );
-          push(lurkRaw, "이 유저는 관망형(잠수) 성향일 확률", "neutral", 88, 2);
+  // 6) 리스크 관리 필요
+  const riskMgmtRaw = Math.min(95, rulePenalty + (toxicSignals / 2));
+  push(riskMgmtRaw, "이 유저는 운영 리스크 관리가 필요한 상태일 확률", "neg", 92, 2, false);
 
-          const ruleOkRaw = Math.max(0, 85 - rulePenalty);
-          push(ruleOkRaw, "이 유저는 규칙 준수도가 높을 확률", "pos", 94, 5);
+  // 7) 영향력(긍정)도 최근활동 상한 적용
+  const influenceRaw = Math.min(40, roleCount * 4) + Math.min(40, (msgCount / 800) * 40) + Math.min(20, (topFriends.length || 0) * 6);
+  push(influenceRaw, "이 유저는 영향력 있는 핵심 인물일 확률", "pos", 86, 2, true);
 
-          const riskMgmtRaw = Math.min(95, rulePenalty + (toxicSignals / 2));
-          push(riskMgmtRaw, "이 유저는 운영 리스크 관리가 필요한 상태일 확률", "neg", 92, 2);
+  // 8) 그 외(필요 시 동일 원칙으로 보정)
+  const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
+  push(steadyRaw, "이 유저는 꾸준한 스테디셀러일 확률", "pos", 86, 3, true);
 
-          const spamRaw = member.roles.cache.has(SPAM_ROLE_ID) ? 85 : 0;
-          if (spamRaw > 0) push(spamRaw, "이 유저는 스팸 의심 패턴이 있을 확률", "neg", 95, 10);
+  const result = C
+    .filter(x => x.p >= 20)
+    .sort((a, b) => b.p - a.p)
+    .slice(0, 3);
 
-          const influenceRaw = Math.min(40, roleCount * 4) + Math.min(40, (msgCount / 800) * 40) + Math.min(20, (topFriends.length || 0) * 6);
-          push(influenceRaw, "이 유저는 영향력 있는 핵심 인물일 확률", "pos", 90, 2);
+  if (!result.length) return ["ℹ️ 데이터가 부족해 평가를 보류합니다."];
+  return result.map(x => (x.tone === "pos" ? "✅" : x.tone === "neg" ? "⚠️" : "ℹ️") + " " + x.t);
+}
 
-          const newbieRaw = joinDays <= 7 ? Math.max(0, 80 - joinDays * 10) : 0;
-          if (newbieRaw > 0) push(newbieRaw, "이 유저는 신입 적응 단계일 확률", "neutral", 85, 5);
-
-          const comebackRaw = (joinDays > 30 ? 15 : 0) + (lastActiveDays <= 3 ? 60 : 0) + (msgCount < 120 ? 10 : 0);
-          push(comebackRaw, "이 유저는 복귀 모멘텀이 있는 편일 확률", "pos", 88, 2);
-
-          const nightRaw = nightRate * 100;
-          push(nightRaw, "이 유저는 야행성 활동 비중이 높을 확률", "neutral", 86, 2);
-
-          const gamerRaw = Math.min(100, uniqueGames * 12);
-          push(gamerRaw, "이 유저는 게임 중심 활동일 확률", "neutral", 88, 2);
-
-          const musicRaw = Math.min(100, musicCount * 5);
-          push(musicRaw, "이 유저는 음악 감상 중심 활동일 확률", "neutral", 86, 2);
-
-          const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
-          push(steadyRaw, "이 유저는 꾸준한 스테디셀러일 확률", "pos", 90, 3);
-
-          const isolatedRaw = (topFriends.length === 0 ? 35 : 0) + (enemiesArr.length >= 1 ? 30 : 0) + (msgCount < 30 ? 25 : 0);
-          push(isolatedRaw, "이 유저는 고립형 성향일 확률", "neg", 88, 2);
-
-          const staffRaw = (influenceRaw > 60 ? 30 : 0) + (ruleOkRaw > 70 ? 40 : 0);
-          push(staffRaw, "이 유저는 잠재적 운영진 후보일 확률", "pos", 85, 2);
-
-          const eventRaw = (lastActiveDays <= 14 ? 30 : 0) + (msgCount >= 80 ? 30 : 0) + (voiceHours >= 5 ? 20 : 0);
-          push(eventRaw, "이 유저는 이벤트 참여 친화형일 확률", "pos", 88, 2);
-
-          const result = C
-            .filter(x => x.p >= 20)
-            .sort((a, b) => b.p - a.p)
-            .slice(0, 3);
-          if (!result.length) {
-            return ["ℹ️ 데이터가 부족해 평가를 보류합니다."];
-          }
-          return result.map(x => (x.tone === "pos" ? "✅" : x.tone === "neg" ? "⚠️" : "ℹ️") + " " + x.t);
-        }
 
         const evalLines = buildEvaluations();
 
