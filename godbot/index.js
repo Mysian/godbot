@@ -82,6 +82,8 @@ require('./utils/donor-role-expirer')(client);
 require('./utils/category-channel-watcher').initChannelWatcher(client);
 // 갓봇 ai 1
 require('./utils/godbot-core').initGodbotCore(client);
+// 유저 ID 추출 유틸
+require("./utils/mention-resolver")(client);
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
