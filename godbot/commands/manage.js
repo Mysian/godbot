@@ -115,7 +115,8 @@ module.exports = {
           { name: "서버상태", value: "status" },
           { name: "저장파일 백업", value: "json_backup" },
           { name: "스팸의심 계정 추방", value: "spam_kick" },
-          { name: "활동 이력", value: "activity_log" }
+          { name: "활동 이력", value: "activity_log" },
+          { name: "유저 평가 지표", value: "eval_rank" }
         )
     )
     .addUserOption((option) =>
@@ -1108,6 +1109,310 @@ module.exports = {
           });
         }
       }
+      return;
+    }
+
+    if (option === "eval_rank") {
+      await interaction.deferReply({ ephemeral: true });
+
+      const members = await guild.members.fetch();
+      const warningsDb = loadWarnings();
+      const warnHistoryDb = loadWarnHistory();
+      const sehamDb = loadSeham();
+      const relAll = relationship.loadData();
+
+      const recencyFactor = (days) => {
+        if (!Number.isFinite(days)) return 0.0;
+        if (days <= 3) return 1.0;
+        if (days <= 7) return 0.85;
+        if (days <= 14) return 0.7;
+        if (days <= 30) return 0.45;
+        if (days <= 45) return 0.3;
+        return 0.2;
+      };
+      const relFromEvidence = (msg, vhr, ev, days) => {
+        const a = Math.log1p(msg) / Math.log(1 + 300);
+        const b = Math.log1p(vhr) / Math.log(1 + 50);
+        const c = Math.log1p(ev) / Math.log(1 + 200);
+        const d = recencyFactor(days);
+        const mix = (0.25 * a) + (0.35 * b) + (0.2 * c) + (0.2 * d);
+        return Math.max(0.15, Math.min(1, mix));
+      };
+      const capProb = (p, cap, floor) => Math.max(floor, Math.min(cap, Math.round(p)));
+      const scoreToProb = (raw, evidence, cap = 93, floor = 2) => {
+        const shrink = 0.4 + evidence * 0.4;
+        const p = raw * shrink;
+        return capProb(p, cap, floor);
+      };
+      const posCapByRecency = (p, days) => {
+        if (days > 45) return Math.min(p, 25);
+        if (days > 30) return Math.min(p, 35);
+        if (days > 14) return Math.min(p, 45);
+        return p;
+      };
+      const coerceWarnTsList = (entry) => {
+        if (!entry) return [];
+        if (Array.isArray(entry)) return entry.filter(x => typeof x === "number");
+        if (typeof entry.ts === "number") return [entry.ts];
+        if (Array.isArray(entry.ts)) return entry.ts.filter(x => typeof x === "number");
+        if (Array.isArray(entry.events)) return entry.events.filter(x => typeof x === "number");
+        return [];
+      };
+
+      const dayMs = 86400000;
+      const now = Date.now();
+
+      const users = [...members.values()].filter(m => !m.user.bot);
+      const totalUsers = users.length;
+
+      const calcForUser = (m) => {
+        const userId = m.id;
+        const user = m.user;
+
+        const stat = activityStats.find((x) => x.userId === userId) || { message: 0, voice: 0 };
+        const msgCount = stat.message || 0;
+        const voiceSec = stat.voice || 0;
+        const voiceHours = voiceSec / 3600;
+
+        const lastActiveDate = (() => { try { return activityTracker.getLastActiveDate(userId); } catch { return null; } })();
+        const lastActiveDays = lastActiveDate ? Math.floor((now - lastActiveDate.getTime()) / dayMs) : 9999;
+
+        const joinedAt = m.joinedAt;
+        const joinDays = joinedAt ? Math.floor((now - joinedAt.getTime()) / dayMs) : 0;
+
+        const roleCount = m.roles.cache.filter(r => r.id !== guild.id).size;
+
+        const activitiesArr = (activityLogger.getUserActivities(userId) || []).sort((a,b)=>b.time-a.time);
+        const activitiesCount = activitiesArr.length;
+        const gameNames = activitiesArr.filter(a => a.activityType === "game" && a.details && a.details.name).map(a => a.details.name);
+        const uniqueGames = new Set(gameNames).size;
+
+        const hasServerLock = m.roles.cache.has(SERVER_LOCK_ROLE_ID);
+        const hasXpLock = m.roles.cache.has(XP_LOCK_ROLE_ID);
+        const timeoutActive = !!(m.communicationDisabledUntil && m.communicationDisabledUntilTimestamp > Date.now());
+
+        const topFriends = relationship.getTopRelations(userId, 3);
+        const relData = relAll[userId] || {};
+        const relEntries = Object.entries(relData);
+        const friendsByStage = relEntries.filter(([_, v]) => (v.stage || 0) > 0).sort((a, b) => (b[1].stage || 0) - (a[1].stage || 0));
+        const totalStage = friendsByStage.reduce((s, [, v]) => s + ((v.stage || 0)), 0);
+        const top2Stage = friendsByStage.slice(0, 2).reduce((s, [, v]) => s + ((v.stage || 0)), 0);
+        const top3Stage = friendsByStage.slice(0, 3).reduce((s, [, v]) => s + ((v.stage || 0)), 0);
+        const dominance2 = totalStage > 0 ? top2Stage / totalStage : 0;
+        const dominance3 = totalStage > 0 ? top3Stage / totalStage : 0;
+        const strongTies = friendsByStage.filter(([_, v]) => (v.stage || 0) >= 8);
+        const strongCount = strongTies.length;
+
+        const listFromWarnings = Array.isArray(warningsDb[userId])
+          ? warningsDb[userId].map(e => {
+              const t = Date.parse(e?.date);
+              return Number.isFinite(t) ? t : null;
+            }).filter(Boolean)
+          : [];
+        const listFromHistory = coerceWarnTsList(warnHistoryDb[String(userId)]);
+        const warnTsList = [...listFromWarnings, ...listFromHistory].sort((a,b)=>b-a);
+        const countInDays = (d) => warnTsList.filter(ts => now - ts <= d*dayMs).length;
+        const warn7 = countInDays(7);
+        const warn30 = countInDays(30);
+        const warn90 = countInDays(90);
+        const lastWarnTs = warnTsList[0] || null;
+        const lastWarnDays = lastWarnTs ? Math.floor((now - lastWarnTs)/dayMs) : 9999;
+
+        const sehamRec = ensureSeham(sehamDb, userId);
+        const sehamCount = sehamRec.logs.length;
+        const lastSehamTs = sehamCount ? sehamRec.logs[sehamCount - 1].ts : null;
+        const lastSehamDays = lastSehamTs ? Math.floor((now - lastSehamTs) / dayMs) : 9999;
+
+        const evidence = relFromEvidence(msgCount, voiceHours, activitiesCount, lastActiveDays);
+        const rulePenaltyBase = (hasServerLock ? 30 : 0) + (hasXpLock ? 20 : 0) + (timeoutActive ? 45 : 0);
+        const rulePenaltyWarn = Math.min(35, warn30 * 15) + (lastWarnDays <= 3 ? 10 : lastWarnDays <= 7 ? 6 : 0);
+        const rulePenalty = rulePenaltyBase + rulePenaltyWarn;
+
+        const socialPlus = Math.min(32, (topFriends.length || 0) * 10);
+        const msgPlus = Math.min(30, (msgCount / 600) * 30);
+        const vcPlus = Math.min(30, (voiceHours / 50) * 30);
+
+        const offsiteBase =
+          (activitiesCount >= 50 ? 45 : activitiesCount >= 25 ? 30 : 10) +
+          (voiceHours < 0.1 ? 40 : voiceHours < 0.5 ? 25 : 0) +
+          (msgCount >= 150 ? 10 : 0) +
+          (uniqueGames >= 3 ? 5 : 0) -
+          (voiceHours >= 1 ? 15 : 0);
+        const offsiteRaw = Math.max(0, Math.min(95, offsiteBase));
+
+        const voiceBias = voiceHours > 0 ? voiceHours / (voiceHours + (msgCount / 30) + 1e-9) : 0;
+        let vcCliqueRaw = 0;
+        if (voiceHours >= 3 && strongCount > 0 && strongCount <= 3) {
+          vcCliqueRaw = Math.max(0, Math.min(95,
+            (voiceHours >= 10 ? 40 : voiceHours >= 5 ? 28 : 18) +
+            (strongCount <= 2 ? 30 : 18) +
+            Math.round(voiceBias * 25)
+          ));
+        }
+
+        let samePeersRaw = 0;
+        if ((msgCount + voiceHours * 60) >= 80 && totalStage > 0) {
+          const domScore = Math.max(dominance2, dominance3);
+          samePeersRaw = Math.max(0, Math.min(95,
+            (domScore - 0.6) * 140 +
+            (strongCount <= 3 ? 10 : 0) +
+            (voiceHours >= 5 ? 8 : 0)
+          ));
+        }
+
+        const warnTrailRaw = Math.min(95,
+          warn7 * 35 + warn30 * 20 + warn90 * 10 +
+          (lastWarnDays <= 3 ? 20 : lastWarnDays <= 7 ? 12 : lastWarnDays <= 14 ? 8 : 0)
+        );
+
+        const sehamRecentBoost =
+          Math.min(40, sehamCount * 8) +
+          (lastSehamDays <= 3 ? 15 : lastSehamDays <= 7 ? 10 : lastSehamDays <= 30 ? 6 : 0);
+        const sehamRiskRaw = Math.min(95, 20 + sehamRecentBoost + (sehamCount >= 5 ? 10 : 0));
+
+        let friendlyRaw = Math.max(0,
+          10 + msgPlus + vcPlus + socialPlus - rulePenalty
+          - Math.min(25, offsiteRaw * 0.4)
+          - Math.min(20, samePeersRaw * 0.2)
+          - Math.min(15, vcCliqueRaw * 0.15)
+          - Math.min(20, warnTrailRaw * 0.25)
+          - Math.min(22, sehamRecentBoost * 0.6)
+        );
+
+        const toxicSignals =
+          Math.min(50, strongCount ? 0 : 0) +
+          (m.roles.cache.has(SERVER_LOCK_ROLE_ID) ? 25 : 0) +
+          (m.roles.cache.has(XP_LOCK_ROLE_ID) ? 12 : 0) +
+          (timeoutActive ? 35 : 0) +
+          Math.min(30, warn90 * 10) +
+          (lastWarnDays <= 14 ? 10 : 0) +
+          Math.min(28, sehamRecentBoost * 0.8);
+        const toxicRaw = Math.min(95, 20 + toxicSignals - socialPlus / 2);
+
+        const churnRaw = Math.max(0,
+          (lastActiveDays > 30 ? 65 : lastActiveDays > 14 ? 40 : 0) +
+          (msgCount < 10 ? 20 : msgCount < 40 ? 10 : 0) +
+          (voiceHours < 1 ? 15 : 0)
+        );
+
+        const ruleOkRaw = Math.max(0, 85 - rulePenalty - Math.min(20, sehamRecentBoost * 0.5));
+
+        const riskMgmtRaw = Math.min(95, rulePenalty + (toxicSignals / 2) + Math.min(25, sehamRecentBoost * 0.9));
+
+        const influenceRaw = Math.min(40, roleCount * 4) + Math.min(40, (msgCount / 800) * 40) + Math.min(20, (topFriends.length || 0) * 6);
+
+        const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
+
+        const lowEvidence = (msgCount + voiceHours * 60) < 40 || lastActiveDays > 14;
+
+        const P = {};
+        P.offsite = scoreToProb(offsiteRaw, evidence, 88, 3);
+        P.vc_clique = scoreToProb(vcCliqueRaw, evidence, 86, 2);
+        P.same_peers = scoreToProb(samePeersRaw, evidence, 86, 2);
+        P.warn_trail = scoreToProb(warnTrailRaw, evidence, 92, 2);
+        P.seham_risk = scoreToProb(sehamRiskRaw, evidence, 92, 2);
+        P.friendly = posCapByRecency(scoreToProb(friendlyRaw, evidence, 90, 2), lastActiveDays);
+        P.toxic = scoreToProb(toxicRaw, evidence, 90, 2);
+        P.churn = scoreToProb(churnRaw, evidence, 90, 2);
+        P.rule_ok = posCapByRecency(scoreToProb(ruleOkRaw, evidence, 88, 3), lastActiveDays);
+        P.risk_mgmt = scoreToProb(riskMgmtRaw, evidence, 92, 2);
+        P.influence = posCapByRecency(scoreToProb(influenceRaw, evidence, 86, 2), lastActiveDays);
+        P.steady = posCapByRecency(scoreToProb(steadyRaw, evidence, 86, 3), lastActiveDays);
+
+        return { userId, tag: user.tag, P };
+      };
+
+      const allScores = users.map(calcForUser);
+
+      const metricLabels = {
+        steady: "꾸준한 스테디셀러 확률",
+        influence: "영향력 있는 핵심 인물 확률",
+        toxic: "분쟁/배척 성향 확률",
+        offsite: "‘뒷서버’ 의심 정황 확률",
+        vc_clique: "소규모 중심 활동 성향 확률",
+        same_peers: "동일 유저 편향 성향 확률",
+        friendly: "서버에 우호적일 확률",
+        churn: "이탈 위험 확률",
+        rule_ok: "규칙 준수 확률",
+        risk_mgmt: "관리가 필요한 상태일 확률",
+        seham_risk: "최근 ‘쎄함’ 신호 누적 위험 확률",
+        warn_trail: "규칙 위반 징후(경고 흔적) 확률"
+      };
+
+      const metricOrder = [
+        "steady","influence","toxic","offsite","vc_clique","same_peers","friendly","churn","rule_ok","risk_mgmt","seham_risk","warn_trail"
+      ];
+
+      const rankCache = {};
+      for (const key of metricOrder) {
+        const ranked = allScores
+          .map(u => ({ userId: u.userId, tag: u.tag, p: u.P[key] || 0 }))
+          .sort((a,b)=>b.p-a.p)
+          .slice(0, 20);
+        rankCache[key] = ranked;
+      }
+
+      let currentMetric = "steady";
+
+      const buildEmbed = (metricKey) => {
+        const list = rankCache[metricKey] || [];
+        const lines = list.map((x, i) => `${String(i+1).padStart(2,"0")}. <@${x.userId}> — **${x.p}%** (${x.tag})`);
+        return new EmbedBuilder()
+          .setTitle(`[유저 평가 지표] ${metricLabels[metricKey]} TOP 20`)
+          .setDescription(lines.length ? lines.join("\n") : "데이터가 부족합니다.")
+          .addFields(
+            { name: "집계 대상", value: `${totalUsers}명`, inline: true },
+            { name: "갱신 시각", value: `<t:${Math.floor(now/1000)}:R>`, inline: true }
+          )
+          .setColor(0x6a5acd);
+      };
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId("eval_metric_select")
+        .setPlaceholder("확인할 평가 지표를 선택하세요")
+        .addOptions(
+          metricOrder.map(k => ({ label: metricLabels[k], value: k }))
+        );
+
+      const rowSel = new ActionRowBuilder().addComponents(select);
+      const rowBtn = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("eval_refresh").setLabel("↻ 새로고침").setStyle(ButtonStyle.Secondary)
+      );
+
+      await interaction.editReply({
+        embeds: [buildEmbed(currentMetric)],
+        components: [rowSel, rowBtn],
+        ephemeral: true
+      });
+
+      const collector = interaction.channel.createMessageComponentCollector({
+        filter: (i) => i.user.id === interaction.user.id && (i.customId === "eval_metric_select" || i.customId === "eval_refresh"),
+        time: 14 * 60 * 1000
+      });
+
+      collector.on("collect", async (i) => {
+        if (i.customId === "eval_metric_select" && i.isStringSelectMenu()) {
+          currentMetric = i.values[0];
+          await safeRender(i, { embeds: [buildEmbed(currentMetric)], components: [rowSel, rowBtn] });
+          return;
+        }
+        if (i.customId === "eval_refresh" && i.isButton()) {
+          await ensureAck(i);
+          const members2 = await guild.members.fetch();
+          const users2 = [...members2.values()].filter(m => !m.user.bot);
+          const allScores2 = users2.map(calcForUser);
+          for (const key of metricOrder) {
+            const ranked = allScores2
+              .map(u => ({ userId: u.userId, tag: u.tag, p: u.P[key] || 0 }))
+              .sort((a,b)=>b.p-a.p)
+              .slice(0, 20);
+            rankCache[key] = ranked;
+          }
+          await safeRender(i, { embeds: [buildEmbed(currentMetric)], components: [rowSel, rowBtn] });
+          return;
+        }
+      });
+
       return;
     }
   },
