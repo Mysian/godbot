@@ -211,14 +211,19 @@ module.exports = {
         return interaction.reply({ content: '유효한 텍스트 채널을 선택해 주세요.', ephemeral: true });
       }
 
+      // ✅ 대괄호 제거 + 코드블록으로 강한 강조
       const share = new EmbedBuilder()
         .setTitle('🧧 쿠폰 코드')
         .setColor(0xff5e5e)
         .setDescription(
-          `-# /정수획득 명령어로 사용 가능\n` +
-          `[상품: ${c.amount.toLocaleString('ko-KR')} BE | 형태: ${modeText} | 만료: ${toKST(c.expiresAt)}]\n` +
-          `[${c.code}]`
+          '-# /정수획득 명령어로 사용 가능\n' +
+          `상품: **${c.amount.toLocaleString('ko-KR')} BE** • 형태: **${modeText}** • 만료: **${toKST(c.expiresAt)}**`
         )
+        .addFields({
+          name: '쿠폰 번호',
+          value: `\`\`\`fix\n${c.code}\n\`\`\``,
+          inline: false
+        })
         .setFooter({ text: '까리한 디스코드를 이용해주셔서 언제나 감사합니다.' });
 
       await targetChannel.send({ embeds: [share] });
