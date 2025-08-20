@@ -53,6 +53,23 @@ function loadWarnings() {
   } catch { return {}; }
 }
 
+const sehamPath = path.join(dataDir, "seham.json");
+function loadSeham() {
+  if (!fs.existsSync(sehamPath)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(sehamPath, "utf8")) || {};
+  } catch { return {}; }
+}
+function saveSeham(db) {
+  fs.writeFileSync(sehamPath, JSON.stringify(db, null, 2));
+}
+function ensureSeham(db, userId) {
+  if (!db[userId]) db[userId] = { count: 0, logs: [] };
+  if (!Array.isArray(db[userId].logs)) db[userId].logs = [];
+  db[userId].count = db[userId].logs.length;
+  return db[userId];
+}
+
 const activityTracker = require("../utils/activity-tracker.js");
 const activityLogger = require("../utils/activity-logger.js");
 const relationship = require("../utils/relationship.js");
@@ -641,7 +658,7 @@ module.exports = {
           const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
           push(steadyRaw, "꾸준한 스테디셀러 확률", "pos", 86, 3, true);
 
-          const MIN_SHOW = 40;
+        const MIN_SHOW = 40;
           const result = C
             .filter(x => x.p >= MIN_SHOW)
             .sort((a, b) => b.p - a.p);
@@ -708,8 +725,8 @@ module.exports = {
             .setLabel("월세 받기")
             .setStyle(ButtonStyle.Primary),
           new ButtonBuilder()
-            .setCustomId("view_activity_log")
-            .setLabel("활동 이력 보기")
+            .setCustomId("seham_open")
+            .setLabel("쎄함(유의) 카운트")
             .setStyle(ButtonStyle.Secondary)
         );
 
@@ -735,7 +752,7 @@ module.exports = {
           filter: (i) => i.user.id === interaction.user.id &&
             [
               "refresh_userinfo", "timeout", "kick", "timeout_release",
-              "toggle_longstay", "receive_monthly", "view_activity_log",
+              "toggle_longstay", "receive_monthly", "seham_open",
               "toggle_server_lock", "toggle_xp_lock"
             ].includes(i.customId),
           time: 300 * 1000,
@@ -811,9 +828,9 @@ module.exports = {
               ]
             });
             await showUserInfo(targetUserId, parentInteraction);
-          } else if (i.customId === "view_activity_log") {
+          } else if (i.customId === "seham_open") {
             await i.deferUpdate();
-            await showUserActivityLog(targetUserId, parentInteraction, 0);
+            await showSehamPanel(targetUserId, parentInteraction, 0);
           } else if (i.customId === "toggle_server_lock") {
             await i.deferReply({ ephemeral: true });
             const hasNow = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
@@ -877,77 +894,111 @@ module.exports = {
           }
         });
 
-        async function showUserActivityLog(userId, parent, page = 0) {
+        async function showSehamPanel(userId, parent, page = 0) {
+          let db = loadSeham();
+          const rec = ensureSeham(db, userId);
           const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
           if (!user) {
             await parent.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
             return;
           }
-          const activities = activityLogger.getUserActivities(userId).sort((a, b) => b.time - a.time);
-          if (!activities.length) {
-            await parent.editReply({ content: "최근 활동 기록이 없거나 디스코드 활동 기능을 OFF한 유저", ephemeral: true });
-            return;
-          }
 
           const perPage = 10;
-          const startIdx = page * perPage;
-          const pageData = activities.slice(startIdx, startIdx + perPage);
+          const total = rec.logs.length;
+          const totalPages = Math.max(1, Math.ceil(total / perPage));
+          const curPage = Math.min(Math.max(0, page), totalPages - 1);
+          const start = curPage * perPage;
+          const pageLogs = rec.logs.slice().reverse().slice(start, start + perPage);
 
-          const activityText = pageData.map((a, idx) => {
-            const date = new Date(a.time).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-            let info = `\`${date}\` | [${a.activityType}]`;
-            if (a.activityType === "game" && a.details?.name) {
-              info += `: ${a.details.name}`;
-            } else if (a.activityType === "music" && a.details?.song) {
-              info += `: ${a.details.song} - ${a.details.artist || ''}`;
-            } else if (a.details && typeof a.details === 'object') {
-              info += `: ${Object.values(a.details).join(" / ")}`;
-            }
-            return `${startIdx + idx + 1}. ${info}`;
-          }).join("\n");
-
-          const embed = new EmbedBuilder()
-            .setTitle(`${user.tag}님의 최근 활동 이력`)
-            .setThumbnail(user.displayAvatarURL())
-            .setDescription(activityText)
-            .setFooter({ text: `페이지 ${page + 1} / ${Math.ceil(activities.length / perPage)}` })
-            .setColor(0x7fdfff);
-
-          const navRow = new ActionRowBuilder();
-          navRow.addComponents(
-            new ButtonBuilder()
-              .setCustomId("activity_prev")
-              .setLabel("◀ 이전")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(page === 0),
-            new ButtonBuilder()
-              .setCustomId("activity_next")
-              .setLabel("다음 ▶")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(startIdx + perPage >= activities.length)
-          );
-
-          await parent.editReply({
-            embeds: [embed],
-            components: [navRow],
-            ephemeral: true
+          const lines = pageLogs.map((l, idx) => {
+            const n = total - (start + idx);
+            const t = typeof l.ts === "number" ? `<t:${Math.floor(l.ts/1000)}:R>` : "-";
+            const by = l.by ? `<@${l.by}>` : "-";
+            const reason = l.reason ? String(l.reason).slice(0, 200) : "(사유 미기재)";
+            return `#${n} ${t} | by ${by}\n└ ${reason}`;
           });
 
-          const actCollector = parent.channel.createMessageComponentCollector({
+          const embed = new EmbedBuilder()
+            .setTitle(`쎄함(유의) 카운트 현황 - ${user.tag}`)
+            .setThumbnail(user.displayAvatarURL())
+            .addFields(
+              { name: "현재 카운트", value: `${rec.logs.length}`, inline: true },
+              { name: "대상 유저", value: `<@${userId}>`, inline: true },
+              { name: "최근 기록", value: lines.length ? lines.join("\n") : "기록 없음", inline: false }
+            )
+            .setFooter({ text: `페이지 ${curPage + 1} / ${totalPages}` })
+            .setColor(0xf39c12);
+
+          const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("seham_add").setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId("seham_cancel").setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId("seham_back").setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
+          );
+          const row2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("seham_prev").setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(curPage === 0),
+            new ButtonBuilder().setCustomId("seham_next").setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(curPage + 1 >= totalPages)
+          );
+
+          await parent.editReply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+
+          const sehamCollector = parent.channel.createMessageComponentCollector({
             filter: (btn) =>
               btn.user.id === interaction.user.id &&
-              ["activity_prev", "activity_next"].includes(btn.customId),
+              ["seham_add","seham_cancel","seham_back","seham_prev","seham_next"].includes(btn.customId),
             time: 180 * 1000,
           });
 
-          actCollector.on("collect", async (btn) => {
-            await btn.deferUpdate();
-            if (btn.customId === "activity_prev" && page > 0) {
-              await showUserActivityLog(userId, parent, page - 1);
-              actCollector.stop("refresh");
-            } else if (btn.customId === "activity_next" && startIdx + perPage < activities.length) {
-              await showUserActivityLog(userId, parent, page + 1);
-              actCollector.stop("refresh");
+          sehamCollector.on("collect", async (btn) => {
+            if (btn.customId === "seham_add") {
+              const modal = new ModalBuilder()
+                .setCustomId(`seham_add_${userId}`)
+                .setTitle("쎄함 적립 사유 입력")
+                .addComponents(
+                  new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                      .setCustomId("reason")
+                      .setLabel("사유 (200자 이내)")
+                      .setStyle(TextInputStyle.Paragraph)
+                      .setMinLength(2)
+                      .setMaxLength(200)
+                      .setRequired(true)
+                  )
+                );
+              await btn.showModal(modal);
+            } else if (btn.customId === "seham_cancel") {
+              await btn.deferUpdate();
+              db = loadSeham();
+              const rec2 = ensureSeham(db, userId);
+              if (!rec2.logs.length) {
+                await parent.followUp({ content: "취소할 기록이 없습니다.", ephemeral: true });
+                return;
+              }
+              const last = rec2.logs.pop();
+              rec2.count = rec2.logs.length;
+              saveSeham(db);
+              await guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle("쎄함 카운트 취소")
+                    .setDescription(`대상: <@${userId}>\n취소자: <@${btn.user.id}>\n이전 사유: ${last?.reason ? String(last.reason).slice(0,200) : "(없음)"}\n현재 카운트: ${rec2.count}`)
+                    .setColor(0xd35400)
+                    .setTimestamp()
+                ]
+              });
+              await showSehamPanel(userId, parent, curPage);
+              sehamCollector.stop("refresh");
+            } else if (btn.customId === "seham_prev") {
+              await btn.deferUpdate();
+              await showSehamPanel(userId, parent, Math.max(0, curPage - 1));
+              sehamCollector.stop("refresh");
+            } else if (btn.customId === "seham_next") {
+              await btn.deferUpdate();
+              await showSehamPanel(userId, parent, curPage + 1);
+              sehamCollector.stop("refresh");
+            } else if (btn.customId === "seham_back") {
+              await btn.deferUpdate();
+              await showUserInfo(userId, parent);
+              sehamCollector.stop("back");
             }
           });
         }
@@ -957,89 +1008,157 @@ module.exports = {
   },
 
   async modalSubmit(interaction) {
-    const pw = interaction.fields.getTextInputValue("pw");
-    const savedPw = loadAdminPw();
-    if (!savedPw || pw !== savedPw) {
-      await interaction.reply({ content: "❌ 비밀번호가 일치하지 않습니다.", ephemeral: true });
-      return;
-    }
-
-    if (interaction.customId === "adminpw_json_backup") {
-      const files = fs.existsSync(dataDir)
-        ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
-        : [];
-      if (!files.length) {
-        await interaction.reply({
-          content: "data 폴더에 .json 파일이 없습니다.",
-          ephemeral: true,
-        });
+    if (interaction.customId === "adminpw_json_backup" || interaction.customId.startsWith("adminpw_user_")) {
+      const pw = interaction.fields.getTextInputValue("pw");
+      const savedPw = loadAdminPw();
+      if (!savedPw || pw !== savedPw) {
+        await interaction.reply({ content: "❌ 비밀번호가 일치하지 않습니다.", ephemeral: true });
         return;
       }
 
-      const zip = new AdmZip();
-      for (const file of files) {
-        zip.addLocalFile(path.join(dataDir, file), "", file);
+      if (interaction.customId === "adminpw_json_backup") {
+        const files = fs.existsSync(dataDir)
+          ? fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"))
+          : [];
+        if (!files.length) {
+          await interaction.reply({
+            content: "data 폴더에 .json 파일이 없습니다.",
+            ephemeral: true,
+          });
+          return;
+        }
+
+        const zip = new AdmZip();
+        for (const file of files) {
+          zip.addLocalFile(path.join(dataDir, file), "", file);
+        }
+        const now = new Date();
+        const dateStr =
+          now.getFullYear().toString() +
+          (now.getMonth() + 1).toString().padStart(2, "0") +
+          now.getDate().toString().padStart(2, "0") +
+          "_" +
+          now.getHours().toString().padStart(2, "0") +
+          now.getMinutes().toString().padStart(2, "0") +
+          now.getSeconds().toString().padStart(2, "0");
+        const filename = `${dateStr}.zip`;
+        const tmpPath = path.join(__dirname, `../data/${filename}`);
+        zip.writeZip(tmpPath);
+
+        const attachment = new AttachmentBuilder(tmpPath, { name: filename });
+        await interaction.reply({
+          content: `모든 .json 파일을 압축했습니다. (${filename})`,
+          files: [attachment],
+          ephemeral: true,
+        });
+
+        setTimeout(() => {
+          if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+        }, 60 * 1000);
+        return;
       }
-      const now = new Date();
-      const dateStr =
-        now.getFullYear().toString() +
-        (now.getMonth() + 1).toString().padStart(2, "0") +
-        now.getDate().toString().padStart(2, "0") +
-        "_" +
-        now.getHours().toString().padStart(2, "0") +
-        now.getMinutes().toString().padStart(2, "0") +
-        now.getSeconds().toString().padStart(2, "0");
-      const filename = `${dateStr}.zip`;
-      const tmpPath = path.join(__dirname, `../data/${filename}`);
-      zip.writeZip(tmpPath);
 
-      const attachment = new AttachmentBuilder(tmpPath, { name: filename });
-      await interaction.reply({
-        content: `모든 .json 파일을 압축했습니다. (${filename})`,
-        files: [attachment],
-        ephemeral: true,
-      });
-
-      setTimeout(() => {
-        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-      }, 60 * 1000);
-      return;
+      if (interaction.customId.startsWith("adminpw_user_")) {
+        const arr = interaction.customId.split("_");
+        const action = arr[2];
+        const targetUserId = arr.slice(3).join("_");
+        if (action === "timeout") {
+          try {
+            await interaction.guild.members.edit(targetUserId, {
+              communicationDisabledUntil: Date.now() + 24 * 60 * 60 * 1000,
+              reason: "관리 명령어로 타임아웃 (1일)"
+            });
+            await interaction.reply({
+              content: `✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.`,
+              ephemeral: true,
+            });
+          } catch (err) {
+            await interaction.reply({
+              content: "❌ 타임아웃 실패 (권한 문제일 수 있음)",
+              ephemeral: true,
+            });
+          }
+        } else if (action === "kick") {
+          try {
+            await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
+            await interaction.reply({
+              content: `✅ <@${targetUserId}>님을 서버에서 추방했습니다.`,
+              ephemeral: true,
+            });
+          } catch (err) {
+            await interaction.reply({
+              content: "❌ 추방 실패 (권한 문제일 수 있음)",
+              ephemeral: true,
+            });
+          }
+        }
+        return;
+      }
     }
 
-    if (interaction.customId.startsWith("adminpw_user_")) {
-      const arr = interaction.customId.split("_");
-      const action = arr[2];
-      const targetUserId = arr.slice(3).join("_");
-      if (action === "timeout") {
-        try {
-          await interaction.guild.members.edit(targetUserId, {
-            communicationDisabledUntil: Date.now() + 24 * 60 * 60 * 1000,
-            reason: "관리 명령어로 타임아웃 (1일)"
-          });
-          await interaction.reply({
-            content: `✅ <@${targetUserId}>님에게 1일 타임아웃을 적용했습니다.`,
-            ephemeral: true,
-          });
-        } catch (err) {
-          await interaction.reply({
-            content: "❌ 타임아웃 실패 (권한 문제일 수 있음)",
-            ephemeral: true,
-          });
-        }
-      } else if (action === "kick") {
-        try {
-          await interaction.guild.members.kick(targetUserId, "관리 명령어로 추방");
-          await interaction.reply({
-            content: `✅ <@${targetUserId}>님을 서버에서 추방했습니다.`,
-            ephemeral: true,
-          });
-        } catch (err) {
-          await interaction.reply({
-            content: "❌ 추방 실패 (권한 문제일 수 있음)",
-            ephemeral: true,
-          });
-        }
-      }
+    if (interaction.customId.startsWith("seham_add_")) {
+      const targetUserId = interaction.customId.replace("seham_add_", "");
+      const reason = interaction.fields.getTextInputValue("reason");
+      const guild = interaction.guild;
+
+      let db = loadSeham();
+      const rec = ensureSeham(db, targetUserId);
+      rec.logs.push({
+        ts: Date.now(),
+        by: interaction.user.id,
+        reason: String(reason).trim().slice(0, 200)
+      });
+      rec.count = rec.logs.length;
+      saveSeham(db);
+
+      await guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("쎄함 카운트 적립")
+            .setDescription(`대상: <@${targetUserId}>\n사유: ${String(reason).trim().slice(0,200)}\n처리자: <@${interaction.user.id}>\n현재 카운트: ${rec.count}`)
+            .setColor(0xe67e22)
+            .setTimestamp()
+        ]
+      });
+
+      const member = await guild.members.fetch(targetUserId).catch(() => null);
+      const user = member?.user;
+      const perPage = 10;
+      const total = rec.logs.length;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      const start = 0;
+      const pageLogs = rec.logs.slice().reverse().slice(start, start + perPage);
+      const lines = pageLogs.map((l, idx) => {
+        const n = total - (start + idx);
+        const t = typeof l.ts === "number" ? `<t:${Math.floor(l.ts/1000)}:R>` : "-";
+        const by = l.by ? `<@${l.by}>` : "-";
+        const rs = l.reason ? String(l.reason).slice(0, 200) : "(사유 미기재)";
+        return `#${n} ${t} | by ${by}\n└ ${rs}`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle(`쎄함(유의) 카운트 현황 - ${user ? user.tag : targetUserId}`)
+        .setThumbnail(user ? user.displayAvatarURL() : null)
+        .addFields(
+          { name: "현재 카운트", value: `${rec.count}`, inline: true },
+          { name: "대상 유저", value: `<@${targetUserId}>`, inline: true },
+          { name: "최근 기록", value: lines.length ? lines.join("\n") : "기록 없음", inline: false }
+        )
+        .setFooter({ text: `페이지 1 / ${totalPages}` })
+        .setColor(0xf39c12);
+
+      const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("seham_add").setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("seham_cancel").setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("seham_back").setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
+      );
+      const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("seham_prev").setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId("seham_next").setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1)
+      );
+
+      await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+      return;
     }
   }
 };
