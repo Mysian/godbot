@@ -168,11 +168,19 @@ async function sendCommandLog(interaction) {
       : "알 수 없음";
 
     let extra = "";
-    if (interaction.options && interaction.options.data) {
-      extra = interaction.options.data.map(opt =>
-        `\`${opt.name}: ${opt.value}\``
-      ).join(", ");
+if (interaction.options) {
+  const root = interaction.options.data ?? [];
+  const flat = [];
+  for (const opt of root) {
+    if (opt.type === 1 /* SUB_COMMAND */ || opt.type === 2 /* SUB_COMMAND_GROUP */) {
+      flat.push(`sub:${opt.name}`);
+      (opt.options ?? []).forEach(o => flat.push(`${o.name}=${o.value}`));
+    } else {
+      flat.push(`${opt.name}=${opt.value}`);
     }
+  }
+  extra = flat.length ? flat.map(s => `\`${s}\``).join(", ") : "";
+}
 
     const embed = {
       title: "명령어 사용 로그",
