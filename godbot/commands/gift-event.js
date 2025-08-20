@@ -1,9 +1,16 @@
 // ===== commands/gift-event.js =====
-
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ComponentType, PermissionsBitField } = require('discord.js');
+const {
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ComponentType,
+  PermissionsBitField,
+  ChannelType,
+} = require('discord.js');
 const { addBE } = require('./be-util.js');
 
-// 한글 화폐 표기
 function formatKoreanMoney(num) {
   if (typeof num !== 'number') num = parseInt(num, 10);
   if (isNaN(num)) return num;
@@ -22,7 +29,6 @@ function formatKoreanMoney(num) {
 
 const DONOR_ROLE = '1397076919127900171';
 
-// 구간별 확률표 (확률*1000 단위, 합계 100,000)
 const rewardTable = [
   { min: 1000,     max: 20000,     weight: 70000,  effect: '🎁',   effectMsg: '나쁘지 않네요' },
   { min: 20001,    max: 50000,     weight: 17000,  effect: '✨',   effectMsg: '나쁘지 않네요' },
@@ -36,14 +42,13 @@ const rewardTable = [
   { min: 800001,   max: 900000,    weight: 50,     effect: '🚀',   effectMsg: '와 미쳤다...' },
   { min: 900001,   max: 1000000,   weight: 30,     effect: '⭐',    effectMsg: '예? 이게 뜬다고..?' },
   { min: 1000001,  max: 2000000,   weight: 10,     effect: '🏆',   effectMsg: '예??? 이게 뜬다고..?!' },
-  { min: 5000000,  max: 5000000,   weight: 5,      effect: '💰',   effectMsg: '아니 ㅋㅋ;; 이게 떴다고요..?' }, 
-  { min: 7770000,  max: 7770000,   weight: 3,      effect: '🔮',   effectMsg: 'ㅁㅊ 이게 떴다고???? 복권 사러가셈 님아 이거 극악 확률인데;;;' },   
-  { min: 10000000, max: 10000000,  weight: 2,      effect: '👑🌈', effectMsg: 'ㅁㅊ 이게 떴다고???? 복권 사러가셈 님아 이거 극악 확률인데;;;' }   
+  { min: 5000000,  max: 5000000,   weight: 5,      effect: '💰',   effectMsg: '아니 ㅋㅋ;; 이게 떴다고요..?' },
+  { min: 7770000,  max: 7770000,   weight: 3,      effect: '🔮',   effectMsg: 'ㅁㅊ 이게 떴다고???? 복권 사러가셈 님아 이거 극악 확률인데;;;' },
+  { min: 10000000, max: 10000000,  weight: 2,      effect: '👑🌈', effectMsg: 'ㅁㅊ 이게 떴다고???? 복권 사러가셈 님아 이거 극악 확률인데;;;' }
 ];
 
-// 고가일수록 극히 희귀하게 나오는 내부 분포(3제곱 곡선)
 function pickReward() {
-  const total = rewardTable.reduce((sum, r) => sum + r.weight, 0);
+  const total = rewardTable.reduce((s, r) => s + r.weight, 0);
   let rand = Math.random() * total;
   for (const r of rewardTable) {
     if (rand < r.weight) {
@@ -60,10 +65,9 @@ function pickReward() {
   return { ...last, amount: last.max };
 }
 
-// 임베드
 function getEffectEmbed(user, reward, isDonor, donorText) {
   let amount = reward.amount;
-  if (isDonor && amount < 10000) amount = 10000; // 도너 1만원 고정 반영
+  if (isDonor && amount < 10000) amount = 10000;
   const formatted = formatKoreanMoney(amount);
   let color = 0x5bbcff;
   if (amount < 20000) color = 0x8ae65c;
@@ -75,36 +79,51 @@ function getEffectEmbed(user, reward, isDonor, donorText) {
   else color = 0x000000;
   return new EmbedBuilder()
     .setTitle(`${reward.effect} [정수 획득!] ${reward.effect}`)
-    .setDescription([
-      `<@${user.id}>님, ${reward.effectMsg}`,
-      `**${formatted} BE** 획득!`,
-      donorText ? `\n${donorText}` : ''
-    ].join('\n'))
+    .setDescription(
+      [
+        `<@${user.id}>님, ${reward.effectMsg}`,
+        `**${formatted} BE** 획득!`,
+        donorText ? `\n${donorText}` : ''
+      ].join('\n')
+    )
     .setColor(color)
     .setFooter({ text: reward.effectMsg });
 }
 
-const COOLDOWN = 60 * 60 * 1000; // 1시간
+const COOLDOWN = 60 * 60 * 1000;
 const cooldownMap = new Map();
-const ALLOWED_ROLE_IDS = [
-  '786128824365482025',
-  '1201856430580432906'
-];
+const ALLOWED_ROLE_IDS = ['786128824365482025', '1201856430580432906'];
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수이벤트')
-    .setDescription('60초 선착순 1명만 파랑 정수를 받을 수 있는 깜짝 이벤트!'),
+    .setDescription('60초 선착순 1명만 파랑 정수를 받을 수 있는 깜짝 이벤트!')
+    .addChannelOption(opt =>
+      opt
+        .setName('channel')
+        .setDescription('이벤트를 진행할 채널(선택)')
+        .addChannelTypes(
+          ChannelType.GuildText,
+          ChannelType.GuildAnnouncement,
+          ChannelType.PublicThread,
+          ChannelType.PrivateThread,
+          ChannelType.AnnouncementThread
+        )
+        .setRequired(false)
+    ),
   async execute(interaction) {
     const member = interaction.member;
     const userId = interaction.user.id;
-    const isManager = member.permissions.has(PermissionsBitField.Flags.Administrator) || member.permissions.has(PermissionsBitField.Flags.ManageGuild);
+    const isManager =
+      member.permissions.has(PermissionsBitField.Flags.Administrator) ||
+      member.permissions.has(PermissionsBitField.Flags.ManageGuild);
     const hasAllowedRole = member.roles.cache.some(r => ALLOWED_ROLE_IDS.includes(r.id));
 
     if (!isManager && !hasAllowedRole) {
       await interaction.reply({ content: '❌ 특정 역할 또는 관리자만 사용 가능.', ephemeral: true });
       return;
     }
+
     if (!isManager) {
       const lastUsed = cooldownMap.get(userId) || 0;
       const now = Date.now();
@@ -116,32 +135,49 @@ module.exports = {
       cooldownMap.set(userId, now);
     }
 
-    const embed = new EmbedBuilder()
+    const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
+
+    const mePerms = targetChannel.permissionsFor(interaction.client.user);
+    const canView = mePerms?.has(PermissionsBitField.Flags.ViewChannel);
+    const canSend = mePerms?.has(PermissionsBitField.Flags.SendMessages) || mePerms?.has(PermissionsBitField.Flags.SendMessagesInThreads);
+    const canEmbed = mePerms?.has(PermissionsBitField.Flags.EmbedLinks);
+
+    if (!canView || !canSend || !canEmbed) {
+      await interaction.reply({
+        content: '❌ 선택한 채널에 메시지를 보낼 권한이 없어요. (보기/메시지/임베드 권한 필요)',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const announceEmbed = new EmbedBuilder()
       .setTitle(`🎲 [깜짝 정수 이벤트] 🎲`)
       .setDescription(
-        `60초 안에 **가장 먼저** '정수 받기' 버튼을 누르면\n`
-        + `💰 *얼마가 나올지 아무도 모름!*\n`
-        + `1천만 정수의 주인공이 나올 수도?!\n\n`
-        + `참여법: 버튼을 가장 먼저 누르세요!`
+        `60초 안에 **가장 먼저** '정수 받기' 버튼을 누르면\n` +
+        `💰 *얼마가 나올지 아무도 모름!*\n` +
+        `1천만 정수의 주인공이 나올 수도?!\n\n` +
+        `참여법: 버튼을 가장 먼저 누르세요!`
       )
       .setColor(0x3b8beb)
       .setFooter({ text: '정수 금액은 수령 후 공개!' });
 
     const btnRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('gift_event_btn')
-        .setLabel(`정수 받기`)
-        .setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('gift_event_btn').setLabel(`정수 받기`).setStyle(ButtonStyle.Primary)
     );
 
-    const msg = await interaction.channel.send({ embeds: [embed], components: [btnRow] });
-    await interaction.reply({ content: '이벤트가 시작됐어요! 채팅방을 확인하세요!', ephemeral: true });
+    const msg = await targetChannel.send({ embeds: [announceEmbed], components: [btnRow] });
+
+    if (targetChannel.id === interaction.channel.id) {
+      await interaction.reply({ content: '이벤트가 시작됐어요! 채팅방을 확인하세요!', ephemeral: true });
+    } else {
+      await interaction.reply({ content: `이벤트가 <#${targetChannel.id}> 에서 시작됐어요!`, ephemeral: true });
+    }
 
     let claimed = false;
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      time: 60000
+      time: 60000,
     });
 
     collector.on('collect', async i => {
@@ -159,9 +195,8 @@ module.exports = {
       }
       claimed = true;
       collector.stop('claimed');
-      const reward = pickReward();
 
-      // 𝕯𝖔𝖓𝖔𝖗 체크 및 보상/안내문 처리
+      const reward = pickReward();
       const isDonor = i.member.roles.cache.has(DONOR_ROLE);
       let rewardAmount = reward.amount;
       let donorText = '';
@@ -170,29 +205,33 @@ module.exports = {
         donorText = '💜 𝕯𝖔𝖓𝖔𝖗 : 1만원 미만 보상이 **1만원**으로 고정되어 지급됩니다.';
       }
 
+      const reasonChannelName = targetChannel?.name ? `#${targetChannel.name}` : `채널:${targetChannel.id}`;
       try {
-        await addBE(i.user.id, rewardAmount, isDonor ? '정수이벤트 (𝕯𝖔𝖓𝖔𝖗 최저보상 적용)' : `정수이벤트 (${interaction.channel.name})`);
+        await addBE(
+          i.user.id,
+          rewardAmount,
+          isDonor ? '정수이벤트 (𝕯𝖔𝖓𝖔𝖗 최저보상 적용)' : `정수이벤트 (${reasonChannelName})`
+        );
       } catch (err) {
-        await i.reply({ content: `BE 지급 중 오류 발생. 관리자 문의바람.`, ephemeral: true });
+        await i.reply({ content: `BE 지급 중 오류 발생. 관리자에게 문의해 주세요.`, ephemeral: true });
         return;
       }
+
       await i.update({
         embeds: [getEffectEmbed(i.user, { ...reward, amount: rewardAmount }, isDonor, donorText)],
         components: [
           new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('claimed')
-              .setLabel('이미 수령됨')
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          )
-        ]
+            new ButtonBuilder().setCustomId('claimed').setLabel('이미 수령됨').setStyle(ButtonStyle.Secondary).setDisabled(true)
+          ),
+        ],
       });
     });
 
-    collector.on('end', async (collected, reason) => {
+    collector.on('end', async () => {
       if (!claimed) {
-        try { await msg.delete(); } catch (e) {}
+        try {
+          await msg.delete();
+        } catch {}
       }
     });
 
@@ -201,15 +240,11 @@ module.exports = {
         await msg.edit({
           components: [
             new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId('expired')
-                .setLabel('만료됨')
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(true)
-            )
-          ]
+              new ButtonBuilder().setCustomId('expired').setLabel('만료됨').setStyle(ButtonStyle.Secondary).setDisabled(true)
+            ),
+          ],
         });
-      } catch (e) {}
+      } catch {}
     }, 61000);
-  }
+  },
 };
