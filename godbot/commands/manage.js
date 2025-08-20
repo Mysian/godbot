@@ -554,6 +554,12 @@ module.exports = {
           ? `최근: ${lastWarnTs ? `<t:${Math.floor(lastWarnTs/1000)}:R>` : "-"}\n7일:${warn7}  30일:${warn30}  90일:${warn90}  총:${warnTotal}\n최근 코드: ${lastWarnCode}`
           : "없음";
 
+        const sehamDb = loadSeham();
+        const sehamRec = ensureSeham(sehamDb, target.id);
+        const sehamCount = sehamRec.logs.length;
+        const lastSehamTs = sehamCount ? sehamRec.logs[sehamCount - 1].ts : null;
+        const lastSehamDays = lastSehamTs ? Math.floor((now - lastSehamTs) / dayMs) : 9999;
+
         function buildEvaluations() {
           const C = [];
           const evidence = relFromEvidence(msgCount, voiceHours, activitiesCount, lastActiveDays);
@@ -610,12 +616,19 @@ module.exports = {
           );
           push(warnTrailRaw, "도덕적이지 않을 확률", "neg", 92, 2, false);
 
+          const sehamRecentBoost =
+            Math.min(40, sehamCount * 8) +
+            (lastSehamDays <= 3 ? 15 : lastSehamDays <= 7 ? 10 : lastSehamDays <= 30 ? 6 : 0);
+          const sehamRiskRaw = Math.min(95, 20 + sehamRecentBoost + (sehamCount >= 5 ? 10 : 0));
+          push(sehamRiskRaw, "최근 ‘쎄함’ 신호 누적 위험 확률", "neg", 92, 2, false);
+
           let friendlyRaw = Math.max(0,
             10 + msgPlus + vcPlus + socialPlus - rulePenalty
             - Math.min(25, offsiteRaw * 0.4)
             - Math.min(20, samePeersRaw * 0.2)
             - Math.min(15, vcCliqueRaw * 0.15)
             - Math.min(20, warnTrailRaw * 0.25)
+            - Math.min(22, sehamRecentBoost * 0.6)
           );
 
           const lowEvidence = (msgCount + voiceHours * 60) < 40 || lastActiveDays > 14;
@@ -635,7 +648,8 @@ module.exports = {
             (hasXpLock ? 12 : 0) +
             (timeoutActive ? 35 : 0) +
             Math.min(30, warn90 * 10) +
-            (lastWarnDays <= 14 ? 10 : 0);
+            (lastWarnDays <= 14 ? 10 : 0) +
+            Math.min(28, sehamRecentBoost * 0.8);
           const toxicRaw = Math.min(95, 20 + toxicSignals - socialPlus / 2);
           push(toxicRaw, "분쟁/배척 성향 확률", "neg", 90, 2, false);
 
@@ -646,10 +660,10 @@ module.exports = {
           );
           push(churnRaw, "이탈 위험 확률", "neg", 90, 2, false);
 
-          const ruleOkRaw = Math.max(0, 85 - rulePenalty);
+          const ruleOkRaw = Math.max(0, 85 - rulePenalty - Math.min(20, sehamRecentBoost * 0.5));
           push(ruleOkRaw, "규칙 준수 확률", "pos", 88, 3, true);
 
-          const riskMgmtRaw = Math.min(95, rulePenalty + (toxicSignals / 2));
+          const riskMgmtRaw = Math.min(95, rulePenalty + (toxicSignals / 2) + Math.min(25, sehamRecentBoost * 0.9));
           push(riskMgmtRaw, "관리가 필요한 상태일 확률", "neg", 92, 2, false);
 
           const influenceRaw = Math.min(40, roleCount * 4) + Math.min(40, (msgCount / 800) * 40) + Math.min(20, (topFriends.length || 0) * 6);
@@ -658,7 +672,7 @@ module.exports = {
           const steadyRaw = (joinDays > 60 ? 25 : 0) + (lastActiveDays <= 7 ? 35 : 0) + (msgCount >= 60 ? 25 : 0) + (voiceHours >= 5 ? 15 : 0);
           push(steadyRaw, "꾸준한 스테디셀러 확률", "pos", 86, 3, true);
 
-        const MIN_SHOW = 40;
+          const MIN_SHOW = 40;
           const result = C
             .filter(x => x.p >= MIN_SHOW)
             .sort((a, b) => b.p - a.p);
@@ -670,6 +684,10 @@ module.exports = {
 
         const evalLines = buildEvaluations();
         const evalText = Array.isArray(evalLines) ? evalLines.join("\n") : String(evalLines);
+
+        const sehamInfoText = sehamCount
+          ? `카운트: ${sehamCount}${lastSehamTs ? `\n최근: <t:${Math.floor(lastSehamTs/1000)}:R>` : ""}`
+          : "없음";
 
         const embed = new EmbedBuilder()
           .setTitle(`유저 정보: ${target.tag}`)
@@ -694,6 +712,7 @@ module.exports = {
               inline: false
             },
             { name: "제재/경고 이력", value: warnInfoText, inline: false },
+            { name: "쎄함 카운트", value: sehamInfoText, inline: false },
             { name: "갓봇의 평가", value: evalText.slice(0, 1000), inline: false },
             ...(evalText.length > 1000 ? [{ name: "갓봇의 평가(계속)", value: evalText.slice(1000, 2000), inline: false }] : []),
             ...(evalText.length > 2000 ? [{ name: "갓봇의 평가(더 보기)", value: evalText.slice(2000, 3000), inline: false }] : [])
