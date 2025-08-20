@@ -67,6 +67,12 @@ module.exports = {
       sc.setName('쿠폰정보')
         .setDescription('쿠폰 상세 정보 보기')
         .addStringOption(o => o.setName('코드').setDescription('쿠폰 코드').setRequired(true))
+    )
+    .addSubcommand(sc =>
+      sc.setName('쿠폰공유')
+        .setDescription('쿠폰 코드를 서버에 공개 공유')
+        .addStringOption(o => o.setName('코드').setDescription('쿠폰 코드').setRequired(true))
+        .addChannelOption(o => o.setName('채널').setDescription('공유할 채널(미지정 시 현재 채널)'))
     ),
   async execute(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -80,7 +86,7 @@ module.exports = {
       const config = loadConfig();
       config.fee = fee;
       saveConfig(config);
-      return interaction.reply({ content: `정수 송금 수수료를 ${fee}%로 설정 완료!`, ephemeral: false });
+      return interaction.reply({ content: `정수 송금 수수료를 ${fee}%로 설정 완료!`, ephemeral: true });
     }
 
     if (sub === '쿠폰발급') {
@@ -128,7 +134,7 @@ module.exports = {
           `코드: \`${code}\`\n금액: **${amount.toLocaleString('ko-KR')} BE**\n사용모드: **${modeText}**\n유효기간: **${days}일** (만료: ${toKST(expiresAt)})` + (note ? `\n메모: ${note}` : '')
         )
         .setFooter({ text: `발급자: ${interaction.user.tag}` });
-      return interaction.reply({ embeds: [embed], ephemeral: false });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     if (sub === '쿠폰목록') {
@@ -155,7 +161,7 @@ module.exports = {
       }).join('\n');
       const footer = `전체 ${items.length}개 | ${page}/${Math.max(1, Math.ceil(items.length / perPage))}페이지`;
       const embed = new EmbedBuilder().setTitle(activeOnly ? '쿠폰 목록(활성)' : '쿠폰 목록(전체)').setColor(0x00aaff).setDescription(lines).setFooter({ text: footer });
-      return interaction.reply({ embeds: [embed], ephemeral: false });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     if (sub === '쿠폰취소') {
@@ -168,7 +174,7 @@ module.exports = {
       if (c.canceled) return interaction.reply({ content: '이미 취소된 쿠폰입니다.', ephemeral: true });
       c.canceled = true;
       saveCoupons(store);
-      return interaction.reply({ content: `쿠폰 \`${code}\` 취소 완료.`, ephemeral: false });
+      return interaction.reply({ content: `쿠폰 \`${code}\` 취소 완료.`, ephemeral: true });
     }
 
     if (sub === '쿠폰정보') {
@@ -186,7 +192,37 @@ module.exports = {
         .setDescription(
           `코드: \`${c.code}\`\n금액: **${c.amount.toLocaleString('ko-KR')} BE**\n사용모드: **${modeText}**\n사용: **${c.usedCount}/${c.totalLimit ?? '∞'}**\n유효기간: ${toKST(c.createdAt)} ~ ${toKST(c.expiresAt)}\n상태: **${status}**\n발급자: <@${c.creatorId}>` + (c.note ? `\n메모: ${c.note}` : '')
         );
-      return interaction.reply({ embeds: [embed], ephemeral: false });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (sub === '쿠폰공유') {
+      let code = interaction.options.getString('코드', true);
+      code = normalizeCode(code);
+      if (!code) return interaction.reply({ content: '코드 형식이 올바르지 않습니다.', ephemeral: true });
+      const store = loadCoupons();
+      const c = store[code];
+      if (!c) return interaction.reply({ content: '해당 코드를 찾을 수 없습니다.', ephemeral: true });
+      if (c.canceled) return interaction.reply({ content: '취소된 쿠폰은 공유할 수 없습니다.', ephemeral: true });
+      if (Date.now() > c.expiresAt) return interaction.reply({ content: '만료된 쿠폰은 공유할 수 없습니다.', ephemeral: true });
+
+      const modeText = c.mode === 'per_user_once' ? '여러 유저가 1회씩' : c.mode === 'single_use' ? '유저 1명만 선착순' : `총 ${c.totalLimit}회 사용 가능`;
+      const targetChannel = interaction.options.getChannel('채널') || interaction.channel;
+      if (!targetChannel || !targetChannel.isTextBased()) {
+        return interaction.reply({ content: '유효한 텍스트 채널을 선택해 주세요.', ephemeral: true });
+      }
+
+      const share = new EmbedBuilder()
+        .setTitle('🧧 쿠폰 코드')
+        .setColor(0xff5e5e)
+        .setDescription(
+          `-# /정수획득 명령어로 사용 가능\n` +
+          `[상품: ${c.amount.toLocaleString('ko-KR')} BE | 형태: ${modeText} | 만료: ${toKST(c.expiresAt)}]\n` +
+          `[${c.code}]`
+        )
+        .setFooter({ text: '까리한 디스코드를 이용해주셔서 언제나 감사합니다.' });
+
+      await targetChannel.send({ embeds: [share] });
+      return interaction.reply({ content: `쿠폰 \`${c.code}\` 공유 완료.`, ephemeral: true });
     }
   }
 };
