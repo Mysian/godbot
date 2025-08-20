@@ -161,36 +161,31 @@ module.exports = function setupPersonalChannelUtility(client) {
       if (prefix === "pc_text") {
         await interaction.deferReply({ ephemeral: true });
         const ch = await createTextChannel(guild, targetMember);
-        await interaction.editReply({
-          content: `개인채팅채널 생성 완료: <#${ch.id}>`,
-        });
-
+        await interaction.editReply({ content: `개인채팅채널 생성 완료: <#${ch.id}>` });
         const toDelete = [];
         if (interaction.message?.deletable) toDelete.push(interaction.message.delete().catch(() => null));
-        if (interaction.channel) {
-          toDelete.push(interaction.channel.messages.delete(triggerMsgId).catch(() => null));
-        }
+        if (interaction.channel) toDelete.push(interaction.channel.messages.delete(triggerMsgId).catch(() => null));
         await Promise.allSettled(toDelete);
       } else if (prefix === "pc_voice") {
         const ok = await hasAllRequiredRoles(targetMember);
         if (!ok) {
-          return interaction.reply({
+          await interaction.reply({
             content: "대상 유저가 필수 역할을 모두 보유하고 있지 않아 개인음성채널을 만들 수 없습니다.",
             ephemeral: true,
           });
+          const toDelete = [];
+          if (interaction.message?.deletable) toDelete.push(interaction.message.delete().catch(() => null));
+          if (interaction.channel) toDelete.push(interaction.channel.messages.delete(triggerMsgId).catch(() => null));
+          await Promise.allSettled(toDelete);
+          return;
         }
         await interaction.deferReply({ ephemeral: true });
         const ch = await createVoiceChannel(guild, targetMember);
         await removeRequiredRoles(targetMember).catch(() => null);
-        await interaction.editReply({
-          content: `개인음성채널 생성 완료: <#${ch.id}> (필수 역할 해제됨)`,
-        });
-
+        await interaction.editReply({ content: `개인음성채널 생성 완료: <#${ch.id}> (필수 역할 해제됨)` });
         const toDelete = [];
         if (interaction.message?.deletable) toDelete.push(interaction.message.delete().catch(() => null));
-        if (interaction.channel) {
-          toDelete.push(interaction.channel.messages.delete(triggerMsgId).catch(() => null));
-        }
+        if (interaction.channel) toDelete.push(interaction.channel.messages.delete(triggerMsgId).catch(() => null));
         await Promise.allSettled(toDelete);
       }
     } catch {}
