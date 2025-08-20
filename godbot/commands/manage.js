@@ -112,11 +112,11 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: "유저 관리", value: "user" },
-          { name: "서버상태", value: "status" },
-          { name: "저장파일 백업", value: "json_backup" },
-          { name: "스팸의심 계정 추방", value: "spam_kick" },
+          { name: "유저 평가 지표", value: "eval_rank" },
           { name: "활동 이력", value: "activity_log" },
-          { name: "유저 평가 지표", value: "eval_rank" }
+          { name: "스팸의심 계정 추방", value: "spam_kick" },
+          { name: "서버상태", value: "status" },
+          { name: "저장파일 백업", value: "json_backup" }
         )
     )
     .addUserOption((option) =>
@@ -1325,18 +1325,18 @@ module.exports = {
       const allScores = users.map(calcForUser);
 
       const metricLabels = {
-        steady: "꾸준한 스테디셀러 확률",
-        influence: "영향력 있는 핵심 인물 확률",
-        toxic: "분쟁/배척 성향 확률",
-        offsite: "‘뒷서버’ 의심 정황 확률",
-        vc_clique: "소규모 중심 활동 성향 확률",
-        same_peers: "동일 유저 편향 성향 확률",
-        friendly: "서버에 우호적일 확률",
-        churn: "이탈 위험 확률",
-        rule_ok: "규칙 준수 확률",
-        risk_mgmt: "관리가 필요한 상태일 확률",
-        seham_risk: "최근 ‘쎄함’ 신호 누적 위험 확률",
-        warn_trail: "규칙 위반 징후(경고 흔적) 확률"
+        steady: "💙꾸준한 스테디셀러 확률",
+        influence: "💙영향력 있는 핵심 인물 확률",
+        toxic: "⚠️분쟁/배척 성향 확률",
+        offsite: "☢️‘뒷서버’ 의심 정황 확률",
+        vc_clique: "⚠️소규모 중심 활동 성향 확률",
+        same_peers: "⚠️동일 유저 편향 성향 확률",
+        friendly: "💙서버에 우호적일 확률",
+        churn: "⚠️이탈 위험 확률",
+        rule_ok: "💙규칙 준수 확률",
+        risk_mgmt: "☢️관리가 필요한 상태일 확률",
+        seham_risk: "⚠️최근 ‘쎄함’ 신호 누적 위험 확률",
+        warn_trail: "⚠️규칙 위반 징후(경고 흔적) 확률"
       };
 
       const metricOrder = [
