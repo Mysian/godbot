@@ -27,6 +27,27 @@ const SERVER_LOCK_ROLE_ID = "1403748042666151936";
 const XP_LOCK_ROLE_ID = "1286237811959140363";
 const VOICE_REDIRECT_CHANNEL_ID = "1202971727915651092";
 
+async function safeRender(ix, payload) {
+  try {
+    if (typeof ix.update === "function" && ix.isButton?.()) {
+      if (!ix.deferred && !ix.replied) return await ix.update(payload);
+      return await ix.editReply(payload);
+    }
+    if (typeof ix.update === "function" && ix.isStringSelectMenu?.()) {
+      if (!ix.deferred && !ix.replied) return await ix.update(payload);
+      return await ix.editReply(payload);
+    }
+    return await ix.editReply(payload);
+  } catch (e) {
+    if (e?.code === 10062 && typeof ix.reply === "function") {
+      try {
+        return await ix.reply({ ...payload, ephemeral: true });
+      } catch {}
+    }
+    throw e;
+  }
+}
+
 function loadAdminPw() {
   if (!fs.existsSync(adminpwPath)) return null;
   try {
@@ -97,6 +118,7 @@ module.exports = {
         .setDescription("대상 유저를 선택하세요. (유저 관리/활동 이력에서 필요)")
         .setRequired(false)
     ),
+  
 
   async execute(interaction) {
     const option = interaction.options.getString("옵션");
@@ -849,7 +871,7 @@ module.exports = {
             await showUserInfo(targetUserId, parentInteraction);
           } else if (i.customId === "seham_open") {
             await i.deferUpdate();
-            await showSehamPanel(targetUserId, parentInteraction, 0);
+            await showSehamPanel(targetUserId, i, 0);
           } else if (i.customId === "toggle_server_lock") {
             await i.deferReply({ ephemeral: true });
             const hasNow = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
@@ -913,114 +935,125 @@ module.exports = {
           }
         });
 
-        async function showSehamPanel(userId, parent, page = 0) {
-          let db = loadSeham();
-          const rec = ensureSeham(db, userId);
-          const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
-          if (!user) {
-            await parent.editReply({ content: "❌ 유저를 찾을 수 없습니다.", ephemeral: true });
-            return;
-          }
+        async function showSehamPanel(userId, ctx, page = 0) {
+  let db = loadSeham();
+  const rec = ensureSeham(db, userId);
+  const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
+  if (!user) {
+    await safeRender(ctx, { content: "❌ 유저를 찾을 수 없습니다.", embeds: [], components: [] });
+    return;
+  }
 
-          const perPage = 10;
-          const total = rec.logs.length;
-          const totalPages = Math.max(1, Math.ceil(total / perPage));
-          const curPage = Math.min(Math.max(0, page), totalPages - 1);
-          const start = curPage * perPage;
-          const pageLogs = rec.logs.slice().reverse().slice(start, start + perPage);
+  const perPage = 10;
+  const total = rec.logs.length;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const curPage = Math.min(Math.max(0, page), totalPages - 1);
+  const start = curPage * perPage;
+  const pageLogs = rec.logs.slice().reverse().slice(start, start + perPage);
 
-          const lines = pageLogs.map((l, idx) => {
-            const n = total - (start + idx);
-            const t = typeof l.ts === "number" ? `<t:${Math.floor(l.ts/1000)}:R>` : "-";
-            const by = l.by ? `<@${l.by}>` : "-";
-            const reason = l.reason ? String(l.reason).slice(0, 200) : "(사유 미기재)";
-            return `#${n} ${t} | by ${by}\n└ ${reason}`;
-          });
+  const lines = pageLogs.map((l, idx) => {
+    const n = total - (start + idx);
+    const t = typeof l.ts === "number" ? `<t:${Math.floor(l.ts/1000)}:R>` : "-";
+    const by = l.by ? `<@${l.by}>` : "-";
+    const reason = l.reason ? String(l.reason).slice(0, 200) : "(사유 미기재)";
+    return `#${n} ${t} | by ${by}\n└ ${reason}`;
+  });
 
-          const embed = new EmbedBuilder()
-            .setTitle(`쎄함(유의) 카운트 현황 - ${user.tag}`)
-            .setThumbnail(user.displayAvatarURL())
-            .addFields(
-              { name: "현재 카운트", value: `${rec.logs.length}`, inline: true },
-              { name: "대상 유저", value: `<@${userId}>`, inline: true },
-              { name: "최근 기록", value: lines.length ? lines.join("\n") : "기록 없음", inline: false }
+  const embed = new EmbedBuilder()
+    .setTitle(`쎄함(유의) 카운트 현황 - ${user.tag}`)
+    .setThumbnail(user.displayAvatarURL())
+    .addFields(
+      { name: "현재 카운트", value: `${rec.logs.length}`, inline: true },
+      { name: "대상 유저", value: `<@${userId}>`, inline: true },
+      { name: "최근 기록", value: lines.length ? lines.join("\n") : "기록 없음", inline: false }
+    )
+    .setFooter({ text: `페이지 ${curPage + 1} / ${totalPages}` })
+    .setColor(0xf39c12);
+
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("seham_add").setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("seham_cancel").setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("seham_back").setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
+  );
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("seham_prev").setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(curPage === 0),
+    new ButtonBuilder().setCustomId("seham_next").setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(curPage + 1 >= totalPages)
+  );
+
+  await safeRender(ctx, { embeds: [embed], components: [row1, row2] });
+
+  const sehamCollector = ctx.channel.createMessageComponentCollector({
+    filter: (btn) =>
+      btn.user.id === interaction.user.id &&
+      ["seham_add","seham_cancel","seham_back","seham_prev","seham_next"].includes(btn.customId),
+    time: 14 * 60 * 1000, // 14분(토큰 만료 전 안전 마진)
+  });
+
+  sehamCollector.on("collect", async (btn) => {
+    try {
+      if (btn.customId === "seham_add") {
+        const modal = new ModalBuilder()
+          .setCustomId(`seham_add_${userId}`)
+          .setTitle("쎄함 적립 사유 입력")
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("reason")
+                .setLabel("사유 (200자 이내)")
+                .setStyle(TextInputStyle.Paragraph)
+                .setMinLength(2)
+                .setMaxLength(200)
+                .setRequired(true)
             )
-            .setFooter({ text: `페이지 ${curPage + 1} / ${totalPages}` })
-            .setColor(0xf39c12);
-
-          const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("seham_add").setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("seham_cancel").setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("seham_back").setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
           );
-          const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("seham_prev").setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(curPage === 0),
-            new ButtonBuilder().setCustomId("seham_next").setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(curPage + 1 >= totalPages)
-          );
+        await btn.showModal(modal);
+        return;
+      }
 
-          await parent.editReply({ embeds: [embed], components: [row1, row2], ephemeral: true });
-
-          const sehamCollector = parent.channel.createMessageComponentCollector({
-            filter: (btn) =>
-              btn.user.id === interaction.user.id &&
-              ["seham_add","seham_cancel","seham_back","seham_prev","seham_next"].includes(btn.customId),
-            time: 180 * 1000,
-          });
-
-          sehamCollector.on("collect", async (btn) => {
-            if (btn.customId === "seham_add") {
-              const modal = new ModalBuilder()
-                .setCustomId(`seham_add_${userId}`)
-                .setTitle("쎄함 적립 사유 입력")
-                .addComponents(
-                  new ActionRowBuilder().addComponents(
-                    new TextInputBuilder()
-                      .setCustomId("reason")
-                      .setLabel("사유 (200자 이내)")
-                      .setStyle(TextInputStyle.Paragraph)
-                      .setMinLength(2)
-                      .setMaxLength(200)
-                      .setRequired(true)
-                  )
-                );
-              await btn.showModal(modal);
-            } else if (btn.customId === "seham_cancel") {
-              await btn.deferUpdate();
-              db = loadSeham();
-              const rec2 = ensureSeham(db, userId);
-              if (!rec2.logs.length) {
-                await parent.followUp({ content: "취소할 기록이 없습니다.", ephemeral: true });
-                return;
-              }
-              const last = rec2.logs.pop();
-              rec2.count = rec2.logs.length;
-              saveSeham(db);
-              await guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
-                embeds: [
-                  new EmbedBuilder()
-                    .setTitle("쎄함 카운트 취소")
-                    .setDescription(`대상: <@${userId}>\n취소자: <@${btn.user.id}>\n이전 사유: ${last?.reason ? String(last.reason).slice(0,200) : "(없음)"}\n현재 카운트: ${rec2.count}`)
-                    .setColor(0xd35400)
-                    .setTimestamp()
-                ]
-              });
-              await showSehamPanel(userId, parent, curPage);
-              sehamCollector.stop("refresh");
-            } else if (btn.customId === "seham_prev") {
-              await btn.deferUpdate();
-              await showSehamPanel(userId, parent, Math.max(0, curPage - 1));
-              sehamCollector.stop("refresh");
-            } else if (btn.customId === "seham_next") {
-              await btn.deferUpdate();
-              await showSehamPanel(userId, parent, curPage + 1);
-              sehamCollector.stop("refresh");
-            } else if (btn.customId === "seham_back") {
-              await btn.deferUpdate();
-              await showUserInfo(userId, parent);
-              sehamCollector.stop("back");
-            }
-          });
+      if (btn.customId === "seham_cancel") {
+        let dbNow = loadSeham();
+        const rec2 = ensureSeham(dbNow, userId);
+        if (!rec2.logs.length) {
+          return btn.reply({ content: "취소할 기록이 없습니다.", ephemeral: true });
         }
+        const last = rec2.logs.pop();
+        rec2.count = rec2.logs.length;
+        saveSeham(dbNow);
+        await guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("쎄함 카운트 취소")
+              .setDescription(`대상: <@${userId}>\n취소자: <@${btn.user.id}>\n이전 사유: ${last?.reason ? String(last.reason).slice(0,200) : "(없음)"}\n현재 카운트: ${rec2.count}`)
+              .setColor(0xd35400)
+              .setTimestamp()
+          ]
+        });
+        await showSehamPanel(userId, btn, curPage);
+        sehamCollector.stop("refresh");
+        return;
+      }
+
+      if (btn.customId === "seham_prev") {
+        await showSehamPanel(userId, btn, Math.max(0, curPage - 1));
+        sehamCollector.stop("refresh");
+        return;
+      }
+      if (btn.customId === "seham_next") {
+        await showSehamPanel(userId, btn, curPage + 1);
+        sehamCollector.stop("refresh");
+        return;
+      }
+      if (btn.customId === "seham_back") {
+        await showUserInfo(userId, btn);
+        sehamCollector.stop("back");
+        return;
+      }
+    } catch (e) {
+      if (e?.code !== 10062) throw e;
+      // 10062이면 조용히 무시 (세션 만료 시 중복 클릭 등)
+    }
+  });
+}
       }
       return;
     }
