@@ -8,6 +8,7 @@ const activity = require("./utils/activity-tracker");
 const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
+const setupPersonalChannelUtility = require('./utils/personal-channel.js');
 
 const client = new Client({
   intents: [
@@ -30,6 +31,8 @@ const LOG_CHANNEL_ID = "1382168527015776287";
 module.exports.client = client;
 
 client.commands = new Collection();
+
+setupPersonalChannelUtility(client);
 
 function getAllCommandFiles(dirPath) {
   let results = [];
