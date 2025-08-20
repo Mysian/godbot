@@ -365,12 +365,12 @@ module.exports = {
 
         const navRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId("activity_prev")
+            .setCustomId(`activity_prev:${userId}:${page}`)
             .setLabel("◀ 이전")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(page === 0),
           new ButtonBuilder()
-            .setCustomId("activity_next")
+            .setCustomId(`activity_next:${userId}:${page}`)
             .setLabel("다음 ▶")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(startIdx + perPage >= activities.length)
@@ -385,16 +385,18 @@ module.exports = {
         activityCollector = ctx.channel.createMessageComponentCollector({
           filter: (btn) =>
             btn.user.id === interaction.user.id &&
-            ["activity_prev", "activity_next"].includes(btn.customId),
+            (btn.customId.startsWith("activity_prev:") || btn.customId.startsWith("activity_next:")),
           time: 14 * 60 * 1000,
         });
 
         activityCollector.on("collect", async (btn) => {
-          if (btn.customId === "activity_prev" && page > 0) {
-            await showUserActivityLog(userId, btn, page - 1);
+          const [key, uid, pg] = btn.customId.split(":");
+          const cur = Number(pg) || page;
+          if (key === "activity_prev" && cur > 0) {
+            await showUserActivityLog(uid, btn, cur - 1);
             activityCollector.stop("refresh");
-          } else if (btn.customId === "activity_next" && startIdx + perPage < activities.length) {
-            await showUserActivityLog(userId, btn, page + 1);
+          } else if (key === "activity_next" && startIdx + perPage < activities.length) {
+            await showUserActivityLog(uid, btn, cur + 1);
             activityCollector.stop("refresh");
           } else {
             try { await btn.deferUpdate(); } catch {}
@@ -418,6 +420,7 @@ module.exports = {
       }
 
       let userCollector;
+      let sehamCollector;
       await showUserInfo(selectedMember.id, interaction);
 
       async function showUserInfo(targetUserId, ctx) {
@@ -726,7 +729,7 @@ module.exports = {
             { name: "유저 ID", value: target.id, inline: false },
             { name: "서버 입장일", value: joinedAtStr, inline: false },
             { name: "마지막 활동일", value: lastActiveStr, inline: false },
-            { name: "메시지 수", value: `${msgCount}`, inline: true },
+            { name: "메시지 수", value: `${stat.message || 0}`, inline: true },
             { name: "음성 이용 시간", value: formatSeconds(voiceSec), inline: true },
             { name: "가장 친한 유저 TOP3", value: friendsText, inline: false },
             { name: "가장 적대하는 유저 TOP3", value: enemiesText, inline: false },
@@ -751,43 +754,43 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(timeoutActive ? "timeout_release" : "timeout")
+            .setCustomId(timeoutActive ? `timeout_release:${targetUserId}` : `timeout:${targetUserId}`)
             .setLabel(timeoutActive ? "타임아웃 해제" : "타임아웃 (1일)")
             .setStyle(timeoutActive ? ButtonStyle.Success : ButtonStyle.Secondary),
           new ButtonBuilder()
-            .setCustomId("kick")
+            .setCustomId(`kick:${targetUserId}`)
             .setLabel("추방")
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
-            .setCustomId("refresh_userinfo")
+            .setCustomId(`refresh_userinfo:${targetUserId}`)
             .setLabel("🔄 새로고침")
             .setStyle(ButtonStyle.Secondary)
         );
 
         const roleRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId("toggle_longstay")
-            .setLabel(hasLongStay ? "장기 투숙객 해제" : "장기 투숙객 부여")
-            .setStyle(hasLongStay ? ButtonStyle.Secondary : ButtonStyle.Primary),
+            .setCustomId(`toggle_longstay:${targetUserId}`)
+            .setLabel(member.roles.cache.has(EXCLUDE_ROLE_ID) ? "장기 투숙객 해제" : "장기 투숙객 부여")
+            .setStyle(member.roles.cache.has(EXCLUDE_ROLE_ID) ? ButtonStyle.Secondary : ButtonStyle.Primary),
           new ButtonBuilder()
-            .setCustomId("receive_monthly")
+            .setCustomId(`receive_monthly:${targetUserId}`)
             .setLabel("월세 받기")
             .setStyle(ButtonStyle.Primary),
           new ButtonBuilder()
-            .setCustomId("seham_open")
+            .setCustomId(`seham_open:${targetUserId}`)
             .setLabel("쎄함(유의) 카운트")
             .setStyle(ButtonStyle.Secondary)
         );
 
         const restrictRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId("toggle_server_lock")
-            .setLabel(hasServerLock ? "서버 활동 제한 해제" : "서버 활동 제한 적용")
-            .setStyle(hasServerLock ? ButtonStyle.Secondary : ButtonStyle.Danger),
+            .setCustomId(`toggle_server_lock:${targetUserId}`)
+            .setLabel(member.roles.cache.has(SERVER_LOCK_ROLE_ID) ? "서버 활동 제한 해제" : "서버 활동 제한 적용")
+            .setStyle(member.roles.cache.has(SERVER_LOCK_ROLE_ID) ? ButtonStyle.Secondary : ButtonStyle.Danger),
           new ButtonBuilder()
-            .setCustomId("toggle_xp_lock")
-            .setLabel(hasXpLock ? "경험치 제한 해제" : "경험치 제한 적용")
-            .setStyle(hasXpLock ? ButtonStyle.Secondary : ButtonStyle.Danger)
+            .setCustomId(`toggle_xp_lock:${targetUserId}`)
+            .setLabel(member.roles.cache.has(XP_LOCK_ROLE_ID) ? "경험치 제한 해제" : "경험치 제한 적용")
+            .setStyle(member.roles.cache.has(XP_LOCK_ROLE_ID) ? ButtonStyle.Secondary : ButtonStyle.Danger)
         );
 
         await safeRender(ctx, {
@@ -799,20 +802,30 @@ module.exports = {
 
         userCollector = ctx.channel.createMessageComponentCollector({
           filter: (i) => i.user.id === interaction.user.id &&
-            [
-              "refresh_userinfo", "timeout", "kick", "timeout_release",
-              "toggle_longstay", "receive_monthly", "seham_open",
-              "toggle_server_lock", "toggle_xp_lock"
-            ].includes(i.customId),
+            (
+              i.customId.startsWith("refresh_userinfo:") ||
+              i.customId.startsWith("timeout:") ||
+              i.customId.startsWith("kick:") ||
+              i.customId.startsWith("timeout_release:") ||
+              i.customId.startsWith("toggle_longstay:") ||
+              i.customId.startsWith("receive_monthly:") ||
+              i.customId.startsWith("seham_open:") ||
+              i.customId.startsWith("toggle_server_lock:") ||
+              i.customId.startsWith("toggle_xp_lock:")
+            ),
           time: 300 * 1000,
         });
 
         userCollector.on("collect", async (i) => {
-          if (i.customId === "refresh_userinfo") {
-            await showUserInfo(targetUserId, i);
-          } else if (i.customId === "timeout" || i.customId === "kick") {
+          const [key, uid] = i.customId.split(":");
+          if (key === "refresh_userinfo") {
+            await showUserInfo(uid, i);
+            userCollector.stop("refresh");
+            return;
+          }
+          if (key === "timeout" || key === "kick") {
             const modal = new ModalBuilder()
-              .setCustomId(`adminpw_user_${i.customId}_${targetUserId}`)
+              .setCustomId(`adminpw_user_${key}_${uid}`)
               .setTitle("관리 비밀번호 입력")
               .addComponents(
                 new ActionRowBuilder().addComponents(
@@ -826,30 +839,35 @@ module.exports = {
                 )
               );
             await i.showModal(modal);
-          } else if (i.customId === "timeout_release") {
+            return;
+          }
+          if (key === "timeout_release") {
+            try { await i.deferUpdate(); } catch {}
             try {
-              await i.deferUpdate();
-            } catch {}
-            try {
-              await i.guild.members.edit(targetUserId, { communicationDisabledUntil: null, reason: "관리 명령어로 타임아웃 해제" });
-              await i.followUp({ content: `✅ <@${targetUserId}>님의 타임아웃이 해제되었습니다.`, ephemeral: true });
+              await i.guild.members.edit(uid, { communicationDisabledUntil: null, reason: "관리 명령어로 타임아웃 해제" });
+              await i.followUp({ content: `✅ <@${uid}>님의 타임아웃이 해제되었습니다.`, ephemeral: true });
             } catch (err) {
               await i.followUp({ content: "❌ 타임아웃 해제 실패 (권한 문제일 수 있음)", ephemeral: true });
             }
-            await showUserInfo(targetUserId, i);
-          } else if (i.customId === "toggle_longstay") {
-            await ensureAck(i); // ✅ 상호작용 즉시 ACK
-            const hasLongStayNow = member.roles.cache.has(EXCLUDE_ROLE_ID);
-    let action, logMsg;
-    if (hasLongStayNow) {
-      await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
-      action = "해제";
-      logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
-    } else {
-      await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
-      action = "부여";
-      logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
-    }
+            await showUserInfo(uid, i);
+            userCollector.stop("refresh");
+            return;
+          }
+          if (key === "toggle_longstay") {
+            await ensureAck(i);
+            const m = await guild.members.fetch(uid).catch(() => null);
+            if (!m) { await i.followUp({ content: "대상 없음", ephemeral: true }); return; }
+            const hasLongStayNow = m.roles.cache.has(EXCLUDE_ROLE_ID);
+            let action, logMsg;
+            if (hasLongStayNow) {
+              await m.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
+              action = "해제";
+              logMsg = `❌ 장기 투숙객 **해제**: <@${uid}> (${m.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+            } else {
+              await m.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
+              action = "부여";
+              logMsg = `✅ 장기 투숙객 **부여**: <@${uid}> (${m.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+            }
             await i.followUp({ content: `장기 투숙객 역할을 ${action}했습니다.`, ephemeral: true });
             await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
               embeds: [
@@ -860,43 +878,55 @@ module.exports = {
                   .setTimestamp()
               ]
             });
-            await showUserInfo(targetUserId, i);
-          } else if (i.customId === "receive_monthly") {
-            await ensureAck(i); // ✅ 상호작용 즉시 ACK
-            const hasMonthlyNow = member.roles.cache.has(MONTHLY_ROLE_ID);
+            await showUserInfo(uid, i);
+            userCollector.stop("refresh");
+            return;
+          }
+          if (key === "receive_monthly") {
+            await ensureAck(i);
+            const m = await guild.members.fetch(uid).catch(() => null);
+            if (!m) { await i.followUp({ content: "대상 없음", ephemeral: true }); return; }
+            const hasMonthlyNow = m.roles.cache.has(MONTHLY_ROLE_ID);
             if (!hasMonthlyNow) {
               await i.followUp({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
               return;
             }
-            await member.roles.remove(MONTHLY_ROLE_ID, "월세 받기 처리");
+            await m.roles.remove(MONTHLY_ROLE_ID, "월세 받기 처리");
             await i.followUp({ content: "월세 납부자 역할을 해제(월세 수령) 처리했습니다.", ephemeral: true });
             await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
               embeds: [
                 new EmbedBuilder()
                   .setTitle("월세 수령 처리")
-                  .setDescription(`💸 월세 받기 처리: <@${targetUserId}> (${member.user.tag})\n월세 납부자 역할 해제\n- **처리자:** <@${i.user.id}> (${i.user.tag})`)
+                  .setDescription(`💸 월세 받기 처리: <@${uid}> (${m.user.tag})\n월세 납부자 역할 해제\n- **처리자:** <@${i.user.id}> (${i.user.tag})`)
                   .setColor(0x4eaaff)
                   .setTimestamp()
               ]
             });
-            await showUserInfo(targetUserId, i);
-          } else if (i.customId === "seham_open") {
+            await showUserInfo(uid, i);
+            userCollector.stop("refresh");
+            return;
+          }
+          if (key === "seham_open") {
             try { await i.deferUpdate(); } catch {}
-            await showSehamPanel(targetUserId, i, 0);
-          } else if (i.customId === "toggle_server_lock") {
+            await showSehamPanel(uid, i, 0);
+            return;
+          }
+          if (key === "toggle_server_lock") {
             try { await i.deferUpdate(); } catch {}
-            const hasNow = member.roles.cache.has(SERVER_LOCK_ROLE_ID);
+            const m = await guild.members.fetch(uid).catch(() => null);
+            if (!m) { await i.followUp({ content: "대상 없음", ephemeral: true }); return; }
+            const hasNow = m.roles.cache.has(SERVER_LOCK_ROLE_ID);
             try {
               if (hasNow) {
-                await member.roles.remove(SERVER_LOCK_ROLE_ID, "서버 활동 제한 해제");
+                await m.roles.remove(SERVER_LOCK_ROLE_ID, "서버 활동 제한 해제");
               } else {
-                await member.roles.add(SERVER_LOCK_ROLE_ID, "서버 활동 제한 적용");
-                const currentVcId = member.voice && member.voice.channelId;
+                await m.roles.add(SERVER_LOCK_ROLE_ID, "서버 활동 제한 적용");
+                const currentVcId = m.voice && m.voice.channelId;
                 if (currentVcId && currentVcId !== VOICE_REDIRECT_CHANNEL_ID) {
                   const dest = i.guild.channels.cache.get(VOICE_REDIRECT_CHANNEL_ID);
                   if (dest) {
                     try {
-                      await member.voice.setChannel(dest, "서버 활동 제한 적용: 지정 음성채널로 이동");
+                      await m.voice.setChannel(dest, "서버 활동 제한 적용: 지정 음성채널로 이동");
                       await i.followUp({ content: `🔒 서버 활동 제한 적용됨. 현재 음성채널에 있어 ${dest.name}로 이동시켰습니다.`, ephemeral: true });
                     } catch {
                       await i.followUp({ content: "⚠️ 이동 실패: 권한 또는 대상 채널 상태를 확인하세요.", ephemeral: true });
@@ -910,7 +940,7 @@ module.exports = {
                 embeds: [
                   new EmbedBuilder()
                     .setTitle("서버 활동 제한 변경")
-                    .setDescription(`${hasNow ? "❌ 해제" : "🟥 적용"}: <@${targetUserId}> (${member.user.tag})\n- 처리자: <@${i.user.id}> (${i.user.tag})`)
+                    .setDescription(`${hasNow ? "❌ 해제" : "🟥 적용"}: <@${uid}> (${m.user.tag})\n- 처리자: <@${i.user.id}> (${i.user.tag})`)
                     .setColor(hasNow ? 0x4caf50 : 0xe53935)
                     .setTimestamp()
                 ]
@@ -919,21 +949,26 @@ module.exports = {
             } catch (e) {
               await i.followUp({ content: "변경 실패 (권한/위치 문제일 수 있음)", ephemeral: true });
             }
-            await showUserInfo(targetUserId, i);
-          } else if (i.customId === "toggle_xp_lock") {
+            await showUserInfo(uid, i);
+            userCollector.stop("refresh");
+            return;
+          }
+          if (key === "toggle_xp_lock") {
             try { await i.deferUpdate(); } catch {}
-            const hasNow = member.roles.cache.has(XP_LOCK_ROLE_ID);
+            const m = await guild.members.fetch(uid).catch(() => null);
+            if (!m) { await i.followUp({ content: "대상 없음", ephemeral: true }); return; }
+            const hasNow = m.roles.cache.has(XP_LOCK_ROLE_ID);
             try {
               if (hasNow) {
-                await member.roles.remove(XP_LOCK_ROLE_ID, "경험치 획득 제한 해제");
+                await m.roles.remove(XP_LOCK_ROLE_ID, "경험치 획득 제한 해제");
               } else {
-                await member.roles.add(XP_LOCK_ROLE_ID, "경험치 획득 제한 적용");
+                await m.roles.add(XP_LOCK_ROLE_ID, "경험치 획득 제한 적용");
               }
               await interaction.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
                 embeds: [
                   new EmbedBuilder()
                     .setTitle("경험치 획득 제한 변경")
-                    .setDescription(`${hasNow ? "❌ 해제" : "🟥 적용"}: <@${targetUserId}> (${member.user.tag})\n- 처리자: <@${i.user.id}> (${i.user.tag})`)
+                    .setDescription(`${hasNow ? "❌ 해제" : "🟥 적용"}: <@${uid}> (${m.user.tag})\n- 처리자: <@${i.user.id}> (${i.user.tag})`)
                     .setColor(hasNow ? 0x4caf50 : 0xe53935)
                     .setTimestamp()
                 ]
@@ -942,11 +977,14 @@ module.exports = {
             } catch (e) {
               await i.followUp({ content: "변경 실패 (권한/위치 문제일 수 있음)", ephemeral: true });
             }
-            await showUserInfo(targetUserId, i);
+            await showUserInfo(uid, i);
+            userCollector.stop("refresh");
+            return;
           }
         });
 
         async function showSehamPanel(userId, ctx2, page = 0) {
+          if (sehamCollector) sehamCollector.stop("refresh");
           let db = loadSeham();
           const rec = ensureSeham(db, userId);
           const user = await guild.members.fetch(userId).then(m => m.user).catch(() => null);
@@ -982,29 +1020,34 @@ module.exports = {
             .setColor(0xf39c12);
 
           const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("seham_add").setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId("seham_cancel").setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("seham_back").setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId(`seham_add:${userId}`).setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`seham_cancel:${userId}`).setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`seham_back:${userId}`).setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
           );
           const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("seham_prev").setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(curPage === 0),
-            new ButtonBuilder().setCustomId("seham_next").setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(curPage + 1 >= totalPages)
+            new ButtonBuilder().setCustomId(`seham_prev:${userId}:${curPage}`).setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(curPage === 0),
+            new ButtonBuilder().setCustomId(`seham_next:${userId}:${curPage}`).setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(curPage + 1 >= totalPages)
           );
 
           await safeRender(ctx2, { embeds: [embed], components: [row1, row2] });
 
-          const sehamCollector = ctx2.channel.createMessageComponentCollector({
+          sehamCollector = ctx2.channel.createMessageComponentCollector({
             filter: (btn) =>
               btn.user.id === interaction.user.id &&
-              ["seham_add","seham_cancel","seham_back","seham_prev","seham_next"].includes(btn.customId),
+              btn.customId.startsWith("seham_"),
             time: 14 * 60 * 1000,
           });
 
           sehamCollector.on("collect", async (btn) => {
             try {
-              if (btn.customId === "seham_add") {
+              const parts = btn.customId.split(":");
+              const key = parts[0];
+              const uid = parts[1];
+              const pg = Number(parts[2] || curPage) || 0;
+
+              if (key === "seham_add") {
                 const modal = new ModalBuilder()
-                  .setCustomId(`seham_add_${userId}`)
+                  .setCustomId(`seham_add_${uid}`)
                   .setTitle("쎄함 적립 사유 입력")
                   .addComponents(
                     new ActionRowBuilder().addComponents(
@@ -1021,9 +1064,9 @@ module.exports = {
                 return;
               }
 
-              if (btn.customId === "seham_cancel") {
+              if (key === "seham_cancel") {
                 let dbNow = loadSeham();
-                const rec2 = ensureSeham(dbNow, userId);
+                const rec2 = ensureSeham(dbNow, uid);
                 if (!rec2.logs.length) {
                   return btn.reply({ content: "취소할 기록이 없습니다.", ephemeral: true });
                 }
@@ -1034,28 +1077,28 @@ module.exports = {
                   embeds: [
                     new EmbedBuilder()
                       .setTitle("쎄함 카운트 취소")
-                      .setDescription(`대상: <@${userId}>\n취소자: <@${btn.user.id}>\n이전 사유: ${last?.reason ? String(last.reason).slice(0,200) : "(없음)"}\n현재 카운트: ${rec2.count}`)
+                      .setDescription(`대상: <@${uid}>\n취소자: <@${btn.user.id}>\n이전 사유: ${last?.reason ? String(last.reason).slice(0,200) : "(없음)"}\n현재 카운트: ${rec2.count}`)
                       .setColor(0xd35400)
                       .setTimestamp()
                   ]
                 });
-                await showSehamPanel(userId, btn, curPage);
+                await showSehamPanel(uid, btn, pg);
                 sehamCollector.stop("refresh");
                 return;
               }
 
-              if (btn.customId === "seham_prev") {
-                await showSehamPanel(userId, btn, Math.max(0, curPage - 1));
+              if (key === "seham_prev") {
+                await showSehamPanel(uid, btn, Math.max(0, pg - 1));
                 sehamCollector.stop("refresh");
                 return;
               }
-              if (btn.customId === "seham_next") {
-                await showSehamPanel(userId, btn, curPage + 1);
+              if (key === "seham_next") {
+                await showSehamPanel(uid, btn, pg + 1);
                 sehamCollector.stop("refresh");
                 return;
               }
-              if (btn.customId === "seham_back") {
-                await showUserInfo(userId, btn);
+              if (key === "seham_back") {
+                await showUserInfo(uid, btn);
                 sehamCollector.stop("back");
                 return;
               }
@@ -1210,13 +1253,13 @@ module.exports = {
         .setColor(0xf39c12);
 
       const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("seham_add").setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("seham_cancel").setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("seham_back").setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`seham_add:${targetUserId}`).setLabel("쎄함 적립하기").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`seham_cancel:${targetUserId}`).setLabel("최근 1건 취소").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`seham_back:${targetUserId}`).setLabel("↩ 뒤로가기").setStyle(ButtonStyle.Secondary)
       );
       const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("seham_prev").setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(true),
-        new ButtonBuilder().setCustomId("seham_next").setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1)
+        new ButtonBuilder().setCustomId(`seham_prev:${targetUserId}:0`).setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`seham_next:${targetUserId}:0`).setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1)
       );
 
       await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
