@@ -48,6 +48,12 @@ async function safeRender(ix, payload) {
   }
 }
 
+async function ensureAck(i) {
+  if (!i.deferred && !i.replied) {
+    try { await i.deferUpdate(); } catch {}
+  }
+}
+
 function loadAdminPw() {
   if (!fs.existsSync(adminpwPath)) return null;
   try {
@@ -832,17 +838,18 @@ module.exports = {
             }
             await showUserInfo(targetUserId, i);
           } else if (i.customId === "toggle_longstay") {
+            await ensureAck(i); // ✅ 상호작용 즉시 ACK
             const hasLongStayNow = member.roles.cache.has(EXCLUDE_ROLE_ID);
-            let action, logMsg;
-            if (hasLongStayNow) {
-              await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
-              action = "해제";
-              logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
-            } else {
-              await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
-              action = "부여";
-              logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
-            }
+    let action, logMsg;
+    if (hasLongStayNow) {
+      await member.roles.remove(EXCLUDE_ROLE_ID, "장기 투숙객 해제");
+      action = "해제";
+      logMsg = `❌ 장기 투숙객 **해제**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+    } else {
+      await member.roles.add(EXCLUDE_ROLE_ID, "장기 투숙객 부여");
+      action = "부여";
+      logMsg = `✅ 장기 투숙객 **부여**: <@${targetUserId}> (${member.user.tag})\n- **처리자:** <@${i.user.id}> (${i.user.tag})`;
+    }
             await i.followUp({ content: `장기 투숙객 역할을 ${action}했습니다.`, ephemeral: true });
             await i.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID)?.send({
               embeds: [
@@ -855,6 +862,7 @@ module.exports = {
             });
             await showUserInfo(targetUserId, i);
           } else if (i.customId === "receive_monthly") {
+            await ensureAck(i); // ✅ 상호작용 즉시 ACK
             const hasMonthlyNow = member.roles.cache.has(MONTHLY_ROLE_ID);
             if (!hasMonthlyNow) {
               await i.followUp({ content: "❌ 월세 납부자 역할이 없습니다. 받을 수 없습니다.", ephemeral: true });
