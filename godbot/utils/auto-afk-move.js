@@ -58,7 +58,7 @@ module.exports = function setupAutoAfkMove(client) {
 
     let nickname = voiceState.member.nickname || voiceState.member.user.username;
 
-    // 110분 뒤 경고 메시지 (음성채널ID = 텍스트채널ID)
+    // 330분 뒤 경고 메시지 (음성채널ID = 텍스트채널ID)
     const warnTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
@@ -66,18 +66,18 @@ module.exports = function setupAutoAfkMove(client) {
       ) {
         const last = lastActivity.get(voiceState.id) || 0;
         const now = Date.now();
-        if (now - last >= 110 * 60 * 1000) {
+        if (now - last >= 330 * 60 * 1000) {
           try {
             const textChannel = await client.channels.fetch(channel.id).catch(() => null);
             if (textChannel) {
-              await textChannel.send(`-# '${nickname}'님, 공용 음성채널에 현재 110분째 아무런 활동 없이 계십니다. 10분 뒤 잠수방으로 자동 이동됩니다.`);
+              await textChannel.send(`-# '${nickname}'님, 공용 음성채널에 현재 330분째 아무런 활동 없이 계십니다. 30분 뒤 잠수방으로 자동 이동됩니다.`);
             }
           } catch {}
         }
       }
-    }, 110 * 60 * 1000);
+    }, 330 * 60 * 1000);
 
-    // 120분 뒤 이동 + 이동 메시지 (ANNOUNCE_TEXT_CHANNEL_ID 고정)
+    // 360분 뒤 이동 + 이동 메시지 (ANNOUNCE_TEXT_CHANNEL_ID 고정)
     const moveTimer = setTimeout(async () => {
       if (
         channel.members.filter(m => !m.user.bot).size === 1 &&
@@ -85,22 +85,22 @@ module.exports = function setupAutoAfkMove(client) {
       ) {
         const last = lastActivity.get(voiceState.id) || 0;
         const now = Date.now();
-        if (now - last >= 120 * 60 * 1000) {
+        if (now - last >= 360 * 60 * 1000) {
           if (channel.id === AFK_CHANNEL_ID) {
             clearTimers(voiceState.id);
             return;
           }
           try {
-            await voiceState.setChannel(AFK_CHANNEL_ID, "2시간 혼자 있어서 잠수방 이동");
+            await voiceState.setChannel(AFK_CHANNEL_ID, "6시간 혼자 있어서 잠수방 이동");
             const announceChannel = await client.channels.fetch(ANNOUNCE_TEXT_CHANNEL_ID).catch(() => null);
             if (announceChannel) {
-              await announceChannel.send(`-# '${nickname}'님, 120분간 공용 음성채널에 비활동 상태로 혼자 계셔서 잠수방으로 이동되었습니다.`);
+              await announceChannel.send(`-# '${nickname}'님, 6시간동안 공용 음성채널에 비활동 상태로 혼자 계셔서 잠수방으로 이동되었습니다.`);
             }
           } catch {}
         }
       }
       clearTimers(voiceState.id);
-    }, 120 * 60 * 1000);
+    }, 360 * 60 * 1000);
 
     clearTimers(voiceState.id);
     soloTimers.set(voiceState.id, { warn: warnTimer, move: moveTimer });
