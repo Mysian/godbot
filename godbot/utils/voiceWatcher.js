@@ -1,5 +1,5 @@
-const { joinVoiceChannel } = require('@discordjs/voice');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
 const os = require("os");
 const activityTracker = require("./activity-tracker");
 
@@ -51,6 +51,58 @@ function formatVoiceTime(seconds) {
 }
 
 module.exports = function(client) {
+  // ========= [추가 2] 맨션 시, 해당 "음성채널 채팅"에서만 현황 임베드 출력 =========
+  let mentionBound = false;
+  if (!mentionBound) {
+    client.on('messageCreate', async (message) => {
+      try {
+        if (!message.guild) return;
+        if (message.author.bot) return;
+        if (!message.mentions.users.has(client.user.id)) return;
+
+        const ch = message.channel;
+        const isVoiceChat =
+          (typeof ch.isVoiceBased === 'function' && ch.isVoiceBased()) ||
+          ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildStageVoice;
+
+        if (!isVoiceChat) return; // 음성채널 내장 채팅에서만 반응
+
+        const vc = ch; // d.js v14: 보이스 채널이 직접 텍스트 지원
+        await message.guild.members.fetch();
+
+        const humans = vc.members.filter(m => !m.user.bot);
+        const bots = vc.members.filter(m => m.user.bot);
+
+        const humanNames = humans.map(m => m.displayName || m.user.username).slice(0, 25);
+        const namesLine = humanNames.length ? humanNames.join(', ') : '없음';
+
+        const bitrate = vc.bitrate ? `${Math.round(vc.bitrate / 1000)}kbps` : '기본';
+        const limit = vc.userLimit && vc.userLimit > 0 ? `${vc.userLimit}명` : '무제한';
+        const region = vc.rtcRegion || '자동';
+        const typeLabel = (vc.type === ChannelType.GuildStageVoice) ? '스테이지 채널' : '보이스 채널';
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🎙️ ${vc.name} 현황`)
+          .setColor(0x5865F2)
+          .setDescription(
+            `접속 인원: **${humans.size}명** (봇 ${bots.size}명)\n` +
+            `접속 중(일부): ${namesLine}`
+          )
+          .addFields(
+            { name: '채널 타입', value: typeLabel, inline: true },
+            { name: '인원 제한', value: limit, inline: true },
+            { name: '비트레이트', value: bitrate, inline: true },
+            { name: '지역', value: region, inline: true },
+          )
+          .setFooter({ text: '맨션 시점 기준 스냅샷' });
+
+        await ch.send({ embeds: [embed] });
+      } catch (_) {}
+    });
+    mentionBound = true;
+  }
+  // ========================================================================
+
   async function joinAndWatch() {
     try {
       const guild = client.guilds.cache.find(g =>
@@ -58,6 +110,7 @@ module.exports = function(client) {
       );
       if (!guild) return;
 
+      // 첫 접속
       joinVoiceChannel({
         channelId: TARGET_CHANNEL_ID,
         guildId: guild.id,
@@ -169,7 +222,7 @@ module.exports = function(client) {
           const rssMB = (memory.rss / 1024 / 1024);
           const heapMB = (memory.heapUsed / 1024 / 1024);
 
-        const load = os.loadavg()[0];
+          const load = os.loadavg()[0];
           const cpuCount = os.cpus().length;
 
           const uptimeSec = Math.floor(process.uptime());
@@ -217,11 +270,35 @@ module.exports = function(client) {
         }
       }
 
+      // ========= [추가 1] 주기적 강제 접속 보장 =========
+      async function ensureConnected() {
+        try {
+          const me = guild.members.me;
+          const inTarget = me?.voice?.channelId === TARGET_CHANNEL_ID;
+          if (!inTarget) {
+            const conn = getVoiceConnection(guild.id);
+            if (conn && conn.joinConfig?.channelId !== TARGET_CHANNEL_ID) {
+              try { conn.destroy(); } catch {}
+            }
+            joinVoiceChannel({
+              channelId: TARGET_CHANNEL_ID,
+              guildId: guild.id,
+              adapterCreator: guild.voiceAdapterCreator,
+              selfDeaf: true,
+              selfMute: true,
+            });
+          }
+        } catch (_) {}
+      }
+      // ===============================================
+
+      await ensureConnected();
       await updateEmbed();
       await updateVoiceTop10Embed();
       await updateStatusEmbed(guild, statusChannel);
 
       setInterval(() => {
+        ensureConnected(); // <- 추가
         updateEmbed();
         updateVoiceTop10Embed();
       }, 60000);
