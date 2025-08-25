@@ -15,7 +15,7 @@ const LONG_INACTIVE_DAYS = 90;
 const NEWBIE_ROLE_ID = '1295701019430227988';
 const NEWBIE_DAYS = 7;
 const PAGE_SIZE = 30;
-const EXEMPT_ROLE_IDS = ['1371476512024559756'];
+const EXEMPT_ROLE_IDS = ['1371476512024559756', '1208987442234007582'];
 const LOG_CHANNEL_ID = '1380874052855529605';
 const BOOSTER_ROLE_ID = '1207437971037356142';
 const DONOR_ROLE_ID = '1397076919127900171';
@@ -261,6 +261,7 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
   const allMembers = await guild.members.fetch();
   let arr = [];
   for (const member of allMembers.values()) {
+    if (EXEMPT_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
     if (!member.roles.cache.has(NEWBIE_ROLE_ID)) continue;
     if (!member.joinedAt || (now - member.joinedAt) / (1000 * 60 * 60 * 24) < days) continue;
     const userData = activityData[member.id];
