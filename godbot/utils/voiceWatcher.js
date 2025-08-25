@@ -41,6 +41,8 @@ const AGGREGATE_SCRIM_IDS = [
   '1369008791047114762'
 ];
 
+const PERSONAL_CATEGORY_ID = '1318529703480397954';
+
 function getDateRange(period) {
   if (period === 'all') return { from: null, to: null };
   const now = new Date();
@@ -143,6 +145,13 @@ module.exports = function(client) {
           }
         }
         channelCounts.push({ id: 'AGG_SCRIM', name: '내전 채널', count: scrimTotal });
+        let personalTotal = 0;
+        for (const ch of guild.channels.cache.values()) {
+          if ((ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildStageVoice) && ch.parentId === PERSONAL_CATEGORY_ID) {
+            personalTotal += ch.members.filter(m => !m.user.bot).size;
+          }
+        }
+        channelCounts.push({ id: 'AGG_PERSONAL', name: '개인 채널', count: personalTotal });
         let maxCount = 0;
         channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
         const bestCount = channelCounts.filter(x => x.count === maxCount && maxCount > 0).length;
@@ -342,6 +351,8 @@ module.exports = function(client) {
 
       client.on('voiceStateUpdate', (oldState, newState) => {
         const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID, ...AGGREGATE_SCRIM_IDS];
+        const oldIsPersonal = oldState.channelId ? (oldState.guild.channels.cache.get(oldState.channelId)?.parentId === PERSONAL_CATEGORY_ID) : false;
+        const newIsPersonal = newState.channelId ? (newState.guild.channels.cache.get(newState.channelId)?.parentId === PERSONAL_CATEGORY_ID) : false;
         if (newState.channelId === TARGET_CHANNEL_ID) {
           const member = newState.member;
           if (member && !member.user.bot) {
@@ -357,8 +368,8 @@ module.exports = function(client) {
           }
         }
         if (
-          (oldState.channelId && watchedChannels.includes(oldState.channelId)) ||
-          (newState.channelId && watchedChannels.includes(newState.channelId))
+          (oldState.channelId && (watchedChannels.includes(oldState.channelId) || oldIsPersonal)) ||
+          (newState.channelId && (watchedChannels.includes(newState.channelId) || newIsPersonal))
         ) {
           updateEmbed();
           updateVoiceTop10Embed();
