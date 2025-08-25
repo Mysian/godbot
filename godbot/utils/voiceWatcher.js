@@ -32,6 +32,15 @@ const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 const REQUIRED_ROLE_ID = '1403741005651513464';
 const REDIRECT_CHANNEL_ID = '1202971727915651092';
 
+const AGGREGATE_SCRIM_IDS = [
+  '1357671992895213601',
+  '1254784947403751484',
+  '1254784851798659234',
+  '1369008732939489381',
+  '1369008766904959026',
+  '1369008791047114762'
+];
+
 function getDateRange(period) {
   if (period === 'all') return { from: null, to: null };
   const now = new Date();
@@ -51,7 +60,6 @@ function formatVoiceTime(seconds) {
 }
 
 module.exports = function(client) {
-  // ========= [추가 2] 맨션 시, 해당 "음성채널 채팅"에서만 현황 임베드 출력 =========
   let mentionBound = false;
   if (!mentionBound) {
     client.on('messageCreate', async (message) => {
@@ -59,28 +67,21 @@ module.exports = function(client) {
         if (!message.guild) return;
         if (message.author.bot) return;
         if (!message.mentions.users.has(client.user.id)) return;
-
         const ch = message.channel;
         const isVoiceChat =
           (typeof ch.isVoiceBased === 'function' && ch.isVoiceBased()) ||
           ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildStageVoice;
-
-        if (!isVoiceChat) return; // 음성채널 내장 채팅에서만 반응
-
-        const vc = ch; // d.js v14: 보이스 채널이 직접 텍스트 지원
+        if (!isVoiceChat) return;
+        const vc = ch;
         await message.guild.members.fetch();
-
         const humans = vc.members.filter(m => !m.user.bot);
         const bots = vc.members.filter(m => m.user.bot);
-
         const humanNames = humans.map(m => m.displayName || m.user.username).slice(0, 25);
         const namesLine = humanNames.length ? humanNames.join(', ') : '없음';
-
         const bitrate = vc.bitrate ? `${Math.round(vc.bitrate / 1000)}kbps` : '기본';
         const limit = vc.userLimit && vc.userLimit > 0 ? `${vc.userLimit}명` : '무제한';
         const region = vc.rtcRegion || '자동';
         const typeLabel = (vc.type === ChannelType.GuildStageVoice) ? '스테이지 채널' : '보이스 채널';
-
         const embed = new EmbedBuilder()
           .setTitle(`🎙️ ${vc.name} 현황`)
           .setColor(0x5865F2)
@@ -95,13 +96,11 @@ module.exports = function(client) {
             { name: '지역', value: region, inline: true },
           )
           .setFooter({ text: '맨션 시점 기준 스냅샷' });
-
         await ch.send({ embeds: [embed] });
       } catch (_) {}
     });
     mentionBound = true;
   }
-  // ========================================================================
 
   async function joinAndWatch() {
     try {
@@ -109,8 +108,6 @@ module.exports = function(client) {
         g.channels.cache.has(TARGET_CHANNEL_ID)
       );
       if (!guild) return;
-
-      // 첫 접속
       joinVoiceChannel({
         channelId: TARGET_CHANNEL_ID,
         guildId: guild.id,
@@ -118,7 +115,6 @@ module.exports = function(client) {
         selfDeaf: true,
         selfMute: true,
       });
-
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
       const statusChannel = guild.channels.cache.get(STATUS_CHANNEL_ID);
       if (!channel || !channel.isTextBased()) return;
@@ -138,10 +134,18 @@ module.exports = function(client) {
           total += cnt;
           channelCounts.push({ id, name: ch.name, count: cnt });
         }
+        let scrimTotal = 0;
+        for (const id of AGGREGATE_SCRIM_IDS) {
+          const ch2 = guild.channels.cache.get(id);
+          if (ch2) {
+            const c2 = ch2.members.filter(m => !m.user.bot).size;
+            scrimTotal += c2;
+          }
+        }
+        channelCounts.push({ id: 'AGG_SCRIM', name: '내전 채널', count: scrimTotal });
         let maxCount = 0;
         channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
         const bestCount = channelCounts.filter(x => x.count === maxCount && maxCount > 0).length;
-
         let headerMsg = "";
         if (total === 0) headerMsg = "😢: 이런! 아무도 이용하고 있지 않아요.";
         else if (total <= 9) headerMsg = `😉: 현재 ${total}명이 이용하고 있습니다.`;
@@ -149,7 +153,6 @@ module.exports = function(client) {
         else if (total <= 29) headerMsg = `😍: 현재 ${total}명이 이용하고 있습니다!!`;
         else if (total <= 49) headerMsg = `😎: 현재 ${total}명이 이용하고 있습니다!!!`;
         else headerMsg = `🌹: 현재 ${total}명의 유저 여러분이 이용하고 있습니다!!!!!`;
-
         return new EmbedBuilder()
           .setTitle('🌹 음성채널 실시간 이용 현황')
           .setColor(0x2eccfa)
@@ -186,19 +189,16 @@ module.exports = function(client) {
           return s.voice > 0;
         });
         const topVoice = stats.sort((a, b) => b.voice - a.voice).slice(0, 10);
-
         let userMap = {};
         for (const member of guild.members.cache.values()) {
           userMap[member.user.id] = member.displayName || member.user.username;
         }
-
         const voiceStr = topVoice.length
           ? topVoice.map((s, i) => {
               const name = userMap[s.userId] || `Unknown(${s.userId})`;
               return `${i + 1}위. ${name} [${formatVoiceTime(s.voice)}]`;
             }).join('\n')
           : "데이터 없음";
-
         return new EmbedBuilder()
           .setTitle('🏆 최근 7일간 음성채널 이용 TOP 10')
           .setColor(0xfad131)
@@ -221,10 +221,8 @@ module.exports = function(client) {
           const memory = process.memoryUsage();
           const rssMB = (memory.rss / 1024 / 1024);
           const heapMB = (memory.heapUsed / 1024 / 1024);
-
           const load = os.loadavg()[0];
           const cpuCount = os.cpus().length;
-
           const uptimeSec = Math.floor(process.uptime());
           const uptime = (() => {
             const h = Math.floor(uptimeSec / 3600);
@@ -232,24 +230,19 @@ module.exports = function(client) {
             const s = uptimeSec % 60;
             return `${h}시간 ${m}분 ${s}초`;
           })();
-
           let memState = "🟢";
           if (rssMB > 800) memState = "🔴";
           else if (rssMB > 400) memState = "🟡";
-
           let cpuState = "🟢";
           if (load > cpuCount) cpuState = "🔴";
           else if (load > cpuCount / 2) cpuState = "🟡";
-
           let total = "🟢 안정적";
           if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
           else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
-
           let comment = "";
           if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
           else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
           else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
-
           const embed = new EmbedBuilder()
             .setTitle(`${total} | 서버 상태 진단`)
             .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
@@ -260,7 +253,6 @@ module.exports = function(client) {
               { name: `실행시간(Uptime)`, value: uptime, inline: true }
             )
             .setFooter({ text: "매 5분마다 자동 측정됩니다." });
-
           const msg = await statusChannel.messages.fetch(STATUS_MSG_ID).catch(() => null);
           if (msg) {
             await msg.edit({ content: '', embeds: [embed] });
@@ -270,7 +262,6 @@ module.exports = function(client) {
         }
       }
 
-      // ========= [추가 1] 주기적 강제 접속 보장 =========
       async function ensureConnected() {
         try {
           const me = guild.members.me;
@@ -290,7 +281,6 @@ module.exports = function(client) {
           }
         } catch (_) {}
       }
-      // ===============================================
 
       await ensureConnected();
       await updateEmbed();
@@ -298,7 +288,7 @@ module.exports = function(client) {
       await updateStatusEmbed(guild, statusChannel);
 
       setInterval(() => {
-        ensureConnected(); // <- 추가
+        ensureConnected();
         updateEmbed();
         updateVoiceTop10Embed();
       }, 60000);
@@ -351,8 +341,7 @@ module.exports = function(client) {
       });
 
       client.on('voiceStateUpdate', (oldState, newState) => {
-        const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID];
-
+        const watchedChannels = [...VOICE_CHANNEL_IDS, TARGET_CHANNEL_ID, ...AGGREGATE_SCRIM_IDS];
         if (newState.channelId === TARGET_CHANNEL_ID) {
           const member = newState.member;
           if (member && !member.user.bot) {
@@ -367,7 +356,6 @@ module.exports = function(client) {
             }
           }
         }
-
         if (
           (oldState.channelId && watchedChannels.includes(oldState.channelId)) ||
           (newState.channelId && watchedChannels.includes(newState.channelId))
