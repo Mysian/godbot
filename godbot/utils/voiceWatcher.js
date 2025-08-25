@@ -152,6 +152,7 @@ module.exports = function(client) {
           }
         }
         channelCounts.push({ id: 'AGG_PERSONAL', name: '개인 채널', count: personalTotal });
+        total += scrimTotal + personalTotal;
         let maxCount = 0;
         channelCounts.forEach(x => { if (x.count > maxCount) maxCount = x.count; });
         const bestCount = channelCounts.filter(x => x.count === maxCount && maxCount > 0).length;
