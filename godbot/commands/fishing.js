@@ -62,7 +62,7 @@ const ROD_SPECS = {
   "강철 낚싯대":   { maxDur: 80,  biteSpeed: -8, dmg: 9,  resistReduce: 3,  rarityBias: 2 },
   "금 낚싯대":     { maxDur: 120, biteSpeed: -12, dmg: 12, resistReduce: 5,  rarityBias: 5 },
   "다이아 낚싯대": { maxDur: 180, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
-  "전설의 낚싣대": { maxDur: 300, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
+  "전설의 낚싯대": { maxDur: 300, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
 };
 
 const FLOAT_SPECS = {
@@ -85,7 +85,7 @@ const PRICES = {
     "강철 낚싯대":   { coin: 500,   be: 1000000 },
     "금 낚싯대":     { coin: 5000,  be: 5000000 },
     "다이아 낚싯대": { coin: 50000, be: null },
-    "전설의 낚싣대": { coin: 500000, be: null }
+    "전설의 낚싯대": { coin: 500000, be: null }
   },
   floats: {
     "동 찌":    { coin: 10,    be: 50000 },
@@ -135,7 +135,7 @@ const RARITY_BASE_PRICE = { "노말": 50, "레어": 1200, "유니크": 8000, "�
 const COIN_DROP_RANGE = [1, 10];
 
 // “파랑 정수” 드랍량(레어 테이블의 “파랑 정수”일 때)
-const BE_DROP_RANGE = [10000, 300000];
+const BE_DROP_RANGE = [100, 5000];
 
 // 보물상자 보상(대부분 미끼/정수, 극저확률로 상위 장비)
 const CHEST_REWARDS = {
@@ -150,7 +150,7 @@ const CHEST_REWARDS = {
     { name: "다이아 찌",   kind: "float", chance: 1 },
     // 전설/다이아 낚싯대는 실질적으로 거의 안나오지만 ‘존재’만
     { name: "다이아 낚싯대", kind: "rod", chance: 0.2 },
-    { name: "전설의 낚싣대", kind: "rod", chance: 0.05 },
+    { name: "전설의 낚싯대", kind: "rod", chance: 0.05 },
   ]
 };
 
