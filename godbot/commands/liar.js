@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const topicsRaw = require("../embeds/liar-topics.js");
@@ -13,7 +13,6 @@ if (!fs.existsSync(path.dirname(statsPath))) fs.mkdirSync(path.dirname(statsPath
 if (!fs.existsSync(statsPath)) fs.writeFileSync(statsPath, JSON.stringify({}, null, 2));
 
 const GAMES = new Map();
-let WIRED = false;
 
 function readStats() { try { return JSON.parse(fs.readFileSync(statsPath, "utf8")); } catch { return {}; } }
 function writeStats(d) { fs.writeFileSync(statsPath, JSON.stringify(d, null, 2)); }
@@ -154,15 +153,6 @@ function voteEmbed(game, endsAt) {
 function resultEmbed(title, desc) {
   return new EmbedBuilder().setTitle(title).setDescription(desc).setColor(0x57F287);
 }
-function ensureWired(client) {
-  if (WIRED) return;
-  client.on("interactionCreate", async (ix) => {
-    if (ix.isButton()) return handleButton(ix);
-    if (ix.isStringSelectMenu()) return handleSelect(ix);
-    if (ix.isModalSubmit()) return handleModal(ix);
-  });
-  WIRED = true;
-}
 
 async function handleButton(ix) {
   const [prefix, action, chId] = (ix.customId || "").split(":");
@@ -244,7 +234,6 @@ async function handleButton(ix) {
     if (!isHost && !isAdmin) {
       return ix.reply({ content: "방장 또는 관리자만 모집을 취소할 수 있어요.", ephemeral: true });
     }
-
     const msg = await ix.channel.messages.fetch(game.messageId).catch(() => null);
     if (msg) {
       const disabledRow = new ActionRowBuilder().addComponents(
@@ -254,16 +243,13 @@ async function handleButton(ix) {
         new ButtonBuilder().setCustomId(`liar:start:${game.channelId}`).setLabel("게임 시작").setStyle(ButtonStyle.Success).setDisabled(true),
         new ButtonBuilder().setCustomId(`liar:cancel:${game.channelId}`).setLabel("모집 취소").setStyle(ButtonStyle.Danger).setDisabled(true)
       );
-
       const cancelled = EmbedBuilder
         .from(msg.embeds[0] ?? lobbyEmbed(game))
         .setColor(0x808080)
         .setFooter({ text: "📕 모집이 취소되었습니다." });
-
       await msg.edit({ embeds: [cancelled], components: [disabledRow] }).catch(() => {});
     }
-
-    GAMES.delete(game.channelId); // 상태 정리
+    GAMES.delete(game.channelId);
     return ix.reply({ content: "📕 모집을 취소했어.", ephemeral: true });
   }
 }
@@ -274,7 +260,6 @@ async function handleSelect(ix) {
   const game = GAMES.get(chId);
   if (!game) return ix.reply({ content: "게임이 없습니다.", ephemeral: true });
   if (ix.user.id !== game.hostId) return ix.reply({ content: "방장만 설정할 수 있습니다.", ephemeral: true });
-
   const val = ix.values?.[0];
   if (!TOPICS[val]) return ix.reply({ content: "잘못된 주제입니다.", ephemeral: true });
   game.category = val;
@@ -288,12 +273,10 @@ async function handleModal(ix) {
   if (prefix !== "liar") return;
   const game = GAMES.get(chId);
   if (!game) return ix.reply({ content: "게임이 없습니다.", ephemeral: true });
-
   if (action === "speech") {
     if (game.phase !== "talk") return ix.reply({ content: "발언 단계가 아닙니다.", ephemeral: true });
     const curId = game.order[game.turnIndex];
     if (ix.user.id !== curId) return ix.reply({ content: "네 차례가 아닙니다.", ephemeral: true });
-
     const text = ix.fields.getTextInputValue("t") || "";
     const me = game.players.find(p => p.id === ix.user.id);
     me.speech = text.trim();
@@ -309,7 +292,6 @@ async function handleModal(ix) {
       return ix.reply({ content: "발언 제출 완료.", ephemeral: true });
     }
   }
-
   if (action === "guess") {
     if (game.phase !== "guess") return ix.reply({ content: "정답 입력 단계가 아닙니다.", ephemeral: true });
     if (ix.user.id !== game.liarId) return ix.reply({ content: "당사자만 입력할 수 있습니다.", ephemeral: true });
@@ -447,6 +429,15 @@ function cleanup(game) {
   GAMES.delete(game.channelId);
 }
 
+async function component(ix) {
+  if (ix.isButton()) return handleButton(ix);
+  if (ix.isStringSelectMenu()) return handleSelect(ix);
+}
+
+async function modal(ix) {
+  return handleModal(ix);
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("라이어")
@@ -461,9 +452,7 @@ module.exports = {
       .addUserOption(o => o.setName("대상").setDescription("투표 대상").setRequired(true)))
     .addSubcommand(s => s.setName("전체순위").setDescription("누적 전적 순위")),
   async execute(ix) {
-    ensureWired(ix.client);
     const sub = ix.options.getSubcommand();
-
     if (sub === "게임시작") {
       if (!ix.channel || !ix.channel.permissionsFor(ix.client.user)?.has(PermissionFlagsBits.SendMessages))
         return ix.reply({ content: "여기서 메시지를 보낼 권한이 없습니다.", ephemeral: true });
@@ -489,7 +478,6 @@ module.exports = {
       GAMES.set(chId, game);
       return ix.reply({ content: "모집을 시작했어.", ephemeral: true });
     }
-
     if (sub === "게임설명") {
       const e = new EmbedBuilder()
         .setTitle("🕵️ 미스매치(바보 라이어) 규칙")
@@ -508,7 +496,6 @@ module.exports = {
         .setColor(0x5865F2);
       return ix.reply({ embeds: [e], ephemeral: true });
     }
-
     if (sub === "지목하기") {
       const target = ix.options.getUser("대상");
       const game = GAMES.get(ix.channelId);
@@ -517,7 +504,6 @@ module.exports = {
       game.noms.set(target.id, c);
       return ix.reply({ content: `${ix.user} ➜ ${target} 지목 (누적 ${c})`, allowedMentions: { users: [] } });
     }
-
     if (sub === "발언하기") {
       const game = GAMES.get(ix.channelId);
       if (!game) return ix.reply({ content: "진행 중인 게임이 없어.", ephemeral: true });
@@ -529,13 +515,11 @@ module.exports = {
       modal.addComponents(new ActionRowBuilder().addComponents(input));
       return ix.showModal(modal);
     }
-
     if (sub === "발언보기") {
       const game = GAMES.get(ix.channelId);
       if (!game) return ix.reply({ content: "진행 중인 게임이 없어.", ephemeral: true });
       return ix.reply({ embeds: [statusEmbed(game)], ephemeral: false });
     }
-
     if (sub === "투표하기") {
       const target = ix.options.getUser("대상");
       const game = GAMES.get(ix.channelId);
@@ -549,7 +533,6 @@ module.exports = {
       const allVoted = game.players.every(p => p.votedFor);
       if (allVoted) endVote(game, ix.channel);
     }
-
     if (sub === "전체순위") {
       const stats = readStats();
       const arr = Object.entries(stats).map(([id, s]) => ({ id, ...s, g: (s.w || 0) + (s.d || 0) + (s.l || 0) }));
@@ -560,5 +543,7 @@ module.exports = {
       const e = new EmbedBuilder().setTitle("🏆 라이어 전체순위 TOP 20").setDescription(lines).setColor(0x57F287);
       return ix.reply({ embeds: [e] });
     }
-  }
+  },
+  component,
+  modal
 };
