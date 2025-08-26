@@ -37,17 +37,17 @@ const TIER_CUTOFF = {
 };
 
 const ROD_SPECS = {
-  "나무 낚싯대":   { maxDur: 30,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
-  "강철 낚싯대":   { maxDur: 100,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
-  "금 낚싯대":     { maxDur: 200, biteSpeed: -12, dmg: 12, resistReduce: 5,  rarityBias: 5 },
-  "다이아 낚싯대": { maxDur: 500, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
-  "전설의 낚싯대": { maxDur: 1000, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
+  "나무 낚싯대":   { maxDur: 50,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
+  "강철 낚싯대":   { maxDur: 120,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
+  "금 낚싯대":     { maxDur: 250, biteSpeed: -12, dmg: 12, resistReduce: 5,  rarityBias: 5 },
+  "다이아 낚싯대": { maxDur: 550, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
+  "전설의 낚싯대": { maxDur: 1250, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
 };
 const FLOAT_SPECS = {
-  "동 찌":    { maxDur: 60,  biteSpeed: -3,  resistReduce: 2,  rarityBias: 0 },
-  "은 찌":    { maxDur: 120, biteSpeed: -6,  resistReduce: 4,  rarityBias: 2 },
-  "금 찌":    { maxDur: 200, biteSpeed: -9,  resistReduce: 7,  rarityBias: 4 },
-  "다이아 찌": { maxDur: 500, biteSpeed: -12, resistReduce: 10, rarityBias: 7 }
+  "동 찌":    { maxDur: 30,  biteSpeed: -3,  resistReduce: 2,  rarityBias: 0 },
+  "은 찌":    { maxDur: 60, biteSpeed: -6,  resistReduce: 4,  rarityBias: 2 },
+  "금 찌":    { maxDur: 90, biteSpeed: -9,  resistReduce: 7,  rarityBias: 4 },
+  "다이아 찌": { maxDur: 200, biteSpeed: -12, resistReduce: 10, rarityBias: 7 }
 };
 const BAIT_SPECS = {
   "지렁이 미끼":        { pack: 20, biteSpeed: -2, rarityBias: 0  },
