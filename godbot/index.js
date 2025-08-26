@@ -338,6 +338,10 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("낚시");
   if (cmd?.component) return cmd.component(interaction);
 }],
+["liar_", async (interaction) => {
+  const cmd = client.commands.get("라이어");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   // 필요하면 추가로 더 여기에 등록
 ]);
 
@@ -1108,6 +1112,32 @@ client.on(Events.InteractionCreate, async interaction => {
     console.error("[낚시 component 오류]", err);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
+
+  // 라이어 게임 버튼/셀렉트 처리
+if (
+  (interaction.isButton() || interaction.isStringSelectMenu()) &&
+  (
+    (interaction.customId || "").startsWith("liar:") ||   // 예: liar:join, liar:leave, liar:start, liar:vote ...
+    (interaction.customId || "").startsWith("liar-")      // 예: liar-topic, liar-next 등
+  )
+) {
+  const cmd = client.commands.get("라이어");
+  if (!cmd || typeof cmd.component !== "function") {
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 라이어 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+  try {
+    await cmd.component(interaction);
+  } catch (err) {
+    console.error("[라이어 component 오류]", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 라이어 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
     }
   }
   return;
