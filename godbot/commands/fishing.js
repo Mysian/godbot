@@ -187,15 +187,27 @@ function saveDB(obj) {
 async function withDB(fn) {
   let release;
   try {
-    release = await lockfile.lock(FISH_DB, { retries: { retries: 10, minTimeout: 30, maxTimeout: 100 } });
-    const db = loadDB();
+    // 1) 파일 선생성 보장
+    if (!fs.existsSync(FISH_DB)) {
+      fs.writeFileSync(FISH_DB, JSON.stringify({ users: {} }, null, 2));
+    }
+    // 2) 그 다음 lock
+    release = await lockfile.lock(FISH_DB, {
+      retries: { retries: 10, minTimeout: 30, maxTimeout: 100 }
+    });
+
+    // 3) 읽고 처리
+    const db = JSON.parse(fs.readFileSync(FISH_DB, "utf8"));
     const res = await fn(db);
-    saveDB(db);
+
+    // 4) 저장
+    fs.writeFileSync(FISH_DB, JSON.stringify(db, null, 2));
     return res;
   } finally {
     if (release) await release();
   }
 }
+
 
 // ===== 유저 상태 =====
 function ensureUser(u) {
@@ -587,18 +599,30 @@ async function execute(interaction) {
         ].join("\n"))
         .setColor(0x8888ff);
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("fish:equip_menu")
-        .setPlaceholder("장착/열기/관리")
-        .addOptions(
-          ...Object.keys(u.inv.rods).map(n=>({ label:`장착: ${n}`, value:`equip|rod|${n}` })),
-          ...Object.keys(u.inv.floats).map(n=>({ label:`장착: ${n}`, value:`equip|float|${n}` })),
-          ...Object.keys(u.inv.baits).map(n=>({ label:`장착: ${n}`, value:`equip|bait|${n}` })),
-          ...(u.inv.chests>0 ? [{ label:`상자 열기 (보유 ${u.inv.chests})`, value:`open|chest` }] : []),
-          ...(u.inv.keys>0 ? [{ label:`열쇠 보유 (${u.inv.keys})`, value:`info|key` }] : [])
-        );
+      const opts = [
+  ...Object.keys(u.inv.rods).map(n=>({ label:`장착: ${n}`,  value:`equip|rod|${n}` })),
+  ...Object.keys(u.inv.floats).map(n=>({ label:`장착: ${n}`, value:`equip|float|${n}` })),
+  ...Object.keys(u.inv.baits).map(n=>({ label:`장착: ${n}`,  value:`equip|bait|${n}` })),
+  ...(u.inv.chests > 0 ? [{ label:`상자 열기 (보유 ${u.inv.chests})`, value:`open|chest` }] : []),
+  ...(u.inv.keys   > 0 ? [{ label:`열쇠 보유 (${u.inv.keys})`,     value:`info|key`   }] : []),
+];
 
-      await interaction.reply({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu) ], ephemeral:true });
+if (opts.length === 0) {
+  // 옵션이 없으면 셀렉트 메뉴 없이 임베드만 보냄 (← 여기서 크래시 방지)
+  return interaction.reply({ embeds:[eb], ephemeral:true });
+}
+
+// 옵션이 하나라도 있으면 메뉴 포함
+const menu = new StringSelectMenuBuilder()
+  .setCustomId("fish:equip_menu")
+  .setPlaceholder("장착/열기/관리")
+  .addOptions(opts);
+
+return interaction.reply({
+  embeds:[eb],
+  components:[ new ActionRowBuilder().addComponents(menu) ],
+  ephemeral:true
+});
     });
   }
 
