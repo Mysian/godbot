@@ -931,17 +931,7 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
       const { eb, row } = renderInv(kind, 0);
       return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
-    if (id==="inv:prev" || id==="inv:next") {
-      const st = invSessions.get(userId); if (!st) return interaction.reply({ content:"보기 세션이 없습니다.", ephemeral:true });
-      const listLen = st.kind==="rod"? Object.keys(u.inv.rods).length
-                    : st.kind==="float"? Object.keys(u.inv.floats).length
-                    : st.kind==="bait"? Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0).length
-                    : u.inv.fishes.length;
-      st.idx += (id==="inv:next"?1:-1);
-      st.idx = Math.max(0, Math.min(listLen-1, st.idx));
-      invSessions.set(userId, st);
-
-      if (id === "inv:share") {
+    if (id === "inv:share") {
   const st = invSessions.get(userId);
   if (!st || st.kind !== "fish") {
     return interaction.reply({ content: "물고기 화면에서만 공유할 수 있어요.", ephemeral: true });
@@ -952,7 +942,7 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
     return interaction.reply({ content: "공유할 물고기를 찾지 못했어요.", ephemeral: true });
   }
 
-  const nick = interaction.member?.displayName || interaction.user.username;
+  const nick = interaction.member?.displayName ?? interaction.user.globalName ?? interaction.user.username;
   const eb = new EmbedBuilder()
     .setTitle(`🐟 ${nick}의 조과 공유`)
     .setDescription(`• 이름: [${f.r}] ${f.n}\n• 길이: ${Math.round(f.l)}cm\n• 판매가: ${f.price.toLocaleString()} 코인`)
@@ -966,7 +956,16 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
     return interaction.reply({ content: "채널에 공유 실패… 권한을 확인해줘!", ephemeral: true });
   }
 }
-
+    if (id==="inv:prev" || id==="inv:next") {
+      const st = invSessions.get(userId); if (!st) return interaction.reply({ content:"보기 세션이 없습니다.", ephemeral:true });
+      const listLen = st.kind==="rod"? Object.keys(u.inv.rods).length
+                    : st.kind==="float"? Object.keys(u.inv.floats).length
+                    : st.kind==="bait"? Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0).length
+                    : u.inv.fishes.length;
+      st.idx += (id==="inv:next"?1:-1);
+      st.idx = Math.max(0, Math.min(listLen-1, st.idx));
+      invSessions.set(userId, st);
+      
       const kind = st.kind;
       function rerender(k, i){
         if (k==="fish") {
@@ -1163,7 +1162,7 @@ const CHEST_REWARDS = {
     { kind:"float", name:"은 찌",       chance:6 },
     { kind:"rod",   name:"강철 낚싯대", chance:2 },
     { kind:"be",    name:"파랑 정수",   min:10000, max:50000, chance:4 },
-    { kind:"coin", min:10, max:1000, chance:6 },
+    { kind:"coin", name:"낚시 코인", min:10, max:1000, chance:6 },
   ]
 };
 
