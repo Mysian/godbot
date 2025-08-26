@@ -846,38 +846,39 @@ async function component(interaction) {
       return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
     if (id==="shop:prev" || id==="shop:next") {
-      const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없어.", ephemeral:true });
-      const order = st.kind==="rod"? RODS : st.kind==="float"? FLOATS : BAITS;
-      st.idx += (id==="shop:next"?1:-1); st.idx = Math.max(0, Math.min(order.length-1, st.idx));
-      shopSessions.set(userId, st);
+  const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없어.", ephemeral:true });
+  const order = st.kind==="rod"? RODS : st.kind==="float"? FLOATS : BAITS;
+  st.idx += (id==="shop:next"?1:-1); st.idx = Math.max(0, Math.min(order.length-1, st.idx));
+  shopSessions.set(userId, st);
 
-      const name = order[st.idx];
-      const price = PRICES[st.kind==="rod"?"rods":st.kind==="float"?"floats":"baits"][name];
-      const spec  = st.kind==="rod"? ROD_SPECS[name] : st.kind==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
+  const name = order[st.idx];
+  const price = PRICES[st.kind==="rod"?"rods":st.kind==="float"?"floats":"baits"][name];
+  const spec  = st.kind==="rod"? ROD_SPECS[name] : st.kind==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
 
-      const eb = new EmbedBuilder().setTitle(`🛒 ${st.kind==="rod"?"낚싯대":st.kind==="float"?"찌":"미끼"} — ${name}`)
-        .setDescription(() => {
-          const lines=[];
-          if (st.kind!=="bait") lines.push(`내구: ${spec.maxDur}`);
-          if (st.kind==="rod")   lines.push(`입질가속 ${spec.biteSpeed}s, 데미지 ${spec.dmg}, 저항감소 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-          if (st.kind==="float") lines.push(`입질가속 ${spec.biteSpeed}s, 저항감소 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-          if (st.kind==="bait")  lines.push(`묶음 ${spec.pack}개, 입질가속 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
-          return lines.join("\n");
-        }())
-        .addFields(
-          { name:"코인", value: price.coin!=null ? price.coin.toLocaleString() : "-", inline:true },
-          { name:"정수", value: price.be!=null ? price.be.toLocaleString()   : "-", inline:true },
-        ).setColor(0x55cc77).setImage(getIconURL(name)||null);
+  // ✅ IIFE 대신 문자열 변수로 구성
+  const descLines = [];
+  if (st.kind!=="bait") descLines.push(`내구: ${spec.maxDur}`);
+  if (st.kind==="rod")   descLines.push(`입질가속 ${spec.biteSpeed}s, 데미지 ${spec.dmg}, 저항감소 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
+  if (st.kind==="float") descLines.push(`입질가속 ${spec.biteSpeed}s, 저항감소 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
+  if (st.kind==="bait")  descLines.push(`묶음 ${spec.pack}개, 입질가속 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
+  const desc = descLines.join("\n");
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(st.idx<=0),
-        new ButtonBuilder().setCustomId("shop:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(st.idx>=order.length-1),
-        new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null),
-        new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
-        new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
-      );
-      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
-    }
+  const eb = new EmbedBuilder().setTitle(`🛒 ${st.kind==="rod"?"낚싯대":st.kind==="float"?"찌":"미끼"} — ${name}`)
+    .setDescription(desc)
+    .addFields(
+      { name:"코인", value: price.coin!=null ? price.coin.toLocaleString() : "-", inline:true },
+      { name:"정수", value: price.be!=null ? price.be.toLocaleString()   : "-", inline:true },
+    ).setColor(0x55cc77).setImage(getIconURL(name)||null);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(st.idx<=0),
+    new ButtonBuilder().setCustomId("shop:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(st.idx>=order.length-1),
+    new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null),
+    new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
+    new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
+  );
+  return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
+}
     if (id.startsWith("shop:buy|")) {
       const [, pay, name] = id.split("|"); // pay coin|be
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없어.", ephemeral:true });
