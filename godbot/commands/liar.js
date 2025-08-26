@@ -103,7 +103,8 @@ function makeLobbyRows(chId) {
       new ButtonBuilder().setCustomId(`liar:join:${chId}`).setLabel("참여").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`liar:leave:${chId}`).setLabel("참여 취소").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`liar:conf:${chId}`).setLabel("주제 설정/변경").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`liar:start:${chId}`).setLabel("게임 시작").setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId(`liar:start:${chId}`).setLabel("게임 시작").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`liar:cancel:${chId}`).setLabel("모집 취소").setStyle(ButtonStyle.Danger)
     )
   ];
 }
@@ -232,6 +233,38 @@ async function handleButton(ix) {
     const input = new TextInputBuilder().setCustomId("g").setLabel("정답을 입력").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
     modal.addComponents(new ActionRowBuilder().addComponents(input));
     return ix.showModal(modal);
+  }
+
+  if (action === "cancel") {
+    if (game.phase !== "lobby") {
+      return ix.reply({ content: "이미 게임이 시작되어 모집을 취소할 수 없습니다.", ephemeral: true });
+    }
+    const isHost = ix.user.id === game.hostId;
+    const isAdmin = ix.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
+    if (!isHost && !isAdmin) {
+      return ix.reply({ content: "방장 또는 관리자만 모집을 취소할 수 있어요.", ephemeral: true });
+    }
+
+    const msg = await ix.channel.messages.fetch(game.messageId).catch(() => null);
+    if (msg) {
+      const disabledRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`liar:join:${game.channelId}`).setLabel("참여").setStyle(ButtonStyle.Success).setDisabled(true),
+        new ButtonBuilder().setCustomId(`liar:leave:${game.channelId}`).setLabel("참여 취소").setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`liar:conf:${game.channelId}`).setLabel("주제 설정/변경").setStyle(ButtonStyle.Primary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`liar:start:${game.channelId}`).setLabel("게임 시작").setStyle(ButtonStyle.Success).setDisabled(true),
+        new ButtonBuilder().setCustomId(`liar:cancel:${game.channelId}`).setLabel("모집 취소").setStyle(ButtonStyle.Danger).setDisabled(true)
+      );
+
+      const cancelled = EmbedBuilder
+        .from(msg.embeds[0] ?? lobbyEmbed(game))
+        .setColor(0x808080)
+        .setFooter({ text: "📕 모집이 취소되었습니다." });
+
+      await msg.edit({ embeds: [cancelled], components: [disabledRow] }).catch(() => {});
+    }
+
+    GAMES.delete(game.channelId); // 상태 정리
+    return ix.reply({ content: "📕 모집을 취소했어.", ephemeral: true });
   }
 }
 
