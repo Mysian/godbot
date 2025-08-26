@@ -27,7 +27,7 @@ const FIGHT_IDLE_TIMEOUT = 12;
 const FIGHT_TOTAL_TIMEOUT = 60;
 const SAFE_TENSION_MIN = 30;
 const SAFE_TENSION_MAX = 70;
-const SELL_PRICE_MULT = 0.35; // 전체 판매가 35%로
+const SELL_PRICE_MULT = 0.35;
 
 const RARITY = ["노말","레어","유니크","레전드","에픽"];
 const TIER_ORDER = ["브론즈","실버","골드","플래티넘","다이아","마스터","그랜드마스터","챌린저"];
@@ -282,7 +282,10 @@ function startFight(u) {
   const pool = DROP_TABLE[rar];
   const name = pool[randInt(0, pool.length-1)];
 
-  if (JUNK_SET.has(name)) return { type:"junk", name, rarity:"노말" };
+  if (JUNK_SET.has(name)) {
+    const st = baseItemFight(u, rar);
+    return { type:"fight", kind:"junk", name, rarity:"노말", hp: st.hp, maxHP: st.maxHP, dmgBase: st.dmgBase, resist: st.resist };
+  }
 
   if (name === "낚시 코인") {
     const amt = randInt(COIN_DROP_RANGE[0], COIN_DROP_RANGE[1]);
@@ -511,8 +514,10 @@ async function execute(interaction) {
     return await withDB(async db=>{
       const base = Object.entries(db.users||{}).map(([id,u])=>{
         ensureUser(u);
-        const bestLen = Math.max(0, ...Object.values(u.stats.best||{}).map(b=>b.length||0), u.stats.max?.length||0);
-        return { id, tier:u.tier, points:u.stats.points||0, caught:u.stats.caught||0, bestLen, bestName:u.stats.max?.name||null };
+        let bestN = null; let bestL = 0;
+        for (const [n,b] of Object.entries(u.stats.best||{})) { const L = b.length||0; if (L > bestL) { bestL = L; bestN = n; } }
+        if ((u.stats.max?.length||0) >= bestL) { bestL = u.stats.max?.length||0; bestN = u.stats.max?.name||bestN; }
+        return { id, tier:u.tier, points:u.stats.points||0, caught:u.stats.caught||0, bestLen:bestL, bestName:bestN };
       });
       const topPoints = [...base].sort((a,b)=> b.points - a.points).slice(0,20);
       const topLen = [...base].sort((a,b)=> b.bestLen - a.bestLen).slice(0,20);
@@ -671,15 +676,9 @@ async function component(interaction) {
           return interaction.editReply({ content:"미끼가 없어 입질이 이어지지 않았습니다.", components:[], embeds:[], ephemeral:true }).catch(()=>{});
         }
 
-        if (result.fight.type === "junk") {
-          const junkCoin = randInt(1, 4);
-          await updateUser(userId, (uu)=>{ uu.coins += junkCoin; return true; });
-          clearSession(userId);
-          const eb = sceneEmbed(u, `🪣 잡동사니를 건졌습니다`, `쓸모없는 ${result.fight.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(result.fight.name)||null);
-          return interaction.editReply({ embeds:[eb], components:[], ephemeral:true }).catch(()=>{});
-        }
+        const fobj = result.fight;
 
-        s.state = "fight"; s.target = result.fight; s.tension = randInt(35,65);
+        s.state = "fight"; s.target = fobj; s.tension = randInt(35,65);
         s.fightStart = Date.now();
         s.timeBand = result.timeBand;
         s.sceneBiteURL = getSceneURL(result.equip.rod, result.equip.float, result.equip.bait, s.timeBand, "입질");
@@ -755,6 +754,12 @@ async function component(interaction) {
             `판매가: ${sell.toLocaleString()}코인`,
             "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
           ].join("\n"), getIconURL(st.name));
+          return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+        } else if (st.kind === "junk") {
+          const junkCoin = randInt(1, 4);
+          u.coins += junkCoin;
+          clearSession(userId);
+          const eb = sceneEmbed(u, "🪣 잡동사니를 건졌습니다", `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(st.name)||null);
           return interaction.update({ embeds:[eb], components:[], ephemeral:true });
         } else {
           if (st.itemType === "coin") {
@@ -976,12 +981,9 @@ async function component(interaction) {
           )
           .setColor(0x55cc77);
         if (icon) eb.setImage(icon);
+        eb.setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
-          new ButtonBuilder().setCustomId("shop:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=order.length-1),
-          new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null),
-          new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
-          new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary").setDisabled(i<=0)
         );
         return { eb, row };
       }
@@ -1010,7 +1012,8 @@ async function component(interaction) {
         .addFields(
           { name:"코인", value: price.coin!=null ? price.coin.toLocaleString() : "-", inline:true },
           { name:"정수", value: price.be!=null ? price.be.toLocaleString()   : "-", inline:true },
-        ).setColor(0x55cc77).setImage(getIconURL(name)||null);
+        ).setColor(0x55cc77).setImage(getIconURL(name)||null)
+        .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(st.idx<=0),
