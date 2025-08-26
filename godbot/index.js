@@ -1100,7 +1100,9 @@ client.on(Events.InteractionCreate, async interaction => {
            id.startsWith("info:") ||
            id.startsWith("sell:") ||          // sell:confirm_selected, sell:qty_modal 등
            id.startsWith("sell-select") ||    // sell-select|list
-           id.startsWith("sell-qty-choose");  // sell-qty-choose|species
+           id.startsWith("sell-qty-choose") || // sell-qty-choose|species
+           id.startsWith("dex:");
+      
   })()
 ) {
   const cmd = client.commands.get("낚시");
