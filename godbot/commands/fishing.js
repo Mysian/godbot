@@ -425,10 +425,6 @@ function hintLine(tension, hpRatio) {
   return picks[randInt(0, picks.length-1)];
 }
 
-const NON_FISH = new Set(["낚시 코인","파랑 정수","까리한 열쇠","까리한 보물상자","빈 페트병","해초","작은 새우"]);
-const FISH_BY_RARITY = Object.fromEntries(RARITY.map(r=>[r, (DROP_TABLE[r]||[]).filter(n=>!NON_FISH.has(n))]));
-const DEX_PAGE_SIZE = 10;
-
 function caughtSetOf(u){
   const set = new Set(Object.keys(u.stats.best||{}));
   for (const f of (u.inv.fishes||[])) set.add(f.n);
@@ -1266,6 +1262,11 @@ const DROP_TABLE = {
   "레전드": ["곰치","고래상어","빨판상어","청새치"],
   "에픽":   ["철갑상어","대왕고래"]
 };
+
+const NON_FISH = new Set(["낚시 코인","파랑 정수","까리한 열쇠","까리한 보물상자","빈 페트병","해초","작은 새우"]);
+const FISH_BY_RARITY = Object.fromEntries(RARITY.map(r=>[r, (DROP_TABLE[r]||[]).filter(n=>!NON_FISH.has(n))]));
+const DEX_PAGE_SIZE = 10;
+
 const CHEST_REWARDS = {
   loot: [
     { kind:"bait",  name:"지렁이 미끼", qty:20, chance:28 },
