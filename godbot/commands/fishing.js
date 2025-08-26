@@ -944,7 +944,7 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
 
   const nick = interaction.member?.displayName ?? interaction.user.globalName ?? interaction.user.username;
   const eb = new EmbedBuilder()
-    .setTitle(`🐟 ${nick}의 조과 공유`)
+    .setTitle(`🐟 ${nick}의 성과 공유`)
     .setDescription(`• 이름: [${f.r}] ${f.n}\n• 길이: ${Math.round(f.l)}cm\n• 판매가: ${f.price.toLocaleString()} 코인`)
     .setColor(0x66ccff)
     .setImage(getIconURL(f.n) || null);
