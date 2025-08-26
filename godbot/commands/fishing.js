@@ -216,6 +216,7 @@ const sessions = new Map();
 const shopSessions = new Map();
 const invSessions  = new Map();
 const sellSessions = new Map();
+const dexSessions  = new Map();
 const lastCatch = new Map();
 
 function clearSession(userId) {
@@ -374,6 +375,7 @@ const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 
   .addSubcommand(s=>s.setName("구매").setDescription("장비/미끼 구매"))
   .addSubcommand(s=>s.setName("판매").setDescription("보유 물고기 판매"))
   .addSubcommand(s=>s.setName("인벤토리").setDescription("인벤토리 확인/장착/상자"))
+  .addSubcommand(s=>s.setName("도감").setDescription("잡은 물고기 도감 보기"))
   .addSubcommand(s=>s.setName("기록").setDescription("개인 낚시 기록 확인").addUserOption(o=>o.setName("유저").setDescription("조회 대상")))
   .addSubcommand(s=>s.setName("기록순위").setDescription("티어/포인트/최대길이 순위 TOP20"))
   .addSubcommand(s=>s.setName("도움말").setDescription("낚시 시스템 도움말"));
@@ -423,6 +425,78 @@ function hintLine(tension, hpRatio) {
   return picks[randInt(0, picks.length-1)];
 }
 
+const NON_FISH = new Set(["낚시 코인","파랑 정수","까리한 열쇠","까리한 보물상자","빈 페트병","해초","작은 새우"]);
+const FISH_BY_RARITY = Object.fromEntries(RARITY.map(r=>[r, (DROP_TABLE[r]||[]).filter(n=>!NON_FISH.has(n))]));
+const DEX_PAGE_SIZE = 10;
+
+function caughtSetOf(u){
+  const set = new Set(Object.keys(u.stats.best||{}));
+  for (const f of (u.inv.fishes||[])) set.add(f.n);
+  return set;
+}
+function dexRarityRow(cur){
+  return new ActionRowBuilder().addComponents(
+    ...RARITY.map(r=> new ButtonBuilder().setCustomId(`dex:rar|${r}`).setLabel(r).setStyle(r===cur?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(r===cur))
+  );
+}
+function dexNavRow(hasPrev, hasNext){
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("dex:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(!hasPrev),
+    new ButtonBuilder().setCustomId("dex:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(!hasNext),
+    new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+  );
+}
+function renderDexList(u, st){
+  const all = FISH_BY_RARITY[st.rarity]||[];
+  const caught = caughtSetOf(u);
+  const total = all.length;
+  const start = st.page*DEX_PAGE_SIZE;
+  const slice = all.slice(start, start+DEX_PAGE_SIZE);
+  const got = all.filter(n=>caught.has(n)).length;
+  const lines = slice.map((n,i)=>{
+    if (caught.has(n)) {
+      const rec = u.stats.best?.[n]||{};
+      const L = rec.length ? `${Math.round(rec.length)}cm` : "";
+      const P = rec.price ? `${(rec.price||0).toLocaleString()}코인` : "";
+      const meta = [L,P].filter(Boolean).join(" | ");
+      return `${start+i+1}. ${n}${meta?` — ${meta}`:""}`;
+    } else {
+      return `${start+i+1}. ???`;
+    }
+  });
+  const eb = new EmbedBuilder()
+    .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
+    .setDescription(lines.length?lines.join("\n"):"_표시할 항목이 없습니다._")
+    .setColor(0x66ccff);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("dex:select")
+    .setPlaceholder("상세로 볼 항목 선택")
+    .addOptions(slice.map(n=>({
+      label: caught.has(n) ? n : "???",
+      value: n
+    })));
+  const listRow = new ActionRowBuilder().addComponents(menu);
+  return { embeds:[eb], components:[dexRarityRow(st.rarity), listRow, dexNavRow(start>0, start+DEX_PAGE_SIZE<total)] };
+}
+function renderDexDetail(u, st, name){
+  const caught = caughtSetOf(u);
+  const all = FISH_BY_RARITY[st.rarity]||[];
+  const total = all.length;
+  const got = all.filter(n=>caught.has(n)).length;
+  if (!caught.has(name)) {
+    const eb = new EmbedBuilder().setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`).setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.").setColor(0x999999);
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
+    return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
+  } else {
+    const rec = u.stats.best?.[name]||{};
+    const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+    const P = rec.price ? `${(rec.price||0).toLocaleString()}코인` : "-";
+    const eb = new EmbedBuilder().setTitle(`📖 ${name} — ${st.rarity} [${got}/${total}]`).setDescription([`최대 길이: ${L}`,`최고가: ${P}`].join("\n")).setColor(0x44ddaa).setImage(getIconURL(name)||null);
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
+    return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
+  }
+}
+
 async function execute(interaction) {
   const sub = interaction.options.getSubcommand();
   const userId = interaction.user.id;
@@ -452,10 +526,10 @@ async function execute(interaction) {
       const u = (db.users[userId] ||= {}); ensureUser(u);
       const eb = new EmbedBuilder().setTitle("🛒 낚시 상점")
         .setDescription([
-          "종류를 골라 **하나씩** 넘기며 이미지와 스펙, 가격을 확인하고 구매해 주세요.",
+          "종류를 골라 하나씩 넘기며 이미지와 스펙, 가격을 확인하고 구매해 주세요.",
           "",
-          "• 낚싯대, 찌: 구매 시 **내구도 최대치**로 제공됩니다.",
-          "• 미끼: 20개 묶음이며, 보유 수량이 20 미만이면 **부족분만 비례 결제**합니다."
+          "• 낚싯대, 찌: 구매 시 내구도 최대치로 제공됩니다.",
+          "• 미끼: 20개 묶음이며, 보유 수량이 20 미만이면 부족분만 비례 결제합니다."
         ].join("\n"))
         .setColor(0x55cc77)
         .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
@@ -493,6 +567,16 @@ async function execute(interaction) {
         new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
       );
       await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
+    });
+  }
+
+  if (sub === "도감") {
+    return await withDB(async db=>{
+      const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
+      const st = { rarity:"노말", page:0, mode:"list" };
+      dexSessions.set(userId, st);
+      const payload = renderDexList(u, st);
+      await interaction.reply({ ...payload, ephemeral:true });
     });
   }
 
@@ -556,16 +640,17 @@ async function execute(interaction) {
   if (sub === "도움말") {
     const eb = new EmbedBuilder().setTitle("❔ 낚시 도움말")
       .setDescription([
-        "• `/낚시 낚시터` — 낚시 시작: **찌 던지기 → 대기 → 입질 → 릴 감기/풀기(파이팅)**",
-        "• `/낚시 구매` — 장비/미끼 구매(일부 정수 결제 가능). 미끼는 20개 묶음, **부족분만 비례결제**",
+        "• `/낚시 낚시터` — 낚시 시작: 찌 던지기 → 대기 → 입질 → 릴 감기/풀기(파이팅)",
+        "• `/낚시 구매` — 장비/미끼 구매(일부 정수 결제 가능). 미끼는 20개 묶음, 부족분만 비례결제",
         "• `/낚시 판매` — 모두/선택/수량 판매 지원",
         "• `/낚시 인벤토리` — 종류별 보기+장착/상자",
+        "• `/낚시 도감` — 등급별 발견 현황과 상세 보기",
         "• `/낚시 기록 [유저]`, `/낚시 기록순위`",
         "",
-        "⚙ 시간대: **낮(07:00~15:59) / 노을(16:00~19:59) / 밤(20:00~06:59)** (KST)",
-        "⚙ 장비는 사용 시 **내구도 1** 감소, 미끼는 **입질 시작 시 1개** 소모됩니다.",
-        "⚙ ‘낚시 코인’은 BE(정수)와 **별개 화폐**입니다.",
-        "⚙ 물고기마다 **최소/최대 길이**가 있으며, 클수록 잡기 어렵지만 보상과 포인트가 커집니다."
+        "⚙ 시간대: 낮(07:00~15:59) / 노을(16:00~19:59) / 밤(20:00~06:59) (KST)",
+        "⚙ 장비는 사용 시 내구도 1 감소, 미끼는 입질 시작 시 1개 소모됩니다.",
+        "⚙ ‘낚시 코인’은 BE(정수)와 별개 화폐입니다.",
+        "⚙ 물고기마다 최소/최대 길이가 있으며, 클수록 보상과 포인트가 커집니다."
       ].join("\n"))
       .setColor(0xcccccc);
     return await interaction.reply({ embeds:[eb], ephemeral:true });
@@ -607,6 +692,15 @@ async function component(interaction) {
         return interaction.showModal(modal);
       }
 
+      if (interaction.customId === "dex:select") {
+        const name = interaction.values[0];
+        const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
+        st.mode = "detail"; st.current = name;
+        dexSessions.set(userId, st);
+        const payload = renderDexDetail(u, st, name);
+        return interaction.update({ ...payload, ephemeral:true });
+      }
+
       return;
     }
 
@@ -636,33 +730,30 @@ async function component(interaction) {
     const id = interaction.customId;
 
     if (id === "fish:share") {
-  const rec = lastCatch.get(userId);
-  if (!rec) {
-    return interaction.reply({ content: "최근에 잡은 물고기가 없어.", ephemeral: true });
-  }
-  // 옵션: 10분 이내만 허용
-  if (Date.now() - rec.ts > 10 * 60 * 1000) {
-    lastCatch.delete(userId);
-    return interaction.reply({ content: "최근 포획 정보가 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
-  }
-
-  const eb = new EmbedBuilder()
-    .setTitle(`🐟 ${interaction.user.displayName || interaction.user.username}의 성과!`)
-    .setDescription([
-      `• 이름: [${rec.rarity}] ${rec.name}`,
-      `• 길이: ${Math.round(rec.length)}cm`,
-      `• 판매가: ${rec.sell.toLocaleString()} 코인`,
-    ].join("\n"))
-    .setColor(0x66ccff)
-    .setImage(getIconURL(rec.name) || null);
-
-  try {
-    await interaction.channel.send({ embeds: [eb] }); // 공개 메세지
-    return interaction.reply({ content: "공유 완료! 🎉", ephemeral: true });
-  } catch (e) {
-    return interaction.reply({ content: "채널에 공유 실패. 권한 확인 부탁!", ephemeral: true });
-  }
-}
+      const rec = lastCatch.get(userId);
+      if (!rec) {
+        return interaction.reply({ content: "최근에 잡은 물고기가 없어.", ephemeral: true });
+      }
+      if (Date.now() - rec.ts > 10 * 60 * 1000) {
+        lastCatch.delete(userId);
+        return interaction.reply({ content: "최근 포획 정보가 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
+      }
+      const eb = new EmbedBuilder()
+        .setTitle(`🐟 ${interaction.user.displayName || interaction.user.username}의 성과!`)
+        .setDescription([
+          `• 이름: [${rec.rarity}] ${rec.name}`,
+          `• 길이: ${Math.round(rec.length)}cm`,
+          `• 판매가: ${rec.sell.toLocaleString()} 코인`,
+        ].join("\n"))
+        .setColor(0x66ccff)
+        .setImage(getIconURL(rec.name) || null);
+      try {
+        await interaction.channel.send({ embeds: [eb] });
+        return interaction.reply({ content: "공유 완료! 🎉", ephemeral: true });
+      } catch (e) {
+        return interaction.reply({ content: "채널에 공유 실패. 권한 확인 부탁!", ephemeral: true });
+      }
+    }
 
     if (id === "fish:cancel") {
       clearSession(userId);
@@ -785,21 +876,13 @@ async function component(interaction) {
           fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
           updateTier(u);
           clearSession(userId);
-          lastCatch.set(userId, {
-  name: st.name,
-  rarity: st.rarity,
-  length: st.length,
-  sell,
-  channelId: interaction.channelId,
-  ts: Date.now(),
-});
-
-const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
-  `길이: ${Math.round(st.length)}cm`,
-  `판매가: ${sell.toLocaleString()}코인`,
-  "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-].join("\n"), getIconURL(st.name));
-return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
+          lastCatch.set(userId, { name: st.name, rarity: st.rarity, length: st.length, sell, channelId: interaction.channelId, ts: Date.now() });
+          const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
+            `길이: ${Math.round(st.length)}cm`,
+            `판매가: ${sell.toLocaleString()}코인`,
+            "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
+          ].join("\n"), getIconURL(st.name));
+          return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
         } else if (st.kind === "junk") {
           const junkCoin = randInt(1, 4);
           u.coins += junkCoin;
@@ -932,30 +1015,27 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
       return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
     if (id === "inv:share") {
-  const st = invSessions.get(userId);
-  if (!st || st.kind !== "fish") {
-    return interaction.reply({ content: "물고기 화면에서만 공유할 수 있어요.", ephemeral: true });
-  }
-
-  const f = u.inv.fishes[st.idx];
-  if (!f) {
-    return interaction.reply({ content: "공유할 물고기를 찾지 못했어요.", ephemeral: true });
-  }
-
-  const nick = interaction.member?.displayName ?? interaction.user.globalName ?? interaction.user.username;
-  const eb = new EmbedBuilder()
-    .setTitle(`🐟 ${nick}의 성과 공유`)
-    .setDescription(`• 이름: [${f.r}] ${f.n}\n• 길이: ${Math.round(f.l)}cm\n• 판매가: ${f.price.toLocaleString()} 코인`)
-    .setColor(0x66ccff)
-    .setImage(getIconURL(f.n) || null);
-
-  try {
-    await interaction.channel.send({ embeds: [eb] }); // 공개 메세지
-    return interaction.reply({ content: "채널에 공유했어! 🎉", ephemeral: true });
-  } catch (e) {
-    return interaction.reply({ content: "채널에 공유 실패… 권한을 확인해줘!", ephemeral: true });
-  }
-}
+      const st = invSessions.get(userId);
+      if (!st || st.kind !== "fish") {
+        return interaction.reply({ content: "물고기 화면에서만 공유할 수 있어요.", ephemeral: true });
+      }
+      const f = u.inv.fishes[st.idx];
+      if (!f) {
+        return interaction.reply({ content: "공유할 물고기를 찾지 못했어요.", ephemeral: true });
+      }
+      const nick = interaction.member?.displayName ?? interaction.user.globalName ?? interaction.user.username;
+      const eb = new EmbedBuilder()
+        .setTitle(`🐟 ${nick}의 성과 공유`)
+        .setDescription(`• 이름: [${f.r}] ${f.n}\n• 길이: ${Math.round(f.l)}cm\n• 판매가: ${f.price.toLocaleString()} 코인`)
+        .setColor(0x66ccff)
+        .setImage(getIconURL(f.n) || null);
+      try {
+        await interaction.channel.send({ embeds: [eb] });
+        return interaction.reply({ content: "채널에 공유했어! 🎉", ephemeral: true });
+      } catch (e) {
+        return interaction.reply({ content: "채널에 공유 실패… 권한을 확인해줘!", ephemeral: true });
+      }
+    }
     if (id==="inv:prev" || id==="inv:next") {
       const st = invSessions.get(userId); if (!st) return interaction.reply({ content:"보기 세션이 없습니다.", ephemeral:true });
       const listLen = st.kind==="rod"? Object.keys(u.inv.rods).length
@@ -1141,6 +1221,37 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
     if (id === "shop:close") {
       shopSessions.delete(userId);
       return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[], ephemeral:true });
+    }
+
+    if (id.startsWith("dex:")) {
+      const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
+      if (id.startsWith("dex:rar|")) {
+        const rar = id.split("|")[1];
+        st.rarity = rar; st.page = 0; st.mode = "list"; delete st.current;
+        dexSessions.set(userId, st);
+        const payload = renderDexList(u, st);
+        return interaction.update({ ...payload, ephemeral:true });
+      }
+      if (id === "dex:prev" || id === "dex:next") {
+        const all = FISH_BY_RARITY[st.rarity]||[];
+        const maxPage = Math.max(0, Math.ceil(all.length/DEX_PAGE_SIZE)-1);
+        st.page += (id==="dex:next"?1:-1);
+        st.page = Math.max(0, Math.min(maxPage, st.page));
+        st.mode = "list"; delete st.current;
+        dexSessions.set(userId, st);
+        const payload = renderDexList(u, st);
+        return interaction.update({ ...payload, ephemeral:true });
+      }
+      if (id === "dex:back") {
+        st.mode = "list"; delete st.current;
+        dexSessions.set(userId, st);
+        const payload = renderDexList(u, st);
+        return interaction.update({ ...payload, ephemeral:true });
+      }
+      if (id === "dex:close") {
+        dexSessions.delete(userId);
+        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], components:[], ephemeral:true });
+      }
     }
 
   });
