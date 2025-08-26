@@ -334,6 +334,10 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("후원");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
+["sell:", async (interaction) => {
+  const cmd = client.commands.get("낚시");
+  if (cmd?.component) return cmd.component(interaction);
+}],
   // 필요하면 추가로 더 여기에 등록
 ]);
 
@@ -1078,26 +1082,36 @@ client.on(Events.InteractionCreate, async interaction => {
 
   // 낚시 모달
   if (
-    (interaction.isButton() || interaction.isStringSelectMenu()) &&
-    interaction.customId?.startsWith("fish:")
-  ) {
-    const cmd = client.commands.get("낚시");
-    if (!cmd || typeof cmd.component !== "function") {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "낚시 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
-      }
-      return;
+  (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
+  (() => {
+    const id = interaction.customId || "";
+    return id.startsWith("fish:") ||
+           id.startsWith("shop:") ||
+           id.startsWith("inv:")  ||
+           id.startsWith("open:") ||
+           id.startsWith("info:") ||
+           id.startsWith("sell:") ||          // sell:confirm_selected, sell:qty_modal 등
+           id.startsWith("sell-select") ||    // sell-select|list
+           id.startsWith("sell-qty-choose");  // sell-qty-choose|species
+  })()
+) {
+  const cmd = client.commands.get("낚시");
+  if (!cmd || typeof cmd.component !== "function") {
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "낚시 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
     }
-    try {
-      await cmd.component(interaction); // 내부에서 update/editReply/Reply 처리
-    } catch (err) {
-      console.error("[낚시 component 오류]", err);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
-      }
-    }
-    return; // 다른 핸들러가 중복 처리하지 않게 종료
+    return;
   }
+  try {
+    await cmd.component(interaction);
+  } catch (err) {
+    console.error("[낚시 component 오류]", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
   
   // 갓비트 시세 요약 버튼 처리
   if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
