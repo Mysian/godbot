@@ -1075,6 +1075,29 @@ client.on(Events.InteractionCreate, async interaction => {
   }
   return; // 다른 핸들러가 중복 처리하지 않도록 종료
 }
+
+  // 낚시 모달
+  if (
+    (interaction.isButton() || interaction.isStringSelectMenu()) &&
+    interaction.customId?.startsWith("fish:")
+  ) {
+    const cmd = client.commands.get("낚시");
+    if (!cmd || typeof cmd.component !== "function") {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "낚시 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+      }
+      return;
+    }
+    try {
+      await cmd.component(interaction); // 내부에서 update/editReply/Reply 처리
+    } catch (err) {
+      console.error("[낚시 component 오류]", err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+      }
+    }
+    return; // 다른 핸들러가 중복 처리하지 않게 종료
+  }
   
   // 갓비트 시세 요약 버튼 처리
   if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
