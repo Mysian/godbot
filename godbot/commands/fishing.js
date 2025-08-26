@@ -655,24 +655,24 @@ async function component(interaction) {
       s.expireTimer = setTimeout(()=>{ clearSession(userId); }, (FISHING_LIMIT_SECONDS+20)*1000);
 
       const eb = sceneEmbed(u, "🪔 입질을 기다리는 중...", [
-        `최대 ${FISHING_LIMIT_SECONDS}초 내 1회 입질 확정`,
-        "중간에 포기하면 미끼는 소모되지 않음.", "", equipLine(u)
+        `최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`,
+        "중간에 포기하면 미끼는 소모되지 않습니다.", "", equipLine(u)
       ].join("\n"), scene1);
       return interaction.update({ embeds:[eb], components:[buttonsWaiting()], ephemeral:true });
     }
 
     if (id === "fish:abort") {
       clearSession(userId);
-      return interaction.update({ content:"낚시를 중단했어. (미끼 미소모)", embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:"낚시를 중단했어요. (미끼 미소모)", embeds:[], components:[], ephemeral:true });
     }
 
     const s = sessions.get(userId);
     if (["fish:reel","fish:loosen","fish:giveup"].includes(id) && (!s || s.state!=="fight")) {
-      return interaction.reply({ content:"진행 중인 파이팅이 없어.", ephemeral:true });
+      return interaction.reply({ content:"진행 중인 낚시가 없어요.", ephemeral:true });
     }
     if (id === "fish:giveup") {
       clearSession(userId);
-      return interaction.update({ content:"대상을 놓쳤어...", embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:"대상을 놓쳤어요...", embeds:[], components:[], ephemeral:true });
     }
     if (id === "fish:reel" || id === "fish:loosen") {
       if (s.resetIdle) s.resetIdle();
@@ -681,7 +681,7 @@ async function component(interaction) {
 
       if (st.escape) {
         clearSession(userId);
-        return interaction.update({ content:"텐션 조절 실패로 놓쳤다!", embeds:[], components:[], ephemeral:true });
+        return interaction.update({ content:"텐션 조절 실패로 놓쳤어요!", embeds:[], components:[], ephemeral:true });
       }
       if (st.hp <= 0) {
         useDurability(u, "rod"); useDurability(u, "float");
