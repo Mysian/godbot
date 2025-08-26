@@ -216,6 +216,7 @@ const sessions = new Map();
 const shopSessions = new Map();
 const invSessions  = new Map();
 const sellSessions = new Map();
+const lastCatch = new Map();
 
 function clearSession(userId) {
   const s = sessions.get(userId);
@@ -260,6 +261,12 @@ function buttonsFight() {
     new ButtonBuilder().setCustomId("fish:reel").setLabel("↪ 릴 감기").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("fish:loosen").setLabel("↩ 릴 풀기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("fish:giveup").setLabel("🏳️ 포기").setStyle(ButtonStyle.Danger),
+  );
+}
+function buttonsAfterCatch() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("fish:recast").setLabel("🎯 다시 찌 던지기").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("fish:share").setLabel("📣 잡은 물고기 공유하기").setStyle(ButtonStyle.Secondary)
   );
 }
 function computeRarityWeight(u){
@@ -628,6 +635,35 @@ async function component(interaction) {
 
     const id = interaction.customId;
 
+    if (id === "fish:share") {
+  const rec = lastCatch.get(userId);
+  if (!rec) {
+    return interaction.reply({ content: "최근에 잡은 물고기가 없어.", ephemeral: true });
+  }
+  // 옵션: 10분 이내만 허용
+  if (Date.now() - rec.ts > 10 * 60 * 1000) {
+    lastCatch.delete(userId);
+    return interaction.reply({ content: "최근 포획 정보가 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
+  }
+
+  const eb = new EmbedBuilder()
+    .setTitle(`🐟 ${interaction.user.displayName || interaction.user.username}의 성과!`)
+    .setDescription([
+      `• 이름: [${rec.rarity}] ${rec.name}`,
+      `• 길이: ${Math.round(rec.length)}cm`,
+      `• 판매가: ${rec.sell.toLocaleString()} 코인`,
+    ].join("\n"))
+    .setColor(0x66ccff)
+    .setImage(getIconURL(rec.name) || null);
+
+  try {
+    await interaction.channel.send({ embeds: [eb] }); // 공개 메세지
+    return interaction.reply({ content: "공유 완료! 🎉", ephemeral: true });
+  } catch (e) {
+    return interaction.reply({ content: "채널에 공유 실패. 권한 확인 부탁!", ephemeral: true });
+  }
+}
+
     if (id === "fish:cancel") {
       clearSession(userId);
       return interaction.update({ content:"낚시를 종료했습니다.", components:[], embeds:[] });
@@ -636,7 +672,7 @@ async function component(interaction) {
       const payload = buildInventoryHome(u);
       return interaction.update({ ...payload, ephemeral:true });
     }
-    if (id === "fish:cast") {
+    if (id === "fish:cast" || id === "fish:recast") {
       if (!hasAllGear(u)) {
         const miss = [
           !u.equip.rod ? "낚싯대" : (u.inv.rods[u.equip.rod]??0)<=0 ? "낚싯대(내구도 0)" : null,
@@ -749,12 +785,21 @@ async function component(interaction) {
           fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
           updateTier(u);
           clearSession(userId);
-          const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
-            `길이: ${Math.round(st.length)}cm`,
-            `판매가: ${sell.toLocaleString()}코인`,
-            "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-          ].join("\n"), getIconURL(st.name));
-          return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+          lastCatch.set(userId, {
+  name: st.name,
+  rarity: st.rarity,
+  length: st.length,
+  sell,
+  channelId: interaction.channelId,
+  ts: Date.now(),
+});
+
+const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
+  `길이: ${Math.round(st.length)}cm`,
+  `판매가: ${sell.toLocaleString()}코인`,
+  "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
+].join("\n"), getIconURL(st.name));
+return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
         } else if (st.kind === "junk") {
           const junkCoin = randInt(1, 4);
           u.coins += junkCoin;
