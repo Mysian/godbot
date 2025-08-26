@@ -901,6 +901,7 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
+            new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
           );
           return { eb, row };
         } else {
@@ -940,6 +941,32 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
       st.idx = Math.max(0, Math.min(listLen-1, st.idx));
       invSessions.set(userId, st);
 
+      if (id === "inv:share") {
+  const st = invSessions.get(userId);
+  if (!st || st.kind !== "fish") {
+    return interaction.reply({ content: "물고기 화면에서만 공유할 수 있어요.", ephemeral: true });
+  }
+
+  const f = u.inv.fishes[st.idx];
+  if (!f) {
+    return interaction.reply({ content: "공유할 물고기를 찾지 못했어요.", ephemeral: true });
+  }
+
+  const nick = interaction.member?.displayName || interaction.user.username;
+  const eb = new EmbedBuilder()
+    .setTitle(`🐟 ${nick}의 조과 공유`)
+    .setDescription(`• 이름: [${f.r}] ${f.n}\n• 길이: ${Math.round(f.l)}cm\n• 판매가: ${f.price.toLocaleString()} 코인`)
+    .setColor(0x66ccff)
+    .setImage(getIconURL(f.n) || null);
+
+  try {
+    await interaction.channel.send({ embeds: [eb] }); // 공개 메세지
+    return interaction.reply({ content: "채널에 공유했어! 🎉", ephemeral: true });
+  } catch (e) {
+    return interaction.reply({ content: "채널에 공유 실패… 권한을 확인해줘!", ephemeral: true });
+  }
+}
+
       const kind = st.kind;
       function rerender(k, i){
         if (k==="fish") {
@@ -950,6 +977,7 @@ return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephem
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
+            new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
           );
           return { eb, row };
         } else {
