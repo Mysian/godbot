@@ -1089,7 +1089,7 @@ client.on(Events.InteractionCreate, async interaction => {
 }
   
 // 낚시 모달
-if (
+  if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
   (() => {
     const id = interaction.customId || "";
@@ -1098,11 +1098,12 @@ if (
            id.startsWith("inv:")  ||
            id.startsWith("open:") ||
            id.startsWith("info:") ||
-           id.startsWith("sell:") ||
-           id.startsWith("sell-select") ||
-           id.startsWith("sell-qty-choose") ||
+           id.startsWith("sell:") ||         
+           id.startsWith("sell-select") ||  
+           id.startsWith("sell-qty-choose") || 
            id.startsWith("dex:") ||
            id.startsWith("rank:");
+
   })()
 ) {
   const cmd = client.commands.get("낚시");
@@ -1113,15 +1114,25 @@ if (
     return;
   }
   try {
-    await cmd.component(interaction);
-  } catch (err) {
-    console.error("[낚시 component 오류]", err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
-    } else {
-      await interaction.followUp({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
-    }
+  // 파이트 계열 버튼은 먼저 ack(로딩)해서 3초 초과 방지
+  const id = interaction.customId || "";
+  const needDefer =
+    interaction.isButton() &&
+    (id === "fish:reel" || id === "fish:loosen" || id === "fish:giveup");
+  if (needDefer && !interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate().catch(() => {});
   }
+
+  await cmd.component(interaction);
+} catch (err) {
+  console.error("[낚시 component 오류]", err);
+  if (!interaction.replied && !interaction.deferred) {
+    await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+  } else {
+    // 이미 defer/update 된 경우 후속 안내는 followUp으로
+    await interaction.followUp({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+  }
+}
   return;
 }
 
