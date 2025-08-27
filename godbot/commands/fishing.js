@@ -1128,13 +1128,13 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
 
     const s = sessions.get(userId);
     if (["fish:reel","fish:loosen","fish:giveup"].includes(id) && (!s || s.state!=="fight")) {
-      return interaction.reply({ content:"진행 중인 낚시가 없습니다.", ephemeral:true });
+      return interaction.followUp({ content:"진행 중인 낚시가 없습니다.", ephemeral:true });
     }
     if (id === "fish:giveup") {
       clearSession(userId);
       const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, currentTimeBand(), "기본");
       const eb = new EmbedBuilder().setTitle("포기하셨습니다.").setColor(0x999999).setImage(scene0);
-      return interaction.update({ embeds:[eb], components:[],  });
+      return interaction.editReply({ embeds:[eb], components:[] });
     }
     if (id === "fish:reel" || id === "fish:loosen") {
       if (s.resetIdle) s.resetIdle();
@@ -1170,31 +1170,31 @@ await checkRewards(u, interaction);
           u.coins += junkCoin;
           clearSession(userId);
           const eb = sceneEmbed(u, "🪣 잡동사니를 건졌습니다", `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(st.name)||null);
-          return interaction.update({ embeds:[eb], components:[],  });
+          return interaction.editReply({ embeds:[eb], components:[] });
         } else {
           if (st.itemType === "coin") {
             u.coins += st.amount||0;
             clearSession(userId);
             const eb = sceneEmbed(u, "🪙 획득 성공!", `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`, getIconURL("낚시 코인"));
-            return interaction.update({ embeds:[eb], components:[],  });
+            return interaction.editReply({ embeds:[eb], components:[] });
           }
           if (st.itemType === "be") {
             await addBE(userId, st.amount||0, "[낚시] 드랍");
             clearSession(userId);
             const eb = sceneEmbed(u, "🔷 파랑 정수 획득!", `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`, getIconURL("파랑 정수"));
-            return interaction.update({ embeds:[eb], components:[],  });
+            return interaction.editReply({ embeds:[eb], components:[] });
           }
           if (st.itemType === "key") {
             u.inv.keys = (u.inv.keys||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "🗝️ 열쇠 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 열쇠"));
-            return interaction.update({ embeds:[eb], components:[],  });
+            return interaction.editReply({ embeds:[eb], components:[] });
           }
           if (st.itemType === "chest") {
             u.inv.chests = (u.inv.chests||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "📦 보물상자 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 보물상자"));
-            return interaction.update({ embeds:[eb], components:[],  });
+            return interaction.editReply({ embeds:[eb], components:[] });
           }
         }
       }
