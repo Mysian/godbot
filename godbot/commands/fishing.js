@@ -1006,14 +1006,6 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
 
     const id = interaction.customId;
 
-    if (
-  interaction.isButton() &&
-  ["fish:reel", "fish:loosen", "fish:giveup"].includes(interaction.customId) &&
-  !interaction.deferred && !interaction.replied
-) {
-  try { await interaction.deferUpdate(); } catch (_) {}
-}
-
     if (id === "fish:share") {
       const rec = lastCatch.get(userId);
       if (!rec) {
