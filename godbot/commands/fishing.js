@@ -1221,7 +1221,7 @@ return;
         .setDescription([line, "릴을 감거나 풀며 흐름을 유지해 보세요."].join("\n"))
         .setColor(0x44ddaa)
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
-      return interaction.update({ embeds:[eb], components:[buttonsFight()] });
+      return updateOrEdit(interaction, { embeds:[eb], components:[buttonsFight()] });
     }
 
     if (id === "fish:sell_all") {
