@@ -167,7 +167,9 @@ async function withDB(fn) {
 async function updateUser(userId, updater) {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
-    return await updater(u, db);
+    const r = await updater(u, db);
+    delete u._uid; 
+    return r;
   });
 }
 
@@ -566,15 +568,16 @@ function renderDexList(u, st){
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
     .setDescription(lines.length?lines.join("\n"):"_표시할 항목이 없습니다._")
     .setColor(0x66ccff);
+  const components = [dexRarityRow(st.rarity)];
+if (slice.length) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId("dex:select")
     .setPlaceholder("상세로 볼 항목 선택")
-    .addOptions(slice.map(n=>({
-      label: caught.has(n) ? n : "???",
-      value: n
-    })));
-  const listRow = new ActionRowBuilder().addComponents(menu);
-  return { embeds:[eb], components:[dexRarityRow(st.rarity), listRow, dexNavRow(start>0, start+DEX_PAGE_SIZE<total)] };
+    .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
+  components.push(new ActionRowBuilder().addComponents(menu));
+}
+components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
+return { embeds:[eb], components };
 }
 function renderDexDetail(u, st, name){
   const caught = caughtSetOf(u);
@@ -677,7 +680,8 @@ async function checkRewards(u, interaction){
     .setTitle("🏅 티어 보상")
     .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
     .setColor(0x55ff55)
-    .setThumbnail(getIconURL(u.tier) || null) 
+    const tierIcon = getIconURL(u.tier);
+if (tierIcon) eb.setThumbnail(tierIcon);
 );
   }
 
@@ -977,7 +981,8 @@ async function component(interaction) {
       if (interaction.customId === "sell:qty_modal") {
         const st = sellSessions.get(userId) || {};
         const species = st.qtySpecies;
-        const qty = Math.max(0, parseInt(interaction.fields.getTextInputValue("qty"),10)||0);
+        const raw = (interaction.fields.getTextInputValue("qty")||"").trim();
+const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
         if (!species || qty<=0) return interaction.reply({ content:"입력이 올바르지 않습니다.", ephemeral:true });
 
         const fishes = u.inv.fishes || [];
@@ -1215,7 +1220,7 @@ async function component(interaction) {
         label: `[${f.r}] ${f.n} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
         value: String(i)
       }));
-      if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.",  });
+      if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
       const menu = new StringSelectMenuBuilder().setCustomId("sell-select|list").setPlaceholder("판매할 물고기 선택(복수 선택 가능)").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
       return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ],  });
     }
@@ -1456,7 +1461,7 @@ async function component(interaction) {
     }
     if (id.startsWith("shop:buy|")) {
       const [, pay, name] = id.split("|");
-      const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.",  });
+      const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
       const kind = st.kind; const price = PRICES[kind==="rod"?"rods":kind==="float"?"floats":"baits"][name];
       if (!price) return interaction.reply({ content:"가격 정보를 불러오지 못했습니다.", ephemeral:true });
 
