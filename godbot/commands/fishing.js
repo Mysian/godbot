@@ -60,6 +60,52 @@ const REWARDS_SIZE = {
   500:[{type:"float",name:"은 찌"},{type:"coin",amt:50000},{type:"be",amt:100000}],
   1000:[{type:"float",name:"다이아 찌"},{type:"coin",amt:100000},{type:"be",amt:1000000}]
 };
+const SPECIES_MILESTONES = {
+  "노말": {
+    1:   [{ type:"coin", amt:100 }],
+    5:   [{ type:"be",   amt:50000 }],
+    10:  [{ type:"bait", name:"지렁이 미끼" }],
+    30:  [{ type:"coin", amt:10000 }],
+    50:  [{ type:"rod",  name:"금 낚싯대" }, { type:"chest", qty:5, name:"까리한 보물상자" }],
+    100: [{ type:"float",name:"은 찌" }, { type:"key", qty:5, name:"까리한 열쇠" }]
+  },
+  "레어": {
+    1:   [{ type:"coin", amt:500 }],
+    5:   [{ type:"be",   amt:100000 }],
+    10:  [{ type:"bait", name:"지렁이 미끼" }],
+    30:  [{ type:"coin", amt:50000 }],
+    50:  [{ type:"rod",  name:"금 낚싯대" }, { type:"chest", qty:10, name:"까리한 보물상자" }],
+    100: [{ type:"float",name:"금 찌" }, { type:"key", qty:10, name:"까리한 열쇠" }]
+  },
+  "유니크": {
+    1:   [{ type:"coin", amt:5000 }],
+    5:   [{ type:"be",   amt:300000 }],
+    10:  [{ type:"bait", name:"새우 미끼" }],
+    30:  [{ type:"coin", amt:300000 }],
+    50:  [{ type:"rod",  name:"다이아 낚싯대" }],
+    100: [{ type:"float",name:"다이아 찌" }]
+  },
+  "레전드": {
+    1:   [{ type:"coin", amt:50000 }],
+    5:   [{ type:"be",   amt:500000 }],
+    10:  [{ type:"bait", name:"빛나는 젤리 미끼" }],
+    30:  [{ type:"coin", amt:500000 }],
+    50:  [{ type:"rod",  name:"다이아 낚싯대" }],
+    100: [{ type:"float",name:"금 찌" }, { type:"float", name:"다이아 찌" }]
+  },
+  "에픽": {
+    1:   [{ type:"coin", amt:200000 }],
+    5:   [{ type:"be",   amt:2000000 }],
+    10:  [
+      { type:"bait", name:"지렁이 미끼" },
+      { type:"bait", name:"새우 미끼" },
+      { type:"bait", name:"빛나는 젤리 미끼" }
+    ],
+    30:  [{ type:"coin", amt:1000000 }],
+    50:  [{ type:"rod",  name:"금 낚싯대" }, { type:"rod", name:"다이아 낚싯대" }],
+    100: [{ type:"rod",  name:"전설의 낚싯대" }]
+  }
+};
 
 const ROD_SPECS = {
   "나무 낚싯대":   { maxDur: 50,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
@@ -130,8 +176,10 @@ function ensureUser(u) {
   u.tier ||= "브론즈";
   u.equip ||= { rod:null, float:null, bait:null };
   u.inv ||= { rods:{}, floats:{}, baits:{}, fishes:[], keys:0, chests:0 };
-  u.stats ||= { caught:0, points:0, best:{}, max:{ name:null, length:0 } };
-  u.rewards ||= { tier:{}, caught:{}, size:{} };
+  u.stats ||= { caught:0, points:0, best:{}, max:{ name:null, length:0 },
+                speciesCount:{} };
+  u.rewards ||= { tier:{}, caught:{}, size:{},
+                  species:{} };
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -560,7 +608,9 @@ function rewardText(u, r) {
     const cur  = u.inv.baits[r.name] || 0;
     if (cur > 0) {
       const need = Math.max(0, pack - cur);
-      return `🪱 ${r.name} ${need}개 보충 (현재 ${cur}/${pack})`;
+      return need > 0
+        ? `🪱 ${r.name} ${need}개 보충 (현재 ${cur}/${pack})`
+        : `🪱 ${r.name} 완충 (이미 ${pack}/${pack})`;
     }
     const qty = r.qty ?? pack;
     return `🪱 ${r.name} ${qty}개`;
@@ -571,27 +621,46 @@ function rewardText(u, r) {
   if (r.type === "be") {
     return `🔷 파랑 정수 ${Number(r.amt||0).toLocaleString()}원`;
   }
+  if (r.type === "key") {
+    return `🗝️ 까리한 열쇠 ${Number(r.qty||1).toLocaleString()}개`;
+  }
+  if (r.type === "chest") {
+    return `📦 까리한 보물상자 ${Number(r.qty||1).toLocaleString()}개`;
+  }
   return "";
 }
 
-
-
 async function giveReward(u, reward){
-  if(reward.type==="rod"){
-    if(u.inv.rods.hasOwnProperty(reward.name)) u.inv.rods[reward.name]=ROD_SPECS[reward.name]?.maxDur||0; else addRod(u,reward.name);
-  } else if(reward.type==="float"){
-    if(u.inv.floats.hasOwnProperty(reward.name)) u.inv.floats[reward.name]=FLOAT_SPECS[reward.name]?.maxDur||0; else addFloat(u,reward.name);
-  } else if(reward.type==="bait"){
-    const pack = BAIT_SPECS[reward.name]?.pack||20;
-    const cur = u.inv.baits[reward.name]||0;
-    if(cur>0) u.inv.baits[reward.name] = Math.max(cur, pack);
-    else addBait(u, reward.name, reward.qty||0);
-  } else if(reward.type==="coin"){
-    u.coins += reward.amt||0;
-  } else if(reward.type==="be"){
-    await addBE(u._uid, reward.amt||0, "[낚시 보상]");
+  if (reward.type === "rod") {
+    if (u.inv.rods.hasOwnProperty(reward.name))
+      u.inv.rods[reward.name] = ROD_SPECS[reward.name]?.maxDur || 0;
+    else addRod(u, reward.name);
+
+  } else if (reward.type === "float") {
+    if (u.inv.floats.hasOwnProperty(reward.name))
+      u.inv.floats[reward.name] = FLOAT_SPECS[reward.name]?.maxDur || 0;
+    else addFloat(u, reward.name);
+
+  } else if (reward.type === "bait") {
+    const pack = BAIT_SPECS[reward.name]?.pack || 20;
+    const cur  = u.inv.baits[reward.name] || 0;
+    if (cur > 0) u.inv.baits[reward.name] = Math.max(cur, pack); 
+    else addBait(u, reward.name, reward.qty ?? pack); 
+    
+  } else if (reward.type === "coin") {
+    u.coins += reward.amt || 0;
+
+  } else if (reward.type === "be") {
+    await addBE(u._uid, reward.amt || 0, "[낚시 보상]");
+
+  } else if (reward.type === "key") {
+    u.inv.keys = (u.inv.keys || 0) + (reward.qty || 1);
+
+  } else if (reward.type === "chest") {
+    u.inv.chests = (u.inv.chests || 0) + (reward.qty || 1);
   }
 }
+
 async function checkRewards(u, interaction){
   const embeds=[];
 
@@ -652,6 +721,39 @@ async function checkRewards(u, interaction){
   }
 }
 
+async function checkSpeciesRewards(u, interaction, fishName) {
+  const rarity = RARITY_OF[fishName];
+  if (!rarity) return;
+
+  // 카운트 증가
+  const cnt = (u.stats.speciesCount[fishName] = (u.stats.speciesCount[fishName] || 0) + 1);
+
+  const plan = SPECIES_MILESTONES[rarity];
+  if (!plan) return;
+
+  // 보상 수령 기록 객체 준비
+  const rec = (u.rewards.species[fishName] ||= {});
+
+  // 이번 횟수에 해당하는 보상이 있으면 지급
+  const rewards = plan[cnt];
+  if (!rewards || rec[cnt]) return;
+
+  rec[cnt] = true;
+
+  // 실제 지급
+  for (const r of rewards) await giveReward(u, r);
+
+  // 안내 임베드
+  const lines = rewards.map(r => `• ${rewardText(u, r)}`).filter(Boolean);
+  const title = cnt === 1 ? `🎉 첫 조우 보상 — ${fishName}` : `🎁 누적 ${cnt}회 보상 — ${fishName}`;
+  const eb = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(lines.join("\n"))
+    .setColor(0x5bd7a5)
+    .setThumbnail(getIconURL(fishName) || null);
+
+  await interaction.followUp({ embeds:[eb], ephemeral:true });
+}
 
 function rankButtons(mode){
   return new ActionRowBuilder().addComponents(
@@ -1039,16 +1141,18 @@ async function component(interaction) {
         useDurability(u, "rod"); useDurability(u, "float");
         if (st.kind === "fish") {
           const sell = computeSellPrice(st.name, st.length, st.rarity);
-          fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
-          updateTier(u);
-          clearSession(userId);
-          lastCatch.set(userId, { name: st.name, rarity: st.rarity, length: st.length, sell, channelId: interaction.channelId, ts: Date.now() });
-          const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
-            `길이: ${Math.round(st.length)}cm`,
-            `판매가: ${sell.toLocaleString()}코인`,
-            "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-          ].join("\n"), getIconURL(st.name));
+           fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
+           updateTier(u);
+
+           clearSession(userId);
+           lastCatch.set(userId, { name: st.name, rarity: st.rarity, length: st.length, sell, channelId: interaction.channelId, ts: Date.now() });
+           const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
+             `길이: ${Math.round(st.length)}cm`,
+             `판매가: ${sell.toLocaleString()}코인`,
+             "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
+           ].join("\n"), getIconURL(st.name));
           await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
+          await checkSpeciesRewards(u, interaction, st.name);
           await checkRewards(u, interaction);
           return;
         } else if (st.kind === "junk") {
@@ -1444,6 +1548,10 @@ const DROP_TABLE = {
 
 const NON_FISH = new Set(["낚시 코인","파랑 정수","까리한 열쇠","까리한 보물상자","빈 페트병","해초","작은 새우"]);
 const FISH_BY_RARITY = Object.fromEntries(RARITY.map(r=>[r, (DROP_TABLE[r]||[]).filter(n=>!NON_FISH.has(n))]));
+const RARITY_OF = {};
+for (const [rar, arr] of Object.entries(FISH_BY_RARITY)) {
+  for (const n of arr) RARITY_OF[n] = rar;
+}
 const DEX_PAGE_SIZE = 10;
 
 const CHEST_REWARDS = {
