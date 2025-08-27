@@ -176,9 +176,10 @@ async function updateUser(userId, updater) {
 async function updateOrEdit(interaction, payload) {
   try {
     if (!interaction.deferred && !interaction.replied) {
-      return await interaction.update(payload);
+      try { return await interaction.update(payload); } catch {}
     }
-    return await interaction.editReply(payload);
+    try { return await interaction.editReply(payload); } catch {}
+    try { return await interaction.update(payload); } catch {}
   } catch (err) {
     console.error('[fishing] updateOrEdit error:', err);
     try { await interaction.editReply({ content: '⚠️ 결과 처리 중 오류가 발생했어요.', embeds: [], components: [] }); } catch {}
