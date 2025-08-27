@@ -1128,7 +1128,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
 
     const s = sessions.get(userId);
     if (["fish:reel","fish:loosen","fish:giveup"].includes(id) && (!s || s.state!=="fight")) {
-      return interaction.followUp({ content:"진행 중인 낚시가 없습니다.", ephemeral:true });
+      return interaction.editReply({ content:"진행 중인 낚시가 없습니다.", embeds:[], components:[] });
     }
     if (id === "fish:giveup") {
       clearSession(userId);
