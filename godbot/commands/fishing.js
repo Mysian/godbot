@@ -1301,8 +1301,8 @@ const CHEST_REWARDS = {
     { kind:"bait",  name:"새우 미끼",   qty:20, chance:18 },
     { kind:"float", name:"은 찌",       chance:6 },
     { kind:"rod",   name:"강철 낚싯대", chance:2 },
-    { kind:"be",    name:"파랑 정수",   min:10000, max:50000, chance:4 },
-    { kind:"coin", name:"낚시 코인", min:10, max:1000, chance:6 },
+    { kind:"be",    name:"파랑 정수",   min:10000, max:100000, chance:4 },
+    { kind:"coin", name:"낚시 코인", min:1000, max:10000, chance:6 },
   ]
 };
 
