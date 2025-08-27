@@ -36,6 +36,31 @@ const TIER_CUTOFF = {
   "다이아": 9000, "마스터": 20000, "그랜드마스터": 45000, "챌린저": 85000
 };
 
+const REWARDS_TIER = {
+  "실버":   [{type:"rod",name:"강철 낚싯대"}, {type:"coin",amt:1000}],
+  "골드":   [{type:"rod",name:"금 낚싯대"}, {type:"coin",amt:50000}, {type:"be",amt:100000}],
+  "플래티넘":[{type:"bait",name:"빛나는 젤리 미끼",qty:20},{type:"coin",amt:100000},{type:"be",amt:500000}],
+  "다이아": [{type:"float",name:"다이아 찌"}, {type:"coin",amt:300000}, {type:"be",amt:1000000}],
+  "마스터": [{type:"rod",name:"다이아 낚싯대"}, {type:"coin",amt:500000}, {type:"be",amt:3000000}],
+  "그랜드마스터":[{type:"coin",amt:1000000},{type:"be",amt:5000000}],
+  "챌린저":[{type:"rod",name:"다이아 낚싯대"},{type:"float",name:"다이아 찌"},{type:"coin",amt:3000000},{type:"be",amt:10000000}]
+};
+const REWARDS_CAUGHT = {
+  100:[{type:"bait",name:"새우 미끼",qty:20},{type:"coin",amt:1000}],
+  200:[{type:"bait",name:"빛나는 젤리 미끼",qty:20},{type:"coin",amt:10000}],
+  500:[{type:"float",name:"금 찌"},{type:"coin",amt:50000}],
+  1000:[{type:"rod",name:"금 낚싯대"},{type:"coin",amt:100000}],
+  2000:[{type:"float",name:"금 찌"},{type:"coin",amt:200000},{type:"be",amt:2000000}],
+  5000:[{type:"float",name:"다이아 찌"},{type:"coin",amt:500000}],
+  10000:[{type:"coin",amt:1000000},{type:"be",amt:5000000}]
+};
+const REWARDS_SIZE = {
+  100:[{type:"bait",name:"지렁이 미끼",qty:20},{type:"coin",amt:100}],
+  200:[{type:"bait",name:"새우 미끼",qty:20},{type:"coin",amt:500},{type:"be",amt:50000}],
+  500:[{type:"float",name:"은 찌"},{type:"coin",amt:50000},{type:"be",amt:100000}],
+  1000:[{type:"float",name:"다이아 찌"},{type:"coin",amt:100000},{type:"be",amt:1000000}]
+};
+
 const ROD_SPECS = {
   "나무 낚싯대":   { maxDur: 50,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
   "강철 낚싯대":   { maxDur: 120,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
@@ -106,6 +131,7 @@ function ensureUser(u) {
   u.equip ||= { rod:null, float:null, bait:null };
   u.inv ||= { rods:{}, floats:{}, baits:{}, fishes:[], keys:0, chests:0 };
   u.stats ||= { caught:0, points:0, best:{}, max:{ name:null, length:0 } };
+  u.rewards ||= { tier:{}, caught:{}, size:{} };
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -520,6 +546,87 @@ function renderDexDetail(u, st, name){
   }
 }
 
+async function giveReward(u, reward){
+  if(reward.type==="rod"){
+    if(u.inv.rods.hasOwnProperty(reward.name)) u.inv.rods[reward.name]=ROD_SPECS[reward.name]?.maxDur||0; else addRod(u,reward.name);
+  } else if(reward.type==="float"){
+    if(u.inv.floats.hasOwnProperty(reward.name)) u.inv.floats[reward.name]=FLOAT_SPECS[reward.name]?.maxDur||0; else addFloat(u,reward.name);
+  } else if(reward.type==="bait"){
+    const pack = BAIT_SPECS[reward.name]?.pack||20;
+    const cur = u.inv.baits[reward.name]||0;
+    if(cur>0) u.inv.baits[reward.name] = Math.max(cur, pack);
+    else addBait(u, reward.name, reward.qty||0);
+  } else if(reward.type==="coin"){
+    u.coins += reward.amt||0;
+  } else if(reward.type==="be"){
+    await addBE(u._uid, reward.amt||0, "[낚시 보상]");
+  }
+}
+async function checkRewards(u, interaction){
+  const embeds=[];
+  if(REWARDS_TIER[u.tier] && !u.rewards.tier[u.tier]){
+    u.rewards.tier[u.tier]=true;
+    for(const r of REWARDS_TIER[u.tier]) await giveReward(u,r);
+    embeds.push(new EmbedBuilder().setTitle("🏅 티어 보상").setDescription(`${u.tier} 달성 보상을 지급했어.`).setColor(0x55ff55));
+  }
+  const caughtKeys = Object.keys(REWARDS_CAUGHT).map(Number).sort((a,b)=>a-b);
+  for(const th of caughtKeys){
+    if((u.stats.caught||0)>=th && !u.rewards.caught[th]){
+      u.rewards.caught[th]=true;
+      for(const r of REWARDS_CAUGHT[th]) await giveReward(u,r);
+      embeds.push(new EmbedBuilder().setTitle("🎣 누적 어획 보상").setDescription(`${th}마리 달성 보상을 지급했어.`).setColor(0x55aaee));
+    }
+  }
+  const sizeKeys = Object.keys(REWARDS_SIZE).map(Number).sort((a,b)=>a-b);
+  for(const th of sizeKeys){
+    if((u.stats.max?.length||0)>=th && !u.rewards.size[th]){
+      u.rewards.size[th]=true;
+      for(const r of REWARDS_SIZE[th]) await giveReward(u,r);
+      embeds.push(new EmbedBuilder().setTitle("📏 기록 갱신 보상").setDescription(`${th}cm 기록 보상을 지급했어.`).setColor(0xaa77ff));
+    }
+  }
+  if(embeds.length) await interaction.followUp({ embeds, ephemeral:true });
+}
+
+function rankButtons(mode){
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("rank:points").setLabel("포인트").setStyle(mode==="points"?ButtonStyle.Primary:ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("rank:len").setLabel("물고기 크기").setStyle(mode==="len"?ButtonStyle.Primary:ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("rank:caught").setLabel("어획 횟수").setStyle(mode==="caught"?ButtonStyle.Primary:ButtonStyle.Secondary),
+  );
+}
+async function buildRankEmbedPayload(db, interaction, mode){
+  const base = Object.entries(db.users||{}).map(([id,u])=>{
+    ensureUser(u);
+    let bestN = null; let bestL = 0;
+    for (const [n,b] of Object.entries(u.stats.best||{})) { const L = b.length||0; if (L > bestL) { bestL = L; bestN = n; } }
+    if ((u.stats.max?.length||0) >= bestL) { bestL = u.stats.max?.length||0; bestN = u.stats.max?.name||bestN; }
+    return { id, tier:u.tier, points:u.stats.points||0, caught:u.stats.caught||0, bestLen:bestL, bestName:bestN };
+  });
+  let sorted;
+  if(mode==="points") sorted=[...base].sort((a,b)=> b.points - a.points);
+  if(mode==="len") sorted=[...base].sort((a,b)=> b.bestLen - a.bestLen);
+  if(mode==="caught") sorted=[...base].sort((a,b)=> b.caught - a.caught);
+  const top = sorted.slice(0,20);
+  const namesCache = {};
+  async function nameOf(id){
+    if (namesCache[id]) return namesCache[id];
+    const m = await interaction.guild.members.fetch(id).catch(()=>null);
+    const nm = m?.displayName || `유저(${id})`;
+    namesCache[id] = nm;
+    return nm;
+  }
+  const lines = await Promise.all(top.map(async (o,i)=>{
+    const nm = await nameOf(o.id);
+    if(mode==="points") return `${i+1}. ${nm} — ${o.tier} (${o.points.toLocaleString()}점)`;
+    if(mode==="len") return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${o.bestName})`:""}`;
+    if(mode==="caught") return `${i+1}. ${nm} — ${o.caught.toLocaleString()}마리`;
+  }));
+  const titleMap = { points:"포인트", len:"물고기 크기", caught:"어획 횟수" };
+  const eb = new EmbedBuilder().setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`).setDescription(lines.join("\n") || "_데이터가 없습니다._").setColor(0xff77aa);
+  return { embeds:[eb], components:[rankButtons(mode)] };
+}
+
 async function execute(interaction) {
   const sub = interaction.options.getSubcommand();
   const userId = interaction.user.id;
@@ -626,37 +733,8 @@ async function execute(interaction) {
 
   if (sub === "기록순위") {
     return await withDB(async db=>{
-      const base = Object.entries(db.users||{}).map(([id,u])=>{
-        ensureUser(u);
-        let bestN = null; let bestL = 0;
-        for (const [n,b] of Object.entries(u.stats.best||{})) { const L = b.length||0; if (L > bestL) { bestL = L; bestN = n; } }
-        if ((u.stats.max?.length||0) >= bestL) { bestL = u.stats.max?.length||0; bestN = u.stats.max?.name||bestN; }
-        return { id, tier:u.tier, points:u.stats.points||0, caught:u.stats.caught||0, bestLen:bestL, bestName:bestN };
-      });
-      const topPoints = [...base].sort((a,b)=> b.points - a.points).slice(0,20);
-      const topLen = [...base].sort((a,b)=> b.bestLen - a.bestLen).slice(0,20);
-      const topCaught = [...base].sort((a,b)=> b.caught - a.caught).slice(0,20);
-
-      const namesCache = {};
-      async function nameOf(id){
-        if (namesCache[id]) return namesCache[id];
-        const m = await interaction.guild.members.fetch(id).catch(()=>null);
-        const nm = m?.displayName || `유저(${id})`;
-        namesCache[id] = nm;
-        return nm;
-      }
-      const linesPoints = await Promise.all(topPoints.map(async (o,i)=>`${i+1}. ${await nameOf(o.id)} — ${o.tier} (${o.points.toLocaleString()}점)`));
-      const linesLen = await Promise.all(topLen.map(async (o,i)=>`${i+1}. ${await nameOf(o.id)} — ${Math.round(o.bestLen)}cm${o.bestName?` (${o.bestName})`:""}`));
-      const linesCaught = await Promise.all(topCaught.map(async (o,i)=>`${i+1}. ${await nameOf(o.id)} — ${o.caught.toLocaleString()}마리`));
-
-      const eb = new EmbedBuilder().setTitle("🏆 낚시 순위 TOP 20")
-        .addFields(
-          { name:"포인트", value: linesPoints.join("\n") || "_데이터가 없습니다._", inline:false },
-          { name:"최대 길이", value: linesLen.join("\n") || "_데이터가 없습니다._", inline:false },
-          { name:"어획 수", value: linesCaught.join("\n") || "_데이터가 없습니다._", inline:false },
-        )
-        .setColor(0xff77aa);
-      await interaction.reply({ embeds:[eb], ephemeral:true });
+      const payload = await buildRankEmbedPayload(db, interaction, "points");
+      await interaction.reply({ ...payload, ephemeral:true });
     });
   }
 
@@ -905,7 +983,9 @@ async function component(interaction) {
             `판매가: ${sell.toLocaleString()}코인`,
             "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
           ].join("\n"), getIconURL(st.name));
-          return interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
+          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
+          await checkRewards(u, interaction);
+          return;
         } else if (st.kind === "junk") {
           const junkCoin = randInt(1, 4);
           u.coins += junkCoin;
@@ -1273,8 +1353,14 @@ async function component(interaction) {
       }
       if (id === "dex:close") {
         dexSessions.delete(userId);
-        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], components:[], ephemeral:true });
+        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], ephemeral:true });
       }
+    }
+
+    if (id.startsWith("rank:")) {
+      const mode = id.split(":")[1];
+      const payload = await buildRankEmbedPayload(db, interaction, mode);
+      return interaction.update({ ...payload, ephemeral:true });
     }
 
   });
