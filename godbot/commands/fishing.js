@@ -167,9 +167,7 @@ async function withDB(fn) {
 async function updateUser(userId, updater) {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
-    const r = await updater(u, db);
-    delete u._uid; 
-    return r;
+    return await updater(u, db);
   });
 }
 
@@ -309,7 +307,6 @@ function fishToInv(u, fish) {
   u.stats.caught += 1;
   const gained = computePoints(fish.rarity, fish.sell, fish.length);
   u.stats.points += gained;
-  u.stats.speciesCount[fish.name] = (u.stats.speciesCount[fish.name] || 0) + 1;
   const prevBest = u.stats.best[fish.name] || { length:0, price:0 };
   if ((fish.length||0) > (prevBest.length||0)) u.stats.best[fish.name] = { length: fish.length, price: Math.max(prevBest.price||0, fish.sell) };
   if ((fish.sell||0) > (prevBest.price||0)) u.stats.best[fish.name] = { length: Math.max(prevBest.length||0, fish.length), price: fish.sell };
@@ -556,10 +553,10 @@ function renderDexList(u, st){
   const lines = slice.map((n,i)=>{
     if (caught.has(n)) {
       const rec = u.stats.best?.[n]||{};
-      const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-      const cnt = u.stats.speciesCount?.[n] ?? 0;
-      const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
-      return `${start+i+1}. ${n} — ${meta}`;
+      const L = rec.length ? `${Math.round(rec.length)}cm` : "";
+      const C = (u.stats.speciesCount?.[n]||0) ? `${(u.stats.speciesCount[n]).toLocaleString()}회` : "";
+      const meta = [L,C].filter(Boolean).join(" | ");
+      return `${start+i+1}. ${n}${meta?` — ${meta}`:""}`;
     } else {
       return `${start+i+1}. ???`;
     }
@@ -568,16 +565,15 @@ function renderDexList(u, st){
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
     .setDescription(lines.length?lines.join("\n"):"_표시할 항목이 없습니다._")
     .setColor(0x66ccff);
-  const components = [dexRarityRow(st.rarity)];
-if (slice.length) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId("dex:select")
     .setPlaceholder("상세로 볼 항목 선택")
-    .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
-  components.push(new ActionRowBuilder().addComponents(menu));
-}
-components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
-return { embeds:[eb], components };
+    .addOptions(slice.map(n=>({
+      label: caught.has(n) ? n : "???",
+      value: n
+    })));
+  const listRow = new ActionRowBuilder().addComponents(menu);
+  return { embeds:[eb], components:[dexRarityRow(st.rarity), listRow, dexNavRow(start>0, start+DEX_PAGE_SIZE<total)] };
 }
 function renderDexDetail(u, st, name){
   const caught = caughtSetOf(u);
@@ -675,17 +671,13 @@ async function checkRewards(u, interaction){
     u.rewards.tier[u.tier] = true;
     for (const r of rewards) await giveReward(u, r);
 
- {
-  const eb = new EmbedBuilder()
+    embeds.push(
+  new EmbedBuilder()
     .setTitle("🏅 티어 보상")
     .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
-    .setColor(0x55ff55);
-
-  const tierIcon = getIconURL(u.tier);
-  if (tierIcon) eb.setThumbnail(tierIcon);
-
-  embeds.push(eb);
-}
+    .setColor(0x55ff55)
+    .setThumbnail(getIconURL(u.tier) || null) 
+);
   }
 
   // 누적 어획 보상
@@ -734,7 +726,7 @@ async function checkSpeciesRewards(u, interaction, fishName) {
   if (!rarity) return;
 
   // 카운트 증가
-  const cnt = u.stats.speciesCount[fishName] || 0;
+  const cnt = (u.stats.speciesCount[fishName] = (u.stats.speciesCount[fishName] || 0) + 1);
 
   const plan = SPECIES_MILESTONES[rarity];
   if (!plan) return;
@@ -955,7 +947,7 @@ async function component(interaction) {
           new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length===0),
           new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
         );
-        return interaction.update({ embeds:[eb], components:[row],  });
+        return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
       }
 
       if (type === "sell-qty-choose") {
@@ -974,7 +966,7 @@ async function component(interaction) {
         st.mode = "detail"; st.current = name;
         dexSessions.set(userId, st);
         const payload = renderDexDetail(u, st, name);
-        return interaction.update({ ...payload,  });
+        return interaction.update({ ...payload, ephemeral:true });
       }
 
       return;
@@ -984,8 +976,7 @@ async function component(interaction) {
       if (interaction.customId === "sell:qty_modal") {
         const st = sellSessions.get(userId) || {};
         const species = st.qtySpecies;
-        const raw = (interaction.fields.getTextInputValue("qty")||"").trim();
-const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
+        const qty = Math.max(0, parseInt(interaction.fields.getTextInputValue("qty"),10)||0);
         if (!species || qty<=0) return interaction.reply({ content:"입력이 올바르지 않습니다.", ephemeral:true });
 
         const fishes = u.inv.fishes || [];
@@ -1005,14 +996,6 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
     }
 
     const id = interaction.customId;
-
-    if (
-  interaction.isButton() &&
-  ["fish:reel", "fish:loosen", "fish:giveup"].includes(interaction.customId) &&
-  !interaction.deferred && !interaction.replied
-) {
-  try { await interaction.deferUpdate(); } catch (_) {}
-}
 
     if (id === "fish:share") {
       const rec = lastCatch.get(userId);
@@ -1046,7 +1029,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
     }
     if (id === "fish:equip") {
       const payload = buildInventoryHome(u);
-      return interaction.update({ ...payload,  });
+      return interaction.update({ ...payload, ephemeral:true });
     }
     if (id === "fish:cast" || id === "fish:recast") {
       if (!hasAllGear(u)) {
@@ -1057,11 +1040,10 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
         ].filter(Boolean).join(", ");
         const missKey = missingGearKey(u);
         const eb = new EmbedBuilder().setTitle("⚠ 장비 부족")
-          .setDescription(`부족한 장비: **${miss}**
-/낚시 구매 에서 구매하시거나 인벤토리에서 장착해 주세요.`)
+          .setDescription(`부족한 장비: **${miss}**\n/낚시 구매 에서 구매하시거나 인벤토리에서 장착해 주세요.`)
           .setColor(0xff5555);
         if (missKey) eb.setImage(getIconURL(missKey)||null);
-        return interaction.update({ embeds:[eb], components:[],  });
+        return interaction.update({ embeds:[eb], components:[], ephemeral:true });
       }
 
       clearSession(userId);
@@ -1086,7 +1068,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
 
         if (!result || !result.ok) {
           clearSession(userId);
-          return interaction.editReply({ content:"미끼가 없어 입질이 이어지지 않았습니다.", components:[], embeds:[] }).catch(()=>{});
+          return interaction.editReply({ content:"미끼가 없어 입질이 이어지지 않았습니다.", components:[], embeds:[], ephemeral:true }).catch(()=>{});
         }
 
         const fobj = result.fight;
@@ -1100,14 +1082,14 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
           if (s.fightIdleTimer) clearTimeout(s.fightIdleTimer);
           s.fightIdleTimer = setTimeout(()=>{
             clearSession(userId);
-            interaction.editReply({ content:"아무 행동을 하지 않아 대상을 놓쳤습니다.", embeds:[], components:[] }).catch(()=>{});
+            interaction.editReply({ content:"아무 행동을 하지 않아 대상을 놓쳤습니다.", embeds:[], components:[], ephemeral:true }).catch(()=>{});
           }, FIGHT_IDLE_TIMEOUT*1000);
         };
         resetIdle();
         s.resetIdle = resetIdle;
         s.fightTotalTimer = setTimeout(()=>{
           clearSession(userId);
-          interaction.editReply({ content:"너무 오래 끌어 대상이 빠져나갔습니다.", embeds:[], components:[] }).catch(()=>{});
+          interaction.editReply({ content:"너무 오래 끌어 대상이 빠져나갔습니다.", embeds:[], components:[], ephemeral:true }).catch(()=>{});
         }, FIGHT_TOTAL_TIMEOUT*1000);
 
         const eb = new EmbedBuilder().setTitle(`🐟 입질!`)
@@ -1117,7 +1099,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
           ].join("\n"))
           .setColor(0x44ddaa)
           .setImage(s.sceneBiteURL);
-        try { await interaction.editReply({ embeds:[eb], components:[buttonsFight()] }); } catch {}
+        try { await interaction.editReply({ embeds:[eb], components:[buttonsFight()], ephemeral:true }); } catch {}
       }, waitSec*1000);
 
       s.expireTimer = setTimeout(()=>{ clearSession(userId); }, (FISHING_LIMIT_SECONDS+20)*1000);
@@ -1126,23 +1108,23 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
         `최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`,
         "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)
       ].join("\n"), scene1);
-      return interaction.update({ embeds:[eb], components:[buttonsWaiting()] });
+      return interaction.update({ embeds:[eb], components:[buttonsWaiting()], ephemeral:true });
     }
 
     if (id === "fish:abort") {
       clearSession(userId);
-      return interaction.update({ content:"낚시를 중단했습니다. (미끼 미소모)", embeds:[], components:[],  });
+      return interaction.update({ content:"낚시를 중단했습니다. (미끼 미소모)", embeds:[], components:[], ephemeral:true });
     }
 
     const s = sessions.get(userId);
     if (["fish:reel","fish:loosen","fish:giveup"].includes(id) && (!s || s.state!=="fight")) {
-      return interaction.update({ content:"진행 중인 낚시가 없습니다.", embeds:[], components:[] });
+      return interaction.reply({ content:"진행 중인 낚시가 없습니다.", ephemeral:true });
     }
     if (id === "fish:giveup") {
       clearSession(userId);
       const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, currentTimeBand(), "기본");
       const eb = new EmbedBuilder().setTitle("포기하셨습니다.").setColor(0x999999).setImage(scene0);
-      return interaction.update({ embeds:[eb], components:[] });
+      return interaction.update({ embeds:[eb], components:[], ephemeral:true });
     }
     if (id === "fish:reel" || id === "fish:loosen") {
       if (s.resetIdle) s.resetIdle();
@@ -1153,7 +1135,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
         clearSession(userId);
         const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "기본");
         const eb = new EmbedBuilder().setTitle("놓치셨습니다.").setDescription("텐션 조절에 실패하여 대상이 빠져나갔습니다.").setColor(0xcc6666).setImage(scene0);
-        return interaction.update({ embeds:[eb], components:[] });
+        return interaction.update({ embeds:[eb], components:[], ephemeral:true });
       }
       if (st.hp <= 0) {
         useDurability(u, "rod"); useDurability(u, "float");
@@ -1169,40 +1151,40 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
              `판매가: ${sell.toLocaleString()}코인`,
              "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
            ].join("\n"), getIconURL(st.name));
-          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()] });
-await checkSpeciesRewards(u, interaction, st.name);
-await checkRewards(u, interaction);
+          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
+          await checkSpeciesRewards(u, interaction, st.name);
+          await checkRewards(u, interaction);
           return;
         } else if (st.kind === "junk") {
           const junkCoin = randInt(1, 4);
           u.coins += junkCoin;
           clearSession(userId);
           const eb = sceneEmbed(u, "🪣 잡동사니를 건졌습니다", `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(st.name)||null);
-          return interaction.editReply({ embeds:[eb], components:[] });
+          return interaction.update({ embeds:[eb], components:[], ephemeral:true });
         } else {
           if (st.itemType === "coin") {
             u.coins += st.amount||0;
             clearSession(userId);
             const eb = sceneEmbed(u, "🪙 획득 성공!", `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`, getIconURL("낚시 코인"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
           }
           if (st.itemType === "be") {
             await addBE(userId, st.amount||0, "[낚시] 드랍");
             clearSession(userId);
             const eb = sceneEmbed(u, "🔷 파랑 정수 획득!", `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`, getIconURL("파랑 정수"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
           }
           if (st.itemType === "key") {
             u.inv.keys = (u.inv.keys||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "🗝️ 열쇠 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 열쇠"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
           }
           if (st.itemType === "chest") {
             u.inv.chests = (u.inv.chests||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "📦 보물상자 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 보물상자"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
           }
         }
       }
@@ -1213,17 +1195,17 @@ await checkRewards(u, interaction);
         .setDescription([line, "릴을 감거나 풀며 흐름을 유지해 보세요."].join("\n"))
         .setColor(0x44ddaa)
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
-      return interaction.update({ embeds:[eb], components:[buttonsFight()] });
+      return interaction.update({ embeds:[eb], components:[buttonsFight()], ephemeral:true });
     }
 
     if (id === "fish:sell_all") {
       const fishes = u.inv.fishes || [];
       const total = fishes.reduce((s,f)=>s+(f.price||0),0);
       u.coins += total; u.inv.fishes = [];
-      return interaction.update({ content:`총 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[],  });
+      return interaction.update({ content:`총 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[], ephemeral:true });
     }
     if (id === "fish:sell_cancel" || id === "sell:cancel") {
-      return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[],  });
+      return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[], ephemeral:true });
     }
     if (id === "fish:sell_select") {
       const fishes = u.inv.fishes||[];
@@ -1233,7 +1215,7 @@ await checkRewards(u, interaction);
       }));
       if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
       const menu = new StringSelectMenuBuilder().setCustomId("sell-select|list").setPlaceholder("판매할 물고기 선택(복수 선택 가능)").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
-      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ],  });
+      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ], ephemeral:true });
     }
     if (id === "sell:confirm_selected") {
       const st = sellSessions.get(userId) || {};
@@ -1244,7 +1226,7 @@ await checkRewards(u, interaction);
       u.inv.fishes = fishes.filter((_,i)=>!idxs.includes(i));
       u.coins += total;
       sellSessions.delete(userId);
-      return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[],  });
+      return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[], ephemeral:true });
     }
     if (id === "fish:sell_qty") {
       const fishes = u.inv.fishes||[];
@@ -1252,7 +1234,7 @@ await checkRewards(u, interaction);
       if (kinds.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
       const opts = kinds.slice(0,25).map(n=>({ label:n, value:n }));
       const menu = new StringSelectMenuBuilder().setCustomId("sell-qty-choose|species").setPlaceholder("종류 선택").addOptions(opts);
-      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 수량 판매 — 종류 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ],  });
+      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 수량 판매 — 종류 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ], ephemeral:true });
     }
 
     if (id.startsWith("inv:start|")) {
@@ -1302,7 +1284,7 @@ await checkRewards(u, interaction);
       }
 
       const { eb, row } = renderInv(kind, 0);
-      return interaction.update({ embeds:[eb], components:[row],  });
+      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
     if (id === "inv:share") {
       const st = invSessions.get(userId);
@@ -1371,7 +1353,7 @@ await checkRewards(u, interaction);
         }
       }
       const { eb, row } = rerender(kind, st.idx);
-      return interaction.update({ embeds:[eb], components:[row],  });
+      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
     if (id.startsWith("inv:equip|")) {
       const [,slot,name] = id.split("|");
@@ -1435,7 +1417,7 @@ await checkRewards(u, interaction);
       }
 
       const { eb, row } = renderShop(kind, 0);
-      return interaction.update({ embeds:[eb], components:[row],  });
+      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
     if (id==="shop:prev" || id==="shop:next") {
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
@@ -1468,7 +1450,7 @@ await checkRewards(u, interaction);
         new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
         new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
       );
-      return interaction.update({ embeds:[eb], components:[row],  });
+      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
     }
     if (id.startsWith("shop:buy|")) {
       const [, pay, name] = id.split("|");
@@ -1510,7 +1492,7 @@ await checkRewards(u, interaction);
     }
     if (id === "shop:close") {
       shopSessions.delete(userId);
-      return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[],  });
+      return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[], ephemeral:true });
     }
 
     if (id.startsWith("dex:")) {
@@ -1520,7 +1502,7 @@ await checkRewards(u, interaction);
         st.rarity = rar; st.page = 0; st.mode = "list"; delete st.current;
         dexSessions.set(userId, st);
         const payload = renderDexList(u, st);
-        return interaction.update({ ...payload,  });
+        return interaction.update({ ...payload, ephemeral:true });
       }
       if (id === "dex:prev" || id === "dex:next") {
         const all = FISH_BY_RARITY[st.rarity]||[];
@@ -1530,24 +1512,24 @@ await checkRewards(u, interaction);
         st.mode = "list"; delete st.current;
         dexSessions.set(userId, st);
         const payload = renderDexList(u, st);
-        return interaction.update({ ...payload,  });
+        return interaction.update({ ...payload, ephemeral:true });
       }
       if (id === "dex:back") {
         st.mode = "list"; delete st.current;
         dexSessions.set(userId, st);
         const payload = renderDexList(u, st);
-        return interaction.update({ ...payload,  });
+        return interaction.update({ ...payload, ephemeral:true });
       }
       if (id === "dex:close") {
         dexSessions.delete(userId);
-        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], components:[] });
+        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], ephemeral:true });
       }
     }
 
     if (id.startsWith("rank:")) {
       const mode = id.split(":")[1];
       const payload = await buildRankEmbedPayload(db, interaction, mode);
-      return interaction.update({ ...payload,  });
+      return interaction.update({ ...payload, ephemeral:true });
     }
 
   });
