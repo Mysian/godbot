@@ -556,21 +556,24 @@ function rewardText(u, r) {
     return `🟠 ${r.name} ${own ? "(내구도 최대치로 복구)" : "획득"}`;
   }
   if (r.type === "bait") {
-    const pack = BAIT_SPECS[r.name]?.pack || (r.qty ?? 0) || 20;
-    const cur = u.inv.baits[r.name] || 0;
-    // 정의에 qty가 있으면 그걸, 없으면 ‘부족분 보충(최대 pack)’ 기준으로 표시
-    const qty = (r.qty != null) ? r.qty : (cur > 0 ? Math.max(0, pack - cur) : pack);
-    const note = (r.qty == null && cur > 0) ? " (부족분 보충)" : "";
-    return `🪱 ${r.name} ${qty}개${note}`;
+    const pack = BAIT_SPECS[r.name]?.pack ?? 20;
+    const cur  = u.inv.baits[r.name] || 0;
+    if (cur > 0) {
+      const need = Math.max(0, pack - cur);
+      return `🪱 ${r.name} ${need}개 보충 (현재 ${cur}/${pack})`;
+    }
+    const qty = r.qty ?? pack;
+    return `🪱 ${r.name} ${qty}개`;
   }
   if (r.type === "coin") {
-    return `🪙 낚시 코인 ${Number(r.amt||0).toLocaleString()}개`;
+    return `🪙 코인 ${Number(r.amt||0).toLocaleString()}`;
   }
   if (r.type === "be") {
     return `🔷 파랑 정수 ${Number(r.amt||0).toLocaleString()}원`;
   }
   return "";
 }
+
 
 
 async function giveReward(u, reward){
@@ -600,11 +603,12 @@ async function checkRewards(u, interaction){
     for (const r of rewards) await giveReward(u, r);
 
     embeds.push(
-      new EmbedBuilder()
-        .setTitle("🏅 티어 보상")
-        .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
-        .setColor(0x55ff55)
-    );
+  new EmbedBuilder()
+    .setTitle("🏅 티어 보상")
+    .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
+    .setColor(0x55ff55)
+    .setThumbnail(getIconURL(u.tier) || null) 
+);
   }
 
   // 누적 어획 보상
