@@ -1186,31 +1186,31 @@ return;
           u.coins += junkCoin;
           clearSession(userId);
           const eb = sceneEmbed(u, "🪣 잡동사니를 건졌습니다", `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(st.name)||null);
-          return interaction.editReply({ embeds:[eb], components:[] });
+          return updateOrEdit(interaction, { embeds:[eb], components:[] });
         } else {
           if (st.itemType === "coin") {
             u.coins += st.amount||0;
             clearSession(userId);
             const eb = sceneEmbed(u, "🪙 획득 성공!", `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`, getIconURL("낚시 코인"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return updateOrEdit(interaction, { embeds:[eb], components:[] });
           }
           if (st.itemType === "be") {
             await addBE(userId, st.amount||0, "[낚시] 드랍");
             clearSession(userId);
             const eb = sceneEmbed(u, "🔷 파랑 정수 획득!", `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`, getIconURL("파랑 정수"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return updateOrEdit(interaction, { embeds:[eb], components:[] });
           }
           if (st.itemType === "key") {
             u.inv.keys = (u.inv.keys||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "🗝️ 열쇠 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 열쇠"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return updateOrEdit(interaction, { embeds:[eb], components:[] });
           }
           if (st.itemType === "chest") {
             u.inv.chests = (u.inv.chests||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "📦 보물상자 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 보물상자"));
-            return interaction.editReply({ embeds:[eb], components:[] });
+            return updateOrEdit(interaction, { embeds:[eb], components:[] });
           }
         }
       }
