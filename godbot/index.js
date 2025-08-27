@@ -1088,7 +1088,13 @@ client.on(Events.InteractionCreate, async interaction => {
   return; // 다른 핸들러가 중복 처리하지 않도록 종료
 }
 
-  // 낚시 모달
+  하... 아직도 안되는데..;
+
+index.js 는 수정할거 없는거 확실해??
+
+내꺼 index.js에서 낚시 담당하는 파트 가져와볼게 봐바
+
+// 낚시 모달
   if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
   (() => {
@@ -1114,6 +1120,15 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
   try {
+  // 파이트 계열 버튼은 먼저 ack(로딩)해서 3초 초과 방지
+  const id = interaction.customId || "";
+  const needDefer =
+    interaction.isButton() &&
+    (id === "fish:reel" || id === "fish:loosen" || id === "fish:giveup");
+  if (needDefer && !interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate().catch(() => {});
+  }
+
   await cmd.component(interaction);
 } catch (err) {
   console.error("[낚시 component 오류]", err);
