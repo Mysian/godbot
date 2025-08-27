@@ -173,6 +173,18 @@ async function updateUser(userId, updater) {
   });
 }
 
+async function updateOrEdit(interaction, payload) {
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      return await interaction.update(payload);
+    }
+    return await interaction.editReply(payload);
+  } catch (err) {
+    console.error('[fishing] updateOrEdit error:', err);
+    try { await interaction.editReply({ content: '⚠️ 결과 처리 중 오류가 발생했어요.', embeds: [], components: [] }); } catch {}
+  }
+}
+
 function ensureUser(u) {
   u.coins ||= 0;
   u.tier ||= "브론즈";
@@ -1161,10 +1173,14 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
              `판매가: ${sell.toLocaleString()}코인`,
              "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
            ].join("\n"), getIconURL(st.name));
-          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()] });
-await checkSpeciesRewards(u, interaction, st.name);
-await checkRewards(u, interaction);
-          return;
+          await updateOrEdit(interaction, { embeds: [eb], components: [buttonsAfterCatch()] });
+try {
+  await checkSpeciesRewards(u, interaction, st.name);
+  await checkRewards(u, interaction);
+} catch (err) {
+  console.error('[fishing] reward pipeline error:', err);
+}
+return;
         } else if (st.kind === "junk") {
           const junkCoin = randInt(1, 4);
           u.coins += junkCoin;
