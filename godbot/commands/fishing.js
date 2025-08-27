@@ -546,6 +546,33 @@ function renderDexDetail(u, st, name){
   }
 }
 
+function rewardText(u, r) {
+  if (r.type === "rod") {
+    const own = Object.prototype.hasOwnProperty.call(u.inv.rods, r.name);
+    return `🎣 ${r.name} ${own ? "(내구도 최대치로 복구)" : "획득"}`;
+  }
+  if (r.type === "float") {
+    const own = Object.prototype.hasOwnProperty.call(u.inv.floats, r.name);
+    return `🟠 ${r.name} ${own ? "(내구도 최대치로 복구)" : "획득"}`;
+  }
+  if (r.type === "bait") {
+    const pack = BAIT_SPECS[r.name]?.pack || (r.qty ?? 0) || 20;
+    const cur = u.inv.baits[r.name] || 0;
+    // 정의에 qty가 있으면 그걸, 없으면 ‘부족분 보충(최대 pack)’ 기준으로 표시
+    const qty = (r.qty != null) ? r.qty : (cur > 0 ? Math.max(0, pack - cur) : pack);
+    const note = (r.qty == null && cur > 0) ? " (부족분 보충)" : "";
+    return `🪱 ${r.name} ${qty}개${note}`;
+  }
+  if (r.type === "coin") {
+    return `🪙 낚시 코인 ${Number(r.amt||0).toLocaleString()}개`;
+  }
+  if (r.type === "be") {
+    return `🔷 파랑 정수 ${Number(r.amt||0).toLocaleString()}원`;
+  }
+  return "";
+}
+
+
 async function giveReward(u, reward){
   if(reward.type==="rod"){
     if(u.inv.rods.hasOwnProperty(reward.name)) u.inv.rods[reward.name]=ROD_SPECS[reward.name]?.maxDur||0; else addRod(u,reward.name);
@@ -564,29 +591,63 @@ async function giveReward(u, reward){
 }
 async function checkRewards(u, interaction){
   const embeds=[];
-  if(REWARDS_TIER[u.tier] && !u.rewards.tier[u.tier]){
-    u.rewards.tier[u.tier]=true;
-    for(const r of REWARDS_TIER[u.tier]) await giveReward(u,r);
-    embeds.push(new EmbedBuilder().setTitle("🏅 티어 보상").setDescription(`${u.tier} 달성 보상을 지급했어.`).setColor(0x55ff55));
+
+  // 티어 보상
+  if (REWARDS_TIER[u.tier] && !u.rewards.tier[u.tier]) {
+    const rewards = REWARDS_TIER[u.tier];
+    const lines = rewards.map(r => `• ${rewardText(u, r)}`);
+    u.rewards.tier[u.tier] = true;
+    for (const r of rewards) await giveReward(u, r);
+
+    embeds.push(
+      new EmbedBuilder()
+        .setTitle("🏅 티어 보상")
+        .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
+        .setColor(0x55ff55)
+    );
   }
+
+  // 누적 어획 보상
   const caughtKeys = Object.keys(REWARDS_CAUGHT).map(Number).sort((a,b)=>a-b);
-  for(const th of caughtKeys){
-    if((u.stats.caught||0)>=th && !u.rewards.caught[th]){
-      u.rewards.caught[th]=true;
-      for(const r of REWARDS_CAUGHT[th]) await giveReward(u,r);
-      embeds.push(new EmbedBuilder().setTitle("🎣 누적 어획 보상").setDescription(`${th}마리 달성 보상을 지급했어.`).setColor(0x55aaee));
+  for (const th of caughtKeys) {
+    if ((u.stats.caught||0) >= th && !u.rewards.caught[th]) {
+      const rewards = REWARDS_CAUGHT[th];
+      const lines = rewards.map(r => `• ${rewardText(u, r)}`);
+      u.rewards.caught[th] = true;
+      for (const r of rewards) await giveReward(u, r);
+
+      embeds.push(
+        new EmbedBuilder()
+          .setTitle("🎣 누적 어획 보상")
+          .setDescription([`달성: **${th.toLocaleString()}마리**`, "", ...lines].join("\n"))
+          .setColor(0x55aaee)
+      );
     }
   }
+
+  // 최대 길이 보상
   const sizeKeys = Object.keys(REWARDS_SIZE).map(Number).sort((a,b)=>a-b);
-  for(const th of sizeKeys){
-    if((u.stats.max?.length||0)>=th && !u.rewards.size[th]){
-      u.rewards.size[th]=true;
-      for(const r of REWARDS_SIZE[th]) await giveReward(u,r);
-      embeds.push(new EmbedBuilder().setTitle("📏 기록 갱신 보상").setDescription(`${th}cm 기록 보상을 지급했어.`).setColor(0xaa77ff));
+  for (const th of sizeKeys) {
+    if ((u.stats.max?.length||0) >= th && !u.rewards.size[th]) {
+      const rewards = REWARDS_SIZE[th];
+      const lines = rewards.map(r => `• ${rewardText(u, r)}`);
+      u.rewards.size[th] = true;
+      for (const r of rewards) await giveReward(u, r);
+
+      embeds.push(
+        new EmbedBuilder()
+          .setTitle("📏 기록 갱신 보상")
+          .setDescription([`달성: **${Math.round(th)}cm**`, "", ...lines].join("\n"))
+          .setColor(0xaa77ff)
+      );
     }
   }
-  if(embeds.length) await interaction.followUp({ embeds, ephemeral:true });
+
+  if (embeds.length) {
+    await interaction.followUp({ embeds, ephemeral: true });
+  }
 }
+
 
 function rankButtons(mode){
   return new ActionRowBuilder().addComponents(
