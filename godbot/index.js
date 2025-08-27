@@ -1089,7 +1089,7 @@ client.on(Events.InteractionCreate, async interaction => {
 }
   
 // 낚시 모달
-  if (
+if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
   (() => {
     const id = interaction.customId || "";
@@ -1098,12 +1098,11 @@ client.on(Events.InteractionCreate, async interaction => {
            id.startsWith("inv:")  ||
            id.startsWith("open:") ||
            id.startsWith("info:") ||
-           id.startsWith("sell:") ||         
-           id.startsWith("sell-select") ||  
-           id.startsWith("sell-qty-choose") || 
+           id.startsWith("sell:") ||
+           id.startsWith("sell-select") ||
+           id.startsWith("sell-qty-choose") ||
            id.startsWith("dex:") ||
            id.startsWith("rank:");
-
   })()
 ) {
   const cmd = client.commands.get("낚시");
@@ -1114,32 +1113,15 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
   try {
-  const id = interaction.customId || "";
-const isFightBtn =
-  interaction.isButton() &&
-  (id === "fish:reel" || id === "fish:loosen" || id === "fish:giveup");
-
-// 커맨드가 스스로 reply/update 하도록 먼저 기회를 줌
-let autoDeferTimer = null;
-if (isFightBtn && !interaction.deferred && !interaction.replied) {
-  autoDeferTimer = setTimeout(() => {
-    if (!interaction.deferred && !interaction.replied) {
-      interaction.deferUpdate().catch(() => {});
+    await cmd.component(interaction);
+  } catch (err) {
+    console.error("[낚시 component 오류]", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.followUp({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
     }
-  }, 2500); // 2.5초 안에 커맨드가 응답 못하면 자동 ack
-}
-
-await cmd.component(interaction).catch(() => {}); // 내부에서 처리
-if (autoDeferTimer) clearTimeout(autoDeferTimer);
-} catch (err) {
-  console.error("[낚시 component 오류]", err);
-  if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
-  } else {
-    // 이미 defer/update 된 경우 후속 안내는 followUp으로
-    await interaction.followUp({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
   }
-}
   return;
 }
 
