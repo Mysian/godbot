@@ -675,14 +675,17 @@ async function checkRewards(u, interaction){
     u.rewards.tier[u.tier] = true;
     for (const r of rewards) await giveReward(u, r);
 
-    embeds.push(
-  new EmbedBuilder()
+ {
+  const eb = new EmbedBuilder()
     .setTitle("🏅 티어 보상")
     .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
-    .setColor(0x55ff55)
-    const tierIcon = getIconURL(u.tier);
-if (tierIcon) eb.setThumbnail(tierIcon);
-);
+    .setColor(0x55ff55);
+
+  const tierIcon = getIconURL(u.tier);
+  if (tierIcon) eb.setThumbnail(tierIcon);
+
+  embeds.push(eb);
+}
   }
 
   // 누적 어획 보상
