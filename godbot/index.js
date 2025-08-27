@@ -1114,16 +1114,23 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
   try {
-  // 파이트 계열 버튼은 먼저 ack(로딩)해서 3초 초과 방지
   const id = interaction.customId || "";
-  const needDefer =
-    interaction.isButton() &&
-    (id === "fish:reel" || id === "fish:loosen" || id === "fish:giveup");
-  if (needDefer && !interaction.deferred && !interaction.replied) {
-    await interaction.deferUpdate().catch(() => {});
-  }
+const isFightBtn =
+  interaction.isButton() &&
+  (id === "fish:reel" || id === "fish:loosen" || id === "fish:giveup");
 
-  await cmd.component(interaction);
+// 커맨드가 스스로 reply/update 하도록 먼저 기회를 줌
+let autoDeferTimer = null;
+if (isFightBtn && !interaction.deferred && !interaction.replied) {
+  autoDeferTimer = setTimeout(() => {
+    if (!interaction.deferred && !interaction.replied) {
+      interaction.deferUpdate().catch(() => {});
+    }
+  }, 2500); // 2.5초 안에 커맨드가 응답 못하면 자동 ack
+}
+
+await cmd.component(interaction).catch(() => {}); // 내부에서 처리
+if (autoDeferTimer) clearTimeout(autoDeferTimer);
 } catch (err) {
   console.error("[낚시 component 오류]", err);
   if (!interaction.replied && !interaction.deferred) {
