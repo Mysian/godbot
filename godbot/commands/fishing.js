@@ -307,6 +307,7 @@ function fishToInv(u, fish) {
   u.stats.caught += 1;
   const gained = computePoints(fish.rarity, fish.sell, fish.length);
   u.stats.points += gained;
+  u.stats.speciesCount[fish.name] = (u.stats.speciesCount[fish.name] || 0) + 1;
   const prevBest = u.stats.best[fish.name] || { length:0, price:0 };
   if ((fish.length||0) > (prevBest.length||0)) u.stats.best[fish.name] = { length: fish.length, price: Math.max(prevBest.price||0, fish.sell) };
   if ((fish.sell||0) > (prevBest.price||0)) u.stats.best[fish.name] = { length: Math.max(prevBest.length||0, fish.length), price: fish.sell };
@@ -553,10 +554,10 @@ function renderDexList(u, st){
   const lines = slice.map((n,i)=>{
     if (caught.has(n)) {
       const rec = u.stats.best?.[n]||{};
-      const L = rec.length ? `${Math.round(rec.length)}cm` : "";
-      const C = (u.stats.speciesCount?.[n]||0) ? `${(u.stats.speciesCount[n]).toLocaleString()}회` : "";
-      const meta = [L,C].filter(Boolean).join(" | ");
-      return `${start+i+1}. ${n}${meta?` — ${meta}`:""}`;
+      const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+      const cnt = u.stats.speciesCount?.[n] ?? 0;
+      const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
+      return `${start+i+1}. ${n} — ${meta}`;
     } else {
       return `${start+i+1}. ???`;
     }
@@ -726,7 +727,7 @@ async function checkSpeciesRewards(u, interaction, fishName) {
   if (!rarity) return;
 
   // 카운트 증가
-  const cnt = (u.stats.speciesCount[fishName] = (u.stats.speciesCount[fishName] || 0) + 1);
+  const cnt = u.stats.speciesCount[fishName] || 0;
 
   const plan = SPECIES_MILESTONES[rarity];
   if (!plan) return;
