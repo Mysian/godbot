@@ -1087,13 +1087,7 @@ client.on(Events.InteractionCreate, async interaction => {
   }
   return; // 다른 핸들러가 중복 처리하지 않도록 종료
 }
-
-  하... 아직도 안되는데..;
-
-index.js 는 수정할거 없는거 확실해??
-
-내꺼 index.js에서 낚시 담당하는 파트 가져와볼게 봐바
-
+  
 // 낚시 모달
   if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
