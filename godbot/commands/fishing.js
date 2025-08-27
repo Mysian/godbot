@@ -1153,22 +1153,39 @@ async function component(interaction) {
         useDurability(u, "rod"); useDurability(u, "float");
         if (st.kind === "fish") {
           const sell = computeSellPrice(st.name, st.length, st.rarity);
-          fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
+          try {
+  fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
+} catch (err) {
+  console.error("[낚시 fishToInv 오류]", err, st);
+}
+
           updateTier(u);
           clearSession(userId);
           lastCatch.set(userId, { name: st.name, rarity: st.rarity, length: st.length, sell, channelId: interaction.channelId, ts: Date.now() });
           const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
-            `길이: ${Math.round(st.length)}cm`,
-            `판매가: ${sell.toLocaleString()}코인`,
-            "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-          ].join("\n"), getIconURL(st.name));
-          await updateOrEdit(interaction, { embeds: [eb], components: [buttonsAfterCatch()] });
+  `길이: ${Math.round(st.length)}cm`,
+  `판매가: ${sell.toLocaleString()}코인`,
+  "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
+].join("\n"), getIconURL(st.name) || null);
+
           try {
-            await checkSpeciesRewards(u, interaction, st.name);
-            await checkRewards(u, interaction);
-          } catch (err) {
-            console.error('[fishing] reward pipeline error:', err);
-          }
+  await updateOrEdit(interaction, { embeds: [eb], components: [buttonsAfterCatch()] });
+} catch (err) {
+  console.error("[낚시 결과 embed 오류]", err);
+  if (!interaction.replied && !interaction.deferred) {
+    await interaction.reply({ content: "❌ 결과 embed 전송 오류", ephemeral: true }).catch(()=>{});
+  }
+}
+          try {
+  await checkSpeciesRewards(u, interaction, st.name);
+  await checkRewards(u, interaction);
+} catch (err) {
+  console.error('[낚시 보상 처리 오류]', err, st.name);
+  if (!interaction.replied && !interaction.deferred) {
+    await interaction.reply({ content: "❌ 보상 처리 중 오류", ephemeral: true }).catch(()=>{});
+  }
+}
+
           return;
         } else if (st.kind === "junk") {
           const junkCoin = randInt(1, 4);
