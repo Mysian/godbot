@@ -948,7 +948,7 @@ async function component(interaction) {
           new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length===0),
           new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
         );
-        return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
+        return interaction.update({ embeds:[eb], components:[row],  });
       }
 
       if (type === "sell-qty-choose") {
@@ -967,7 +967,7 @@ async function component(interaction) {
         st.mode = "detail"; st.current = name;
         dexSessions.set(userId, st);
         const payload = renderDexDetail(u, st, name);
-        return interaction.update({ ...payload, ephemeral:true });
+        return interaction.update({ ...payload,  });
       }
 
       return;
@@ -1030,7 +1030,7 @@ async function component(interaction) {
     }
     if (id === "fish:equip") {
       const payload = buildInventoryHome(u);
-      return interaction.update({ ...payload, ephemeral:true });
+      return interaction.update({ ...payload,  });
     }
     if (id === "fish:cast" || id === "fish:recast") {
       if (!hasAllGear(u)) {
@@ -1041,10 +1041,11 @@ async function component(interaction) {
         ].filter(Boolean).join(", ");
         const missKey = missingGearKey(u);
         const eb = new EmbedBuilder().setTitle("⚠ 장비 부족")
-          .setDescription(`부족한 장비: **${miss}**\n/낚시 구매 에서 구매하시거나 인벤토리에서 장착해 주세요.`)
+          .setDescription(`부족한 장비: **${miss}**
+/낚시 구매 에서 구매하시거나 인벤토리에서 장착해 주세요.`)
           .setColor(0xff5555);
         if (missKey) eb.setImage(getIconURL(missKey)||null);
-        return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+        return interaction.update({ embeds:[eb], components:[],  });
       }
 
       clearSession(userId);
@@ -1069,7 +1070,7 @@ async function component(interaction) {
 
         if (!result || !result.ok) {
           clearSession(userId);
-          return interaction.editReply({ content:"미끼가 없어 입질이 이어지지 않았습니다.", components:[], embeds:[], ephemeral:true }).catch(()=>{});
+          return interaction.editReply({ content:"미끼가 없어 입질이 이어지지 않았습니다.", components:[], embeds:[] }).catch(()=>{});
         }
 
         const fobj = result.fight;
@@ -1083,14 +1084,14 @@ async function component(interaction) {
           if (s.fightIdleTimer) clearTimeout(s.fightIdleTimer);
           s.fightIdleTimer = setTimeout(()=>{
             clearSession(userId);
-            interaction.editReply({ content:"아무 행동을 하지 않아 대상을 놓쳤습니다.", embeds:[], components:[], ephemeral:true }).catch(()=>{});
+            interaction.editReply({ content:"아무 행동을 하지 않아 대상을 놓쳤습니다.", embeds:[], components:[] }).catch(()=>{});
           }, FIGHT_IDLE_TIMEOUT*1000);
         };
         resetIdle();
         s.resetIdle = resetIdle;
         s.fightTotalTimer = setTimeout(()=>{
           clearSession(userId);
-          interaction.editReply({ content:"너무 오래 끌어 대상이 빠져나갔습니다.", embeds:[], components:[], ephemeral:true }).catch(()=>{});
+          interaction.editReply({ content:"너무 오래 끌어 대상이 빠져나갔습니다.", embeds:[], components:[] }).catch(()=>{});
         }, FIGHT_TOTAL_TIMEOUT*1000);
 
         const eb = new EmbedBuilder().setTitle(`🐟 입질!`)
@@ -1100,7 +1101,7 @@ async function component(interaction) {
           ].join("\n"))
           .setColor(0x44ddaa)
           .setImage(s.sceneBiteURL);
-        try { await interaction.editReply({ embeds:[eb], components:[buttonsFight()], ephemeral:true }); } catch {}
+        try { await interaction.editReply({ embeds:[eb], components:[buttonsFight()] }); } catch {}
       }, waitSec*1000);
 
       s.expireTimer = setTimeout(()=>{ clearSession(userId); }, (FISHING_LIMIT_SECONDS+20)*1000);
@@ -1109,12 +1110,12 @@ async function component(interaction) {
         `최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`,
         "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)
       ].join("\n"), scene1);
-      return interaction.update({ embeds:[eb], components:[buttonsWaiting()], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[buttonsWaiting()] });
     }
 
     if (id === "fish:abort") {
       clearSession(userId);
-      return interaction.update({ content:"낚시를 중단했습니다. (미끼 미소모)", embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:"낚시를 중단했습니다. (미끼 미소모)", embeds:[], components:[],  });
     }
 
     const s = sessions.get(userId);
@@ -1125,7 +1126,7 @@ async function component(interaction) {
       clearSession(userId);
       const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, currentTimeBand(), "기본");
       const eb = new EmbedBuilder().setTitle("포기하셨습니다.").setColor(0x999999).setImage(scene0);
-      return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[],  });
     }
     if (id === "fish:reel" || id === "fish:loosen") {
       if (s.resetIdle) s.resetIdle();
@@ -1136,7 +1137,7 @@ async function component(interaction) {
         clearSession(userId);
         const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "기본");
         const eb = new EmbedBuilder().setTitle("놓치셨습니다.").setDescription("텐션 조절에 실패하여 대상이 빠져나갔습니다.").setColor(0xcc6666).setImage(scene0);
-        return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+        return interaction.update({ embeds:[eb], components:[],  });
       }
       if (st.hp <= 0) {
         useDurability(u, "rod"); useDurability(u, "float");
@@ -1152,7 +1153,7 @@ async function component(interaction) {
              `판매가: ${sell.toLocaleString()}코인`,
              "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
            ].join("\n"), getIconURL(st.name));
-          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()], ephemeral:true });
+          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()],  });
           await checkSpeciesRewards(u, interaction, st.name);
           await checkRewards(u, interaction);
           return;
@@ -1161,31 +1162,31 @@ async function component(interaction) {
           u.coins += junkCoin;
           clearSession(userId);
           const eb = sceneEmbed(u, "🪣 잡동사니를 건졌습니다", `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(st.name)||null);
-          return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+          return interaction.update({ embeds:[eb], components:[],  });
         } else {
           if (st.itemType === "coin") {
             u.coins += st.amount||0;
             clearSession(userId);
             const eb = sceneEmbed(u, "🪙 획득 성공!", `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`, getIconURL("낚시 코인"));
-            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+            return interaction.update({ embeds:[eb], components:[],  });
           }
           if (st.itemType === "be") {
             await addBE(userId, st.amount||0, "[낚시] 드랍");
             clearSession(userId);
             const eb = sceneEmbed(u, "🔷 파랑 정수 획득!", `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`, getIconURL("파랑 정수"));
-            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+            return interaction.update({ embeds:[eb], components:[],  });
           }
           if (st.itemType === "key") {
             u.inv.keys = (u.inv.keys||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "🗝️ 열쇠 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 열쇠"));
-            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+            return interaction.update({ embeds:[eb], components:[],  });
           }
           if (st.itemType === "chest") {
             u.inv.chests = (u.inv.chests||0) + (st.qty||1);
             clearSession(userId);
             const eb = sceneEmbed(u, "📦 보물상자 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 보물상자"));
-            return interaction.update({ embeds:[eb], components:[], ephemeral:true });
+            return interaction.update({ embeds:[eb], components:[],  });
           }
         }
       }
@@ -1196,17 +1197,17 @@ async function component(interaction) {
         .setDescription([line, "릴을 감거나 풀며 흐름을 유지해 보세요."].join("\n"))
         .setColor(0x44ddaa)
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
-      return interaction.update({ embeds:[eb], components:[buttonsFight()], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[buttonsFight()],  });
     }
 
     if (id === "fish:sell_all") {
       const fishes = u.inv.fishes || [];
       const total = fishes.reduce((s,f)=>s+(f.price||0),0);
       u.coins += total; u.inv.fishes = [];
-      return interaction.update({ content:`총 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:`총 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[],  });
     }
     if (id === "fish:sell_cancel" || id === "sell:cancel") {
-      return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[],  });
     }
     if (id === "fish:sell_select") {
       const fishes = u.inv.fishes||[];
@@ -1214,9 +1215,9 @@ async function component(interaction) {
         label: `[${f.r}] ${f.n} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
         value: String(i)
       }));
-      if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
+      if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.",  });
       const menu = new StringSelectMenuBuilder().setCustomId("sell-select|list").setPlaceholder("판매할 물고기 선택(복수 선택 가능)").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
-      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ], ephemeral:true });
+      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ],  });
     }
     if (id === "sell:confirm_selected") {
       const st = sellSessions.get(userId) || {};
@@ -1227,7 +1228,7 @@ async function component(interaction) {
       u.inv.fishes = fishes.filter((_,i)=>!idxs.includes(i));
       u.coins += total;
       sellSessions.delete(userId);
-      return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[],  });
     }
     if (id === "fish:sell_qty") {
       const fishes = u.inv.fishes||[];
@@ -1235,7 +1236,7 @@ async function component(interaction) {
       if (kinds.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
       const opts = kinds.slice(0,25).map(n=>({ label:n, value:n }));
       const menu = new StringSelectMenuBuilder().setCustomId("sell-qty-choose|species").setPlaceholder("종류 선택").addOptions(opts);
-      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 수량 판매 — 종류 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ], ephemeral:true });
+      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 수량 판매 — 종류 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ],  });
     }
 
     if (id.startsWith("inv:start|")) {
@@ -1285,7 +1286,7 @@ async function component(interaction) {
       }
 
       const { eb, row } = renderInv(kind, 0);
-      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[row],  });
     }
     if (id === "inv:share") {
       const st = invSessions.get(userId);
@@ -1354,7 +1355,7 @@ async function component(interaction) {
         }
       }
       const { eb, row } = rerender(kind, st.idx);
-      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[row],  });
     }
     if (id.startsWith("inv:equip|")) {
       const [,slot,name] = id.split("|");
@@ -1418,7 +1419,7 @@ async function component(interaction) {
       }
 
       const { eb, row } = renderShop(kind, 0);
-      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[row],  });
     }
     if (id==="shop:prev" || id==="shop:next") {
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
@@ -1451,11 +1452,11 @@ async function component(interaction) {
         new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
         new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
       );
-      return interaction.update({ embeds:[eb], components:[row], ephemeral:true });
+      return interaction.update({ embeds:[eb], components:[row],  });
     }
     if (id.startsWith("shop:buy|")) {
       const [, pay, name] = id.split("|");
-      const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
+      const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.",  });
       const kind = st.kind; const price = PRICES[kind==="rod"?"rods":kind==="float"?"floats":"baits"][name];
       if (!price) return interaction.reply({ content:"가격 정보를 불러오지 못했습니다.", ephemeral:true });
 
@@ -1493,7 +1494,7 @@ async function component(interaction) {
     }
     if (id === "shop:close") {
       shopSessions.delete(userId);
-      return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[], ephemeral:true });
+      return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[],  });
     }
 
     if (id.startsWith("dex:")) {
@@ -1503,7 +1504,7 @@ async function component(interaction) {
         st.rarity = rar; st.page = 0; st.mode = "list"; delete st.current;
         dexSessions.set(userId, st);
         const payload = renderDexList(u, st);
-        return interaction.update({ ...payload, ephemeral:true });
+        return interaction.update({ ...payload,  });
       }
       if (id === "dex:prev" || id === "dex:next") {
         const all = FISH_BY_RARITY[st.rarity]||[];
@@ -1513,24 +1514,24 @@ async function component(interaction) {
         st.mode = "list"; delete st.current;
         dexSessions.set(userId, st);
         const payload = renderDexList(u, st);
-        return interaction.update({ ...payload, ephemeral:true });
+        return interaction.update({ ...payload,  });
       }
       if (id === "dex:back") {
         st.mode = "list"; delete st.current;
         dexSessions.set(userId, st);
         const payload = renderDexList(u, st);
-        return interaction.update({ ...payload, ephemeral:true });
+        return interaction.update({ ...payload,  });
       }
       if (id === "dex:close") {
         dexSessions.delete(userId);
-        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], ephemeral:true });
+        return interaction.update({ content:"도감을 닫았습니다.", embeds:[], components:[] });
       }
     }
 
     if (id.startsWith("rank:")) {
       const mode = id.split(":")[1];
       const payload = await buildRankEmbedPayload(db, interaction, mode);
-      return interaction.update({ ...payload, ephemeral:true });
+      return interaction.update({ ...payload,  });
     }
 
   });
