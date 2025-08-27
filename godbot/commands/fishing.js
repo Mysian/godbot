@@ -554,8 +554,8 @@ function renderDexList(u, st){
     if (caught.has(n)) {
       const rec = u.stats.best?.[n]||{};
       const L = rec.length ? `${Math.round(rec.length)}cm` : "";
-      const P = rec.price ? `${(rec.price||0).toLocaleString()}코인` : "";
-      const meta = [L,P].filter(Boolean).join(" | ");
+      const C = (u.stats.speciesCount?.[n]||0) ? `${(u.stats.speciesCount[n]).toLocaleString()}회` : "";
+      const meta = [L,C].filter(Boolean).join(" | ");
       return `${start+i+1}. ${n}${meta?` — ${meta}`:""}`;
     } else {
       return `${start+i+1}. ???`;
@@ -587,8 +587,8 @@ function renderDexDetail(u, st, name){
   } else {
     const rec = u.stats.best?.[name]||{};
     const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-    const P = rec.price ? `${(rec.price||0).toLocaleString()}코인` : "-";
-    const eb = new EmbedBuilder().setTitle(`📖 ${name} — ${st.rarity} [${got}/${total}]`).setDescription([`최대 길이: ${L}`,`최고가: ${P}`].join("\n")).setColor(0x44ddaa).setImage(getIconURL(name)||null);
+    const C = (u.stats.speciesCount?.[name]||0);
+    const eb = new EmbedBuilder().setTitle(`📖 ${name} — ${st.rarity} [${got}/${total}]`).setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n")).setColor(0x44ddaa).setImage(getIconURL(name)||null);
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
     return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
   }
