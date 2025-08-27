@@ -1136,13 +1136,13 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
 
     const s = sessions.get(userId);
     if (["fish:reel","fish:loosen","fish:giveup"].includes(id) && (!s || s.state!=="fight")) {
-      return interaction.editReply({ content:"진행 중인 낚시가 없습니다.", embeds:[], components:[] });
+      return interaction.update({ content:"진행 중인 낚시가 없습니다.", embeds:[], components:[] });
     }
     if (id === "fish:giveup") {
       clearSession(userId);
       const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, currentTimeBand(), "기본");
       const eb = new EmbedBuilder().setTitle("포기하셨습니다.").setColor(0x999999).setImage(scene0);
-      return interaction.editReply({ embeds:[eb], components:[] });
+      return interaction.update({ embeds:[eb], components:[] });
     }
     if (id === "fish:reel" || id === "fish:loosen") {
       if (s.resetIdle) s.resetIdle();
@@ -1153,7 +1153,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
         clearSession(userId);
         const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "기본");
         const eb = new EmbedBuilder().setTitle("놓치셨습니다.").setDescription("텐션 조절에 실패하여 대상이 빠져나갔습니다.").setColor(0xcc6666).setImage(scene0);
-        return interaction.editReply({ embeds:[eb], components:[] });
+        return interaction.update({ embeds:[eb], components:[] });
       }
       if (st.hp <= 0) {
         useDurability(u, "rod"); useDurability(u, "float");
@@ -1169,7 +1169,7 @@ const qty  = Math.max(0, Number.isFinite(Number(raw)) ? parseInt(raw,10) : 0);
              `판매가: ${sell.toLocaleString()}코인`,
              "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
            ].join("\n"), getIconURL(st.name));
-          await interaction.editReply({ embeds:[eb], components:[buttonsAfterCatch()] });
+          await interaction.update({ embeds:[eb], components:[buttonsAfterCatch()] });
 await checkSpeciesRewards(u, interaction, st.name);
 await checkRewards(u, interaction);
           return;
@@ -1213,7 +1213,7 @@ await checkRewards(u, interaction);
         .setDescription([line, "릴을 감거나 풀며 흐름을 유지해 보세요."].join("\n"))
         .setColor(0x44ddaa)
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
-      return interaction.editReply({ embeds:[eb], components:[buttonsFight()] });
+      return interaction.update({ embeds:[eb], components:[buttonsFight()] });
     }
 
     if (id === "fish:sell_all") {
