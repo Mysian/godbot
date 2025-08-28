@@ -743,17 +743,19 @@ async function checkRewards(u, interaction){
   }
 }
 
-async function checkSpeciesRewards(u, interaction, fishName) {
+async function checkSpeciesRewards(u, fishName) {
   const rarity = RARITY_OF[fishName];
-  if (!rarity) return;
+  if (!rarity) return null;
   const cnt = u.stats.speciesCount[fishName] || 0;
   const plan = SPECIES_MILESTONES[rarity];
-  if (!plan) return;
+  if (!plan) return null;
   const rec = (u.rewards.species[fishName] ||= {});
   const rewards = plan[cnt];
-  if (!rewards || rec[cnt]) return;
+  if (!rewards || rec[cnt]) return null;
+
   rec[cnt] = true;
   for (const r of rewards) await giveReward(u, r);
+
   const lines = rewards.map(r => `• ${rewardText(u, r)}`).filter(Boolean);
   const title = cnt === 1 ? `🎉 첫 조우 보상 — ${fishName}` : `🎁 누적 ${cnt}회 보상 — ${fishName}`;
   const eb = new EmbedBuilder()
@@ -761,7 +763,8 @@ async function checkSpeciesRewards(u, interaction, fishName) {
     .setDescription(lines.join("\n"))
     .setColor(0x5bd7a5)
     .setThumbnail(getIconURL(fishName) || null);
-  await interaction.followUp({ embeds:[eb], ephemeral:true });
+
+  return eb; // ★ 여기서 임베드 반환
 }
 
 function rankButtons(mode){
@@ -1143,48 +1146,76 @@ async function component(interaction) {
       const act = id === "fish:reel" ? "reel" : "loosen";
       const st = applyReel(u, s.target, s, act); s.target = st;
 
-      if (st.escape) {
+            if (st.escape) {
         clearSession(userId);
         const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "기본");
         const eb = new EmbedBuilder().setTitle("놓치셨습니다.").setDescription("텐션 조절에 실패하여 대상이 빠져나갔습니다.").setColor(0xcc6666).setImage(scene0);
         return updateOrEdit(interaction, { embeds:[eb], components:[] });
       }
       if (st.hp <= 0) {
-        useDurability(u, "rod"); useDurability(u, "float");
+        useDurability(u, "rod"); 
+        useDurability(u, "float");
+
         if (st.kind === "fish") {
           const sell = computeSellPrice(st.name, st.length, st.rarity);
+
           try {
-  fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
-} catch (err) {
-  console.error("[낚시 fishToInv 오류]", err, st);
-}
+            fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
+          } catch (err) {
+            console.error("[낚시 fishToInv 오류]", err, st);
+          }
 
           updateTier(u);
           clearSession(userId);
-          lastCatch.set(userId, { name: st.name, rarity: st.rarity, length: st.length, sell, channelId: interaction.channelId, ts: Date.now() });
-          const eb = sceneEmbed(u, `✅ 포획 성공! [${st.rarity}] ${st.name}`, [
-  `길이: ${Math.round(st.length)}cm`,
-  `판매가: ${sell.toLocaleString()}코인`,
-  "", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-].join("\n"), getIconURL(st.name) || null);
+
+          lastCatch.set(userId, { 
+            name: st.name, 
+            rarity: st.rarity, 
+            length: st.length, 
+            sell, 
+            channelId: interaction.channelId, 
+            ts: Date.now() 
+          });
+
+          const eb = sceneEmbed(
+            u, 
+            `✅ 포획 성공! [${st.rarity}] ${st.name}`, 
+            [
+              `길이: ${Math.round(st.length)}cm`,
+              `판매가: ${sell.toLocaleString()}코인`,
+              "",
+              "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
+            ].join("\n"),
+            getIconURL(st.name) || null
+          );
+
+          // ★ 종별(첫 조우/누적) 보상 임베드 함께 붙이기
+          let speciesEb = null;
+          try {
+            speciesEb = await checkSpeciesRewards(u, st.name); // interaction 인자 제거
+          } catch (err) {
+            console.error("[낚시 종별 보상 임베드 생성 오류]", err, st.name);
+          }
+
+          const embedsToSend = speciesEb ? [eb, speciesEb] : [eb];
 
           try {
-  await updateOrEdit(interaction, { embeds: [eb], components: [buttonsAfterCatch()] });
-} catch (err) {
-  console.error("[낚시 결과 embed 오류]", err);
-  if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({ content: "❌ 결과 embed 전송 오류", ephemeral: true }).catch(()=>{});
-  }
-}
+            await updateOrEdit(interaction, { embeds: embedsToSend, components: [buttonsAfterCatch()] });
+          } catch (err) {
+            console.error("[낚시 결과 embed 오류]", err);
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: "❌ 결과 embed 전송 오류", ephemeral: true }).catch(()=>{});
+            }
+          }
+
           try {
-  await checkSpeciesRewards(u, interaction, st.name);
-  await checkRewards(u, interaction);
-} catch (err) {
-  console.error('[낚시 보상 처리 오류]', err, st.name);
-  if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({ content: "❌ 보상 처리 중 오류", ephemeral: true }).catch(()=>{});
-  }
-}
+            await checkRewards(u, interaction); // 누적/티어/사이즈 보상은 followUp(ephemeral)
+          } catch (err) {
+            console.error('[낚시 보상 처리 오류]', err, st.name);
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: "❌ 보상 처리 중 오류", ephemeral: true }).catch(()=>{});
+            }
+          }
 
           return;
         } else if (st.kind === "junk") {
@@ -1220,6 +1251,7 @@ async function component(interaction) {
           }
         }
       }
+
 
       const hpRatio = (st.hp||1) / (st.maxHP||1);
       const line = hintLine(s.tension, hpRatio);
