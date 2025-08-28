@@ -196,14 +196,36 @@ function mkSafeEditor(interaction) {
 }
 
 function ensureUser(u) {
-  u.coins ||= 0;
-  u.tier ||= "브론즈";
-  u.equip ||= { rod:null, float:null, bait:null };
-  u.inv ||= { rods:{}, floats:{}, baits:{}, fishes:[], keys:0, chests:0 };
-  u.stats ||= { caught:0, points:0, best:{}, max:{ name:null, length:0 },
-                speciesCount:{} };
-  u.rewards ||= { tier:{}, caught:{}, size:{},
-                  species:{} };
+  // 최상위
+  u.coins ??= 0;
+  u.tier ??= "브론즈";
+
+  // 장비/인벤
+  u.equip ??= { rod:null, float:null, bait:null };
+  u.inv   ??= {};
+  u.inv.rods   ??= {};
+  u.inv.floats ??= {};
+  u.inv.baits  ??= {};
+  u.inv.fishes ??= [];
+  u.inv.keys   ??= 0;
+  u.inv.chests ??= 0;
+
+  // 통계
+  u.stats ??= {};
+  u.stats.caught ??= 0;
+  u.stats.points ??= 0;
+  u.stats.best   ??= {};
+  u.stats.max    ??= { name:null, length:0 };
+  u.stats.speciesCount ??= {};
+
+  // 보상 플래그
+  u.rewards ??= {};
+  u.rewards.tier   ??= {};
+  u.rewards.caught ??= {};
+  u.rewards.size   ??= {};
+  u.rewards.species??= {};
+}
+
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -327,6 +349,7 @@ function updateTier(u) {
   u.tier = best;
 }
 function fishToInv(u, fish) {
+  u.stats.speciesCount ??= {};
   u.inv.fishes.push({ n: fish.name, r: fish.rarity, l: fish.length, price: fish.sell });
   u.stats.caught += 1;
   const gained = computePoints(fish.rarity, fish.sell, fish.length);
@@ -744,6 +767,7 @@ async function checkRewards(u, interaction){
 }
 
 async function checkSpeciesRewards(u, fishName) {
+  u.rewards.species ??= {};
   const rarity = RARITY_OF[fishName];
   if (!rarity) return null;
   const cnt = u.stats.speciesCount[fishName] || 0;
