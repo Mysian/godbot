@@ -729,11 +729,29 @@ function caughtSetOf(u){
   for (const f of (u.inv.fishes||[])) set.add(f.n);
   return set;
 }
-function dexRarityRow(cur){
-  return new ActionRowBuilder().addComponents(
-    ...RARITY.map(r=> new ButtonBuilder().setCustomId(`dex:rar|${r}`).setLabel(r).setStyle(r===cur?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(r===cur))
-  );
+function dexRarityRows(cur){
+  const styleMap = {
+    "노말": ButtonStyle.Secondary, 
+    "레어": ButtonStyle.Success,  
+    "유니크": ButtonStyle.Success,  
+    "레전드": ButtonStyle.Primary,  
+    "에픽": ButtonStyle.Primary,   
+    "언노운": ButtonStyle.Danger   
+  };
+  const rows = [];
+  for (let i=0; i<RARITY.length; i+=3) {
+    const chunk = RARITY.slice(i, i+3).map(r =>
+      new ButtonBuilder()
+        .setCustomId(`dex:rar|${r}`)
+        .setLabel(r)
+        .setStyle(r===cur ? ButtonStyle.Primary : (styleMap[r] || ButtonStyle.Secondary))
+        .setDisabled(r===cur)
+    );
+    rows.push(new ActionRowBuilder().addComponents(...chunk));
+  }
+  return rows;
 }
+
 function dexNavRow(hasPrev, hasNext){
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("dex:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(!hasPrev),
@@ -763,15 +781,15 @@ function renderDexList(u, st){
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
     .setDescription(lines.length?lines.join("\n"):"_표시할 항목이 없습니다._")
     .setColor(0x66ccff);
-  const components = [dexRarityRow(st.rarity)];
+  const components = [...dexRarityRows(st.rarity)];
   if (slice.length) {
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("dex:select")
-      .setPlaceholder("상세로 볼 항목 선택")
-      .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
-    components.push(new ActionRowBuilder().addComponents(menu));
-  }
-  components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("dex:select")
+    .setPlaceholder("상세로 볼 항목 선택")
+    .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
+  components.push(new ActionRowBuilder().addComponents(menu));
+}
+components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
   return { embeds:[eb], components };
 }
 function renderDexDetail(u, st, name){
