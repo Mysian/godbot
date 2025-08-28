@@ -1151,9 +1151,9 @@ async function execute(interaction) {
           `티어: **${u.tier}**`,
           `포인트: **${(u.stats.points||0).toLocaleString()}**`,
           `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
-          `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name?`— ${withStarName(u.stats.max.name, u.stats.max.length)}`:""}`
-          "",
-          top3.length 
+          `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name?`— ${withStarName(u.stats.max.name, u.stats.max.length)}`:""}`,
+top3.length 
+
   ? "**종류별 최대 상위 3**\n" 
     + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") 
   : "_기록이 없습니다._"
