@@ -14,20 +14,26 @@ const TIER_CUTOFF = {
   "브론즈": 0, "실버": 300, "골드": 1200, "플래티넘": 3500,
   "다이아": 9000, "마스터": 20000, "그랜드마스터": 45000, "챌린저": 85000
 };
+
+// fishing.js의 스펙과 동일하게 맞춤
 const ROD_SPECS = {
-  "나무 낚싯대":   { maxDur: 30 },
-  "강철 낚싯대":   { maxDur: 100 },
-  "금 낚싯대":     { maxDur: 200 },
-  "다이아 낚싯대": { maxDur: 500 },
-  "전설의 낚싯대": { maxDur: 1000 }
+  "나무 낚싯대":   { maxDur: 50 },
+  "강철 낚싯대":   { maxDur: 120 },
+  "금 낚싯대":     { maxDur: 250 },
+  "다이아 낚싯대": { maxDur: 550 },
+  "전설의 낚싯대": { maxDur: 1250 }
 };
 const FLOAT_SPECS = {
-  "동 찌":    { maxDur: 60 },
-  "은 찌":    { maxDur: 120 },
-  "금 찌":    { maxDur: 200 },
-  "다이아 찌": { maxDur: 500 }
+  "동 찌":    { maxDur: 30 },
+  "은 찌":    { maxDur: 60 },
+  "금 찌":    { maxDur: 90 },
+  "다이아 찌": { maxDur: 200 }
 };
-const DEFAULT_BAIT_PACK = 20;
+const BAIT_SPECS = {
+  "지렁이 미끼": { pack: 20 },
+  "새우 미끼": { pack: 20 },
+  "빛나는 젤리 미끼": { pack: 20 }
+};
 
 function readDB() {
   if (!fs.existsSync(FISH_DB)) return { users:{} };
@@ -46,22 +52,43 @@ async function withDB(fn) {
     await rel();
   }
 }
+
+// fishing.js의 ensureUser와 동일하게 보완
 function ensureUser(u) {
-  u.coins ||= 0;
-  u.tier ||= "브론즈";
-  u.equip ||= { rod:null, float:null, bait:null };
-  u.inv ||= { rods:{}, floats:{}, baits:{}, fishes:[], keys:0, chests:0 };
-  u.stats ||= { caught:0, points:0, best:{}, max:{ name:null, length:0 } };
+  u.coins ??= 0;
+  u.tier ??= "브론즈";
+  u.equip ??= { rod:null, float:null, bait:null };
+  u.inv   ??= {};
+  u.inv.rods   ??= {};
+  u.inv.floats ??= {};
+  u.inv.baits  ??= {};
+  u.inv.fishes ??= [];
+  u.inv.keys   ??= 0;
+  u.inv.chests ??= 0;
+  u.stats ??= {};
+  u.stats.caught ??= 0;
+  u.stats.points ??= 0;
+  u.stats.best   ??= {};
+  u.stats.max    ??= { name:null, length:0 };
+  u.stats.speciesCount ??= {};
+  u.rewards ??= {};
+  u.rewards.tier   ??= {};
+  u.rewards.caught ??= {};
+  u.rewards.size   ??= {};
+  u.rewards.species??= {};
 }
-function addRod(u, name) { u.inv.rods[name] = (ROD_SPECS[name]?.maxDur)||0; }
-function addFloat(u, name) { u.inv.floats[name] = (FLOAT_SPECS[name]?.maxDur)||0; }
+
+function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
+function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
 function addBait(u, name, qty=0) { u.inv.baits[name] = (u.inv.baits[name]||0) + qty; }
+
 function updateTier(u) {
   const p = u.stats.points || 0;
   let best = "브론즈";
   for (const t of TIER_ORDER) { if (p >= TIER_CUTOFF[t]) best = t; else break; }
   u.tier = best;
 }
+
 function equipLine(u) {
   const rDur = u.equip.rod ? (u.inv.rods[u.equip.rod] ?? 0) : 0;
   const fDur = u.equip.float ? (u.inv.floats[u.equip.float] ?? 0) : 0;
@@ -71,6 +98,7 @@ function equipLine(u) {
     `🪱 미끼: ${u.equip.bait || "없음"}${u.equip.bait?` (잔여 ${u.inv.baits[u.equip.bait]||0})`:''}`
   ].join("\n");
 }
+
 function invSummary(u) {
   const rodList = Object.keys(u.inv.rods||{});
   const floatList = Object.keys(u.inv.floats||{});
@@ -91,6 +119,7 @@ const floatChoices = FLOATS.map(n=>({ name:n, value:n })).slice(0,25);
 const baitChoices = BAITS.map(n=>({ name:n, value:n })).slice(0,25);
 
 const data = new SlashCommandBuilder().setName("낚시관리").setDescription("낚시 시스템 관리")
+  // 그대로, 하위 서브커맨드 유지
   .addSubcommand(s=>s.setName("코인지급").setDescription("유저에게 코인 지급")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
     .addIntegerOption(o=>o.setName("수량").setDescription("지급 코인").setRequired(true)))
