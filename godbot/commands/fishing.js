@@ -1648,7 +1648,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       function rerender(k, i){
         if (k==="fish") {
           const f = u.inv.fishes[i];
-          const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${f.n}`)
+          const starName = withStarName(f.n, f.l);
+          const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
             .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
             .setColor(0x88ddff)
             .setImage(getIconURL(f.n)||null)
