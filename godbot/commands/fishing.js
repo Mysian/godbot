@@ -405,7 +405,7 @@ function sceneEmbed(user, title, desc, imageURL, extraFields = []) {
   const eb = new EmbedBuilder().setTitle(title).setDescription(desc||"").setColor(0x3aa0ff);
   if (imageURL) eb.setImage(imageURL);
   if (extraFields.length) eb.addFields(extraFields);
-  eb.setFooter({ text: `낚시 코인: ${user.coins.toLocaleString()} | 티어: ${user.tier}` });
+  eb.setFooter({ text: `낚시 코인: ${user.coins.toLocaleString()} | 티어: ${user.tier} [${(user.stats.points||0).toLocaleString()}점]` });
   return eb;
 }
 function equipLine(u) {
