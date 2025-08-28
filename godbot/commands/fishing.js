@@ -776,21 +776,21 @@ function renderDexList(u, st){
   const slice = all.slice(start, start+DEX_PAGE_SIZE);
   const got = all.filter(n=>caught.has(n)).length;
   const lines = slice.map((n,i)=>{
-  if (caught.has(n)) {
-  const rec = u.stats.best?.[n]||{};
-  const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-  const cnt = u.stats.speciesCount?.[n] ?? 0;
-  const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
-  const starName = withStarName(n, rec.length || 0);
+    if (caught.has(n)) {
+      const rec = u.stats.best?.[n]||{};
+      const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+      const cnt = u.stats.speciesCount?.[n] ?? 0;
+      const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
+      const starName = withStarName(n, rec.length || 0);
+      return `${start+i+1}. ${starName} — ${meta}`;
+    }
+    return undefined;
+  });
 
-  return `${start+i+1}. ${starName} — ${meta}`;
-}
-
-});
-
+  const listText = lines.filter(Boolean).join("\n"); 
   const eb = new EmbedBuilder()
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
-    .setDescription(lines.length?lines.join("\n"):"_표시할 항목이 없습니다._")
+    .setDescription(listText || "_표시할 항목이 없습니다._") 
     .setColor(0x66ccff);
   const components = [...dexRarityRows(st.rarity)];
   if (slice.length) {
