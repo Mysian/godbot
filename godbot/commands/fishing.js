@@ -775,34 +775,37 @@ function renderDexList(u, st){
   const start = st.page*DEX_PAGE_SIZE;
   const slice = all.slice(start, start+DEX_PAGE_SIZE);
   const got = all.filter(n=>caught.has(n)).length;
+
   const lines = slice.map((n,i)=>{
+    const idx = start + i + 1;
     if (caught.has(n)) {
       const rec = u.stats.best?.[n]||{};
       const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
       const cnt = u.stats.speciesCount?.[n] ?? 0;
       const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
       const starName = withStarName(n, rec.length || 0);
-      return `${start+i+1}. ${starName} — ${meta}`;
+      return `${idx}. ${starName} — ${meta}`;
     }
-    return undefined;
+    return `${idx}. ??? — ?????`;
   });
 
-  const listText = lines.filter(Boolean).join("\n"); 
   const eb = new EmbedBuilder()
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
-    .setDescription(listText || "_표시할 항목이 없습니다._") 
+    .setDescription(lines.join("\n") || "_표시할 항목이 없습니다._")
     .setColor(0x66ccff);
+
   const components = [...dexRarityRows(st.rarity)];
   if (slice.length) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId("dex:select")
-    .setPlaceholder("상세로 볼 항목 선택")
-    .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
-  components.push(new ActionRowBuilder().addComponents(menu));
-}
-components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("dex:select")
+      .setPlaceholder("상세로 볼 항목 선택")
+      .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
+    components.push(new ActionRowBuilder().addComponents(menu));
+  }
+  components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total)));
   return { embeds:[eb], components };
 }
+
 function renderDexDetail(u, st, name){
   const caught = caughtSetOf(u);
   const all = FISH_BY_RARITY[st.rarity]||[];
