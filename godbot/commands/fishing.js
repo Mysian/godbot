@@ -531,7 +531,8 @@ const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 
   .addSubcommand(s=>s.setName("도감").setDescription("잡은 물고기 도감 보기"))
   .addSubcommand(s=>s.setName("기록").setDescription("개인 낚시 기록 확인").addUserOption(o=>o.setName("유저").setDescription("조회 대상")))
   .addSubcommand(s=>s.setName("기록순위").setDescription("티어/포인트/최대길이 순위 TOP20"))
-  .addSubcommand(s=>s.setName("도움말").setDescription("낚시 시스템 도움말"));
+  .addSubcommand(s=>s.setName("도움말").setDescription("낚시 시스템 도움말"))
+  .addSubcommand(s=>s.setName("스타터패키지").setDescription("신규 유저 스타터 패키지 수령 (1회 한정)"));
 
 function hintLine(tension, hpRatio) {
   const H_NEUT = [
@@ -1042,6 +1043,45 @@ async function execute(interaction) {
       await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
     });
   }
+
+    if (sub === "스타터패키지") {
+    return await withDB(async db=>{
+      const u = (db.users[userId] ||= {}); ensureUser(u);
+
+      // 이미 받았는지 체크
+      u.rewards ??= {};
+      if (u.rewards.starter) {
+        return interaction.reply({ content:"⚠️ 이미 스타터 패키지를 수령하셨습니다.", ephemeral:true });
+      }
+
+      // 지급 처리
+      addRod(u, "나무 낚싯대");
+      addFloat(u, "동 찌");
+      addBait(u, "지렁이 미끼", BAIT_SPECS["지렁이 미끼"].pack);
+
+      // 장착도 자동으로 해주고 싶으면 ↓
+      u.equip.rod = "나무 낚싯대";
+      u.equip.float = "동 찌";
+      u.equip.bait = "지렁이 미끼";
+
+      // 플래그 남기기
+      u.rewards.starter = true;
+
+      const eb = new EmbedBuilder()
+        .setTitle("🎁 스타터 패키지 지급 완료!")
+        .setDescription([
+          "신규 유저용 스타터 패키지를 받으셨습니다.",
+          "",
+          "• 🎣 나무 낚싯대 (내구도 최대치)",
+          "• 🟠 동 찌 (내구도 최대치)",
+          "• 🪱 지렁이 미끼 20개"
+        ].join("\n"))
+        .setColor(0x55ff88);
+
+      return interaction.reply({ embeds:[eb], ephemeral:true });
+    });
+  }
+
 
   if (sub === "도감") {
     return await withDB(async db=>{
