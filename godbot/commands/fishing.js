@@ -802,7 +802,7 @@ function renderDexList(u, st){
       .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
     components.push(new ActionRowBuilder().addComponents(menu));
   }
-  components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total)));
+  components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
   return { embeds:[eb], components };
 }
 
