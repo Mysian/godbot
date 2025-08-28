@@ -738,7 +738,9 @@ const ICON_URLS = {
   "철갑상어": "https://media.discordapp.net/attachments/1407939188548042762/1407944905501839391/784956df8ece945b.png?ex=68ade11f&is=68ac8f9f&hm=b5c5273b03be92f4c182f25442d434e84d9d22670a1309a864273bb1aa781c2a&=&format=webp&quality=lossless&width=816&height=816",
   "대왕고래": "https://media.discordapp.net/attachments/1407939188548042762/1407944905182941274/75c9d0a8ee7ff4ef.png?ex=68ade11f&is=68ac8f9f&hm=5a8ea6dcf85932acd0f319d8f38f01d88c2f2336c3cea048c6058f7dffa9903c&=&format=webp&quality=lossless&width=816&height=816",
   "루미나 샤크": "https://media.discordapp.net/attachments/1410053141432500416/1410055126663696605/-_25.png?ex=68af9fab&is=68ae4e2b&hm=27ccd5dc907ab7b7db84b5828d108bf192e73a73c2c618a646bba3dedd5c74bb&=&format=webp&quality=lossless&width=816&height=816",
-  "해룡 까리오스": "https://media.discordapp.net/attachments/1410053141432500416/1410055127036985504/-_26.png?ex=68af9fab&is=68ae4e2b&hm=4eb6dd6c6dd92a3fa8a1e6681a472a3f581bc800bd77a155a6aed63268fde2b0&=&format=webp&quality=lossless&width=816&height=816"
+  "해룡 까리오스": "https://media.discordapp.net/attachments/1410053141432500416/1410055127036985504/-_26.png?ex=68af9fab&is=68ae4e2b&hm=4eb6dd6c6dd92a3fa8a1e6681a472a3f581bc800bd77a155a6aed63268fde2b0&=&format=webp&quality=lossless&width=816&height=816",
+  // 언노운
+  "클리오네의 정령": "https://media.discordapp.net/attachments/1410053141432500416/1410585763594108958/-_4.png?ex=68b18ddd&is=68b03c5d&hm=2b365c4160902c86a70a805ca07a99c125d3a70f6567b14d38479cad33dc7d27&=&format=webp&quality=lossless"
 };
 
 function getSceneURL(rod, flo, bait, time, scene) {
