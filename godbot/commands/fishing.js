@@ -795,6 +795,7 @@ function rankButtons(mode){
     new ButtonBuilder().setCustomId("rank:points").setLabel("포인트").setStyle(mode==="points"?ButtonStyle.Primary:ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("rank:len").setLabel("물고기 크기").setStyle(mode==="len"?ButtonStyle.Primary:ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("rank:caught").setLabel("어획 횟수").setStyle(mode==="caught"?ButtonStyle.Primary:ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("rank:coins").setLabel("낚시 코인").setStyle(mode==="coins"?ButtonStyle.Primary:ButtonStyle.Secondary),
   );
 }
 async function buildRankEmbedPayload(db, interaction, mode){
@@ -809,6 +810,7 @@ async function buildRankEmbedPayload(db, interaction, mode){
   if(mode==="points") sorted=[...base].sort((a,b)=> b.points - a.points);
   if(mode==="len") sorted=[...base].sort((a,b)=> b.bestLen - a.bestLen);
   if(mode==="caught") sorted=[...base].sort((a,b)=> b.caught - a.caught);
+  if(mode==="coins") sorted=[...base].sort((a,b)=> b.coins - a.coins);
   const top = sorted.slice(0,20);
   const namesCache = {};
   async function nameOf(id){
@@ -823,8 +825,9 @@ async function buildRankEmbedPayload(db, interaction, mode){
     if(mode==="points") return `${i+1}. ${nm} — ${o.tier} (${o.points.toLocaleString()}점)`;
     if(mode==="len") return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${o.bestName})`:""}`;
     if(mode==="caught") return `${i+1}. ${nm} — ${o.caught.toLocaleString()}마리`;
+    if(mode==="coins") return `${i+1}. ${nm} — ${o.coins.toLocaleString()} 코인`;
   }));
-  const titleMap = { points:"포인트", len:"물고기 크기", caught:"어획 횟수" };
+  const titleMap = { points:"포인트", len:"물고기 크기", caught:"어획 횟수", coins:"낚시 코인" };
   const eb = new EmbedBuilder().setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`).setDescription(lines.join("\n") || "_데이터가 없습니다._").setColor(0xff77aa);
   return { embeds:[eb], components:[rankButtons(mode)] };
 }
