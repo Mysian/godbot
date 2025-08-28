@@ -804,7 +804,7 @@ async function buildRankEmbedPayload(db, interaction, mode){
     let bestN = null; let bestL = 0;
     for (const [n,b] of Object.entries(u.stats.best||{})) { const L = b.length||0; if (L > bestL) { bestL = L; bestN = n; } }
     if ((u.stats.max?.length||0) >= bestL) { bestL = u.stats.max?.length||0; bestN = u.stats.max?.name||bestN; }
-    return { id, tier:u.tier, points:u.stats.points||0, caught:u.stats.caught||0, bestLen:bestL, bestName:bestN };
+    return { id, tier:u.tier, points:u.stats.points||0, caught:u.stats.caught||0, bestLen:bestL, bestName:bestN, coins:u.coins||0 };
   });
   let sorted;
   if(mode==="points") sorted=[...base].sort((a,b)=> b.points - a.points);
