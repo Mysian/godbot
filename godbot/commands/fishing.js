@@ -503,7 +503,8 @@ function buildInventoryHome(u){
       `• 열쇠: ${u.inv.keys||0}개 | 상자: ${u.inv.chests||0}개`,
       `• 물고기: ${u.inv.fishes.length}마리`
     ].join("\n"))
-    .setColor(0x8888ff);
+    .setColor(0x8888ff)
+    .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("inv:start|rod").setLabel("🎣 낚싯대").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("inv:start|float").setLabel("🟠 찌").setStyle(ButtonStyle.Secondary),
@@ -1338,7 +1339,8 @@ async function component(interaction) {
           const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${f.n}`)
             .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
             .setColor(0x88ddff)
-            .setImage(getIconURL(f.n)||null);
+            .setImage(getIconURL(f.n)||null)
+            .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
@@ -1359,7 +1361,10 @@ async function component(interaction) {
           if (k==="bait") lines.push(`입질시간 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
 
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
-            .setDescription(lines.join("\n")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null);
+            .setDescription(lines.join("\n"))
+            .setColor(0x88ddff)
+            .setThumbnail(getIconURL(name)||null)
+            .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=((k==="rod"?Object.keys(u.inv.rods):k==="float"?Object.keys(u.inv.floats):Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0)).length-1)),
@@ -1410,7 +1415,9 @@ async function component(interaction) {
           const f = u.inv.fishes[i];
           const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${f.n}`)
             .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
-            .setColor(0x88ddff).setImage(getIconURL(f.n)||null);
+            .setColor(0x88ddff)
+            .setImage(getIconURL(f.n)||null)
+            .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
@@ -1429,7 +1436,8 @@ async function component(interaction) {
           if (k==="float") lines.push(`입질시간 ${spec.biteSpeed}s, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
           if (k==="bait") lines.push(`입질시간 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
-            .setDescription(lines.join("\n")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null);
+            .setDescription(lines.join("\n")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null)
+            .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=names.length-1),
