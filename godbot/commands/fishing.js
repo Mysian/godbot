@@ -777,23 +777,15 @@ function renderDexList(u, st){
   const got = all.filter(n=>caught.has(n)).length;
   const lines = slice.map((n,i)=>{
   if (caught.has(n)) {
-    const rec = u.stats.best?.[n]||{};
-    const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-    const cnt = u.stats.speciesCount?.[n] ?? 0;
-    const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
-    const range = LENGTH_TABLE[n];
-    let stars = "";
-    if (range && rec.length) {
-      const [min, max] = range;
-      const ratio = (rec.length - min) / (max - min);
-      const starCount = Math.max(1, Math.min(5, Math.round(ratio * 5)));
-      stars = `[${"★".repeat(starCount)}]`;
-    }
+  const rec = u.stats.best?.[n]||{};
+  const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+  const cnt = u.stats.speciesCount?.[n] ?? 0;
+  const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
+  const starName = withStarName(n, rec.length || 0);
 
-    return `${start+i+1}. ${n}${stars ? " " + stars : ""} — ${meta}`;
-  } else {
-    return `${start+i+1}. ???`;
-  }
+  return `${start+i+1}. ${starName} — ${meta}`;
+}
+
 });
 
   const eb = new EmbedBuilder()
@@ -822,19 +814,15 @@ function renderDexDetail(u, st, name){
     return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
   } else {
     const rec = u.stats.best?.[name]||{};
-    const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
 const C = (u.stats.speciesCount?.[name]||0);
-    
-let stars = "";
-if (rec.length && LENGTH_TABLE[name]) {
-  const [min, max] = LENGTH_TABLE[name];
-  const ratio = (rec.length - min) / (max - min);
-  const starCount = Math.max(1, Math.min(5, Math.round(ratio * 5)));
-  stars = `[${"★".repeat(starCount)}]`;
-}
-const eb = new EmbedBuilder().setTitle(`📖 ${name}${stars ? " " + stars : ""} — ${st.rarity} [${got}/${total}]`)
+const starName = withStarName(name, rec.length || 0);
+
+const eb = new EmbedBuilder()
+  .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
   .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
   .setColor(0x44ddaa).setImage(getIconURL(name)||null);
+
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
     return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
   }
@@ -1021,7 +1009,7 @@ async function buildRankEmbedPayload(db, interaction, mode){
   const lines = await Promise.all(top.map(async (o,i)=>{
     const nm = await nameOf(o.id);
     if(mode==="points") return `${i+1}. ${nm} — ${o.tier} (${o.points.toLocaleString()}점)`;
-    if(mode==="len") return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${o.bestName})`:""}`;
+    if(mode==="len") return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${withStarName(o.bestName, o.bestLen)})`:""}`;
     if(mode==="caught") return `${i+1}. ${nm} — ${o.caught.toLocaleString()}마리`;
     if(mode==="coins") return `${i+1}. ${nm} — ${o.coins.toLocaleString()} 코인`;
   }));
@@ -1163,9 +1151,12 @@ async function execute(interaction) {
           `티어: **${u.tier}**`,
           `포인트: **${(u.stats.points||0).toLocaleString()}**`,
           `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
-          `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name?`— ${u.stats.max.name}`:""}`,
+          `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name?`— ${withStarName(u.stats.max.name, u.stats.max.length)}`:""}`
           "",
-          top3.length ? "**종류별 최대 상위 3**\n" + top3.map(([n,i])=>`• ${n} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") : "_기록이 없습니다._"
+          top3.length 
+  ? "**종류별 최대 상위 3**\n" 
+    + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") 
+  : "_기록이 없습니다._"
         ].join("\n"))
         .setColor(0x66ddee);
       if (tierIcon) eb.setThumbnail(tierIcon);
@@ -1285,7 +1276,7 @@ async function component(interaction) {
       const eb = new EmbedBuilder()
         .setTitle(`🐟 ${interaction.user.displayName || interaction.user.username}의 성과!`)
         .setDescription([
-          `• 이름: [${rec.rarity}] ${rec.name}`,
+          `• 이름: [${rec.rarity}] ${withStarName(rec.name, rec.length)}`
           `• 길이: ${Math.round(rec.length)}cm`,
           `• 판매가: ${rec.sell.toLocaleString()} 코인`,
         ].join("\n"))
