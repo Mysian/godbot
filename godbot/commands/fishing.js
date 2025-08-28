@@ -104,6 +104,14 @@ const SPECIES_MILESTONES = {
     30:  [{ type:"coin", amt:1000000 }],
     50:  [{ type:"rod",  name:"금 낚싯대" }, { type:"rod", name:"다이아 낚싯대" }],
     100: [{ type:"rod",  name:"전설의 낚싯대" }]
+  },
+  "언노운": {
+    1:   [{ type:"coin", amt:500000 }],
+    5:   [{ type:"be",   amt:5000000 }],
+    10:   [{ type:"be",   amt:10000000 }],
+    30:  [{ type:"coin", amt:5000000 }],
+    50:  [{ type:"be",   amt:30000000 }],
+    100: [{ type:"be",   amt:100000000 }]
   }
 };
 
