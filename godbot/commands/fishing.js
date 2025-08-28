@@ -811,7 +811,7 @@ function renderDexDetail(u, st, name){
   if (!caught.has(name)) {
     const eb = new EmbedBuilder().setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`).setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.").setColor(0x999999);
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
-    return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
+    return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
   } else {
     const rec = u.stats.best?.[name]||{};
 const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
@@ -824,7 +824,7 @@ const eb = new EmbedBuilder()
   .setColor(0x44ddaa).setImage(getIconURL(name)||null);
 
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
-    return { embeds:[eb], components:[dexRarityRow(st.rarity), row] };
+    return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
   }
 }
 
@@ -1276,7 +1276,7 @@ async function component(interaction) {
       const eb = new EmbedBuilder()
         .setTitle(`🐟 ${interaction.user.displayName || interaction.user.username}의 성과!`)
         .setDescription([
-          `• 이름: [${rec.rarity}] ${withStarName(rec.name, rec.length)}`
+          `• 이름: [${rec.rarity}] ${withStarName(rec.name, rec.length)}`,
           `• 길이: ${Math.round(rec.length)}cm`,
           `• 판매가: ${rec.sell.toLocaleString()} 코인`,
         ].join("\n"))
