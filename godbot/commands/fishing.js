@@ -225,8 +225,6 @@ function ensureUser(u) {
   u.rewards.size   ??= {};
   u.rewards.species??= {};
 }
-
-}
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
 function addBait(u, name, qty=0) { u.inv.baits[name] = (u.inv.baits[name]||0) + qty; }
