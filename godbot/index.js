@@ -1324,20 +1324,15 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
-// ✅ 입퇴장 추적 (2회 이상이면 채널 안내)
+// ✅ 퇴장 추적 (2회 이상이면 채널 안내)
 client.on(Events.GuildMemberAdd, async member => {
-  try {
-    await trackJoinLeave(member.user, client);
-  } catch (err) {
-    console.error("[입퇴장 추적 오류]", err);
-  }
 });
 
 client.on(Events.GuildMemberRemove, async member => {
   try {
     await trackJoinLeave(member.user, client);
   } catch (err) {
-    console.error("[입퇴장 추적 오류]", err);
+    console.error("[퇴장 추적 오류]", err);
   }
 });
 
@@ -1350,6 +1345,7 @@ function loadStatus() {
   if (!fs.existsSync(statusPath)) fs.writeFileSync(statusPath, '{}');
   return JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 }
+
 
 // ✅ 멘션 상태 메시지 안내
 const EXCLUDED_CHANNEL_IDS = [
