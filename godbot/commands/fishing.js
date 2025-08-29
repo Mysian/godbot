@@ -1373,32 +1373,35 @@ async function component(interaction) {
     const id = interaction.customId;
 
     if (id === "fish:share") {
-      const rec = lastCatch.get(userId);
-      if (!rec) {
-        return interaction.reply({ content: "최근에 잡은 물고기가 없어.", ephemeral: true });
-      }
-      if (Date.now() - rec.ts > 10 * 60 * 1000) {
-        lastCatch.delete(userId);
-        return interaction.reply({ content: "최근 포획 정보가 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
-      }
-      const eb = new EmbedBuilder()
-        .setTitle(`🐟 ${interaction.user.displayName || interaction.user.username}의 성과!`)
-        .setDescription([
-          `• 이름: [${rec.rarity}] ${withStarName(rec.name, rec.length)}`,
-          `• 길이: ${Math.round(rec.length)}cm`,
-          `• 판매가: ${rec.sell.toLocaleString()} 코인`,
-        ].join("\n"))
-        .setColor(0x66ccff)
-        .setImage(getIconURL(rec.name) || null);
-      try {
-        await interaction.channel.send({ embeds: [eb] });
-        return interaction.reply({ content: "공유 완료! 🎉", ephemeral: true });
-      } catch (e) {
-        return interaction.reply({ content: "채널에 공유 실패. 권한 확인 부탁!", ephemeral: true });
-      }
-    }
-
-    if (id === "auto:toggle") {
+  const rec = lastCatch.get(userId);
+  if (!rec) {
+    return interaction.reply({ content: "최근에 잡은 물고기가 없어.", ephemeral: true });
+  }
+  if (Date.now() - rec.ts > 10 * 60 * 1000) {
+    lastCatch.delete(userId);
+    return interaction.reply({ content: "최근 포획 정보가 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
+  }
+  const nick =
+    interaction.member?.displayName ??
+    interaction.user.globalName ??
+    interaction.user.username;
+  const eb = new EmbedBuilder()
+    .setTitle(`🐟 ${nick}의 성과!`)
+    .setDescription([
+      `• 이름: [${rec.rarity}] ${withStarName(rec.name, rec.length)}`,
+      `• 길이: ${Math.round(rec.length)}cm`,
+      `• 판매가: ${rec.sell.toLocaleString()} 코인`,
+    ].join("\n"))
+    .setColor(0x66ccff)
+    .setImage(getIconURL(rec.name) || null);
+  try {
+    await interaction.channel.send({ embeds: [eb] });
+    return interaction.reply({ content: "공유 완료! 🎉", ephemeral: true });
+  } catch (e) {
+    return interaction.reply({ content: "채널에 공유 실패. 권한 확인 부탁!", ephemeral: true });
+  }
+}
+  if (id === "auto:toggle") {
   u.settings ??= {};
   u.settings.autoBuy = !u.settings.autoBuy;
 
