@@ -1616,7 +1616,7 @@ if (id === "fish:share") {
         clearSession(userId);
         const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "기본");
         const eb = new EmbedBuilder().setTitle("놓치셨습니다.").setDescription("텐션 조절에 실패하여 대상이 빠져나갔습니다.").setColor(0xcc6666).setImage(scene0);
-        return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+        return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(false)] });
       }
       if (st.hp <= 0) {
         useDurability(u, "rod"); 
@@ -1952,10 +1952,10 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const name = names[i]; const dur = k==="rod"? u.inv.rods[name] : k==="float"? u.inv.floats[name] : u.inv.baits[name];
           const spec = k==="rod"? ROD_SPECS[name] : k==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
           const lines = [];
-          if (k!=="bait") lines.push(`내구도: ${dur}/${spec.maxDur}`); else lines.push(`보유: ${dur}/${spec.pack}`);
-          if (k==="rod") lines.push(`입질시간 ${spec.biteSpeed}s, 제압력 ${spec.dmg}, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-          if (k==="float") lines.push(`입질시간 ${spec.biteSpeed}s, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-          if (k==="bait") lines.push(`입질시간 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
+          const tb = getTierBuff(u.tier);
+          if (k==="rod")   lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed+(tb.biteSpeed||0)}s, 제압력 ${spec.dmg+(tb.dmg||0)}, 저항 완화 ${spec.resistReduce+(tb.resistReduce||0)}, 희귀도 +${spec.rarityBias+(tb.rarityBias||0)}`);
+          if (k==="float") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed+(tb.biteSpeed||0)}s, 저항 완화 ${spec.resistReduce+(tb.resistReduce||0)}, 희귀도 +${spec.rarityBias+(tb.rarityBias||0)}`);
+          if (k==="bait")  lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed+(tb.biteSpeed||0)}s, 희귀도 +${spec.rarityBias+(tb.rarityBias||0)}`);
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
             .setDescription(lines.join("\n")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null)
             .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
