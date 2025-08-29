@@ -461,9 +461,9 @@ async function autoBuyIfAllOne(u) {
 
   if (r <= 1 || f <= 1 || b <= 1) {
   const msgs = [];
-  if (r <= 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
-  if (f <= 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
-  if (b <= 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
+  if (r === 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
+  if (f === 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
+  if (b === 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
   const note = msgs.filter(Boolean).length ? `🧰 자동구매 실행됨\n${msgs.filter(Boolean).join("\n")}` : null;
   if (note) return note;
 }
