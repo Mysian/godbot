@@ -19,8 +19,8 @@ function saveData(data) {
 }
 
 /**
- * 유저 입장/퇴장 이력을 기록하고, 조건 만족 시 알림 보냄
- * @param {GuildMember | User} user - 디스코드 유저 객체
+ * 유저 퇴장 이력을 기록하고, 조건 만족 시 알림 보냄
+ * @param {User} user - 디스코드 유저 객체
  * @param {Client} client - Discord.js 클라이언트
  */
 async function trackJoinLeave(user, client) {
@@ -34,9 +34,9 @@ async function trackJoinLeave(user, client) {
 
   if (data[uid].count >= 2) {
     const channel = await client.channels.fetch("1342026335417270283").catch(() => null);
-    if (channel) {
+    if (channel && channel.isTextBased()) {
       channel.send(
-        `⚠️ **${user.username}** (${uid}) 님은 ${data[uid].count}회 서버 들락 유저입니다.`
+        `⚠️ <@${uid}> (\`${uid}\`) 님은 ${data[uid].count}회 서버 들락 유저입니다.`
       );
     }
   }
