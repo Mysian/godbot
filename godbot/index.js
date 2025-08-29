@@ -1098,7 +1098,8 @@ if (
     interaction.customId?.startsWith("dex:")  ||
     interaction.customId?.startsWith("rank:") ||
     interaction.customId?.startsWith("open:") || 
-    interaction.customId?.startsWith("info:") 
+    interaction.customId?.startsWith("info:") ||
+    interaction.customId?.startsWith("auto:")
   )
 ) {
   try {
