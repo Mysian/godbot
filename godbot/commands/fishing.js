@@ -1233,46 +1233,43 @@ async function execute(interaction) {
   }
 
   if (sub === "판매") {
-    return await withDB(async db=>{
-      const u = (db.users[userId] ||= {}); ensureUser(u);
-      const fishes = u.inv.fishes||[];
-      const eb = new EmbedBuilder().setTitle("💰 물고기 판매")
-        .setDescription([
-          `보유 물고기: ${fishes.length}마리`,
-          "원하시는 방식으로 판매해 주세요."
-        ].join("\n"))
-        .setColor(0xffaa44);
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
-        new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
-        new ButtonBuilder().setCustomId("fish:sell_qty").setLabel("수량 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
-        new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
-      );
-      await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
-    });
-  }
-
+  return await withDB(async db=>{
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    const fishes = u.inv.fishes||[];
+    const totalValue = fishes.reduce((sum, f) => sum + (f.price||0), 0);
+    const eb = new EmbedBuilder().setTitle("💰 물고기 판매")
+      .setDescription([
+        `보유 물고기: ${fishes.length}마리`,
+        "원하시는 방식으로 판매해 주세요."
+      ].join("\n"))
+      .addFields({ name:"전체 판매 예상 금액", value:`${totalValue.toLocaleString()} 코인`, inline:false })
+      .setColor(0xffaa44);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_qty").setLabel("수량 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+    );
+    await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
+  });
+}
+  
     if (sub === "스타터패키지") {
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
-
-      // 이미 받았는지 체크
+      
       u.rewards ??= {};
       if (u.rewards.starter) {
         return interaction.reply({ content:"⚠️ 이미 스타터 패키지를 수령하셨습니다.", ephemeral:true });
       }
-
-      // 지급 처리
+      
       addRod(u, "나무 낚싯대");
       addFloat(u, "동 찌");
       addBait(u, "지렁이 미끼", BAIT_SPECS["지렁이 미끼"].pack);
-
-      // 장착도 자동으로 해주고 싶으면 ↓
+      
       u.equip.rod = "나무 낚싯대";
       u.equip.float = "동 찌";
       u.equip.bait = "지렁이 미끼";
-
-      // 플래그 남기기
       u.rewards.starter = true;
 
       const eb = new EmbedBuilder()
