@@ -324,6 +324,7 @@ function withStarName(name, length) {
   const range = LENGTH_TABLE[name];
   if (!range || !length) return name;
   const [min, max] = range;
+  if (max <= min) return name; 
   const ratio = (length - min) / (max - min);
   const starCount = Math.max(1, Math.min(5, Math.round(ratio * 5)));
   return `${name} [${"★".repeat(starCount)}]`;
@@ -577,11 +578,14 @@ function buttonsFight() {
     new ButtonBuilder().setCustomId("fish:giveup").setLabel("🏳️ 포기").setStyle(ButtonStyle.Danger),
   );
 }
-function buttonsAfterCatch() {
-  return new ActionRowBuilder().addComponents(
+function buttonsAfterCatch(allowShare = true) {
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("fish:recast").setLabel("🎯 다시 찌 던지기").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("fish:share").setLabel("📣 잡은 물고기 공유하기").setStyle(ButtonStyle.Secondary)
   );
+  if (allowShare) {
+    row.addComponents(new ButtonBuilder().setCustomId("fish:share").setLabel("📣 잡은 물고기 공유하기").setStyle(ButtonStyle.Secondary));
+  }
+  return row;
 }
 function computeRarityWeight(u){
   const base = { "노말": 110, "레어": 30, "유니크": 5, "레전드": 1.5, "에픽": 0.5, "언노운": 0.1 };
@@ -1423,14 +1427,15 @@ async function component(interaction) {
 
     const id = interaction.customId;
 
-    if (id === "fish:share") {
+    // component() 내부
+if (id === "fish:share") {
   const rec = lastCatch.get(userId);
   if (!rec) {
-    return interaction.reply({ content: "최근에 잡은 기록이 없어.", ephemeral: true });
+    return interaction.reply({ content: "최근에 잡은 물고기가 없어.", ephemeral: true });
   }
   if (Date.now() - rec.ts > 10 * 60 * 1000) {
     lastCatch.delete(userId);
-    return interaction.reply({ content: "최근 기록이 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
+    return interaction.reply({ content: "최근 포획 정보가 만료됐어. 다음에 또 공유해줘!", ephemeral: true });
   }
 
   const nick =
@@ -1445,7 +1450,7 @@ async function component(interaction) {
       .setTitle(`🎁 ${nick}의 전리품!`)
       .setDescription(`• ${rec.desc}`)
       .setColor(0xffcc66)
-      .setImage(rec.icon || null);
+      .setImage(rec.icon || getIconURL(rec.name) || null);
   } else {
     // 🐟 물고기 공유
     eb = new EmbedBuilder()
@@ -1458,13 +1463,15 @@ async function component(interaction) {
       .setColor(0x66ccff)
       .setImage(getIconURL(rec.name) || null);
   }
+
   try {
     await interaction.channel.send({ embeds: [eb] });
     return interaction.reply({ content: "공유 완료! 🎉", ephemeral: true });
-  } catch (e) {
+  } catch {
     return interaction.reply({ content: "채널에 공유 실패. 권한 확인 부탁!", ephemeral: true });
   }
 }
+
   if (id === "auto:toggle") {
   u.settings ??= {};
   u.settings.autoBuy = !u.settings.autoBuy;
@@ -2069,9 +2076,9 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
 
       if (kind === "bait") {
         const pack = BAIT_SPECS[name].pack;
-        const cur = u.inv.baits[name] || 0;
-        const need = Math.max(0, pack - cur);
-        if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(20개)입니다.`, ephemeral:true });
+const cur  = u.inv.baits[name] || 0;
+const need = Math.max(0, pack - cur);
+if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${pack}개)입니다.`, ephemeral:true });
         if (pay === "coin") {
           const cost = Math.ceil(price.coin * (need/pack));
           if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
