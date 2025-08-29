@@ -172,7 +172,7 @@ const ROD_SPECS = {
   "강철 낚싯대":   { maxDur: 120,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
   "금 낚싯대":     { maxDur: 250, biteSpeed: -12, dmg: 12, resistReduce: 5,  rarityBias: 5 },
   "다이아 낚싯대": { maxDur: 550, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
-  "전설의 낚싯대": { maxDur: 1250, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
+  "전설의 낚싯대": { maxDur: 990, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
 };
 const FLOAT_SPECS = {
   "동 찌":    { maxDur: 30,  biteSpeed: -3,  resistReduce: 2,  rarityBias: 0 },
