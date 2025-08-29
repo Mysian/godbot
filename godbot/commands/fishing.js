@@ -1978,6 +1978,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const name = names[i]; const dur = k==="rod"? u.inv.rods[name] : k==="float"? u.inv.floats[name] : u.inv.baits[name];
           const spec = k==="rod"? ROD_SPECS[name] : k==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
           const lines = [];
+          if (k!=="bait") lines.push(`내구도: ${dur}/${spec.maxDur}`);
+          else            lines.push(`보유: ${dur}/${spec.pack}`);
           const tb = getTierBuff(u.tier);
           if (k==="rod") {
             lines.push(
@@ -2034,7 +2036,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       const pick = pickWeighted(w);
       const item = pool.find(x=>x.name===pick);
       if (item.kind === "bait")  { addBait(u, item.name, item.qty); return interaction.reply({ content:`상자를 개봉하여 ${item.name} ${item.qty}개를 받으셨습니다.`, ephemeral:true }); }
-      if (item.kind === "be")    { const amt = randInt(item.min, item.max); addBE(userId, amt, "[낚시] 상자 보상"); return interaction.reply({ content:`상자를 개봉하여 파랑 정수 ${amt.toLocaleString()}원을 받으셨습니다.`, ephemeral:true }); }
+      if (item.kind === "be")    { const amt = randInt(item.min, item.max); await addBE(userId, amt, "[낚시] 상자 보상"); return interaction.reply({ content:`상자를 개봉하여 파랑 정수 ${amt.toLocaleString()}원을 받으셨습니다.`, ephemeral:true }); }
       if (item.kind === "float") { addFloat(u, item.name); return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
       if (item.kind === "rod")   { addRod(u, item.name);   return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
       if (item.kind === "coin") { const amt = randInt(item.min, item.max); u.coins += amt; return interaction.reply({ content:`상자에서 ${amt} 코인을 받으셨습니다.`, ephemeral:true }); }
