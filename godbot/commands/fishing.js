@@ -23,8 +23,8 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const FISH_DB = path.join(dataDir, "fishing.json");
 
 const FISHING_LIMIT_SECONDS = 120;
-const FIGHT_IDLE_TIMEOUT = 12;
-const FIGHT_TOTAL_TIMEOUT = 60;
+const FIGHT_IDLE_TIMEOUT = 20;
+const FIGHT_TOTAL_TIMEOUT = 90;
 const SAFE_TENSION_MIN = 30;
 const SAFE_TENSION_MAX = 70;
 const SELL_PRICE_MULT = 0.35;
