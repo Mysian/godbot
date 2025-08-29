@@ -61,6 +61,10 @@ function buffField(u){
   if (!b.biteSpeed && !b.dmg && !b.resistReduce && !b.rarityBias) return null;
   return { name:"티어 보정", value:`(${u.tier}) ${formatBuff(b)}`, inline:false };
 }
+function signed(n){ return (n>=0?`+${n}`:`${n}`); }
+function statLine(label, base, buff, unit='', basePrefix=''){
+  return `${label} ${basePrefix}${base}${unit} (${signed(buff||0)}${unit})`;
+}
 function sumBiteSpeed(u){
   const r = ROD_SPECS[u.equip.rod]?.biteSpeed   || 0;
   const f = FLOAT_SPECS[u.equip.float]?.biteSpeed|| 0;
@@ -1876,9 +1880,31 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const lines = [];
           if (k!=="bait") lines.push(`내구도: ${dur}/${spec.maxDur}`);
           else lines.push(`보유: ${dur}/${spec.pack}`);
-          if (k==="rod") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed + (getTierBuff(u.tier).biteSpeed||0)}s, 제압력 ${spec.dmg + (getTierBuff(u.tier).dmg||0)}, 저항 완화 ${spec.resistReduce + (getTierBuff(u.tier).resistReduce||0)}, 희귀도 +${spec.rarityBias + (getTierBuff(u.tier).rarityBias||0)}`);
-          if (k==="float") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed + (getTierBuff(u.tier).biteSpeed||0)}s, 저항 완화 ${spec.resistReduce + (getTierBuff(u.tier).resistReduce||0)}, 희귀도 +${spec.rarityBias + (getTierBuff(u.tier).rarityBias||0)}`);
-          if (k==="bait") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed + (getTierBuff(u.tier).biteSpeed||0)}s, 희귀도 +${spec.rarityBias + (getTierBuff(u.tier).rarityBias||0)}`);
+          const tb = getTierBuff(u.tier);
+          if (k==="rod") {
+            lines.push(
+              statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+              statLine("제압력", spec.dmg, tb.dmg),
+              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              "_(+티어 능력치)_"
+            );
+          }
+          if (k==="float") {
+            lines.push(
+              statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              "_(+티어 능력치)_"
+            );
+          }
+          if (k==="bait") {
+            lines.push(
+              statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+              `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              "_(+티어 능력치)_"
+            );
+          }
 
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
             .setDescription(lines.join("\n"))
@@ -1953,9 +1979,30 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const spec = k==="rod"? ROD_SPECS[name] : k==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
           const lines = [];
           const tb = getTierBuff(u.tier);
-          if (k==="rod")   lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed+(tb.biteSpeed||0)}s, 제압력 ${spec.dmg+(tb.dmg||0)}, 저항 완화 ${spec.resistReduce+(tb.resistReduce||0)}, 희귀도 +${spec.rarityBias+(tb.rarityBias||0)}`);
-          if (k==="float") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed+(tb.biteSpeed||0)}s, 저항 완화 ${spec.resistReduce+(tb.resistReduce||0)}, 희귀도 +${spec.rarityBias+(tb.rarityBias||0)}`);
-          if (k==="bait")  lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed+(tb.biteSpeed||0)}s, 희귀도 +${spec.rarityBias+(tb.rarityBias||0)}`);
+          if (k==="rod") {
+            lines.push(
+              statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+              statLine("제압력", spec.dmg, tb.dmg),
+              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              "_(+티어 능력치)_"
+            );
+          }
+          if (k==="float") {
+            lines.push(
+              statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              "_(+티어 능력치)_"
+            );
+          }
+          if (k==="bait") {
+            lines.push(
+              statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+              `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              "_(+티어 능력치)_"
+            );
+          }
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
             .setDescription(lines.join("\n")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null)
             .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
@@ -2008,10 +2055,31 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
         const price = PRICES[k==="rod"?"rods":k==="float"?"floats":"baits"][name];
         const spec  = k==="rod"? ROD_SPECS[name] : k==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
         const lines = [];
+        const tb = getTierBuff(u.tier);
         if (k!=="bait") lines.push(`내구도: ${spec.maxDur}`);
-        if (k==="rod")   lines.push(`입질시간 ${spec.biteSpeed}s, 제압력 ${spec.dmg}, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-        if (k==="float") lines.push(`입질시간 ${spec.biteSpeed}s, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-        if (k==="bait")  lines.push(`묶음 ${spec.pack}개, 입질시간 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
+        if (k==="rod") {
+          lines.push(
+            statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+            statLine("제압력", spec.dmg, tb.dmg),
+            statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+            `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+            "_(+티어 능력치)_"
+          );
+        } else if (k==="float") {
+          lines.push(
+            statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+            statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+            `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+            "_(+티어 능력치)_"
+          );
+        } else {
+          lines.push(
+            `묶음 ${spec.pack}개`,
+            statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+            `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+            "_(+티어 능력치)_"
+          );
+        }
         const eb = new EmbedBuilder().setTitle(`🛒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
           .setDescription(lines.join("\n"))
           .addFields(
@@ -2045,10 +2113,31 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       const price = PRICES[st.kind==="rod"?"rods":st.kind==="float"?"floats":"baits"][name];
       const spec  = st.kind==="rod"? ROD_SPECS[name] : st.kind==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
       const descLines = [];
+      const tb = getTierBuff(u.tier);
       if (st.kind!=="bait") descLines.push(`내구도: ${spec.maxDur}`);
-      if (st.kind==="rod")   descLines.push(`입질시간 ${spec.biteSpeed}s, 제압력 ${spec.dmg}, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-      if (st.kind==="float") descLines.push(`입질시간 ${spec.biteSpeed}s, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-      if (st.kind==="bait")  descLines.push(`묶음 ${spec.pack}개, 입질시간 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
+      if (st.kind==="rod") {
+        descLines.push(
+          statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+          statLine("제압력", spec.dmg, tb.dmg),
+          statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+          `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+          "_(+티어 능력치)_"
+        );
+      } else if (st.kind==="float") {
+        descLines.push(
+          statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+          statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+          `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+          "_(+티어 능력치)_"
+        );
+      } else {
+        descLines.push(
+          `묶음 ${spec.pack}개`,
+          statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
+          `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+          "_(+티어 능력치)_"
+        );
+      }
       const desc = descLines.join("\n");
 
       const eb = new EmbedBuilder().setTitle(`🛒 ${st.kind==="rod"?"낚싯대":st.kind==="float"?"찌":"미끼"} — ${name}`)
