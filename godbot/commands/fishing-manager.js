@@ -21,7 +21,7 @@ const ROD_SPECS = {
   "강철 낚싯대":   { maxDur: 120 },
   "금 낚싯대":     { maxDur: 250 },
   "다이아 낚싯대": { maxDur: 550 },
-  "전설의 낚싯대": { maxDur: 1250 }
+  "전설의 낚싯대": { maxDur: 990 }
 };
 const FLOAT_SPECS = {
   "동 찌":    { maxDur: 30 },
