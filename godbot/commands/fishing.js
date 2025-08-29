@@ -52,7 +52,7 @@ function formatBuff(b){
   const parts=[];
   if (b.biteSpeed)     parts.push(`입질시간 ${b.biteSpeed}s`);
   if (b.dmg)           parts.push(`제압력 +${b.dmg}`);
-  if (b.resistReduce)  parts.push(`저항완화 +${b.resistReduce}`);
+  if (b.resistReduce)  parts.push(`저항 감소 +${b.resistReduce}`);
   if (b.rarityBias)    parts.push(`희귀도 +${b.rarityBias}`);
   return parts.join(", ");
 }
@@ -1885,7 +1885,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
             lines.push(
               statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
               statLine("제압력", spec.dmg, tb.dmg),
-              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              statLine("저항 감소", spec.resistReduce, tb.resistReduce),
               `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
               "_(+티어 능력치)_"
             );
@@ -1893,7 +1893,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           if (k==="float") {
             lines.push(
               statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
-              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              statLine("저항 감소", spec.resistReduce, tb.resistReduce),
               `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
               "_(+티어 능력치)_"
             );
@@ -1983,7 +1983,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
             lines.push(
               statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
               statLine("제압력", spec.dmg, tb.dmg),
-              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              statLine("저항 감소", spec.resistReduce, tb.resistReduce),
               `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
               "_(+티어 능력치)_"
             );
@@ -1991,7 +1991,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           if (k==="float") {
             lines.push(
               statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
-              statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+              statLine("저항 감소", spec.resistReduce, tb.resistReduce),
               `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
               "_(+티어 능력치)_"
             );
@@ -2061,14 +2061,14 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           lines.push(
             statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
             statLine("제압력", spec.dmg, tb.dmg),
-            statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+            statLine("저항 감소", spec.resistReduce, tb.resistReduce),
             `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
             "_(+티어 능력치)_"
           );
         } else if (k==="float") {
           lines.push(
             statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
-            statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+            statLine("저항 감소", spec.resistReduce, tb.resistReduce),
             `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
             "_(+티어 능력치)_"
           );
@@ -2119,14 +2119,14 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
         descLines.push(
           statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
           statLine("제압력", spec.dmg, tb.dmg),
-          statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+          statLine("저항 감소", spec.resistReduce, tb.resistReduce),
           `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
           "_(+티어 능력치)_"
         );
       } else if (st.kind==="float") {
         descLines.push(
           statLine("입질시간", spec.biteSpeed, tb.biteSpeed, "s"),
-          statLine("저항 완화", spec.resistReduce, tb.resistReduce),
+          statLine("저항 감소", spec.resistReduce, tb.resistReduce),
           `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
           "_(+티어 능력치)_"
         );
