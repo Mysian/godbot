@@ -232,6 +232,10 @@ function ensureUser(u) {
   u.rewards.caught ??= {};
   u.rewards.size   ??= {};
   u.rewards.species??= {};
+  
+  // 설정 키
+  u.settings ??= {};
+  u.settings.autoBuy ??= false;
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -363,7 +367,7 @@ const JUNK_SET = new Set(["빈 페트병","해초","작은 새우","뚱이의 �
 function drawLength(name){
   const r = LENGTH_TABLE[name];
   if (!r) return 0;
-  return Math.max(r[0], Math.min(r[1], Math.round(randInt(r[0]*10, r[1]*10)/10)));
+  return Math.max(r[0], Math.min(r[1], randInt(r[0]*10, r[1]*10) / 10));
 }
 function computeSellPrice(name, length, rarity) {
   const base = RARITY_PRICE_MULT[rarity] || 1;
@@ -372,7 +376,7 @@ function computeSellPrice(name, length, rarity) {
   return Math.max(1, Math.round(SELL_PRICE_MULT * (base * Math.pow(L, 1.25) + speciesBias*5)));
 }
 function computePoints(rarity, price, length) {
-  const base = { "노말":1, "레어":4, "유니크":9, "레전드":20, "에픽":45 }[rarity] || 1;
+  const base = { "노말":1, "레어":4, "유니크":9, "레전드":20, "에픽":45, "언노운":120 }[rarity] || 1;
   return Math.round(base * Math.sqrt(Math.max(1, price)) + Math.sqrt(Math.max(1,length)));
 }
 function updateTier(u) {
@@ -393,6 +397,78 @@ function fishToInv(u, fish) {
   if ((fish.sell||0) > (prevBest.price||0)) u.stats.best[fish.name] = { length: Math.max(prevBest.length||0, fish.length), price: fish.sell };
   if (!u.stats.max || (fish.length||0) > (u.stats.max.length||0)) u.stats.max = { name: fish.name, length: fish.length };
 }
+
+// === 자동구매 유틸
+function priceFor(kind, name) {
+  const map = kind==="rod" ? "rods" : kind==="float" ? "floats" : "baits";
+  return PRICES[map]?.[name] || null;
+}
+
+async function autoBuyOne(u, kind, name) {
+  const price = priceFor(kind, name);
+  if (!price) return null;
+
+  if (kind === "bait") {
+    const pack = BAIT_SPECS[name]?.pack ?? 20;
+    const cur  = u.inv.baits[name] || 0;
+    const need = Math.max(0, pack - cur);
+    if (need <= 0) return null;
+
+    const coinCost = price.coin != null ? Math.ceil(price.coin * (need/pack)) : null;
+    const beCost   = price.be   != null ? Math.ceil(price.be   * (need/pack)) : null;
+
+    if (coinCost != null && (u.coins||0) >= coinCost) {
+      u.coins -= coinCost;
+      addBait(u, name, need);
+      return `• ${name} 보충 완료 (코인 ${coinCost.toLocaleString()})`;
+    } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
+      await addBE(u._uid, -beCost, `[낚시] 자동구매 ${name} 보충(${need})`);
+      addBait(u, name, need);
+      return `• ${name} 보충 완료 (정수 ${beCost.toLocaleString()}원)`;
+    } else {
+      return `• ${name} — 잔액 부족(코인/정수)`;
+    }
+  } else {
+    const coinCost = price.coin;
+    const beCost   = price.be;
+    let paidText = null;
+
+    if (coinCost != null && (u.coins||0) >= coinCost) {
+      u.coins -= coinCost;
+      paidText = `코인 ${coinCost.toLocaleString()}`;
+    } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
+      await addBE(u._uid, -beCost, `[낚시] 자동구매 ${name}`);
+      paidText = `정수 ${beCost.toLocaleString()}원`;
+    } else {
+      return `• ${name} — 잔액 부족(코인/정수)`;
+    }
+
+    if (kind === "rod") addRod(u, name);
+    else addFloat(u, name);
+
+    return `• ${name} 구매 완료 (${paidText})`;
+  }
+}
+
+// ★ 장착한 낚싯대/찌 내구도 == 1 && 미끼 == 1일 때 자동구매
+async function autoBuyIfAllOne(u) {
+  if (!u?.settings?.autoBuy) return null;
+  if (!u.equip.rod || !u.equip.float || !u.equip.bait) return null;
+
+  const r = u.inv.rods[u.equip.rod]   ?? 0;
+  const f = u.inv.floats[u.equip.float] ?? 0;
+  const b = u.inv.baits[u.equip.bait] ?? 0;
+
+  if (r === 1 && f === 1 && b === 1) {
+    const msgs = [];
+    const m1 = await autoBuyOne(u, "rod",   u.equip.rod);   if (m1) msgs.push(m1);
+    const m2 = await autoBuyOne(u, "float", u.equip.float); if (m2) msgs.push(m2);
+    const m3 = await autoBuyOne(u, "bait",  u.equip.bait);  if (m3) msgs.push(m3);
+    if (msgs.length) return `🧰 자동구매 실행됨\n${msgs.join("\n")}`;
+  }
+  return null;
+}
+
 
 const sessions = new Map();
 const shopSessions = new Map();
@@ -427,11 +503,15 @@ function equipLine(u) {
     `🪱 미끼: ${u.equip.bait || "없음"}${u.equip.bait?` (잔여 ${u.inv.baits[u.equip.bait]||0})`:''}`
   ].join("\n");
 }
-function buttonsStart() {
+function buttonsStart(u) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("fish:cast").setLabel("🎯 찌 던지기").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("fish:cancel").setLabel("🛑 중단하기").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId("fish:equip").setLabel("🧰 아이템 교체하기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("auto:toggle")
+      .setLabel(u?.settings?.autoBuy ? "자동구매: ON" : "자동구매: OFF")
+      .setStyle(u?.settings?.autoBuy ? ButtonStyle.Success : ButtonStyle.Secondary)
   );
 }
 function buttonsWaiting() {
@@ -1036,11 +1116,15 @@ async function execute(interaction) {
   const userId = interaction.user.id;
 
   if (sub === "낚시터") {
-    return await withDB(async db=>{
-      const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
+  return await withDB(async db=>{
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    try {
+      u._uid = userId;
+
       const timeBand = currentTimeBand();
       const missKey = missingGearKey(u);
-      const scene0 = missKey ? (getIconURL(missKey)||null) : getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, timeBand, "기본");
+      const scene0 = missKey ? (getIconURL(missKey)||null)
+                             : getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, timeBand, "기본");
       const eb = sceneEmbed(u, "🏞️ 낚시터", [
         "찌를 던져 입질을 기다려보세요.",
         "",
@@ -1051,9 +1135,13 @@ async function execute(interaction) {
         new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
       );
-      await interaction.reply({ embeds:[eb], components:[buttonsStart(), viewRow], ephemeral:true });
-    });
-  }
+      await interaction.reply({ embeds:[eb], components:[buttonsStart(u), viewRow], ephemeral:true });
+    } finally {
+      delete u._uid; 
+    }
+  });
+}
+
 
   if (sub === "구매") {
     return await withDB(async db=>{
@@ -1142,16 +1230,20 @@ async function execute(interaction) {
     });
   }
 
-
   if (sub === "도감") {
-    return await withDB(async db=>{
-      const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
+  return await withDB(async db=>{
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    try {
+      u._uid = userId;
       const st = { rarity:"노말", page:0, mode:"list" };
       dexSessions.set(userId, st);
       const payload = renderDexList(u, st);
       await interaction.reply({ ...payload, ephemeral:true });
-    });
-  }
+    } finally {
+      delete u._uid; 
+    }
+  });
+}
 
   if (sub === "기록") {
     const target = interaction.options.getUser("유저") || interaction.user;
@@ -1207,7 +1299,9 @@ top3.length
 async function component(interaction) {
   const userId = interaction.user.id;
   return await withDB(async db=>{
-    const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    try {
+      u._uid = userId;
 
     if (interaction.isStringSelectMenu()) {
       const [type] = interaction.customId.split("|");
@@ -1303,6 +1397,19 @@ async function component(interaction) {
       }
     }
 
+    if (id === "auto:toggle") {
+  u.settings ??= {};
+  u.settings.autoBuy = !u.settings.autoBuy;
+
+  const viewRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
+  );
+
+  return interaction.update({ components: [buttonsStart(u), viewRow] });
+}
+
     if (id === "fish:cancel") {
       clearSession(userId);
       return interaction.update({ content:"낚시를 종료했습니다.", components:[], embeds:[] });
@@ -1310,88 +1417,106 @@ async function component(interaction) {
     if (id === "fish:equip") {
       const payload = buildInventoryHome(u);
       return interaction.update({ ...payload });
-    }
-    if (id === "fish:cast" || id === "fish:recast") {
-      if (!hasAllGear(u)) {
-        const miss = [
-          !u.equip.rod ? "낚싯대" : (u.inv.rods[u.equip.rod]??0)<=0 ? "낚싯대(내구도 0)" : null,
-          !u.equip.float ? "찌" : (u.inv.floats[u.equip.float]??0)<=0 ? "찌(내구도 0)" : null,
-          !u.equip.bait ? "미끼" : (u.inv.baits[u.equip.bait]??0)<=0 ? "미끼(0개)" : null
-        ].filter(Boolean).join(", ");
-        const missKey = missingGearKey(u);
-        const eb = new EmbedBuilder().setTitle("⚠ 장비 부족")
-          .setDescription(`부족한 장비: **${miss}**
-/낚시 구매 에서 구매하시거나 인벤토리에서 장착해 주세요.`)
-          .setColor(0xff5555);
-        if (missKey) eb.setImage(getIconURL(missKey)||null);
-        return interaction.update({ embeds:[eb], components:[] });
-      }
+    }      
+      if (id === "fish:cast" || id === "fish:recast") {
+  // 자동구매(세 파츠 모두 1일 때) 안내
+  let autoNote = "";
+  try { autoNote = await autoBuyIfAllOne(u) || ""; } catch {}
 
+  // 장비 체크
+  if (!hasAllGear(u)) {
+    const miss = [
+      !u.equip.rod ? "낚싯대" : (u.inv.rods[u.equip.rod] ?? 0) <= 0 ? "낚싯대(내구도 0)" : null,
+      !u.equip.float ? "찌" : (u.inv.floats[u.equip.float] ?? 0) <= 0 ? "찌(내구도 0)" : null,
+      !u.equip.bait ? "미끼" : (u.inv.baits[u.equip.bait] ?? 0) <= 0 ? "미끼(0개)" : null
+    ].filter(Boolean).join(", ");
+    const missKey = missingGearKey(u);
+    const eb = new EmbedBuilder().setTitle("⚠ 장비 부족")
+      .setDescription(`부족한 장비: **${miss}**\n/낚시 구매 에서 구매하시거나 인벤토리에서 장착해 주세요.`)
+      .setColor(0xff5555);
+    if (missKey) eb.setImage(getIconURL(missKey) || null);
+    return interaction.update({ embeds: [eb], components: [] });
+  }
+
+  clearSession(userId);
+  const s = { state: "waiting", tension: randInt(35, 65), safeEdit: mkSafeEditor(interaction) };
+  sessions.set(userId, s);
+
+  const timeBand = currentTimeBand();
+  const scene1 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, timeBand, "찌들어감");
+
+  const waitSec = Math.max(5, Math.min(
+    FISHING_LIMIT_SECONDS - 3,
+    randInt(20, 100) + Math.min(
+      0,
+      (ROD_SPECS[u.equip.rod]?.biteSpeed || 0) +
+      (FLOAT_SPECS[u.equip.float]?.biteSpeed || 0) +
+      (BAIT_SPECS[u.equip.bait]?.biteSpeed || 0)
+    )
+  ));
+
+  s.biteTimer = setTimeout(async () => {
+    const result = await updateUser(userId, (uu) => {
+      if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
+      uu.inv.baits[uu.equip.bait] -= 1;
+      const fight = startFight(uu);
+      return { ok: true, fight, equip: { ...uu.equip }, timeBand: currentTimeBand() };
+    });
+
+    if (!result || !result.ok) {
       clearSession(userId);
-      const s = { state:"waiting", tension: randInt(35,65) };
-      s.safeEdit = mkSafeEditor(interaction);
-      sessions.set(userId, s);
-
-      const timeBand = currentTimeBand();
-      const scene1 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, timeBand, "찌들어감");
-
-      const waitSec = Math.max(5, Math.min(FISHING_LIMIT_SECONDS-3,
-        (randInt(20,100) + Math.min(0, (ROD_SPECS[u.equip.rod]?.biteSpeed||0)
-                                      + (FLOAT_SPECS[u.equip.float]?.biteSpeed||0)
-                                      + (BAIT_SPECS[u.equip.bait]?.biteSpeed||0)))));
-
-      s.biteTimer = setTimeout(async ()=>{
-        const result = await updateUser(userId, (uu)=>{
-          if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait]||0) <= 0) return { ok:false, reason:"no_bait" };
-          uu.inv.baits[uu.equip.bait] -= 1;
-          const fight = startFight(uu);
-          return { ok:true, fight, equip:{...uu.equip}, timeBand: currentTimeBand() };
-        });
-
-        if (!result || !result.ok) {
-          clearSession(userId);
-          return s.safeEdit({ content:"미끼가 없어 입질이 이어지지 않았습니다.", components:[], embeds:[] }).catch(()=>{});
-        }
-
-        const fobj = result.fight;
-
-        s.state = "fight"; s.target = fobj; s.tension = randInt(35,65);
-        s.fightStart = Date.now();
-        s.timeBand = result.timeBand;
-        s.sceneBiteURL = getSceneURL(result.equip.rod, result.equip.float, result.equip.bait, s.timeBand, "입질");
-
-        const resetIdle = ()=>{
-          if (s.fightIdleTimer) clearTimeout(s.fightIdleTimer);
-          s.fightIdleTimer = setTimeout(()=>{
-            clearSession(userId);
-            s.safeEdit({ content:"아무 행동을 하지 않아 대상을 놓쳤습니다.", embeds:[], components:[] }).catch(()=>{});
-          }, FIGHT_IDLE_TIMEOUT*1000);
-        };
-        resetIdle();
-        s.resetIdle = resetIdle;
-        s.fightTotalTimer = setTimeout(()=>{
-          clearSession(userId);
-          s.safeEdit({ content:"너무 오래 끌어 대상이 빠져나갔습니다.", embeds:[], components:[] }).catch(()=>{});
-        }, FIGHT_TOTAL_TIMEOUT*1000);
-
-        const eb = new EmbedBuilder().setTitle(`🐟 입질!`)
-          .setDescription([
-            "정체를 알 수 없는 무언가가 걸렸습니다.",
-            "릴을 감거나 풀며 상황을 살펴보세요."
-          ].join("\n"))
-          .setColor(0x44ddaa)
-          .setImage(s.sceneBiteURL);
-        try { await s.safeEdit({ embeds:[eb], components:[buttonsFight()] }); } catch {}
-      }, waitSec*1000);
-
-      s.expireTimer = setTimeout(()=>{ clearSession(userId); }, (FISHING_LIMIT_SECONDS+20)*1000);
-
-      const eb = sceneEmbed(u, "🪔 입질을 기다리는 중...", [
-        `최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`,
-        "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)
-      ].join("\n"), scene1);
-      return interaction.update({ embeds:[eb], components:[buttonsWaiting()] });
+      return s.safeEdit({ content: "미끼가 없어 입질이 이어지지 않았습니다.", components: [], embeds: [] }).catch(() => {});
     }
+
+    const fobj = result.fight;
+
+    s.state = "fight";
+    s.target = fobj;
+    s.tension = randInt(35, 65);
+    s.fightStart = Date.now();
+    s.timeBand = result.timeBand;
+    s.sceneBiteURL = getSceneURL(result.equip.rod, result.equip.float, result.equip.bait, s.timeBand, "입질");
+
+    const resetIdle = () => {
+      if (s.fightIdleTimer) clearTimeout(s.fightIdleTimer);
+      s.fightIdleTimer = setTimeout(() => {
+        clearSession(userId);
+        s.safeEdit({ content: "아무 행동을 하지 않아 대상을 놓쳤습니다.", embeds: [], components: [] }).catch(() => {});
+      }, FIGHT_IDLE_TIMEOUT * 1000);
+    };
+    resetIdle();
+    s.resetIdle = resetIdle;
+
+    s.fightTotalTimer = setTimeout(() => {
+      clearSession(userId);
+      s.safeEdit({ content: "너무 오래 끌어 대상이 빠져나갔습니다.", embeds: [], components: [] }).catch(() => {});
+    }, FIGHT_TOTAL_TIMEOUT * 1000);
+
+    const eb = new EmbedBuilder()
+      .setTitle("🐟 입질!")
+      .setDescription("정체를 알 수 없는 무언가가 걸렸습니다.\n릴을 감거나 풀며 상황을 살펴보세요.")
+      .setColor(0x44ddaa)
+      .setImage(s.sceneBiteURL);
+
+    try { await s.safeEdit({ embeds: [eb], components: [buttonsFight()] }); } catch {}
+  }, waitSec * 1000);
+
+  s.expireTimer = setTimeout(() => { clearSession(userId); }, (FISHING_LIMIT_SECONDS + 20) * 1000);
+
+  const eb = sceneEmbed(
+    u,
+    "🪔 입질을 기다리는 중...",
+    [`최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`, "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)].join("\n"),
+    scene1
+  );
+
+  const res = await interaction.update({ embeds: [eb], components: [buttonsWaiting()] });
+
+  if (autoNote) {
+    try { await interaction.followUp({ content: autoNote, ephemeral: true }); } catch {}
+  }
+  return res;
+}
 
     if (id === "fish:abort") {
       clearSession(userId);
@@ -1874,7 +1999,9 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       const payload = await buildRankEmbedPayload(db, interaction, mode);
       return interaction.update({ ...payload });
     }
-
+  } finally {
+      delete u._uid; 
+    }
   });
 }
 
