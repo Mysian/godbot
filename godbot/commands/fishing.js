@@ -36,6 +36,54 @@ const TIER_CUTOFF = {
   "다이아": 9000, "마스터": 20000, "그랜드마스터": 45000, "챌린저": 85000
 };
 
+// --- 티어 보정(소폭 상향) ---
+const TIER_BUFFS = {
+  "브론즈":       { biteSpeed:  0, dmg: 0, resistReduce: 0, rarityBias: 0 },
+  "실버":         { biteSpeed: -1, dmg: 1, resistReduce: 1, rarityBias: 1 },
+  "골드":         { biteSpeed: -2, dmg: 1, resistReduce: 1, rarityBias: 2 },
+  "플래티넘":     { biteSpeed: -3, dmg: 2, resistReduce: 2, rarityBias: 3 },
+  "다이아":       { biteSpeed: -4, dmg: 3, resistReduce: 3, rarityBias: 4 },
+  "마스터":       { biteSpeed: -5, dmg: 4, resistReduce: 4, rarityBias: 5 },
+  "그랜드마스터": { biteSpeed: -6, dmg: 5, resistReduce: 5, rarityBias: 6 },
+  "챌린저":       { biteSpeed: -8, dmg: 6, resistReduce: 6, rarityBias: 8 },
+};
+function getTierBuff(tier){ return TIER_BUFFS[tier] || TIER_BUFFS["브론즈"]; }
+function formatBuff(b){
+  const parts=[];
+  if (b.biteSpeed)     parts.push(`입질시간 ${b.biteSpeed}s`);
+  if (b.dmg)           parts.push(`제압력 +${b.dmg}`);
+  if (b.resistReduce)  parts.push(`저항완화 +${b.resistReduce}`);
+  if (b.rarityBias)    parts.push(`희귀도 +${b.rarityBias}`);
+  return parts.join(", ");
+}
+function buffField(u){
+  const b=getTierBuff(u.tier);
+  if (!b.biteSpeed && !b.dmg && !b.resistReduce && !b.rarityBias) return null;
+  return { name:"티어 보정", value:`(${u.tier}) ${formatBuff(b)}`, inline:false };
+}
+function sumBiteSpeed(u){
+  const r = ROD_SPECS[u.equip.rod]?.biteSpeed   || 0;
+  const f = FLOAT_SPECS[u.equip.float]?.biteSpeed|| 0;
+  const b = BAIT_SPECS[u.equip.bait]?.biteSpeed  || 0;
+  const t = getTierBuff(u.tier).biteSpeed || 0;
+  return r+f+b+t; // 음수(감산) 합산
+}
+function effectiveDmg(u){
+  return (ROD_SPECS[u.equip.rod]?.dmg || 6) + (getTierBuff(u.tier).dmg||0);
+}
+function effectiveResistReduce(u){
+  return (ROD_SPECS[u.equip.rod]?.resistReduce||0)
+        + (FLOAT_SPECS[u.equip.float]?.resistReduce||0)
+        + (getTierBuff(u.tier).resistReduce||0);
+}
+function effectiveRarityBias(u){
+  const r=(ROD_SPECS[u.equip.rod]?.rarityBias||0);
+  const f=(FLOAT_SPECS[u.equip.float]?.rarityBias||0);
+  const b=(BAIT_SPECS[u.equip.bait]?.rarityBias||0);
+  const t=(getTierBuff(u.tier).rarityBias||0);
+  return r+f+b+t;
+}
+
 const REWARDS_TIER = {
   "실버":   [{type:"rod",name:"강철 낚싯대"}, {type:"coin",amt:1000}],
   "골드":   [{type:"rod",name:"금 낚싯대"}, {type:"coin",amt:50000}, {type:"be",amt:100000}],
@@ -461,9 +509,9 @@ async function autoBuyIfAllOne(u) {
 
   if (r <= 1 || f <= 1 || b <= 1) {
   const msgs = [];
-  if (r === 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
-  if (f === 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
-  if (b === 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
+  if (r <= 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
+  if (f <= 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
+  if (b <= 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
   const note = msgs.filter(Boolean).length ? `🧰 자동구매 실행됨\n${msgs.filter(Boolean).join("\n")}` : null;
   if (note) return note;
 }
@@ -491,10 +539,12 @@ function clearSession(userId) {
 function sceneEmbed(user, title, desc, imageURL, extraFields = []) {
   const eb = new EmbedBuilder().setTitle(title).setDescription(desc||"").setColor(0x3aa0ff);
   if (imageURL) eb.setImage(imageURL);
-  if (extraFields.length) eb.addFields(extraFields);
+  if (Array.isArray(extraFields) && extraFields.length) eb.addFields(extraFields);
+  const bf = buffField(user); if (bf) eb.addFields(bf);
   eb.setFooter({ text: `낚시 코인: ${user.coins.toLocaleString()} | 티어: ${user.tier} [${(user.stats.points||0).toLocaleString()}점]` });
   return eb;
 }
+
 function equipLine(u) {
   const rDur = u.equip.rod ? (u.inv.rods[u.equip.rod] ?? 0) : 0;
   const fDur = u.equip.float ? (u.inv.floats[u.equip.float] ?? 0) : 0;
@@ -538,13 +588,14 @@ function computeRarityWeight(u){
   const r = ROD_SPECS[u.equip.rod] || {};
   const f = FLOAT_SPECS[u.equip.float] || {};
   const b = BAIT_SPECS[u.equip.bait] || {};
-  const bias = (r.rarityBias||0)+(f.rarityBias||0)+(b.rarityBias||0);
+  const tb = getTierBuff(u.tier);
+  const bias = (r.rarityBias||0)+(f.rarityBias||0)+(b.rarityBias||0)+(tb.rarityBias||0);
   const m = { ...base };
-  m["레어"] += bias*0.8;
-  m["유니크"] += bias*0.35;
-  m["레전드"] += bias*0.12;
-  m["에픽"] += bias*0.04;
-  m["언노운"] += bias*0.01;
+  m["레어"]    += bias*0.8;
+  m["유니크"]  += bias*0.35;
+  m["레전드"]  += bias*0.12;
+  m["에픽"]    += bias*0.04;
+  m["언노운"]  += bias*0.01;
   return m;
 }
 
@@ -582,16 +633,16 @@ function startFight(u) {
   const hpBase = Math.round((length/2) * (RARITY_HP_MULT[rar]||1));
   const hp = Math.max(30, Math.min(8000, hpBase));
   const maxHP = hp;
-  const dmgBase = (ROD_SPECS[u.equip.rod]?.dmg || 6);
-  const resist = Math.max(5, Math.round((10 + (RARITY.indexOf(rar)*5)) - (FLOAT_SPECS[u.equip.float]?.resistReduce||0)));
+  const dmgBase = effectiveDmg(u);
+  const resist  = Math.max(5, Math.round((10 + (RARITY.indexOf(rar)*5)) - effectiveResistReduce(u)));
   return { type:"fight", kind:"fish", name, rarity:rar, hp, maxHP, dmgBase, resist, length };
 }
 function baseItemFight(u, rar) {
-  const dmgBase = (ROD_SPECS[u.equip.rod]?.dmg || 6);
+  const dmgBase = effectiveDmg(u);
   const baseHP = Math.round(60 * (RARITY_HP_MULT[rar]||1));
   const hp = Math.max(25, Math.min(600, baseHP + randInt(-10,10)));
   const maxHP = hp;
-  const resist = Math.max(5, Math.round(12 - (FLOAT_SPECS[u.equip.float]?.resistReduce||0)));
+  const resist = Math.max(5, Math.round(12 - effectiveResistReduce(u)));
   return { kind:"item", hp, maxHP, dmgBase, resist };
 }
 
@@ -1449,15 +1500,14 @@ async function component(interaction) {
   const timeBand = currentTimeBand();
   const scene1 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, timeBand, "찌들어감");
 
-  const waitSec = Math.max(5, Math.min(
+  const waitSec = Math.max(
+  5,
+  Math.min(
     FISHING_LIMIT_SECONDS - 3,
-    randInt(20, 100) + Math.min(
-      0,
-      (ROD_SPECS[u.equip.rod]?.biteSpeed || 0) +
-      (FLOAT_SPECS[u.equip.float]?.biteSpeed || 0) +
-      (BAIT_SPECS[u.equip.bait]?.biteSpeed || 0)
-    )
-  ));
+    randInt(20,100) + Math.min(0, sumBiteSpeed(u))
+  )
+);
+
 
   s.biteTimer = setTimeout(async () => {
     const result = await updateUser(userId, (uu) => {
@@ -1733,9 +1783,9 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const lines = [];
           if (k!=="bait") lines.push(`내구도: ${dur}/${spec.maxDur}`);
           else lines.push(`보유: ${dur}/${spec.pack}`);
-          if (k==="rod") lines.push(`입질시간 ${spec.biteSpeed}s, 제압력 ${spec.dmg}, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-          if (k==="float") lines.push(`입질시간 ${spec.biteSpeed}s, 저항 완화 ${spec.resistReduce}, 희귀도 +${spec.rarityBias}`);
-          if (k==="bait") lines.push(`입질시간 ${spec.biteSpeed}s, 희귀도 +${spec.rarityBias}`);
+          if (k==="rod") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed + (getTierBuff(u.tier).biteSpeed||0)}s, 제압력 ${spec.dmg + (getTierBuff(u.tier).dmg||0)}, 저항 완화 ${spec.resistReduce + (getTierBuff(u.tier).resistReduce||0)}, 희귀도 +${spec.rarityBias + (getTierBuff(u.tier).rarityBias||0)}`);
+          if (k==="float") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed + (getTierBuff(u.tier).biteSpeed||0)}s, 저항 완화 ${spec.resistReduce + (getTierBuff(u.tier).resistReduce||0)}, 희귀도 +${spec.rarityBias + (getTierBuff(u.tier).rarityBias||0)}`);
+          if (k==="bait") lines.push(`티어 보정 적용: 입질시간 ${spec.biteSpeed + (getTierBuff(u.tier).biteSpeed||0)}s, 희귀도 +${spec.rarityBias + (getTierBuff(u.tier).rarityBias||0)}`);
 
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
             .setDescription(lines.join("\n"))
@@ -1877,6 +1927,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           )
           .setColor(0x55cc77);
         if (icon) eb.setImage(icon);
+        const bf = buffField(u); if (bf) eb.addFields(bf);
         eb.setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
