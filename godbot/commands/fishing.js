@@ -1925,7 +1925,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=((k==="rod"?Object.keys(u.inv.rods):k==="float"?Object.keys(u.inv.floats):Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0)).length-1)),
-            new ButtonBuilder().setCustomId(`inv:equip|${k}|${name}`).setLabel("장착").setStyle(ButtonStyle.Primary).setDisabled(k==="fish")
+            new ButtonBuilder().setCustomId(`inv:equip|${k}|${name}`).setLabel("장착").setStyle(ButtonStyle.Primary).setDisabled(k==="fish"),
+            new ButtonBuilder().setCustomId("inv:home").setLabel("🏠 인벤토리").setStyle(ButtonStyle.Secondary)
           );
           return { eb, row };
         }
@@ -2022,7 +2023,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=names.length-1),
-            new ButtonBuilder().setCustomId(`inv:equip|${k}|${name}`).setLabel("장착").setStyle(ButtonStyle.Primary).setDisabled(k==="fish")
+            new ButtonBuilder().setCustomId(`inv:equip|${k}|${name}`).setLabel("장착").setStyle(ButtonStyle.Primary).setDisabled(k==="fish"),
+            new ButtonBuilder().setCustomId("inv:home").setLabel("🏠 인벤토리").setStyle(ButtonStyle.Secondary)
           );
           return { eb, row };
         }
@@ -2056,6 +2058,10 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
     if (id === "info:key") {
       return interaction.reply({ content:`보유 열쇠: ${u.inv.keys||0}개`, ephemeral:true });
     }
+    if (id === "inv:home") {
+     const payload = buildInventoryHome(u);
+     return interaction.update({ ...payload });
+   }
 
     if (id.startsWith("shop:start|")) {
       const kind = id.split("|")[1];
