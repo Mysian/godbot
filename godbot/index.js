@@ -9,6 +9,7 @@ const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 const setupPersonalChannelUtility = require('./utils/personal-channel.js');
+const { trackJoinLeave } = require("./utils/joinLeaveTracker.js");
 
 const client = new Client({
   intents: [
@@ -1320,6 +1321,23 @@ client.on(Events.MessageCreate, async message => {
     } catch (err) {
       console.error('[환영 역할 제거 실패]', err);
     }
+  }
+});
+
+// ✅ 입퇴장 추적 (2회 이상이면 채널 안내)
+client.on(Events.GuildMemberAdd, async member => {
+  try {
+    await trackJoinLeave(member.user, client);
+  } catch (err) {
+    console.error("[입퇴장 추적 오류]", err);
+  }
+});
+
+client.on(Events.GuildMemberRemove, async member => {
+  try {
+    await trackJoinLeave(member.user, client);
+  } catch (err) {
+    console.error("[입퇴장 추적 오류]", err);
   }
 });
 
