@@ -1667,37 +1667,110 @@ const eb = sceneEmbed(
 
           return;
         } else if (st.kind === "junk") {
-          const junkCoin = randInt(1, 4);
-          u.coins += junkCoin;
-          clearSession(userId);
-          const eb = sceneEmbed(u, "🪣 잡동사니를 건졌습니다", `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`, getIconURL(st.name)||null);
-          return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
-        } else {
-          if (st.itemType === "coin") {
-            u.coins += st.amount||0;
-            clearSession(userId);
-            const eb = sceneEmbed(u, "🪙 획득 성공!", `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`, getIconURL("낚시 코인"));
-            return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
-          }
-          if (st.itemType === "be") {
-            await addBE(userId, st.amount||0, "[낚시] 드랍");
-            clearSession(userId);
-            const eb = sceneEmbed(u, "🔷 파랑 정수 획득!", `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`, getIconURL("파랑 정수"));
-            return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
-          }
-          if (st.itemType === "key") {
-            u.inv.keys = (u.inv.keys||0) + (st.qty||1);
-            clearSession(userId);
-            const eb = sceneEmbed(u, "🗝️ 열쇠 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 열쇠"));
-            return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
-          }
-          if (st.itemType === "chest") {
-            u.inv.chests = (u.inv.chests||0) + (st.qty||1);
-            clearSession(userId);
-            const eb = sceneEmbed(u, "📦 보물상자 획득!", `인벤토리에 추가되었습니다.`, getIconURL("까리한 보물상자"));
-            return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
-          }
-        }
+  const junkCoin = randInt(1, 4);
+  u.coins += junkCoin;
+  clearSession(userId);
+
+  lastCatch.set(userId, {
+    type: "loot",
+    name: st.name,
+    rarity: "노말",
+    desc: `쓸모없는 ${st.name}, 위로금 ${junkCoin} 코인`,
+    icon: getIconURL(st.name) || null,
+    ts: Date.now()
+  });
+
+  const eb = sceneEmbed(
+    u,
+    "🪣 잡동사니를 건졌습니다",
+    `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`,
+    getIconURL(st.name) || null
+  );
+  return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+
+} else {
+  if (st.itemType === "coin") {
+    u.coins += st.amount||0;
+    clearSession(userId);
+
+    lastCatch.set(userId, {
+      type: "loot",
+      name: "낚시 코인",
+      rarity: "노말",
+      desc: `${(st.amount||0).toLocaleString()} 코인을 획득`,
+      icon: getIconURL("낚시 코인"),
+      ts: Date.now()
+    });
+
+    const eb = sceneEmbed(
+      u, "🪙 획득 성공!",
+      `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`,
+      getIconURL("낚시 코인")
+    );
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+  }
+  if (st.itemType === "be") {
+    await addBE(userId, st.amount||0, "[낚시] 드랍");
+    clearSession(userId);
+
+    lastCatch.set(userId, {
+      type: "loot",
+      name: "파랑 정수",
+      rarity: "레어",
+      desc: `${(st.amount||0).toLocaleString()}원을 획득`,
+      icon: getIconURL("파랑 정수"),
+      ts: Date.now()
+    });
+
+    const eb = sceneEmbed(
+      u, "🔷 파랑 정수 획득!",
+      `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`,
+      getIconURL("파랑 정수")
+    );
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+  }
+  if (st.itemType === "key") {
+    u.inv.keys = (u.inv.keys||0) + (st.qty||1);
+    clearSession(userId);
+
+    lastCatch.set(userId, {
+      type: "loot",
+      name: "까리한 열쇠",
+      rarity: "유니크",
+      desc: `까리한 열쇠 ${st.qty||1}개를 획득`,
+      icon: getIconURL("까리한 열쇠"),
+      ts: Date.now()
+    });
+
+    const eb = sceneEmbed(
+      u, "🗝️ 열쇠 획득!",
+      `인벤토리에 추가되었습니다.`,
+      getIconURL("까리한 열쇠")
+    );
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+  }
+  if (st.itemType === "chest") {
+    u.inv.chests = (u.inv.chests||0) + (st.qty||1);
+    clearSession(userId);
+
+    lastCatch.set(userId, {
+      type: "loot",
+      name: "까리한 보물상자",
+      rarity: "유니크",
+      desc: `까리한 보물상자 ${st.qty||1}개를 획득`,
+      icon: getIconURL("까리한 보물상자"),
+      ts: Date.now()
+    });
+
+    const eb = sceneEmbed(
+      u, "📦 보물상자 획득!",
+      `인벤토리에 추가되었습니다.`,
+      getIconURL("까리한 보물상자")
+    );
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+  }
+}
+
       }
 
 
