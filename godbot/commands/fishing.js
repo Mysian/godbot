@@ -1171,8 +1171,23 @@ async function buildRankEmbedPayload(db, interaction, mode){
 }
 async function buildRarityRankEmbed(db, interaction){
   const stats = buildRarityRank(db, interaction);
-  const eb = new EmbedBuilder().setTitle("🎣 등급별 낚은 횟수 TOP3").setColor(0x99ccff);
+  const eb = new EmbedBuilder()
+    .setTitle("🎣 등급별 낚은 횟수 TOP3")
+    .setColor(0x99ccff);
+
   const namesCache = {};
+
+  async function nameOf(id) {
+    if (namesCache[id]) return namesCache[id];
+    const cached = interaction.guild.members.cache.get(id);
+    if (cached) {
+      namesCache[id] = cached.displayName;
+      return namesCache[id];
+    }
+    const m = await interaction.guild.members.fetch(id).catch(()=>null);
+    namesCache[id] = m?.displayName || `유저(${id})`;
+    return namesCache[id];
+  }
 
   for(const rar of [...RARITY].reverse().concat("잡동사니")){
     const entries = Object.entries(stats[rar]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -1180,20 +1195,17 @@ async function buildRarityRankEmbed(db, interaction){
       eb.addFields({ name:`[${rar}]`, value:"1. 아직 잡은 유저가 없습니다.", inline:false });
     } else {
       const lines = await Promise.all(entries.map(async([id,cnt],i)=>{
-        if (!namesCache[id]) {
-  const m = await interaction.guild.members.fetch(id).catch(()=>null);
-  namesCache[id] = m?.displayName || `유저(${id})`;
-}
-const nm = namesCache[id];
+        const nm = await nameOf(id);
         return `${i+1}. ${nm} : ${cnt} 마리`;
       }));
-      if(entries.length<3) lines.push(`${entries.length+1}. 순위권에 도전해보세요!`);
+      if(entries.length < 3) lines.push(`${entries.length+1}. 순위권에 도전해보세요!`);
       eb.addFields({ name:`[${rar}]`, value:lines.join("\n"), inline:false });
     }
   }
 
   return { embeds:[eb], components:[rankButtons("rarity")] };
 }
+
   const base = Object.entries(db.users||{}).map(([id,u])=>{
     ensureUser(u);
     let bestN = null; let bestL = 0;
@@ -2352,14 +2364,17 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
     }
 
     if (id.startsWith("rank:")) {
+  await interaction.deferUpdate(); 
   const mode = id.split(":")[1];
+  let payload;
   if (mode === "rarity") {
-    const payload = await buildRarityRankEmbed(db, interaction);
-    return interaction.update({ ...payload });
+    payload = await buildRarityRankEmbed(db, interaction);
   } else {
-    const payload = await buildRankEmbedPayload(db, interaction, mode);
-    return interaction.update({ ...payload });
+    payload = await buildRankEmbedPayload(db, interaction, mode);
   }
+  return interaction.editReply({ ...payload }); 
+}
+
 }
   } finally {
       delete u._uid; 
