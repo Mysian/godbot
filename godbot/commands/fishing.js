@@ -1471,9 +1471,9 @@ async function component(interaction) {
           if (fishes[i]?.n === species) selIdx.push(i);
           if (selIdx.length >= qty) break;
         }
-        const pick = selIdx.map(i=>fishes[i]).filter(Boolean);
+        const pick = selIdx.map(i=>fishes[i]).filter(f=>f && !f.lock); 
         const total = pick.reduce((s,f)=>s+(f.price||0),0);
-        u.inv.fishes = fishes.filter((_,i)=>!selIdx.includes(i));
+        u.inv.fishes = fishes.filter((f,i)=>!selIdx.includes(i) || f.lock); 
         u.coins += total;
 
         return interaction.reply({ content:`${species} ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, ephemeral:true });
@@ -1906,9 +1906,9 @@ if (interaction.customId === "sell-rarity-choose") {
       const st = sellSessions.get(userId) || {};
       const fishes = u.inv.fishes||[];
       const idxs = (st.selectIdxs||[]).filter(i=>Number.isInteger(i) && fishes[i]);
-      const pick = idxs.map(i=>fishes[i]);
+      const pick = idxs.map(i=>fishes[i]).filter(f=>!f.lock); 
       const total = pick.reduce((s,f)=>s+(f.price||0),0);
-      u.inv.fishes = fishes.filter((_,i)=>!idxs.includes(i));
+      u.inv.fishes = fishes.filter((f,i)=>!idxs.includes(i) || f.lock); 
       u.coins += total;
       sellSessions.delete(userId);
       return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[] });
