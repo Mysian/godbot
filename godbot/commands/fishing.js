@@ -300,6 +300,34 @@ function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
 function fmtProgress(cur, tgt){ return `${Math.min(cur,tgt).toLocaleString()} / ${tgt.toLocaleString()}`; }
 const RARITY_IDX = { "노말":0,"레어":1,"유니크":2,"레전드":3,"에픽":4,"언노운":5 };
 
+// 진행 막대: ■=진행, □=남음
+function progressBar(cur, tgt, width = 12) {
+  const c = Math.max(0, Math.min(tgt, cur||0));
+  const filled = Math.round((c / Math.max(1, tgt)) * width);
+  const empty = width - filled;
+  const pct = Math.floor((c / Math.max(1, tgt)) * 100);
+  return `【${"■".repeat(filled)}${"□".repeat(empty)}】 ${pct}%`;
+}
+
+// 시간대 전용 막대(낮/노을/밤 각각)
+function bandBar(cur, tgt, width = 8) {
+  return progressBar(cur||0, tgt||0, width);
+}
+
+// 퀘스트 보상 텍스트
+function questRewardText(reward) {
+  if (!reward) return "보상: (없음)";
+  const parts = [];
+  if (reward.coin) parts.push(`🪙 ${reward.coin.toLocaleString()} 코인`);
+  if (reward.be) parts.push(`💎 ${reward.be.toLocaleString()} BE`);
+  if (reward.bait) {
+    const [name, cnt] = Array.isArray(reward.bait) ? reward.bait : [reward.bait, 20];
+    parts.push(`🪱 ${name} x${(cnt||20).toLocaleString()}`);
+  }
+  return `보상: ${parts.join(" + ")}`;
+}
+
+
 function readDB() {
   if (!fs.existsSync(FISH_DB)) return { users:{} };
   try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{} }; }
@@ -1609,16 +1637,29 @@ async function execute(interaction) {
       const daily = db.quests.daily.list||[];
       const weekly= db.quests.weekly.list||[];
 
-      const makeLine = (q)=>{
-        const p = u.quests.progress?.[q.id];
-        if (q.type==="timeband"){
-          const cur = p || {}; const tgt = q.target;
-          return `• ${q.title}\n   - 낮 ${fmtProgress(cur["낮"]||0, tgt["낮"])} / 노을 ${fmtProgress(cur["노을"]||0, tgt["노을"])} / 밤 ${fmtProgress(cur["밤"]||0, tgt["밤"])} ${u.quests.claimed[q.id]?"(수령완료)":(isComplete(u,q)?"(완료)":"")}`;
-        }
-        const target = (q.target??q.times??1);
-        const cur = (typeof p==="number"?p:0);
-        return `• ${q.title} — ${fmtProgress(cur, target)} ${u.quests.claimed[q.id]?"(수령완료)":(isComplete(u,q)?"(완료)":"")}`;
-      };
+      const makeLine = (q) => {
+  const p = u.quests.progress?.[q.id];
+  const status = u.quests.claimed[q.id] ? "(수령완료)" : (isComplete(u, q) ? "(완료)" : "");
+
+  if (q.type === "timeband") {
+    const cur = p || {};
+    const tgt = q.target;
+    return [
+      `• ${q.title} ${status}`,
+      `   낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
+      `   ${questRewardText(q.reward)}`
+    ].join("\n");
+  }
+
+  const target = (q.target ?? q.times ?? 1);
+  const curNum = (typeof p === "number" ? p : 0);
+  return [
+    `• ${q.title} ${status}`,
+    `   ${progressBar(curNum, target)} (${fmtProgress(curNum, target)})`,
+    `   ${questRewardText(q.reward)}`
+  ].join("\n");
+};
+
 
       const dLines = daily.map(makeLine).join("\n");
       const wLines = weekly.map(makeLine).join("\n");
