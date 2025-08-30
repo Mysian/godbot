@@ -591,6 +591,7 @@ async function autoBuyOne(u, db, kind, name) {
     let paidText = null;
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
+      spendCoins(u, db, coinCost);
       u.coins -= coinCost;
       paidText = `코인 ${coinCost.toLocaleString()}`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
@@ -1406,7 +1407,7 @@ async function giveReward(u, reward){
     else addBait(u, reward.name, reward.qty ?? pack); 
     
   } else if (reward.type === "coin") {
-    u.coins += reward.amt || 0;
+  gainCoins(u, db, reward.amt || 0);
 
   } else if (reward.type === "be") {
     await addBE(u._uid, reward.amt || 0, "[낚시 보상]");
@@ -1625,10 +1626,10 @@ async function execute(interaction) {
       const eb = new EmbedBuilder()
         .setTitle("🎯 낚시 퀘스트")
         .setDescription([
-          `🗓️ 일일: ${db.quests.daily.key} (리셋 ${nextDailyResetKST().toLocaleString("ko-KR")})`,
+          `🗓️ 일일: ${db.quests.daily.key} (리셋 ${nextDailyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
           dLines || "_일일 퀘스트 없음_",
           "",
-          `📅 주간: ${db.quests.weekly.key} (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR")})`,
+          `📅 주간: ${db.quests.weekly.key} (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
           wLines || "_주간 퀘스트 없음_"
         ].join("\n"))
         .setColor(0x33c3ff);
@@ -2631,7 +2632,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       if (item.kind === "be")    { const amt = randInt(item.min, item.max); await addBE(userId, amt, "[낚시] 상자 보상"); return interaction.reply({ content:`상자를 개봉하여 파랑 정수 ${amt.toLocaleString()}원을 받으셨습니다.`, ephemeral:true }); }
       if (item.kind === "float") { addFloat(u, item.name); return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
       if (item.kind === "rod")   { addRod(u, item.name);   return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
-      if (item.kind === "coin") { const amt = randInt(item.min, item.max); u.coins += amt; return interaction.reply({ content:`상자에서 ${amt} 코인을 받으셨습니다.`, ephemeral:true }); }
+      if (item.kind === "coin") { const amt = randInt(item.min, item.max); gainCoins(u, db, amt); return interaction.reply({ content:`상자에서 ${amt} 코인을 받으셨습니다.`, ephemeral:true }); }
       return interaction.reply({ content:"상자 보상 처리 중 오류가 발생했습니다.", ephemeral:true });
     }
     if (id === "info:key") {
