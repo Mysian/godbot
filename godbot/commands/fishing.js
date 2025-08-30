@@ -2386,7 +2386,6 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
   return interaction.editReply({ ...payload }); 
 }
 
-}
   } finally {
       delete u._uid; 
     }
