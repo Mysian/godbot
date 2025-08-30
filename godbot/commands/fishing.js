@@ -9,7 +9,7 @@ const {
   ModalBuilder,
   TextInputStyle
 } = require("discord.js");
-const Quests = require("./fishing-quest.js");
+const Quests = require("../lib/fishing-quest.js");
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
@@ -334,11 +334,11 @@ function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; 
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
 function addBait(u, name, qty=0) { u.inv.baits[name] = (u.inv.baits[name]||0) + qty; }
 function useDurability(u, slot) {
-  if (slot === "rod"   && u.equip.rod)   { u.inv.rods[u.equip.rod]   = Math.max(0, (u.inv.rods[u.equip.rod]||0)-1); try { Quests.onDurability(u, `rod:${u.equip.rod}`, 1); } catch {} }
-  if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, `float:${u.equip.float}`, 1); } catch {} }
+  if (slot === "rod"   && u.equip.rod)   { u.inv.rods[u.equip.rod]   = Math.max(0, (u.inv.rods[u.equip.rod]||0)-1); try { Quests.onDurability(u, 'rod:' + u.equip.rod, 1); } catch {} }
+  if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, 'float:' + u.equip.float, 1); } catch {} }
 }
 `, 1); } catch {} }
-  if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, `float:${u.equip.float}`, 1); } catch {} }
+  if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, 'float:' + u.equip.float, 1); } catch {} }
 }
 
 function hasAllGear(u) {
