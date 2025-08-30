@@ -266,8 +266,7 @@ async function withDB(fn) {
 }
 async function updateUser(userId, updater) {
   return await withDB(async db=>{
-    const u = (db.users[userId] ||= {}); ensureUser(u); ensureQuests(db);
-    u._uid = userId;
+    const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
     const r = await updater(u, db);
     delete u._uid; 
     return r;
@@ -329,12 +328,6 @@ function ensureUser(u) {
   // 설정 키
   u.settings ??= {};
   u.settings.autoBuy ??= false;
-
-  // === 퀘스트 진행/클레임/임시 상태 ===
-  u.quests ??= {};
-  u.quests.progress ??= {};   // { [questId]: number | {낮:..,노을:..,밤:..} }
-  u.quests.claimed  ??= {};   // { [questId]: true }
-  u.quests.temp ??= { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -464,272 +457,6 @@ const LENGTH_TABLE = {
 
 const JUNK_SET = new Set(["빈 페트병","해초","작은 새우","뚱이의 바지","갓봇의 안경"]);
 
-
-
-
-// =========================
-// === 퀘스트 시스템 추가 ===
-// =========================
-
-// KST(UTC+9) 리셋 유틸
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-function nowKST() { return new Date(Date.now() + KST_OFFSET_MS); }
-function lastDailyResetKST() {
-  const n = nowKST(); const d = new Date(n);
-  d.setHours(9,0,0,0);
-  if (n < d) d.setDate(d.getDate() - 1);
-  return d;
-}
-function nextDailyResetKST() { const d = lastDailyResetKST(); d.setDate(d.getDate()+1); return d; }
-function dailyKeyKST() { return lastDailyResetKST().toISOString().slice(0,10); }
-
-function lastWeeklyResetKST() {
-  const n = nowKST();
-  const d = new Date(n);
-  const day = n.getDay(); // 0=일 ... 1=월
-  const monday = new Date(n);
-  const diff = (day + 6) % 7; // 월요일로 되돌아갈 일수
-  monday.setDate(n.getDate() - diff);
-  monday.setHours(9,0,0,0);
-  if (n < monday) monday.setDate(monday.getDate() - 7);
-  return monday;
-}
-function nextWeeklyResetKST() { const d = lastWeeklyResetKST(); d.setDate(d.getDate()+7); return d; }
-function weeklyKeyKST() { return lastWeeklyResetKST().toISOString().slice(0,10); }
-
-function randPick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
-function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
-function fmtProgress(cur, tgt){ return `${Math.min(cur,tgt).toLocaleString()} / ${tgt.toLocaleString()}`; }
-const RARITY_IDX = { "노말":0,"레어":1,"유니크":2,"레전드":3,"에픽":4,"언노운":5 };
-
-// 전 서버 공통 퀘스트 세트 보장
-function ensureQuests(db){
-  db.quests ??= {};
-  db.quests.daily ??= { key:null, list:[] };
-  db.quests.weekly??= { key:null, list:[] };
-  if (db.quests.daily.key !== dailyKeyKST())  db.quests.daily  = { key: dailyKeyKST(),  list: genDailyQuests() };
-  if (db.quests.weekly.key !== weeklyKeyKST()) db.quests.weekly = { key: weeklyKeyKST(), list: genWeeklyQuests() };
-  return { daily: db.quests.daily, weekly: db.quests.weekly };
-}
-
-// 진행도/클레임/임시상태 기본 생성은 ensureUser(u)에서 초기화
-
-// === 생성기 ===
-const ALL_SPECIES = Object.keys(LENGTH_TABLE).filter(n => !JUNK_SET.has(n));
-
-function q_coin_spend(min, max, tier){
-  const target = Math.floor(Math.random()*(max-min+1))+min;
-  return { id:`coin_spend|${target}|${tier}`, type:"coin_spend", target,
-    title:`낚시 코인 ${target.toLocaleString()}개 소비`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 300000, be: 50000 } };
-}
-function q_timeband(each, tier){
-  const t = { "낮":each, "노을":each, "밤":each };
-  return { id:`timeband|${each}|${tier}`, type:"timeband", target:t,
-    title:`시간대별(낮/노을/밤) 각 ${each}회 낚시 성공`,
-    reward: tier==="daily" ? { coin: 12000 } : { coin: 200000, bait: ["새우 미끼",20] } };
-}
-function q_junk(n, tier){
-  return { id:`junk_collect|${n}|${tier}`, type:"junk_collect", target:n,
-    title:`잡동사니 ${n}개 획득`,
-    reward: tier==="daily" ? { coin: 8000 } : { coin: 150000 } };
-}
-function q_seq(seq, times, tier){
-  const key = seq.join(">");
-  return { id:`seq|${key}|${times}|${tier}`, type:"rarity_seq", seq, times,
-    title:`${seq.join(" → ")} 순서로 획득 ${times}회`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 300000, be: 30000 } };
-}
-function q_specific(species, n, tier){
-  return { id:`catch_specific|${species}|${n}|${tier}`, type:"catch_specific", species, target:n,
-    title:`'${species}' ${n}마리 잡기`,
-    reward: tier==="daily" ? { coin: 14000 } : { coin: 250000, be: 30000 } };
-}
-function q_dur(n, tier){
-  return { id:`dur_use|${n}|${tier}`, type:"durability", target:n,
-    title:`아이템 내구도 ${n}회 소모시키기`,
-    reward: tier==="daily" ? { coin: 10000 } : { coin: 200000 } };
-}
-function q_bait(n, tier){
-  return { id:`bait_use|${n}|${tier}`, type:"bait", target:n,
-    title:`미끼 ${n}개 소비`,
-    reward: tier==="daily" ? { bait:["지렁이 미끼",20] } : { bait:["빛나는 젤리 미끼",20], coin: 100000 } };
-}
-function q_woodCopperUnique(n, tier){
-  return { id:`wood_copper_unique|${n}|${tier}`, type:"gear_unique", target:n,
-    title:`나무 낚싯대 + 동 찌로 유니크 물고기 ${n}마리`,
-    reward: { coin: 300000, be: 50000 } };
-}
-function q_junkStreak(times, tier){
-  return { id:`junk_streak3|${times}|${tier}`, type:"junk_streak3", target:times,
-    title:`잡동사니 연속 3회 획득 ${times}회`,
-    reward: tier==="daily" ? { coin: 12000 } : { coin: 180000 } };
-}
-function q_sameRarityStreak(times, tier){
-  return { id:`same_rarity3|${times}|${tier}`, type:"same_rarity3", target:times,
-    title:`동일 등급 물고기 연속 3회 획득 ${times}회`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 250000 } };
-}
-function q_rarityAtLeast(minRarity, n, tier){
-  return { id:`rarity_atleast|${minRarity}|${n}|${tier}`, type:"rarity_atleast", min:minRarity, target:n,
-    title:`${minRarity} 이상 물고기 ${n}마리`,
-    reward: tier==="daily" ? { coin: 14000 } : { coin: 240000 } };
-}
-function q_chestOpen(n, tier){
-  return { id:`chest_open|${n}|${tier}`, type:"chest_open", target:n,
-    title:`까리한 보물상자 ${n}회 열기`,
-    reward: tier==="daily" ? { coin: 10000 } : { coin: 200000 } };
-}
-function q_coinGain(min,max,tier){
-  const target = Math.floor(Math.random()*(max-min+1))+min;
-  return { id:`coin_gain|${target}|${tier}`, type:"coin_gain", target,
-    title:`낚시 코인 ${target.toLocaleString()}개 획득`,
-    reward: tier==="daily" ? { coin: 12000 } : { coin: 180000 } };
-}
-function q_newSpecies(n,tier){
-  return { id:`new_species|${n}|${tier}`, type:"new_species", target:n,
-    title:`도감에 신규 종 ${n}종 추가(첫 포획)`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 250000 } };
-}
-
-function genDailyQuests(){
-  const seqA = q_seq(["노말","레어","유니크"], 1, "daily");
-  const seqB = q_seq(["유니크","레어","노말"], 1, "daily");
-  const species = randPick(ALL_SPECIES);
-  const list = [
-    q_coin_spend(5000, 25000, "daily"),
-    q_timeband(1, "daily"),
-    q_junk(Math.floor(Math.random()*3)+3, "daily"),
-    Math.random()<0.5?seqA:seqB,
-    q_specific(species, 1, "daily"),
-    q_dur(Math.floor(Math.random()*21)+10, "daily"),
-    q_bait(Math.floor(Math.random()*21)+10, "daily"),
-    q_junkStreak(1, "daily"),
-    q_sameRarityStreak(1, "daily"),
-    q_rarityAtLeast("레어", Math.floor(Math.random()*3)+2, "daily"),
-    q_chestOpen(1, "daily"),
-    q_coinGain(30000, 80000, "daily"),
-    q_newSpecies(1, "daily"),
-  ];
-  // 무작위 5개
-  const a=[...list]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];}
-  return a.slice(0,5);
-}
-function genWeeklyQuests(){
-  const seqA = q_seq(["노말","레어","유니크"], 3, "weekly");
-  const seqB = q_seq(["유니크","레어","노말"], 3, "weekly");
-  const species = randPick(ALL_SPECIES);
-  const base = [
-    q_coin_spend(100000, 500000, "weekly"),
-    q_timeband(3, "weekly"),
-    q_junk(Math.floor(Math.random()*11)+15, "weekly"),
-    Math.random()<0.5?seqA:seqB,
-    q_specific(species, Math.floor(Math.random()*6)+5, "weekly"),
-    q_dur(Math.floor(Math.random()*201)+100, "weekly"),
-    q_bait(Math.floor(Math.random()*201)+100, "weekly"),
-    q_woodCopperUnique(3, "weekly"),
-    q_junkStreak(2, "weekly"),
-    q_sameRarityStreak(3, "weekly"),
-    q_rarityAtLeast("레어", Math.floor(Math.random()*11)+15, "weekly"),
-    q_chestOpen(5, "weekly"),
-    q_coinGain(300000, 800000, "weekly"),
-    q_newSpecies(3, "weekly"),
-  ];
-  const a=[...base]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];}
-  return a.slice(0,5);
-}
-
-// 진행/완료/보상
-function inc(u, qid, by=1){
-  u.quests.progress ??= {};
-  const cur = u.quests.progress[qid];
-  if (typeof cur === "number" || cur == null) u.quests.progress[qid] = (cur||0) + by;
-}
-function incBand(u, qid, band){
-  u.quests.progress ??= {};
-  const cur = (u.quests.progress[qid] ||= { "낮":0,"노을":0,"밤":0 });
-  cur[band] = (cur[band]||0) + 1;
-}
-function isComplete(u, q){
-  const p = u.quests.progress?.[q.id];
-  if (q.type === "timeband") {
-    const need = q.target; const cur = p||{};
-    return (cur["낮"]||0) >= need["낮"] && (cur["노을"]||0) >= need["노을"] && (cur["밤"]||0) >= need["밤"];
-  }
-  if (q.type === "junk_streak3" || q.type === "same_rarity3" || q.type === "rarity_seq") {
-    return (p||0) >= (q.times||q.target||1);
-  }
-  return (p||0) >= (q.target||q.times||1);
-}
-async function grantQuestReward(u, reward){
-  if (!reward) return;
-  if (reward.coin) u.coins = (u.coins||0) + reward.coin; // gainCoins와 동일 효과 (여기선 즉시 가산)
-  if (reward.be)   await addBE(u._uid, reward.be, "[퀘스트 보상]");
-  if (reward.bait) addBait(u, reward.bait[0], reward.bait[1]||20);
-}
-function applyQuestEvent(u, db, event, data={}){
-  if (!db?.quests) return;
-  const qs = [...(db.quests.daily?.list||[]), ...(db.quests.weekly?.list||[])];
-  for (const q of qs) {
-    switch(q.type){
-      case "coin_spend":
-        if (event==="coin_spent") inc(u, q.id, data.amount||0);
-        break;
-      case "coin_gain":
-        if (event==="coin_gained") inc(u, q.id, data.amount||0);
-        break;
-      case "timeband":
-        if (event==="fish_caught" && data.band) incBand(u, q.id, data.band);
-        break;
-      case "junk_collect":
-        if (event==="junk_caught") inc(u, q.id, 1);
-        break;
-      case "catch_specific":
-        if (event==="fish_caught" && data.name===q.species) inc(u, q.id, 1);
-        break;
-      case "durability":
-        if (event==="durability_used") inc(u, q.id, data.count||1);
-        break;
-      case "bait":
-        if (event==="bait_used") inc(u, q.id, data.count||1);
-        break;
-      case "gear_unique":
-        if (event==="fish_caught" && data.rarity==="유니크" && data.rod==="나무 낚싯대" && data.float==="동 찌") inc(u,q.id,1);
-        break;
-      case "junk_streak3":
-        if (event==="junk_streak3_done") inc(u, q.id, 1);
-        break;
-      case "same_rarity3":
-        if (event==="same_rarity3_done") inc(u, q.id, 1);
-        break;
-      case "rarity_atleast":
-        if (event==="fish_caught" && RARITY_IDX[data.rarity] >= RARITY_IDX[q.min]) inc(u, q.id, 1);
-        break;
-      case "new_species":
-        if (event==="first_species") inc(u, q.id, 1);
-        break;
-      case "rarity_seq":
-        if (event==="rarity_seq_hit" && data.key === q.seq.join(">")) inc(u, q.id, 1);
-        break;
-    }
-  }
-}
-
-// 코인 증감 래퍼 (퀘스트 진행 자동 반영용)
-function spendCoins(u, db, amt){
-  amt = Math.max(0, amt|0);
-  if ((u.coins||0) < amt) return false;
-  u.coins -= amt;
-  try { applyQuestEvent(u, db, "coin_spent", { amount: amt }); } catch {}
-  return true;
-}
-function gainCoins(u, db, amt){
-  amt = Math.max(0, amt|0);
-  u.coins = (u.coins||0) + amt;
-  try { applyQuestEvent(u, db, "coin_gained", { amount: amt }); } catch {}
-}
-
-
 function drawLength(name){
   const r = LENGTH_TABLE[name];
   if (!r) return 0;
@@ -770,7 +497,7 @@ function priceFor(kind, name) {
   return PRICES[map]?.[name] || null;
 }
 
-async function autoBuyOne(u, kind, name, db) {
+async function autoBuyOne(u, kind, name) {
   const price = priceFor(kind, name);
   if (!price) return null;
 
@@ -784,7 +511,7 @@ async function autoBuyOne(u, kind, name, db) {
     const beCost   = price.be   != null ? Math.ceil(price.be   * (need/pack)) : null;
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
-      spendCoins(u, db, coinCost);
+      u.coins -= coinCost;
       addBait(u, name, need);
       return `• ${name} 보충 완료 (코인 ${coinCost.toLocaleString()})`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
@@ -800,7 +527,7 @@ async function autoBuyOne(u, kind, name, db) {
     let paidText = null;
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
-      spendCoins(u, db, coinCost);
+      u.coins -= coinCost;
       paidText = `코인 ${coinCost.toLocaleString()}`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
       await addBE(u._uid, -beCost, `[낚시] 자동구매 ${name}`);
@@ -817,7 +544,7 @@ async function autoBuyOne(u, kind, name, db) {
 }
 
 // ★ 장착한 낚싯대/찌 내구도 == 1 && 미끼 == 1일 때 자동구매
-async function autoBuyIfAllOne(u, db) {
+async function autoBuyIfAllOne(u) {
   if (!u?.settings?.autoBuy) return null;
   if (!u.equip.rod || !u.equip.float || !u.equip.bait) return null;
 
@@ -827,9 +554,9 @@ async function autoBuyIfAllOne(u, db) {
 
   if (r <= 1 || f <= 1 || b <= 1) {
   const msgs = [];
-  if (r <= 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod, db));
-  if (f <= 1) msgs.push(await autoBuyOne(u, "float", u.equip.float, db));
-  if (b <= 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait, db));
+  if (r <= 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
+  if (f <= 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
+  if (b <= 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
   const note = msgs.filter(Boolean).length ? `🧰 자동구매 실행됨\n${msgs.filter(Boolean).join("\n")}` : null;
   if (note) return note;
 }
@@ -1020,7 +747,6 @@ const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 
   .addSubcommand(s=>s.setName("기록").setDescription("개인 낚시 기록 확인").addUserOption(o=>o.setName("유저").setDescription("조회 대상")))
   .addSubcommand(s=>s.setName("기록순위").setDescription("티어/포인트/최대길이 순위 TOP20"))
   .addSubcommand(s=>s.setName("도움말").setDescription("낚시 시스템 도움말"))
-  .addSubcommand(s=>s.setName("퀘스트").setDescription("일일/주간 퀘스트 진행도/보상 확인"))
   .addSubcommand(s=>s.setName("스타터패키지").setDescription("신규 유저 스타터 패키지 수령 (1회 한정)"));
 
 function hintLine(tension, hpRatio) {
@@ -1546,58 +1272,10 @@ async function buildRarityRankEmbed(db, interaction){
 async function execute(interaction) {
   const sub = interaction.options.getSubcommand();
   const userId = interaction.user.id;
-  if (sub === "퀘스트") {
-    return await withDB(async db=>{
-      ensureQuests(db);
-      const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
-
-      const daily = db.quests.daily.list||[];
-      const weekly= db.quests.weekly.list||[];
-
-      const makeLine = (q)=>{
-        const p = u.quests.progress?.[q.id];
-        if (q.type==="timeband"){
-          const cur = p || {}; const tgt = q.target;
-          return `• ${q.title}\n   - 낮 ${fmtProgress(cur["낮"]||0, tgt["낮"])} / 노을 ${fmtProgress(cur["노을"]||0, tgt["노을"])} / 밤 ${fmtProgress(cur["밤"]||0, tgt["밤"])} ${u.quests.claimed[q.id]?"(수령완료)":(isComplete(u,q)?"(완료)":"")}`;
-        }
-        const target = (q.target??q.times??1);
-        const cur = (typeof p==="number"?p:0);
-        return `• ${q.title} — ${fmtProgress(cur, target)} ${u.quests.claimed[q.id]?"(수령완료)":(isComplete(u,q)?"(완료)":"")}`;
-      };
-
-      const dLines = daily.map(makeLine).join("\\n");
-      const wLines = weekly.map(makeLine).join("\\n");
-
-      const eb = new EmbedBuilder()
-        .setTitle("🎯 낚시 퀘스트")
-        .setDescription([
-          `🗓️ 일일: ${db.quests.daily.key} ~ (리셋 ${nextDailyResetKST().toLocaleString("ko-KR")})`,
-          dLines || "_일일 퀘스트 없음_",
-          "",
-          `📅 주간: ${db.quests.weekly.key} ~ (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR")})`,
-          wLines || "_주간 퀘스트 없음_"
-        ].join("\\n"))
-        .setColor(0x33c3ff);
-
-      const rows = [];
-      const mkBtn = (id,tier)=> new ButtonBuilder().setCustomId(`quest:claim|${tier}|${id}`).setLabel("보상 받기").setStyle(ButtonStyle.Success);
-      const row1 = new ActionRowBuilder(); let added = 0;
-      for (const q of daily) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (added<5){ row1.addComponents(mkBtn(q.id,"daily")); added++; } }
-      if (added) rows.push(row1);
-      const row2 = new ActionRowBuilder(); added = 0;
-      for (const q of weekly) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (added<5){ row2.addComponents(mkBtn(q.id,"weekly")); added++; } }
-      if (added) rows.push(row2);
-
-      delete u._uid;
-      return interaction.reply({ embeds:[eb], components: rows, ephemeral: true });
-    });
-  }
-
 
   if (sub === "낚시터") {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u);
-    ensureQuests(db);
     try {
       u._uid = userId;
 
@@ -1815,7 +1493,7 @@ async function component(interaction) {
     const fishes = u.inv.fishes||[];
     const sellable = fishes.filter(f=>f.r===rarity && !f.lock);
     const total = sellable.reduce((s,f)=>s+(f.price||0),0);
-    gainCoins(u, db, total);
+    u.coins += total;
     u.inv.fishes = fishes.filter(f=>(f.r!==rarity || f.lock));
     return interaction.update({ content:`[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`, embeds:[], components:[] });
   }
@@ -1849,31 +1527,14 @@ async function component(interaction) {
         const pick = selIdx.map(i=>fishes[i]).filter(f=>f && !f.lock); 
         const total = pick.reduce((s,f)=>s+(f.price||0),0);
         u.inv.fishes = fishes.filter((f,i)=>!selIdx.includes(i) || f.lock); 
-        gainCoins(u, db, total);
+        u.coins += total;
 
         return interaction.reply({ content:`${species} ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, ephemeral:true });
       }
       return;
     }
 
-    
-  const id = interaction.customId;
-
-  if (id && id.startsWith("quest:claim|")) {
-    const [, tier, qid] = id.split("|");
-    ensureQuests(db);
-    const list = tier==="daily" ? (db.quests.daily.list||[]) : (db.quests.weekly.list||[]);
-    const q = list.find(x=>x.id===qid);
-    if (!q) return interaction.reply({ content:"퀘스트를 찾지 못했어.", ephemeral:true });
-    if (u.quests.claimed[q.id]) return interaction.reply({ content:"이미 보상을 받았어.", ephemeral:true });
-    if (!isComplete(u, q)) return interaction.reply({ content:"아직 완료되지 않았어!", ephemeral:true });
-    u._uid = userId;
-    await grantQuestReward(u, q.reward);
-    u.quests.claimed[q.id] = true;
-    delete u._uid;
-    return interaction.reply({ content:`보상 수령 완료: ${q.title}`, ephemeral:true });
-  }
-
+    const id = interaction.customId;
 
     // component() 내부
 if (id === "fish:share") {
@@ -1944,7 +1605,7 @@ if (id === "fish:share") {
       if (id === "fish:cast" || id === "fish:recast") {
   // 자동구매(세 파츠 모두 1일 때) 안내
   let autoNote = "";
-  try { autoNote = await autoBuyIfAllOne(u, db) || ""; } catch {}
+  try { autoNote = await autoBuyIfAllOne(u) || ""; } catch {}
 
   // 장비 체크
   if (!hasAllGear(u)) {
@@ -1990,7 +1651,6 @@ if (id === "fish:share") {
       return s.safeEdit({ content: "미끼가 없어 입질이 이어지지 않았습니다.", components: [], embeds: [] }).catch(() => {});
     }
 
-    applyQuestEvent(u, db, "bait_used", { count: 1 });
     const fobj = result.fight;
 
     s.state = "fight";
@@ -2071,30 +1731,13 @@ if (id === "fish:share") {
         useDurability(u, "rod"); 
         useDurability(u, "float");
 
-        
-        applyQuestEvent(u, db, "durability_used", { count: 2 });
-if (st.kind === "fish") {
-          const __beforeSpecies = (u.stats.speciesCount?.[st.name] || 0);
-          
+        if (st.kind === "fish") {
           const sell = computeSellPrice(st.name, st.length, st.rarity);
 
           try {
             fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
-          
-          
-          // 퀘스트 진행 반영
-          if (__beforeSpecies===0 && (u.stats.speciesCount?.[st.name]||0)===1) { applyQuestEvent(u, db, "first_species", { name: st.name }); }
-          applyQuestEvent(u, db, "fish_caught", { band: s.timeBand||currentTimeBand(), name: st.name, rarity: st.rarity, rod: u.equip.rod, float: u.equip.float });
-          u.quests.temp ??= { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
-          u.quests.temp.junkStreak = 0;
-          if (u.quests.temp.lastRarity === st.rarity) u.quests.temp.sameRarityStreak = (u.quests.temp.sameRarityStreak||1)+1;
-          else { u.quests.temp.lastRarity = st.rarity; u.quests.temp.sameRarityStreak = 1; }
-          if (u.quests.temp.sameRarityStreak >= 3) { applyQuestEvent(u, db, "same_rarity3_done", {}); u.quests.temp.sameRarityStreak = 0; }
-          u.quests.temp.recentRarities.push(st.rarity);
-          if (u.quests.temp.recentRarities.length>3) u.quests.temp.recentRarities.shift();
-          if (u.quests.temp.recentRarities.length===3) {
-            const key = u.quests.temp.recentRarities.join(">");
-            applyQuestEvent(u, db, "rarity_seq_hit", { key });
+          } catch (err) {
+            console.error("[낚시 fishToInv 오류]", err, st);
           }
 
           updateTier(u);
@@ -2154,15 +1797,8 @@ const eb = sceneEmbed(
           return;
         } else if (st.kind === "junk") {
   const junkCoin = randInt(1, 4);
-  gainCoins(u, db, junkCoin);
+  u.coins += junkCoin;
   u.stats.speciesCount[st.name] = (u.stats.speciesCount[st.name] || 0) + 1;
-  applyQuestEvent(u, db, "junk_caught", {});
-  u.quests.temp ??= { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
-  u.quests.temp.junkStreak = (u.quests.temp.junkStreak||0) + 1;
-  u.quests.temp.lastRarity = null;
-  u.quests.temp.sameRarityStreak = 0;
-  if (u.quests.temp.junkStreak >= 3) { applyQuestEvent(u, db, "junk_streak3_done", {}); u.quests.temp.junkStreak = 0; }
-
   clearSession(userId);
 
   lastCatch.set(userId, {
@@ -2184,7 +1820,7 @@ const eb = sceneEmbed(
 
 } else {
   if (st.itemType === "coin") {
-    gainCoins(u, db, st.amount||0);
+    u.coins += st.amount||0;
     clearSession(userId);
 
     lastCatch.set(userId, {
@@ -2280,7 +1916,7 @@ if (id === "fish:sell_all") {
   const fishes = u.inv.fishes || [];
   const sellable = fishes.filter(f => !f.lock);
   const total = sellable.reduce((s, f) => s + (f.price || 0), 0);
-  gainCoins(u, db, total);
+  u.coins += total;
   u.inv.fishes = fishes.filter(f => f.lock);
   return interaction.update({
     content: `총 ${total.toLocaleString()} 코인을 획득하셨습니다. (판매 ${sellable.length}마리, 잠금 ${fishes.length - sellable.length}마리 제외)`,
@@ -2316,7 +1952,7 @@ if (interaction.customId === "sell-rarity-choose") {
   const fishes = u.inv.fishes||[];
   const sellable = fishes.filter(f=>f.r===rarity && !f.lock);
   const total = sellable.reduce((s,f)=>s+(f.price||0),0);
-  gainCoins(u, db, total);
+  u.coins += total;
   u.inv.fishes = fishes.filter(f=>(f.r!==rarity || f.lock)); // 잠금 예외처리
   return interaction.update({ content:`[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`, embeds:[], components:[] });
 }
@@ -2327,7 +1963,7 @@ if (interaction.customId === "sell-rarity-choose") {
       const pick = idxs.map(i=>fishes[i]).filter(f=>!f.lock); 
       const total = pick.reduce((s,f)=>s+(f.price||0),0);
       u.inv.fishes = fishes.filter((f,i)=>!idxs.includes(i) || f.lock); 
-      gainCoins(u, db, total);
+      u.coins += total;
       sellSessions.delete(userId);
       return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[] });
     }
@@ -2552,8 +2188,6 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       if ((u.inv.chests||0)<=0) return interaction.reply({ content:"보물상자가 없습니다.", ephemeral:true });
       if ((u.inv.keys||0)<=0)   return interaction.reply({ content:"열쇠가 없습니다.", ephemeral:true });
       u.inv.chests -= 1; u.inv.keys -= 1;
-      applyQuestEvent(u, db, "chest_open", { count: 1 });
-
       const pool = CHEST_REWARDS.loot;
       const w = {}; for (const it of pool) w[it.name] = it.chance;
       const pick = pickWeighted(w);
@@ -2562,7 +2196,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       if (item.kind === "be")    { const amt = randInt(item.min, item.max); await addBE(userId, amt, "[낚시] 상자 보상"); return interaction.reply({ content:`상자를 개봉하여 파랑 정수 ${amt.toLocaleString()}원을 받으셨습니다.`, ephemeral:true }); }
       if (item.kind === "float") { addFloat(u, item.name); return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
       if (item.kind === "rod")   { addRod(u, item.name);   return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
-      if (item.kind === "coin") { const amt = randInt(item.min, item.max); gainCoins(u, db, amt); return interaction.reply({ content:`상자에서 ${amt} 코인을 받으셨습니다.`, ephemeral:true }); }
+      if (item.kind === "coin") { const amt = randInt(item.min, item.max); u.coins += amt; return interaction.reply({ content:`상자에서 ${amt} 코인을 받으셨습니다.`, ephemeral:true }); }
       return interaction.reply({ content:"상자 보상 처리 중 오류가 발생했습니다.", ephemeral:true });
     }
     if (id === "info:key") {
@@ -2700,7 +2334,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
         if (pay === "coin") {
           const cost = Math.ceil(price.coin * (need/pack));
           if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
-          spendCoins(u, db, cost); addBait(u, name, need);
+          u.coins -= cost; addBait(u, name, need);
           return interaction.reply({ content:`${name} ${need}개를 보충했습니다. (코인 ${cost} 소모)`, ephemeral:true });
         } else {
           if (price.be == null) return interaction.reply({ content:"정수 결제가 불가합니다.", ephemeral:true });
@@ -2713,7 +2347,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
         if (pay === "coin") {
           const cost = price.coin; if (cost==null) return interaction.reply({ content:"코인 결제가 불가합니다.", ephemeral:true });
           if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
-          spendCoins(u, db, cost);
+          u.coins -= cost;
         } else {
           const cost = price.be; if (cost==null) return interaction.reply({ content:"정수 결제가 불가합니다.", ephemeral:true });
           if ((getBE(userId)||0) < cost) return interaction.reply({ content:`정수가 부족합니다. (필요: ${cost}원)`, ephemeral:true });
