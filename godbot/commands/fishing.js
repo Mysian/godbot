@@ -80,12 +80,12 @@ function statLine(label, base, buff, unit='', basePrefix=''){
   return `${label} ${basePrefix}${base}${unit} (${signed(buff||0)}${unit})`;
 }
 function sumBiteSpeed(u){
-  const r = ROD_SPECS[u.equip.rod]?.biteSpeed   || 0;
-  const f = FLOAT_SPECS[u.equip.float]?.biteSpeed|| 0;
-  const b = BAIT_SPECS[u.equip.bait]?.biteSpeed  || 0;
-  const t = getTierBuff(u.tier).biteSpeed || 0;
+  const r  = ROD_SPECS[u.equip.rod]?.biteSpeed    || 0;
+  const f  = FLOAT_SPECS[u.equip.float]?.biteSpeed || 0;
+  const b  = BAIT_SPECS[u.equip.bait]?.biteSpeed   || 0;
+  const t  = getTierBuff(u.tier).biteSpeed         || 0;
   const tm = getTimeBuff(currentTimeBand()).biteSpeed || 0;
-  return r+f+b+t; // 음수(감산) 합산
+  return r + f + b + t + tm; // ← 시간대 버프 포함
 }
 function effectiveDmg(u){
   return (ROD_SPECS[u.equip.rod]?.dmg || 6) + (getTierBuff(u.tier).dmg||0);
@@ -254,8 +254,16 @@ function ensureQuests(db){
 
   const needDaily = db.quests.daily.key !== dailyKeyKST();
   const needWeekly= db.quests.weekly.key !== weeklyKeyKST();
-  if (needDaily)  db.quests.daily  = { key: dailyKeyKST(),  list: genDailyQuests() };
-  if (needWeekly) db.quests.weekly = { key: weeklyKeyKST(), list: genWeeklyQuests() };
+  if (needDaily)  {
+  const key = dailyKeyKST();
+  const list = genDailyQuests().map(q => ({ ...q, id: `d:${key}|${q.id}` }));
+  db.quests.daily = { key, list };
+}
+if (needWeekly) {
+  const key = weeklyKeyKST();
+  const list = genWeeklyQuests().map(q => ({ ...q, id: `w:${key}|${q.id}` }));
+  db.quests.weekly = { key, list };
+}
   return { daily: db.quests.daily, weekly: db.quests.weekly };
 }
 
@@ -553,7 +561,7 @@ function priceFor(kind, name) {
   return PRICES[map]?.[name] || null;
 }
 
-async function autoBuyOne(u, kind, name) {
+async function autoBuyOne(u, db, kind, name) {
   const price = priceFor(kind, name);
   if (!price) return null;
 
@@ -567,7 +575,7 @@ async function autoBuyOne(u, kind, name) {
     const beCost   = price.be   != null ? Math.ceil(price.be   * (need/pack)) : null;
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
-      u.coins -= coinCost;
+      spendCoins(u, db, coinCost);
       addBait(u, name, need);
       return `• ${name} 보충 완료 (코인 ${coinCost.toLocaleString()})`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
@@ -600,7 +608,7 @@ async function autoBuyOne(u, kind, name) {
 }
 
 // ★ 장착한 낚싯대/찌 내구도 == 1 && 미끼 == 1일 때 자동구매
-async function autoBuyIfAllOne(u) {
+async function autoBuyIfAllOne(u, db) {
   if (!u?.settings?.autoBuy) return null;
   if (!u.equip.rod || !u.equip.float || !u.equip.bait) return null;
 
@@ -610,9 +618,10 @@ async function autoBuyIfAllOne(u) {
 
   if (r <= 1 || f <= 1 || b <= 1) {
   const msgs = [];
-  if (r <= 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
-  if (f <= 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
-  if (b <= 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
+  if (r <= 1) msgs.push(await autoBuyOne(u, db, "rod",   u.equip.rod));
+if (f <= 1) msgs.push(await autoBuyOne(u, db, "float", u.equip.float));
+if (b <= 1) msgs.push(await autoBuyOne(u, db, "bait",  u.equip.bait));
+
   const note = msgs.filter(Boolean).length ? `🧰 자동구매 실행됨\n${msgs.filter(Boolean).join("\n")}` : null;
   if (note) return note;
 }
@@ -808,10 +817,10 @@ function isComplete(u, q){
   return (p||0) >= (q.target||q.times||1);
 }
 
-function grantQuestReward(u, db, reward){
+async function grantQuestReward(u, db, reward){
   if (!reward) return;
-  if (reward.coin) gainCoins(u, db, reward.coin);   
-  if (reward.be)   addBE(u._uid, reward.be, "[퀘스트 보상]");
+  if (reward.coin) gainCoins(u, db, reward.coin);
+  if (reward.be)   await addBE(u._uid, reward.be, "[퀘스트 보상]");
   if (reward.bait) addBait(u, reward.bait[0], reward.bait[1]||20);
 }
 
@@ -1862,7 +1871,7 @@ async function component(interaction) {
     const fishes = u.inv.fishes||[];
     const sellable = fishes.filter(f=>f.r===rarity && !f.lock);
     const total = sellable.reduce((s,f)=>s+(f.price||0),0);
-    u.coins += total;
+    gainCoins(u, db, total);
     u.inv.fishes = fishes.filter(f=>(f.r!==rarity || f.lock));
     return interaction.update({ content:`[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`, embeds:[], components:[] });
   }
@@ -1990,7 +1999,7 @@ if (id === "fish:share") {
       if (id === "fish:cast" || id === "fish:recast") {
   // 자동구매(세 파츠 모두 1일 때) 안내
   let autoNote = "";
-  try { autoNote = await autoBuyIfAllOne(u) || ""; } catch {}
+  try { autoNote = await autoBuyIfAllOne(u, db) || ""; } catch {}
 
   // 장비 체크
   if (!hasAllGear(u)) {
@@ -2615,7 +2624,6 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       u.inv.chests -= 1; u.inv.keys -= 1;
       applyQuestEvent(u, db, "chest_open", { count: 1 });  
       const pool = CHEST_REWARDS.loot;
-      const pool = CHEST_REWARDS.loot;
       const w = {}; for (const it of pool) w[it.name] = it.chance;
       const pick = pickWeighted(w);
       const item = pool.find(x=>x.name===pick);
@@ -2761,7 +2769,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
         if (pay === "coin") {
           const cost = Math.ceil(price.coin * (need/pack));
           if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
-          u.coins -= cost; addBait(u, name, need);
+          spendCoins(u, db, cost); addBait(u, name, need);
           return interaction.reply({ content:`${name} ${need}개를 보충했습니다. (코인 ${cost} 소모)`, ephemeral:true });
         } else {
           if (price.be == null) return interaction.reply({ content:"정수 결제가 불가합니다.", ephemeral:true });
@@ -2774,7 +2782,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
         if (pay === "coin") {
           const cost = price.coin; if (cost==null) return interaction.reply({ content:"코인 결제가 불가합니다.", ephemeral:true });
           if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
-          u.coins -= cost;
+          spendCoins(u, db, cost);
         } else {
           const cost = price.be; if (cost==null) return interaction.reply({ content:"정수 결제가 불가합니다.", ephemeral:true });
           if ((getBE(userId)||0) < cost) return interaction.reply({ content:`정수가 부족합니다. (필요: ${cost}원)`, ephemeral:true });
