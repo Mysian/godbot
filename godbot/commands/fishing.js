@@ -1150,9 +1150,46 @@ function rankButtons(mode){
     new ButtonBuilder().setCustomId("rank:len").setLabel("물고기 크기").setStyle(mode==="len"?ButtonStyle.Primary:ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("rank:caught").setLabel("어획 횟수").setStyle(mode==="caught"?ButtonStyle.Primary:ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("rank:coins").setLabel("낚시 코인").setStyle(mode==="coins"?ButtonStyle.Primary:ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("rank:rarity").setLabel("등급별 낚은 횟수").setStyle(mode==="rarity"?ButtonStyle.Primary:ButtonStyle.Secondary),
   );
 }
+
 async function buildRankEmbedPayload(db, interaction, mode){
+  function buildRarityRank(db, interaction){
+  const rarityStats = {}; 
+  for(const r of [...RARITY, "잡동사니"]) rarityStats[r] = {};
+
+  for(const [id, u] of Object.entries(db.users||{})){
+    ensureUser(u);
+    for(const [name,count] of Object.entries(u.stats.speciesCount||{})){
+      const rar = RARITY_OF[name] || (JUNK_SET.has(name) ? "잡동사니" : null);
+      if(!rar) continue;
+      rarityStats[rar][id] = (rarityStats[rar][id]||0) + count;
+    }
+  }
+  return rarityStats;
+}
+async function buildRarityRankEmbed(db, interaction){
+  const stats = buildRarityRank(db, interaction);
+  const eb = new EmbedBuilder().setTitle("🎣 등급별 낚은 횟수 TOP3").setColor(0x99ccff);
+
+  for(const rar of [...RARITY].reverse().concat("잡동사니")){
+    const entries = Object.entries(stats[rar]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    if(entries.length===0){
+      eb.addFields({ name:`[${rar}]`, value:"1. 아직 잡은 유저가 없습니다.", inline:false });
+    } else {
+      const lines = await Promise.all(entries.map(async([id,cnt],i)=>{
+        const m = await interaction.guild.members.fetch(id).catch(()=>null);
+        const nm = m?.displayName || `유저(${id})`;
+        return `${i+1}. ${nm} : ${cnt} 마리`;
+      }));
+      if(entries.length<3) lines.push(`${entries.length+1}. 순위권에 도전해보세요!`);
+      eb.addFields({ name:`[${rar}]`, value:lines.join("\n"), inline:false });
+    }
+  }
+
+  return { embeds:[eb], components:[rankButtons("rarity")] };
+}
   const base = Object.entries(db.users||{}).map(([id,u])=>{
     ensureUser(u);
     let bestN = null; let bestL = 0;
@@ -2286,10 +2323,15 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
     }
 
     if (id.startsWith("rank:")) {
-      const mode = id.split(":")[1];
-      const payload = await buildRankEmbedPayload(db, interaction, mode);
-      return interaction.update({ ...payload });
-    }
+  const mode = id.split(":")[1];
+  if (mode === "rarity") {
+    const payload = await buildRarityRankEmbed(db, interaction);
+    return interaction.update({ ...payload });
+  } else {
+    const payload = await buildRankEmbedPayload(db, interaction, mode);
+    return interaction.update({ ...payload });
+  }
+}
   } finally {
       delete u._uid; 
     }
