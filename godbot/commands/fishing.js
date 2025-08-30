@@ -211,8 +211,8 @@ const ROD_SPECS = {
   "나무 낚싯대":   { maxDur: 50,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
   "강철 낚싯대":   { maxDur: 120,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
   "금 낚싯대":     { maxDur: 250, biteSpeed: -12, dmg: 12, resistReduce: 5,  rarityBias: 5 },
-  "다이아 낚싯대": { maxDur: 550, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
-  "전설의 낚싯대": { maxDur: 990, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
+  "다이아 낚싯대": { maxDur: 490, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
+  "전설의 낚싯대": { maxDur: 880, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
 };
 const FLOAT_SPECS = {
   "동 찌":    { maxDur: 30,  biteSpeed: -3,  resistReduce: 2,  rarityBias: 0 },
@@ -318,15 +318,25 @@ function bandBar(cur, tgt, width = 8) {
 // 퀘스트 보상 텍스트
 function questRewardText(reward) {
   if (!reward) return "보상: (없음)";
+  const M = typeof QUEST_REWARD_MULT === "number" ? QUEST_REWARD_MULT : 1;
   const parts = [];
-  if (reward.coin) parts.push(`🪙 ${reward.coin.toLocaleString()} 코인`);
-  if (reward.be) parts.push(`💎 ${reward.be.toLocaleString()} BE`);
-  if (reward.bait) {
-    const [name, cnt] = Array.isArray(reward.bait) ? reward.bait : [reward.bait, 20];
-    parts.push(`🪱 ${name} x${(cnt||20).toLocaleString()}`);
+  
+  if (reward.coin) {
+    const disp = Math.floor((reward.coin || 0) * M);
+    if (disp > 0) parts.push(`🪙 ${disp.toLocaleString()} 코인`);
   }
-  return `보상: ${parts.join(" + ")}`;
+  if (reward.be) {
+    const disp = Math.floor((reward.be || 0) * M);
+    if (disp > 0) parts.push(`💎 ${disp.toLocaleString()} BE`);
+  }
+  if (reward.bait) {
+    const [name, baseCnt] = Array.isArray(reward.bait) ? reward.bait : [reward.bait, 20];
+    const qty = Math.max(1, Math.floor((baseCnt || 20) * M));
+    parts.push(`🪱 ${name} x${qty.toLocaleString()}`);
+  }
+  return `보상: ${parts.join(" + ") || "(없음)"}`;
 }
+
 
 
 function readDB() {
@@ -1971,19 +1981,23 @@ async function component(interaction) {
     const id = interaction.customId;
 
       if (id && id.startsWith("quest:claim|")) {
-    const [, tier, qid] = id.split("|");
-    ensureQuests(db);
-    const list = tier==="daily" ? (db.quests.daily.list||[]) : (db.quests.weekly.list||[]);
-    const q = list.find(x=>x.id===qid);
-    if (!q) return interaction.reply({ content:"퀘스트를 찾지 못했어.", ephemeral:true });
-    if (u.quests.claimed[q.id]) return interaction.reply({ content:"이미 보상을 받았어.", ephemeral:true });
-    if (!isComplete(u, q)) return interaction.reply({ content:"아직 완료되지 않았어!", ephemeral:true });
-    u._uid = userId;
-    await grantQuestReward(u, db, q.reward);   // ★ (아래 6-1 수정과 세트)
-    u.quests.claimed[q.id] = true;
-    delete u._uid;
-    return interaction.reply({ content:`보상 수령 완료: ${q.title}`, ephemeral:true });
-  }
+  const parts = id.split("|");
+  const tier  = parts[1];
+  const qid   = parts.slice(2).join("|"); 
+  ensureQuests(db);
+  const list = tier==="daily" ? (db.quests.daily.list||[]) : (db.quests.weekly.list||[]);
+  const q = list.find(x=>x.id===qid);
+  if (!q) return interaction.reply({ content:"퀘스트를 찾지 못했어.", ephemeral:true });
+  if (u.quests.claimed[q.id]) return interaction.reply({ content:"이미 보상을 받았어.", ephemeral:true });
+  if (!isComplete(u, q)) return interaction.reply({ content:"아직 완료되지 않았어!", ephemeral:true });
+  u._uid = userId;
+  await grantQuestReward(u, db, q.reward);
+  u.quests.claimed[q.id] = true;
+  delete u._uid;
+  const payload = buildQuestPayload(db, u); 
+  return interaction.update({ ...payload });
+}
+
 
 
     // component() 내부
