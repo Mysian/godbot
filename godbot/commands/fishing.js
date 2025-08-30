@@ -337,6 +337,9 @@ function useDurability(u, slot) {
   if (slot === "rod"   && u.equip.rod)   { u.inv.rods[u.equip.rod]   = Math.max(0, (u.inv.rods[u.equip.rod]||0)-1); try { Quests.onDurability(u, `rod:${u.equip.rod}`, 1); } catch {} }
   if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, `float:${u.equip.float}`, 1); } catch {} }
 }
+`, 1); } catch {} }
+  if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, `float:${u.equip.float}`, 1); } catch {} }
+}
 
 function hasAllGear(u) {
   return u.equip.rod && u.equip.float && u.equip.bait &&
@@ -559,7 +562,8 @@ async function autoBuyIfAllOne(u) {
   if (r <= 1) msgs.push(await autoBuyOne(u, "rod", u.equip.rod));
   if (f <= 1) msgs.push(await autoBuyOne(u, "float", u.equip.float));
   if (b <= 1) msgs.push(await autoBuyOne(u, "bait", u.equip.bait));
-  const note = msgs.filter(Boolean).length ? `🧰 자동구매 실행됨\n${msgs.filter(Boolean).join("\n")}` : null;
+  const note = msgs.filter(Boolean).length ? `🧰 자동구매 실행됨\n${msgs.filter(Boolean).join("
+")}` : null;
   if (note) return note;
 }
   return null;
@@ -601,7 +605,8 @@ function equipLine(u) {
     `🎣 낚싯대: ${u.equip.rod || "없음"}${rDur?` (${rDur} 내구도)`:''}`,
     `🟠 찌: ${u.equip.float || "없음"}${fDur?` (${fDur} 내구도)`:''}`,
     `🪱 미끼: ${u.equip.bait || "없음"}${u.equip.bait?` (잔여 ${u.inv.baits[u.equip.bait]||0})`:''}`
-  ].join("\n");
+  ].join("
+");
 }
 function buttonsStart(u) {
   return new ActionRowBuilder().addComponents(
@@ -723,7 +728,8 @@ function buildInventoryHome(u){
       "종류를 골라 한 개씩 확인하고 장착 또는 사용하실 수 있어요.",
       `• 열쇠: ${u.inv.keys||0}개 | 상자: ${u.inv.chests||0}개`,
       `• 물고기: ${u.inv.fishes.length}마리`
-    ].join("\n"))
+    ].join("
+"))
     .setColor(0x8888ff)
     .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
   const row = new ActionRowBuilder().addComponents(
@@ -988,7 +994,8 @@ function renderDexList(u, st){
 
   const eb = new EmbedBuilder()
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
-    .setDescription(lines.join("\n") || "_표시할 항목이 없습니다._")
+    .setDescription(lines.join("
+") || "_표시할 항목이 없습니다._")
     .setColor(0x66ccff);
 
   const components = [...dexRarityRows(st.rarity)];
@@ -1020,7 +1027,8 @@ const starName = withStarName(name, rec.length || 0);
 
 const eb = new EmbedBuilder()
   .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
-  .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
+  .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("
+"))
   .setColor(0x44ddaa).setImage(getIconURL(name)||null);
 
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
@@ -1106,7 +1114,8 @@ async function checkRewards(u, interaction){
     {
       const eb = new EmbedBuilder()
         .setTitle("🏅 티어 보상")
-        .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
+        .setDescription([`달성: **${u.tier}**`, "", ...lines].join("
+"))
         .setColor(0x55ff55);
       const tierIcon = getIconURL(u.tier);
       if (tierIcon) eb.setThumbnail(tierIcon);
@@ -1124,7 +1133,8 @@ async function checkRewards(u, interaction){
       embeds.push(
         new EmbedBuilder()
           .setTitle("🎣 누적 어획 보상")
-          .setDescription([`달성: **${th.toLocaleString()}마리**`, "", ...lines].join("\n"))
+          .setDescription([`달성: **${th.toLocaleString()}마리**`, "", ...lines].join("
+"))
           .setColor(0x55aaee)
       );
     }
@@ -1140,7 +1150,8 @@ async function checkRewards(u, interaction){
       embeds.push(
         new EmbedBuilder()
           .setTitle("📏 기록 갱신 보상")
-          .setDescription([`달성: **${Math.round(th)}cm**`, "", ...lines].join("\n"))
+          .setDescription([`달성: **${Math.round(th)}cm**`, "", ...lines].join("
+"))
           .setColor(0xaa77ff)
       );
     }
@@ -1169,7 +1180,8 @@ async function checkSpeciesRewards(u, fishName) {
   const title = cnt === 1 ? `🎉 첫 조우 보상 — ${fishName}` : `🎁 누적 ${cnt}회 보상 — ${fishName}`;
   const eb = new EmbedBuilder()
     .setTitle(title)
-    .setDescription(lines.join("\n"))
+    .setDescription(lines.join("
+"))
     .setColor(0x5bd7a5)
     .setThumbnail(getIconURL(fishName) || null);
 
@@ -1232,7 +1244,8 @@ async function buildRarityRankEmbed(db, interaction){
         return `${i+1}. ${nm} : ${cnt} 마리`;
       }));
       if(entries.length < 3) lines.push(`${entries.length+1}. 순위권에 도전해보세요!`);
-      eb.addFields({ name: `${RARITY_EMOJIS[rar] || ""} [${rar}]`, value:lines.join("\n"), inline:false });
+      eb.addFields({ name: `${RARITY_EMOJIS[rar] || ""} [${rar}]`, value:lines.join("
+"), inline:false });
     }
   }
 
@@ -1267,7 +1280,8 @@ async function buildRarityRankEmbed(db, interaction){
   const titleMap = { points:"포인트", len:"물고기 크기", caught:"어획 횟수", coins:"낚시 코인" };
   const eb = new EmbedBuilder()
     .setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`)
-    .setDescription(lines.join("\n") || "_데이터가 없습니다._")
+    .setDescription(lines.join("
+") || "_데이터가 없습니다._")
     .setColor(0xff77aa);
   return { embeds:[eb], components:[rankButtons(mode)] };
 }
@@ -1331,7 +1345,8 @@ async function execute(interaction) {
         "찌를 던져 입질을 기다려보세요.",
         "",
         equipLine(u)
-      ].join("\n"), scene0);
+      ].join("
+"), scene0);
       const viewRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
@@ -1354,7 +1369,8 @@ async function execute(interaction) {
           "",
           "• 낚싯대, 찌: 구매 시 내구도 최대치로 제공됩니다.",
           "• 미끼: 20개 묶음이며, 보유 수량이 20 미만이면 부족분만 비례 결제합니다."
-        ].join("\n"))
+        ].join("
+"))
         .setColor(0x55cc77)
         .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
       const row = new ActionRowBuilder().addComponents(
@@ -1383,7 +1399,8 @@ async function execute(interaction) {
       .setDescription([
         `보유 물고기: ${fishes.length}마리`,
         "원하시는 방식으로 판매해 주세요."
-      ].join("\n"))
+      ].join("
+"))
       .addFields({ name:"전체 판매 예상 금액", value:`${totalValue.toLocaleString()} 코인`, inline:false })
       .setColor(0xffaa44);
     const row = new ActionRowBuilder().addComponents(
@@ -1422,7 +1439,8 @@ async function execute(interaction) {
           "• 🎣 나무 낚싯대 (내구도 최대치)",
           "• 🟠 동 찌 (내구도 최대치)",
           "• 🪱 지렁이 미끼 20개"
-        ].join("\n"))
+        ].join("
+"))
         .setColor(0x55ff88);
 
       return interaction.reply({ embeds:[eb], ephemeral:true });
@@ -1459,9 +1477,11 @@ async function execute(interaction) {
 top3.length 
 
   ? "**종류별 최대 상위 3**\n" 
-    + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") 
+    + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("
+") 
   : "_기록이 없습니다._"
-        ].join("\n"))
+        ].join("
+"))
         .setColor(0x66ddee);
       if (tierIcon) eb.setThumbnail(tierIcon);
       await interaction.reply({ embeds:[eb], ephemeral:true });
@@ -1489,7 +1509,8 @@ top3.length
         "⚙ 장비는 사용 시 내구도 1 감소, 미끼는 입질 시작 시 1개 소모됩니다.",
         "⚙ ‘낚시 코인’은 BE(정수)와 별개 화폐입니다.",
         "⚙ 물고기마다 최소/최대 길이가 있으며, 클수록 보상과 포인트가 커집니다."
-      ].join("\n"))
+      ].join("
+"))
       .setColor(0xcccccc);
     return await interaction.reply({ embeds:[eb], ephemeral:true });
   }
@@ -1512,7 +1533,8 @@ async function component(interaction) {
         const pick = idxs.map(i=>fishes[i]).filter(Boolean);
         const total = pick.reduce((s,f)=>s+(f.price||0),0);
         const eb = new EmbedBuilder().setTitle("🧾 선택 판매 미리보기")
-          .setDescription(pick.length? pick.map(f=>`• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n") : "_선택되지 않았습니다._")
+          .setDescription(pick.length? pick.map(f=>`• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("
+") : "_선택되지 않았습니다._")
           .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
           .setColor(0xffaa44);
         const row = new ActionRowBuilder().addComponents(
@@ -1601,7 +1623,8 @@ async function component(interaction) {
       }
       const eb = new EmbedBuilder()
         .setTitle("🎁 퀘스트 보상 수령")
-        .setDescription([`달성: ${res.label}`, "", ...lines].join("\n"))
+        .setDescription([`달성: ${res.label}`, "", ...lines].join("
+"))
         .setColor(0xffc94a);
       return interaction.reply({ embeds:[eb], ephemeral:true });
     }
@@ -1637,7 +1660,8 @@ if (id === "fish:share") {
         `• 이름: [${rec.rarity}] ${withStarName(rec.name, rec.length)}`,
         `• 길이: ${Math.round(rec.length)}cm`,
         `• 판매가: ${rec.sell.toLocaleString()} 코인`,
-      ].join("\n"))
+      ].join("
+"))
       .setColor(0x66ccff)
       .setImage(getIconURL(rec.name) || null);
   }
@@ -1758,7 +1782,8 @@ if (id === "fish:share") {
   const eb = sceneEmbed(
     u,
     "🪔 입질을 기다리는 중...",
-    [`최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`, "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)].join("\n"),
+    [`최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`, "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)].join("
+"),
     scene1
   );
 
@@ -1830,7 +1855,8 @@ const eb = sceneEmbed(
     `판매가: ${sell.toLocaleString()}코인`,
     "",
     "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-  ].join("\n"),
+  ].join("
+"),
   getIconURL(st.name) || null
 );
 
@@ -1870,7 +1896,8 @@ const eb = sceneEmbed(
             if (newlyDone.length) {
               const ebQ = new EmbedBuilder()
                 .setTitle("🎯 퀘스트 완료 가능!")
-                .setDescription(newlyDone.map(q=>`• ${q.title}`).join("\n"))
+                .setDescription(newlyDone.map(q=>`• ${q.title}`).join("
+"))
                 .setColor(0x42d392);
               await interaction.followUp({ embeds:[ebQ], ephemeral:true });
             }
@@ -2012,7 +2039,8 @@ const eb = sceneEmbed(
       const hpRatio = (st.hp||1) / (st.maxHP||1);
       const line = hintLine(s.tension, hpRatio);
       const eb = new EmbedBuilder().setTitle(`🎣 파이팅 중`)
-        .setDescription([line, "릴을 감거나 풀며 흐름을 유지해 보세요."].join("\n"))
+        .setDescription([line, "릴을 감거나 풀며 흐름을 유지해 보세요."].join("
+"))
         .setColor(0x44ddaa)
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
       return updateOrEdit(interaction, { embeds:[eb], components:[buttonsFight()] });
@@ -2141,7 +2169,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           }
 
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
-            .setDescription(lines.join("\n"))
+            .setDescription(lines.join("
+"))
             .setColor(0x88ddff)
             .setThumbnail(getIconURL(name)||null)
             .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
@@ -2265,7 +2294,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
             );
           }
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
-            .setDescription(lines.join("\n")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null)
+            .setDescription(lines.join("
+")).setColor(0x88ddff).setThumbnail(getIconURL(name)||null)
             .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
@@ -2347,7 +2377,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           );
         }
         const eb = new EmbedBuilder().setTitle(`🛒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
-          .setDescription(lines.join("\n"))
+          .setDescription(lines.join("
+"))
           .addFields(
             { name:"코인", value: price.coin!=null ? price.coin.toLocaleString() : "-", inline:true },
             { name:"정수", value: price.be!=null ? price.be.toLocaleString()   : "-", inline:true },
@@ -2404,7 +2435,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           "_(+티어 능력치)_"
         );
       }
-      const desc = descLines.join("\n");
+      const desc = descLines.join("
+");
 
       const eb = new EmbedBuilder().setTitle(`🛒 ${st.kind==="rod"?"낚싯대":st.kind==="float"?"찌":"미끼"} — ${name}`)
         .setDescription(desc)
