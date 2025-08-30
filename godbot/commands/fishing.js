@@ -1172,6 +1172,7 @@ async function buildRankEmbedPayload(db, interaction, mode){
 async function buildRarityRankEmbed(db, interaction){
   const stats = buildRarityRank(db, interaction);
   const eb = new EmbedBuilder().setTitle("🎣 등급별 낚은 횟수 TOP3").setColor(0x99ccff);
+  const namesCache = {};
 
   for(const rar of [...RARITY].reverse().concat("잡동사니")){
     const entries = Object.entries(stats[rar]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -1444,6 +1445,16 @@ async function component(interaction) {
         modal.addComponents(new ActionRowBuilder().addComponents(input));
         return interaction.showModal(modal);
       }
+
+      if (interaction.customId === "sell-rarity-choose") {
+    const rarity = interaction.values[0];
+    const fishes = u.inv.fishes||[];
+    const sellable = fishes.filter(f=>f.r===rarity && !f.lock);
+    const total = sellable.reduce((s,f)=>s+(f.price||0),0);
+    u.coins += total;
+    u.inv.fishes = fishes.filter(f=>(f.r!==rarity || f.lock));
+    return interaction.update({ content:`[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`, embeds:[], components:[] });
+  }
 
       if (interaction.customId === "dex:select") {
         const name = interaction.values[0];
@@ -2008,7 +2019,21 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
   if (!f) return interaction.reply({ content:"대상 물고기가 없음", ephemeral:true });
 
   f.lock = !f.lock;
-  return interaction.reply({ content:`${withStarName(f.n, f.l)} ${f.lock ? "🔒 잠금" : "🔓 해제"}`, ephemeral:true });
+
+  const starName = withStarName(f.n, f.l);
+  const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
+    .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
+    .setColor(0x88ddff)
+    .setImage(getIconURL(f.n)||null)
+    .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(st.idx<=0),
+    new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(st.idx>=u.inv.fishes.length-1),
+    new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
+  );
+
+  return interaction.update({ embeds:[eb], components:[row] });
 }
     if (id === "inv:share") {
       const st = invSessions.get(userId);
