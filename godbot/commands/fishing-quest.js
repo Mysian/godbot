@@ -160,7 +160,7 @@ function describeOne(def, st, tier){
       sub = pb(st.progress||0, needOf(def)); break;
     case "catch_each_timeband":{
       const b = st.aux?.perBand||{};
-      const parts = ["낮","노을","밤"].map(x=>f"{x}:{min(b.get(x,0),def.perBand)}/{def.perBand}").join("  ");
+      const parts = TIME_BANDS.map(x=>`${x}:${Math.min((b[x]||0), def.perBand)}/${def.perBand}` ).join("  ");
       sub = parts; break;
     }
     case "catch_specific": sub = pb(st.progress||0, def.amount); break;
