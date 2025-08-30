@@ -1166,6 +1166,21 @@ function rankButtons(mode){
 }
 
 async function buildRankEmbedPayload(db, interaction, mode){
+  const displayNameCache = {};
+  async function nameOf(id) {
+    if (displayNameCache[id]) return displayNameCache[id];
+    const guild = interaction.guild;
+    const cached = guild?.members?.cache?.get(id);
+    if (cached) {
+      const nm = cached.displayName ?? cached.user?.globalName ?? cached.user?.username ?? `유저(${id})`;
+      displayNameCache[id] = nm;
+      return nm;
+    }
+    const m = await guild?.members?.fetch(id).catch(()=>null);
+    const nm = m?.displayName ?? m?.user?.globalName ?? m?.user?.username ?? `유저(${id})`;
+    displayNameCache[id] = nm;
+    return nm;
+  }
   function buildRarityRank(db, interaction){
   const rarityStats = {}; 
   for(const r of [...RARITY, "잡동사니"]) rarityStats[r] = {};
@@ -1185,20 +1200,6 @@ async function buildRarityRankEmbed(db, interaction){
   const eb = new EmbedBuilder()
     .setTitle("🎣 등급별 낚은 횟수 TOP3")
     .setColor(0x99ccff);
-
-  const namesCache = {};
-
-  async function nameOf(id) {
-    if (namesCache[id]) return namesCache[id];
-    const cached = interaction.guild.members.cache.get(id);
-    if (cached) {
-      namesCache[id] = cached.displayName;
-      return namesCache[id];
-    }
-    const m = await interaction.guild.members.fetch(id).catch(()=>null);
-    namesCache[id] = m?.displayName || `유저(${id})`;
-    return namesCache[id];
-  }
 
   for(const rar of [...RARITY].reverse().concat("잡동사니")){
     const entries = Object.entries(stats[rar]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -1235,7 +1236,6 @@ async function buildRarityRankEmbed(db, interaction){
   if(mode==="coins") sorted=[...base].sort((a,b)=> b.coins - a.coins);
 
   const top = sorted.slice(0,20);
-  const namesCache = {};
   const lines = await Promise.all(top.map(async (o,i)=>{
     const nm = await nameOf(o.id);
     if(mode==="points") return `${i+1}. ${nm} — ${o.tier} (${o.points.toLocaleString()}점)`;
