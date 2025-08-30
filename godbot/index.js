@@ -1060,7 +1060,6 @@ const adventureRank = require('./commands/adventure-rank.js');
 const botPull = require('./commands/bot-pull.js');
 const botDeployCommands = require('./commands/bot-deploy-commands.js');
 const botRestart = require('./commands/bot-restart.js');
-const godbitSimple = require('./commands/godbit-simple.js');
 const setStatus = require('./commands/setstatus.js');
 const removeStatus = require('./commands/removestatus.js');
 
@@ -1137,13 +1136,6 @@ if (
       await interaction.reply({ content: "❌ 라이어 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
     }
   }
-  return;
-}
-  
-  // 갓비트 시세 요약 버튼 처리
-  if (interaction.isButton() && interaction.customId === 'godbit_simple_summary') {
-  interaction.options = { getString: () => null };
-  await godbitSimple.execute(interaction);
   return;
 }
 
