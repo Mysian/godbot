@@ -181,6 +181,16 @@ const SPECIES_MILESTONES = {
   }
 };
 
+const RARITY_EMOJIS = {
+  "노말": "⚪",
+  "레어": "🔵",
+  "유니크": "🟡",
+  "레전드": "🟣",
+  "에픽": "🔴",
+  "언노운": "⚫",
+  "잡동사니": "🪣"
+};
+
 const ROD_SPECS = {
   "나무 낚싯대":   { maxDur: 50,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
   "강철 낚싯대":   { maxDur: 120,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
@@ -220,6 +230,7 @@ const PRICES = {
     "빛나는 젤리 미끼": { coin: 100000, be: null   }
   }
 };
+
 
 function readDB() {
   if (!fs.existsSync(FISH_DB)) return { users:{} };
@@ -1192,14 +1203,14 @@ async function buildRarityRankEmbed(db, interaction){
   for(const rar of [...RARITY].reverse().concat("잡동사니")){
     const entries = Object.entries(stats[rar]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
     if(entries.length===0){
-      eb.addFields({ name:`[${rar}]`, value:"1. 아직 잡은 유저가 없습니다.", inline:false });
+      eb.addFields({ name: `${RARITY_EMOJIS[rar] || ""} [${rar}]`, value:"1. 아직 잡은 유저가 없습니다.", inline:false });
     } else {
       const lines = await Promise.all(entries.map(async([id,cnt],i)=>{
         const nm = await nameOf(id);
         return `${i+1}. ${nm} : ${cnt} 마리`;
       }));
       if(entries.length < 3) lines.push(`${entries.length+1}. 순위권에 도전해보세요!`);
-      eb.addFields({ name:`[${rar}]`, value:lines.join("\n"), inline:false });
+      eb.addFields({ name: `${RARITY_EMOJIS[rar] || ""} [${rar}]`, value:lines.join("\n"), inline:false });
     }
   }
 
