@@ -1244,6 +1244,7 @@ async function buildRarityRankEmbed(db, interaction){
     if(mode==="len") return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${withStarName(o.bestName, o.bestLen)})`:""}`;
     if(mode==="caught") return `${i+1}. ${nm} — ${o.caught.toLocaleString()}마리`;
     if(mode==="coins") return `${i+1}. ${nm} — ${o.coins.toLocaleString()} 코인`;
+    if (mode === "rarity") return await buildRarityRankEmbed(db, interaction);
   }));
   const titleMap = { points:"포인트", len:"물고기 크기", caught:"어획 횟수", coins:"낚시 코인" };
   const eb = new EmbedBuilder().setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`).setDescription(lines.join("\n") || "_데이터가 없습니다._").setColor(0xff77aa);
@@ -2375,15 +2376,10 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
     }
 
     if (id.startsWith("rank:")) {
-  await interaction.deferUpdate(); 
+  await interaction.deferUpdate();
   const mode = id.split(":")[1];
-  let payload;
-  if (mode === "rarity") {
-    payload = await buildRarityRankEmbed(db, interaction);
-  } else {
-    payload = await buildRankEmbedPayload(db, interaction, mode);
-  }
-  return interaction.editReply({ ...payload }); 
+  const payload = await buildRankEmbedPayload(db, interaction, mode);
+  return interaction.editReply({ ...payload });
 }
 
   } finally {
