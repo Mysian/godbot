@@ -184,7 +184,7 @@ function catchChanceRangeForRarity(rarity, rod, float, tier){
 function pct(x){ return (x*100).toFixed(1)+"%"; }
 
 const data = new SlashCommandBuilder()
-  .setName("낚시")
+  .setName("낚시공략")
   .setDescription("낚시 통합 명령")
   .addSubcommand(s=>s.setName("확률").setDescription("티어×시간대×장비 조합에 따른 등급별 조우/포획 확률 계산")
     .addStringOption(o=>o.setName("티어").setDescription("티어").setRequired(true).addChoices(...TIER_ORDER.map(v=>({name:v, value:v}))))
