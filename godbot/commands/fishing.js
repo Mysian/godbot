@@ -1236,7 +1236,6 @@ async function buildRarityRankEmbed(db, interaction){
 
   const top = sorted.slice(0,20);
   const namesCache = {};
-  async function nameOf(id){ ... }
   const lines = await Promise.all(top.map(async (o,i)=>{
     const nm = await nameOf(o.id);
     if(mode==="points") return `${i+1}. ${nm} — ${o.tier} (${o.points.toLocaleString()}점)`;
