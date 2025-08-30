@@ -1169,7 +1169,7 @@ async function buildRankEmbedPayload(db, interaction, mode){
   }
   return rarityStats;
 }
-function buildRarityRankEmbed(db, interaction){
+async function buildRarityRankEmbed(db, interaction){
   const stats = buildRarityRank(db, interaction);
   const eb = new EmbedBuilder().setTitle("🎣 등급별 낚은 횟수 TOP3").setColor(0x99ccff);
 
