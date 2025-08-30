@@ -631,7 +631,6 @@ async function autoBuyOne(u, db, kind, name) {
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
       spendCoins(u, db, coinCost);
-      u.coins -= coinCost;
       paidText = `코인 ${coinCost.toLocaleString()}`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
       await addBE(u._uid, -beCost, `[낚시] 자동구매 ${name}`);
@@ -1441,7 +1440,7 @@ function rewardText(u, r) {
   return "";
 }
 
-async function giveReward(u, reward){
+async function giveReward(u, db, reward){
   if (reward.type === "rod") {
     if (u.inv.rods.hasOwnProperty(reward.name))
       u.inv.rods[reward.name] = ROD_SPECS[reward.name]?.maxDur || 0;
@@ -1458,8 +1457,8 @@ async function giveReward(u, reward){
     if (cur > 0) u.inv.baits[reward.name] = Math.max(cur, pack); 
     else addBait(u, reward.name, reward.qty ?? pack); 
     
-  } else if (reward.type === "coin") {
-  gainCoins(u, db, reward.amt || 0);
+ } else if (reward.type === "coin") {
+   gainCoins(u, db, reward.amt || 0);
 
   } else if (reward.type === "be") {
     await addBE(u._uid, reward.amt || 0, "[낚시 보상]");
@@ -1479,7 +1478,7 @@ async function checkRewards(u, interaction){
     const rewards = REWARDS_TIER[u.tier];
     const lines = rewards.map(r => `• ${rewardText(u, r)}`);
     u.rewards.tier[u.tier] = true;
-    for (const r of rewards) await giveReward(u, r);
+    for (const r of rewards) await giveReward(u, db, r);
     {
       const eb = new EmbedBuilder()
         .setTitle("🏅 티어 보상")
@@ -1497,7 +1496,7 @@ async function checkRewards(u, interaction){
       const rewards = REWARDS_CAUGHT[th];
       const lines = rewards.map(r => `• ${rewardText(u, r)}`);
       u.rewards.caught[th] = true;
-      for (const r of rewards) await giveReward(u, r);
+      for (const r of rewards) await giveReward(u, db, r);
       embeds.push(
         new EmbedBuilder()
           .setTitle("🎣 누적 어획 보상")
@@ -1513,7 +1512,7 @@ async function checkRewards(u, interaction){
       const rewards = REWARDS_SIZE[th];
       const lines = rewards.map(r => `• ${rewardText(u, r)}`);
       u.rewards.size[th] = true;
-      for (const r of rewards) await giveReward(u, r);
+      for (const r of rewards) await giveReward(u, db, r);
       embeds.push(
         new EmbedBuilder()
           .setTitle("📏 기록 갱신 보상")
@@ -1540,7 +1539,7 @@ async function checkSpeciesRewards(u, fishName) {
   if (!rewards || rec[cnt]) return null;
 
   rec[cnt] = true;
-  for (const r of rewards) await giveReward(u, r);
+  for (const r of rewards) await giveReward(u, db, r);
 
   const lines = rewards.map(r => `• ${rewardText(u, r)}`).filter(Boolean);
   const title = cnt === 1 ? `🎉 첫 조우 보상 — ${fishName}` : `🎁 누적 ${cnt}회 보상 — ${fishName}`;
@@ -1649,70 +1648,62 @@ async function buildRarityRankEmbed(db, interaction){
   return { embeds:[eb], components:[rankButtons(mode)] };
 }
 
-async function execute(interaction) {
-  const sub = interaction.options.getSubcommand();
-  const userId = interaction.user.id;
+function buildQuestPayload(db, u) {
+  const daily  = db.quests?.daily?.list  || [];
+  const weekly = db.quests?.weekly?.list || [];
 
-    if (sub === "퀘스트") {
-    return await withDB(async db=>{
-      ensureQuests(db);
-      const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
+  const makeLine = (q) => {
+    const p = u.quests.progress?.[q.id];
+    const status = u.quests.claimed[q.id] ? "(수령완료)" : (isComplete(u, q) ? "(완료)" : "");
 
-      const daily = db.quests.daily.list||[];
-      const weekly= db.quests.weekly.list||[];
+    if (q.type === "timeband") {
+      const cur = p || {}, tgt = q.target;
+      return [
+        `• ${q.title} ${status}`,
+        `   낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
+        `   ${questRewardText(q.reward)}`
+      ].join("\n");
+    }
 
-      const makeLine = (q) => {
-  const p = u.quests.progress?.[q.id];
-  const status = u.quests.claimed[q.id] ? "(수령완료)" : (isComplete(u, q) ? "(완료)" : "");
-
-  if (q.type === "timeband") {
-    const cur = p || {};
-    const tgt = q.target;
+    const target = (q.target ?? q.times ?? 1);
+    const curNum = (typeof p === "number" ? p : 0);
     return [
       `• ${q.title} ${status}`,
-      `   낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
+      `   ${progressBar(curNum, target)} (${fmtProgress(curNum, target)})`,
       `   ${questRewardText(q.reward)}`
     ].join("\n");
-  }
+  };
 
-  const target = (q.target ?? q.times ?? 1);
-  const curNum = (typeof p === "number" ? p : 0);
-  return [
-    `• ${q.title} ${status}`,
-    `   ${progressBar(curNum, target)} (${fmtProgress(curNum, target)})`,
-    `   ${questRewardText(q.reward)}`
-  ].join("\n");
-};
+  const dLines = daily.map(makeLine).join("\n");
+  const wLines = weekly.map(makeLine).join("\n");
 
+  const eb = new EmbedBuilder()
+    .setTitle("🎯 낚시 퀘스트")
+    .setDescription([
+      `🗓️ 일일: ${db.quests.daily.key} (리셋 ${nextDailyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
+      dLines || "_일일 퀘스트 없음_",
+      "",
+      `📅 주간: ${db.quests.weekly.key} (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
+      wLines || "_주간 퀘스트 없음_"
+    ].join("\n"))
+    .setColor(0x33c3ff);
 
-      const dLines = daily.map(makeLine).join("\n");
-      const wLines = weekly.map(makeLine).join("\n");
+  const mkBtn = (id,tier)=> new ButtonBuilder()
+    .setCustomId(`quest:claim|${tier}|${id}`)
+    .setLabel("보상 받기")
+    .setStyle(ButtonStyle.Success);
 
-      const eb = new EmbedBuilder()
-        .setTitle("🎯 낚시 퀘스트")
-        .setDescription([
-          `🗓️ 일일: ${db.quests.daily.key} (리셋 ${nextDailyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
-          dLines || "_일일 퀘스트 없음_",
-          "",
-          `📅 주간: ${db.quests.weekly.key} (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
-          wLines || "_주간 퀘스트 없음_"
-        ].join("\n"))
-        .setColor(0x33c3ff);
+  const rows = [];
+  const r1 = new ActionRowBuilder(); let a = 0;
+  for (const q of daily)  if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (a < 5) { r1.addComponents(mkBtn(q.id,"daily"));  a++; } }
+  if (a) rows.push(r1);
 
-      // 완료된 퀘스트만 “보상 받기” 버튼 생성(최대 5개씩)
-      const mkBtn = (id,tier)=> new ButtonBuilder().setCustomId(`quest:claim|${tier}|${id}`).setLabel("보상 받기").setStyle(ButtonStyle.Success);
-      const rows = [];
-      const row1 = new ActionRowBuilder(); let added = 0;
-      for (const q of daily) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (added<5){ row1.addComponents(mkBtn(q.id,"daily")); added++; } }
-      if (added) rows.push(row1);
-      const row2 = new ActionRowBuilder(); added = 0;
-      for (const q of weekly) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (added<5){ row2.addComponents(mkBtn(q.id,"weekly")); added++; } }
-      if (added) rows.push(row2);
+  const r2 = new ActionRowBuilder(); a = 0;
+  for (const q of weekly) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (a < 5) { r2.addComponents(mkBtn(q.id,"weekly")); a++; } }
+  if (a) rows.push(r2);
 
-      delete u._uid;
-      return interaction.reply({ embeds:[eb], components: rows, ephemeral: true });
-    });
-  }
+  return { embeds:[eb], components: rows };
+}
 
 
   if (sub === "낚시터") {
@@ -1980,23 +1971,21 @@ async function component(interaction) {
 
     const id = interaction.customId;
 
-      if (id && id.startsWith("quest:claim|")) {
-  const parts = id.split("|");
-  const tier  = parts[1];
-  const qid   = parts.slice(2).join("|"); 
-  ensureQuests(db);
-  const list = tier==="daily" ? (db.quests.daily.list||[]) : (db.quests.weekly.list||[]);
-  const q = list.find(x=>x.id===qid);
-  if (!q) return interaction.reply({ content:"퀘스트를 찾지 못했어.", ephemeral:true });
-  if (u.quests.claimed[q.id]) return interaction.reply({ content:"이미 보상을 받았어.", ephemeral:true });
-  if (!isComplete(u, q)) return interaction.reply({ content:"아직 완료되지 않았어!", ephemeral:true });
-  u._uid = userId;
-  await grantQuestReward(u, db, q.reward);
-  u.quests.claimed[q.id] = true;
-  delete u._uid;
-  const payload = buildQuestPayload(db, u); 
-  return interaction.update({ ...payload });
-}
+ if (id.startsWith("quest:claim|")) {
+   const [, tier, qid] = id.split("|");
+   const pool = tier === "weekly" ? (db.quests.weekly.list || []) : (db.quests.daily.list || []);
+   const q = pool.find(x => x.id === qid);
+   if (!q) return interaction.update({ content: "퀘스트를 찾지 못했어.", embeds: [], components: [] });
+   if (u.quests.claimed[q.id]) return interaction.update({ content: "이미 보상을 받았어.", embeds: [], components: [] });
+   if (!isComplete(u, q)) return interaction.reply({ content: "아직 완료 안 됐어!", ephemeral: true });
+
+   // 실제 지급 (db 인자 필수)
+   await grantQuestReward(u, db, q.reward);
+   u.quests.claimed[q.id] = true;
+
+   const payload = buildQuestPayload(db, u);
+   return interaction.update({ ...payload });
+ }
 
 
 
