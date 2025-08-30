@@ -1780,6 +1780,7 @@ const eb = sceneEmbed(
         } else if (st.kind === "junk") {
   const junkCoin = randInt(1, 4);
   u.coins += junkCoin;
+  u.stats.speciesCount[st.name] = (u.stats.speciesCount[st.name] || 0) + 1;
   clearSession(userId);
 
   lastCatch.set(userId, {
@@ -2388,7 +2389,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
   });
 }
 
-const COIN_DROP_RANGE = [10, 200];
+const COIN_DROP_RANGE = [50, 500];
 const BE_DROP_RANGE   = [10, 30000];
 const DROP_TABLE = {
   "노말":   ["멸치","피라냐","금붕어","작은 새우","빈 페트병","해초","뚱이의 바지","갓봇의 안경","낚시 코인","작은입배스","홍어","가오리","우럭","민어","병어","방어","전어","은어","송어","넙치","청어","꽁치",
