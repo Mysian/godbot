@@ -28,6 +28,7 @@ const FIGHT_TOTAL_TIMEOUT = 90;
 const SAFE_TENSION_MIN = 30;
 const SAFE_TENSION_MAX = 70;
 const SELL_PRICE_MULT = 0.35;
+const QUEST_REWARD_MULT = 0.5;
 
 const RARITY = ["노말","레어","유니크","레전드","에픽","언노운"];
 const TIER_ORDER = ["브론즈","실버","골드","플래티넘","다이아","마스터","그랜드마스터","챌린저"];
@@ -848,9 +849,22 @@ function isComplete(u, q){
 
 async function grantQuestReward(u, db, reward){
   if (!reward) return;
-  if (reward.coin) gainCoins(u, db, reward.coin);
-  if (reward.be)   await addBE(u._uid, reward.be, "[퀘스트 보상]");
-  if (reward.bait) addBait(u, reward.bait[0], reward.bait[1]||20);
+  const M = QUEST_REWARD_MULT;
+
+  if (reward.coin) {
+    const amt = Math.floor((reward.coin||0) * M);
+    if (amt > 0) gainCoins(u, db, amt);
+  }
+  if (reward.be) {
+    const beAmt = Math.floor((reward.be||0) * M);
+    if (beAmt > 0) await addBE(u._uid, beAmt, "[퀘스트 보상]");
+  }
+  if (reward.bait) {
+    const name = reward.bait[0];
+    const base = reward.bait[1] || 20;
+    const qty  = Math.max(1, Math.floor(base * M));
+    addBait(u, name, qty);
+  }
 }
 
 
