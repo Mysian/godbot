@@ -1090,6 +1090,7 @@ const fishingCmd = client.commands.get("낚시") || require("./commands/fishing.
 if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
   (
+    interaction.customId?.startsWith("quest:") ||
     interaction.customId?.startsWith("fish:") ||
     interaction.customId?.startsWith("shop:") ||
     interaction.customId?.startsWith("inv:")  ||
