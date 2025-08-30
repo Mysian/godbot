@@ -29,7 +29,9 @@ function loadVoiceNotify() {
 
 // 우선순위 1: 도너
 const DONOR_ROLE_ID = '1397076919127900171';
-// 우선순위 2: 아래 4개 역할 중 하나라도 있으면 🐤
+// 우선순위 2: 서버 부스터
+const BOOSTER_ROLE_ID = '1207437971037356142';
+// 우선순위 3: 새역할
 const BIRD_EMOJI_ROLE_IDS = [
   '1295701019430227988',
   '1294560033274855425',
@@ -51,10 +53,18 @@ module.exports = {
 
     const roles = member.roles?.cache;
     const hasDonor = roles?.has(DONOR_ROLE_ID);
+    const hasBooster = roles?.has(BOOSTER_ROLE_ID);
     const hasBirdRole = BIRD_EMOJI_ROLE_IDS.some(id => roles?.has(id));
 
-    // 입장 이모지: 도너(💜) > 새역할(🐤) > 기본(🟢)
-    const joinEmoji = hasDonor ? '💜' : (hasBirdRole ? '🐤' : '🟢');
+    // 입장 이모지: 도너(💜) > 부스터(💚) > 새역할(🐤) > 기본(🟢)
+    const joinEmoji = hasDonor
+      ? '💜'
+      : hasBooster
+        ? '💚'
+        : hasBirdRole
+          ? '🐤'
+          : '🟢';
+
     // 퇴장 이모지: 도너(💔) > 기본(🔴)
     const leaveEmoji = hasDonor ? '💔' : '🔴';
 
