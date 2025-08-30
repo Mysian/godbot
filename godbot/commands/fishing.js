@@ -1217,6 +1217,10 @@ async function buildRarityRankEmbed(db, interaction){
   return { embeds:[eb], components:[rankButtons("rarity")] };
 }
 
+  if (mode === "rarity") {
+    return await buildRarityRankEmbed(db, interaction);
+  }
+
   const base = Object.entries(db.users||{}).map(([id,u])=>{
     ensureUser(u);
     let bestN = null; let bestL = 0;
@@ -1229,25 +1233,22 @@ async function buildRarityRankEmbed(db, interaction){
   if(mode==="len") sorted=[...base].sort((a,b)=> b.bestLen - a.bestLen);
   if(mode==="caught") sorted=[...base].sort((a,b)=> b.caught - a.caught);
   if(mode==="coins") sorted=[...base].sort((a,b)=> b.coins - a.coins);
+
   const top = sorted.slice(0,20);
   const namesCache = {};
-  async function nameOf(id){
-    if (namesCache[id]) return namesCache[id];
-    const m = await interaction.guild.members.fetch(id).catch(()=>null);
-    const nm = m?.displayName || `유저(${id})`;
-    namesCache[id] = nm;
-    return nm;
-  }
+  async function nameOf(id){ ... }
   const lines = await Promise.all(top.map(async (o,i)=>{
     const nm = await nameOf(o.id);
     if(mode==="points") return `${i+1}. ${nm} — ${o.tier} (${o.points.toLocaleString()}점)`;
-    if(mode==="len") return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${withStarName(o.bestName, o.bestLen)})`:""}`;
+    if(mode==="len")    return `${i+1}. ${nm} — ${Math.round(o.bestLen)}cm${o.bestName?` (${withStarName(o.bestName, o.bestLen)})`:""}`;
     if(mode==="caught") return `${i+1}. ${nm} — ${o.caught.toLocaleString()}마리`;
-    if(mode==="coins") return `${i+1}. ${nm} — ${o.coins.toLocaleString()} 코인`;
-    if (mode === "rarity") return await buildRarityRankEmbed(db, interaction);
+    if(mode==="coins")  return `${i+1}. ${nm} — ${o.coins.toLocaleString()} 코인`;
   }));
   const titleMap = { points:"포인트", len:"물고기 크기", caught:"어획 횟수", coins:"낚시 코인" };
-  const eb = new EmbedBuilder().setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`).setDescription(lines.join("\n") || "_데이터가 없습니다._").setColor(0xff77aa);
+  const eb = new EmbedBuilder()
+    .setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`)
+    .setDescription(lines.join("\n") || "_데이터가 없습니다._")
+    .setColor(0xff77aa);
   return { embeds:[eb], components:[rankButtons(mode)] };
 }
 
