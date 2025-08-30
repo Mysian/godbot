@@ -2866,13 +2866,32 @@ const DEX_PAGE_SIZE = 10;
 
 const CHEST_REWARDS = {
   loot: [
-    { kind:"bait",  name:"지렁이 미끼", qty:20, chance:28 },
-    { kind:"bait",  name:"새우 미끼",   qty:20, chance:18 },
-    { kind:"float", name:"은 찌",       chance:6 },
-    { kind:"rod",   name:"강철 낚싯대", chance:2 },
-    { kind:"be",    name:"파랑 정수",   min:10000, max:100000, chance:4 },
-    { kind:"coin", name:"낚시 코인", min:1000, max:10000, chance:6 },
+    // 🪙 낚시 코인 (1만 ~ 10만) — 고액일수록 확률 낮음
+    { kind:"coin", name:"낚시 코인", min:10000,  max:30000,  chance:12 },
+    { kind:"coin", name:"낚시 코인", min:30001,  max:50000,  chance:6 },
+    { kind:"coin", name:"낚시 코인", min:50001,  max:100000, chance:2 },
+
+    // 🔷 파랑 정수 (1만 ~ 50만) — 고액일수록 확률 낮음
+    { kind:"be",   name:"파랑 정수", min:10000,   max:100000,  chance:10 },
+    { kind:"be",   name:"파랑 정수", min:100001,  max:200000,  chance:5 },
+    { kind:"be",   name:"파랑 정수", min:200001,  max:500000,  chance:1 },
+
+    // 🎣 낚싯대 (강철/금/다이아)
+    { kind:"rod",  name:"강철 낚싯대", chance:4 },
+    { kind:"rod",  name:"금 낚싯대",   chance:2 },
+    { kind:"rod",  name:"다이아 낚싯대", chance:0.5 },
+
+    // 🪱 빛나는 젤리 미끼 (3~20개) — 수량 많을수록 확률 낮음
+    { kind:"bait", name:"빛나는 젤리 미끼", qty:3,  chance:8 },
+    { kind:"bait", name:"빛나는 젤리 미끼", qty:10, chance:4 },
+    { kind:"bait", name:"빛나는 젤리 미끼", qty:20, chance:1 },
+
+    // 🟠 찌 (은/금/다이아)
+    { kind:"float", name:"은 찌",    chance:6 },
+    { kind:"float", name:"금 찌",    chance:2 },
+    { kind:"float", name:"다이아 찌", chance:0.5 },
   ]
 };
+
 
 module.exports = { data, execute, component };
