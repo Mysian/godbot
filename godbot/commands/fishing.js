@@ -1169,7 +1169,7 @@ async function buildRankEmbedPayload(db, interaction, mode){
   }
   return rarityStats;
 }
-async function buildRarityRankEmbed(db, interaction){
+function buildRarityRankEmbed(db, interaction){
   const stats = buildRarityRank(db, interaction);
   const eb = new EmbedBuilder().setTitle("🎣 등급별 낚은 횟수 TOP3").setColor(0x99ccff);
 
@@ -1179,8 +1179,11 @@ async function buildRarityRankEmbed(db, interaction){
       eb.addFields({ name:`[${rar}]`, value:"1. 아직 잡은 유저가 없습니다.", inline:false });
     } else {
       const lines = await Promise.all(entries.map(async([id,cnt],i)=>{
-        const m = await interaction.guild.members.fetch(id).catch(()=>null);
-        const nm = m?.displayName || `유저(${id})`;
+        if (!namesCache[id]) {
+  const m = await interaction.guild.members.fetch(id).catch(()=>null);
+  namesCache[id] = m?.displayName || `유저(${id})`;
+}
+const nm = namesCache[id];
         return `${i+1}. ${nm} : ${cnt} 마리`;
       }));
       if(entries.length<3) lines.push(`${entries.length+1}. 순위권에 도전해보세요!`);
@@ -1877,7 +1880,7 @@ if (id === "fish:sell_all") {
         value: String(i)
       }));
       if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
-      const menu = new StringSelectMenuBuilder().setCustomId("sell-select|list").setPlaceholder("판매할 물고기 선택(복수 선택 가능)").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
+      const menu = new StringSelectMenuBuilder().setCustomId("sell-select").setPlaceholder("판매할 물고기 선택(복수 선택 가능)").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
       return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ] });
     }
     if (id === "fish:sell_rarity") {
@@ -1915,7 +1918,7 @@ if (interaction.customId === "sell-rarity-choose") {
       const kinds = [...new Set(fishes.map(f=>f.n))];
       if (kinds.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
       const opts = kinds.slice(0,25).map(n=>({ label:n, value:n }));
-      const menu = new StringSelectMenuBuilder().setCustomId("sell-qty-choose|species").setPlaceholder("종류 선택").addOptions(opts);
+      const menu = new StringSelectMenuBuilder().setCustomId("sell-qty-choose").setPlaceholder("종류 선택").addOptions(opts);
       return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 수량 판매 — 종류 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ] });
     }
 
@@ -2052,6 +2055,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
+            new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
           );
           return { eb, row };
