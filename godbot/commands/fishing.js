@@ -9,6 +9,7 @@ const {
   ModalBuilder,
   TextInputStyle
 } = require("discord.js");
+const Quests = require("./fishing-quest.js");
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
@@ -333,9 +334,10 @@ function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; 
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
 function addBait(u, name, qty=0) { u.inv.baits[name] = (u.inv.baits[name]||0) + qty; }
 function useDurability(u, slot) {
-  if (slot === "rod"   && u.equip.rod)   u.inv.rods[u.equip.rod]   = Math.max(0, (u.inv.rods[u.equip.rod]||0)-1);
-  if (slot === "float" && u.equip.float) u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1);
+  if (slot === "rod"   && u.equip.rod)   { u.inv.rods[u.equip.rod]   = Math.max(0, (u.inv.rods[u.equip.rod]||0)-1); try { Quests.onDurability(u, `rod:${u.equip.rod}`, 1); } catch {} }
+  if (slot === "float" && u.equip.float) { u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1); try { Quests.onDurability(u, `float:${u.equip.float}`, 1); } catch {} }
 }
+
 function hasAllGear(u) {
   return u.equip.rod && u.equip.float && u.equip.bait &&
     (u.inv.rods[u.equip.rod]||0) > 0 && (u.inv.floats[u.equip.float]||0) > 0 && (u.inv.baits[u.equip.bait]||0) > 0;
@@ -511,7 +513,7 @@ async function autoBuyOne(u, kind, name) {
     const beCost   = price.be   != null ? Math.ceil(price.be   * (need/pack)) : null;
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
-      u.coins -= coinCost;
+      u.coins -= coinCost; try { Quests.onSpend(u, coinCost); } catch {}
       addBait(u, name, need);
       return `• ${name} 보충 완료 (코인 ${coinCost.toLocaleString()})`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
@@ -747,7 +749,8 @@ const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 
   .addSubcommand(s=>s.setName("기록").setDescription("개인 낚시 기록 확인").addUserOption(o=>o.setName("유저").setDescription("조회 대상")))
   .addSubcommand(s=>s.setName("기록순위").setDescription("티어/포인트/최대길이 순위 TOP20"))
   .addSubcommand(s=>s.setName("도움말").setDescription("낚시 시스템 도움말"))
-  .addSubcommand(s=>s.setName("스타터패키지").setDescription("신규 유저 스타터 패키지 수령 (1회 한정)"));
+  .addSubcommand(s=>s.setName("스타터패키지").setDescription("신규 유저 스타터 패키지 수령 (1회 한정)")).addSubcommand(s=>s.setName("퀘스트").setDescription("일일/주간 퀘스트 확인/보상"));
+
 
 function hintLine(tension, hpRatio) {
   const H_NEUT = [
@@ -1270,6 +1273,47 @@ async function buildRarityRankEmbed(db, interaction){
 }
 
 async function execute(interaction) {
+  if (sub === "퀘스트") {
+    return await withDB(async db=>{
+      const u = (db.users[userId] ||= {}); ensureUser(u);
+      try {
+        u._uid = userId;
+        Quests.configure({
+  guildSeed: (interaction.guildId || ""),
+  speciesCandidates: [].concat(...Object.values(FISH_BY_RARITY)).filter(n=>!NON_FISH.has(n)),
+  gear: { rod:"나무 낚싯대", float:"동 찌" }
+});
+
+        const snap = Quests.snapshot(u);
+        function toFields(arr){
+          if (!arr || arr.length===0) return [{ name:"-", value:"_없음_", inline:false }];
+          return arr.map(q => ({
+            name: `${q.claimed ? "✅" : (q.done ? "🎉" : "⏳")} ${q.title}`,
+            value: `${q.sub}\n보상: ${q.rewardText}`,
+            inline: false
+          }));
+        }
+        const ebD = new EmbedBuilder().setTitle(`📅 일일 퀘스트 (${snap.dailyKey})`).addFields(...toFields(snap.daily)).setColor(0x5ab8ff);
+        const ebW = new EmbedBuilder().setTitle(`📆 주간 퀘스트 (${snap.weeklyKey})`).addFields(...toFields(snap.weekly)).setColor(0x7c5bff);
+        const rowD = new ActionRowBuilder().addComponents(
+          ...snap.daily.map(q => new ButtonBuilder()
+            .setCustomId(`quest:claim|daily|${q.id}`)
+            .setLabel(q.claimed ? "수령 완료" : (q.done ? "보상 받기" : "미완료"))
+            .setStyle(q.claimed ? ButtonStyle.Secondary : (q.done ? ButtonStyle.Success : ButtonStyle.Secondary))
+            .setDisabled(!q.done || q.claimed))
+        );
+        const rowW = new ActionRowBuilder().addComponents(
+          ...snap.weekly.map(q => new ButtonBuilder()
+            .setCustomId(`quest:claim|weekly|${q.id}`)
+            .setLabel(q.claimed ? "수령 완료" : (q.done ? "보상 받기" : "미완료"))
+            .setStyle(q.claimed ? ButtonStyle.Secondary : (q.done ? ButtonStyle.Success : ButtonStyle.Secondary))
+            .setDisabled(!q.done || q.claimed))
+        );
+        return await interaction.reply({ embeds:[ebD, ebW], components:[rowD, rowW], ephemeral:true });
+      } finally { delete u._uid; }
+    });
+  }
+
   const sub = interaction.options.getSubcommand();
   const userId = interaction.user.id;
 
@@ -1493,8 +1537,7 @@ async function component(interaction) {
     const fishes = u.inv.fishes||[];
     const sellable = fishes.filter(f=>f.r===rarity && !f.lock);
     const total = sellable.reduce((s,f)=>s+(f.price||0),0);
-    u.coins += total;
-    u.inv.fishes = fishes.filter(f=>(f.r!==rarity || f.lock));
+    u.coins += total; u.inv.fishes = fishes.filter(f => (f.r!==rarity || f.lock)); try { Quests.onSell(u, sellable.length, total); } catch {}
     return interaction.update({ content:`[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`, embeds:[], components:[] });
   }
 
@@ -1526,8 +1569,7 @@ async function component(interaction) {
         }
         const pick = selIdx.map(i=>fishes[i]).filter(f=>f && !f.lock); 
         const total = pick.reduce((s,f)=>s+(f.price||0),0);
-        u.inv.fishes = fishes.filter((f,i)=>!selIdx.includes(i) || f.lock); 
-        u.coins += total;
+        u.inv.fishes = fishes.filter((f,i)=>! selIdx.includes(i) || f.lock); u.coins += total; try { Quests.onSell(u, pick.length, total); } catch {}
 
         return interaction.reply({ content:`${species} ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, ephemeral:true });
       }
@@ -1536,6 +1578,33 @@ async function component(interaction) {
 
     const id = interaction.customId;
 
+
+    if (id.startsWith("quest:claim|")) {
+      const [, scope, qid] = id.split("|");
+      Quests.configure({
+  guildSeed: (interaction.guildId || ""),
+  speciesCandidates: [].concat(...Object.values(FISH_BY_RARITY)).filter(n=>!NON_FISH.has(n)),
+  gear: { rod:"나무 낚싯대", float:"동 찌" }
+});
+
+      const res = Quests.claim(u, scope, qid);
+      if (!res.ok) {
+        const msg = res.reason==="not_done" ? "아직 완료되지 않았어요."
+                  : res.reason==="claimed"  ? "이미 수령했어요."
+                  : "퀘스트를 찾을 수 없어요.";
+        return interaction.reply({ content: `⚠️ ${msg}`, ephemeral:true });
+      }
+      const lines = [];
+      for (const r of res.rewards) {
+        lines.push(`• ${rewardText(u, r)}`);
+        await giveReward(u, r);
+      }
+      const eb = new EmbedBuilder()
+        .setTitle("🎁 퀘스트 보상 수령")
+        .setDescription([`달성: ${res.label}`, "", ...lines].join("\n"))
+        .setColor(0xffc94a);
+      return interaction.reply({ embeds:[eb], ephemeral:true });
+    }
     // component() 내부
 if (id === "fish:share") {
   const rec = lastCatch.get(userId);
@@ -1641,7 +1710,7 @@ if (id === "fish:share") {
   s.biteTimer = setTimeout(async () => {
     const result = await updateUser(userId, (uu) => {
       if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
-      uu.inv.baits[uu.equip.bait] -= 1;
+      uu.inv.baits[uu.equip.bait] -= 1; try { Quests.onBaitUse(uu, 1); } catch {} 
       const fight = startFight(uu);
       return { ok: true, fight, equip: { ...uu.equip }, timeBand: currentTimeBand() };
     });
@@ -1788,6 +1857,24 @@ const eb = sceneEmbed(
           try {
             await checkRewards(u, interaction); // 누적/티어/사이즈 보상은 followUp(ephemeral)
           } catch (err) {
+          try {
+            Quests.configure({
+  guildSeed: (interaction.guildId || ""),
+  speciesCandidates: [].concat(...Object.values(FISH_BY_RARITY)).filter(n=>!NON_FISH.has(n)),
+  gear: { rod:"나무 낚싯대", float:"동 찌" }
+});
+
+            Quests.onCatch(u, { name: st.name, rarity: st.rarity, length: st.length, timeBand: s.timeBand||currentTimeBand(), isJunk:false, equip:{ rod:u.equip.rod, float:u.equip.float, bait:u.equip.bait } });
+            const snapQ = Quests.snapshot(u);
+            const newlyDone = [...snapQ.daily, ...snapQ.weekly].filter(q=>q.done && !q.claimed);
+            if (newlyDone.length) {
+              const ebQ = new EmbedBuilder()
+                .setTitle("🎯 퀘스트 완료 가능!")
+                .setDescription(newlyDone.map(q=>`• ${q.title}`).join("\n"))
+                .setColor(0x42d392);
+              await interaction.followUp({ embeds:[ebQ], ephemeral:true });
+            }
+          } catch {}
             console.error('[낚시 보상 처리 오류]', err, st.name);
             if (!interaction.replied && !interaction.deferred) {
               await interaction.reply({ content: "❌ 보상 처리 중 오류", ephemeral: true }).catch(()=>{});
@@ -1816,8 +1903,26 @@ const eb = sceneEmbed(
     `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`,
     getIconURL(st.name) || null
   );
-  return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+            try {
+            Quests.configure({
+  guildSeed: (interaction.guildId || ""),
+  speciesCandidates: [].concat(...Object.values(FISH_BY_RARITY)).filter(n=>!NON_FISH.has(n)),
+  gear: { rod:"나무 낚싯대", float:"동 찌" }
+});
 
+            Quests.onCatch(u, { name: st.name, rarity: "노말", length: 0, timeBand: s.timeBand||currentTimeBand(), isJunk:true, equip:{ rod:u.equip.rod, float:u.equip.float, bait:u.equip.bait } });
+            const snapQ = Quests.snapshot(u);
+            const newlyDone = [...snapQ.daily, ...snapQ.weekly].filter(q=>q.done && !q.claimed);
+            if (newlyDone.length) {
+              const ebQ = new EmbedBuilder()
+                .setTitle("🎯 퀘스트 완료 가능!")
+                .setDescription(newlyDone.map(q=>`• ${q.title}`).join("
+"))
+                .setColor(0x42d392);
+              await interaction.followUp({ embeds:[ebQ], ephemeral:true });
+            }
+          } catch {}
+          return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
 } else {
   if (st.itemType === "coin") {
     u.coins += st.amount||0;
@@ -1916,8 +2021,7 @@ if (id === "fish:sell_all") {
   const fishes = u.inv.fishes || [];
   const sellable = fishes.filter(f => !f.lock);
   const total = sellable.reduce((s, f) => s + (f.price || 0), 0);
-  u.coins += total;
-  u.inv.fishes = fishes.filter(f => f.lock);
+  u.coins += total; u.inv.fishes = fishes.filter(f => f.lock); try { Quests.onSell(u, sellable.length, total); } catch {}
   return interaction.update({
     content: `총 ${total.toLocaleString()} 코인을 획득하셨습니다. (판매 ${sellable.length}마리, 잠금 ${fishes.length - sellable.length}마리 제외)`,
     embeds: [],
@@ -1962,8 +2066,7 @@ if (interaction.customId === "sell-rarity-choose") {
       const idxs = (st.selectIdxs||[]).filter(i=>Number.isInteger(i) && fishes[i]);
       const pick = idxs.map(i=>fishes[i]).filter(f=>!f.lock); 
       const total = pick.reduce((s,f)=>s+(f.price||0),0);
-      u.inv.fishes = fishes.filter((f,i)=>!idxs.includes(i) || f.lock); 
-      u.coins += total;
+      u.inv.fishes = fishes.filter((f,i)=>! idxs.includes(i) || f.lock); u.coins += total; try { Quests.onSell(u, pick.length, total); } catch {}
       sellSessions.delete(userId);
       return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[] });
     }
@@ -2187,7 +2290,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
     if (id === "open:chest") {
       if ((u.inv.chests||0)<=0) return interaction.reply({ content:"보물상자가 없습니다.", ephemeral:true });
       if ((u.inv.keys||0)<=0)   return interaction.reply({ content:"열쇠가 없습니다.", ephemeral:true });
-      u.inv.chests -= 1; u.inv.keys -= 1;
+      u.inv.chests -= 1; u.inv.keys -= 1; try { Quests.onOpenChest(u, 1); } catch {} 
       const pool = CHEST_REWARDS.loot;
       const w = {}; for (const it of pool) w[it.name] = it.chance;
       const pick = pickWeighted(w);
@@ -2334,7 +2437,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
         if (pay === "coin") {
           const cost = Math.ceil(price.coin * (need/pack));
           if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
-          u.coins -= cost; addBait(u, name, need);
+          u.coins -= cost;  try { Quests.onSpend(u, cost); } catch {}try { Quests.onSpend(u, cost); } catch {}  addBait(u, name, need);
           return interaction.reply({ content:`${name} ${need}개를 보충했습니다. (코인 ${cost} 소모)`, ephemeral:true });
         } else {
           if (price.be == null) return interaction.reply({ content:"정수 결제가 불가합니다.", ephemeral:true });
