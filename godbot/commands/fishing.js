@@ -1818,13 +1818,18 @@ const eb = sceneEmbed(
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
       return updateOrEdit(interaction, { embeds:[eb], components:[buttonsFight()] });
     }
-
-    if (id === "fish:sell_all") {
-      const fishes = u.inv.fishes || [];
-      const total = fishes.reduce((s,f)=>s+(f.price||0),0);
-      u.coins += total; u.inv.fishes = [];
-      return interaction.update({ content:`총 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[] });
-    }
+if (id === "fish:sell_all") {
+  const fishes = u.inv.fishes || [];
+  const sellable = fishes.filter(f => !f.lock);
+  const total = sellable.reduce((s, f) => s + (f.price || 0), 0);
+  u.coins += total;
+  u.inv.fishes = fishes.filter(f => f.lock);
+  return interaction.update({
+    content: `총 ${total.toLocaleString()} 코인을 획득하셨습니다. (판매 ${sellable.length}마리, 잠금 ${fishes.length - sellable.length}마리 제외)`,
+    embeds: [],
+    components: []
+  });
+}
     if (id === "fish:sell_cancel" || id === "sell:cancel") {
       return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[] });
     }
