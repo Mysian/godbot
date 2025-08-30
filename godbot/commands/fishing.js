@@ -36,6 +36,20 @@ const TIER_CUTOFF = {
   "다이아": 9000, "마스터": 20000, "그랜드마스터": 45000, "챌린저": 85000
 };
 
+// --- 시간대 보정 ---
+const TIME_BUFFS = {
+  "낮":   { biteSpeed: -2, dmg: 0, resistReduce: 0, rarityBias: 0 },
+  "노을": { biteSpeed: -1, dmg: 0, resistReduce: 0, rarityBias: 1 },
+  "밤":   { biteSpeed:  0, dmg: 0, resistReduce: 0, rarityBias: 2 },
+};
+function getTimeBuff(band){ return TIME_BUFFS[band] || { biteSpeed:0, dmg:0, resistReduce:0, rarityBias:0 }; }
+function timeBuffField(band){
+  const b = getTimeBuff(band);
+  if (!b.biteSpeed && !b.dmg && !b.resistReduce && !b.rarityBias) return null;
+  return { name:"시간대 보정", value:`(${band}) ${formatBuff(b)}`, inline:false };
+}
+
+
 // --- 티어 보정(소폭 상향) ---
 const TIER_BUFFS = {
   "브론즈":       { biteSpeed:  0, dmg: 0, resistReduce: 0, rarityBias: 0 },
@@ -70,6 +84,7 @@ function sumBiteSpeed(u){
   const f = FLOAT_SPECS[u.equip.float]?.biteSpeed|| 0;
   const b = BAIT_SPECS[u.equip.bait]?.biteSpeed  || 0;
   const t = getTierBuff(u.tier).biteSpeed || 0;
+  const tm = getTimeBuff(currentTimeBand()).biteSpeed || 0;
   return r+f+b+t; // 음수(감산) 합산
 }
 function effectiveDmg(u){
@@ -571,6 +586,8 @@ function sceneEmbed(user, title, desc, imageURL, extraFields = []) {
   if (imageURL) eb.setImage(imageURL);
   if (Array.isArray(extraFields) && extraFields.length) eb.addFields(extraFields);
   const bf = buffField(user); if (bf) eb.addFields(bf);
+  const band = currentTimeBand();
+  const tf = timeBuffField(band); if (tf) eb.addFields(tf);
   eb.setFooter({ text: `낚시 코인: ${user.coins.toLocaleString()} | 티어: ${user.tier} [${(user.stats.points||0).toLocaleString()}점]` });
   return eb;
 }
@@ -622,7 +639,8 @@ function computeRarityWeight(u){
   const f = FLOAT_SPECS[u.equip.float] || {};
   const b = BAIT_SPECS[u.equip.bait] || {};
   const tb = getTierBuff(u.tier);
-  const bias = (r.rarityBias||0)+(f.rarityBias||0)+(b.rarityBias||0)+(tb.rarityBias||0);
+  const timeBias = getTimeBuff(currentTimeBand()).rarityBias || 0;
+  const bias = (r.rarityBias||0)+(f.rarityBias||0)+(b.rarityBias||0)+(tb.rarityBias||0)+timeBias;
   const m = { ...base };
   m["레어"]    += bias*0.8;
   m["유니크"]  += bias*0.35;
