@@ -2162,7 +2162,6 @@ async function execute(interaction) {
   new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
   new ButtonBuilder().setCustomId("fish:sell_rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
   new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
-  new ButtonBuilder().setCustomId("fish:sell_qty").setLabel("수량 판매").setStyle(ButtonStyle.Secondary),
   new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
 );
     await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
@@ -3095,10 +3094,9 @@ if (id === "fish:sell_all") {
     components: []
   });
 }
-   if (id === "fish:sell_cancel" || id === "sell:cancel") {
-   sellSessions.delete(userId);
-   return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[] });
- }
+    if (id === "fish:sell_cancel" || id === "sell:cancel") {
+      return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[] });
+    }
     if (id === "fish:sell_select") {
       const fishes = u.inv.fishes||[];
       const opts = fishes.slice(0,25).map((f,i)=>({
