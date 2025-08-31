@@ -2524,7 +2524,10 @@ u.aquarium.push({
         return interaction.showModal(modal);
       }
 
-      if (interaction.customId === "sell-rarity-choose") {
+      if (
+  interaction.isStringSelectMenu() &&
+  (interaction.customId === "sell:rarity-choose" || interaction.customId === "sell-rarity-choose")
+) {
   const rarity = interaction.values[0];
   const fishes = u.inv.fishes || [];
   const list = fishes.filter(f => f.r === rarity && !f.lock);
@@ -2535,7 +2538,7 @@ u.aquarium.push({
     .setDescription(list.length
       ? list.slice(0, 10).map(f => `• ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
       : "_판매할 물고기가 없습니다._")
-    .addFields({ name: "합계", value: `${total.toLocaleString()} 코인` })
+    .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
     .setColor(0xffaa44);
 
   const row = new ActionRowBuilder().addComponents(
@@ -2547,6 +2550,7 @@ u.aquarium.push({
 
   return interaction.update({ embeds:[eb], components:[row] });
 }
+
 
 
       if (interaction.customId === "dex:select") {
@@ -3117,7 +3121,7 @@ if (id === "fish:sell_rarity") {
   if (rarities.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
 
   const menu = new StringSelectMenuBuilder()
-    .setCustomId("sell-rarity-choose")
+    .setCustomId("sell:rarity-choose")
     .setPlaceholder("판매할 등급 선택")
     .addOptions(rarities.map(r=>({ label:r, value:r })));
 
@@ -3131,7 +3135,10 @@ if (id === "fish:sell_rarity") {
   });
 }
       
-if (interaction.customId === "sell-rarity-choose") {
+if (
+  interaction.isStringSelectMenu() &&
+  (interaction.customId === "sell:rarity-choose" || interaction.customId === "sell-rarity-choose")
+) {
   const rarity = interaction.values[0];
   const fishes = u.inv.fishes || [];
   const list = fishes.filter(f => f.r === rarity && !f.lock);
@@ -3142,7 +3149,7 @@ if (interaction.customId === "sell-rarity-choose") {
     .setDescription(list.length
       ? list.slice(0, 10).map(f => `• ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
       : "_판매할 물고기가 없습니다._")
-    .addFields({ name: "합계", value: `${total.toLocaleString()} 코인` })
+    .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
     .setColor(0xffaa44);
 
   const row = new ActionRowBuilder().addComponents(
@@ -3154,6 +3161,7 @@ if (interaction.customId === "sell-rarity-choose") {
 
   return interaction.update({ embeds:[eb], components:[row] });
 }
+
       
     if (id === "sell:confirm_selected") {
       const st = sellSessions.get(userId) || {};
