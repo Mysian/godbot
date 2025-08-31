@@ -66,6 +66,69 @@ const GEAR_COLOR = {
 };
 const gearColorOf = (name) => GEAR_COLOR[name] ?? 0x88ddff;
 
+// === 등급 예측 메시지 ===
+const RARITY_HINT_LINES = {
+  "노말":   ["흔한", "익숙한"],
+  "레어":   ["엥간한", "쓸만한"],
+  "유니크": ["제법 괜찮은", "적당한"],
+  "레전드": ["야무진", "범상치 않은"],
+  "에픽":   ["까리한", "상당한"],
+  "언노운": ["이건 말이 안됩니다.", "이건 잡기 어려울 것 같습니다."]
+};
+
+function rarityCountsOf(u){
+  const counts = Object.fromEntries(RARITY.map(r=>[r,0]));
+  const sc = u?.stats?.speciesCount || {};
+  for (const [name, c] of Object.entries(sc)) {
+    const rar = RARITY_OF?.[name];
+    if (rar) counts[rar] = (counts[rar]||0) + (c||0);
+  }
+  return counts;
+}
+
+function pickAdjacentRarity(r){
+  const i = RARITY.indexOf(r);
+  if (i <= 0) return RARITY[1] || r;
+  if (i >= RARITY.length-1) return RARITY[RARITY.length-2] || r;
+  return Math.random() < 0.5 ? RARITY[i-1] : RARITY[i+1];
+}
+
+/**
+ * 입질 시 등급 어림짐작 (가끔만 뜸)
+ * - 발동확률: floor(해당 등급 누적/10) * 0.5% (최대 80%)
+ * - 오차율: 브론즈 50%에서 티어 단계당 -5% (챌린저 15%)
+ * - 틀리면 인접 등급으로 빗나감
+ */
+function maybeRarityHint(u, target){
+  try {
+    if (!u || !target || target.kind !== "fish") return null;
+
+    const counts = rarityCountsOf(u);
+    const caughtCnt = counts[target.rarity] || 0;
+
+    const pPredict = Math.min(0.8, 0.005 * Math.floor(caughtCnt / 10)); // 0~0.8
+    if (Math.random() >= pPredict) return null;
+
+    const tierIdx = Math.max(0, TIER_ORDER.indexOf(u.tier || "브론즈")); // 0~7
+    const errorRate = Math.max(0, 0.50 - 0.05 * tierIdx); // 50% → 15%
+
+    const correct = Math.random() >= errorRate;
+    const guess = correct ? target.rarity : pickAdjacentRarity(target.rarity);
+
+    const pool = RARITY_HINT_LINES[guess] || [];
+    if (guess === "언노운") {
+      const line = pool[Math.floor(Math.random()*pool.length)] || "이건 잡기 어려울 것 같습니다.";
+      return `${line} 릴을 감거나 풀며 상황을 살펴보세요.`;
+    } else {
+      const adj  = pool[Math.floor(Math.random()*pool.length)] || "정체를 알 수 없는";
+      return `${adj} 무언가가 걸린 듯한 기분입니다. 릴을 감거나 풀며 상황을 살펴보세요.`;
+    }
+  } catch {
+    return null;
+  }
+}
+
+
 // --- 시간대 보정 ---
 const TIME_BUFFS = {
   "낮":   { biteSpeed: -2, dmg: 0, resistReduce: 0, rarityBias: 0 },
@@ -2695,11 +2758,14 @@ if (id === "fish:share") {
       s.safeEdit({ content: "너무 오래 끌어 대상이 빠져나갔습니다.", embeds: [], components: [] }).catch(() => {});
     }, FIGHT_TOTAL_TIMEOUT * 1000);
 
-    const eb = new EmbedBuilder()
-      .setTitle("🐟 입질!")
-      .setDescription("정체를 알 수 없는 무언가가 걸렸습니다.\n릴을 감거나 풀며 상황을 살펴보세요.")
-      .setColor(0x44ddaa)
-      .setImage(s.sceneBiteURL);
+const hint = maybeRarityHint(u, s.target);
+const desc = hint || "정체를 알 수 없는 무언가가 걸렸습니다.\n릴을 감거나 풀며 상황을 살펴보세요.";
+
+const eb = new EmbedBuilder()
+  .setTitle("🐟 입질!")
+  .setDescription(desc)
+  .setColor(0x44ddaa)
+  .setImage(s.sceneBiteURL);
 
     try { await s.safeEdit({ embeds: [eb], components: [buttonsFight()] }); } catch {}
   }, waitSec * 1000);
