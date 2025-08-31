@@ -1878,25 +1878,32 @@ async function giveReward(u, db, reward){
   }
 }
 
-async function checkRewards(u, interaction){
+async function checkRewards(u, db, interaction){
   const embeds=[];
 
-  if (REWARDS_TIER[u.tier] && !u.rewards.tier[u.tier]) {
-    const rewards = REWARDS_TIER[u.tier];
-    const lines = rewards.map(r => `• ${rewardText(u, r)}`);
-    u.rewards.tier[u.tier] = true;
-    for (const r of rewards) await giveReward(u, db, r);
-    {
-      const eb = new EmbedBuilder()
-        .setTitle("🏅 티어 보상")
-        .setDescription([`달성: **${u.tier}**`, "", ...lines].join("\n"))
-        .setColor(0x55ff55);
-      const tierIcon = getIconURL(u.tier);
-      if (tierIcon) eb.setThumbnail(tierIcon);
-      embeds.push(eb);
+  // ✅ 티어 점프 대비: 현재 "포인트" 기준으로 달성 가능한 모든 티어를 순회하며 미수령 보상 지급
+  for (const t of TIER_ORDER) {
+    if ((u.stats.points||0) >= TIER_CUTOFF[t]) {
+      if (REWARDS_TIER[t] && !u.rewards.tier[t]) {
+        const rewards = REWARDS_TIER[t];
+        const lines = rewards.map(r => `• ${rewardText(u, r)}`);
+        u.rewards.tier[t] = true;
+        for (const r of rewards) await giveReward(u, db, r);
+
+        const eb = new EmbedBuilder()
+          .setTitle("🏅 티어 보상")
+          .setDescription([`달성: **${t}**`, "", ...lines].join("\n"))
+          .setColor(0x55ff55);
+        const tierIcon = getIconURL(t);
+        if (tierIcon) eb.setThumbnail(tierIcon);
+        embeds.push(eb);
+      }
+    } else {
+      break;
     }
   }
 
+  // 누적 어획 보상
   const caughtKeys = Object.keys(REWARDS_CAUGHT).map(Number).sort((a,b)=>a-b);
   for (const th of caughtKeys) {
     if ((u.stats.caught||0) >= th && !u.rewards.caught[th]) {
@@ -1904,15 +1911,14 @@ async function checkRewards(u, interaction){
       const lines = rewards.map(r => `• ${rewardText(u, r)}`);
       u.rewards.caught[th] = true;
       for (const r of rewards) await giveReward(u, db, r);
-      embeds.push(
-        new EmbedBuilder()
-          .setTitle("🎣 누적 어획 보상")
-          .setDescription([`달성: **${th.toLocaleString()}마리**`, "", ...lines].join("\n"))
-          .setColor(0x55aaee)
-      );
+      embeds.push(new EmbedBuilder()
+        .setTitle("🎣 누적 어획 보상")
+        .setDescription([`달성: **${th.toLocaleString()}마리**`, "", ...lines].join("\n"))
+        .setColor(0x55aaee));
     }
   }
 
+  // 사이즈(최대 길이) 보상
   const sizeKeys = Object.keys(REWARDS_SIZE).map(Number).sort((a,b)=>a-b);
   for (const th of sizeKeys) {
     if ((u.stats.max?.length||0) >= th && !u.rewards.size[th]) {
@@ -1920,12 +1926,10 @@ async function checkRewards(u, interaction){
       const lines = rewards.map(r => `• ${rewardText(u, r)}`);
       u.rewards.size[th] = true;
       for (const r of rewards) await giveReward(u, db, r);
-      embeds.push(
-        new EmbedBuilder()
-          .setTitle("📏 기록 갱신 보상")
-          .setDescription([`달성: **${Math.round(th)}cm**`, "", ...lines].join("\n"))
-          .setColor(0xaa77ff)
-      );
+      embeds.push(new EmbedBuilder()
+        .setTitle("📏 기록 갱신 보상")
+        .setDescription([`달성: **${Math.round(th)}cm**`, "", ...lines].join("\n"))
+        .setColor(0xaa77ff));
     }
   }
 
@@ -1934,7 +1938,8 @@ async function checkRewards(u, interaction){
   }
 }
 
-async function checkSpeciesRewards(u, fishName) {
+
+async function checkSpeciesRewards(u, db, fishName) {
   u.rewards.species ??= {};
   const rarity = RARITY_OF[fishName];
   if (!rarity) return null;
@@ -1956,7 +1961,7 @@ async function checkSpeciesRewards(u, fishName) {
     .setColor(0x5bd7a5)
     .setThumbnail(getIconURL(fishName) || null);
 
-  return eb; // ★ 여기서 임베드 반환
+  return eb;
 }
 
 function rankButtons(mode){
@@ -2885,7 +2890,7 @@ const eb = sceneEmbed(
           // ★ 종별(첫 조우/누적) 보상 임베드 함께 붙이기
           let speciesEb = null;
           try {
-            speciesEb = await checkSpeciesRewards(u, st.name); // interaction 인자 제거
+            speciesEb = await checkSpeciesRewards(u, db, st.name);
           } catch (err) {
             console.error("[낚시 종별 보상 임베드 생성 오류]", err, st.name);
           }
@@ -2902,7 +2907,7 @@ const eb = sceneEmbed(
           }
 
           try {
-            await checkRewards(u, interaction); // 누적/티어/사이즈 보상은 followUp(ephemeral)
+            await checkRewards(u, db, interaction);
           } catch (err) {
             console.error('[낚시 보상 처리 오류]', err, st.name);
             if (!interaction.replied && !interaction.deferred) {
