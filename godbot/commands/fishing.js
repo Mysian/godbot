@@ -2146,34 +2146,36 @@ async function execute(interaction) {
   }
 
   if (sub === "판매") {
-  return await withDB(async db=>{
+  return await withDB(async db => {
     const u = (db.users[userId] ||= {}); ensureUser(u);
-    const fishes = u.inv.fishes||[];
-    const totalValue = fishes.reduce((sum, f) => sum + (f.price||0), 0);
-    const eb = new EmbedBuilder().setTitle("💰 물고기 판매")
+
+    const sellable = (u.inv.fishes || []).filter(f => !f.lock);
+    const totalValue = sellable.reduce((sum, f) => sum + (f.price || 0), 0);
+
+    const eb = new EmbedBuilder()
+      .setTitle("💰 물고기 판매")
       .setDescription([
-        `보유 물고기: ${fishes.length}마리`,
-        "원하시는 방식으로 판매해 주세요."
+        `보유 물고기: ${u.inv.fishes.length}마리`,
+        `🔒 잠금된 물고기는 모든 판매에서 자동 제외돼.`
       ].join("\n"))
-      .addFields({ name:"전체 판매 예상 금액", value:`${totalValue.toLocaleString()} 코인`, inline:false })
+      .addFields({
+        name: "전체 판매 예상 금액(잠금 제외)",
+        value: `${totalValue.toLocaleString()} 코인`,
+        inline: false
+      })
       .setColor(0xffaa44);
-    const sellable = (u.inv.fishes||[]).filter(f=>!f.lock);
-const totalValue = sellable.reduce((sum,f)=>sum+(f.price||0),0);
 
-const eb = new EmbedBuilder().setTitle("💰 물고기 판매")
-  .setDescription([
-    `보유 물고기: ${u.inv.fishes.length}마리`,
-    `🔒 잠금된 물고기는 모든 판매에서 자동 제외돼.`
-  ].join("\n"))
-  .addFields({ name:"전체 판매 예상 금액(잠금 제외)", value:`${totalValue.toLocaleString()} 코인`, inline:false })
-  .setColor(0xffaa44);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("sell:all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(sellable.length === 0),
+      new ButtonBuilder().setCustomId("sell:rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(sellable.length === 0),
+      new ButtonBuilder().setCustomId("sell:select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(sellable.length === 0),
+      new ButtonBuilder().setCustomId("sell:cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+    );
 
-const row = new ActionRowBuilder().addComponents(
-  new ButtonBuilder().setCustomId("sell:all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(sellable.length===0),
-  new ButtonBuilder().setCustomId("sell:rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(sellable.length===0),
-  new ButtonBuilder().setCustomId("sell:select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(sellable.length===0),
-  new ButtonBuilder().setCustomId("sell:cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
-);
+    await interaction.reply({ embeds: [eb], components: [row], ephemeral: true });
+  });
+}
+
 
 await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
 
@@ -2497,35 +2499,52 @@ if (interaction.isStringSelectMenu()) {
   }
 }
 
-// ===== [판매] 등급 확정 버튼 (버튼 분기 아래쪽에 둬도 됨) =====
+// ===== [판매] 등급 확정 버튼 =====
 if (interaction.isButton() && id.startsWith("sell:confirm_rarity|")) {
   const rarity = id.split("|")[1];
   const fishes = u.inv.fishes || [];
-  const sellIdx = [];
-  let total = 0;
-  fishes.forEach((f, i) => {
-    if (!f.lock && f.r === rarity) { sellIdx.push(i); total += (f.price||0); }
-  });
-  if (!sellIdx.length) {
-    return interaction.update({ content:"판매할 대상이 없어.", embeds:[], components:[] });
+
+  // pick unlocked of the chosen rarity
+  const toSell = fishes
+    .map((f, i) => ({ f, i }))
+    .filter(x => !x.f.lock && x.f.r === rarity);
+
+  if (!toSell.length) {
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`🧾 [${rarity}] 등급: 판매할 물고기가 없습니다`)
+          .setColor(0xffaa44)
+      ],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("sell:back").setLabel("↩ 돌아가기").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sell:cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+      )]
+    });
   }
-  // 큰 인덱스부터 삭제
-  sellIdx.sort((a,b)=>b-a).forEach(i=>fishes.splice(i,1));
+
+  const total = toSell.reduce((s, x) => s + (x.f.price || 0), 0);
+
+  // remove in descending index order
+  toSell.sort((a, b) => b.i - a.i).forEach(x => fishes.splice(x.i, 1));
+
+  // award coins (fires coin_gained quest progress)
   gainCoins(u, db, total);
 
   return interaction.update({
-    embeds:[
+    embeds: [
       new EmbedBuilder()
         .setTitle(`✅ [${rarity}] 등급 판매 완료`)
-        .setDescription(`총 ${sellIdx.length}마리, ${total.toLocaleString()} 코인을 획득했어.`)
+        .setDescription(`총 ${toSell.length}마리, ${total.toLocaleString()} 코인을 획득했어.`)
         .setColor(0x43d17b)
     ],
-    components:[ new ActionRowBuilder().addComponents(
+    components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("sell:back").setLabel("↩ 돌아가기").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("sell:cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
-    ) ]
+    )]
   });
 }
+
 
       // === [수족관] 컴포넌트 처리 (component() try 내부) ===
 if (id.startsWith("aqua:") && interaction.isButton()) {
