@@ -1520,7 +1520,7 @@ function renderDexList(u, st){
   const eb = new EmbedBuilder()
     .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
     .setDescription(lines.join("\n") || "_표시할 항목이 없습니다._")
-    .setColor(0x66ccff);
+    .setColor(colorOf(st.rarity));
 
   const components = [...dexRarityRows(st.rarity)];
   if (slice.length) {
@@ -1540,7 +1540,11 @@ function renderDexDetail(u, st, name){
   const total = all.length;
   const got = all.filter(n=>caught.has(n)).length;
   if (!caught.has(name)) {
-    const eb = new EmbedBuilder().setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`).setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.").setColor(0x999999);
+    const eb = new EmbedBuilder()
+      .setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`)
+      .setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.")
+      .setColor(colorOf("언노운")) 
+      .setImage(getIconURL("unknown") || null);
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
     return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
   } else {
@@ -1552,7 +1556,8 @@ const starName = withStarName(name, rec.length || 0);
 const eb = new EmbedBuilder()
   .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
   .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
-  .setColor(0x44ddaa).setImage(getIconURL(name)||null);
+  .setColor(colorOf(st.rarity)) 
+  .setImage(getIconURL(name) || null);
 
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
     return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
@@ -1860,7 +1865,7 @@ async function execute(interaction) {
           "• 낚싯대, 찌: 구매 시 내구도 최대치로 제공됩니다.",
           "• 미끼: 20개 묶음이며, 보유 수량이 20 미만이면 부족분만 비례 결제합니다."
         ].join("\n"))
-        .setColor(gearColorOf(name))
+        .setColor(0x55cc77)
         .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
