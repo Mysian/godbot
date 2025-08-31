@@ -1695,10 +1695,28 @@ function buildAquariumHome(u){
 
 function buildAquariumView(u, idx){
   const a = u.aquarium[idx];
-  if (!a) return { content:"빈 슬롯이야.", embeds:[], components:[] };
+  if (!a) {
+    const eb = new EmbedBuilder()
+      .setTitle(`🕳️ 빈 슬롯 #${idx+1}`)
+      .setDescription([
+        "여긴 아직 비었어.",
+        "인벤토리에서 물고기를 선택해 수족관에 넣어줘!"
+      ].join("\n"))
+      .setColor(0x77ddaa);
+
+    const rows = [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("aqua:add").setLabel("➕ 수족관에 넣기").setStyle(ButtonStyle.Success)
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 수족관 홈").setStyle(ButtonStyle.Secondary)
+      )
+    ];
+
+    return { embeds:[eb], components: rows };
+  }
 
   resetFeedIfNewDay(a);
-
   const name = withStarName(a.n, a.l);
   const need = xpNeed(a.lv);
   const cur = Math.min(a.xp, need);
@@ -1706,7 +1724,7 @@ function buildAquariumView(u, idx){
 
   const eb = new EmbedBuilder()
     .setTitle(`🐟 ${name}`)
-    .setThumbnail(getIconURL(a.n)) // 기존 이미지 규칙 사용
+    .setThumbnail(getIconURL(a.n))
     .setColor(0x44cc99)
     .addFields(
       { name:"등급/크기", value:`${a.r} / ${a.l}cm`, inline:true },
@@ -1727,6 +1745,7 @@ function buildAquariumView(u, idx){
   ];
   return { embeds:[eb], components: rows };
 }
+
 
 
 function rewardText(u, r) {
@@ -2288,8 +2307,18 @@ if (id.startsWith("aqua:") && interaction.isButton()) {
     if (!a) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
 
     const price = valueWithLevel(a.base, a.lv);
-    u.inv.fishes.push({ n:a.n, r:a.r, l:a.l, price, lock:false });
-    u.aquarium.splice(idx, 1);
+const back = {
+  n: a.n,
+  r: a.r,
+  l: a.l,
+  price,         // 현재 레벨이 반영된 표시/판매가
+  lock: false,
+  alv: a.lv,     // 수족관 레벨 저장
+  axp: a.xp,     // 수족관 경험치 저장
+  abase: a.base  // 원가(배율의 기준값) 저장 → 중첩 방지 핵심
+};
+u.inv.fishes.push(back);
+u.aquarium.splice(idx, 1);
 
     return edit({ content:`${withStarName(a.n, a.l)}(Lv.${a.lv})를 인벤토리로 돌려보냈어.`, ...(buildAquariumHome(u)) });
   }
@@ -2338,7 +2367,18 @@ if (interaction.isStringSelectMenu()) {
     if (!f) return edit({ content:"선택한 물고기를 찾지 못했어.", embeds:[], components:[] });
 
     (u.inv.fishes||[]).splice(idx,1);
-    u.aquarium.push({ n:f.n, r:f.r, l:f.l, base:f.price, lv:1, xp:0, feedKey:dailyKeyKST(), feedCount:0, lastPraiseAt:0 });
+const base = (f.abase ?? f.price) || 0; // 메타가 있으면 abase(원가), 없으면 현재표시가를 최초 기준으로
+const lv   = f.alv ?? 1;
+const xp   = f.axp ?? 0;
+
+u.aquarium.push({
+  n: f.n, r: f.r, l: f.l,
+  base, lv, xp,
+  feedKey: dailyKeyKST(),
+  feedCount: 0,
+  lastPraiseAt: 0
+});
+
 
     return edit({ content:`${withStarName(f.n,f.l)}가 수족관에 입장!`, ...(buildAquariumHome(u)) });
   }
