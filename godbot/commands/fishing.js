@@ -3298,12 +3298,6 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
   return interaction.editReply({ ...payload });
 }
 
-  } finally {
-      delete u._uid; 
-    }
-  });
-}
-
 // === [수족관] 컴포넌트 처리 ===
 if (id.startsWith("aqua:")) {
   await interaction.deferUpdate();
@@ -3347,6 +3341,12 @@ if (id.startsWith("aqua:")) {
         ) ]
       });
     }
+
+    } finally {
+  delete u._uid;
+}
+});
+}
 
     if (cmd === "view") {
       const idx = Number(p1);
