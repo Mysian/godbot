@@ -803,7 +803,7 @@ function q_coin_spend(min, max, tier){ // 낚시 코인 소비 누적
     id: `coin_spend|${target}|${tier}`,
     type: "coin_spend", target,
     title: `낚시 코인 ${target.toLocaleString()}개 소비`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 300000, be: 50000 }
+    reward: tier==="daily" ? { coin: 15000 } : { coin: 150000, be: 100000 }
   };
 }
 function q_timeband(each, tier){
@@ -812,14 +812,14 @@ function q_timeband(each, tier){
     id: `timeband|${each}|${tier}`,
     type: "timeband", target: t,
     title: `시간대별(낮/노을/밤) 각 ${each}회 낚시 성공`,
-    reward: tier==="daily" ? { coin: 12000 } : { coin: 200000, bait: ["새우 미끼",20] }
+    reward: tier==="daily" ? { coin: 12000 } : { coin: 100000, bait: ["새우 미끼",20] }
   };
 }
 function q_junk(n, tier){
   return {
     id:`junk_collect|${n}|${tier}`, type:"junk_collect", target:n,
     title:`잡동사니 ${n}개 획득`,
-    reward: tier==="daily" ? { coin: 8000 } : { coin: 150000 }
+    reward: tier==="daily" ? { coin: 8000 } : { coin: 100000 }
   };
 }
 function q_seq(seq, times, tier){
@@ -827,63 +827,63 @@ function q_seq(seq, times, tier){
   return {
     id:`seq|${key}|${times}|${tier}`, type:"rarity_seq", seq, times,
     title:`${seq.join(" → ")} 순서로 획득 ${times}회`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 300000, be: 30000 }
+    reward: tier==="daily" ? { coin: 15000 } : { coin: 150000, be: 100000 }
   };
 }
 function q_specific(species, n, tier){
   return {
     id:`catch_specific|${species}|${n}|${tier}`, type:"catch_specific", species, target:n,
     title:`'${species}' ${n}마리 잡기`,
-    reward: tier==="daily" ? { coin: 14000 } : { coin: 250000, be: 30000 }
+    reward: tier==="daily" ? { coin: 14000 } : { coin: 100000, be: 90000 }
   };
 }
 function q_dur(n, tier){
   return {
     id:`dur_use|${n}|${tier}`, type:"durability", target:n,
     title:`아이템 내구도 ${n}회 소모시키기`,
-    reward: tier==="daily" ? { coin: 10000 } : { coin: 200000 }
+    reward: tier==="daily" ? { coin: 10000 } : { coin: 100000 }
   };
 }
 function q_bait(n, tier){
   return {
     id:`bait_use|${n}|${tier}`, type:"bait", target:n,
     title:`미끼 ${n}개 소비`,
-    reward: tier==="daily" ? { bait:["지렁이 미끼",20] } : { bait:["빛나는 젤리 미끼",20], coin: 100000 }
+    reward: tier==="daily" ? { bait:["지렁이 미끼",20] } : { bait:["빛나는 젤리 미끼",20], coin: 60000 }
   };
 }
 function q_woodCopperUnique(n, tier){ // 주간 전용
   return {
     id:`wood_copper_unique|${n}|${tier}`, type:"gear_unique", target:n,
     title:`나무 낚싯대 + 동 찌로 유니크 물고기 ${n}마리`,
-    reward: { coin: 300000, be: 50000 }
+    reward: { coin: 150000, be: 100000 }
   };
 }
 function q_junkStreak(times, tier){
   return {
     id:`junk_streak3|${times}|${tier}`, type:"junk_streak3", target:times,
     title:`잡동사니 연속 3회 획득 ${times}회`,
-    reward: tier==="daily" ? { coin: 12000 } : { coin: 180000 }
+    reward: tier==="daily" ? { coin: 12000 } : { coin: 90000 }
   };
 }
 function q_sameRarityStreak(times, tier){
   return {
     id:`same_rarity3|${times}|${tier}`, type:"same_rarity3", target:times,
     title:`동일 등급 물고기 연속 3회 획득 ${times}회`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 250000 }
+    reward: tier==="daily" ? { coin: 15000 } : { coin: 100000 }
   };
 }
 function q_rarityAtLeast(minRarity, n, tier){
   return {
     id:`rarity_atleast|${minRarity}|${n}|${tier}`, type:"rarity_atleast", min:minRarity, target:n,
     title:`${minRarity} 이상 물고기 ${n}마리`,
-    reward: tier==="daily" ? { coin: 14000 } : { coin: 240000 }
+    reward: tier==="daily" ? { coin: 14000 } : { coin: 140000 }
   };
 }
 function q_chestOpen(n, tier){
   return {
     id:`chest_open|${n}|${tier}`, type:"chest_open", target:n,
     title:`까리한 보물상자 ${n}회 열기`,
-    reward: tier==="daily" ? { coin: 10000 } : { coin: 200000 }
+    reward: tier==="daily" ? { coin: 10000 } : { coin: 50000 }
   };
 }
 function q_coinGain(min,max,tier){
@@ -891,14 +891,14 @@ function q_coinGain(min,max,tier){
   return {
     id:`coin_gain|${target}|${tier}`, type:"coin_gain", target,
     title:`낚시 코인 ${target.toLocaleString()}개 획득`,
-    reward: tier==="daily" ? { coin: 12000 } : { coin: 180000 }
+    reward: tier==="daily" ? { coin: 9000 } : { coin: 40000 }
   };
 }
 function q_newSpecies(n,tier){
   return {
     id:`new_species|${n}|${tier}`, type:"new_species", target:n,
     title:`도감에 신규 종 ${n}종 추가(첫 포획)`,
-    reward: tier==="daily" ? { coin: 15000 } : { coin: 250000 }
+    reward: tier==="daily" ? { coin: 15000 } : { coin: 200000 }
   };
 }
 
