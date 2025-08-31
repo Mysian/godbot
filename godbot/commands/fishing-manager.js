@@ -35,12 +35,12 @@ const BAIT_SPECS = {
 };
 
 function readDB() {
-  if (!fs.existsSync(FISH_DB)) return { users:{} };
-  try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{} }; }
+  if (!fs.existsSync(FISH_DB)) return { users:{}, config:{} };
+  try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{}, config:{} }; }
 }
 function writeDB(d) { fs.writeFileSync(FISH_DB, JSON.stringify(d, null, 2)); }
 async function withDB(fn) {
-  if (!fs.existsSync(FISH_DB)) fs.writeFileSync(FISH_DB, JSON.stringify({ users:{} }, null, 2));
+  if (!fs.existsSync(FISH_DB)) fs.writeFileSync(FISH_DB, JSON.stringify({ users:{}, config:{} }, null, 2));
   const rel = await lockfile.lock(FISH_DB, { retries: { retries: 10, factor: 1.2, minTimeout: 50, maxTimeout: 250 } });
   try {
     const d = readDB();
@@ -78,8 +78,18 @@ function ensureUser(u) {
   u.quests.progress ??= {};
   u.quests.claimed  ??= {};
   u.quests.temp ??= { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
+  u.quests.daily ??= [];
+  u.quests.weekly ??= [];
   u.settings ??= {};
   u.settings.autoBuy ??= false;
+}
+
+function ensureConfig(db) {
+  db.config ??= {};
+  db.config.quest ??= {};
+  db.config.quest.countDaily ??= 4;
+  db.config.quest.countWeekly ??= 3;
+  db.config.quest.rewardMul ??= { dailyCoins:100, weeklyCoins:100, dailyBE:100, weeklyBE:100 };
 }
 
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
@@ -116,6 +126,44 @@ function invSummary(u) {
     `🟠 보유 찌: ${floatList.length?floatList.join(", "):"없음"}`,
     `🪱 보유 미끼: ${baitList.length?baitList.join(", "):"없음"}`
   ].join("\n");
+}
+
+function clearQuestType(u, kind) {
+  if (kind === "daily" || kind === "both") {
+    u.quests.daily = [];
+    for (const k of Object.keys(u.quests.progress||{})) if (k.startsWith("daily:")) delete u.quests.progress[k];
+    for (const k of Object.keys(u.quests.claimed||{})) if (k.startsWith("daily:")) delete u.quests.claimed[k];
+  }
+  if (kind === "weekly" || kind === "both") {
+    u.quests.weekly = [];
+    for (const k of Object.keys(u.quests.progress||{})) if (k.startsWith("weekly:")) delete u.quests.progress[k];
+    for (const k of Object.keys(u.quests.claimed||{})) if (k.startsWith("weekly:")) delete u.quests.claimed[k];
+  }
+  u.quests.temp = { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
+}
+
+function trimQuestType(u, kind, keep) {
+  if (keep < 0) keep = 0;
+  if (kind === "daily") {
+    const before = Array.isArray(u.quests.daily)?u.quests.daily:[];
+    const keepIds = before.slice(0, keep);
+    const removed = before.slice(keep);
+    u.quests.daily = keepIds;
+    for (const id of removed) {
+      if (u.quests.progress && id in u.quests.progress) delete u.quests.progress[id];
+      if (u.quests.claimed && id in u.quests.claimed) delete u.quests.claimed[id];
+    }
+  }
+  if (kind === "weekly") {
+    const before = Array.isArray(u.quests.weekly)?u.quests.weekly:[];
+    const keepIds = before.slice(0, keep);
+    const removed = before.slice(keep);
+    u.quests.weekly = keepIds;
+    for (const id of removed) {
+      if (u.quests.progress && id in u.quests.progress) delete u.quests.progress[id];
+      if (u.quests.claimed && id in u.quests.claimed) delete u.quests.claimed[id];
+    }
+  }
 }
 
 const rodChoices = RODS.map(n=>({ name:n, value:n })).slice(0,25);
@@ -170,7 +218,28 @@ const data = new SlashCommandBuilder().setName("낚시관리").setDescription("�
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
     .addBooleanOption(o=>o.setName("상태").setDescription("ON/OFF").setRequired(true)))
   .addSubcommand(s=>s.setName("스타터지급").setDescription("대상 유저에게 스타터 패키지 지급")
-    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)));
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
+  .addSubcommand(s=>s.setName("퀘스트리셋").setDescription("일일/주간 퀘스트 강제 리셋")
+    .addUserOption(o=>o.setName("유저").setDescription("대상(전체 리셋 시 생략)"))
+    .addStringOption(o=>o.setName("종류").setDescription("daily/weekly/both").setRequired(true).addChoices(
+      {name:"일일", value:"daily"},{name:"주간", value:"weekly"},{name:"둘다", value:"both"}))
+    .addBooleanOption(o=>o.setName("전체").setDescription("서버 전체 적용")))
+  .addSubcommand(s=>s.setName("퀘스트트림").setDescription("현재 보유 퀘스트 개수 자르기")
+    .addUserOption(o=>o.setName("유저").setDescription("대상(전체 적용 시 생략)"))
+    .addStringOption(o=>o.setName("종류").setDescription("daily/weekly").setRequired(true).addChoices(
+      {name:"일일", value:"daily"},{name:"주간", value:"weekly"}))
+    .addIntegerOption(o=>o.setName("개수").setDescription("남길 개수").setRequired(true))
+    .addBooleanOption(o=>o.setName("전체").setDescription("서버 전체 적용")))
+  .addSubcommand(s=>s.setName("퀘스트상태").setDescription("대상 유저의 퀘스트 현황 확인")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
+  .addSubcommand(s=>s.setName("퀘스트개수").setDescription("퀘스트 생성 기본 개수 설정")
+    .addIntegerOption(o=>o.setName("일일").setDescription("일일 퀘스트 기본 개수"))
+    .addIntegerOption(o=>o.setName("주간").setDescription("주간 퀘스트 기본 개수")))
+  .addSubcommand(s=>s.setName("퀘스트보상배율").setDescription("일일/주간 보상 배율(%) 설정")
+    .addIntegerOption(o=>o.setName("일일코인").setDescription("일일 코인 배율(%)"))
+    .addIntegerOption(o=>o.setName("주간코인").setDescription("주간 코인 배율(%)"))
+    .addIntegerOption(o=>o.setName("일일정수").setDescription("일일 BE 배율(%)"))
+    .addIntegerOption(o=>o.setName("주간정수").setDescription("주간 BE 배율(%)")));
 
 async function execute(interaction) {
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
@@ -327,20 +396,22 @@ async function execute(interaction) {
     const target = interaction.options.getUser("유저");
     const kind = interaction.options.getString("종류");
     const name = interaction.options.getString("이름");
+    let msg = "";
     await withDB(async db=>{
       const u = (db.users[target.id] ||= {}); ensureUser(u);
       if (kind === "rod") {
         if (!(name in u.inv.rods) || (u.inv.rods[name]||0) <= 0) return interaction.reply({ content:"해당 낚싯대를 보유하고 있지 않거나 내구도가 없습니다.", ephemeral:true });
-        u.equip.rod = name;
+        u.equip.rod = name; msg = "낚싯대";
       } else if (kind === "float") {
         if (!(name in u.inv.floats) || (u.inv.floats[name]||0) <= 0) return interaction.reply({ content:"해당 찌를 보유하고 있지 않거나 내구도가 없습니다.", ephemeral:true });
-        u.equip.float = name;
+        u.equip.float = name; msg = "찌";
       } else if (kind === "bait") {
         if ((u.inv.baits[name]||0) <= 0) return interaction.reply({ content:"해당 미끼를 보유하고 있지 않습니다.", ephemeral:true });
-        u.equip.bait = name;
+        u.equip.bait = name; msg = "미끼";
       }
     });
-    return interaction.reply({ content:`${target.username}의 장비를 '${name}'로 장착했습니다.`, ephemeral:true });
+    if (!msg) msg = "장비";
+    return interaction.reply({ content:`${target.username}의 ${msg}를 '${name}'로 장착했습니다.`, ephemeral:true });
   }
   if (sub === "자동구매") {
     const target = interaction.options.getUser("유저");
@@ -363,6 +434,88 @@ async function execute(interaction) {
       u.equip.bait = "지렁이 미끼";
     });
     return interaction.reply({ content:`${target.username}에게 스타터 패키지를 지급하고 장착까지 완료했습니다.`, ephemeral:true });
+  }
+  if (sub === "퀘스트리셋") {
+    const kind = interaction.options.getString("종류");
+    const all = interaction.options.getBoolean("전체") || false;
+    if (all) {
+      await withDB(async db=>{
+        for (const [,u] of Object.entries(db.users||{})) { ensureUser(u); clearQuestType(u, kind==="both"?"both":kind); }
+      });
+      return interaction.reply({ content:`서버 전체 ${kind==="daily"?"일일":kind==="weekly"?"주간":"일일/주간"} 퀘스트를 리셋했습니다.`, ephemeral:true });
+    } else {
+      const target = interaction.options.getUser("유저");
+      if (!target) return interaction.reply({ content:"대상 유저를 선택하거나 전체 옵션을 사용하세요.", ephemeral:true });
+      await withDB(async db=>{
+        const u = (db.users[target.id] ||= {}); ensureUser(u); clearQuestType(u, kind==="both"?"both":kind);
+      });
+      return interaction.reply({ content:`${target.username}의 ${kind==="daily"?"일일":kind==="weekly"?"주간":"일일/주간"} 퀘스트를 리셋했습니다.`, ephemeral:true });
+    }
+  }
+  if (sub === "퀘스트트림") {
+    const kind = interaction.options.getString("종류");
+    const keep = interaction.options.getInteger("개수");
+    const all = interaction.options.getBoolean("전체") || false;
+    if (all) {
+      let affected = 0;
+      await withDB(async db=>{
+        for (const [,u] of Object.entries(db.users||{})) { ensureUser(u); trimQuestType(u, kind, keep); affected++; }
+      });
+      return interaction.reply({ content:`서버 전체 ${affected}명의 ${kind==="daily"?"일일":"주간"} 퀘스트를 ${keep}개로 정리했습니다.`, ephemeral:true });
+    } else {
+      const target = interaction.options.getUser("유저");
+      if (!target) return interaction.reply({ content:"대상 유저를 선택하거나 전체 옵션을 사용하세요.", ephemeral:true });
+      let before = 0, after = 0;
+      await withDB(async db=>{
+        const u = (db.users[target.id] ||= {}); ensureUser(u);
+        before = kind==="daily" ? (u.quests.daily?.length||0) : (u.quests.weekly?.length||0);
+        trimQuestType(u, kind, keep);
+        after = kind==="daily" ? (u.quests.daily?.length||0) : (u.quests.weekly?.length||0);
+      });
+      return interaction.reply({ content:`${target.username}의 ${kind==="daily"?"일일":"주간"} 퀘스트를 ${before}개 → ${after}개로 정리했습니다.`, ephemeral:true });
+    }
+  }
+  if (sub === "퀘스트상태") {
+    const target = interaction.options.getUser("유저");
+    let snap = null;
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      snap = JSON.parse(JSON.stringify(u.quests||{}));
+    });
+    const dailyList = Array.isArray(snap.daily)?snap.daily:[];
+    const weeklyList = Array.isArray(snap.weekly)?snap.weekly:[];
+    const eb = new EmbedBuilder().setTitle(`🧭 퀘스트 상태 — ${target.username}`)
+      .setColor(0x6a5acd)
+      .addFields(
+        { name:"🗓️ 일일 퀘스트", value: dailyList.length?dailyList.map((id,i)=>`${i+1}. ${id}`).join("\n"):"없음", inline:false },
+        { name:"📅 주간 퀘스트", value: weeklyList.length?weeklyList.map((id,i)=>`${i+1}. ${id}`).join("\n"):"없음", inline:false }
+      );
+    return interaction.reply({ embeds:[eb], ephemeral:true });
+  }
+  if (sub === "퀘스트개수") {
+    const daily = interaction.options.getInteger("일일");
+    const weekly = interaction.options.getInteger("주간");
+    await withDB(async db=>{
+      ensureConfig(db);
+      if (typeof daily === "number" && daily >= 0) db.config.quest.countDaily = daily;
+      if (typeof weekly === "number" && weekly >= 0) db.config.quest.countWeekly = weekly;
+    });
+    return interaction.reply({ content:`퀘스트 기본 개수를 일일 ${daily??"변경없음"}, 주간 ${weekly??"변경없음"}으로 설정했습니다.`, ephemeral:true });
+  }
+  if (sub === "퀘스트보상배율") {
+    const dC = interaction.options.getInteger("일일코인");
+    const wC = interaction.options.getInteger("주간코인");
+    const dB = interaction.options.getInteger("일일정수");
+    const wB = interaction.options.getInteger("주간정수");
+    await withDB(async db=>{
+      ensureConfig(db);
+      const rm = db.config.quest.rewardMul;
+      if (typeof dC === "number" && dC >= 0) rm.dailyCoins = dC;
+      if (typeof wC === "number" && wC >= 0) rm.weeklyCoins = wC;
+      if (typeof dB === "number" && dB >= 0) rm.dailyBE = dB;
+      if (typeof wB === "number" && wB >= 0) rm.weeklyBE = wB;
+    });
+    return interaction.reply({ content:`보상 배율을 적용했습니다. 일일 코인 ${dC??"유지"}%, 주간 코인 ${wC??"유지"}%, 일일 BE ${dB??"유지"}%, 주간 BE ${wB??"유지"}%`, ephemeral:true });
   }
 }
 
