@@ -2476,43 +2476,43 @@ u.aquarium.push({
   }
 }
 
-  if (interaction.isStringSelectMenu()) {
-  const [type] = interaction.customId.split("|");
-  if (type === "sell-select") {
-    const idxs = interaction.values.map(v=>parseInt(v,10)).filter(n=>!isNaN(n));
-    sellSessions.set(userId, { ...(sellSessions.get(userId)||{}), selectIdxs: idxs });
+    if (interaction.isStringSelectMenu()) {
+      const [type] = interaction.customId.split("|");
 
-    const fishes = u.inv.fishes || [];
-    const pick = idxs.map(i=>fishes[i]).filter(Boolean);
-    const total = pick.reduce((s,f)=>s+(f.price||0),0);
+      if (type === "sell-select") {
+  const idxs = interaction.values.map(v=>parseInt(v,10)).filter(n=>!isNaN(n));
+  sellSessions.set(userId, { ...(sellSessions.get(userId)||{}), selectIdxs: idxs });
 
-    const eb = new EmbedBuilder()
-      .setTitle("🧾 선택 판매 미리보기")
-      .setDescription(pick.length
-        ? pick.map(f=>`• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
-        : "_선택되지 않았습니다._")
-      .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
-      .setColor(0xffaa44);
+  const fishes = u.inv.fishes || [];
+  const pick = idxs.map(i=>fishes[i]).filter(Boolean);
+  const total = pick.reduce((s,f)=>s+(f.price||0),0);
 
-    const opts = fishes.slice(0,25).map((f,i)=>({
-      label: `[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
-      value: String(i),
-      default: idxs.includes(i)
-    }));
-    const menu = new StringSelectMenuBuilder().setCustomId("sell-select")
-      .setPlaceholder("판매할 물고기 선택(복수 선택 가능)")
-      .setMinValues(1).setMaxValues(opts.length).addOptions(opts);
+  const eb = new EmbedBuilder()
+    .setTitle("🧾 선택 판매 미리보기")
+    .setDescription(pick.length
+      ? pick.map(f=>`• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
+      : "_선택되지 않았습니다._")
+    .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
+    .setColor(0xffaa44);
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("sell:confirm_selected")
-        .setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length===0),
-      new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
-    );
+  const opts = fishes.slice(0,25).map((f,i)=>({
+    label: `[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
+    value: String(i),
+    default: idxs.includes(i)
+  }));
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("sell-select")
+    .setPlaceholder("판매할 물고기 선택(복수 선택 가능)")
+    .setMinValues(1).setMaxValues(opts.length)
+    .addOptions(opts);
 
-    return interaction.update({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu), row ] });
-  }
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length===0),
+    new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
+  );
+
+  return interaction.update({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu), row ] });
 }
-
 
       if (type === "sell-qty-choose") {
         const species = interaction.values[0];
@@ -2524,7 +2524,7 @@ u.aquarium.push({
         return interaction.showModal(modal);
       }
 
-    if (interaction.customId === "sell-rarity-choose") {
+      if (interaction.customId === "sell-rarity-choose") {
   const rarity = interaction.values[0];
   const fishes = u.inv.fishes || [];
   const list = fishes.filter(f => f.r === rarity && !f.lock);
@@ -2547,7 +2547,6 @@ u.aquarium.push({
 
   return interaction.update({ embeds:[eb], components:[row] });
 }
-
 
 
       if (interaction.customId === "dex:select") {
@@ -3114,52 +3113,23 @@ return interaction.update({
 
     }
 if (id === "fish:sell_rarity") {
-  const fishes = u.inv.fishes || [];
-  const allRar = [...new Set(fishes.map(f => f.r))];
-  if (!allRar.length) {
-    return interaction.reply({ content: "판매할 물고기가 없습니다.", ephemeral: true });
-  }
-
-  const sumBy = (r) => {
-    const list = fishes.filter(f => f.r === r && !f.lock);
-    return { cnt: list.length, total: list.reduce((s, f) => s + (f.price || 0), 0) };
-  };
-
-  const eb = new EmbedBuilder()
-    .setTitle("등급별 판매 선택")
-    .setColor(0xffaa44)
-    .setDescription(allRar.map(r => {
-      const { cnt, total } = sumBy(r);
-      return `• [${r}] ${cnt}마리 / ${total.toLocaleString()}코인`;
-    }).join("\n"));
+  const rarities = [...new Set((u.inv.fishes||[]).map(f=>f.r))];
+  if (rarities.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId("sell-rarity-choose")
     .setPlaceholder("판매할 등급 선택")
-    .addOptions(allRar.map(r => ({ label: r, value: r })));
+    .addOptions(rarities.map(r=>({ label:r, value:r })));
 
-  // 빠른 확정 버튼도 같이 제공 (각 등급별)
-  const rarityButtons = allRar.map(r => {
-    const { cnt } = sumBy(r);
-    return new ButtonBuilder()
-      .setCustomId(`sell:confirm_rarity|${r}`)
-      .setLabel(`[${r}] 판매 (${cnt})`)
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(cnt === 0);
-  });
-
-  const rows = [];
-  rows.push(new ActionRowBuilder().addComponents(menu));
-  // 버튼 5개씩 끊어서 표시
-  if (rarityButtons.length > 0) rows.push(new ActionRowBuilder().addComponents(...rarityButtons.slice(0, 5)));
-  if (rarityButtons.length > 5) rows.push(new ActionRowBuilder().addComponents(...rarityButtons.slice(5)));
-  rows.push(new ActionRowBuilder().addComponents(
+  const back = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("sell:cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
-  ));
+  );
 
-  return interaction.update({ embeds: [eb], components: rows });
+  return interaction.update({
+    embeds:[ new EmbedBuilder().setTitle("등급별 판매 선택").setColor(0xffaa44) ],
+    components:[ new ActionRowBuilder().addComponents(menu), back ]
+  });
 }
-
       
 if (interaction.customId === "sell-rarity-choose") {
   const rarity = interaction.values[0];
