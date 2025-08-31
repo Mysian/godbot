@@ -909,7 +909,7 @@ function genDailyQuests(){
     q_coinGain(30000, 80000, "daily"),
     q_newSpecies(1, "daily"),
   ];
-  // 무작위 5개 추출
+  // 무작위 3개 추출
   return shufflePick(list, 5);
 }
 function genWeeklyQuests(){
@@ -932,7 +932,7 @@ function genWeeklyQuests(){
     q_coinGain(300000, 800000, "weekly"),
     q_newSpecies(3, "weekly"),
   ];
-  return shufflePick(base, 5);
+  return shufflePick(base, 3);
 }
 function shufflePick(arr, k){
   const a = [...arr];
