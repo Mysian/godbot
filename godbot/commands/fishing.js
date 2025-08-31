@@ -2188,12 +2188,12 @@ async function component(interaction) {
       u._uid = userId;
 
       // === [수족관] 컴포넌트 처리 (component() try 내부) ===
-if (id.startsWith("aqua:")) {
+if (id.startsWith("aqua:") && interaction.isButton()) {
   await interaction.deferUpdate();
   const edit = mkSafeEditor(interaction);
 
   ensureAquarium(u);
-  const [ , cmd, p1 ] = id.split("|"); // cmd: home/view/praise/feed/release/add/help
+  const [ , cmd, p1 ] = id.split(/[:|]/); 
 
   // 간단 멘트 (원하면 전역 상수로 빼도 됨)
   const praiseLines = [
