@@ -22,6 +22,8 @@ const dataDir = path.join(__dirname, "../data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const FISH_DB = path.join(dataDir, "fishing.json");
 
+const QUEST_IMAGE_URL = "https://media.discordapp.net/attachments/1407939188548042762/1411499682516963489/Image_fx.jpg?ex=68b4e104&is=68b38f84&hm=a2c480344bda6aa1d005d73c3f79ed27e7af4bff229aa74e88bbd0c256442bc3&=&format=webp";
+
 const FISHING_LIMIT_SECONDS = 120;
 const FIGHT_IDLE_TIMEOUT = 20;
 const FIGHT_TOTAL_TIMEOUT = 90;
@@ -336,6 +338,118 @@ function questRewardText(reward) {
   }
   return `보상: ${parts.join(" + ") || "(없음)"}`;
 }
+
+// 퀘스트 타입별 이모지
+const QUEST_TYPE_EMOJI = {
+  coin_spend:"💸", coin_gain:"💰", timeband:"🕒", junk_collect:"🪣",
+  rarity_seq:"🔀", catch_specific:"🎯", durability:"🛠️", bait:"🪱",
+  gear_unique:"🧪", junk_streak3:"3️⃣🪣", same_rarity3:"3️⃣⭐",
+  rarity_atleast:"⭐", chest_open:"📦", new_species:"🧬"
+};
+
+// 완료·미수령 퀘스트 보상 합산
+function aggregatePendingRewards(u, db){
+  const res = { coin:0, be:0, baits:{}, count:0, ids:[] };
+  for (const q of getActiveQuests(db)) {
+    if (isComplete(u, q) && !u.quests.claimed[q.id]) {
+      res.count++; res.ids.push(q.id);
+      const M = QUEST_REWARD_MULT || 1;
+      const r = q.reward || {};
+      if (r.coin) res.coin += Math.floor(r.coin * M);
+      if (r.be)   res.be   += Math.floor(r.be   * M);
+      if (r.bait) {
+        const [name, baseCnt] = Array.isArray(r.bait) ? r.bait : [r.bait, 20];
+        const qty = Math.max(1, Math.floor((baseCnt || 20) * M));
+        res.baits[name] = (res.baits[name] || 0) + qty;
+      }
+    }
+  }
+  return res;
+}
+function summaryLabelOf(agg){
+  const parts = [];
+  if (agg.coin > 0) parts.push(`낚시코인:${agg.coin.toLocaleString()}`);
+  if (agg.be   > 0) parts.push(`파랑 정수:${agg.be.toLocaleString()}`);
+  const baitKinds = Object.keys(agg.baits);
+  if (baitKinds.length) parts.push(`미끼 x${baitKinds.length}`);
+  return parts.length
+    ? `보상받기 [${parts.join(" & ")}]`
+    : `보상받기 [완료한 퀘스트가 없습니다.]`;
+}
+
+// 퀘스트 임베드/버튼 생성 (단일 수령 버튼)
+function buildQuestEmbed(db, u){
+  ensureQuests(db);
+  const daily = db.quests.daily.list || [];
+  const weekly = db.quests.weekly.list || [];
+
+  const eb = new EmbedBuilder()
+    .setTitle("🎯 낚시 퀘스트")
+    .setDescription([
+      `🗓️ 일일: ${db.quests.daily.key} (리셋 ${nextDailyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
+      `📅 주간: ${db.quests.weekly.key} (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`
+    ].join("\n"))
+    .setColor(0x33c3ff)
+    .setImage(QUEST_IMAGE_URL);
+
+  const addSection = (title, list) => {
+    if (!list.length) {
+      eb.addFields({ name: title, value: "_없음_", inline: false });
+      return;
+    }
+    for (const q of list) {
+      const p = u.quests.progress?.[q.id];
+      const emoji = QUEST_TYPE_EMOJI[q.type] || "•";
+      const status = u.quests.claimed[q.id] ? "수령완료"
+                   : isComplete(u, q)        ? "완료"
+                   : "진행중";
+
+      let value;
+      if (q.type === "timeband") {
+        const cur = p || {};
+        const tgt = q.target || {};
+        value = [
+          `낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
+          questRewardText(q.reward)
+        ].join("\n");
+      } else {
+        const tgt = (q.target ?? q.times ?? 1);
+        const curNum = (typeof p === "number" ? p : 0);
+        value = [
+          `${progressBar(curNum, tgt)} (${fmtProgress(curNum, tgt)})`,
+          questRewardText(q.reward)
+        ].join("\n");
+      }
+
+      eb.addFields({
+        name: `${emoji} ${q.title} — ${status}`,
+        value,
+        inline: false
+      });
+    }
+  };
+
+  addSection("🗓️ 일일 퀘스트", daily);
+  addSection("📅 주간 퀘스트", weekly);
+
+  const agg = aggregatePendingRewards(u, db);
+  const claimBtn = new ButtonBuilder()
+    .setCustomId("quest:claimAll")
+    .setLabel(summaryLabelOf(agg))
+    .setStyle(agg.count ? ButtonStyle.Success : ButtonStyle.Secondary)
+    .setDisabled(!agg.count);
+
+  const refreshBtn = new ButtonBuilder()
+    .setCustomId("quest:refresh")
+    .setLabel("🔄 새로고침")
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [eb],
+    components: [ new ActionRowBuilder().addComponents(claimBtn, refreshBtn) ]
+  };
+}
+
 
 
 
@@ -1654,65 +1768,57 @@ async function execute(interaction) {
   const userId = interaction.user.id;
 
     if (sub === "퀘스트") {
-    return await withDB(async db=>{
-      ensureQuests(db);
-      const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
-
-      const daily = db.quests.daily.list||[];
-      const weekly= db.quests.weekly.list||[];
-
-      const makeLine = (q) => {
-  const p = u.quests.progress?.[q.id];
-  const status = u.quests.claimed[q.id] ? "(수령완료)" : (isComplete(u, q) ? "(완료)" : "");
-
-  if (q.type === "timeband") {
-    const cur = p || {};
-    const tgt = q.target;
-    return [
-      `• ${q.title} ${status}`,
-      `   낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
-      `   ${questRewardText(q.reward)}`
-    ].join("\n");
-  }
-
-  const target = (q.target ?? q.times ?? 1);
-  const curNum = (typeof p === "number" ? p : 0);
-  return [
-    `• ${q.title} ${status}`,
-    `   ${progressBar(curNum, target)} (${fmtProgress(curNum, target)})`,
-    `   ${questRewardText(q.reward)}`
-  ].join("\n");
-};
-
-
-      const dLines = daily.map(makeLine).join("\n");
-      const wLines = weekly.map(makeLine).join("\n");
-
-      const eb = new EmbedBuilder()
-        .setTitle("🎯 낚시 퀘스트")
-        .setDescription([
-          `🗓️ 일일: ${db.quests.daily.key} (리셋 ${nextDailyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
-          dLines || "_일일 퀘스트 없음_",
-          "",
-          `📅 주간: ${db.quests.weekly.key} (리셋 ${nextWeeklyResetKST().toLocaleString("ko-KR",{ timeZone:"Asia/Seoul" })})`,
-          wLines || "_주간 퀘스트 없음_"
-        ].join("\n"))
-        .setColor(0x33c3ff);
-
-      // 완료된 퀘스트만 “보상 받기” 버튼 생성(최대 5개씩)
-      const mkBtn = (id,tier)=> new ButtonBuilder().setCustomId(`quest:claim|${tier}|${id}`).setLabel("보상 받기").setStyle(ButtonStyle.Success);
-      const rows = [];
-      const row1 = new ActionRowBuilder(); let added = 0;
-      for (const q of daily) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (added<5){ row1.addComponents(mkBtn(q.id,"daily")); added++; } }
-      if (added) rows.push(row1);
-      const row2 = new ActionRowBuilder(); added = 0;
-      for (const q of weekly) if (isComplete(u,q) && !u.quests.claimed[q.id]) { if (added<5){ row2.addComponents(mkBtn(q.id,"weekly")); added++; } }
-      if (added) rows.push(row2);
-
+  return await withDB(async db => {
+    ensureQuests(db);
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    u._uid = userId;
+    try {
+      const payload = buildQuestEmbed(db, u);
+      return interaction.reply({ ...payload, ephemeral: true });
+    } finally {
       delete u._uid;
-      return interaction.reply({ embeds:[eb], components: rows, ephemeral: true });
-    });
+    }
+  });
+}
+
+  if (id === "quest:refresh") {
+  const payload = buildQuestEmbed(db, u);
+  return interaction.update({ ...payload });
+}
+
+  if (id === "quest:claimAll") {
+  const agg = aggregatePendingRewards(u, db);
+  if (!agg.count) {
+    return interaction.reply({ content: "완료한 퀘스트가 없습니다.", ephemeral: true });
   }
+
+  // 실제 지급
+  for (const q of getActiveQuests(db)) {
+    if (isComplete(u, q) && !u.quests.claimed[q.id]) {
+      await grantQuestReward(u, db, q.reward);
+      u.quests.claimed[q.id] = true;
+    }
+  }
+
+  // 결과 알림 + 화면 갱신
+  const lines = [];
+  if (agg.coin > 0) lines.push(`• 🪙 코인 ${agg.coin.toLocaleString()}`);
+  if (agg.be   > 0) lines.push(`• 🔷 파랑 정수 ${agg.be.toLocaleString()}원`);
+  for (const [name, qty] of Object.entries(agg.baits)) {
+    lines.push(`• 🪱 ${name} x${qty.toLocaleString()}`);
+  }
+  const doneEb = new EmbedBuilder()
+    .setTitle("🎁 퀘스트 보상 수령")
+    .setDescription([`완료된 퀘스트 ${agg.count}개 보상을 수령했습니다.`, "", ...lines].join("\n"))
+    .setColor(0x55ff88)
+    .setImage(QUEST_IMAGE_URL);
+
+  const payload = buildQuestEmbed(db, u);
+  await interaction.update({ ...payload });           // 메인 퀘스트 화면 갱신
+  return interaction.followUp({ embeds: [doneEb], ephemeral: true }); // 요약은 안내로
+}
+
+
 
 
   if (sub === "낚시터") {
@@ -1994,8 +2100,8 @@ async function component(interaction) {
   await grantQuestReward(u, db, q.reward);
   u.quests.claimed[q.id] = true;
   delete u._uid;
-  const payload = buildQuestPayload(db, u); 
-  return interaction.update({ ...payload });
+  const payload = buildQuestEmbed(db, u);
+return interaction.update({ ...payload });
 }
 
 
