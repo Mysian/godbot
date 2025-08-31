@@ -2476,50 +2476,43 @@ u.aquarium.push({
   }
 }
 
-    if (interaction.isStringSelectMenu()) {
+  if (interaction.isStringSelectMenu()) {
   const [type] = interaction.customId.split("|");
-
   if (type === "sell-select") {
-    await interaction.deferUpdate(); // ACK 먼저
-    const idxs = interaction.values
-      .map(v => parseInt(v, 10))
-      .filter(Number.isInteger);
-
-    sellSessions.set(userId, { ...(sellSessions.get(userId) || {}), selectIdxs: idxs });
+    const idxs = interaction.values.map(v=>parseInt(v,10)).filter(n=>!isNaN(n));
+    sellSessions.set(userId, { ...(sellSessions.get(userId)||{}), selectIdxs: idxs });
 
     const fishes = u.inv.fishes || [];
-    const pick = idxs.map(i => fishes[i]).filter(Boolean);
-    const total = pick.reduce((s, f) => s + (f.price || 0), 0);
+    const pick = idxs.map(i=>fishes[i]).filter(Boolean);
+    const total = pick.reduce((s,f)=>s+(f.price||0),0);
 
     const eb = new EmbedBuilder()
       .setTitle("🧾 선택 판매 미리보기")
       .setDescription(pick.length
-        ? pick.map(f => `• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price || 0).toLocaleString()}코인)`).join("\n")
+        ? pick.map(f=>`• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
         : "_선택되지 않았습니다._")
-      .addFields({ name: "합계", value: `${total.toLocaleString()} 코인` })
+      .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
       .setColor(0xffaa44);
 
-    const opts = fishes.slice(0, 25).map((f, i) => ({
+    const opts = fishes.slice(0,25).map((f,i)=>({
       label: `[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
       value: String(i),
       default: idxs.includes(i)
     }));
-
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("sell-select")
+    const menu = new StringSelectMenuBuilder().setCustomId("sell-select")
       .setPlaceholder("판매할 물고기 선택(복수 선택 가능)")
-      .setMinValues(1)
-      .setMaxValues(Math.max(1, opts.length))
-      .addOptions(opts);
+      .setMinValues(1).setMaxValues(opts.length).addOptions(opts);
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length === 0),
-      new ButtonBuilder().setCustomId("sell:cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("sell:confirm_selected")
+        .setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length===0),
+      new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
     );
 
-    return interaction.editReply({ embeds: [eb], components: [ new ActionRowBuilder().addComponents(menu), row ] });
+    return interaction.update({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu), row ] });
   }
 }
+
 
       if (type === "sell-qty-choose") {
         const species = interaction.values[0];
@@ -2531,7 +2524,7 @@ u.aquarium.push({
         return interaction.showModal(modal);
       }
 
-      if (interaction.customId === "sell-rarity-choose") {
+    if (interaction.customId === "sell-rarity-choose") {
   const rarity = interaction.values[0];
   const fishes = u.inv.fishes || [];
   const list = fishes.filter(f => f.r === rarity && !f.lock);
@@ -2554,6 +2547,7 @@ u.aquarium.push({
 
   return interaction.update({ embeds:[eb], components:[row] });
 }
+
 
 
       if (interaction.customId === "dex:select") {
