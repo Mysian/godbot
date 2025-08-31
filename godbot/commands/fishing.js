@@ -2161,7 +2161,7 @@ async function execute(interaction) {
   new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
   new ButtonBuilder().setCustomId("fish:sell_rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
   new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
-  new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+  new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
 );
     await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
   });
@@ -2507,14 +2507,29 @@ u.aquarium.push({
       }
 
       if (interaction.customId === "sell-rarity-choose") {
-    const rarity = interaction.values[0];
-    const fishes = u.inv.fishes||[];
-    const sellable = fishes.filter(f=>f.r===rarity && !f.lock);
-    const total = sellable.reduce((s,f)=>s+(f.price||0),0);
-    gainCoins(u, db, total);
-    u.inv.fishes = fishes.filter(f=>(f.r!==rarity || f.lock));
-    return interaction.update({ content:`[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`, embeds:[], components:[] });
-  }
+  const rarity = interaction.values[0];
+  const fishes = u.inv.fishes || [];
+  const list = fishes.filter(f => f.r === rarity && !f.lock);
+  const total = list.reduce((s,f)=>s+(f.price||0),0);
+
+  const eb = new EmbedBuilder()
+    .setTitle(`🧾 [${rarity}] 등급 판매 미리보기`)
+    .setDescription(list.length
+      ? list.slice(0, 10).map(f => `• ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
+      : "_판매할 물고기가 없습니다._")
+    .addFields({ name: "합계", value: `${total.toLocaleString()} 코인` })
+    .setColor(0xffaa44);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`sell:confirm_rarity|${rarity}`)
+      .setLabel(`[${rarity}] 판매 확정`).setStyle(ButtonStyle.Success).setDisabled(list.length===0),
+    new ButtonBuilder().setCustomId("sell:cancel")
+      .setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
+  );
+
+  return interaction.update({ embeds:[eb], components:[row] });
+}
+
 
       if (interaction.customId === "dex:select") {
         const name = interaction.values[0];
@@ -3067,7 +3082,17 @@ if (id === "fish:sell_all") {
       }));
       if (opts.length===0) return interaction.reply({ content:"판매할 물고기가 없습니다.", ephemeral:true });
       const menu = new StringSelectMenuBuilder().setCustomId("sell-select").setPlaceholder("판매할 물고기 선택(복수 선택 가능)").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
-      return interaction.update({ embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ], components:[ new ActionRowBuilder().addComponents(menu) ] });
+      const confirmRow = new ActionRowBuilder().addComponents(
+  new ButtonBuilder().setCustomId("sell:confirm_selected")
+    .setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(true),
+  new ButtonBuilder().setCustomId("sell:cancel")
+    .setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
+);
+return interaction.update({
+  embeds:[ new EmbedBuilder().setTitle("🐟 판매할 물고기 선택").setColor(0xffaa44) ],
+  components:[ new ActionRowBuilder().addComponents(menu), confirmRow ]
+});
+
     }
     if (id === "fish:sell_rarity") {
   const rarities = [...new Set((u.inv.fishes||[]).map(f=>f.r))];
@@ -3099,6 +3124,18 @@ if (interaction.customId === "sell-rarity-choose") {
       sellSessions.delete(userId);
       return interaction.update({ content:`선택하신 ${pick.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득하셨습니다.`, embeds:[], components:[] });
     }
+    if (id && id.startsWith("sell:confirm_rarity|")) {
+  const rarity = id.split("|")[1];
+  const fishes = u.inv.fishes || [];
+  const sellable = fishes.filter(f => f.r === rarity && !f.lock);
+  const total = sellable.reduce((s,f)=>s+(f.price||0),0);
+  gainCoins(u, db, total);
+  u.inv.fishes = fishes.filter(f => (f.r !== rarity) || f.lock);
+  return interaction.update({
+    content: `[${rarity}] ${sellable.length}마리를 판매하여 ${total.toLocaleString()} 코인을 획득했습니다.`,
+    embeds:[], components:[]
+  });
+}
     if (id === "fish:sell_qty") {
       const fishes = u.inv.fishes||[];
       const kinds = [...new Set(fishes.map(f=>f.n))];
