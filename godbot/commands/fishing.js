@@ -3519,6 +3519,12 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
 
     // 기본: 홈
     return edit(buildAquariumHome(u));
+  } catch (err) {
+    console.error("[component] error:", err);
+    try {
+      await interaction.reply({ content: "❌ 상호작용 처리 중 오류가 발생했어.", ephemeral: true });
+    } catch {}
+  }
   });
 }
 
