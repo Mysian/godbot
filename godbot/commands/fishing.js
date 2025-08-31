@@ -2441,8 +2441,6 @@ if (interaction.isStringSelectMenu()) {
       return;
     }
 
-    const id = interaction.customId;
-
       if (id && id.startsWith("quest:claim|")) {
   const parts = id.split("|");
   const tier  = parts[1];
