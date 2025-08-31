@@ -392,42 +392,54 @@ function buildQuestEmbed(db, u){
     .setColor(0x33c3ff)
     .setImage(QUEST_IMAGE_URL);
 
-  const addSection = (title, list) => {
-    if (!list.length) {
-      eb.addFields({ name: title, value: "_없음_", inline: false });
-      return;
-    }
-    for (const q of list) {
-      const p = u.quests.progress?.[q.id];
-      const emoji = QUEST_TYPE_EMOJI[q.type] || "•";
-      const status = u.quests.claimed[q.id] ? "수령완료"
-                   : isComplete(u, q)        ? "완료"
-                   : "진행중";
+  // 임베드 구분선 유틸
+const DIV = "────────────────────────";
 
-      let value;
-      if (q.type === "timeband") {
-        const cur = p || {};
-        const tgt = q.target || {};
-        value = [
-          `낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
-          questRewardText(q.reward)
-        ].join("\n");
-      } else {
-        const tgt = (q.target ?? q.times ?? 1);
-        const curNum = (typeof p === "number" ? p : 0);
-        value = [
-          `${progressBar(curNum, tgt)} (${fmtProgress(curNum, tgt)})`,
-          questRewardText(q.reward)
-        ].join("\n");
-      }
+const addSection = (title, list) => {
+  eb.addFields({
+    name: `**${title}**`,
+    value: DIV,
+    inline: false
+  });
 
-      eb.addFields({
-        name: `${emoji} ${q.title} — ${status}`,
-        value,
-        inline: false
-      });
+  // 2) 내용
+  if (!list.length) {
+    eb.addFields({ name: "_없음_", value: "\u200b", inline: false });
+    return;
+  }
+
+  for (const q of list) {
+    const p = u.quests.progress?.[q.id];
+    const emoji = QUEST_TYPE_EMOJI[q.type] || "•";
+    const status = u.quests.claimed[q.id] ? "수령완료"
+                 : isComplete(u, q)        ? "완료"
+                 : "진행중";
+
+    let value;
+    if (q.type === "timeband") {
+      const cur = p || {};
+      const tgt = q.target || {};
+      value = [
+        `낮 ${bandBar(cur["낮"], tgt["낮"])} / 노을 ${bandBar(cur["노을"], tgt["노을"])} / 밤 ${bandBar(cur["밤"], tgt["밤"])}`,
+        questRewardText(q.reward)
+      ].join("\n");
+    } else {
+      const tgt = (q.target ?? q.times ?? 1);
+      const curNum = (typeof p === "number" ? p : 0);
+      value = [
+        `${progressBar(curNum, tgt)} (${fmtProgress(curNum, tgt)})`,
+        questRewardText(q.reward)
+      ].join("\n");
     }
-  };
+
+    eb.addFields({
+      name: `${emoji} ${q.title} — ${status}`,
+      value,
+      inline: false
+    });
+  }
+};
+
 
   addSection("🗓️ 일일 퀘스트", daily);
   addSection("📅 주간 퀘스트", weekly);
@@ -1947,12 +1959,13 @@ top3.length
         "• `/낚시 판매` — 모두/선택/수량 판매 지원",
         "• `/낚시 인벤토리` — 종류별 보기+장착/상자",
         "• `/낚시 도감` — 등급별 발견 현황과 상세 보기",
+        "• `/낚시 퀘스트` — 낚시 관련 일일/주간 퀘스트 진행 및 보상 받기",
         "• `/낚시 기록 [유저]`, `/낚시 기록순위`",
         "",
         "⚙ 시간대: 낮(07:00~15:59) / 노을(16:00~19:59) / 밤(20:00~06:59) (KST)",
         "⚙ 장비는 사용 시 내구도 1 감소, 미끼는 입질 시작 시 1개 소모됩니다.",
         "⚙ ‘낚시 코인’은 BE(정수)와 별개 화폐입니다.",
-        "⚙ 물고기마다 최소/최대 길이가 있으며, 클수록 보상과 포인트가 커집니다."
+        "⚙ 물고기는 클수록 낚시 난이도가 오르지만 품질이 높아 습득 경험치가 높고 판매 가격이 커집니다."
       ].join("\n"))
       .setColor(0xcccccc);
     return await interaction.reply({ embeds:[eb], ephemeral:true });
