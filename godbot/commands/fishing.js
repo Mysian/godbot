@@ -745,7 +745,6 @@ async function autoBuyOne(u, db, kind, name) {
 
     if (coinCost != null && (u.coins||0) >= coinCost) {
       spendCoins(u, db, coinCost);
-      u.coins -= coinCost;
       paidText = `코인 ${coinCost.toLocaleString()}`;
     } else if (beCost != null && (getBE(u._uid)||0) >= beCost) {
       await addBE(u._uid, -beCost, `[낚시] 자동구매 ${name}`);
@@ -1555,7 +1554,7 @@ function rewardText(u, r) {
   return "";
 }
 
-async function giveReward(u, reward){
+async function giveReward(u, db, reward){
   if (reward.type === "rod") {
     if (u.inv.rods.hasOwnProperty(reward.name))
       u.inv.rods[reward.name] = ROD_SPECS[reward.name]?.maxDur || 0;
@@ -1569,11 +1568,11 @@ async function giveReward(u, reward){
   } else if (reward.type === "bait") {
     const pack = BAIT_SPECS[reward.name]?.pack || 20;
     const cur  = u.inv.baits[reward.name] || 0;
-    if (cur > 0) u.inv.baits[reward.name] = Math.max(cur, pack); 
-    else addBait(u, reward.name, reward.qty ?? pack); 
-    
+    if (cur > 0) u.inv.baits[reward.name] = Math.max(cur, pack);
+    else addBait(u, reward.name, reward.qty ?? pack);
+
   } else if (reward.type === "coin") {
-  gainCoins(u, db, reward.amt || 0);
+    gainCoins(u, db, reward.amt || 0);
 
   } else if (reward.type === "be") {
     await addBE(u._uid, reward.amt || 0, "[낚시 보상]");
@@ -1593,7 +1592,7 @@ async function checkRewards(u, interaction){
     const rewards = REWARDS_TIER[u.tier];
     const lines = rewards.map(r => `• ${rewardText(u, r)}`);
     u.rewards.tier[u.tier] = true;
-    for (const r of rewards) await giveReward(u, r);
+    for (const r of rewards) await giveReward(u, db, r);
     {
       const eb = new EmbedBuilder()
         .setTitle("🏅 티어 보상")
@@ -1611,7 +1610,7 @@ async function checkRewards(u, interaction){
       const rewards = REWARDS_CAUGHT[th];
       const lines = rewards.map(r => `• ${rewardText(u, r)}`);
       u.rewards.caught[th] = true;
-      for (const r of rewards) await giveReward(u, r);
+      for (const r of rewards) await giveReward(u, db, r);
       embeds.push(
         new EmbedBuilder()
           .setTitle("🎣 누적 어획 보상")
@@ -1627,7 +1626,7 @@ async function checkRewards(u, interaction){
       const rewards = REWARDS_SIZE[th];
       const lines = rewards.map(r => `• ${rewardText(u, r)}`);
       u.rewards.size[th] = true;
-      for (const r of rewards) await giveReward(u, r);
+      for (const r of rewards) await giveReward(u, db, r);
       embeds.push(
         new EmbedBuilder()
           .setTitle("📏 기록 갱신 보상")
@@ -1654,7 +1653,7 @@ async function checkSpeciesRewards(u, fishName) {
   if (!rewards || rec[cnt]) return null;
 
   rec[cnt] = true;
-  for (const r of rewards) await giveReward(u, r);
+  for (const r of rewards) await giveReward(u, db, r);
 
   const lines = rewards.map(r => `• ${rewardText(u, r)}`).filter(Boolean);
   const title = cnt === 1 ? `🎉 첫 조우 보상 — ${fishName}` : `🎁 누적 ${cnt}회 보상 — ${fishName}`;
@@ -1780,62 +1779,6 @@ async function execute(interaction) {
     }
   });
 }
-
-  if (id === "quest:refresh") {
-  await interaction.deferUpdate().catch(()=>{});
-  const payload = buildQuestEmbed(db, u);
-  try {
-    await interaction.editReply({ ...payload });
-  } catch {
-    await interaction.followUp({ ...payload, ephemeral: true }).catch(()=>{});
-  }
-  return;
-}
-
-
-  if (id === "quest:claimAll") {
-  await interaction.deferUpdate().catch(()=>{});
-
-  const agg = aggregatePendingRewards(u, db);
-  if (!agg.count) {
-    await interaction.followUp({ content: "완료한 퀘스트가 없습니다.", ephemeral: true }).catch(()=>{});
-    return;
-  }
-
-  for (const q of getActiveQuests(db)) {
-    if (isComplete(u, q) && !u.quests.claimed[q.id]) {
-      await grantQuestReward(u, db, q.reward);
-      u.quests.claimed[q.id] = true;
-    }
-  }
-
-  const payload = buildQuestEmbed(db, u);
-  try {
-    await interaction.editReply({ ...payload });   
-  } catch {
-    await interaction.followUp({ ...payload, ephemeral: true }).catch(()=>{});
-  }
-
-  // 수령 요약 알림
-  const lines = [];
-  if (agg.coin > 0) lines.push(`• 🪙 코인 ${agg.coin.toLocaleString()}`);
-  if (agg.be   > 0) lines.push(`• 🔷 파랑 정수 ${agg.be.toLocaleString()}`);
-  for (const [name, qty] of Object.entries(agg.baits)) {
-    lines.push(`• 🪱 ${name} x${qty.toLocaleString()}`);
-  }
-  const doneEb = new EmbedBuilder()
-    .setTitle("🎁 퀘스트 보상 수령")
-    .setDescription([`완료된 퀘스트 ${agg.count}개 보상을 수령했습니다.`, "", ...lines].join("\n"))
-    .setColor(0x55ff88)
-    .setImage(QUEST_IMAGE_URL);
-
-  await interaction.followUp({ embeds: [doneEb], ephemeral: true }).catch(()=>{});
-  return;
-}
-
-
-
-
 
   if (sub === "낚시터") {
   return await withDB(async db=>{
@@ -2119,6 +2062,57 @@ async function component(interaction) {
   const payload = buildQuestEmbed(db, u);
 return interaction.update({ ...payload });
 }
+
+if (id === "quest:refresh") {
+  await interaction.deferUpdate().catch(()=>{});
+  const payload = buildQuestEmbed(db, u);
+  try {
+    await interaction.editReply({ ...payload });
+  } catch {
+    await interaction.followUp({ ...payload, ephemeral: true }).catch(()=>{});
+  }
+  return;
+}
+
+if (id === "quest:claimAll") {
+  await interaction.deferUpdate().catch(()=>{});
+
+  const agg = aggregatePendingRewards(u, db);
+  if (!agg.count) {
+    await interaction.followUp({ content: "완료한 퀘스트가 없습니다.", ephemeral: true }).catch(()=>{});
+    return;
+  }
+
+  for (const q of getActiveQuests(db)) {
+    if (isComplete(u, q) && !u.quests.claimed[q.id]) {
+      await grantQuestReward(u, db, q.reward);
+      u.quests.claimed[q.id] = true;
+    }
+  }
+
+  const payload = buildQuestEmbed(db, u);
+  try {
+    await interaction.editReply({ ...payload });
+  } catch {
+    await interaction.followUp({ ...payload, ephemeral: true }).catch(()=>{});
+  }
+
+  const lines = [];
+  if (agg.coin > 0) lines.push(`• 🪙 코인 ${agg.coin.toLocaleString()}`);
+  if (agg.be   > 0) lines.push(`• 🔷 파랑 정수 ${agg.be.toLocaleString()}`);
+  for (const [name, qty] of Object.entries(agg.baits)) {
+    lines.push(`• 🪱 ${name} x${qty.toLocaleString()}`);
+  }
+  const doneEb = new EmbedBuilder()
+    .setTitle("🎁 퀘스트 보상 수령")
+    .setDescription([`완료된 퀘스트 ${agg.count}개 보상을 수령했습니다.`, "", ...lines].join("\n"))
+    .setColor(0x55ff88)
+    .setImage(QUEST_IMAGE_URL);
+
+  await interaction.followUp({ embeds: [doneEb], ephemeral: true }).catch(()=>{});
+  return;
+}
+
 
 
 
