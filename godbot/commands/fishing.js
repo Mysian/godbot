@@ -39,6 +39,16 @@ const TIER_CUTOFF = {
   "다이아": 9000, "마스터": 20000, "그랜드마스터": 45000, "챌린저": 85000
 };
 
+const RARITY_COLOR = {
+  "노말":   0xFFFFFF, // ⚪
+  "레어":   0x3B82F6, // 🔵
+  "유니크": 0xF59E0B, // 🟡
+  "레전드": 0xA855F7, // 🟣
+  "에픽":   0xEF4444, // 🔴
+  "언노운": 0x000000  // ⚫
+};
+const colorOf = (rar) => RARITY_COLOR[rar] ?? 0x66ccff;
+
 // --- 시간대 보정 ---
 const TIME_BUFFS = {
   "낮":   { biteSpeed: -2, dmg: 0, resistReduce: 0, rarityBias: 0 },
@@ -1084,8 +1094,11 @@ function clearSession(userId) {
   }
   sessions.delete(userId);
 }
-function sceneEmbed(user, title, desc, imageURL, extraFields = []) {
-  const eb = new EmbedBuilder().setTitle(title).setDescription(desc||"").setColor(0x3aa0ff);
+function sceneEmbed(user, title, desc, imageURL, extraFields = [], color) {
+  const eb = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(desc || "")
+    .setColor(color ?? 0x3aa0ff);
   if (imageURL) eb.setImage(imageURL);
   if (Array.isArray(extraFields) && extraFields.length) eb.addFields(extraFields);
   const bf = buffField(user); if (bf) eb.addFields(bf);
@@ -2151,7 +2164,7 @@ if (id === "fish:share") {
     eb = new EmbedBuilder()
       .setTitle(`🎁 ${nick}의 전리품!`)
       .setDescription(`• ${rec.desc}`)
-      .setColor(0xffcc66)
+      .setColor(colorOf(rec.rarity))
       .setImage(rec.icon || getIconURL(rec.name) || null);
   } else {
     // 🐟 물고기 공유
@@ -2162,7 +2175,7 @@ if (id === "fish:share") {
         `• 길이: ${Math.round(rec.length)}cm`,
         `• 판매가: ${rec.sell.toLocaleString()} 코인`,
       ].join("\n"))
-      .setColor(0x66ccff)
+      .setColor(colorOf(rec.rarity))
       .setImage(getIconURL(rec.name) || null);
   }
 
@@ -2384,7 +2397,9 @@ const eb = sceneEmbed(
     "",
     "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
   ].join("\n"),
-  getIconURL(st.name) || null
+  getIconURL(st.name) || null,
+  [],                 
+  colorOf(st.rarity)
 );
 
 
@@ -2724,7 +2739,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       const eb = new EmbedBuilder()
         .setTitle(`🐟 ${nick}의 성과 공유`)
         .setDescription(`• 이름: [${f.r}] ${withStarName(f.n, f.l)}\n• 길이: ${Math.round(f.l)}cm\n• 판매가: ${f.price.toLocaleString()} 코인`)
-        .setColor(0x66ccff)
+        .setColor(colorOf(f.r))
         .setImage(getIconURL(f.n) || null);
       try {
         await interaction.channel.send({ embeds: [eb] });
