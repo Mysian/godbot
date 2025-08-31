@@ -275,6 +275,76 @@ const PRICES = {
   }
 };
 
+// === [수족관 시스템] 기본 정의 ===
+const AQUARIUM_MAX = 5;
+// lv i -> i+1 요구치 (lv10은 만렙이라 사용 안함)
+const AQUA_XP_TABLE = [0, 120, 220, 400, 700, 1200, 2000, 3300, 5500, 9000]; 
+
+function aquaValueMult(lv=1){ 
+  return Math.pow(1.1, Math.max(0, lv-1)); 
+}
+
+function ensureAquarium(u){
+  u.aquarium ??= [];
+  if (!Array.isArray(u.aquarium)) u.aquarium = [];
+  for (const f of u.aquarium) {
+    f.lv = Math.min(Math.max(f.lv ?? 1, 1), 10);
+    f.xp ??= 0;
+    f.base ??= (f.price || 0); // 인벤에서 옮겨올 때의 원가 저장
+    f.feedKey ??= dailyKeyKST();
+    f.feedCount ??= 0;
+    f.lastPraiseAt ??= 0;
+  }
+}
+
+// 먹이 경험치 계산: 레어도/별/크기근접도 가중
+function feedXpGain(target, feed) {
+  const rMulMap = { "노말":0.9, "레어":1.0, "유니크":1.3, "레전드":1.7, "에픽":2.2, "언노운":3.0 };
+  const rMul = rMulMap[feed.r] ?? 1.0;
+
+  // 원본 파일의 별 계산 규칙과 일치하게 LENGTH_TABLE과 withStarName 기반:contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+  function starCount(name, length){
+    const range = LENGTH_TABLE[name]; 
+    if (!range) return 1;
+    const [min, max] = range; 
+    if (max <= min) return 1;
+    const ratio = (length - min) / (max - min);
+    return Math.max(1, Math.min(5, Math.round(ratio * 5)));
+  }
+  const sMul = 1 + 0.12 * (starCount(feed.n, feed.l) - 1);
+
+  // 크기 근접도: 자기보다 작은 것만 허용. 가까울수록 ↑
+  const closeness = Math.max(0.25, Math.min(1, feed.l / Math.max(1, target.l)));
+  const cMul = 0.6 + 0.4 * closeness;
+
+  const base = 30; // 기준치
+  return Math.round(base * rMul * sMul * cMul);
+}
+
+function xpNeed(lv){
+  if (lv >= 10) return Infinity; 
+  return AQUA_XP_TABLE[lv] || 999999;
+}
+
+function tryLevelUp(a){ 
+  while (a.lv < 10 && a.xp >= xpNeed(a.lv)) {
+    a.xp -= xpNeed(a.lv);
+    a.lv++;
+  }
+}
+
+function valueWithLevel(base, lv){ return Math.round((base||0) * aquaValueMult(lv||1)); }
+
+function canPraise(a){
+  return (Date.now() - (a.lastPraiseAt||0)) >= 60*60*1000; // 1h
+}
+
+function resetFeedIfNewDay(a){
+  const key = dailyKeyKST(); // 원본 KST 일일키 사용
+  if (a.feedKey !== key) { a.feedKey = key; a.feedCount = 0; }
+}
+
+
 // === [퀘스트 시스템] 전 서버 공통 세트 ===
 function ensureQuests(db){
   db.quests ??= {};
@@ -554,6 +624,9 @@ function ensureUser(u) {
   u.inv.keys   ??= 0;
   u.inv.chests ??= 0;
 
+  // 수족관
+  u.aquarium ??= [];
+
   // 통계
   u.stats ??= {};
   u.stats.caught ??= 0;
@@ -583,6 +656,9 @@ function ensureUser(u) {
   // 설정 키
   u.settings ??= {};
   u.settings.autoBuy ??= false;
+
+  // 수족관 보정(레거시 사용자 포함)
+  ensureAquarium(u);
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -1275,6 +1351,7 @@ const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 
   .addSubcommand(s=>s.setName("구매").setDescription("장비/미끼 구매"))
   .addSubcommand(s=>s.setName("판매").setDescription("보유 물고기 판매"))
   .addSubcommand(s=>s.setName("인벤토리").setDescription("인벤토리 확인/장착/상자"))
+  .addSubcommand(s=>s.setName("수족관").setDescription("수족관 관리 / 성장"))
   .addSubcommand(s=>s.setName("도감").setDescription("잡은 물고기 도감 보기"))
   .addSubcommand(s=>s.setName("기록").setDescription("개인 낚시 기록 확인").addUserOption(o=>o.setName("유저").setDescription("조회 대상")))
   .addSubcommand(s=>s.setName("기록순위").setDescription("티어/포인트/최대길이 순위 TOP20"))
@@ -1564,6 +1641,92 @@ const eb = new EmbedBuilder()
   }
 }
 
+function aquariumSlotLabel(a, idx){
+  if (!a) return `빈 슬롯 #${idx+1}`;
+  const name = withStarName(a.n, a.l);
+  const price = valueWithLevel(a.base, a.lv).toLocaleString();
+  return `${name} • Lv.${a.lv} • ${a.r} • ${a.l}cm • ${price}코인`;
+}
+
+function buildAquariumHome(u){
+  ensureAquarium(u);
+  const eb = new EmbedBuilder()
+    .setTitle(`🏝️ 수족관 (${u.aquarium.length}/${AQUARIUM_MAX})`)
+    .setDescription([
+      "최대 5마리까지 기를 수 있어.",
+      "인벤토리에서 분리되며, 판매 대상에서도 제외돼.",
+      "개별 물고기를 눌러 상호작용(칭찬/먹이/방출)해봐!"
+    ].join("\n"))
+    .setColor(0x77ddaa);
+
+  const lines = [];
+  for (let i=0;i<AQUARIUM_MAX;i++){
+    const a = u.aquarium[i];
+    lines.push(`• ${aquariumSlotLabel(a, i)}`);
+  }
+  eb.addFields({ name:"슬롯", value: lines.join("\n"), inline:false });
+
+  const rows = [];
+  // 슬롯 버튼들
+  const slotBtns = [];
+  for (let i=0;i<AQUARIUM_MAX;i++){
+    const has = !!u.aquarium[i];
+    slotBtns.push(
+      new ButtonBuilder()
+        .setCustomId(`aqua:view|${i}`)
+        .setLabel(has ? `슬롯${i+1}` : `빈 슬롯${i+1}`)
+        .setStyle(has ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        .setDisabled(!has && u.aquarium.length <= i ? false : !has) // 빈 슬롯 버튼은 활성화(추가 안내)
+    );
+    if ((i%5)===4 || i===AQUARIUM_MAX-1) rows.push(new ActionRowBuilder().addComponents(...slotBtns.splice(0)));
+  }
+
+  // 추가/도움말
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("aqua:add").setLabel("➕ 수족관에 넣기").setStyle(ButtonStyle.Success)
+      .setDisabled(u.aquarium.length >= AQUARIUM_MAX),
+    new ButtonBuilder().setCustomId("aqua:help").setLabel("❓ 안내").setStyle(ButtonStyle.Secondary)
+  ));
+
+  return { embeds:[eb], components: rows };
+}
+
+function buildAquariumView(u, idx){
+  const a = u.aquarium[idx];
+  if (!a) return { content:"빈 슬롯이야.", embeds:[], components:[] };
+
+  resetFeedIfNewDay(a);
+
+  const name = withStarName(a.n, a.l);
+  const need = xpNeed(a.lv);
+  const cur = Math.min(a.xp, need);
+  const price = valueWithLevel(a.base, a.lv);
+
+  const eb = new EmbedBuilder()
+    .setTitle(`🐟 ${name}`)
+    .setThumbnail(getIconURL(a.n)) // 기존 이미지 규칙 사용
+    .setColor(0x44cc99)
+    .addFields(
+      { name:"등급/크기", value:`${a.r} / ${a.l}cm`, inline:true },
+      { name:"레벨", value:`Lv.${a.lv} ${a.lv<10?`(${cur}/${need})`: "(만렙)"}`, inline:true },
+      { name:"현재 가치", value:`${price.toLocaleString()} 코인`, inline:true },
+      { name:"먹이/칭찬", value:`오늘 먹이 ${a.feedCount}/5 · ${canPraise(a)?"칭찬 가능":"칭찬 쿨다운"}`, inline:false }
+    );
+
+  const rows = [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`aqua:praise|${idx}`).setLabel("💬 칭찬하기").setStyle(ButtonStyle.Secondary).setDisabled(!canPraise(a) || a.lv>=10),
+      new ButtonBuilder().setCustomId(`aqua:feed|${idx}`).setLabel("🪱 먹이주기").setStyle(ButtonStyle.Success).setDisabled(a.feedCount>=5 || a.lv>=10),
+      new ButtonBuilder().setCustomId(`aqua:release|${idx}`).setLabel("📦 방출하기").setStyle(ButtonStyle.Danger)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 수족관 홈").setStyle(ButtonStyle.Secondary)
+    )
+  ];
+  return { embeds:[eb], components: rows };
+}
+
+
 function rewardText(u, r) {
   if (r.type === "rod") {
     const own = Object.prototype.hasOwnProperty.call(u.inv.rods, r.name);
@@ -1826,6 +1989,15 @@ async function execute(interaction) {
   });
 }
 
+  if (sub === "수족관") {
+  await interaction.deferReply({ ephemeral: true });
+  return await updateUser(interaction.user.id, async (u, db) => {
+    ensureAquarium(u);
+    const payload = buildAquariumHome(u);
+    return interaction.editReply(payload);
+  });
+}
+
   if (sub === "낚시터") {
   return await withDB(async db=>{
     ensureQuests(db);
@@ -2013,6 +2185,61 @@ async function component(interaction) {
     const u = (db.users[userId] ||= {}); ensureUser(u);
     try {
       u._uid = userId;
+
+      // === [수족관] 셀렉트 메뉴 ===
+if (interaction.isStringSelectMenu()) {
+  const sid = interaction.customId || "";
+  const vals = interaction.values || [];
+  const first = vals[0];
+
+  // 추가 선택
+  if (sid === "aqua:add_select") {
+    await interaction.deferUpdate();
+    return await updateUser(userId, async (u, db) => {
+      ensureAquarium(u);
+      if (u.aquarium.length >= AQUARIUM_MAX) return interaction.editReply({ content:"수족관이 꽉 찼어!", embeds:[], components:[] });
+      const idx = Number(first);
+      const f = (u.inv.fishes||[])[idx];
+      if (!f) return interaction.editReply({ content:"선택한 물고기를 찾지 못했어.", embeds:[], components:[] });
+
+      // 인벤에서 제거 후 수족관으로 이동
+      (u.inv.fishes||[]).splice(idx,1);
+      u.aquarium.push({ n:f.n, r:f.r, l:f.l, base:f.price, lv:1, xp:0, feedKey:dailyKeyKST(), feedCount:0, lastPraiseAt:0 });
+      return interaction.editReply({ content:`${withStarName(f.n,f.l)}가 수족관에 입장!`, ...(buildAquariumHome(u)) });
+    });
+  }
+
+  // 먹이 선택
+  if (sid.startsWith("aqua:feed_select|")) {
+    await interaction.deferUpdate();
+    const idx = Number(sid.split("|")[1]);
+    const invIdx = Number(first);
+    return await updateUser(userId, async (u, db) => {
+      ensureAquarium(u);
+      const a = u.aquarium[idx];
+      const feed = (u.inv.fishes||[])[invIdx];
+      if (!a || !feed) return interaction.editReply({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
+
+      resetFeedIfNewDay(a);
+      if (a.feedCount >= 5) return interaction.editReply({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
+      if (feed.l >= a.l) return interaction.editReply({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
+
+      const gain = feedXpGain(a, feed);
+      a.xp += gain;
+      a.feedCount += 1;
+      tryLevelUp(a);
+
+      // 먹이는 소모됨 → 인벤에서 제거
+      (u.inv.fishes||[]).splice(invIdx,1);
+
+      return interaction.editReply({
+        content: `${randPick(eatLines)} (+${gain}xp)`,
+        ...(buildAquariumView(u, idx))
+      });
+    });
+  }
+}
+
 
     if (interaction.isStringSelectMenu()) {
       const [type] = interaction.customId.split("|");
@@ -3076,6 +3303,147 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
     }
   });
 }
+
+// === [수족관] 컴포넌트 처리 ===
+if (id.startsWith("aqua:")) {
+  await interaction.deferUpdate();
+  const edit = mkSafeEditor(interaction);
+
+  const [_, cmd, p1] = id.split("|"); // cmd: view/praise/feed/release/add/help/home ...
+  return await updateUser(userId, async (u, db) => {
+    ensureAquarium(u);
+
+    // 공통 메시지
+    const praiseLines = [
+      "헤헤, 예쁘다~ 오늘도 반짝이네!",
+      "좋아! 오늘 기분 최고야?",
+      "멋진 지느러미! 폼 미쳤다!",
+      "물장구도 귀엽네 :D",
+      "든든하게 자라자, 우리!"
+    ];
+    const eatLines = [
+      "와아 잘 먹는다!",
+      "냠냠~ 더 튼튼해졌어!",
+      "먹이 완전 취향저격!",
+      "쑥쑥 크는 중!",
+      "파워 업!"
+    ];
+
+    if (cmd === "home") {
+      return edit(buildAquariumHome(u));
+    }
+
+    if (cmd === "help") {
+      return edit({
+        content: [
+          "• 수족관은 최대 5마리까지 보관",
+          "• Lv.1→10까지 성장 (레벨당 가치 1.1배씩 누적)",
+          "• 칭찬: 1시간 쿨다운, 소량 경험치",
+          "• 먹이: 하루 5회, 자신보다 작은 물고기만 가능 (레어도/별/크기근접에 비례)",
+          "• 방출: 인벤토리로 복귀(현 레벨 가격이 반영됨)"
+        ].join("\n"),
+        embeds:[], components:[ new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 돌아가기").setStyle(ButtonStyle.Secondary)
+        ) ]
+      });
+    }
+
+    if (cmd === "view") {
+      const idx = Number(p1);
+      return edit(buildAquariumView(u, idx));
+    }
+
+    if (cmd === "add") {
+      if (u.aquarium.length >= AQUARIUM_MAX) {
+        return edit({ content:"수족관이 꽉 찼어!", embeds:[], components:[ new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 홈").setStyle(ButtonStyle.Secondary)
+        )]});
+      }
+      // 인벤 물고기 목록에서 선택(자유 선택 1마리)
+      const fishes = u.inv.fishes || [];
+      if (!fishes.length) {
+        return edit({ content:"인벤토리에 물고기가 없어.", embeds:[], components:[ new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 홈").setStyle(ButtonStyle.Secondary)
+        )]});
+      }
+      const opts = fishes.slice(0, 25).map((f, i)=>({
+        label: `${withStarName(f.n, f.l)} • ${f.r} • ${f.l}cm • ${f.price.toLocaleString()}코인`,
+        value: String(i)
+      }));
+      const sel = new StringSelectMenuBuilder()
+        .setCustomId("aqua:add_select")
+        .setPlaceholder("수족관에 넣을 물고기 선택")
+        .addOptions(opts);
+      return edit({ content:"추가할 물고기를 골라줘!", embeds:[], components:[
+        new ActionRowBuilder().addComponents(sel),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("aqua:home").setLabel("취소").setStyle(ButtonStyle.Secondary)
+        )
+      ]});
+    }
+
+    if (cmd === "praise") {
+      const idx = Number(p1);
+      const a = u.aquarium[idx];
+      if (!a) return edit({ content:"빈 슬롯이야.", embeds:[], components:[] });
+
+      resetFeedIfNewDay(a);
+      if (!canPraise(a)) {
+        return edit({ content:"아직 칭찬 쿨다운이야 (1시간).", ...(buildAquariumView(u, idx)) });
+      }
+      const gain = 8; // 소량 XP
+      a.xp += gain;
+      a.lastPraiseAt = Date.now();
+      tryLevelUp(a);
+      return edit({
+        content: `${randPick(praiseLines)} (+${gain}xp)`,
+        ...(buildAquariumView(u, idx))
+      });
+    }
+
+    if (cmd === "feed") {
+      const idx = Number(p1);
+      const a = u.aquarium[idx];
+      if (!a) return edit({ content:"빈 슬롯이야.", embeds:[], components:[] });
+      resetFeedIfNewDay(a);
+      if (a.feedCount >= 5) {
+        return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
+      }
+      // 자기보다 작은 물고기 필터
+      const candidates = (u.inv.fishes||[]).map((f,i)=>({ ...f, _i:i })).filter(f=>f.l < a.l);
+      if (!candidates.length) {
+        return edit({ content:"먹이로 줄 더 작은 물고기가 없어.", ...(buildAquariumView(u, idx)) });
+      }
+      const opts = candidates.slice(0,25).map(f=>({
+        label: `${withStarName(f.n,f.l)} • ${f.r} • ${f.l}cm`,
+        value: String(f._i)
+      }));
+      const sel = new StringSelectMenuBuilder()
+        .setCustomId(`aqua:feed_select|${idx}`)
+        .setPlaceholder("먹이로 줄 물고기 선택")
+        .addOptions(opts);
+      const ui = buildAquariumView(u, idx);
+      ui.components.push(new ActionRowBuilder().addComponents(sel));
+      return edit(ui);
+    }
+
+    if (cmd === "release") {
+      const idx = Number(p1);
+      const a = u.aquarium[idx];
+      if (!a) return edit({ content:"빈 슬롯이야.", embeds:[], components:[] });
+
+      // 인벤으로 복귀 (현 레벨 가치 반영)
+      const back = { n:a.n, r:a.r, l:a.l, price: valueWithLevel(a.base, a.lv), lock:false };
+      u.inv.fishes.push(back);
+      u.aquarium.splice(idx,1);
+      return edit({ content:`${withStarName(back.n,back.l)}를 인벤토리로 보냈어! (가격 ${back.price.toLocaleString()}코인)`, ...(buildAquariumHome(u)) });
+    }
+
+    // 기본: 홈
+    return edit(buildAquariumHome(u));
+  });
+}
+
 
 const COIN_DROP_RANGE = [50, 500];
 const BE_DROP_RANGE   = [10, 30000];
