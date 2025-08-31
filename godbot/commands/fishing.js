@@ -2149,18 +2149,20 @@ async function execute(interaction) {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u);
     const fishes = u.inv.fishes||[];
-    const totalValue = fishes.reduce((sum, f) => sum + (f.price||0), 0);
+    const sellable = fishes.filter(f => !f.lock);
+    const totalValue = sellable.reduce((sum, f) => sum + (f.price||0), 0);
     const eb = new EmbedBuilder().setTitle("💰 물고기 판매")
       .setDescription([
         `보유 물고기: ${fishes.length}마리`,
         "원하시는 방식으로 판매해 주세요."
       ].join("\n"))
-      .addFields({ name:"전체 판매 예상 금액", value:`${totalValue.toLocaleString()} 코인`, inline:false })
+      .addFields({ name:"전체 판매 예상 금액(잠금 제외)", value:`${totalValue.toLocaleString()} 코인`, inline:false })
       .setColor(0xffaa44);
     const row = new ActionRowBuilder().addComponents(
   new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
   new ButtonBuilder().setCustomId("fish:sell_rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
   new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
+  new ButtonBuilder().setCustomId("fish:sell_qty").setLabel("수량 판매").setStyle(ButtonStyle.Secondary),
   new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
 );
     await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
@@ -2485,18 +2487,22 @@ u.aquarium.push({
 
   const fishes = u.inv.fishes || [];
   const pick = idxs.map(i=>fishes[i]).filter(Boolean);
-  const total = pick.reduce((s,f)=>s+(f.price||0),0);
+  const sellablePick = pick.filter(f => f && !f.lock);
+  const total = sellablePick.reduce((s,f)=>s+(f.price||0),0);
 
   const eb = new EmbedBuilder()
     .setTitle("🧾 선택 판매 미리보기")
     .setDescription(pick.length
-      ? pick.map(f=>`• [${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
+     ? pick.map(f=>{
+         const lockTag = f.lock ? "🔒 " : "";
+         return `• ${lockTag}[${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`;
+       }).join("\n")
       : "_선택되지 않았습니다._")
     .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
     .setColor(0xffaa44);
 
   const opts = fishes.slice(0,25).map((f,i)=>({
-    label: `[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
+    label: `${f.lock ? "🔒 " : ""}[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
     value: String(i),
     default: idxs.includes(i)
   }));
@@ -2507,7 +2513,7 @@ u.aquarium.push({
     .addOptions(opts);
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(pick.length===0),
+    new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(sellablePick.length===0),
     new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
   );
 
@@ -3089,9 +3095,10 @@ if (id === "fish:sell_all") {
     components: []
   });
 }
-    if (id === "fish:sell_cancel" || id === "sell:cancel") {
-      return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[] });
-    }
+   if (id === "fish:sell_cancel" || id === "sell:cancel") {
+   sellSessions.delete(userId);
+   return interaction.update({ content:"판매 창을 닫았습니다.", embeds:[], components:[] });
+ }
     if (id === "fish:sell_select") {
       const fishes = u.inv.fishes||[];
       const opts = fishes.slice(0,25).map((f,i)=>({
