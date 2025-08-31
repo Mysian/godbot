@@ -1658,7 +1658,7 @@ function buildAquariumHome(u){
       "인벤토리에서 분리되며, 판매 대상에서도 제외돼.",
       "개별 물고기를 눌러 상호작용(칭찬/먹이/방출)해봐!"
     ].join("\n"))
-    .setColor(0x77ddaa);
+    .setColor(0x77ddaa)
     .setImage(AQUARIUM_BANNER_URL);
 
   const lines = [];
