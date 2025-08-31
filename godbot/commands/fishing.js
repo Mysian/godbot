@@ -3315,18 +3315,18 @@ if (id.startsWith("aqua:")) {
 
     // 공통 메시지
     const praiseLines = [
-      "헤헤, 예쁘다~ 오늘도 반짝이네!",
+      "헤헤, 예쁘다~ 오늘도 반짝이는구나~~",
       "좋아! 오늘 기분 최고야?",
-      "멋진 지느러미! 폼 미쳤다!",
+      "귀엽다 귀여워~~",
       "물장구도 귀엽네 :D",
-      "든든하게 자라자, 우리!"
+      "건강하게 잘 자라자!!"
     ];
     const eatLines = [
-      "와아 잘 먹는다!",
+      "와아 잘 먹는다~!",
       "냠냠~ 더 튼튼해졌어!",
-      "먹이 완전 취향저격!",
+      "먹이가 마음에 드나보다!",
       "쑥쑥 크는 중!",
-      "파워 업!"
+      "맛있는 거 먹고, 파워 업!!"
     ];
 
     if (cmd === "home") {
@@ -3410,10 +3410,15 @@ if (id.startsWith("aqua:")) {
         return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
       }
       // 자기보다 작은 물고기 필터
-      const candidates = (u.inv.fishes||[]).map((f,i)=>({ ...f, _i:i })).filter(f=>f.l < a.l);
+      const candidates = (u.inv.fishes||[])
+  .map((f,i)=>({ ...f, _i:i }))
+  .filter(f => !f.lock && f.l < a.l);
       if (!candidates.length) {
-        return edit({ content:"먹이로 줄 더 작은 물고기가 없어.", ...(buildAquariumView(u, idx)) });
-      }
+  return edit({
+    content:"먹이로 줄 더 작은 **잠금 해제된** 물고기가 없어.\n(인벤에서 잠금 해제하거나 더 작은 물고기를 잡아와줘!)",
+    ...(buildAquariumView(u, idx))
+  });
+}
       const opts = candidates.slice(0,25).map(f=>({
         label: `${withStarName(f.n,f.l)} • ${f.r} • ${f.l}cm`,
         value: String(f._i)
