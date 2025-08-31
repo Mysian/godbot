@@ -377,10 +377,10 @@ function summaryLabelOf(agg){
     : `보상받기 [완료한 퀘스트가 없습니다.]`;
 }
 
-// (신) 일일/주간 섹션 분리 + 진행도 막대 + 보상 요약 버튼
+// 퀘스트 임베드/버튼 생성 (단일 수령 버튼)
 function buildQuestEmbed(db, u){
   ensureQuests(db);
-  const daily  = db.quests.daily.list  || [];
+  const daily = db.quests.daily.list || [];
   const weekly = db.quests.weekly.list || [];
 
   const eb = new EmbedBuilder()
@@ -393,11 +393,16 @@ function buildQuestEmbed(db, u){
     .setImage(QUEST_IMAGE_URL);
 
   const addSection = (title, list) => {
-    if (!list.length) { eb.addFields({ name: title, value: "_없음_", inline:false }); return; }
+    if (!list.length) {
+      eb.addFields({ name: title, value: "_없음_", inline: false });
+      return;
+    }
     for (const q of list) {
       const p = u.quests.progress?.[q.id];
-      const emoji  = QUEST_TYPE_EMOJI[q.type] || "•";
-      const status = u.quests.claimed[q.id] ? "수령완료" : (isComplete(u,q) ? "완료" : "진행중");
+      const emoji = QUEST_TYPE_EMOJI[q.type] || "•";
+      const status = u.quests.claimed[q.id] ? "수령완료"
+                   : isComplete(u, q)        ? "완료"
+                   : "진행중";
 
       let value;
       if (q.type === "timeband") {
@@ -416,7 +421,11 @@ function buildQuestEmbed(db, u){
         ].join("\n");
       }
 
-      eb.addFields({ name: `${emoji} ${q.title} — ${status}`, value, inline:false });
+      eb.addFields({
+        name: `${emoji} ${q.title} — ${status}`,
+        value,
+        inline: false
+      });
     }
   };
 
@@ -426,7 +435,7 @@ function buildQuestEmbed(db, u){
   const agg = aggregatePendingRewards(u, db);
   const claimBtn = new ButtonBuilder()
     .setCustomId("quest:claimAll")
-    .setLabel(summaryLabelOf(agg))           // 예: 보상받기 [낚시코인:5,000 & 파랑 정수: 3,500]
+    .setLabel(summaryLabelOf(agg))
     .setStyle(agg.count ? ButtonStyle.Success : ButtonStyle.Secondary)
     .setDisabled(!agg.count);
 
@@ -435,9 +444,11 @@ function buildQuestEmbed(db, u){
     .setLabel("🔄 새로고침")
     .setStyle(ButtonStyle.Secondary);
 
-  return { embeds:[eb], components:[ new ActionRowBuilder().addComponents(claimBtn, refreshBtn) ] };
+  return {
+    embeds: [eb],
+    components: [ new ActionRowBuilder().addComponents(claimBtn, refreshBtn) ]
+  };
 }
-
 
 
 
