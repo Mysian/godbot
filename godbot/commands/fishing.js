@@ -281,11 +281,11 @@ const SPECIES_MILESTONES = {
   },
   "언노운": {
     1:   [{ type:"coin", amt:500000 }],
-    5:   [{ type:"be",   amt:5000000 }],
-    10:   [{ type:"be",   amt:10000000 }],
-    30:  [{ type:"coin", amt:5000000 }],
-    50:  [{ type:"be",   amt:30000000 }],
-    100: [{ type:"be",   amt:100000000 }]
+    5:   [{ type:"be",   amt:500000 }],
+    10:   [{ type:"be",   amt:1000000 }],
+    30:  [{ type:"coin", amt:500000 }],
+    50:  [{ type:"be",   amt:500000 }],
+    100: [{ type:"coin",   amt:1000000 }]
   }
 };
 
