@@ -2184,62 +2184,186 @@ async function component(interaction) {
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
     try {
+      const id = interaction.customId || "";
       u._uid = userId;
 
-      // === [수족관] 셀렉트 메뉴 ===
+      // === [수족관] 컴포넌트 처리 (component() try 내부) ===
+if (id.startsWith("aqua:")) {
+  await interaction.deferUpdate();
+  const edit = mkSafeEditor(interaction);
+
+  ensureAquarium(u);
+  const [ , cmd, p1 ] = id.split("|"); // cmd: home/view/praise/feed/release/add/help
+
+  // 간단 멘트 (원하면 전역 상수로 빼도 됨)
+  const praiseLines = [
+    "헤헤, 예쁘다~ 오늘도 반짝이는구나~~",
+    "좋아! 오늘 기분 최고야?",
+    "귀엽다 귀여워~~",
+    "물장구도 귀엽네 :D",
+    "건강하게 잘 자라자!!"
+  ];
+  const eatLines = [
+    "와아 잘 먹는다~!",
+    "냠냠~ 더 튼튼해졌어!",
+    "먹이가 마음에 드나보다!",
+    "쑥쑥 크는 중!",
+    "맛있는 거 먹고, 파워 업!!"
+  ];
+
+  if (cmd === "home") {
+    return edit(buildAquariumHome(u));
+  }
+
+  if (cmd === "help") {
+    return edit({
+      content: [
+        "• 수족관은 최대 5마리까지 보관",
+        "• Lv.1→10 성장 (레벨당 가치 1.1배 누적)",
+        "• 칭찬: 1시간 쿨다운, 소량 경험치",
+        "• 먹이: 하루 5회, 자신보다 작은 물고기만 가능 (레어도/별/크기근접 비례)",
+        "• 방출: 인벤토리로 복귀(현 레벨 가격 반영)"
+      ].join("\n"),
+      embeds: [],
+      components: [ new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 돌아가기").setStyle(ButtonStyle.Secondary)
+      ) ]
+    });
+  }
+
+  if (cmd === "view") {
+    const idx = Number(p1);
+    return edit(buildAquariumView(u, idx));
+  }
+
+  if (cmd === "praise") {
+    const idx = Number(p1);
+    const a = u.aquarium[idx];
+    if (!a) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
+
+    resetFeedIfNewDay(a);
+    if (!canPraise(a)) return edit({ content:"아직 칭찬 쿨다운이야!", ...(buildAquariumView(u, idx)) });
+
+    a.lastPraiseAt = Date.now();
+    a.xp += 10;       // 칭찬 경험치 (원하면 값 조절)
+    tryLevelUp(a);
+
+    return edit({ content: randPick(praiseLines), ...(buildAquariumView(u, idx)) });
+  }
+
+  if (cmd === "feed") {
+    const idx = Number(p1);
+    const a = u.aquarium[idx];
+    if (!a) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
+
+    resetFeedIfNewDay(a);
+    if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝!(하루 5회)", ...(buildAquariumView(u, idx)) });
+
+    // 자신보다 작은 인벤 물고기만 선택지로 노출 (최대 25개)
+    const options = (u.inv.fishes || [])
+      .map((f,i)=>({ f, i }))
+      .filter(x => x.f.l < a.l)
+      .slice(0, 25)
+      .map(x => ({ label: withStarName(x.f.n, x.f.l), value: String(x.i) }));
+
+    if (!options.length) {
+      return edit({ content:"먹일 수 있는(자기보다 작은) 물고기가 없어.", ...(buildAquariumView(u, idx)) });
+    }
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId(`aqua:feed_select|${idx}`)
+      .setPlaceholder("먹일 물고기 선택")
+      .addOptions(options);
+
+    const view = buildAquariumView(u, idx);
+    return edit({ ...view, components: [...view.components, new ActionRowBuilder().addComponents(menu)] });
+  }
+
+  if (cmd === "release") {
+    const idx = Number(p1);
+    const a = u.aquarium[idx];
+    if (!a) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
+
+    const price = valueWithLevel(a.base, a.lv);
+    u.inv.fishes.push({ n:a.n, r:a.r, l:a.l, price, lock:false });
+    u.aquarium.splice(idx, 1);
+
+    return edit({ content:`${withStarName(a.n, a.l)}(Lv.${a.lv})를 인벤토리로 돌려보냈어.`, ...(buildAquariumHome(u)) });
+  }
+
+  if (cmd === "add") {
+    if (u.aquarium.length >= AQUARIUM_MAX) {
+      return edit({ content:"수족관이 꽉 찼어!", ...(buildAquariumHome(u)) });
+    }
+    const options = (u.inv.fishes || [])
+      .slice(0, 25)
+      .map((f,i)=>({ label: withStarName(f.n, f.l), value: String(i) }));
+
+    if (!options.length) {
+      return edit({ content:"인벤토리에 물고기가 없어.", ...(buildAquariumHome(u)) });
+    }
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("aqua:add_select")
+      .setPlaceholder("넣을 물고기 선택")
+      .addOptions(options);
+
+    const home = buildAquariumHome(u);
+    return edit({ ...home, components: [...home.components, new ActionRowBuilder().addComponents(menu)] });
+  }
+
+  // 기타 미지정 명령
+  return edit({ content:"알 수 없는 수족관 명령이야.", embeds:[], components:[] });
+}
+
+// === [수족관] 셀렉트 메뉴 (같은 try 내부) ===
 if (interaction.isStringSelectMenu()) {
   const sid = interaction.customId || "";
   const vals = interaction.values || [];
   const first = vals[0];
+  await interaction.deferUpdate();
+  const edit = mkSafeEditor(interaction);
 
   // 추가 선택
   if (sid === "aqua:add_select") {
-    await interaction.deferUpdate();
-    return await updateUser(userId, async (u, db) => {
-      ensureAquarium(u);
-      if (u.aquarium.length >= AQUARIUM_MAX) return interaction.editReply({ content:"수족관이 꽉 찼어!", embeds:[], components:[] });
-      const idx = Number(first);
-      const f = (u.inv.fishes||[])[idx];
-      if (!f) return interaction.editReply({ content:"선택한 물고기를 찾지 못했어.", embeds:[], components:[] });
+    ensureAquarium(u);
+    if (u.aquarium.length >= AQUARIUM_MAX) {
+      return edit({ content:"수족관이 꽉 찼어!", ...(buildAquariumHome(u)) });
+    }
+    const idx = Number(first);
+    const f = (u.inv.fishes||[])[idx];
+    if (!f) return edit({ content:"선택한 물고기를 찾지 못했어.", embeds:[], components:[] });
 
-      // 인벤에서 제거 후 수족관으로 이동
-      (u.inv.fishes||[]).splice(idx,1);
-      u.aquarium.push({ n:f.n, r:f.r, l:f.l, base:f.price, lv:1, xp:0, feedKey:dailyKeyKST(), feedCount:0, lastPraiseAt:0 });
-      return interaction.editReply({ content:`${withStarName(f.n,f.l)}가 수족관에 입장!`, ...(buildAquariumHome(u)) });
-    });
+    (u.inv.fishes||[]).splice(idx,1);
+    u.aquarium.push({ n:f.n, r:f.r, l:f.l, base:f.price, lv:1, xp:0, feedKey:dailyKeyKST(), feedCount:0, lastPraiseAt:0 });
+
+    return edit({ content:`${withStarName(f.n,f.l)}가 수족관에 입장!`, ...(buildAquariumHome(u)) });
   }
 
   // 먹이 선택
   if (sid.startsWith("aqua:feed_select|")) {
-    await interaction.deferUpdate();
     const idx = Number(sid.split("|")[1]);
     const invIdx = Number(first);
-    return await updateUser(userId, async (u, db) => {
-      ensureAquarium(u);
-      const a = u.aquarium[idx];
-      const feed = (u.inv.fishes||[])[invIdx];
-      if (!a || !feed) return interaction.editReply({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
 
-      resetFeedIfNewDay(a);
-      if (a.feedCount >= 5) return interaction.editReply({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
-      if (feed.l >= a.l) return interaction.editReply({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
+    const a = u.aquarium[idx];
+    const feed = (u.inv.fishes||[])[invIdx];
+    if (!a || !feed) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
 
-      const gain = feedXpGain(a, feed);
-      a.xp += gain;
-      a.feedCount += 1;
-      tryLevelUp(a);
+    resetFeedIfNewDay(a);
+    if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
+    if (feed.l >= a.l)     return edit({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
 
-      // 먹이는 소모됨 → 인벤에서 제거
-      (u.inv.fishes||[]).splice(invIdx,1);
+    const gain = feedXpGain(a, feed);
+    a.xp += gain;
+    a.feedCount += 1;
+    tryLevelUp(a);
 
-      return interaction.editReply({
-        content: `${randPick(eatLines)} (+${gain}xp)`,
-        ...(buildAquariumView(u, idx))
-      });
-    });
+    // 먹이는 소모됨
+    (u.inv.fishes||[]).splice(invIdx,1);
+
+    return edit({ content: `${randPick(eatLines)} (+${gain}xp)`, ...(buildAquariumView(u, idx)) });
   }
 }
-
 
     if (interaction.isStringSelectMenu()) {
       const [type] = interaction.customId.split("|");
@@ -3298,55 +3422,6 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
   return interaction.editReply({ ...payload });
 }
 
-// === [수족관] 컴포넌트 처리 ===
-if (id.startsWith("aqua:")) {
-  await interaction.deferUpdate();
-  const edit = mkSafeEditor(interaction);
-
-  const [_, cmd, p1] = id.split("|"); // cmd: view/praise/feed/release/add/help/home ...
-  return await updateUser(userId, async (u, db) => {
-    ensureAquarium(u);
-
-    // 공통 메시지
-    const praiseLines = [
-      "헤헤, 예쁘다~ 오늘도 반짝이는구나~~",
-      "좋아! 오늘 기분 최고야?",
-      "귀엽다 귀여워~~",
-      "물장구도 귀엽네 :D",
-      "건강하게 잘 자라자!!"
-    ];
-    const eatLines = [
-      "와아 잘 먹는다~!",
-      "냠냠~ 더 튼튼해졌어!",
-      "먹이가 마음에 드나보다!",
-      "쑥쑥 크는 중!",
-      "맛있는 거 먹고, 파워 업!!"
-    ];
-
-    if (cmd === "home") {
-      return edit(buildAquariumHome(u));
-    }
-
-    if (cmd === "help") {
-      return edit({
-        content: [
-          "• 수족관은 최대 5마리까지 보관",
-          "• Lv.1→10까지 성장 (레벨당 가치 1.1배씩 누적)",
-          "• 칭찬: 1시간 쿨다운, 소량 경험치",
-          "• 먹이: 하루 5회, 자신보다 작은 물고기만 가능 (레어도/별/크기근접에 비례)",
-          "• 방출: 인벤토리로 복귀(현 레벨 가격이 반영됨)"
-        ].join("\n"),
-        embeds:[], components:[ new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 돌아가기").setStyle(ButtonStyle.Secondary)
-        ) ]
-      });
-    }
-
-    } finally {
-  delete u._uid;
-}
-});
-}
 
     if (cmd === "view") {
       const idx = Number(p1);
