@@ -1782,17 +1782,26 @@ async function execute(interaction) {
 }
 
   if (id === "quest:refresh") {
+  await interaction.deferUpdate().catch(()=>{});
   const payload = buildQuestEmbed(db, u);
-  return interaction.update({ ...payload });
+  try {
+    await interaction.editReply({ ...payload });
+  } catch {
+    await interaction.followUp({ ...payload, ephemeral: true }).catch(()=>{});
+  }
+  return;
 }
 
+
   if (id === "quest:claimAll") {
+  await interaction.deferUpdate().catch(()=>{});
+
   const agg = aggregatePendingRewards(u, db);
   if (!agg.count) {
-    return interaction.reply({ content: "완료한 퀘스트가 없습니다.", ephemeral: true });
+    await interaction.followUp({ content: "완료한 퀘스트가 없습니다.", ephemeral: true }).catch(()=>{});
+    return;
   }
 
-  // 실제 지급
   for (const q of getActiveQuests(db)) {
     if (isComplete(u, q) && !u.quests.claimed[q.id]) {
       await grantQuestReward(u, db, q.reward);
@@ -1800,10 +1809,17 @@ async function execute(interaction) {
     }
   }
 
-  // 결과 알림 + 화면 갱신
+  const payload = buildQuestEmbed(db, u);
+  try {
+    await interaction.editReply({ ...payload });   
+  } catch {
+    await interaction.followUp({ ...payload, ephemeral: true }).catch(()=>{});
+  }
+
+  // 수령 요약 알림
   const lines = [];
   if (agg.coin > 0) lines.push(`• 🪙 코인 ${agg.coin.toLocaleString()}`);
-  if (agg.be   > 0) lines.push(`• 🔷 파랑 정수 ${agg.be.toLocaleString()}원`);
+  if (agg.be   > 0) lines.push(`• 🔷 파랑 정수 ${agg.be.toLocaleString()}`);
   for (const [name, qty] of Object.entries(agg.baits)) {
     lines.push(`• 🪱 ${name} x${qty.toLocaleString()}`);
   }
@@ -1813,10 +1829,10 @@ async function execute(interaction) {
     .setColor(0x55ff88)
     .setImage(QUEST_IMAGE_URL);
 
-  const payload = buildQuestEmbed(db, u);
-  await interaction.update({ ...payload });           // 메인 퀘스트 화면 갱신
-  return interaction.followUp({ embeds: [doneEb], ephemeral: true }); // 요약은 안내로
+  await interaction.followUp({ embeds: [doneEb], ephemeral: true }).catch(()=>{});
+  return;
 }
+
 
 
 
