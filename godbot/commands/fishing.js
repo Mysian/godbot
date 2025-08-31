@@ -22,7 +22,7 @@ const dataDir = path.join(__dirname, "../data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const FISH_DB = path.join(dataDir, "fishing.json");
 
-const QUEST_IMAGE_URL = "https://media.discordapp.net/attachments/1407939188548042762/1411499682516963489/Image_fx.jpg?ex=68b4e104&is=68b38f84&hm=a2c480344bda6aa1d005d73c3f79ed27e7af4bff229aa74e88bbd0c256442bc3&=&format=webp";
+const QUEST_IMAGE_URL = "https://media.discordapp.net/attachments/1407939188548042762/1411520802121056296/44024f6e8e13d438.png?ex=68b4f4b0&is=68b3a330&hm=6646099a323e2d994233e758789f0736bab596ad22f68bdaf0786b87c608f990&=&format=webp&quality=lossless&width=1829&height=1029";
 
 const FISHING_LIMIT_SECONDS = 120;
 const FIGHT_IDLE_TIMEOUT = 20;
