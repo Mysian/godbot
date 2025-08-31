@@ -49,6 +49,22 @@ const RARITY_COLOR = {
 };
 const colorOf = (rar) => RARITY_COLOR[rar] ?? 0x66ccff;
 
+const GEAR_COLOR = {
+  "나무 낚싯대":   RARITY_COLOR["노말"],
+  "강철 낚싯대":   RARITY_COLOR["레어"],
+  "금 낚싯대":     RARITY_COLOR["유니크"],
+  "다이아 낚싯대": RARITY_COLOR["레전드"],
+  "전설의 낚싯대": RARITY_COLOR["에픽"],
+  "동 찌":  RARITY_COLOR["노말"],
+  "은 찌":    RARITY_COLOR["레어"],
+  "금 찌":    RARITY_COLOR["유니크"],
+  "다이아 찌": RARITY_COLOR["레전드"],
+  "지렁이 미끼":       RARITY_COLOR["노말"],
+  "새우 미끼":         RARITY_COLOR["레어"],
+  "빛나는 젤리 미끼": RARITY_COLOR["유니크"],
+};
+const gearColorOf = (name) => GEAR_COLOR[name] ?? 0x88ddff;
+
 // --- 시간대 보정 ---
 const TIME_BUFFS = {
   "낮":   { biteSpeed: -2, dmg: 0, resistReduce: 0, rarityBias: 0 },
@@ -1844,7 +1860,7 @@ async function execute(interaction) {
           "• 낚싯대, 찌: 구매 시 내구도 최대치로 제공됩니다.",
           "• 미끼: 20개 묶음이며, 보유 수량이 20 미만이면 부족분만 비례 결제합니다."
         ].join("\n"))
-        .setColor(0x55cc77)
+        .setColor(gearColorOf(name))
         .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
@@ -2640,7 +2656,7 @@ const starName = withStarName(f.n, f.l);
 const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
   .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
 
-            .setColor(0x88ddff)
+            .setColor(colorOf(f.r))
             .setImage(getIconURL(f.n)||null)
             .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
@@ -2687,7 +2703,7 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
 
           const eb = new EmbedBuilder().setTitle(`🎒 ${k==="rod"?"낚싯대":k==="float"?"찌":"미끼"} — ${name}`)
             .setDescription(lines.join("\n"))
-            .setColor(0x88ddff)
+            .setColor(gearColorOf(name))
             .setThumbnail(getIconURL(name)||null)
             .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
           const row = new ActionRowBuilder().addComponents(
