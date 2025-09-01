@@ -642,16 +642,6 @@ async function withDB(fn) {
     await rel();
   }
 }
-
-// === [최초 달성] 유틸 ===
-function ensureFirsts(db){ db.firsts ??= {}; return db.firsts; }
-function recordFirst(db, key, userId){
-  try {
-    ensureFirsts(db);
-    if (!db.firsts[key]) db.firsts[key] = { userId, at: Date.now() };
-  } catch {}
-}
-
 async function updateUser(userId, updater) {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
@@ -779,8 +769,8 @@ function withStarName(name, length) {
   return `${name} [${"★".repeat(starCount)}]`;
 }
 
-const RARITY_PRICE_MULT = { "노말":0.7, "레어":2, "유니크":4, "레전드":9, "에픽":20, "언노운":250 };
-const RARITY_HP_MULT = { "노말":1, "레어":1.5, "유니크":2.0, "레전드":3.0, "에픽":4.0, "언노운":20.0 };
+const RARITY_PRICE_MULT = { "노말":0.8, "레어":2, "유니크":5, "레전드":10, "에픽":20, "언노운":90 };
+const RARITY_HP_MULT = { "노말":1, "레어":1.7, "유니크":2.5, "레전드":3.5, "에픽":5.0, "언노운":20.0 };
 
 const LENGTH_TABLE = {
   "멸치":[5,15],
@@ -964,7 +954,7 @@ async function autoBuyOne(u, db, kind, name) {
       return `• ${name} — 잔액 부족(코인/정수)`;
     }
 
-    if (kind === "rod") { addRod(u, name); if (name === "전설의 낚싯대") recordFirst(db, "legendRod", u._uid); }
+    if (kind === "rod") addRod(u, name);
     else addFloat(u, name);
 
     return `• ${name} 구매 완료 (${paidText})`;
@@ -1202,15 +1192,7 @@ async function grantQuestReward(u, db, reward){
 }
 
 
-function applyQuestEvent(u, db, event, data={
-  // [최초 종 포획 기록]
-  if (event === "fish_caught") {
-    try {
-      if (data?.name === "클리오네 성체") recordFirst(db, "clioneAdult", u._uid);
-      if (data?.name === "해룡 레비아탄") recordFirst(db, "leviathan", u._uid);
-    } catch {}
-  }
-}){
+function applyQuestEvent(u, db, event, data={}){
   const qs = getActiveQuests(db);
   const band = data.band;
   for (const q of qs) {
@@ -1893,7 +1875,6 @@ async function giveReward(u, db, reward){
     if (u.inv.rods.hasOwnProperty(reward.name))
       u.inv.rods[reward.name] = ROD_SPECS[reward.name]?.maxDur || 0;
     else addRod(u, reward.name);
-    if (reward.name === "전설의 낚싯대") recordFirst(db, "legendRod", u._uid);
 
   } else if (reward.type === "float") {
     if (u.inv.floats.hasOwnProperty(reward.name))
@@ -1930,8 +1911,6 @@ async function checkRewards(u, db, interaction){
         const rewards = REWARDS_TIER[t];
         const lines = rewards.map(r => `• ${rewardText(u, r)}`);
         u.rewards.tier[t] = true;
-        if (t === "그랜드마스터") recordFirst(db, "gmTier", u._uid);
-        if (t === "챌린저") recordFirst(db, "chTier", u._uid);
         for (const r of rewards) await giveReward(u, db, r);
 
         const eb = new EmbedBuilder()
@@ -2015,7 +1994,6 @@ function rankButtons(mode){
     new ButtonBuilder().setCustomId("rank:caught").setLabel("어획 횟수").setStyle(mode==="caught"?ButtonStyle.Primary:ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("rank:coins").setLabel("낚시 코인").setStyle(mode==="coins"?ButtonStyle.Primary:ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("rank:rarity").setLabel("등급별 낚은 횟수").setStyle(mode==="rarity"?ButtonStyle.Primary:ButtonStyle.Secondary),
-    , new ButtonBuilder().setCustomId("rank:firsts").setLabel("최초").setStyle(mode==="firsts"?ButtonStyle.Primary:ButtonStyle.Secondary)
   );
 }
 
@@ -2071,30 +2049,6 @@ async function buildRarityRankEmbed(db, interaction){
 
   return { embeds:[eb], components:[rankButtons("rarity")] };
 }
-
-  
-  async function buildFirstsEmbed(db, interaction){
-    ensureFirsts(db);
-    const eb = new EmbedBuilder().setTitle("🏁 최초 달성자").setColor(0xf5a623);
-    const firsts = db.firsts || {};
-    async function lineFor(key, label){
-      const rec = firsts[key];
-      if (!rec) return `• ${label}: _아직 없음_`;
-      const nm  = await nameOf(rec.userId);
-      const when = new Date(rec.at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-      return `• ${label}: **${nm}** (${when})`;
-    }
-    const lines = [];
-    lines.push(await lineFor("legendRod", "최초로 전설의 낚싯대를 획득한 유저"));
-    lines.push(await lineFor("gmTier",    "최초로 그랜드 마스터 티어를 달성한 유저"));
-    lines.push(await lineFor("chTier",    "최초로 챌린저 티어를 달성한 유저"));
-    lines.push(await lineFor("clioneAdult","최초로 클리오네 성체를 낚은 유저"));
-    lines.push(await lineFor("leviathan", "최초로 해룡 레비아탄을 낚은 유저"));
-    eb.setDescription(lines.join("\n"));
-    return { embeds:[eb], components:[rankButtons("firsts")] };
-  }
-
-if (mode === "firsts") { return await buildFirstsEmbed(db, interaction); }
 
   if (mode === "rarity") {
     return await buildRarityRankEmbed(db, interaction);
@@ -2285,26 +2239,24 @@ async function execute(interaction) {
   });
 }
 
-    if (sub === "기록") {
+  if (sub === "기록") {
     const target = interaction.options.getUser("유저") || interaction.user;
     return await withDB(async db=>{
       const u = (db.users[target.id] ||= {}); ensureUser(u);
       const top3 = Object.entries(u.stats.best || {}).sort((a,b)=> (b[1].length||0) - (a[1].length||0)).slice(0,3);
       const tierIcon = getIconURL(u.tier);
-      const counts = rarityCountsOf(u);
-      const lines = [
-        `티어: **${u.tier}**`,
-        `포인트: **${(u.stats.points||0).toLocaleString()}**`,
-        `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
-        `언노운 등급 어획: **${((counts||{})["언노운"]||0).toLocaleString()}**`,
-        `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name ? `— ${withStarName(u.stats.max.name, u.stats.max.length)}` : ""}`,
-        top3.length 
-          ? "**종류별 최대 상위 3**\n" 
-            + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") 
-          : "_기록이 없습니다._"
-      ];
       const eb = new EmbedBuilder().setTitle(`📜 낚시 기록 — ${target.username}`)
-        .setDescription(lines.join("\n"))
+        .setDescription([
+          `티어: **${u.tier}**`,
+          `포인트: **${(u.stats.points||0).toLocaleString()}**`,
+          `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
+          `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name?`— ${withStarName(u.stats.max.name, u.stats.max.length)}`:""}`,
+top3.length 
+
+  ? "**종류별 최대 상위 3**\n" 
+    + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") 
+  : "_기록이 없습니다._"
+        ].join("\n"))
         .setColor(0x66ddee);
       if (tierIcon) eb.setThumbnail(tierIcon);
       await interaction.reply({ embeds:[eb], ephemeral:true });
