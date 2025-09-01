@@ -504,7 +504,8 @@ const QUEST_TYPE_EMOJI = {
   coin_spend:"💸", coin_gain:"💰", timeband:"🕒", junk_collect:"🪣",
   rarity_seq:"🔀", catch_specific:"🎯", durability:"🛠️", bait:"🪱",
   gear_unique:"🧪", junk_streak3:"3️⃣🪣", same_rarity3:"3️⃣⭐",
-  rarity_atleast:"⭐", chest_open:"📦", new_species:"🧬"
+  rarity_atleast:"⭐", chest_open:"📦", new_species:"🧬", aqua_feed:"🍽️",
+  aqua_praise:"👏", aqua_levelup:"⬆️",
 };
 
 // 완료·미수령 퀘스트 보상 합산
@@ -1097,6 +1098,27 @@ function q_newSpecies(n,tier){
     reward: tier==="daily" ? { coin: 15000 } : { coin: 200000 }
   };
 }
+function q_aqua_feed(n, tier){
+  return {
+    id:`aqua_feed|${n}|${tier}`, type:"aqua_feed", target:n,
+    title:`수족관 먹이 ${n}회 주기`,
+    reward: tier==="daily" ? { coin: 10000 } : { coin: 100000 }
+  };
+}
+function q_aqua_praise(n, tier){
+  return {
+    id:`aqua_praise|${n}|${tier}`, type:"aqua_praise", target:n,
+    title:`수족관 물고기 칭찬 ${n}회 하기`,
+    reward: tier==="daily" ? { coin: 8000 } : { coin: 120000 }
+  };
+}
+function q_aqua_levelup(n, tier){
+  return {
+    id:`aqua_levelup|${n}|${tier}`, type:"aqua_levelup", target:n,
+    title:`수족관 물고기 레벨업 ${n}회`,
+    reward: tier==="daily" ? { coin: 15000 } : { coin: 150000 }
+  };
+}
 
 function genDailyQuests(){
   const seqA = q_seq(["노말","레어","유니크"], 1, "daily");
@@ -1116,6 +1138,9 @@ function genDailyQuests(){
     q_chestOpen(1, "daily"),
     q_coinGain(30000, 80000, "daily"),
     q_newSpecies(1, "daily"),
+    q_aqua_feed(5, "daily"),
+    q_aqua_praise(randInt(3,5), "daily"),
+    q_aqua_levelup(1, "daily"),
   ];
   // 무작위 3개 추출
   return shufflePick(list, 5);
@@ -1139,6 +1164,9 @@ function genWeeklyQuests(){
     q_chestOpen(5, "weekly"),
     q_coinGain(300000, 800000, "weekly"),
     q_newSpecies(3, "weekly"),
+    q_aqua_feed(30, "weekly"),
+    q_aqua_praise(50, "weekly"),
+    q_aqua_levelup(5, "weekly"),
   ];
   return shufflePick(base, 3);
 }
@@ -1249,6 +1277,15 @@ function applyQuestEvent(u, db, event, data={}){
       case "rarity_seq":
         if (event==="rarity_seq_hit" && data.key === q.seq.join(">")) inc(u, q.id, 1);
         break;
+      case "aqua_feed":
+        if (event === "aqua_feed") inc(u, q.id, 1);
+        break;
+      case "aqua_praise":
+        if (event === "aqua_praise") inc(u, q.id, 1);
+        break;
+     case "aqua_levelup":
+       if (event === "aqua_levelup") inc(u, q.id, Math.max(1, data.levels||1));
+       break;
     }
   }
 }
@@ -2428,6 +2465,10 @@ if (id.startsWith("aqua:") && interaction.isButton()) {
     a.lastPraiseAt = Date.now();
     a.xp += 10;       // 칭찬 경험치 (원하면 값 조절)
     tryLevelUp(a);
+    applyQuestEvent(u, db, "aqua_praise");
+if (a.lv > beforeLv) {
+  applyQuestEvent(u, db, "aqua_levelup", { levels: a.lv - beforeLv });
+}
 
     return edit({ content: randPick(praiseLines), ...(buildAquariumView(u, idx)) });
   }
@@ -2559,6 +2600,10 @@ u.aquarium.push({
     a.xp += gain;
     a.feedCount += 1;
     tryLevelUp(a);
+    applyQuestEvent(u, db, "aqua_feed");
+if (a.lv > beforeLv) {
+  applyQuestEvent(u, db, "aqua_levelup", { levels: a.lv - beforeLv });
+}
 
     // 먹이는 소모됨
     (u.inv.fishes||[]).splice(invIdx,1);
