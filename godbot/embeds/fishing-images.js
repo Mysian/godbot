@@ -684,6 +684,9 @@ const ICON_URLS = {
   "앵무조개": "https://media.discordapp.net/attachments/1410053141432500416/1410585127507202159/-_8.png?ex=68b18d45&is=68b03bc5&hm=20d9bd9c68ec6d40362327545fcbbdbd902fe8c7ea00373d30006abbb3c7f7e7&=&format=webp&quality=lossless",
   "뚱이의 바지": "https://media.discordapp.net/attachments/1410053141432500416/1410660180403687484/-_1_1.png?ex=68b1d32b&is=68b081ab&hm=aa9ee1c88ee9dd90d4544c1126674714a67594241946accf8e2549f67c213577&=&format=webp&quality=lossless&width=824&height=824",
   "갓봇의 안경": "https://media.discordapp.net/attachments/1410053141432500416/1410660185776586853/-_1.png?ex=68b1d32d&is=68b081ad&hm=ca8fbd5a00b2ad1b467d2f572e1fba3abbbad36384d5cfd3afc603fe745d41fb&=&format=webp&quality=lossless&width=824&height=824",
+  "따분한 멸치": "https://media.discordapp.net/attachments/1411607393783119882/1411881178780270714/73ed46af255f22ea.png?ex=68b64450&is=68b4f2d0&hm=a8edc490cf800a45c6d2b13bd35979bb7d71edde2b72f3d9bd7fec869d9704c4&=&format=webp&quality=lossless",
+  "등푸른 생선": "https://media.discordapp.net/attachments/1411607393783119882/1411881179157762162/4990af07fc290d16.png?ex=68b64450&is=68b4f2d0&hm=f66d456e7dc0a05170aa4157b05bba0d2e47532c0a8df990b014bb1c03601e76&=&format=webp&quality=lossless",
+  "모래 송사리": "https://media.discordapp.net/attachments/1411607393783119882/1411881179673526344/0a51f7a126f4e77c.png?ex=68b64450&is=68b4f2d0&hm=7bf84e2258a83d8ee40113e063c3b047047804d2661436760690c8766c6684b7&=&format=webp&quality=lossless",
 
   // 레어
   "전갱이": "https://media.discordapp.net/attachments/1407939188548042762/1407944812614909994/cc1a416af4fee209.png?ex=68ade109&is=68ac8f89&hm=237a3fc2ba644f034ac8419b21db8bed1b2322a2f3ac917ed8ae706d9199c054&=&format=webp&quality=lossless&width=816&height=816",
@@ -711,6 +714,12 @@ const ICON_URLS = {
   "쏠배감펭": "https://media.discordapp.net/attachments/1410053141432500416/1410585251918647356/-_1.png?ex=68b18d63&is=68b03be3&hm=556ed0ff9b974ce249f90690422725ae4d6c023bfdddd4888b99a0a054e12362&=&format=webp&quality=lossless",
   "개구리": "https://media.discordapp.net/attachments/1410053141432500416/1410585252396793918/-_2.png?ex=68b18d63&is=68b03be3&hm=0c16a35a0bd204159533765df5a3c9edd1f2002c3df8de4a7f0d3e97e41611ab&=&format=webp&quality=lossless",
   "홍게": "https://media.discordapp.net/attachments/1410053141432500416/1410660186330370170/-_1_3.png?ex=68b1d32d&is=68b081ad&hm=f9d61f37cd7e7df1bbb243ad75ff676c7e2ea61754539b03d7e20ccefddd5bba&=&format=webp&quality=lossless&width=824&height=824",
+  "별점어": "https://media.discordapp.net/attachments/1411607393783119882/1411881143019634759/8b2f0aba1049e80c.png?ex=68b64447&is=68b4f2c7&hm=778143499fe8a3a6b3b57f7576ab1682b7617a9373ae54edacfd65cf45bd0f79&=&format=webp&quality=lossless",
+  "돌꼬치": "https://media.discordapp.net/attachments/1411607393783119882/1411881143489527808/78645964616d74d0.png?ex=68b64448&is=68b4f2c8&hm=a2d3aad5c1aeaadafbe360f95dc93e5d6df8562ce38f398071de03b37bd32e68&=&format=webp&quality=lossless",
+  "붉은점 돌돔": "https://media.discordapp.net/attachments/1411607393783119882/1411881143971610684/f62ecd5cb8f07928.png?ex=68b64448&is=68b4f2c8&hm=d57ddeb2f7a0da855a056bbe50561514ed59cd1bb21d8d4efe99c799ab4a5a86&=&format=webp&quality=lossless",
+  "파도 송사리": "https://media.discordapp.net/attachments/1411607393783119882/1411881144445702185/e0b938815726c20c.png?ex=68b64448&is=68b4f2c8&hm=11e937ace8ee3be7a4f63ac11a5d785f3768117913b14ea4f364be2a56c96723&=&format=webp&quality=lossless",
+  "푸른 바다뱀": "https://media.discordapp.net/attachments/1411607393783119882/1411881144898818078/295351393cdc8620.png?ex=68b64448&is=68b4f2c8&hm=d58cf4e5579a85233d7e4881535ecf23c024106aaf327c2e3c78c445f997b458&=&format=webp&quality=lossless",
+  "푸른 복어": "https://media.discordapp.net/attachments/1411607393783119882/1411881145305530368/522a6cc3ae59152c.png?ex=68b64448&is=68b4f2c8&hm=c48ba2485308d51b577a9b4490cbeb7640eb61403b41275b0a86dce1a4a4ca77&=&format=webp&quality=lossless",
   // 유니크
   "참치": "https://media.discordapp.net/attachments/1407939188548042762/1407944865593036853/340fe8b9435b3a61.png?ex=68ade116&is=68ac8f96&hm=c53b389f4aa61b456c41cd354b1712fde583482979f3b7db407b3fe070937bb5&=&format=webp&quality=lossless&width=816&height=816",
   "장어": "https://media.discordapp.net/attachments/1407939188548042762/1407944866024915004/329cdc4b0cfa31a0.png?ex=68ade116&is=68ac8f96&hm=9e7cabbd8fa176813276f099a35ac249fc9ac551fe0a0f1e3f4e60172c8cd087&=&format=webp&quality=lossless&width=816&height=816",
@@ -728,6 +737,13 @@ const ICON_URLS = {
   "톱상어": "https://media.discordapp.net/attachments/1410053141432500416/1410585732875026585/-_5.png?ex=68b18dd6&is=68b03c56&hm=20dacf4348cbab6f02b3b8efd6d00264ea5c67bc69d70579097a7540c102f386&=&format=webp&quality=lossless",
   "야광어": "https://media.discordapp.net/attachments/1410053141432500416/1410585733453844522/-_6.png?ex=68b18dd6&is=68b03c56&hm=1be6efa3d429062eb56fc93f15729976583b1c65a9d050c902cd6d3c0e066c1c&=&format=webp&quality=lossless",
   "유령고래": "https://media.discordapp.net/attachments/1410053141432500416/1410660186783350835/-_1_2.png?ex=68b1d32d&is=68b081ad&hm=afdbfbbe25a8ad50fe3d0df497103631ed2da2744581e605598672e0cdb0fa5d&=&format=webp&quality=lossless&width=824&height=824",
+  "잿빛 멸치": "https://media.discordapp.net/attachments/1411607393783119882/1411881057325944852/596e5a6d5654250d.png?ex=68b64433&is=68b4f2b3&hm=ceb9d67b521fede442b0af53bb7cc80904b495c42f1f9017e5e94954d563789f&=&format=webp&quality=lossless",
+  "밤의 잉어": "https://media.discordapp.net/attachments/1411607393783119882/1411881058450018414/e1627157e7505750.png?ex=68b64433&is=68b4f2b3&hm=603b0c3212d5d814362dc06c3a032f3b2d7f1d30da77f9db147b062c49080bb5&=&format=webp&quality=lossless",
+  "붉은 바다뱀": "https://media.discordapp.net/attachments/1411607393783119882/1411881058114207955/33198d24cd4e17d7.png?ex=68b64433&is=68b4f2b3&hm=5e0a95177cf6669808c0d9cbd8687f5a219bdd21ae7d58aff613824029bec3f7&=&format=webp&quality=lossless",
+  "마블 고등어": "https://media.discordapp.net/attachments/1411607393783119882/1411881058789752932/bc7f105b495995f6.png?ex=68b64433&is=68b4f2b3&hm=4db2efd5045b954ffaf6a9c5973fce35c65ede4c937c1c02de7af042509f3b9a&=&format=webp&quality=lossless",
+  "달무늬 고래": "https://media.discordapp.net/attachments/1411607393783119882/1411881057011236974/66564dd54250c81b.png?ex=68b64433&is=68b4f2b3&hm=966d6a2fedd670d1d9c6f629a8035a5b4d293f8cfb873244895a19a1d5077b25&=&format=webp&quality=lossless",
+  "알콩이와 달콩이": "https://media.discordapp.net/attachments/1411607393783119882/1411881059100000297/e4a08a8c6603263e.png?ex=68b64433&is=68b4f2b3&hm=3995bef517fd6fea3736b8c8c4517c1779157db31dd45e3c199ac30a8172dc4e&=&format=webp&quality=lossless",
+  "메기 잉어": "https://media.discordapp.net/attachments/1411607393783119882/1411881057682456631/472935f614dca980.png?ex=68b64433&is=68b4f2b3&hm=184c330d4cf6fe552c6d7b7808d09df027c4eb1b259a218f3bec9df2ff9cef21&=&format=webp&quality=lossless",
   // 레전드
   "곰치": "https://media.discordapp.net/attachments/1407939188548042762/1407944883712557129/af70d11c57ad0e6f.png?ex=68ade11a&is=68ac8f9a&hm=d7b87a9c0903f583a9d4a25688ad5cc708e4293116af1709aac57db5dcc52cac&=&format=webp&quality=lossless&width=816&height=816",
   "고래상어": "https://media.discordapp.net/attachments/1407939188548042762/1407944884031193151/058ef8abad4a597a.png?ex=68ade11a&is=68ac8f9a&hm=594b304308578780fe2bf0513616e7fb82408eb136ef600da1062645b9efa5fa&=&format=webp&quality=lossless&width=816&height=816",
@@ -738,13 +754,20 @@ const ICON_URLS = {
   "덤보 문어": "https://media.discordapp.net/attachments/1410053141432500416/1410485328208199760/-_.png?ex=68b13053&is=68afded3&hm=6439905998973a9655483132df6399c2603029f97c0654cef183ccc7da9b142e&=&format=webp&quality=lossless&width=779&height=779",
   "샤이닝 해파리": "https://media.discordapp.net/attachments/1410053141432500416/1410485328824766525/-_1.png?ex=68b13053&is=68afded3&hm=ca2e9f57f89cbe65d916fbcff2aaa9758721a1f6af293ae3b50fa6e4d5e9ff85&=&format=webp&quality=lossless&width=779&height=779",
   "실러캔스": "https://media.discordapp.net/attachments/1410053141432500416/1410585748448608297/-_7.png?ex=68b18dd9&is=68b03c59&hm=74bf714da4ce347363d218aafaf8dc6651285930877827307641c770b221d02d&=&format=webp&quality=lossless",
+  "안개 고래": "https://media.discordapp.net/attachments/1411607393783119882/1411880981882994808/9a7726d4d49c8ab1.png?ex=68b64421&is=68b4f2a1&hm=6d398eed8199bed0453451d1c3b104b1c70b5eb5829f24df0ed57ae3bc519b90&=&format=webp&quality=lossless",
+  "구름 잉어": "https://media.discordapp.net/attachments/1411607393783119882/1411880982243577897/0817a6e7767be138.png?ex=68b64421&is=68b4f2a1&hm=eb6cf24a3c8630f84d7e3663ade3cd644c962847cda976011664e940d798f48a&=&format=webp&quality=lossless",
   // 에픽
   "철갑상어": "https://media.discordapp.net/attachments/1407939188548042762/1407944905501839391/784956df8ece945b.png?ex=68ade11f&is=68ac8f9f&hm=b5c5273b03be92f4c182f25442d434e84d9d22670a1309a864273bb1aa781c2a&=&format=webp&quality=lossless&width=816&height=816",
   "대왕고래": "https://media.discordapp.net/attachments/1407939188548042762/1407944905182941274/75c9d0a8ee7ff4ef.png?ex=68ade11f&is=68ac8f9f&hm=5a8ea6dcf85932acd0f319d8f38f01d88c2f2336c3cea048c6058f7dffa9903c&=&format=webp&quality=lossless&width=816&height=816",
   "루미나 샤크": "https://media.discordapp.net/attachments/1410053141432500416/1410055126663696605/-_25.png?ex=68af9fab&is=68ae4e2b&hm=27ccd5dc907ab7b7db84b5828d108bf192e73a73c2c618a646bba3dedd5c74bb&=&format=webp&quality=lossless&width=816&height=816",
   "해룡 까리오스": "https://media.discordapp.net/attachments/1410053141432500416/1410055127036985504/-_26.png?ex=68af9fab&is=68ae4e2b&hm=4eb6dd6c6dd92a3fa8a1e6681a472a3f581bc800bd77a155a6aed63268fde2b0&=&format=webp&quality=lossless&width=816&height=816",
+  "해룡 레비아탄": "https://media.discordapp.net/attachments/1411607393783119882/1411880927235407982/826354dca343baa2.png?ex=68b64414&is=68b4f294&hm=fe79d36cb77d25bd12030d070da43ecc4f8165939bf6c9a13da56c3612433575&=&format=webp&quality=lossless",
+  "용신 까리오스": "https://media.discordapp.net/attachments/1411607393783119882/1411880927713562714/6f63aff251ccb315.png?ex=68b64414&is=68b4f294&hm=79286338609ad0b58642c8c81ba1a1ac2c3abfd57d9902368197c14021c5ffc0&=&format=webp&quality=lossless",
+  "새끼 크라켄": "https://media.discordapp.net/attachments/1411607393783119882/1411880928212422716/75d8aa6f036933df.png?ex=68b64414&is=68b4f294&hm=b56c0d60d1e8cd75c6628b8a82c4a900b6fc5277109538d5570f34afef0636cf&=&format=webp&quality=lossless",
+  "엔젤 고래": "https://media.discordapp.net/attachments/1411607393783119882/1411880928543768689/cc32deec83bca944.png?ex=68b64414&is=68b4f294&hm=e9a748ef5bce73ef223b933b2450930d1e14d408b9a985ff31e3d43b0068112f&=&format=webp&quality=lossless",
   // 언노운
-  "클리오네의 정령": "https://media.discordapp.net/attachments/1410053141432500416/1410585763594108958/-_4.png?ex=68b18ddd&is=68b03c5d&hm=2b365c4160902c86a70a805ca07a99c125d3a70f6567b14d38479cad33dc7d27&=&format=webp&quality=lossless"
+  "클리오네의 정령": "https://media.discordapp.net/attachments/1410053141432500416/1410585763594108958/-_4.png?ex=68b18ddd&is=68b03c5d&hm=2b365c4160902c86a70a805ca07a99c125d3a70f6567b14d38479cad33dc7d27&=&format=webp&quality=lossless",
+  "클리오네 성체": "https://media.discordapp.net/attachments/1411607393783119882/1411880869534367744/d20cb9af05f3c1c7.png?ex=68b64406&is=68b4f286&hm=d1935b4855ee2e54b72c4f96e2053e012c2c44a18ca3f96d615495ac61693461&=&format=webp&quality=lossless"
 };
 
 function getSceneURL(rod, flo, bait, time, scene) {
