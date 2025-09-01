@@ -2462,6 +2462,7 @@ if (id.startsWith("aqua:") && interaction.isButton()) {
     resetFeedIfNewDay(a);
     if (!canPraise(a)) return edit({ content:"아직 칭찬 쿨다운이야!", ...(buildAquariumView(u, idx)) });
 
+    const beforeLv = a.lv;
     a.lastPraiseAt = Date.now();
     a.xp += 10;       // 칭찬 경험치 (원하면 값 조절)
     tryLevelUp(a);
