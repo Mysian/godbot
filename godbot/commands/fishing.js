@@ -2070,7 +2070,7 @@ async function buildRarityRankEmbed(db, interaction){
     }
   }
 
-  return { embeds:[eb], components:[rankButtons("rarity")] };
+  return { embeds:[eb], components: rankButtons("rarity") };
 }
 
   async function buildFirstsEmbed(db, interaction) {
@@ -2143,7 +2143,7 @@ async function buildRarityRankEmbed(db, interaction){
     .setTitle(`🏆 낚시 순위 TOP 20 — ${titleMap[mode]}`)
     .setDescription(lines.join("\n") || "_데이터가 없습니다._")
     .setColor(0xff77aa);
-  return { embeds:[eb], components:[rankButtons(mode)] };
+  return { embeds:[eb], components: rankButtons(mode) };
 }
 
 async function execute(interaction) {
