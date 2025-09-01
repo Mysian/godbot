@@ -2596,6 +2596,7 @@ u.aquarium.push({
     if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
     if (feed.l >= a.l)     return edit({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
 
+    const beforeLv = a.lv;
     const gain = feedXpGain(a, feed);
     a.xp += gain;
     a.feedCount += 1;
@@ -3797,6 +3798,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
       if (!canPraise(a)) {
         return edit({ content:"아직 칭찬 쿨다운이야 (1시간).", ...(buildAquariumView(u, idx)) });
       }
+      const beforeLv = a.lv;
       const gain = 8; // 소량 XP
       a.xp += gain;
       a.lastPraiseAt = Date.now();
