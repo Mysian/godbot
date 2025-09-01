@@ -623,8 +623,6 @@ const addSection = (title, list) => {
 }
 
 
-
-
 function readDB() {
   if (!fs.existsSync(FISH_DB)) return { users:{} };
   try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{} }; }
@@ -672,6 +670,15 @@ function mkSafeEditor(interaction) {
     return updateOrEdit(interaction, payload);
   };
 }
+
+function ensureFirsts(db){ db.firsts ??= {}; return db.firsts; }
+function recordFirst(db, key, userId){
+  try {
+    ensureFirsts(db);
+    if (!db.firsts[key]) db.firsts[key] = { userId, at: Date.now() };
+  } catch {}
+}
+
 
 function ensureUser(u) {
   // 최상위
@@ -1193,6 +1200,12 @@ async function grantQuestReward(u, db, reward){
 
 
 function applyQuestEvent(u, db, event, data={}){
+  if (event === "fish_caught") {
+  try {
+    if (data?.name === "클리오네 성체") recordFirst(db, "clioneAdult", u._uid);
+    if (data?.name === "해룡 레비아탄") recordFirst(db, "leviathan", u._uid);
+  } catch {}
+}
   const qs = getActiveQuests(db);
   const band = data.band;
   for (const q of qs) {
@@ -1875,6 +1888,7 @@ async function giveReward(u, db, reward){
     if (u.inv.rods.hasOwnProperty(reward.name))
       u.inv.rods[reward.name] = ROD_SPECS[reward.name]?.maxDur || 0;
     else addRod(u, reward.name);
+    if (reward.name === "전설의 낚싯대") recordFirst(db, "legendRod", u._uid);
 
   } else if (reward.type === "float") {
     if (u.inv.floats.hasOwnProperty(reward.name))
@@ -1911,6 +1925,8 @@ async function checkRewards(u, db, interaction){
         const rewards = REWARDS_TIER[t];
         const lines = rewards.map(r => `• ${rewardText(u, r)}`);
         u.rewards.tier[t] = true;
+        if (t === "그랜드마스터") recordFirst(db, "gmTier", u._uid);
+        if (t === "챌린저") recordFirst(db, "chTier", u._uid);
         for (const r of rewards) await giveReward(u, db, r);
 
         const eb = new EmbedBuilder()
@@ -1987,14 +2003,21 @@ async function checkSpeciesRewards(u, db, fishName) {
   return eb;
 }
 
-function rankButtons(mode){
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("rank:points").setLabel("포인트").setStyle(mode==="points"?ButtonStyle.Primary:ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("rank:len").setLabel("물고기 크기").setStyle(mode==="len"?ButtonStyle.Primary:ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("rank:caught").setLabel("어획 횟수").setStyle(mode==="caught"?ButtonStyle.Primary:ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("rank:coins").setLabel("낚시 코인").setStyle(mode==="coins"?ButtonStyle.Primary:ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("rank:rarity").setLabel("등급별 낚은 횟수").setStyle(mode==="rarity"?ButtonStyle.Primary:ButtonStyle.Secondary),
+function rankButtons(mode = "") {
+  const is = (m) => mode === m ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  const btn = (id, label) => new ButtonBuilder().setCustomId(`rank:${id}`).setLabel(label).setStyle(is(id));
+  const row1 = new ActionRowBuilder().addComponents(
+    btn("points", "포인트"),
+    btn("len",    "최대 길이"),
+    btn("caught", "누적 어획")
   );
+  const row2 = new ActionRowBuilder().addComponents(
+    btn("coins",  "코인"),
+    btn("rarity", "등급별"),
+    btn("firsts", "최초")
+  );
+
+  return [row1, row2]; 
 }
 
 async function buildRankEmbedPayload(db, interaction, mode){
@@ -2049,6 +2072,46 @@ async function buildRarityRankEmbed(db, interaction){
 
   return { embeds:[eb], components:[rankButtons("rarity")] };
 }
+
+  async function buildFirstsEmbed(db, interaction) {
+  ensureFirsts(db);
+  const eb = new EmbedBuilder().setTitle("🏁 최초 달성자").setColor(0xf5a623);
+  const firsts = db.firsts || {};
+  const namesCache = {};
+
+  async function nameOf(id) {
+    if (namesCache[id]) return namesCache[id];
+    const cached = interaction.guild.members.cache.get(id);
+    if (cached) {
+      namesCache[id] = cached.displayName;
+      return namesCache[id];
+    }
+    const m = await interaction.guild.members.fetch(id).catch(()=>null);
+    namesCache[id] = m?.displayName || `유저(${id})`;
+    return namesCache[id];
+  }
+
+  async function lineFor(key, label){
+    const rec = firsts[key];
+    if (!rec) return `• ${label}: _아직 없음_`;
+    const nm  = await nameOf(rec.userId);
+    const when = new Date(rec.at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    return `• ${label}: **${nm}** (${when})`;
+  }
+
+  const lines = [];
+  lines.push(await lineFor("legendRod",  "최초로 전설의 낚싯대를 획득한 유저"));
+  lines.push(await lineFor("gmTier",     "최초로 그랜드 마스터 티어를 달성한 유저"));
+  lines.push(await lineFor("chTier",     "최초로 챌린저 티어를 달성한 유저"));
+  lines.push(await lineFor("clioneAdult","최초로 클리오네 성체를 낚은 유저"));
+  lines.push(await lineFor("leviathan",  "최초로 해룡 레비아탄을 낚은 유저"));
+
+  eb.setDescription(lines.join("\n"));
+  return { embeds:[eb], components: rankButtons("firsts") };
+}
+
+  if (mode === "firsts") return await buildFirstsEmbed(db, interaction);
+
 
   if (mode === "rarity") {
     return await buildRarityRankEmbed(db, interaction);
@@ -2240,28 +2303,32 @@ async function execute(interaction) {
 }
 
   if (sub === "기록") {
-    const target = interaction.options.getUser("유저") || interaction.user;
-    return await withDB(async db=>{
-      const u = (db.users[target.id] ||= {}); ensureUser(u);
-      const top3 = Object.entries(u.stats.best || {}).sort((a,b)=> (b[1].length||0) - (a[1].length||0)).slice(0,3);
-      const tierIcon = getIconURL(u.tier);
-      const eb = new EmbedBuilder().setTitle(`📜 낚시 기록 — ${target.username}`)
-        .setDescription([
-          `티어: **${u.tier}**`,
-          `포인트: **${(u.stats.points||0).toLocaleString()}**`,
-          `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
-          `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name?`— ${withStarName(u.stats.max.name, u.stats.max.length)}`:""}`,
-top3.length 
+  const target = interaction.options.getUser("유저") || interaction.user;
+  return await withDB(async db=>{
+    const u = (db.users[target.id] ||= {}); ensureUser(u);
+    const top3 = Object.entries(u.stats.best || {}).sort((a,b)=> (b[1].length||0) - (a[1].length||0)).slice(0,3);
+    const tierIcon = getIconURL(u.tier);
+    const counts = rarityCountsOf(u);
 
-  ? "**종류별 최대 상위 3**\n" 
-    + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n") 
-  : "_기록이 없습니다._"
-        ].join("\n"))
-        .setColor(0x66ddee);
-      if (tierIcon) eb.setThumbnail(tierIcon);
-      await interaction.reply({ embeds:[eb], ephemeral:true });
-    });
-  }
+    const lines = [
+      `티어: **${u.tier}**`,
+      `포인트: **${(u.stats.points||0).toLocaleString()}**`,
+      `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
+      `언노운 등급 어획: **${((counts||{})["언노운"]||0).toLocaleString()}**`,
+      `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name ? `— ${withStarName(u.stats.max.name, u.stats.max.length)}` : ""}`,
+      top3.length
+        ? "**종류별 최대 상위 3**\n"
+          + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n")
+        : "_기록이 없습니다._"
+    ];
+
+    const eb = new EmbedBuilder().setTitle(`📜 낚시 기록 — ${target.username}`)
+      .setDescription(lines.join("\n"))
+      .setColor(0x66ddee);
+    if (tierIcon) eb.setThumbnail(tierIcon);
+    await interaction.reply({ embeds:[eb], ephemeral:true });
+  });
+}
 
   if (sub === "기록순위") {
     return await withDB(async db=>{
