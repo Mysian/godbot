@@ -1103,6 +1103,7 @@ if (
     interaction.customId?.startsWith("info:") ||
     interaction.customId?.startsWith("auto:") ||
     interaction.customId?.startsWith("aqua:") ||
+    interaction.customId?.startsWith("relic:") ||
     interaction.customId?.startsWith("my:")
   )
 ) {
