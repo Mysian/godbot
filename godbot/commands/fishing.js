@@ -2256,11 +2256,17 @@ async function execute(interaction) {
         .setColor(0x55cc77)
         .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("shop:start|float").setLabel("🟠 찌 보기").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Primary),
-      );
-      await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
+  new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
+  new ButtonBuilder().setCustomId("shop:start|float").setLabel("🟠 찌 보기").setStyle(ButtonStyle.Primary),
+  new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Primary),
+);
+const row2 = new ActionRowBuilder().addComponents(
+  new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+  new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+);
+
+await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true });
+
     });
   }
 
@@ -2286,14 +2292,18 @@ async function execute(interaction) {
       .addFields({ name:"전체 판매 예상 금액(잠금 제외)", value:`${totalValue.toLocaleString()} 코인`, inline:false })
       .setColor(0xffaa44);
     const row = new ActionRowBuilder().addComponents(
-  new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
-  new ButtonBuilder().setCustomId("fish:sell_rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
-  new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
-  new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
-);
-    await interaction.reply({ embeds:[eb], components:[row], ephemeral:true });
-  });
-}
+      new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
+    );
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+    );
+    
+    await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true });
+    });
+  }
   
     if (sub === "스타터패키지") {
     return await withDB(async db=>{
@@ -3353,21 +3363,28 @@ if (interaction.customId === "sell-rarity-choose") {
 
       function renderInv(k, i) {
         if (k==="fish") {
-          const f = u.inv.fishes[i];
-const starName = withStarName(f.n, f.l);
-const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
-  .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
+        const f = u.inv.fishes[i];
+        const starName = withStarName(f.n, f.l);
+        const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
+          .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
+          .setColor(colorOf(f.r))
+          .setImage(getIconURL(f.n)||null)
+          .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
+          new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
+          new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
+        );
+  
+        const navRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("aqua:home").setLabel("🐠 수족관").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("sell:home").setLabel("💰 판매").setStyle(ButtonStyle.Secondary),
+         );
+          return { eb, row, navRow };
+        }
 
-            .setColor(colorOf(f.r))
-            .setImage(getIconURL(f.n)||null)
-            .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
-            new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
-            new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
-          );
-          return { eb, row };
         } else {
           const name = (k==="rod"? Object.keys(u.inv.rods)
                        : k==="float"? Object.keys(u.inv.floats)
@@ -3418,8 +3435,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
         }
       }
 
-      const { eb, row } = renderInv(kind, 0);
-      return interaction.update({ embeds:[eb], components:[row] });
+      const { eb, row, navRow } = renderInv(kind, 0);
+      return interaction.update({ embeds:[eb], components: navRow ? [row, navRow] : [row] });
     }
     if (id === "inv:lock") {
   const st = invSessions.get(userId);
@@ -3441,9 +3458,15 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
     new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
   );
+  const navRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("aqua:home").setLabel("🐠 수족관").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("sell:home").setLabel("💰 판매").setStyle(ButtonStyle.Secondary),
+  );
 
-  return interaction.update({ embeds:[eb], components:[row] });
-}
+  return interaction.update({ embeds:[eb], components:[row, navRow] });
+
+  }
     if (id === "inv:share") {
       const st = invSessions.get(userId);
       if (!st || st.kind !== "fish") {
@@ -3479,21 +3502,26 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
       const kind = st.kind;
       function rerender(k, i){
         if (k==="fish") {
-          const f = u.inv.fishes[i];
-          const starName = withStarName(f.n, f.l);
-          const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
-            .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
-            .setColor(0x88ddff)
-            .setImage(getIconURL(f.n)||null)
-            .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
-            new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
-            new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
-          );
-          return { eb, row };
-        } else {
+      const f = u.inv.fishes[i];
+      const starName = withStarName(f.n, f.l);
+      const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
+        .setDescription(`[${f.r}] ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`)
+        .setColor(0x88ddff)
+        .setImage(getIconURL(f.n)||null)
+        .setFooter({ text: `낚시 코인: ${u.coins.toLocaleString()} | 티어: ${u.tier}` });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
+        new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=u.inv.fishes.length-1),
+        new ButtonBuilder().setCustomId("inv:lock").setLabel(f.lock ? "🔒 잠금 해제" : "🔒 잠금").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("inv:share").setLabel("📣 공유하기").setStyle(ButtonStyle.Secondary),
+      );
+      const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("aqua:home").setLabel("🐠 수족관").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sell:home").setLabel("💰 판매").setStyle(ButtonStyle.Secondary),
+      );
+        return { eb, row, navRow };
+          } else {
           const names = k==="rod"? Object.keys(u.inv.rods)
                        : k==="float"? Object.keys(u.inv.floats)
                        : Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0);
@@ -3539,8 +3567,8 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
           return { eb, row };
         }
       }
-      const { eb, row } = rerender(kind, st.idx);
-      return interaction.update({ embeds:[eb], components:[row] });
+      const { eb, row, navRow } = rerender(kind, st.idx);
+      return interaction.update({ embeds:[eb], components: navRow ? [row, navRow] : [row] });
     }
     if (id.startsWith("inv:equip|")) {
       const [,slot,name] = id.split("|");
@@ -3573,6 +3601,70 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
      const payload = buildInventoryHome(u);
      return interaction.update({ ...payload });
    }
+    if (id === "nav:pond") {
+      const timeBand = currentTimeBand();
+      const missKey = missingGearKey(u);
+      const scene0 = missKey ? (getIconURL(missKey)||null)
+                         : getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, timeBand, "기본");
+      const eb = sceneEmbed(u, "🏞️ 낚시터", [
+    "찌를 던져 입질을 기다려보세요.",
+    "",
+    equipLine(u)
+    ].join("\n"), scene0);
+      const viewRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
+    );
+      return interaction.update({ embeds:[eb], components:[buttonsStart(u), viewRow] });
+    }
+
+    if (id === "shop:home") {
+      const eb = new EmbedBuilder().setTitle("🛒 낚시 상점")
+      .setDescription([
+        "종류를 골라 하나씩 넘기며 이미지와 스펙, 가격을 확인하고 구매해 주세요.",
+        "",
+        "• 낚싯대, 찌: 구매 시 내구도 최대치로 제공됩니다.",
+        "• 미끼: 20개 묶음이며, 보유 수량이 20 미만이면 부족분만 비례 결제합니다."
+      ].join("\n"))
+      .setColor(0x55cc77)
+      .setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("shop:start|float").setLabel("🟠 찌 보기").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Primary),
+    );
+      const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+    );
+    return interaction.update({ embeds:[eb], components:[row, row2] });
+  }
+
+  if (id === "sell:home") {
+    const fishes = u.inv.fishes||[];
+    const sellable = fishes.filter(f => !f.lock);
+    const totalValue = sellable.reduce((sum, f) => sum + (f.price||0), 0);
+    const eb = new EmbedBuilder().setTitle("💰 물고기 판매")
+      .setDescription([
+        `보유 물고기: ${fishes.length}마리`,
+        "원하시는 방식으로 판매해 주세요."
+      ].join("\n"))
+      .addFields({ name:"전체 판매 예상 금액(잠금 제외)", value:`${totalValue.toLocaleString()} 코인`, inline:false })
+      .setColor(0xffaa44);
+  
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("fish:sell_all").setLabel("모두 판매").setStyle(ButtonStyle.Success).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_rarity").setLabel("등급별 판매").setStyle(ButtonStyle.Primary).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_select").setLabel("선택 판매").setStyle(ButtonStyle.Secondary).setDisabled(fishes.length===0),
+      new ButtonBuilder().setCustomId("fish:sell_cancel").setLabel("판매 취소").setStyle(ButtonStyle.Secondary),
+    );
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+    );
+    return interaction.update({ embeds:[eb], components:[row, row2] });
+  }
 
     if (id.startsWith("shop:start|")) {
       const kind = id.split("|")[1];
@@ -3621,17 +3713,21 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
         const bf = buffField(u); if (bf) eb.addFields(bf);
         eb.setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
-          new ButtonBuilder().setCustomId("shop:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=order.length-1),
-          new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null),
-          new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
-          new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
-        );
-        return { eb, row };
-      }
+        new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
+        new ButtonBuilder().setCustomId("shop:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=order.length-1),
+        new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null),
+        new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
+        new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
+      );
+        const backRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("shop:home").setLabel("↩ 상점으로 돌아가기").setStyle(ButtonStyle.Secondary),
+      );
 
-      const { eb, row } = renderShop(kind, 0);
-      return interaction.update({ embeds:[eb], components:[row] });
+        return { eb, row, backRow };
+        }
+
+      const { eb, row, backRow } = renderShop(kind, 0);
+      return interaction.update({ embeds:[eb], components:[row, backRow] });
     }
     if (id==="shop:prev" || id==="shop:next") {
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
@@ -3684,9 +3780,12 @@ const eb = new EmbedBuilder().setTitle(`🐟 인벤 — ${starName}`)
         new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null),
         new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null),
         new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
-      );
-      return interaction.update({ embeds:[eb], components:[row] });
-    }
+        );
+     const backRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("shop:home").setLabel("↩ 상점으로 돌아가기").setStyle(ButtonStyle.Secondary),
+        );
+      return interaction.update({ embeds:[eb], components:[row, backRow] });
+        }
     if (id.startsWith("shop:buy|")) {
       const [, pay, name] = id.split("|");
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
