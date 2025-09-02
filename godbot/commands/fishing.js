@@ -2659,38 +2659,49 @@ u.aquarium.push({
   sellSessions.set(userId, { ...(sellSessions.get(userId)||{}), selectIdxs: idxs });
 
   const fishes = u.inv.fishes || [];
-  const pick = idxs.map(i=>fishes[i]).filter(Boolean);
+  const pick   = idxs.map(i=>fishes[i]).filter(Boolean);
   const sellablePick = pick.filter(f => f && !f.lock);
-  const total = sellablePick.reduce((s,f)=>s+(f.price||0),0);
+  const total  = sellablePick.reduce((s,f)=>s+(f.price||0),0);
 
   const eb = new EmbedBuilder()
-    .setTitle("🧾 선택 판매 미리보기")
-    .setDescription(pick.length
-     ? pick.map(f=>{
-         const lockTag = f.lock ? "🔒 " : "";
-         return `• ${lockTag}[${f.r}] ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`;
-       }).join("\n")
-      : "_선택되지 않았습니다._")
-    .addFields({ name:"합계", value:`${total.toLocaleString()} 코인` })
+    .setTitle("💰 선택 판매 — 미리보기")
+    .setDescription(
+      sellablePick.length
+        ? sellablePick.map((f,i)=>`${i+1}. ${withStarName(f.n,f.l)} — ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`).join("\n")
+        : "_선택된 항목이 없거나 모두 잠금 상태입니다._"
+    )
+    .addFields({ name:"합계(잠금 제외)", value:`${total.toLocaleString()} 코인`, inline:false })
     .setColor(0xffaa44);
 
+  // 선택 메뉴를 다시 렌더(기존 선택 유지)
   const opts = fishes.slice(0,25).map((f,i)=>({
-    label: `${f.lock ? "🔒 " : ""}[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
+    label: `[${f.r}] ${withStarName(f.n, f.l)} ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`,
     value: String(i),
     default: idxs.includes(i)
   }));
   const menu = new StringSelectMenuBuilder()
     .setCustomId("sell-select")
     .setPlaceholder("판매할 물고기 선택(복수 선택 가능)")
-    .setMinValues(1).setMaxValues(opts.length)
+    .setMinValues(1)
+    .setMaxValues(opts.length)
     .addOptions(opts);
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("sell:confirm_selected").setLabel("선택 판매 확정").setStyle(ButtonStyle.Success).setDisabled(sellablePick.length===0),
-    new ButtonBuilder().setCustomId("sell:cancel").setLabel("취소").setStyle(ButtonStyle.Secondary),
+  const confirmRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("sell:confirm_selected")
+      .setLabel("선택 판매 확정")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(sellablePick.length === 0),
+    new ButtonBuilder()
+      .setCustomId("sell:cancel")
+      .setLabel("판매 취소")
+      .setStyle(ButtonStyle.Secondary)
   );
 
-  return interaction.update({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu), row ] });
+  return interaction.update({
+    embeds:[eb],
+    components:[ new ActionRowBuilder().addComponents(menu), confirmRow ]
+  });
 }
 
       if (type === "sell-qty-choose") {
@@ -2706,22 +2717,29 @@ u.aquarium.push({
       if (interaction.customId === "sell-rarity-choose") {
   const rarity = interaction.values[0];
   const fishes = u.inv.fishes || [];
-  const list = fishes.filter(f => f.r === rarity && !f.lock);
-  const total = list.reduce((s,f)=>s+(f.price||0),0);
+  const list   = fishes.filter(f => f.r === rarity && !f.lock);
+  const total  = list.reduce((s,f)=>s+(f.price||0),0);
 
   const eb = new EmbedBuilder()
-    .setTitle(`🧾 [${rarity}] 등급 판매 미리보기`)
-    .setDescription(list.length
-      ? list.slice(0, 10).map(f => `• ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
-      : "_판매할 물고기가 없습니다._")
-    .addFields({ name: "합계", value: `${total.toLocaleString()} 코인` })
+    .setTitle(`💰 등급별 판매 — [${rarity}] 미리보기`)
+    .setDescription(
+      list.length
+        ? list.map((f,i)=>`${i+1}. ${withStarName(f.n,f.l)} — ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`).join("\n")
+        : "_해당 등급(잠금 제외) 물고기가 없습니다._"
+    )
+    .addFields({ name:"합계", value:`${total.toLocaleString()} 코인`, inline:false })
     .setColor(0xffaa44);
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`sell:confirm_rarity|${rarity}`)
-      .setLabel(`[${rarity}] 판매 확정`).setStyle(ButtonStyle.Success).setDisabled(list.length===0),
-    new ButtonBuilder().setCustomId("sell:cancel")
-      .setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder()
+      .setCustomId(`sell:confirm_rarity|${rarity}`)
+      .setLabel(`[${rarity}] 판매 확정`)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(list.length === 0),
+    new ButtonBuilder()
+      .setCustomId("sell:cancel")
+      .setLabel("판매 취소")
+      .setStyle(ButtonStyle.Secondary)
   );
 
   return interaction.update({ embeds:[eb], components:[row] });
@@ -3313,22 +3331,29 @@ if (id === "fish:sell_rarity") {
 if (interaction.customId === "sell-rarity-choose") {
   const rarity = interaction.values[0];
   const fishes = u.inv.fishes || [];
-  const list = fishes.filter(f => f.r === rarity && !f.lock);
-  const total = list.reduce((s,f)=>s+(f.price||0),0);
+  const list   = fishes.filter(f => f.r === rarity && !f.lock);
+  const total  = list.reduce((s,f)=>s+(f.price||0),0);
 
   const eb = new EmbedBuilder()
-    .setTitle(`🧾 [${rarity}] 등급 판매 미리보기`)
-    .setDescription(list.length
-      ? list.slice(0, 10).map(f => `• ${f.n} — ${Math.round(f.l)}cm (${(f.price||0).toLocaleString()}코인)`).join("\n")
-      : "_판매할 물고기가 없습니다._")
-    .addFields({ name: "합계", value: `${total.toLocaleString()} 코인` })
+    .setTitle(`💰 등급별 판매 — [${rarity}] 미리보기`)
+    .setDescription(
+      list.length
+        ? list.map((f,i)=>`${i+1}. ${withStarName(f.n,f.l)} — ${Math.round(f.l)}cm / ${f.price.toLocaleString()}코인`).join("\n")
+        : "_해당 등급(잠금 제외) 물고기가 없습니다._"
+    )
+    .addFields({ name:"합계", value:`${total.toLocaleString()} 코인`, inline:false })
     .setColor(0xffaa44);
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`sell:confirm_rarity|${rarity}`)
-      .setLabel(`[${rarity}] 판매 확정`).setStyle(ButtonStyle.Success).setDisabled(list.length===0),
-    new ButtonBuilder().setCustomId("sell:cancel")
-      .setLabel("판매 취소").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder()
+      .setCustomId(`sell:confirm_rarity|${rarity}`)
+      .setLabel(`[${rarity}] 판매 확정`)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(list.length === 0),
+    new ButtonBuilder()
+      .setCustomId("sell:cancel")
+      .setLabel("판매 취소")
+      .setStyle(ButtonStyle.Secondary)
   );
 
   return interaction.update({ embeds:[eb], components:[row] });
