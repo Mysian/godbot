@@ -3397,8 +3397,6 @@ if (interaction.customId === "sell-rarity-choose") {
           new ButtonBuilder().setCustomId("sell:home").setLabel("💰 판매").setStyle(ButtonStyle.Secondary),
          );
           return { eb, row, navRow };
-        }
-
         } else {
           const name = (k==="rod"? Object.keys(u.inv.rods)
                        : k==="float"? Object.keys(u.inv.floats)
