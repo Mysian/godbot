@@ -1102,7 +1102,8 @@ if (
     interaction.customId?.startsWith("open:") || 
     interaction.customId?.startsWith("info:") ||
     interaction.customId?.startsWith("auto:") ||
-    interaction.customId?.startsWith("aqua:")
+    interaction.customId?.startsWith("aqua:") ||
+    interaction.customId?.startsWith("my:")
   )
 ) {
   try {
