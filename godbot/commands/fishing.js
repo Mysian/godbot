@@ -3843,7 +3843,7 @@ if (interaction.customId === "sell-rarity-choose") {
             new ButtonBuilder().setCustomId("inv:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=((k==="rod"?Object.keys(u.inv.rods):k==="float"?Object.keys(u.inv.floats):Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0)).length-1)),
             new ButtonBuilder().setCustomId(`inv:equip|${k}|${name}`).setLabel("장착").setStyle(ButtonStyle.Primary).setDisabled(k==="fish"),
-            new ButtonBuilder().setCustomId("inv:home").setLabel("🏠 인벤토리").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId("inv:home").setLabel("🏠 인벤토리").setStyle(ButtonStyle.Secondary)
           const navRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId("shop:home").setLabel("🛒 상점").setStyle(ButtonStyle.Secondary),
           );
