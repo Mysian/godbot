@@ -1484,7 +1484,12 @@ function buildInventoryHome(u){
     new ButtonBuilder().setCustomId("open:chest").setLabel(`📦 상자 열기 (${u.inv.chests||0})`).setStyle(ButtonStyle.Primary).setDisabled((u.inv.chests||0)<=0 || (u.inv.keys||0)<=0),
     new ButtonBuilder().setCustomId("info:key").setLabel(`🗝️ 열쇠 (${u.inv.keys||0})`).setStyle(ButtonStyle.Secondary)
   );
-  return { embeds:[eb], components:[row, extra] };
+  const navRow = new ActionRowBuilder().addComponents(
+  new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+  new ButtonBuilder().setCustomId("dex:open").setLabel("📘 도감").setStyle(ButtonStyle.Secondary),
+);
+  
+return { embeds:[eb], components:[row, extra, navRow] };
 }
 
 const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 통합 명령")
@@ -2270,7 +2275,11 @@ async function execute(interaction) {
         new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
       );
-      await interaction.reply({ embeds:[eb], components:[buttonsStart(u), viewRow], ephemeral:true });
+      const row3 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("my:record").setLabel("📜 내 기록").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("dex:open").setLabel("📘 도감").setStyle(ButtonStyle.Secondary),
+      );
+      await interaction.reply({ embeds:[eb], components:[buttonsStart(u), viewRow, row3], ephemeral:true });
     } finally {
       delete u._uid; 
     }
@@ -2421,6 +2430,11 @@ const lines = [
       .setDescription(lines.join("\n"))
       .setColor(0x66ddee);
     if (tierIcon) eb.setThumbnail(tierIcon);
+    const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("rank:points").setLabel("🏆 기록순위 보기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("dex:open").setLabel("📘 도감").setStyle(ButtonStyle.Secondary),
+  );
     await interaction.reply({ embeds:[eb], ephemeral:true });
   });
 }
@@ -2633,6 +2647,56 @@ if (id === "nav:pond" && interaction.isButton()) {
   return edit({ embeds:[eb], components:[buttonsStart(u), viewRow] });
 }
 
+if (id === "dex:open") {
+  const st = { rarity: "노말", page: 0, mode: "list" };
+  dexSessions.set(userId, st);
+  const payload = renderDexList(u, st);
+  return interaction.update({ ...payload });
+}
+
+if (id === "my:record") {
+  const target = interaction.user;
+  const counts = rarityCountsOf(u);
+  const top3 = Object.entries(u.stats.best || {})
+    .sort((a,b)=>(b[1].length||0)-(a[1].length||0)).slice(0,3);
+  const tierIcon = getIconURL(u.tier);
+
+  const tierIndex = TIER_ORDER.indexOf(u.tier);
+  let remainText = "";
+  if (tierIndex >= 0 && tierIndex < TIER_ORDER.length - 1) {
+    const nextTier = TIER_ORDER[tierIndex + 1];
+    const nextCutoff = TIER_CUTOFF[nextTier];
+    const remain = Math.max(0, nextCutoff - (u.stats.points || 0));
+    remainText = ` (다음 티어까지 남은 점수: ${remain.toLocaleString()}점)`;
+  }
+
+  const lines = [
+    `티어: **${u.tier}**${remainText}`,
+    `포인트: **${(u.stats.points||0).toLocaleString()}**`,
+    `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
+    `언노운 등급 어획: **${((counts||{})["언노운"]||0).toLocaleString()}**`,
+    `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name ? `— ${withStarName(u.stats.max.name, u.stats.max.length)}` : ""}`,
+    top3.length
+      ? "**종류별 최대 상위 3**\n"
+        + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n")
+      : "_기록이 없습니다._"
+  ];
+  const eb = new EmbedBuilder()
+    .setTitle(`📜 낚시 기록 — ${target.username}`)
+    .setDescription(lines.join("\n"))
+    .setColor(0x66ddee);
+  if (tierIcon) eb.setThumbnail(tierIcon);
+
+  // 기록 화면용 버튼 (요청 5와 동일 구성)
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("rank:points").setLabel("🏆 기록순위 보기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("dex:open").setLabel("📘 도감").setStyle(ButtonStyle.Secondary),
+  );
+
+  return interaction.update({ embeds:[eb], components:[row] });
+}
+
 
 // === [판매 홈으로 돌아가기] ===
 if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton()) {
@@ -2640,7 +2704,6 @@ if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton(
   const edit = mkSafeEditor(interaction);
   return edit(renderSellHome(u));
 }
-
 
 // === [모두 판매] ===
 if (id === "fish:sell_all" && interaction.isButton()) {
@@ -2664,7 +2727,6 @@ if (id === "fish:sell_all" && interaction.isButton()) {
     ...renderSellHome(u)
   });
 }
-
 
 // === [등급별 판매: 버튼 누름] ===
 if (id === "fish:sell_rarity" && interaction.isButton()) {
@@ -3782,8 +3844,11 @@ if (interaction.customId === "sell-rarity-choose") {
             new ButtonBuilder().setCustomId("inv:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=((k==="rod"?Object.keys(u.inv.rods):k==="float"?Object.keys(u.inv.floats):Object.keys(u.inv.baits).filter(x=>(u.inv.baits[x]||0)>0)).length-1)),
             new ButtonBuilder().setCustomId(`inv:equip|${k}|${name}`).setLabel("장착").setStyle(ButtonStyle.Primary).setDisabled(k==="fish"),
             new ButtonBuilder().setCustomId("inv:home").setLabel("🏠 인벤토리").setStyle(ButtonStyle.Secondary)
+          const navRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("shop:home").setLabel("🛒 상점").setStyle(ButtonStyle.Secondary),
           );
-          return { eb, row };
+
+          return { eb, row, navRow };
         }
       }
 
@@ -4134,6 +4199,7 @@ if (interaction.customId === "sell-rarity-choose") {
         new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
         );
      const backRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:home").setLabel("↩ 상점으로 돌아가기").setStyle(ButtonStyle.Secondary),
         );
       return interaction.update({ embeds:[eb], components:[row, backRow] });
