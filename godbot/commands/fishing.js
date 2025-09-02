@@ -4161,7 +4161,6 @@ if (interaction.customId === "sell-rarity-choose") {
           new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId("shop:home").setLabel("↩ 상점으로 돌아가기").setStyle(ButtonStyle.Secondary),
         );
-      );
 
         return { eb, row, backRow };
         }
