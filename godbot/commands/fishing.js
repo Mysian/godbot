@@ -2649,7 +2649,6 @@ u.aquarium.push({
     (u.inv.fishes||[]).splice(invIdx,1);
 
     return edit({ content: `${randPick(eatLines)} (+${gain}xp)`, ...(buildAquariumView(u, idx)) });
-  }
 }
 
     if (interaction.isStringSelectMenu()) {
