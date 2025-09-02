@@ -2351,17 +2351,26 @@ async function execute(interaction) {
     const tierIcon = getIconURL(u.tier);
     const counts = rarityCountsOf(u);
 
-    const lines = [
-      `티어: **${u.tier}**`,
-      `포인트: **${(u.stats.points||0).toLocaleString()}**`,
-      `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
-      `언노운 등급 어획: **${((counts||{})["언노운"]||0).toLocaleString()}**`,
-      `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name ? `— ${withStarName(u.stats.max.name, u.stats.max.length)}` : ""}`,
-      top3.length
-        ? "**종류별 최대 상위 3**\n"
-          + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n")
-        : "_기록이 없습니다._"
-    ];
+const tierIndex = TIER_ORDER.indexOf(u.tier);
+let remainText = "";
+if (tierIndex >= 0 && tierIndex < TIER_ORDER.length - 1) {
+  const nextTier = TIER_ORDER[tierIndex + 1];
+  const nextCutoff = TIER_CUTOFF[nextTier];
+  const remain = Math.max(0, nextCutoff - (u.stats.points || 0));
+  remainText = ` (다음 티어까지 남은 점수: ${remain.toLocaleString()}점)`;
+}
+
+const lines = [
+  `티어: **${u.tier}**${remainText}`,
+  `포인트: **${(u.stats.points||0).toLocaleString()}**`,
+  `누적 어획: **${(u.stats.caught||0).toLocaleString()}**`,
+  `언노운 등급 어획: **${((counts||{})["언노운"]||0).toLocaleString()}**`,
+  `최대 길이: **${Math.round(u.stats.max?.length||0)}cm** ${u.stats.max?.name ? `— ${withStarName(u.stats.max.name, u.stats.max.length)}` : ""}`,
+  top3.length
+    ? "**종류별 최대 상위 3**\n"
+      + top3.map(([n,i])=>`• ${withStarName(n, i.length)} — ${Math.round(i.length)}cm / 최고가 ${i.price?.toLocaleString?.()||0}코인`).join("\n")
+    : "_기록이 없습니다._"
+];
 
     const eb = new EmbedBuilder().setTitle(`📜 낚시 기록 — ${target.username}`)
       .setDescription(lines.join("\n"))
