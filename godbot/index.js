@@ -1096,6 +1096,7 @@ if (
     interaction.customId?.startsWith("inv:")  ||
     interaction.customId?.startsWith("sell:") ||
     interaction.customId?.startsWith("sell-") ||
+    interaction.customId?.startsWith("nav:")  ||
     interaction.customId?.startsWith("dex:")  ||
     interaction.customId?.startsWith("rank:") ||
     interaction.customId?.startsWith("open:") || 
