@@ -1399,6 +1399,15 @@ function computeRarityWeight(u){
   return m;
 }
 
+function buttonsQuestRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("quest:open")
+      .setLabel("📝 퀘스트 확인하기")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
 function startFight(u) {
   const rarityWeights = computeRarityWeight(u);
   const rar = pickWeighted(rarityWeights);
@@ -2643,8 +2652,11 @@ if (id === "nav:pond" && interaction.isButton()) {
     new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
   );
-
-  return edit({ embeds:[eb], components:[buttonsStart(u), viewRow] });
+  const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("my:record").setLabel("📜 내 기록").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("dex:open").setLabel("📘 도감").setStyle(ButtonStyle.Secondary),
+  );
+  return edit({ embeds:[eb], components:[buttonsStart(u), viewRow, row3] });
 }
 
 if (id === "dex:open") {
@@ -3177,6 +3189,15 @@ u.aquarium.push({
 return interaction.update({ ...payload });
 }
 
+// === [퀘스트 확인하기: after-catch에서 바로 열기] ===
+if (id === "quest:open" && interaction.isButton()) {
+  await interaction.deferUpdate();
+  const edit = mkSafeEditor(interaction);
+  ensureQuests(db); // 퀘스트 보정
+  const payload = buildQuestEmbed(db, u);
+  return edit(payload);
+}
+      
 if (id === "quest:refresh") {
   await interaction.deferUpdate().catch(()=>{});
   const payload = buildQuestEmbed(db, u);
@@ -3423,7 +3444,7 @@ const eb = new EmbedBuilder()
         clearSession(userId);
         const scene0 = getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "기본");
         const eb = new EmbedBuilder().setTitle("놓치셨습니다.").setDescription("텐션 조절에 실패하여 대상이 빠져나갔습니다.").setColor(0xcc6666).setImage(scene0);
-        return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(false)] });
+        return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(false), buttonsQuestRow()] });
       }
       if (st.hp <= 0) {
         useDurability(u, "rod"); 
@@ -3505,7 +3526,7 @@ const eb = sceneEmbed(
           const embedsToSend = speciesEb ? [eb, speciesEb] : [eb];
 
           try {
-            await updateOrEdit(interaction, { embeds: embedsToSend, components: [buttonsAfterCatch()] });
+            await updateOrEdit(interaction, { embeds: embedsToSend, components: [buttonsAfterCatch(), buttonsQuestRow()] });
           } catch (err) {
             console.error("[낚시 결과 embed 오류]", err);
             if (!interaction.replied && !interaction.deferred) {
@@ -3555,7 +3576,7 @@ clearSession(userId);
     `쓸모없는 ${st.name}을(를) 건졌습니다. 위로금으로 ${junkCoin} 코인을 받으셨습니다.`,
     getIconURL(st.name) || null
   );
-  return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+  return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
 
 } else {
   if (st.itemType === "coin") {
@@ -3576,7 +3597,7 @@ clearSession(userId);
       `${(st.amount||0).toLocaleString()} 코인을 획득하셨습니다.`,
       getIconURL("낚시 코인")
     );
-    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
   }
   if (st.itemType === "be") {
     await addBE(userId, st.amount||0, "[낚시] 드랍");
@@ -3596,7 +3617,7 @@ clearSession(userId);
       `${(st.amount||0).toLocaleString()}원을 받으셨습니다.`,
       getIconURL("파랑 정수")
     );
-    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
   }
   if (st.itemType === "key") {
     u.inv.keys = (u.inv.keys||0) + (st.qty||1);
@@ -3616,7 +3637,7 @@ clearSession(userId);
       `인벤토리에 추가되었습니다.`,
       getIconURL("까리한 열쇠")
     );
-    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
   }
   if (st.itemType === "chest") {
     u.inv.chests = (u.inv.chests||0) + (st.qty||1);
@@ -3636,7 +3657,7 @@ clearSession(userId);
       `인벤토리에 추가되었습니다.`,
       getIconURL("까리한 보물상자")
     );
-    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch()] });
+    return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
   }
 }
 
@@ -4137,7 +4158,9 @@ if (interaction.customId === "sell-rarity-choose") {
         new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
       );
         const backRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId("shop:home").setLabel("↩ 상점으로 돌아가기").setStyle(ButtonStyle.Secondary),
+        );
       );
 
         return { eb, row, backRow };
