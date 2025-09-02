@@ -1757,30 +1757,39 @@ function renderDexDetail(u, st, name){
   const all = FISH_BY_RARITY[st.rarity]||[];
   const total = all.length;
   const got = all.filter(n=>caught.has(n)).length;
+
   if (!caught.has(name)) {
     const eb = new EmbedBuilder()
       .setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`)
       .setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.")
-      .setColor(colorOf("언노운")) 
+      .setColor(colorOf("언노운"))
       .setImage(getIconURL("unknown") || null);
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+    );
     return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
   } else {
     const rec = u.stats.best?.[name]||{};
-const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-const C = (u.stats.speciesCount?.[name]||0);
-const starName = withStarName(name, rec.length || 0);
+    const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+    const C = (u.stats.speciesCount?.[name]||0);
+    const starName = withStarName(name, rec.length || 0);
 
-const eb = new EmbedBuilder()
-  .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
-  .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
-  .setColor(colorOf(st.rarity)) 
-  .setImage(getIconURL(name) || null);
+    const eb = new EmbedBuilder()
+      .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
+      .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
+      .setColor(colorOf(st.rarity))
+      .setImage(getIconURL(name) || null);
 
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary));
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+    );
     return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
   }
 }
+
 
 function aquariumSlotLabel(a, idx){
   if (!a) return `빈 슬롯 #${idx+1}`;
@@ -2609,26 +2618,32 @@ u.aquarium.push({
 
   // 먹이 선택
   if (sid.startsWith("aqua:feed_select|")) {
-    const idx = Number(sid.split("|")[1]);
-    const invIdx = Number(first);
+  const idx = Number(sid.split("|")[1]);
+  const invIdx = Number(first);
 
-    const a = u.aquarium[idx];
-    const feed = (u.inv.fishes||[])[invIdx];
-    if (!a || !feed) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
+  const a = u.aquarium[idx];
+  const feed = (u.inv.fishes||[])[invIdx];
+  if (!a || !feed) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
 
-    resetFeedIfNewDay(a);
-    if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
-    if (feed.l >= a.l)     return edit({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
+  resetFeedIfNewDay(a);
+  if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
+  if (feed.l >= a.l)     return edit({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
 
-    const beforeLv = a.lv;
-    const gain = feedXpGain(a, feed);
-    a.xp += gain;
-    a.feedCount += 1;
-    tryLevelUp(a);
-    applyQuestEvent(u, db, "aqua_feed");
-if (a.lv > beforeLv) {
-  applyQuestEvent(u, db, "aqua_levelup", { levels: a.lv - beforeLv });
+  const beforeLv = a.lv;
+  const gain = feedXpGain(a, feed);
+  a.xp += gain;
+  a.feedCount += 1;
+  tryLevelUp(a);
+  applyQuestEvent(u, db, "aqua_feed");
+  if (a.lv > beforeLv) {
+    applyQuestEvent(u, db, "aqua_levelup", { levels: a.lv - beforeLv });
+  }
+
+  (u.inv.fishes||[]).splice(invIdx,1);
+
+  return edit({ content: `${randPick(eatLines)} (+${gain}xp)`, ...(buildAquariumView(u, idx)) });
 }
+
 
     // 먹이는 소모됨
     (u.inv.fishes||[]).splice(invIdx,1);
