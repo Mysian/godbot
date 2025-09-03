@@ -1106,6 +1106,7 @@ if (
     interaction.customId?.startsWith("relic:") ||
     interaction.customId?.startsWith("relic-") ||
     interaction.customId?.startsWith("relic")  ||
+    interaction.customId === "relic-equip-choose" ||
     interaction.customId?.startsWith("my:")
   )
 ) {
