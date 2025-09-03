@@ -1714,7 +1714,6 @@ async function handleRelicComponent(u, db, interaction, id){
   u.relics.equipped = sel;
   return edit(renderRelicHome(u)); // (update/해당 메시지 교체)
     }
-  }
 }
 
 function buildInventoryHome(u){
