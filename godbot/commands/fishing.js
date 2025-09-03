@@ -171,6 +171,28 @@ function relicEffect(u){
   return eff;
 }
 
+function formatRelicEffectText(eff){
+  const s = n => (n >= 0 ? `+${n}` : `${n}`);
+  const pct = x => `${Math.round(x * 1000) / 10}%`;
+  const parts = [];
+  if (!eff || Object.keys(eff).length === 0) return "_없음_";
+
+  if (eff.uniqAdd)    parts.push(`유니크 절대확률 +${pct(eff.uniqAdd)}`);
+  if (eff.epicAdd)    parts.push(`에픽 절대확률 +${pct(eff.epicAdd)}`);
+  if (eff.bite)       parts.push(`입질시간 ${s(eff.bite)}s`);
+  if (eff.rarityShift)parts.push(`희귀도 +${eff.rarityShift}단계`);
+  if (eff.normalReduce) parts.push(`노말 확률 -${Math.round(eff.normalReduce*100)}%`);
+  if (eff.noJunk)     parts.push(`잡동사니 금지`);
+  if (eff.noNormal)   parts.push(`노말 금지`);
+  if (eff.coinNR)     parts.push(`노말/레어 추가 코인 +${eff.coinNR}`);
+  if (eff.coinUniPlus)parts.push(`유니크+ 추가 코인 +${eff.coinUniPlus}`);
+  if (eff.coinAll)    parts.push(`포획 시 코인 +${eff.coinAll}`);
+  if (eff.aquaXpMult) parts.push(`수족관 경험치 ×${eff.aquaXpMult.toFixed(2)}`);
+
+  return parts.join(", ");
+}
+
+
 
 // === 등급 예측 메시지 ===
 const RARITY_HINT_LINES = {
@@ -1626,28 +1648,44 @@ function renderRelicHome(u){
     .setColor(0x7f6df0);
 
   if (eq) {
-    const lv = relicLv(u, eq);
-    eb.addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
-      .setThumbnail(relicImg(eq));
-  } else {
-    eb.addFields({ name: "현재 장착", value: "_없음_", inline: false });
-  }
+  const lv = relicLv(u, eq);
+  eb.addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
+    .setThumbnail(relicImg(eq));
+  const eff = relicEffect(u);
+  eb.addFields({ name: "효과", value: formatRelicEffectText(eff), inline: false });
+} else {
+  eb.addFields({ name: "현재 장착", value: "_없음_", inline: false });
+  eb.addFields({ name: "효과", value: "_없음_", inline: false });
+}
 
-  const lines = RELIC_LIST.map(name=>{
-    const lv = relicLv(u, name);
-    return `• ${name} ${lv>0?`(Lv.${lv})`:"(미보유)"}`;
-  });
-  eb.addFields({ name:"보유 현황", value: lines.join("\n"), inline:false });
 
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId("relic-equip-choose")
-    .setPlaceholder("장착할 유물을 선택")
-    .addOptions(RELIC_LIST.map(n=>({
-      label: n, value: n, description: `레벨: ${relicLv(u,n)}`
-    })));
+const owned = RELIC_LIST.filter(n => relicLv(u, n) > 0);
+const lines = owned.map(n => `• ${n} (Lv.${relicLv(u, n)})`);
+eb.addFields({
+  name: "보유 현황",
+  value: lines.length ? lines.join("\n") : "_보유한 유물이 없습니다._",
+  inline: false
+});
 
-  const row1 = new ActionRowBuilder().addComponents(menu);
-  const row2 = new ActionRowBuilder().addComponents(
+// 선택 메뉴도 보유한 것만
+const menu = new StringSelectMenuBuilder()
+  .setCustomId("relic-equip-choose")
+  .setPlaceholder(owned.length ? "장착할 유물을 선택" : "보유 유물이 없습니다")
+  .setMinValues(1)
+  .setMaxValues(1);
+
+// Discord 제약: 옵션 0개 메뉴는 비허용 → dummy 옵션 + disabled 처리
+if (owned.length) {
+  menu.addOptions(owned.map(n => ({
+    label: n, value: n, description: `레벨: ${relicLv(u, n)}`
+  })));
+} else {
+  menu.addOptions([{ label: "보유 유물이 없습니다", value: "__noop", description: "유물을 획득하면 장착할 수 있어요." }]);
+  menu.setDisabled(true);
+}
+
+const row1 = new ActionRowBuilder().addComponents(menu);
+const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
   );
 
@@ -1666,13 +1704,20 @@ async function handleRelicComponent(u, db, interaction, id){
     return edit(renderRelicHome(u));
   }
   if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
-    const sel = interaction.values?.[0];
-    if (sel && RELICS[sel]) {
-      ensureRelics(u);
-      u.relics.equipped = sel;
-      return edit(renderRelicHome(u));
-    }
+  const sel = interaction.values?.[0];
+  ensureRelics(u);
+
+  if (sel === "__noop") {
+    return edit(renderRelicHome(u));
   }
+
+  if (!sel || !RELICS[sel] || relicLv(u, sel) <= 0) {
+    return edit({ content: "보유하지 않은 유물은 장착할 수 없어.", ...renderRelicHome(u) });
+  }
+
+  u.relics.equipped = sel;
+  return edit(renderRelicHome(u));
+ }
 }
 
 function buildInventoryHome(u){
