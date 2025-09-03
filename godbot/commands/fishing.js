@@ -3735,11 +3735,7 @@ const eb = new EmbedBuilder()
   .setColor(0x44ddaa)
   .setImage(s.sceneBiteURL);
 
-    try { 
-    await s.safeEdit({ embeds: [eb], components: [buttonsFight()] }); 
-  } catch {}
-}, waitSec * 1000);
-
+  try { await s.safeEdit({ embeds: [eb], components: [buttonsFight()] }); } catch {} }, waitSec * 1000);
   s.expireTimer = setTimeout(() => { clearSession(userId); }, (FISHING_LIMIT_SECONDS + 20) * 1000);
 
   const eb = sceneEmbed(
