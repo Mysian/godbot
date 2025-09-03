@@ -2705,7 +2705,6 @@ async function component(interaction) {
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
     ensureRelics(u);
-    return u;
     try {
       const id = interaction.customId || "";
       u._uid = userId;
