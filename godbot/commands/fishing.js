@@ -1511,6 +1511,7 @@ function computeRarityWeight(u){
   if (rel?.normalReduce) {
     m["노말"] = Math.max(0, m["노말"] * (1 - rel.normalReduce));
   }
+
   if (rel?.noNormal) {
     m["노말"] = 0;
   }
@@ -2010,7 +2011,7 @@ function renderDexList(u, st) {
 }
 
 // [최소 구현] 도감 상세
-function renderDexDetail(u, st, name) {
+function renderDexDetail(u, st, name = st.current) {
   const rar = RARITY_OF[name] || "노말";
   const best = (u.stats.best || {})[name];
   const eb = new EmbedBuilder()
@@ -3021,11 +3022,10 @@ if (interaction.isStringSelectMenu() && id === "dex:select") {
 
   const st = dexSessions.get(userId) || { rarity: "노말", page: 0, mode: "list" };
   st.mode = "detail";
-  st.current = val;
-  dexSessions.set(userId, st);
-
-  const payload = renderDexDetail(u, st, val);
-  return interaction.update({ ...payload });
+st.current = val;
+dexSessions.set(userId, st);
+const payload = renderDexDetail(u, st, st.current);
+return interaction.update({ ...payload });
 }
 
 
