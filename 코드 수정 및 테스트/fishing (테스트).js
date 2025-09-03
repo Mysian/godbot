@@ -749,13 +749,12 @@ async function withDB(fn) {
   }
 }
 async function updateUser(userId, updater) {
-  return await withDB(async db=>{
-    const u = (db.users[userId] ||= {}); ensureUser(u); 
-    ensureRelics(u);
-    return u;
+  return await withDB(async db => {
+    const u = (db.users[userId] ||= {});
+    ensureUser(u);
     u._uid = userId;
     const r = await updater(u, db);
-    delete u._uid; 
+    delete u._uid;
     return r;
   });
 }
@@ -841,6 +840,7 @@ function ensureUser(u) {
 
   // 수족관 보정(레거시 사용자 포함)
   ensureAquarium(u);
+  ensureRelics(u);
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -1611,6 +1611,67 @@ function applyReel(u, st, s, act){
   if (pressAggressive && st.hp < Math.floor(st.maxHP*0.25) && s.tension >= 85) escapeChance += 0.15;
   if (Math.random() < escapeChance) st.escape = true;
   return st;
+}
+
+function renderRelicHome(u){
+  ensureRelics(u);
+  const eq = equippedRelic(u);
+  const eb = new EmbedBuilder()
+    .setTitle("🧿 유물")
+    .setDescription([
+      "• 유물은 **하나만 장착** 가능",
+      "• 동일 유물 낚을 때 자동 레벨업 (최대 5)",
+      "• 최대 레벨 이후 중복 → **낚시 코인 300,000**으로 대체"
+    ].join("\n"))
+    .setColor(0x7f6df0);
+
+  if (eq) {
+    const lv = relicLv(u, eq);
+    eb.addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
+      .setThumbnail(relicImg(eq));
+  } else {
+    eb.addFields({ name: "현재 장착", value: "_없음_", inline: false });
+  }
+
+  const lines = RELIC_LIST.map(name=>{
+    const lv = relicLv(u, name);
+    return `• ${name} ${lv>0?`(Lv.${lv})`:"(미보유)"}`;
+  });
+  eb.addFields({ name:"보유 현황", value: lines.join("\n"), inline:false });
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("relic-equip-choose")
+    .setPlaceholder("장착할 유물을 선택")
+    .addOptions(RELIC_LIST.map(n=>({
+      label: n, value: n, description: `레벨: ${relicLv(u,n)}`
+    })));
+
+  const row1 = new ActionRowBuilder().addComponents(menu);
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
+  );
+
+  return { embeds:[eb], components:[row1,row2] };
+}
+
+// component 핸들링(아래 6단계에서 라우팅 추가 후 동작)
+async function handleRelicComponent(u, db, interaction, id){
+  if (id === "relic:home" || id === "inv:relic") {
+    return interaction.update(renderRelicHome(u));
+  }
+  if (id === "relic:unequip") {
+    ensureRelics(u);
+    u.relics.equipped = null;
+    return interaction.update(renderRelicHome(u));
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
+    const sel = interaction.values?.[0];
+    if (sel && RELICS[sel]) {
+      ensureRelics(u);
+      u.relics.equipped = sel;
+      return interaction.update(renderRelicHome(u));
+    }
+  }
 }
 
 function buildInventoryHome(u){
@@ -2392,7 +2453,6 @@ async function execute(interaction) {
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
     ensureRelics(u);
-    return u;
     u._uid = userId;
     try {
       const payload = buildQuestEmbed(db, u);
@@ -2404,9 +2464,11 @@ async function execute(interaction) {
 }
 
   if (sub === "유물") {
-  const u = await getUser(interaction.user.id);
-  ensureUser(u);
-  return interaction.reply(renderRelicHome(u));
+  return await withDB(async db => {
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    const payload = renderRelicHome(u);
+    return interaction.reply({ ...payload, ephemeral: true });
+  });
 }
 
 
@@ -2424,7 +2486,6 @@ async function execute(interaction) {
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
     ensureRelics(u);
-    return u;
     try {
       u._uid = userId;
 
@@ -2458,7 +2519,6 @@ async function execute(interaction) {
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
       ensureRelics(u);
-      return u;
       const eb = new EmbedBuilder().setTitle("🛒 낚시 상점")
         .setDescription([
           "종류를 골라 하나씩 넘기며 이미지와 스펙, 가격을 확인하고 구매해 주세요.",
@@ -2487,7 +2547,6 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
       ensureRelics(u);
-      return u;
       const payload = buildInventoryHome(u);
       await interaction.reply({ ...payload, ephemeral:true });
     });
@@ -2497,7 +2556,6 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u);
     ensureRelics(u);
-    return u;
     const fishes = u.inv.fishes||[];
     const sellable = fishes.filter(f => !f.lock);
     const totalValue = sellable.reduce((sum, f) => sum + (f.price||0), 0);
@@ -2526,7 +2584,6 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
       ensureRelics(u);
-      return u;
       
       u.rewards ??= {};
       if (u.rewards.starter) {
@@ -2561,7 +2618,6 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u);
     ensureRelics(u);
-    return u;
     try {
       u._uid = userId;
       const st = { rarity:"노말", page:0, mode:"list" };
@@ -2579,7 +2635,6 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   return await withDB(async db=>{
     const u = (db.users[target.id] ||= {}); ensureUser(u);
     ensureRelics(u);
-    return u;
     const top3 = Object.entries(u.stats.best || {}).sort((a,b)=> (b[1].length||0) - (a[1].length||0)).slice(0,3);
     const tierIcon = getIconURL(u.tier);
     const counts = rarityCountsOf(u);
@@ -2881,13 +2936,23 @@ if (id === "my:record") {
   return interaction.update({ embeds:[eb], components:[row] });
 }
 
-// === [유물 컴포넌트] ===
-if ((id === "relic:home" || id === "inv:relic" || id === "relic:unequip") ||
-    (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose")) {
-  await interaction.deferUpdate();
-  return handleRelicComponent(u, db, interaction, id);
+// === [유물 컴포넌트 라우팅] ===
+if (
+  (interaction.isButton() && (
+    interaction.customId === "relic:home" ||
+    interaction.customId === "inv:relic" ||
+    interaction.customId === "relic:unequip"
+  )) ||
+  (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose")
+) {
+  await withDB(async db => {
+    const u = (db.users[interaction.user.id] ||= {}); 
+    ensureUser(u);
+    await interaction.deferUpdate();
+    await handleRelicComponent(u, db, interaction, interaction.customId);
+  });
+  return; 
 }
-
 
 // === [판매 홈으로 돌아가기] ===
 if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton()) {
@@ -2985,67 +3050,6 @@ if (interaction.isStringSelectMenu() && interaction.customId === "sell-rarity-ch
   );
 
   return edit({ embeds:[eb], components:[row] });
-}
-
-function renderRelicHome(u){
-  ensureRelics(u);
-  const eq = equippedRelic(u);
-  const eb = new EmbedBuilder()
-    .setTitle("🧿 유물")
-    .setDescription([
-      "• 유물은 **하나만 장착** 가능",
-      "• 동일 유물 낚을 때 자동 레벨업 (최대 5)",
-      "• 최대 레벨 이후 중복 → **낚시 코인 300,000**으로 대체"
-    ].join("\n"))
-    .setColor(0x7f6df0);
-
-  if (eq) {
-    const lv = relicLv(u, eq);
-    eb.addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
-      .setThumbnail(relicImg(eq));
-  } else {
-    eb.addFields({ name: "현재 장착", value: "_없음_", inline: false });
-  }
-
-  const lines = RELIC_LIST.map(name=>{
-    const lv = relicLv(u, name);
-    return `• ${name} ${lv>0?`(Lv.${lv})`:"(미보유)"}`;
-  });
-  eb.addFields({ name:"보유 현황", value: lines.join("\n"), inline:false });
-
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId("relic-equip-choose")
-    .setPlaceholder("장착할 유물을 선택")
-    .addOptions(RELIC_LIST.map(n=>({
-      label: n, value: n, description: `레벨: ${relicLv(u,n)}`
-    })));
-
-  const row1 = new ActionRowBuilder().addComponents(menu);
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
-  );
-
-  return { embeds:[eb], components:[row1,row2] };
-}
-
-// component 핸들링(아래 6단계에서 라우팅 추가 후 동작)
-async function handleRelicComponent(u, db, interaction, id){
-  if (id === "relic:home" || id === "inv:relic") {
-    return interaction.update(renderRelicHome(u));
-  }
-  if (id === "relic:unequip") {
-    ensureRelics(u);
-    u.relics.equipped = null;
-    return interaction.update(renderRelicHome(u));
-  }
-  if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
-    const sel = interaction.values?.[0];
-    if (sel && RELICS[sel]) {
-      ensureRelics(u);
-      u.relics.equipped = sel;
-      return interaction.update(renderRelicHome(u));
-    }
-  }
 }
 
 // === [등급별 판매: 확정 누름] ===
