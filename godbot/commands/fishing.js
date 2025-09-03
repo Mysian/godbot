@@ -1656,20 +1656,21 @@ function renderRelicHome(u){
 
 // component 핸들링(아래 6단계에서 라우팅 추가 후 동작)
 async function handleRelicComponent(u, db, interaction, id){
+ const edit = mkSafeEditor(interaction);
   if (id === "relic:home" || id === "inv:relic") {
-    return interaction.update(renderRelicHome(u));
+    return edit(renderRelicHome(u));
   }
   if (id === "relic:unequip") {
     ensureRelics(u);
     u.relics.equipped = null;
-    return interaction.update(renderRelicHome(u));
+    return edit(renderRelicHome(u));
   }
   if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
     const sel = interaction.values?.[0];
     if (sel && RELICS[sel]) {
       ensureRelics(u);
       u.relics.equipped = sel;
-      return interaction.update(renderRelicHome(u));
+      return edit(renderRelicHome(u));
     }
   }
 }
