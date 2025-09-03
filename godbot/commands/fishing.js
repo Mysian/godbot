@@ -3203,8 +3203,8 @@ if (id === "sell:confirm_selected" && interaction.isButton()) {
 
 
 // === [수족관] 셀렉트 메뉴 (같은 try 내부) ===
-if (interaction.isStringSelectMenu()) {
-  const sid = interaction.customId || "";
+if (interaction.isStringSelectMenu() && interaction.customId.startsWith("aqua:")) {
+  const sid = interaction.customId;
   const vals = interaction.values || [];
   const first = vals[0];
   await interaction.deferUpdate();
