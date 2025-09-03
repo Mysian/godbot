@@ -3015,12 +3015,16 @@ if (id === "fish:sell_rarity" && interaction.isButton()) {
 
 // 도감 상세 보기: 셀렉트 핸들러
 if (interaction.isStringSelectMenu() && id === "dex:select") {
+  await interaction.deferUpdate();
   const val = interaction.values?.[0];
-  if (!val) return interaction.deferUpdate();
+  if (!val) return;
+
+  const st = dexSessions.get(userId) || { rarity: "노말", page: 0, mode: "list" };
   st.mode = "detail";
-  st.current = val; // 선택한 물고기 ID
+  st.current = val;
   dexSessions.set(userId, st);
-  const payload = renderDexDetail(u, st);
+
+  const payload = renderDexDetail(u, st, val);
   return interaction.update({ ...payload });
 }
 
@@ -4580,7 +4584,7 @@ if (id.startsWith("dex:open|")) {
   st.mode = "detail";
   st.current = fid;
   dexSessions.set(userId, st);
-  const payload = renderDexDetail(u, st);
+  const payload = renderDexDetail(u, st, fid);
   return interaction.update({ ...payload });
 }
 if (id === "dex:dprev" || id === "dex:dnext") {
@@ -4593,7 +4597,7 @@ if (id === "dex:dprev" || id === "dex:dnext") {
   st.current = all[ni];
   st.mode = "detail";
   dexSessions.set(userId, st);
-  const payload = renderDexDetail(u, st);
+  const payload = renderDexDetail(u, st, fid);
   return interaction.update({ ...payload });
 }
 
