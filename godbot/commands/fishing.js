@@ -2977,7 +2977,7 @@ if (id === "my:record") {
 // === [유물 컴포넌트 라우팅] ===
 if (
   (interaction.isButton() && ["relic:home","inv:relic","relic:unequip"].includes(id)) ||
-  (interaction.isStringSelectMenu() && id === "relic-equip-choose")
+  (interaction.isStringSelectMenu() && id === "relic:choose")
 ) {
   await interaction.deferUpdate();
   await handleRelicComponent(u, db, interaction, id);
