@@ -2935,20 +2935,13 @@ if (id === "my:record") {
 
 // === [유물 컴포넌트 라우팅] ===
 if (
-    (interaction.isButton() && (
-      interaction.customId === "relic:home" ||
-      interaction.customId === "inv:relic" ||
-      interaction.customId === "relic:unequip"
-    )) ||
-    (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose")
-  ) {
-    await withDB(async db => {
-      const u = (db.users[interaction.user.id] ||= {}); ensureUser(u);
-      await interaction.deferUpdate();
-      await handleRelicComponent(u, db, interaction, interaction.customId);
-    });
-    return;
-  }
+  (interaction.isButton() && ["relic:home","inv:relic","relic:unequip"].includes(id)) ||
+  (interaction.isStringSelectMenu() && id === "relic-equip-choose")
+) {
+  await interaction.deferUpdate();
+  await handleRelicComponent(u, db, interaction, id);
+  return;
+}
 
 // === [판매 홈으로 돌아가기] ===
 if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton()) {
