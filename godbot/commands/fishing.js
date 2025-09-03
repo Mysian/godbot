@@ -1686,10 +1686,14 @@ if (owned.length) {
 
 const row1 = new ActionRowBuilder().addComponents(menu);
 const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
-  );
+  new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
+);
+const row3 = new ActionRowBuilder().addComponents(
+  new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+  new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+);
 
-  return { embeds:[eb], components:[row1,row2] };
+return { embeds:[eb], components:[row1,row2,row3] };
 }
 
 // component 핸들링(아래 6단계에서 라우팅 추가 후 동작)
@@ -2546,6 +2550,7 @@ async function execute(interaction) {
         new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("relic:home").setLabel("🧿 유물 보기").setStyle(ButtonStyle.Secondary),
       );
       const row3 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("my:record").setLabel("📜 내 기록").setStyle(ButtonStyle.Secondary),
@@ -2920,6 +2925,7 @@ if (id === "nav:pond" && interaction.isButton()) {
     new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("relic:home").setLabel("🧿 유물 보기").setStyle(ButtonStyle.Secondary),
   );
   const row3 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("my:record").setLabel("📜 내 기록").setStyle(ButtonStyle.Secondary),
@@ -3581,6 +3587,7 @@ if (id === "fish:share") {
     new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("relic:home").setLabel("🧿 유물 보기").setStyle(ButtonStyle.Secondary),
   );
 
   return interaction.update({ components: [buttonsStart(u), viewRow] });
@@ -4383,6 +4390,7 @@ if (interaction.customId === "sell-rarity-choose") {
         new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🛒 낚싯대 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|float").setLabel("🧷 찌 보기").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("relic:home").setLabel("🧿 유물 보기").setStyle(ButtonStyle.Secondary),
     );
       return interaction.update({ embeds:[eb], components:[buttonsStart(u), viewRow] });
     }
