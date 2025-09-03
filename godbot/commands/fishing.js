@@ -1959,43 +1959,6 @@ function dexNavRow(hasPrev, hasNext){
     new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
   );
 }
-function renderDexList(u, st){
-  const all = FISH_BY_RARITY[st.rarity]||[];
-  const caught = caughtSetOf(u);
-  const total = all.length;
-  const start = st.page*DEX_PAGE_SIZE;
-  const slice = all.slice(start, start+DEX_PAGE_SIZE);
-  const got = all.filter(n=>caught.has(n)).length;
-
-  const lines = slice.map((n,i)=>{
-    const idx = start + i + 1;
-    if (caught.has(n)) {
-      const rec = u.stats.best?.[n]||{};
-      const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-      const cnt = u.stats.speciesCount?.[n] ?? 0;
-      const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
-      const starName = withStarName(n, rec.length || 0);
-      return `${idx}. ${starName} — ${meta}`;
-    }
-    return `${idx}. ??? — ?????`;
-  });
-
-  const eb = new EmbedBuilder()
-    .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
-    .setDescription(lines.join("\n") || "_표시할 항목이 없습니다._")
-    .setColor(colorOf(st.rarity));
-
-  const components = [...dexRarityRows(st.rarity)];
-  if (slice.length) {
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("dex:select")
-      .setPlaceholder("상세로 볼 항목 선택")
-      .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
-    components.push(new ActionRowBuilder().addComponents(menu));
-  }
-  components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
-  return { embeds:[eb], components };
-}
 
 // [필수] 도감 리스트
 function renderDexList(u, st) {
@@ -2077,44 +2040,7 @@ function renderDexDetail(u, st, name) {
   );
 
   return { embeds:[eb], components:[nav] };
-}
-
-function renderDexDetail(u, st, name){
-  const caught = caughtSetOf(u);
-  const all = FISH_BY_RARITY[st.rarity]||[];
-  const total = all.length;
-  const got = all.filter(n=>caught.has(n)).length;
-
-  if (!caught.has(name)) {
-    const eb = new EmbedBuilder()
-      .setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`)
-      .setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.")
-      .setColor(colorOf("언노운"))
-      .setImage(getIconURL("unknown") || null);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
-    );
-    return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
-  } else {
-    const rec = u.stats.best?.[name]||{};
-    const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
-    const C = (u.stats.speciesCount?.[name]||0);
-    const starName = withStarName(name, rec.length || 0);
-
-    const eb = new EmbedBuilder()
-      .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
-      .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
-      .setColor(colorOf(st.rarity))
-      .setImage(getIconURL(name) || null);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
-    );
-    return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
-  }
+ }
 }
 
 
