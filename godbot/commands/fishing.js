@@ -1511,7 +1511,6 @@ function computeRarityWeight(u){
   if (rel?.normalReduce) {
     m["노말"] = Math.max(0, m["노말"] * (1 - rel.normalReduce));
   }
-
   if (rel?.noNormal) {
     m["노말"] = 0;
   }
@@ -1960,89 +1959,81 @@ function dexNavRow(hasPrev, hasNext){
     new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
   );
 }
+function renderDexList(u, st){
+  const all = FISH_BY_RARITY[st.rarity]||[];
+  const caught = caughtSetOf(u);
+  const total = all.length;
+  const start = st.page*DEX_PAGE_SIZE;
+  const slice = all.slice(start, start+DEX_PAGE_SIZE);
+  const got = all.filter(n=>caught.has(n)).length;
 
-// [필수] 도감 리스트
-function renderDexList(u, st) {
-  const all = FISH_BY_RARITY[st.rarity] || [];
-  const maxPage = Math.max(0, Math.ceil(all.length / DEX_PAGE_SIZE) - 1);
-  const page = Math.max(0, Math.min(maxPage, st.page|0));
-  const start = page * DEX_PAGE_SIZE;
-  const items = all.slice(start, start + DEX_PAGE_SIZE);
+  const lines = slice.map((n,i)=>{
+    const idx = start + i + 1;
+    if (caught.has(n)) {
+      const rec = u.stats.best?.[n]||{};
+      const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+      const cnt = u.stats.speciesCount?.[n] ?? 0;
+      const meta = [L, `${cnt.toLocaleString()}회`].join(" | ");
+      const starName = withStarName(n, rec.length || 0);
+      return `${idx}. ${starName} — ${meta}`;
+    }
+    return `${idx}. ??? — ?????`;
+  });
 
   const eb = new EmbedBuilder()
-    .setTitle(`📘 도감 — ${st.rarity}`)
-    .setDescription(
-      items.length
-        ? items.map((n, i) => {
-            const owned = (u.stats.speciesCount?.[n] || 0) > 0;
-            const star = owned ? "★" : "☆";
-            return `${start + i + 1}. ${star} ${n}`;
-          }).join("\n")
-        : "_표시할 항목이 없습니다._"
-    )
-    .setColor(0x55bbff);
+    .setTitle(`📘 낚시 도감 — ${st.rarity} [${got}/${total}]`)
+    .setDescription(lines.join("\n") || "_표시할 항목이 없습니다._")
+    .setColor(colorOf(st.rarity));
 
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId("dex:select")
-    .setPlaceholder("상세로 볼 항목 선택")
-    .addOptions(items.map(n => ({
-      label: n, value: n, description: RARITY_OF[n] || ""
-    })));
-
-  // 등급 탭
-  const rarRow = new ActionRowBuilder().addComponents(
-    ...RARITY.map(r =>
-      new ButtonBuilder()
-        .setCustomId(`dex:rar|${r}`)
-        .setLabel(r)
-        .setStyle(r === st.rarity ? ButtonStyle.Primary : ButtonStyle.Secondary)
-    )
-  );
-
-  // 페이지 네비
-  const navRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("dex:prev").setLabel("⬅️ 이전").setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
-    new ButtonBuilder().setCustomId("dex:back").setLabel("목록").setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId("dex:next").setLabel("다음 ➡️").setStyle(ButtonStyle.Secondary).setDisabled(page >= maxPage),
-    new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Danger),
-  );
-
-  return { embeds: [eb], components: [ new ActionRowBuilder().addComponents(menu), rarRow, navRow ] };
+  const components = [...dexRarityRows(st.rarity)];
+  if (slice.length) {
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("dex:select")
+      .setPlaceholder("상세로 볼 항목 선택")
+      .addOptions(slice.map(n=>({ label: caught.has(n) ? n : "???", value: n })));
+    components.push(new ActionRowBuilder().addComponents(menu));
+  }
+  components.push(dexNavRow(start>0, start+DEX_PAGE_SIZE<total));
+  return { embeds:[eb], components };
 }
 
-// [최소 구현] 도감 상세
-function renderDexDetail(u, st, name = st.current) {
-  const rar = RARITY_OF[name] || "노말";
-  const best = (u.stats.best || {})[name];
-  const eb = new EmbedBuilder()
-    .setTitle(`${name} — ${rar}`)
-    .setDescription(
-      best
-        ? `내 최대: ${Math.round(best.length)}cm / 최고가 ${best.price?.toLocaleString?.() || 0}코인`
-        : "_아직 잡지 못했습니다._"
-    )
-    .setColor(0x55bbff);
-  const icon = getIconURL(name);
-  if (icon) eb.setThumbnail(icon);
+function renderDexDetail(u, st, name){
+  const caught = caughtSetOf(u);
+  const all = FISH_BY_RARITY[st.rarity]||[];
+  const total = all.length;
+  const got = all.filter(n=>caught.has(n)).length;
 
-  const all = FISH_BY_RARITY[st.rarity] || [];
-  const idx = Math.max(0, all.indexOf(name));
-  const maxPage = Math.max(0, Math.ceil(all.length / DEX_PAGE_SIZE) - 1);
-  const page = Math.max(0, Math.min(maxPage, Math.floor(idx / DEX_PAGE_SIZE)));
+  if (!caught.has(name)) {
+    const eb = new EmbedBuilder()
+      .setTitle(`❔ ??? — ${st.rarity} [${got}/${total}]`)
+      .setDescription("아직 발견하지 못했습니다. 더 낚시해 보세요.")
+      .setColor(colorOf("언노운"))
+      .setImage(getIconURL("unknown") || null);
 
-  // 상태 동기화(뒤로/앞/뒤 이동 시 자연스럽게)
-  st.page = page; st.mode = "detail"; st.current = name;
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+    );
+    return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
+  } else {
+    const rec = u.stats.best?.[name]||{};
+    const L = rec.length ? `${Math.round(rec.length)}cm` : "-";
+    const C = (u.stats.speciesCount?.[name]||0);
+    const starName = withStarName(name, rec.length || 0);
 
-  const nav = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("dex:prev").setLabel("⬅️ 이전").setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
-    new ButtonBuilder().setCustomId("dex:back").setLabel("목록").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("dex:next").setLabel("다음 ➡️").setStyle(ButtonStyle.Secondary).setDisabled(page >= maxPage),
-    new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Danger),
-  );
+    const eb = new EmbedBuilder()
+      .setTitle(`📖 ${starName} — ${st.rarity} [${got}/${total}]`)
+      .setDescription([`최대 길이: ${L}`, `누적 횟수: ${C.toLocaleString()}회`].join("\n"))
+      .setColor(colorOf(st.rarity))
+      .setImage(getIconURL(name) || null);
 
-  return { embeds:[eb], components:[nav] };
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("dex:back").setLabel("목록으로").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("dex:close").setLabel("닫기").setStyle(ButtonStyle.Secondary)
+    );
+    return { embeds:[eb], components:[...dexRarityRows(st.rarity), row] };
+  }
 }
-
 
 
 function aquariumSlotLabel(a, idx){
@@ -2958,7 +2949,7 @@ if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton(
   const edit = mkSafeEditor(interaction);
   return edit(renderSellHome(u));
 }
-      
+
 // === [모두 판매] ===
 if (id === "fish:sell_all" && interaction.isButton()) {
   await interaction.deferUpdate();
@@ -3012,20 +3003,6 @@ if (id === "fish:sell_rarity" && interaction.isButton()) {
   );
 
   return edit({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu), back ] });
-}
-
-// 도감 상세 보기: 셀렉트 핸들러
-if (interaction.isStringSelectMenu() && id === "dex:select") {
-  await interaction.deferUpdate();
-  const val = interaction.values?.[0];
-  if (!val) return;
-
-  const st = dexSessions.get(userId) || { rarity: "노말", page: 0, mode: "list" };
-  st.mode = "detail";
-st.current = val;
-dexSessions.set(userId, st);
-const payload = renderDexDetail(u, st, st.current);
-return interaction.update({ ...payload });
 }
 
 
@@ -3391,14 +3368,13 @@ u.aquarium.push({
 
 
       if (interaction.customId === "dex:select") {
-  const opt = interaction.values?.[0];
-  if (!opt) return;
-  const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
-  st.current = opt; st.mode = "detail";
-  dexSessions.set(userId, st);
-  const payload = renderDexDetail(u, st, opt);
-  return interaction.update({ ...payload });
-}
+        const name = interaction.values[0];
+        const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
+        st.mode = "detail"; st.current = name;
+        dexSessions.set(userId, st);
+        const payload = renderDexDetail(u, st, name);
+        return interaction.update({ ...payload });
+      }
 
       return;
     }
@@ -4577,29 +4553,6 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
       shopSessions.delete(userId);
       return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[] });
     }
-
-if (id.startsWith("dex:open|")) {
-  const fid = id.split("|")[1];
-  if (!fid) return interaction.deferUpdate();
-  st.mode = "detail";
-  st.current = fid;
-  dexSessions.set(userId, st);
-  const payload = renderDexDetail(u, st, fid);
-  return interaction.update({ ...payload });
-}
-if (id === "dex:dprev" || id === "dex:dnext") {
-  const all = FISH_BY_RARITY[st.rarity] || [];        // 같은 등급 풀
-  const idx = Math.max(0, all.indexOf(st.current));    // current가 id 문자열이라고 가정
-  const dir = (id === "dex:dnext") ? 1 : -1;
-  let ni = idx + dir;
-  if (ni < 0) ni = all.length - 1;
-  if (ni >= all.length) ni = 0;
-  st.current = all[ni];
-  st.mode = "detail";
-  dexSessions.set(userId, st);
-  const payload = renderDexDetail(u, st, fid);
-  return interaction.update({ ...payload });
-}
 
     if (id.startsWith("dex:")) {
       const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
