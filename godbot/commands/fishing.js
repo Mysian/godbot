@@ -3734,17 +3734,12 @@ const eb = new EmbedBuilder()
   .setDescription(desc)
   .setColor(0x44ddaa)
   .setImage(s.sceneBiteURL);
-
-  setTimeout(async () => {
-  try {
-    await s.safeEdit({ embeds: [eb], components: [buttonsFight()] });
-  } catch {}
-}, waitSec * 1000);
-
-s.expireTimer = setTimeout(() => {
-  clearSession(userId);
-}, (FISHING_LIMIT_SECONDS + 20) * 1000);
+        
+  try { 
+  await s.safeEdit({ embeds: [eb], components: [buttonsFight()] }); 
+} catch {} }, waitSec * 1000);
   const eb = sceneEmbed(
+    
     u,
     "🪔 입질을 기다리는 중...",
     [`최대 ${FISHING_LIMIT_SECONDS}초까지 기회가 있습니다.`, "중간에 포기하시면 미끼는 소모되지 않습니다.", "", equipLine(u)].join("\n"),
