@@ -1,27 +1,23 @@
-// commands/fishing-manager.js
 const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
 const { RODS, FLOATS, BAITS, getIconURL } = require("../embeds/fishing-images.js");
 const { addBE, getBE } = require("./be-util.js");
-
 const dataDir = path.join(__dirname, "../data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const FISH_DB = path.join(dataDir, "fishing.json");
-
 const TIER_ORDER = ["브론즈","실버","골드","플래티넘","다이아","마스터","그랜드마스터","챌린저"];
 const TIER_CUTOFF = {
-  "브론즈": 0, "실버": 300, "골드": 1200, "플래티넘": 3500,
-  "다이아": 9000, "마스터": 20000, "그랜드마스터": 45000, "챌린저": 85000
+  "브론즈": 0, "실버": 500, "골드": 1500, "플래티넘": 4000,
+  "다이아": 10000, "마스터": 25000, "그랜드마스터": 75000, "챌린저": 145000
 };
-
 const ROD_SPECS = {
   "나무 낚싯대":   { maxDur: 50 },
   "강철 낚싯대":   { maxDur: 120 },
   "금 낚싯대":     { maxDur: 250 },
-  "다이아 낚싯대": { maxDur: 550 },
-  "전설의 낚싯대": { maxDur: 990 }
+  "다이아 낚싯대": { maxDur: 490 },
+  "전설의 낚싯대": { maxDur: 880 }
 };
 const FLOAT_SPECS = {
   "동 찌":    { maxDur: 30 },
@@ -34,11 +30,21 @@ const BAIT_SPECS = {
   "새우 미끼": { pack: 20 },
   "빛나는 젤리 미끼": { pack: 20 }
 };
-
-// ---------- DB I/O ----------
+const RELIC_LIST = [
+  "에메랄드 상어 비늘",
+  "황금 지렁이",
+  "황금 유령선 피규어",
+  "낚시꾼의 증표",
+  "황금 상어의 지느러미",
+  "용녀의 진주",
+  "인어공주의 비녀",
+  "낚시꾼의 모자",
+  "고대 용왕의 석판",
+];
+const RELIC_MAX_LEVEL = 5;
 function readDB() {
-  if (!fs.existsSync(FISH_DB)) return { users:{}, quests:{ daily:{key:null,list:[]}, weekly:{key:null,list:[]} }, config:{} };
-  try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{}, quests:{ daily:{key:null,list:[]}, weekly:{key:null,list:[]} }, config:{} }; }
+  if (!fs.existsSync(FISH_DB)) return { users:{}, quests:{ daily:{ key:null, list:[] }, weekly:{ key:null, list:[] } }, config:{} };
+  try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{}, quests:{ daily:{ key:null, list:[] }, weekly:{ key:null, list:[] } }, config:{} }; }
 }
 function writeDB(d) { fs.writeFileSync(FISH_DB, JSON.stringify(d, null, 2)); }
 function ensureDB(db){
@@ -51,22 +57,17 @@ function ensureDB(db){
   db.config.quest.countDaily ??= 4;
   db.config.quest.countWeekly ??= 3;
   db.config.quest.rewardMul ??= { dailyCoins:100, weeklyCoins:100, dailyBE:100, weeklyBE:100 };
-  return db;
 }
 async function withDB(fn) {
-  if (!fs.existsSync(FISH_DB)) fs.writeFileSync(FISH_DB, JSON.stringify({ users:{}, quests:{ daily:{key:null,list:[]}, weekly:{key:null,list:[]} }, config:{} }, null, 2));
-  const rel = await lockfile.lock(FISH_DB, { retries: { retries: 10, factor: 1.2, minTimeout: 50, maxTimeout: 250 } });
+  if (!fs.existsSync(FISH_DB)) writeDB({ users:{}, quests:{ daily:{ key:null, list:[] }, weekly:{ key:null, list:[] } }, config:{ quest:{ countDaily:4, countWeekly:3, rewardMul:{ dailyCoins:100, weeklyCoins:100, dailyBE:100, weeklyBE:100 } } } });
+  const release = await lockfile.lock(FISH_DB, { realpath:false, retries:{ retries: 10, factor: 1.6, minTimeout: 30, maxTimeout: 200 } }).catch(()=>null);
   try {
-    const d = ensureDB(readDB());
-    const r = await fn(d);
-    writeDB(d);
-    return r;
-  } finally {
-    await rel();
-  }
+    const db = readDB(); ensureDB(db);
+    const res = await fn(db);
+    writeDB(db);
+    return res;
+  } finally { if (release) await release().catch(()=>{}); }
 }
-
-// ---------- User / Config ----------
 function ensureUser(u) {
   u.coins ??= 0;
   u.tier ??= "브론즈";
@@ -78,6 +79,8 @@ function ensureUser(u) {
   u.inv.fishes ??= [];
   u.inv.keys   ??= 0;
   u.inv.chests ??= 0;
+  u.aquarium ??= [];
+  u.relics ??= { equipped:null, lv:{} };
   u.stats ??= {};
   u.stats.caught ??= 0;
   u.stats.points ??= 0;
@@ -92,9 +95,7 @@ function ensureUser(u) {
   u.quests ??= {};
   u.quests.progress ??= {};
   u.quests.claimed  ??= {};
-  // temp는 fishing.js와 호환
   u.quests.temp ??= { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
-  // 예전 구조 호환(안 써도 무방)
   u.quests.daily ??= [];
   u.quests.weekly ??= [];
   u.settings ??= {};
@@ -107,18 +108,37 @@ function ensureConfig(db) {
   db.config.quest.countWeekly ??= 3;
   db.config.quest.rewardMul ??= { dailyCoins:100, weeklyCoins:100, dailyBE:100, weeklyBE:100 };
 }
-
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
 function addBait(u, name, qty=0) { u.inv.baits[name] = (u.inv.baits[name]||0) + qty; }
-
+function setBait(u, name, qty){
+  if (qty <= 0){
+    delete u.inv.baits[name];
+    if (u.equip.bait === name) u.equip.bait = null;
+    return 0;
+  }
+  u.inv.baits[name] = qty;
+  return qty;
+}
+function removeBait(u, name, qty){
+  const cur = u.inv.baits[name] || 0;
+  const next = Math.max(0, cur - Math.abs(qty));
+  if (next === 0){
+    delete u.inv.baits[name];
+    if (u.equip.bait === name) u.equip.bait = null;
+  } else {
+    u.inv.baits[name] = next;
+  }
+  return next;
+}
+function aquaValueMult(lv){ return Math.pow(1.1, Math.max(0, (lv||1)-1)); }
+function valueWithLevel(base, lv){ return Math.round((base||0) * aquaValueMult(lv)); }
 function updateTier(u) {
   const p = u.stats.points || 0;
   let best = "브론즈";
   for (const t of TIER_ORDER) { if (p >= TIER_CUTOFF[t]) best = t; else break; }
   u.tier = best;
 }
-
 function equipLine(u) {
   const rDur = u.equip.rod ? (u.inv.rods[u.equip.rod] ?? 0) : 0;
   const fDur = u.equip.float ? (u.inv.floats[u.equip.float] ?? 0) : 0;
@@ -131,20 +151,20 @@ function equipLine(u) {
 function invSummary(u) {
   const rodList = Object.keys(u.inv.rods||{});
   const floatList = Object.keys(u.inv.floats||{});
-  const baitList = Object.entries(u.inv.baits||{}).filter(([,q])=>q>0).map(([n,q])=>`${n} x${q}`);
+  const baitList = Object.entries(u.inv.baits||{}).map(([k,v])=>`${k} x${v}`);
   return [
-    equipLine(u),
-    "",
-    `🗝️ 열쇠: ${u.inv.keys||0} | 📦 상자: ${u.inv.chests||0}`,
-    `🐟 물고기: ${u.inv.fishes.length}마리`,
-    `🎣 보유 낚싯대: ${rodList.length?rodList.join(", "):"없음"}`,
-    `🟠 보유 찌: ${floatList.length?floatList.join(", "):"없음"}`,
-    `🪱 보유 미끼: ${baitList.length?baitList.join(", "):"없음"}`
+    `• Rods: ${rodList.length? rodList.join(", ") : "없음"}`,
+    `• Floats: ${floatList.length? floatList.join(", ") : "없음"}`,
+    `• Baits: ${baitList.length? baitList.join(", ") : "없음"}`,
+    `• Keys: ${u.inv.keys||0}개, Chests: ${u.inv.chests||0}개`,
   ].join("\n");
 }
-
-// ---------- QUEST ADMIN UTILS ----------
-// 접두어는 d:/w: 로 일원화. regenerate=true면 서버 공통 목록(db.quests.*)도 초기화.
+function dailyKeyKST(){
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset()*60000;
+  const kst = new Date(utc + 9*3600000);
+  return `${kst.getFullYear()}-${String(kst.getMonth()+1).padStart(2,"0")}-${String(kst.getDate()).padStart(2,"0")}`;
+}
 function clearQuestType(db, u, kind, regenerate=false) {
   ensureUser(u);
   const delByPrefix = (prefix) => {
@@ -159,111 +179,129 @@ function clearQuestType(db, u, kind, regenerate=false) {
     delByPrefix("w:");
     if (regenerate) { db.quests.weekly.key = null; db.quests.weekly.list = []; }
   }
-  // temp 리셋
   u.quests.temp = { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
 }
-
-// 서버 공통 목록을 자르거나(전체=true), 유저 진행/수령만 정리(전체=false)
-function trimQuestType(db, u, kind, keep, forAll=false) {
-  keep = Math.max(0, keep|0);
-  const list = db.quests[kind].list || [];
-  const keepObjs = list.slice(0, keep);
-  const removedIds = list.slice(keep).map(q=>q.id);
-
-  if (forAll) {
-    db.quests[kind].list = keepObjs;
-    for (const uid of Object.keys(db.users||{})) {
-      const ux = ensureUser(db.users[uid] || (db.users[uid] = {}));
-      for (const id of removedIds) {
-        if (id in ux.quests.progress) delete ux.quests.progress[id];
-        if (id in ux.quests.claimed)  delete ux.quests.claimed[id];
+function trimQuestLists(db, kind, keepN, applyAll=false, uForSingle=null) {
+  if (applyAll) {
+    if (kind === "daily") db.quests.daily.list = db.quests.daily.list.slice(0, Math.max(0,keepN));
+    if (kind === "weekly") db.quests.weekly.list = db.quests.weekly.list.slice(0, Math.max(0,keepN));
+    for (const uid of Object.keys(db.users)) {
+      const u = db.users[uid]; ensureUser(u);
+      for (const k of Object.keys(u.quests.progress)) {
+        const isDaily = k.startsWith("d:");
+        const idx = parseInt(k.split(":")[1]||"-1",10);
+        if (isDaily && kind==="daily" && idx >= keepN) delete u.quests.progress[k];
+        if (!isDaily && kind==="weekly" && idx >= keepN) delete u.quests.progress[k];
+      }
+      for (const k of Object.keys(u.quests.claimed)) {
+        const isDaily = k.startsWith("d:");
+        const idx = parseInt(k.split(":")[1]||"-1",10);
+        if (isDaily && kind==="daily" && idx >= keepN) delete u.quests.claimed[k];
+        if (!isDaily && kind==="weekly" && idx >= keepN) delete u.quests.claimed[k];
       }
     }
-    return { before:list.length, after:db.quests[kind].list.length, removed:removedIds.length };
-  } else {
-    const uu = ensureUser(u);
-    let cleaned = 0;
-    for (const id of removedIds) {
-      if (id in uu.quests.progress) { delete uu.quests.progress[id]; cleaned++; }
-      if (id in uu.quests.claimed)  { delete uu.quests.claimed[id];  cleaned++; }
+  } else if (uForSingle) {
+    const u = uForSingle; ensureUser(u);
+    for (const k of Object.keys(u.quests.progress)) {
+      const isDaily = k.startsWith("d:");
+      const idx = parseInt(k.split(":")[1]||"-1",10);
+      if (isDaily && kind==="daily" && idx >= keepN) delete u.quests.progress[k];
+      if (!isDaily && kind==="weekly" && idx >= keepN) delete u.quests.progress[k];
     }
-    return { before:list.length, after:keep, cleaned };
+    for (const k of Object.keys(u.quests.claimed)) {
+      const isDaily = k.startsWith("d:");
+      const idx = parseInt(k.split(":")[1]||"-1",10);
+      if (isDaily && kind==="daily" && idx >= keepN) delete u.quests.claimed[k];
+      if (!isDaily && kind==="weekly" && idx >= keepN) delete u.quests.claimed[k];
+    }
   }
 }
-
-// 진행판정(관리자 조회용)
-function isQuestCompleteLocal(u, q) {
-  const p = u.quests.progress?.[q.id];
-  if (q.type === "timeband") {
-    const need = q.target || {};
-    const cur  = p || {};
-    const needN = (k)=>Math.max(0, need[k]||0);
-    const curN  = (k)=>Math.max(0, cur[k]||0);
-    return curN("낮")>=needN("낮") && curN("노을")>=needN("노을") && curN("밤")>=needN("밤");
-  }
-  if (q.type === "junk_streak3" || q.type === "same_rarity3" || q.type === "rarity_seq") {
-    return (p||0) >= (q.times||q.target||1);
-  }
-  const target = q.target ?? q.times ?? 1;
-  return (typeof p === "number" ? p : 0) >= target;
+function buildInvEmbed(u, target) {
+  const eb = new EmbedBuilder()
+    .setTitle(`🎣 인벤토리 | ${target.username}`)
+    .setColor(0x00bcd4)
+    .setThumbnail(getIconURL(u.tier))
+    .addFields(
+      { name:"장착", value: equipLine(u), inline:false },
+      { name:"보유", value: invSummary(u), inline:false },
+      { name:"통계", value: `포인트: ${u.stats.points||0} | 잡은 횟수: ${u.stats.caught||0} | 티어: ${u.tier}`, inline:false },
+    );
+  return eb;
 }
-function formatQuestProgress(u, q) {
-  const p = u.quests.progress?.[q.id];
-  if (q.type === "timeband") {
-    const need = q.target || {};
-    return `낮:${(p?.["낮"]||0)}/${need["낮"]||0} | 노을:${(p?.["노을"]||0)}/${need["노을"]||0} | 밤:${(p?.["밤"]||0)}/${need["밤"]||0}`;
-  }
-  const target = q.target ?? q.times ?? 1;
-  return `${(typeof p === "number" ? p : 0)}/${target}`;
-}
-
-// ---------- Slash Command ----------
-const rodChoices = RODS.map(n=>({ name:n, value:n })).slice(0,25);
-const floatChoices = FLOATS.map(n=>({ name:n, value:n })).slice(0,25);
-const baitChoices = BAITS.map(n=>({ name:n, value:n })).slice(0,25);
-
-const data = new SlashCommandBuilder().setName("낚시관리").setDescription("낚시 시스템 관리")
-  .addSubcommand(s=>s.setName("코인지급").setDescription("유저에게 코인 지급")
+const rodChoices   = RODS.map(n=>({ name:n, value:n }));
+const floatChoices = FLOATS.map(n=>({ name:n, value:n }));
+const baitChoices  = BAITS.map(n=>({ name:n, value:n }));
+const relicChoices = RELIC_LIST.map(n=>({ name:n, value:n }));
+const data = new SlashCommandBuilder()
+  .setName("낚시관리")
+  .setDescription("낚시 시스템 관리자 명령어")
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+  .addSubcommand(s=>s.setName("코인지급").setDescription("코인 지급/회수 (음수 가능)")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
-    .addIntegerOption(o=>o.setName("수량").setDescription("지급 코인(음수 가능)").setRequired(true)))
-  .addSubcommand(s=>s.setName("정수지급").setDescription("유저에게 파랑 정수 지급")
+    .addIntegerOption(o=>o.setName("수량").setDescription("예:+1000,-500").setRequired(true)))
+  .addSubcommand(s=>s.setName("정수지급").setDescription("파랑 정수(BE) 지급/회수 (음수 가능)")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
-    .addIntegerOption(o=>o.setName("수량").setDescription("지급 정수(음수 가능)").setRequired(true)))
+    .addIntegerOption(o=>o.setName("수량").setDescription("예:+100000,-50000").setRequired(true)))
   .addSubcommand(s=>s.setName("낚싯대지급").setDescription("낚싯대 지급")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
     .addStringOption(o=>{ o.setName("이름").setDescription("낚싯대 이름").setRequired(true).addChoices(...rodChoices); return o; }))
   .addSubcommand(s=>s.setName("찌지급").setDescription("찌 지급")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
     .addStringOption(o=>{ o.setName("이름").setDescription("찌 이름").setRequired(true).addChoices(...floatChoices); return o; }))
-  .addSubcommand(s=>s.setName("미끼지급").setDescription("미끼 지급")
+  .addSubcommand(s=>s.setName("미끼지급").setDescription("미끼 지급/회수/삭제 (양수=지급, 음수=회수, 0=삭제)")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
     .addStringOption(o=>{ o.setName("이름").setDescription("미끼 이름").setRequired(true).addChoices(...baitChoices); return o; })
-    .addIntegerOption(o=>o.setName("수량").setDescription("지급 개수(미입력 시 기본 묶음)")))
+    .addIntegerOption(o=>o.setName("수량").setDescription("양수/음수/0(삭제), 미입력 시 기본묶음")))
+  .addSubcommand(s=>s.setName("미끼설정").setDescription("미끼 수량을 특정 값으로 설정 (0이면 삭제)")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
+    .addStringOption(o=>{ o.setName("이름").setDescription("미끼 이름").setRequired(true).addChoices(...baitChoices); return o; })
+    .addIntegerOption(o=>o.setName("수량").setDescription("0 이상 정수").setRequired(true)))
+  .addSubcommand(s=>s.setName("아이템삭제").setDescription("rod/float/bait 아이템 삭제")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
+    .addStringOption(o=>o.setName("종류").setDescription("rod/float/bait").setRequired(true)
+      .addChoices({name:"rod", value:"rod"},{name:"float", value:"float"},{name:"bait", value:"bait"}))
+    .addStringOption(o=>o.setName("이름").setDescription("아이템 이름").setRequired(true)))
+  .addSubcommand(s=>s.setName("유물조회").setDescription("유물 보유/장착 상태 조회")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
+  .addSubcommand(s=>s.setName("유물장착").setDescription("유물 장착/해제")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
+    .addStringOption(o=>{ o.setName("이름").setDescription("유물 이름 또는 '해제'").setRequired(true).addChoices(...relicChoices, {name:"해제", value:"해제"}); return o; }))
+  .addSubcommand(s=>s.setName("유물레벨설정").setDescription("유물 레벨 설정(0~5)")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
+    .addStringOption(o=>{ o.setName("이름").setDescription("유물 이름").setRequired(true).addChoices(...relicChoices); return o; })
+    .addIntegerOption(o=>o.setName("레벨").setDescription("0~5").setRequired(true)))
+  .addSubcommand(s=>s.setName("수족관조회").setDescription("수족관 슬롯 상태 조회")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
+  .addSubcommand(s=>s.setName("수족관넣기").setDescription("인벤토리에서 수족관으로 이동")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
+    .addIntegerOption(o=>o.setName("인벤인덱스").setDescription("인벤토리 fish 배열 인덱스").setRequired(true)))
+  .addSubcommand(s=>s.setName("수족관빼기").setDescription("수족관에서 인벤토리로 이동")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
+    .addIntegerOption(o=>o.setName("슬롯").setDescription("수족관 슬롯 인덱스(0~4)").setRequired(true)))
   .addSubcommand(s=>s.setName("내구도수리").setDescription("장비 내구도 수리")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
-    .addStringOption(o=>o.setName("종류").setDescription("rod/float/all").setRequired(true).addChoices(
-      {name:"낚싯대", value:"rod"},{name:"찌", value:"float"},{name:"전체", value:"all"}))
-    .addStringOption(o=>o.setName("이름").setDescription("장비 이름(전체 수리시 생략)")))
-  .addSubcommand(s=>s.setName("포인트설정").setDescription("유저 포인트 설정")
+    .addStringOption(o=>o.setName("종류").setDescription("rod/float/all").setRequired(true)
+      .addChoices({name:"rod", value:"rod"},{name:"float", value:"float"},{name:"all", value:"all"}))
+    .addStringOption(o=>o.setName("이름").setDescription("단일 장비 수리 시 이름(선택)")))
+  .addSubcommand(s=>s.setName("포인트설정").setDescription("포인트 설정 후 티어 재계산")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
-    .addIntegerOption(o=>o.setName("점수").setDescription("설정 포인트").setRequired(true)))
-  .addSubcommand(s=>s.setName("티어갱신").setDescription("유저/전체 티어 재계산")
-    .addUserOption(o=>o.setName("유저").setDescription("대상(전체 미선택)"))
-    .addBooleanOption(o=>o.setName("전체").setDescription("전체 갱신")))
-  .addSubcommand(s=>s.setName("전체판매").setDescription("대상 유저 물고기 전부 판매(잠금 제외)")
+    .addIntegerOption(o=>o.setName("점수").setDescription("0 이상 정수").setRequired(true)))
+  .addSubcommand(s=>s.setName("티어갱신").setDescription("현재 포인트 기준 티어 갱신")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
-  .addSubcommand(s=>s.setName("인벤조회").setDescription("대상 유저 인벤토리 요약")
+  .addSubcommand(s=>s.setName("전체판매").setDescription("인벤 물고기 전량 판매(경고)")
+    .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
+  .addSubcommand(s=>s.setName("인벤조회").setDescription("인벤토리 임베드 조회")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
   .addSubcommand(s=>s.setName("초기화").setDescription("대상 유저 낚시 데이터 초기화")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
-  .addSubcommand(s=>s.setName("키상자설정").setDescription("대상 유저의 열쇠/상자 수 설정")
+  .addSubcommand(s=>s.setName("키상자설정").setDescription("열쇠/상자 개수 설정")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
-    .addIntegerOption(o=>o.setName("열쇠").setDescription("키 개수").setRequired(true))
-    .addIntegerOption(o=>o.setName("상자").setDescription("상자 개수").setRequired(true)))
-  .addSubcommand(s=>s.setName("장착설정").setDescription("대상 유저 장비 장착/변경")
+    .addIntegerOption(o=>o.setName("열쇠").setDescription("0 이상 정수").setRequired(true))
+    .addIntegerOption(o=>o.setName("상자").setDescription("0 이상 정수").setRequired(true)))
+  .addSubcommand(s=>s.setName("장착설정").setDescription("장비/미끼 장착 설정")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true))
-    .addStringOption(o=>o.setName("종류").setDescription("rod/float/bait").setRequired(true).addChoices(
-      {name:"낚싯대", value:"rod"},{name:"찌", value:"float"},{name:"미끼", value:"bait"}))
+    .addStringOption(o=>o.setName("종류").setDescription("rod/float/bait").setRequired(true)
+      .addChoices({name:"rod", value:"rod"},{name:"찌", value:"float"},{name:"미끼", value:"bait"}))
     .addStringOption(o=>{ o.setName("이름").setDescription("장착할 이름").setRequired(true)
       .addChoices(...rodChoices, ...floatChoices, ...baitChoices); return o; }))
   .addSubcommand(s=>s.setName("자동구매").setDescription("대상 유저 자동구매 설정")
@@ -271,7 +309,6 @@ const data = new SlashCommandBuilder().setName("낚시관리").setDescription("�
     .addBooleanOption(o=>o.setName("상태").setDescription("ON/OFF").setRequired(true)))
   .addSubcommand(s=>s.setName("스타터지급").setDescription("대상 유저에게 스타터 패키지 지급")
     .addUserOption(o=>o.setName("유저").setDescription("대상").setRequired(true)))
-  // === 퀘스트 관리자 ===
   .addSubcommand(s=>s.setName("퀘스트리셋").setDescription("일일/주간 퀘스트 강제 리셋 (진행/수령 제거 + 목록 재생성 준비)")
     .addStringOption(o=>o.setName("종류").setDescription("daily/weekly/both").setRequired(true).addChoices(
       {name:"일일", value:"daily"},{name:"주간", value:"weekly"},{name:"둘다", value:"both"}))
@@ -288,19 +325,16 @@ const data = new SlashCommandBuilder().setName("낚시관리").setDescription("�
   .addSubcommand(s=>s.setName("퀘스트개수").setDescription("퀘스트 생성 기본 개수 설정")
     .addIntegerOption(o=>o.setName("일일").setDescription("일일 퀘스트 기본 개수"))
     .addIntegerOption(o=>o.setName("주간").setDescription("주간 퀘스트 기본 개수")))
-  .addSubcommand(s=>s.setName("퀘스트보상배율").setDescription("일일/주간 보상 배율(%) 설정")
-    .addIntegerOption(o=>o.setName("일일코인").setDescription("일일 코인 배율(%)"))
-    .addIntegerOption(o=>o.setName("주간코인").setDescription("주간 코인 배율(%)"))
-    .addIntegerOption(o=>o.setName("일일정수").setDescription("일일 BE 배율(%)"))
-    .addIntegerOption(o=>o.setName("주간정수").setDescription("주간 BE 배율(%)")));
-
+  .addSubcommand(s=>s.setName("퀘스트보상배율").setDescription("퀘스트 보상 배율(%) 설정")
+    .addIntegerOption(o=>o.setName("일일코인").setDescription("%"))
+    .addIntegerOption(o=>o.setName("주간코인").setDescription("%"))
+    .addIntegerOption(o=>o.setName("일일정수").setDescription("%"))
+    .addIntegerOption(o=>o.setName("주간정수").setDescription("%")));
 async function execute(interaction) {
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
     return interaction.reply({ content:"이 명령어는 관리자만 사용할 수 있습니다.", ephemeral:true });
   }
   const sub = interaction.options.getSubcommand();
-
-  // ----- 지급/설정 계열 기존 기능들 유지 -----
   if (sub === "코인지급") {
     const target = interaction.options.getUser("유저");
     const amount = interaction.options.getInteger("수량");
@@ -310,14 +344,18 @@ async function execute(interaction) {
       u.coins = (u.coins||0) + amount;
       if (u.coins < 0) u.coins = 0;
     });
-    return interaction.reply({ content:`${target.username}에게 코인 ${amount.toLocaleString()} 지급 처리했습니다.`, ephemeral:true });
+    return interaction.reply({ content:`${target.username}에게 코인 ${amount.toLocaleString()} 처리 완료.`, ephemeral:true });
   }
   if (sub === "정수지급") {
     const target = interaction.options.getUser("유저");
     const amount = interaction.options.getInteger("수량");
     if (amount === 0) return interaction.reply({ content:"수량은 0이 될 수 없습니다.", ephemeral:true });
-    await addBE(target.id, amount, "[낚시관리] 관리자 지급/회수");
-    return interaction.reply({ content:`${target.username}에게 파랑 정수 ${amount.toLocaleString()}원 처리했습니다.`, ephemeral:true });
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      await addBE(u, amount);
+    });
+    const now = await withDB(db=>getBE(db.users[target.id]));
+    return interaction.reply({ content:`${target.username}에게 BE ${amount.toLocaleString()} 처리 완료. 현재 ${now.toLocaleString()} BE`, ephemeral:true });
   }
   if (sub === "낚싯대지급") {
     const target = interaction.options.getUser("유저");
@@ -343,11 +381,117 @@ async function execute(interaction) {
     const qtyOpt = interaction.options.getInteger("수량");
     const qty = qtyOpt != null ? qtyOpt : (BAIT_SPECS[name]?.pack || 20);
     if (!BAITS.includes(name)) return interaction.reply({ content:"유효하지 않은 미끼입니다.", ephemeral:true });
-    if (qty <= 0) return interaction.reply({ content:"수량은 1 이상이어야 합니다.", ephemeral:true });
     await withDB(async db=>{
-      const u = (db.users[target.id] ||= {}); ensureUser(u); addBait(u, name, qty);
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      if (qty === 0){
+        setBait(u, name, 0);
+      } else if (qty > 0){
+        addBait(u, name, qty);
+      } else {
+        removeBait(u, name, qty);
+      }
     });
-    return interaction.reply({ content:`${target.username}에게 '${name}' ${qty}개 지급 완료.`, ephemeral:true });
+    return interaction.reply({ content:`${target.username}의 '${name}' 수량을 ${qty>0?`+${qty}`:(qty<0?`${qty}`:"삭제")} 처리했습니다.`, ephemeral:true });
+  }
+  if (sub === "미끼설정") {
+    const target = interaction.options.getUser("유저");
+    const name = interaction.options.getString("이름");
+    const qty = interaction.options.getInteger("수량");
+    if (!BAITS.includes(name)) return interaction.reply({ content:"유효하지 않은 미끼입니다.", ephemeral:true });
+    if (qty < 0) return interaction.reply({ content:"0 이상으로 설정해줘.", ephemeral:true });
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      setBait(u, name, qty);
+    });
+    return interaction.reply({ content:`${target.username}의 '${name}' 수량을 ${qty}로 설정했습니다.`, ephemeral:true });
+  }
+  if (sub === "아이템삭제") {
+    const target = interaction.options.getUser("유저");
+    const kind = interaction.options.getString("종류");
+    const name = interaction.options.getString("이름");
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      if (kind === "rod") {
+        delete u.inv.rods[name];
+        if (u.equip.rod === name) u.equip.rod = null;
+      } else if (kind === "float") {
+        delete u.inv.floats[name];
+        if (u.equip.float === name) u.equip.float = null;
+      } else if (kind === "bait") {
+        setBait(u, name, 0);
+      }
+    });
+    return interaction.reply({ content:`${target.username}의 ${kind} '${name}'를 삭제했습니다.`, ephemeral:true });
+  }
+  if (sub === "유물조회") {
+    const target = interaction.options.getUser("유저");
+    let u;
+    await withDB(async db=>{ u = (db.users[target.id] ||= {}); ensureUser(u); });
+    const equipped = u.relics?.equipped || "없음";
+    const lvPairs = Object.entries(u.relics?.lv||{}).map(([k,v])=>`${k}: ${v}`).slice(0, 20).join("\n") || "보유 정보 없음";
+    const eb = new EmbedBuilder().setTitle(`유물 | ${target.username}`).setColor(0x8e44ad).addFields({name:"장착", value:String(equipped)},{name:"레벨", value:lvPairs});
+    return interaction.reply({ embeds:[eb], ephemeral:true });
+  }
+  if (sub === "유물장착") {
+    const target = interaction.options.getUser("유저");
+    const name = interaction.options.getString("이름");
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      if (name === "해제") u.relics.equipped = null;
+      else {
+        u.relics.lv ||= {};
+        if (!(name in u.relics.lv)) u.relics.lv[name] = 0;
+        u.relics.equipped = name;
+      }
+    });
+    return interaction.reply({ content:`${target.username}의 유물 장착 상태를 '${name === "해제" ? "해제" : name}'로 설정했습니다.`, ephemeral:true });
+  }
+  if (sub === "유물레벨설정") {
+    const target = interaction.options.getUser("유저");
+    const name = interaction.options.getString("이름");
+    let lv = interaction.options.getInteger("레벨");
+    if (lv < 0) lv = 0; if (lv > RELIC_MAX_LEVEL) lv = RELIC_MAX_LEVEL;
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      u.relics.lv ||= {}; u.relics.lv[name] = lv;
+    });
+    return interaction.reply({ content:`${target.username}의 '${name}' 레벨을 ${lv}로 설정했습니다.`, ephemeral:true });
+  }
+  if (sub === "수족관조회") {
+    const target = interaction.options.getUser("유저");
+    let u;
+    await withDB(async db=>{ u = (db.users[target.id] ||= {}); ensureUser(u); });
+    const lines = (u.aquarium||[]).map((a,i)=>`[${i}] ${a.n||"?"} Lv.${a.lv||1} xp:${a.xp||0} 길이:${a.l||0} 기본가:${a.base||0} 현재가:${valueWithLevel(a.base||0, a.lv||1)}`);
+    const text = lines.length?lines.join("\n"):"빈 수족관";
+    return interaction.reply({ content:text, ephemeral:true });
+  }
+  if (sub === "수족관넣기") {
+    const target = interaction.options.getUser("유저");
+    const idx = interaction.options.getInteger("인벤인덱스");
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      const fish = (u.inv.fishes||[])[idx];
+      if (!fish) return;
+      if (!Array.isArray(u.aquarium)) u.aquarium = [];
+      if (u.aquarium.length >= 5) return;
+      const a = { n:fish.n, r:fish.r, l:fish.l, base: fish.price||0, lv:1, xp:0, feedKey:null, feedCount:0 };
+      u.aquarium.push(a);
+      u.inv.fishes.splice(idx,1);
+    });
+    return interaction.reply({ content:`${target.username} 인벤[${idx}] → 수족관 이동`, ephemeral:true });
+  }
+  if (sub === "수족관빼기") {
+    const target = interaction.options.getUser("유저");
+    const slot = interaction.options.getInteger("슬롯");
+    await withDB(async db=>{
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      const a = (u.aquarium||[])[slot];
+      if (!a) return;
+      const back = { n:a.n, r:a.r, l:a.l, price: valueWithLevel(a.base||0, a.lv||1), lock:false };
+      u.inv.fishes.push(back);
+      u.aquarium.splice(slot,1);
+    });
+    return interaction.reply({ content:`${target.username} 수족관[${slot}] → 인벤 이동`, ephemeral:true });
   }
   if (sub === "내구도수리") {
     const target = interaction.options.getUser("유저");
@@ -374,59 +518,34 @@ async function execute(interaction) {
   }
   if (sub === "포인트설정") {
     const target = interaction.options.getUser("유저");
-    const points = interaction.options.getInteger("점수");
+    const pts = interaction.options.getInteger("점수");
+    if (pts < 0) return interaction.reply({ content:"0 이상으로 설정해줘.", ephemeral:true });
     await withDB(async db=>{
       const u = (db.users[target.id] ||= {}); ensureUser(u);
-      u.stats.points = Math.max(0, points||0);
-      updateTier(u);
+      u.stats.points = pts; updateTier(u);
     });
-    return interaction.reply({ content:`${target.username} 포인트를 ${points.toLocaleString()}로 설정하고 티어를 갱신했습니다.`, ephemeral:true });
+    return interaction.reply({ content:`${target.username} 포인트 ${pts.toLocaleString()} 설정 및 티어 갱신 완료.`, ephemeral:true });
   }
   if (sub === "티어갱신") {
-    const all = interaction.options.getBoolean("전체") || false;
     const target = interaction.options.getUser("유저");
-    if (all) {
-      await withDB(async db=>{
-        for (const [,u] of Object.entries(db.users||{})) { ensureUser(u); updateTier(u); }
-      });
-      return interaction.reply({ content:"전체 유저의 티어를 갱신했습니다.", ephemeral:true });
-    } else {
-      if (!target) return interaction.reply({ content:"대상 유저를 선택하거나 전체 옵션을 사용하세요.", ephemeral:true });
-      await withDB(async db=>{
-        const u = (db.users[target.id] ||= {}); ensureUser(u); updateTier(u);
-      });
-      return interaction.reply({ content:`${target.username}의 티어를 갱신했습니다.`, ephemeral:true });
-    }
+    await withDB(async db=>{ const u = (db.users[target.id] ||= {}); ensureUser(u); updateTier(u); });
+    return interaction.reply({ content:`${target.username} 티어 갱신 완료.`, ephemeral:true });
   }
   if (sub === "전체판매") {
     const target = interaction.options.getUser("유저");
-    let total = 0; let sold = 0; let kept = 0;
+    let sold = 0, count = 0;
     await withDB(async db=>{
       const u = (db.users[target.id] ||= {}); ensureUser(u);
-      const fishes = u.inv.fishes||[];
-      const sellable = fishes.filter(f=>!f.lock);
-      const locked = fishes.filter(f=>f.lock);
-      total = sellable.reduce((s,f)=>s+(f.price||0),0);
-      sold = sellable.length;
-      kept = locked.length;
-      u.coins = (u.coins||0) + total;
-      u.inv.fishes = locked;
+      for (const f of (u.inv.fishes||[])) { sold += (f.price||0); count++; }
+      u.coins = (u.coins||0) + sold;
+      u.inv.fishes = [];
     });
-    return interaction.reply({ content:`${target.username}의 물고기 ${sold}마리를 판매하여 ${total.toLocaleString()} 코인을 지급했습니다. (잠금 ${kept}마리 보존)`, ephemeral:true });
+    return interaction.reply({ content:`${target.username} 물고기 ${count}마리 총 ${sold.toLocaleString()} 코인 판매 처리.`, ephemeral:true });
   }
   if (sub === "인벤조회") {
     const target = interaction.options.getUser("유저");
-    let uSnap = null;
-    await withDB(async db=>{
-      const u = (db.users[target.id] ||= {}); ensureUser(u);
-      uSnap = JSON.parse(JSON.stringify(u));
-    });
-    const eb = new EmbedBuilder().setTitle(`🎒 인벤토리 — ${target.username}`)
-      .setDescription(invSummary(uSnap))
-      .setThumbnail(getIconURL(uSnap.tier)||null)
-      .setColor(0x4db6ac)
-      .setFooter({ text:`코인: ${uSnap.coins.toLocaleString()} | 포인트: ${(uSnap.stats.points||0).toLocaleString()} | 티어: ${uSnap.tier} | 정수: ${getBE(target.id).toLocaleString()} | 자동구매: ${uSnap.settings?.autoBuy?"ON":"OFF"}` });
-    return interaction.reply({ embeds:[eb], ephemeral:true });
+    let u; await withDB(async db=>{ u = (db.users[target.id] ||= {}); ensureUser(u); });
+    return interaction.reply({ embeds:[buildInvEmbed(u, target)], ephemeral:true });
   }
   if (sub === "초기화") {
     const target = interaction.options.getUser("유저");
@@ -451,22 +570,23 @@ async function execute(interaction) {
     const target = interaction.options.getUser("유저");
     const kind = interaction.options.getString("종류");
     const name = interaction.options.getString("이름");
-    let msg = "";
     await withDB(async db=>{
       const u = (db.users[target.id] ||= {}); ensureUser(u);
       if (kind === "rod") {
-        if (!(name in u.inv.rods) || (u.inv.rods[name]||0) <= 0) return interaction.reply({ content:"해당 낚싯대를 보유하고 있지 않거나 내구도가 없습니다.", ephemeral:true });
-        u.equip.rod = name; msg = "낚싯대";
+        if (!ROD_SPECS[name]) return;
+        if (u.inv.rods[name]==null || u.inv.rods[name]<=0) return;
+        u.equip.rod = name;
       } else if (kind === "float") {
-        if (!(name in u.inv.floats) || (u.inv.floats[name]||0) <= 0) return interaction.reply({ content:"해당 찌를 보유하고 있지 않거나 내구도가 없습니다.", ephemeral:true });
-        u.equip.float = name; msg = "찌";
+        if (!FLOAT_SPECS[name]) return;
+        if (u.inv.floats[name]==null || u.inv.floats[name]<=0) return;
+        u.equip.float = name;
       } else if (kind === "bait") {
-        if ((u.inv.baits[name]||0) <= 0) return interaction.reply({ content:"해당 미끼를 보유하고 있지 않습니다.", ephemeral:true });
-        u.equip.bait = name; msg = "미끼";
+        if (!BAIT_SPECS[name]) return;
+        if ((u.inv.baits[name]||0) <= 0) return;
+        u.equip.bait = name;
       }
     });
-    if (!msg) msg = "장비";
-    return interaction.reply({ content:`${target.username}의 ${msg}를 '${name}'로 장착했습니다.`, ephemeral:true });
+    return interaction.reply({ content:`${target.username} 장착 변경 완료.`, ephemeral:true });
   }
   if (sub === "자동구매") {
     const target = interaction.options.getUser("유저");
@@ -475,99 +595,66 @@ async function execute(interaction) {
       const u = (db.users[target.id] ||= {}); ensureUser(u);
       u.settings.autoBuy = !!state;
     });
-    return interaction.reply({ content:`${target.username}의 자동구매를 ${state?"ON":"OFF"}로 설정했습니다.`, ephemeral:true });
+    return interaction.reply({ content:`${target.username} 자동구매를 ${state?"ON":"OFF"}로 설정했습니다.`, ephemeral:true });
   }
   if (sub === "스타터지급") {
     const target = interaction.options.getUser("유저");
     await withDB(async db=>{
       const u = (db.users[target.id] ||= {}); ensureUser(u);
-      addRod(u, "나무 낚싯대");
-      addFloat(u, "동 찌");
-      addBait(u, "지렁이 미끼", BAIT_SPECS["지렁이 미끼"].pack);
-      u.equip.rod = "나무 낚싯대";
-      u.equip.float = "동 찌";
-      u.equip.bait = "지렁이 미끼";
+      addRod(u, RODS[0]); addFloat(u, FLOATS[0]); addBait(u, BAITS[0], BAIT_SPECS[BAITS[0]]?.pack || 20);
+      if (!u.equip.rod) u.equip.rod = RODS[0];
+      if (!u.equip.float) u.equip.float = FLOATS[0];
+      if (!u.equip.bait) u.equip.bait = BAITS[0];
     });
-    return interaction.reply({ content:`${target.username}에게 스타터 패키지를 지급하고 장착까지 완료했습니다.`, ephemeral:true });
+    return interaction.reply({ content:`${target.username}에게 스타터 패키지 지급 완료.`, ephemeral:true });
   }
-
-  // ----- 퀘스트 관리자 3종 개편 -----
   if (sub === "퀘스트리셋") {
-    const kind = interaction.options.getString("종류"); // daily | weekly | both
-    const all = interaction.options.getBoolean("전체") || false;
-
-    if (all) {
-      await withDB(async db=>{
-        for (const [,u] of Object.entries(db.users||{})) { ensureUser(u); clearQuestType(db, u, kind, /*regenerate*/ true); }
-      });
-      return interaction.reply({ content:`서버 전체 ${kind==="daily"?"일일":kind==="weekly"?"주간":"일일/주간"} 퀘스트 진행/수령을 리셋하고 목록 재생성을 준비했어.`, ephemeral:true });
-    } else {
-      const target = interaction.options.getUser("유저");
-      if (!target) return interaction.reply({ content:"대상 유저를 선택하거나 전체 옵션을 사용하세요.", ephemeral:true });
-      await withDB(async db=>{
+    const kind = interaction.options.getString("종류");
+    const all = interaction.options.getBoolean("전체");
+    const target = interaction.options.getUser("유저");
+    await withDB(async db=>{
+      if (all) {
+        for (const uid of Object.keys(db.users)) {
+          const u = (db.users[uid] ||= {}); ensureUser(u);
+          clearQuestType(db, u, kind, true);
+        }
+      } else if (target) {
         const u = (db.users[target.id] ||= {}); ensureUser(u);
-        clearQuestType(db, u, kind, /*regenerate*/ true);
-      });
-      return interaction.reply({ content:`${target.username}의 ${kind==="daily"?"일일":kind==="weekly"?"주간":"일일/주간"} 퀘스트를 리셋하고 목록 재생성을 준비했어.`, ephemeral:true });
-    }
+        clearQuestType(db, u, kind, true);
+      }
+    });
+    return interaction.reply({ content:`퀘스트 리셋 처리 완료.`, ephemeral:true });
   }
-
   if (sub === "퀘스트트림") {
-    const kind = interaction.options.getString("종류"); // daily | weekly
+    const kind = interaction.options.getString("종류");
     const keep = interaction.options.getInteger("개수");
-    const all = interaction.options.getBoolean("전체") || false;
-
-    if (all) {
-      const result = await withDB(async db=> trimQuestType(db, null, kind, keep, true));
-      return interaction.reply({ content:`서버 공통 ${kind==="daily"?"일일":"주간"} 퀘스트를 ${result.before}→${result.after}개로 트림하고, 전 유저 진행/수령을 정리했어.`, ephemeral:true });
-    } else {
-      const target = interaction.options.getUser("유저");
-      if (!target) return interaction.reply({ content:"대상 유저를 선택하거나 전체 옵션을 사용하세요.", ephemeral:true });
-      const result = await withDB(async db=>{
-        const u = (db.users[target.id] ||= {}); ensureUser(u);
-        return trimQuestType(db, u, kind, keep, false);
-      });
-      return interaction.reply({ content:`${target.username} 기준, ${kind==="daily"?"일일":"주간"} 퀘스트 정리 완료(keep=${keep}, cleaned=${result.cleaned}).`, ephemeral:true });
-    }
+    const all = interaction.options.getBoolean("전체");
+    const target = interaction.options.getUser("유저");
+    await withDB(async db=>{
+      if (all) trimQuestLists(db, kind, keep, true, null);
+      else if (target) { const u = (db.users[target.id] ||= {}); ensureUser(u); trimQuestLists(db, kind, keep, false, u); }
+    });
+    return interaction.reply({ content:`퀘스트 목록 정리 완료.`, ephemeral:true });
   }
-
   if (sub === "퀘스트상태") {
     const target = interaction.options.getUser("유저");
-    const { eb } = await withDB(async db=>{
-      const uid = target.id;
-      const u = (db.users[uid] ||= {}); ensureUser(u);
-      const daily = db.quests.daily.list || [];
-      const weekly = db.quests.weekly.list || [];
-
-      const eb = new EmbedBuilder()
-        .setTitle("🧭 퀘스트 상태 (관리자 조회)")
-        .setDescription(`유저: <@${uid}>`)
-        .setColor(0x6a5acd);
-
-      const paint = (title, list) => {
-        if (!list.length) { eb.addFields({ name:title, value:"_없음_", inline:false }); return; }
-        const lines = list.map(q=>{
-          const status = u.quests.claimed?.[q.id] ? "수령완료" : isQuestCompleteLocal(u, q) ? "완료" : "진행중";
-          return `• ${q.title||q.name||q.id} — **${status}** (${formatQuestProgress(u, q)})`;
-        });
-        eb.addFields({ name:title, value:lines.join("\n"), inline:false });
-      };
-      paint("🗓️ 일일 퀘스트", daily);
-      paint("📅 주간 퀘스트", weekly);
-      return { eb };
-    });
-    return interaction.reply({ embeds:[eb], ephemeral:true });
-  }
-
-  if (sub === "퀘스트개수") {
-    const daily = interaction.options.getInteger("일일");
-    const weekly = interaction.options.getInteger("주간");
+    let text = "";
     await withDB(async db=>{
-      ensureConfig(db);
-      if (typeof daily === "number" && daily >= 0) db.config.quest.countDaily = daily;
-      if (typeof weekly === "number" && weekly >= 0) db.config.quest.countWeekly = weekly;
+      const u = (db.users[target.id] ||= {}); ensureUser(u);
+      const prog = Object.keys(u.quests.progress).length;
+      const clm  = Object.keys(u.quests.claimed).length;
+      text = `진행 ${prog}개, 수령 ${clm}개`;
     });
-    return interaction.reply({ content:`퀘스트 기본 개수를 일일 ${daily??"변경없음"}, 주간 ${weekly??"변경없음"}으로 설정했습니다.`, ephemeral:true });
+    return interaction.reply({ content:text || "정보 없음", ephemeral:true });
+  }
+  if (sub === "퀘스트개수") {
+    const d = interaction.options.getInteger("일일");
+    const w = interaction.options.getInteger("주간");
+    await withDB(async db=>{
+      if (d != null) db.config.quest.countDaily = Math.max(0, d);
+      if (w != null) db.config.quest.countWeekly = Math.max(0, w);
+    });
+    return interaction.reply({ content:`퀘스트 개수 설정 완료.`, ephemeral:true });
   }
   if (sub === "퀘스트보상배율") {
     const dC = interaction.options.getInteger("일일코인");
@@ -575,15 +662,14 @@ async function execute(interaction) {
     const dB = interaction.options.getInteger("일일정수");
     const wB = interaction.options.getInteger("주간정수");
     await withDB(async db=>{
-      ensureConfig(db);
-      const rm = db.config.quest.rewardMul;
-      if (typeof dC === "number" && dC >= 0) rm.dailyCoins = dC;
-      if (typeof wC === "number" && wC >= 0) rm.weeklyCoins = wC;
-      if (typeof dB === "number" && dB >= 0) rm.dailyBE = dB;
-      if (typeof wB === "number" && wB >= 0) rm.weeklyBE = wB;
+      db.config.quest.rewardMul = {
+        dailyCoins: dC ?? db.config.quest.rewardMul.dailyCoins,
+        weeklyCoins: wC ?? db.config.quest.rewardMul.weeklyCoins,
+        dailyBE: dB ?? db.config.quest.rewardMul.dailyBE,
+        weeklyBE: wB ?? db.config.quest.rewardMul.weeklyBE,
+      };
     });
-    return interaction.reply({ content:`보상 배율을 적용했습니다. 일일 코인 ${dC??"유지"}%, 주간 코인 ${wC??"유지"}%, 일일 BE ${dB??"유지"}%, 주간 BE ${wB??"유지"}%`, ephemeral:true });
+    return interaction.reply({ content:`퀘스트 보상 배율 설정 완료.`, ephemeral:true });
   }
 }
-
 module.exports = { data, execute };
