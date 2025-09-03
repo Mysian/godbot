@@ -2862,10 +2862,10 @@ const back = {
 u.inv.fishes.push(back);
 u.aquarium.splice(idx, 1);
 
-    const bonus = relicCoinOnCatch(u, caught.rarity || rar);
-    if (bonus > 0) gainCoins(u, db, bonus);
-
-    return edit({ content:`${withStarName(a.n, a.l)}(Lv.${a.lv})를 인벤토리로 돌려보냈어.`, ...(buildAquariumHome(u)) });
+    return edit({
+  content:`${withStarName(a.n, a.l)}(Lv.${a.lv})를 인벤토리로 돌려보냈어.`,
+  ...(buildAquariumHome(u))
+});
   }
 
   if (cmd === "add") {
