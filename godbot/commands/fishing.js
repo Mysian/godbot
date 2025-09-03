@@ -66,6 +66,112 @@ const GEAR_COLOR = {
 };
 const gearColorOf = (name) => GEAR_COLOR[name] ?? 0x88ddff;
 
+// === [유물 시스템] 정의 ===
+const RELIC_LIST = [
+  "에메랄드 상어 비늘",
+  "황금 지렁이",
+  "황금 유령선 피규어",
+  "낚시꾼의 증표",
+  "황금 상어의 지느러미",
+  "용녀의 진주",
+  "인어공주의 비녀",
+  "낚시꾼의 모자",
+  "고대 용왕의 석판",
+];
+
+const RELICS = {
+  "에메랄드 상어 비늘": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481231681228860/5f407864f33a09e4.png",
+    max: 5,
+    uniqAdd: [0.002, 0.004, 0.006, 0.008, 0.01] // 유니크 절대 확률 +x
+  },
+  "황금 지렁이": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481232117432330/5410139c603353f3.png",
+    max: 5,
+    bite: [-2, -2.5, -3, -3.5, -5] // 입질속도 -s
+  },
+  "황금 유령선 피규어": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481232520089795/eb2ee0f2830a383e.png",
+    max: 5,
+    rarityShift: [1,2,3,4,5] // 희귀도 +N 단계 상승
+  },
+  "낚시꾼의 증표": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481232943452231/9494612712bd8f38.png",
+    max: 5,
+    coinNR: [50,100,250,400,777] // 노말/레어 잡을 때 코인 추가
+  },
+  "황금 상어의 지느러미": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481233329455244/4c99934a37311ced.png",
+    max: 5,
+    normalReduce: [0.10,0.20,0.30,0.40,0.50] // 노말 가중치 x(1-r)
+  },
+  "용녀의 진주": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481233807736842/65838d3ea4610c80.png",
+    max: 5,
+    epicAdd: [0.001,0.002,0.003,0.005,0.01] // 에픽 절대 확률 +x
+  },
+  "인어공주의 비녀": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481234205933709/f8752bb07583a619.png",
+    max: 5,
+    aquaXpMult: [1.10,1.20,1.30,1.40,1.50] // 수족관 칭찬/먹이 경험치 배수
+  },
+  "낚시꾼의 모자": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481234524966932/b55d8fc41de945be.png",
+    max: 5,
+    coinUniPlus: [150,350,550,750,1500] // 유니크 이상 잡을 때 코인 추가
+  },
+  "고대 용왕의 석판": {
+    img: "https://media.discordapp.net/attachments/1412481195039789126/1412481235023826954/4962f2f34325be67.png",
+    max: 5,
+    // 레벨이 오를수록 이전 레벨 효과가 '누적'
+    king: true
+  },
+};
+
+function ensureRelics(u){
+  u.relics ??= { equipped: null, lv: {} };
+  for (const name of RELIC_LIST) {
+    if (u.relics.lv[name] == null) u.relics.lv[name] = 0;
+  }
+}
+
+function equippedRelic(u){ return u?.relics?.equipped || null; }
+function relicLv(u, name){ return Math.max(0, u?.relics?.lv?.[name] || 0); }
+function relicImg(name){ return RELICS[name]?.img || null; }
+
+function relicEffect(u){
+  const name = equippedRelic(u);
+  if (!name) return {};
+  const lv = relicLv(u, name);
+  if (lv <= 0) return {};
+  const r = RELICS[name]||{};
+  const eff = {};
+  if (r.uniqAdd) eff.uniqAdd = r.uniqAdd[lv-1];
+  if (r.epicAdd) eff.epicAdd = r.epicAdd[lv-1];
+  if (r.bite)    eff.bite    = r.bite[lv-1];
+  if (r.rarityShift) eff.rarityShift = r.rarityShift[lv-1];
+  if (r.normalReduce) eff.normalReduce = r.normalReduce[lv-1];
+  if (r.coinNR)  eff.coinNR  = r.coinNR[lv-1];
+  if (r.coinUniPlus) eff.coinUniPlus = r.coinUniPlus[lv-1];
+  if (r.aquaXpMult)  eff.aquaXpMult  = r.aquaXpMult[lv-1];
+
+  // 고대 용왕의 석판: 누적 효과
+  if (r.king) {
+    // 1: 입질속도 -1s
+    if (lv >= 1) eff.bite = (eff.bite||0) + (-1);
+    // 2: 희귀도 +1
+    if (lv >= 2) eff.rarityShift = (eff.rarityShift||0) + 1;
+    // 3: 포획 시 코인 +100
+    if (lv >= 3) eff.coinAll = (eff.coinAll||0) + 100;
+    // 4: 잡동사니 금지
+    if (lv >= 4) eff.noJunk = true;
+    // 5: 노말 금지
+    if (lv >= 5) eff.noNormal = true;
+  }
+  return eff;
+}
+
+
 // === 등급 예측 메시지 ===
 const RARITY_HINT_LINES = {
   "노말":   ["흔한", "익숙한"],
@@ -178,7 +284,8 @@ function sumBiteSpeed(u){
   const b  = BAIT_SPECS[u.equip.bait]?.biteSpeed   || 0;
   const t  = getTierBuff(u.tier).biteSpeed         || 0;
   const tm = getTimeBuff(currentTimeBand()).biteSpeed || 0;
-  return r + f + b + t + tm; // ← 시간대 버프 포함
+  const rel = relicEffect(u);
+return r + f + b + t + tm + (rel.bite||0);
 }
 function effectiveDmg(u){
   return (ROD_SPECS[u.equip.rod]?.dmg || 6) + (getTierBuff(u.tier).dmg||0);
@@ -642,10 +749,12 @@ async function withDB(fn) {
   }
 }
 async function updateUser(userId, updater) {
-  return await withDB(async db=>{
-    const u = (db.users[userId] ||= {}); ensureUser(u); u._uid = userId;
+  return await withDB(async db => {
+    const u = (db.users[userId] ||= {});
+    ensureUser(u);
+    u._uid = userId;
     const r = await updater(u, db);
-    delete u._uid; 
+    delete u._uid;
     return r;
   });
 }
@@ -731,6 +840,7 @@ function ensureUser(u) {
 
   // 수족관 보정(레거시 사용자 포함)
   ensureAquarium(u);
+  ensureRelics(u);
 }
 function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; }
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
@@ -1396,6 +1506,14 @@ function computeRarityWeight(u){
   m["레전드"]  += bias*0.12;
   m["에픽"]    += bias*0.04;
   m["언노운"]  += bias*0.01;
+
+  const rel = relicEffect(u);
+  if (rel?.normalReduce) {
+    m["노말"] = Math.max(0, m["노말"] * (1 - rel.normalReduce));
+  }
+  if (rel?.noNormal) {
+    m["노말"] = 0;
+  }
   return m;
 }
 
@@ -1410,9 +1528,32 @@ function buttonsQuestRow() {
 
 function startFight(u) {
   const rarityWeights = computeRarityWeight(u);
-  const rar = pickWeighted(rarityWeights);
-  const pool = DROP_TABLE[rar];
-  const name = pool[randInt(0, pool.length-1)];
+  const rel = relicEffect(u);
+  
+  let rar = pickWeighted(rarityWeights);
+  
+  if (rel?.uniqAdd && (RARITY_IDX[rar] < RARITY_IDX["유니크"])) {
+    if (Math.random() < rel.uniqAdd) rar = "유니크";
+  }
+  if (rel?.epicAdd && (RARITY_IDX[rar] < RARITY_IDX["에픽"])) {
+    if (Math.random() < rel.epicAdd) rar = "에픽";
+  }
+
+  if (rel?.rarityShift) {
+    const i = Math.max(0, Math.min(RARITY.length-1, (RARITY_IDX[rar]||0) + rel.rarityShift));
+    rar = RARITY[i];
+  }
+
+  let pool = DROP_TABLE[rar];
+  let name = pool[randInt(0, pool.length-1)];
+
+  if (rel?.noJunk && JUNK_SET.has(name)) {
+    let tries = 0;
+    while (JUNK_SET.has(name) && tries < 50) {
+      name = pool[randInt(0, pool.length-1)];
+      tries++;
+    }
+  }
 
   if (JUNK_SET.has(name)) {
     const st = baseItemFight(u, rar);
@@ -1472,6 +1613,67 @@ function applyReel(u, st, s, act){
   return st;
 }
 
+function renderRelicHome(u){
+  ensureRelics(u);
+  const eq = equippedRelic(u);
+  const eb = new EmbedBuilder()
+    .setTitle("🧿 유물")
+    .setDescription([
+      "• 유물은 **하나만 장착** 가능",
+      "• 동일 유물 낚을 때 자동 레벨업 (최대 5)",
+      "• 최대 레벨 이후 중복 → **낚시 코인 300,000**으로 대체"
+    ].join("\n"))
+    .setColor(0x7f6df0);
+
+  if (eq) {
+    const lv = relicLv(u, eq);
+    eb.addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
+      .setThumbnail(relicImg(eq));
+  } else {
+    eb.addFields({ name: "현재 장착", value: "_없음_", inline: false });
+  }
+
+  const lines = RELIC_LIST.map(name=>{
+    const lv = relicLv(u, name);
+    return `• ${name} ${lv>0?`(Lv.${lv})`:"(미보유)"}`;
+  });
+  eb.addFields({ name:"보유 현황", value: lines.join("\n"), inline:false });
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("relic-equip-choose")
+    .setPlaceholder("장착할 유물을 선택")
+    .addOptions(RELIC_LIST.map(n=>({
+      label: n, value: n, description: `레벨: ${relicLv(u,n)}`
+    })));
+
+  const row1 = new ActionRowBuilder().addComponents(menu);
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
+  );
+
+  return { embeds:[eb], components:[row1,row2] };
+}
+
+// component 핸들링(아래 6단계에서 라우팅 추가 후 동작)
+async function handleRelicComponent(u, db, interaction, id){
+  if (id === "relic:home" || id === "inv:relic") {
+    return interaction.update(renderRelicHome(u));
+  }
+  if (id === "relic:unequip") {
+    ensureRelics(u);
+    u.relics.equipped = null;
+    return interaction.update(renderRelicHome(u));
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
+    const sel = interaction.values?.[0];
+    if (sel && RELICS[sel]) {
+      ensureRelics(u);
+      u.relics.equipped = sel;
+      return interaction.update(renderRelicHome(u));
+    }
+  }
+}
+
 function buildInventoryHome(u){
   const eb = new EmbedBuilder().setTitle("🎒 낚시 인벤토리")
     .setDescription([
@@ -1491,7 +1693,8 @@ function buildInventoryHome(u){
   );
   const extra = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("open:chest").setLabel(`📦 상자 열기 (${u.inv.chests||0})`).setStyle(ButtonStyle.Primary).setDisabled((u.inv.chests||0)<=0 || (u.inv.keys||0)<=0),
-    new ButtonBuilder().setCustomId("info:key").setLabel(`🗝️ 열쇠 (${u.inv.keys||0})`).setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("info:key").setLabel(`🗝️ 열쇠 (${u.inv.keys||0})`).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("relic:home").setLabel("🧿 유물").setStyle(ButtonStyle.Primary)
   );
   const navRow = new ActionRowBuilder().addComponents(
   new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
@@ -1508,6 +1711,7 @@ const data = new SlashCommandBuilder().setName("낚시").setDescription("낚시 
   .addSubcommand(s=>s.setName("인벤토리").setDescription("인벤토리 확인/장착/상자"))
   .addSubcommand(s=>s.setName("수족관").setDescription("수족관 관리 / 성장"))
   .addSubcommand(s=>s.setName("도감").setDescription("잡은 물고기 도감 보기"))
+  .addSubcommand(s=>s.setName("유물").setDescription("유물 장착/레벨 확인"))
   .addSubcommand(s=>s.setName("기록").setDescription("개인 낚시 기록 확인").addUserOption(o=>o.setName("유저").setDescription("조회 대상")))
   .addSubcommand(s=>s.setName("기록순위").setDescription("티어/포인트/최대길이 순위 TOP20"))
   .addSubcommand(s=>s.setName("도움말").setDescription("낚시 시스템 도움말"))
@@ -2132,6 +2336,8 @@ async function buildRankEmbedPayload(db, interaction, mode){
 
   for(const [id, u] of Object.entries(db.users||{})){
     ensureUser(u);
+    ensureRelics(u);
+    return u;
     for(const [name,count] of Object.entries(u.stats.speciesCount||{})){
       const rar = RARITY_OF[name] || (JUNK_SET.has(name) ? "잡동사니" : null);
       if(!rar) continue;
@@ -2209,6 +2415,8 @@ async function buildRarityRankEmbed(db, interaction){
 
   const base = Object.entries(db.users||{}).map(([id,u])=>{
     ensureUser(u);
+    ensureRelics(u);
+    return u;
     let bestN = null; let bestL = 0;
     for (const [n,b] of Object.entries(u.stats.best||{})) { const L = b.length||0; if (L > bestL) { bestL = L; bestN = n; } }
     if ((u.stats.max?.length||0) >= bestL) { bestL = u.stats.max?.length||0; bestN = u.stats.max?.name||bestN; }
@@ -2244,6 +2452,7 @@ async function execute(interaction) {
   return await withDB(async db => {
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
+    ensureRelics(u);
     u._uid = userId;
     try {
       const payload = buildQuestEmbed(db, u);
@@ -2253,6 +2462,15 @@ async function execute(interaction) {
     }
   });
 }
+
+  if (sub === "유물") {
+  return await withDB(async db => {
+    const u = (db.users[userId] ||= {}); ensureUser(u);
+    const payload = renderRelicHome(u);
+    return interaction.reply({ ...payload, ephemeral: true });
+  });
+}
+
 
   if (sub === "수족관") {
   await interaction.deferReply({ ephemeral: true });
@@ -2267,6 +2485,7 @@ async function execute(interaction) {
   return await withDB(async db=>{
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
+    ensureRelics(u);
     try {
       u._uid = userId;
 
@@ -2299,6 +2518,7 @@ async function execute(interaction) {
   if (sub === "구매") {
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
+      ensureRelics(u);
       const eb = new EmbedBuilder().setTitle("🛒 낚시 상점")
         .setDescription([
           "종류를 골라 하나씩 넘기며 이미지와 스펙, 가격을 확인하고 구매해 주세요.",
@@ -2326,6 +2546,7 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   if (sub === "인벤토리") {
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
+      ensureRelics(u);
       const payload = buildInventoryHome(u);
       await interaction.reply({ ...payload, ephemeral:true });
     });
@@ -2334,6 +2555,7 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   if (sub === "판매") {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u);
+    ensureRelics(u);
     const fishes = u.inv.fishes||[];
     const sellable = fishes.filter(f => !f.lock);
     const totalValue = sellable.reduce((sum, f) => sum + (f.price||0), 0);
@@ -2361,6 +2583,7 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
     if (sub === "스타터패키지") {
     return await withDB(async db=>{
       const u = (db.users[userId] ||= {}); ensureUser(u);
+      ensureRelics(u);
       
       u.rewards ??= {};
       if (u.rewards.starter) {
@@ -2394,6 +2617,7 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   if (sub === "도감") {
   return await withDB(async db=>{
     const u = (db.users[userId] ||= {}); ensureUser(u);
+    ensureRelics(u);
     try {
       u._uid = userId;
       const st = { rarity:"노말", page:0, mode:"list" };
@@ -2410,6 +2634,7 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
   const target = interaction.options.getUser("유저") || interaction.user;
   return await withDB(async db=>{
     const u = (db.users[target.id] ||= {}); ensureUser(u);
+    ensureRelics(u);
     const top3 = Object.entries(u.stats.best || {}).sort((a,b)=> (b[1].length||0) - (a[1].length||0)).slice(0,3);
     const tierIcon = getIconURL(u.tier);
     const counts = rarityCountsOf(u);
@@ -2482,6 +2707,8 @@ async function component(interaction) {
   return await withDB(async db=>{
     ensureQuests(db);
     const u = (db.users[userId] ||= {}); ensureUser(u);
+    ensureRelics(u);
+    return u;
     try {
       const id = interaction.customId || "";
       u._uid = userId;
@@ -2709,6 +2936,23 @@ if (id === "my:record") {
   return interaction.update({ embeds:[eb], components:[row] });
 }
 
+// === [유물 컴포넌트 라우팅] ===
+if (
+  (interaction.isButton() && (
+    interaction.customId === "relic:home" ||
+    interaction.customId === "inv:relic" ||
+    interaction.customId === "relic:unequip"
+  )) ||
+  (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose")
+) {
+  await withDB(async db => {
+    const u = (db.users[interaction.user.id] ||= {}); 
+    ensureUser(u);
+    await interaction.deferUpdate();
+    await handleRelicComponent(u, db, interaction, interaction.customId);
+  });
+  return; 
+}
 
 // === [판매 홈으로 돌아가기] ===
 if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton()) {
@@ -2807,7 +3051,6 @@ if (interaction.isStringSelectMenu() && interaction.customId === "sell-rarity-ch
 
   return edit({ embeds:[eb], components:[row] });
 }
-
 
 // === [등급별 판매: 확정 누름] ===
 if (id.startsWith("sell:confirm_rarity|") && interaction.isButton()) {
@@ -3354,18 +3597,63 @@ if (id === "fish:share") {
 
 
   s.biteTimer = setTimeout(async () => {
-    const result = await updateUser(userId, (uu) => {
-      if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
-      uu.inv.baits[uu.equip.bait] -= 1;
-      applyQuestEvent(uu, db, "bait_used", { count: 1 });
-      const fight = startFight(uu);
-      return { ok: true, fight, equip: { ...uu.equip }, timeBand: currentTimeBand() };
-    });
+    const result = await updateUser(userId, (uu, db) => {
+  if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
+  uu.inv.baits[uu.equip.bait] -= 1;
+  applyQuestEvent(uu, db, "bait_used", { count: 1 });
+
+  if (Math.random() < 0.003) {
+    ensureRelics(uu);
+    const name = RELIC_LIST[Math.floor(Math.random()*RELIC_LIST.length)];
+    const cur = relicLv(uu, name);
+    let drop = { name, img: relicImg(name), newLv: cur, coin: 0, maxed: false };
+    if (cur < (RELICS[name]?.max||5)) {
+      uu.relics.lv[name] = cur + 1;
+      drop.newLv = cur + 1;
+    } else {
+      gainCoins(uu, db, 300000);
+      drop.maxed = true;
+      drop.coin = 300000;
+    }
+    return { ok: true, relic: drop, equip: { ...uu.equip }, timeBand: currentTimeBand() };
+  }
+
+  const fight = startFight(uu);
+  return { ok: true, fight, equip: { ...uu.equip }, timeBand: currentTimeBand() };
+});
+
 
     if (!result || !result.ok) {
       clearSession(userId);
       return s.safeEdit({ content: "미끼가 없어 입질이 이어지지 않았습니다.", components: [], embeds: [] }).catch(() => {});
     }
+
+    // 유물 즉시 획득 처리
+if (result.relic) {
+  clearSession(userId);
+
+  lastCatch.set(userId, {
+    type: "loot",
+    name: result.relic.name,
+    rarity: "레전드",
+    desc: result.relic.maxed
+      ? `${result.relic.name} 중복으로 +${result.relic.coin.toLocaleString()} 코인`
+      : `${result.relic.name} Lv.${result.relic.newLv} 획득!`,
+    icon: result.relic.img,
+    ts: Date.now()
+  });
+
+  const eb = sceneEmbed(
+    await getUser(userId),
+    "🧿 유물 획득!",
+    result.relic.maxed
+      ? `중복으로 **+${result.relic.coin.toLocaleString()} 코인**이 지급되었습니다.`
+      : `${result.relic.name} **Lv.${result.relic.newLv}**`,
+    result.relic.img
+  );
+
+  return s.safeEdit({ embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
+}
 
     const fobj = result.fight;
 
@@ -3461,6 +3749,13 @@ const eb = new EmbedBuilder()
     fishToInv(u, { name: st.name, rarity: st.rarity, length: st.length, sell });
   } catch (err) { console.error("[낚시 fishToInv 오류]", err, st); }
 
+  const rel = relicEffect(u);
+    let bonusCoin = 0;
+  if (rel?.coinAll) bonusCoin += rel.coinAll;
+  if (rel?.coinNR && (st.rarity==="노말" || st.rarity==="레어")) bonusCoin += rel.coinNR;
+  if (rel?.coinUniPlus && (RARITY_IDX[st.rarity] >= RARITY_IDX["유니크"])) bonusCoin += rel.coinUniPlus;
+  if (bonusCoin > 0) gainCoins(u, db, bonusCoin);
+
   // 퀘스트 이벤트 (시간대/특정종/레어 이상/첫 종 등)
   if (__beforeSpecies===0 && (u.stats.speciesCount?.[st.name]||0)===1) {
     applyQuestEvent(u, db, "first_species", { name: st.name });
@@ -3500,19 +3795,20 @@ const eb = new EmbedBuilder()
           });
 
           const starName = withStarName(st.name, st.length);
-const eb = sceneEmbed(
-  u, 
-  `✅ 포획 성공! [${st.rarity}] ${starName}`, 
-  [
-    `길이: ${Math.round(st.length)}cm`,
-    `판매가: ${sell.toLocaleString()}코인`,
-    "",
-    "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-  ].join("\n"),
-  getIconURL(st.name) || null,
-  [],                 
-  colorOf(st.rarity)
-);
+          const lineBonus = bonusCoin>0 ? `\n유물 보너스: +${bonusCoin.toLocaleString()}코인` : "";
+          const eb = sceneEmbed(
+          u,
+        `✅ 포획 성공! [${st.rarity}] ${starName}`,
+        [
+          `길이: ${Math.round(st.length)}cm`,
+          `판매가: ${sell.toLocaleString()}코인${lineBonus}`,
+          "",
+          "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
+        ].join("\n"),
+      getIconURL(st.name) || null,
+        [],
+      colorOf(st.rarity)
+      );
 
 
           // ★ 종별(첫 조우/누적) 보상 임베드 함께 붙이기
