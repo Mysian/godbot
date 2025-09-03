@@ -2040,7 +2040,6 @@ function renderDexDetail(u, st, name) {
   );
 
   return { embeds:[eb], components:[nav] };
- }
 }
 
 
