@@ -3735,9 +3735,15 @@ const eb = new EmbedBuilder()
   .setColor(0x44ddaa)
   .setImage(s.sceneBiteURL);
 
-  try { await s.safeEdit({ embeds: [eb], components: [buttonsFight()] }); } catch {} }, waitSec * 1000);
-  s.expireTimer = setTimeout(() => { clearSession(userId); }, (FISHING_LIMIT_SECONDS + 20) * 1000);
+  setTimeout(async () => {
+  try {
+    await s.safeEdit({ embeds: [eb], components: [buttonsFight()] });
+  } catch {}
+}, waitSec * 1000);
 
+s.expireTimer = setTimeout(() => {
+  clearSession(userId);
+}, (FISHING_LIMIT_SECONDS + 20) * 1000);
   const eb = sceneEmbed(
     u,
     "🪔 입질을 기다리는 중...",
