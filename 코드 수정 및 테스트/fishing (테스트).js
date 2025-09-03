@@ -3754,6 +3754,11 @@ const eb = new EmbedBuilder()
         if (st.kind === "fish") {
   const sell = computeSellPrice(st.name, st.length, st.rarity);
 
+  const relicBonus = relicCoinOnCatch(u, st.rarity); 
+if (relicBonus > 0) {
+  gainCoins(u, db, relicBonus);
+}
+
   // 포획 전 종 카운트(첫 종 체크용)
   const __beforeSpecies = (u.stats.speciesCount?.[st.name] || 0);
 
@@ -3800,17 +3805,19 @@ const eb = new EmbedBuilder()
           });
 
           const starName = withStarName(st.name, st.length);
+const lines = [
+  `길이: ${Math.round(st.length)}cm`,
+  `판매가: ${sell.toLocaleString()}코인`
+];
+if (relicBonus > 0) lines.push(`유물 보너스: +${relicBonus.toLocaleString()}코인`);
+lines.push("", "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다.");
+
 const eb = sceneEmbed(
-  u, 
-  `✅ 포획 성공! [${st.rarity}] ${starName}`, 
-  [
-    `길이: ${Math.round(st.length)}cm`,
-    `판매가: ${sell.toLocaleString()}코인`,
-    "",
-    "💡 `/낚시 판매`로 바로 코인화하실 수 있습니다."
-  ].join("\n"),
+  u,
+  `✅ 포획 성공! [${st.rarity}] ${starName}`,
+  lines.join("\n"),
   getIconURL(st.name) || null,
-  [],                 
+  [],
   colorOf(st.rarity)
 );
 
