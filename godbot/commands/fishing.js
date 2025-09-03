@@ -171,6 +171,27 @@ function relicEffect(u){
   return eff;
 }
 
+// 사람이 읽기 쉬운 유물 효과 포맷터
+function formatRelicEffectText(eff = {}) {
+  const out = [];
+  const pct = (x) => `${(x * 100).toFixed(x < 0.01 ? 2 : 1)}%`;
+  const mul = (x) => `x${(x).toFixed(2).replace(/\.?0+$/,'')}`;
+
+  if (eff.uniqAdd)     out.push(`• 유니크 절대 확률 +${pct(eff.uniqAdd)}`);
+  if (eff.epicAdd)     out.push(`• 에픽 절대 확률 +${pct(eff.epicAdd)}`);
+  if (eff.bite)        out.push(`• 입질시간 ${eff.bite > 0 ? '+' : ''}${eff.bite}s`);
+  if (eff.rarityShift) out.push(`• 희귀도 +${eff.rarityShift}단계`);
+  if (eff.normalReduce)out.push(`• 노말 가중치 -${pct(eff.normalReduce)}`);
+  if (eff.coinNR)      out.push(`• 노말/레어 포획 시 추가 코인 +${Number(eff.coinNR).toLocaleString()}`);
+  if (eff.coinUniPlus) out.push(`• 유니크 이상 포획 시 추가 코인 +${Number(eff.coinUniPlus).toLocaleString()}`);
+  if (eff.coinAll)     out.push(`• 포획 시 추가 코인 +${Number(eff.coinAll).toLocaleString()}`);
+  if (eff.aquaXpMult)  out.push(`• 수족관 경험치 ${mul(eff.aquaXpMult)}`);
+  if (eff.noJunk)      out.push(`• 잡동사니 금지`);
+  if (eff.noNormal)    out.push(`• 노말 금지`);
+
+  return out.join("\n") || "_없음_";
+}
+
 
 // === 등급 예측 메시지 ===
 const RARITY_HINT_LINES = {
@@ -1625,34 +1646,50 @@ function renderRelicHome(u){
     ].join("\n"))
     .setColor(0x7f6df0);
 
+  // 현재 장착 + 효과
   if (eq) {
-    const lv = relicLv(u, eq);
-    eb.addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
+    const lv  = relicLv(u, eq);
+    const eff = relicEffect(u);
+    eb
+      .addFields({ name: "현재 장착", value: `${eq} (Lv.${lv})`, inline: false })
+      .addFields({ name: "장착 효과", value: formatRelicEffectText(eff), inline: false })
       .setThumbnail(relicImg(eq));
   } else {
-    eb.addFields({ name: "현재 장착", value: "_없음_", inline: false });
+    eb
+      .addFields({ name: "현재 장착", value: "_없음_", inline: false })
+      .addFields({ name: "장착 효과", value: "_없음_", inline: false });
   }
 
-  const lines = RELIC_LIST.map(name=>{
-    const lv = relicLv(u, name);
-    return `• ${name} ${lv>0?`(Lv.${lv})`:"(미보유)"}`;
+  // 보유 유물만 노출
+  const owned = RELIC_LIST.filter(name => relicLv(u, name) > 0);
+  const lines = owned.map(name => `• ${name} (Lv.${relicLv(u, name)})`);
+  eb.addFields({
+    name: "보유 유물",
+    value: lines.length ? lines.join("\n") : "_보유 중인 유물이 없습니다._",
+    inline: false
   });
-  eb.addFields({ name:"보유 현황", value: lines.join("\n"), inline:false });
 
+  // 보유 유물만 선택 가능
   const menu = new StringSelectMenuBuilder()
     .setCustomId("relic-equip-choose")
-    .setPlaceholder("장착할 유물을 선택")
-    .addOptions(RELIC_LIST.map(n=>({
-      label: n, value: n, description: `레벨: ${relicLv(u,n)}`
+    .setPlaceholder(owned.length ? "장착할 유물을 선택" : "보유 유물이 없습니다")
+    .setDisabled(owned.length === 0)
+    .addOptions(owned.map(n => ({
+      label: n, value: n, description: `레벨: ${relicLv(u, n)}`
     })));
 
   const row1 = new ActionRowBuilder().addComponents(menu);
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("relic:unequip").setLabel("장착 해제").setStyle(ButtonStyle.Secondary).setDisabled(!eq),
+    new ButtonBuilder()
+      .setCustomId("relic:unequip")
+      .setLabel("장착 해제")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!eq),
   );
 
-  return { embeds:[eb], components:[row1,row2] };
+  return { embeds:[eb], components:[row1, row2] };
 }
+
 
 // component 핸들링(아래 6단계에서 라우팅 추가 후 동작)
 async function handleRelicComponent(u, db, interaction, id){
@@ -1666,13 +1703,20 @@ async function handleRelicComponent(u, db, interaction, id){
     return edit(renderRelicHome(u));
   }
   if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
-    const sel = interaction.values?.[0];
-    if (sel && RELICS[sel]) {
-      ensureRelics(u);
-      u.relics.equipped = sel;
-      return edit(renderRelicHome(u));
+  const sel = interaction.values?.[0];
+  if (sel && RELICS[sel]) {
+    ensureRelics(u);
+    // 미보유 유물 장착 방지
+    if (relicLv(u, sel) <= 0) {
+      try {
+        await interaction.followUp({ content: "⚠️ 보유하지 않은 유물은 장착할 수 없습니다.", ephemeral: true });
+      } catch {}
+      return;
     }
+    u.relics.equipped = sel;
+    return edit(renderRelicHome(u));
   }
+}
 }
 
 function buildInventoryHome(u){
