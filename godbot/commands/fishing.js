@@ -2036,6 +2036,7 @@ function renderDexDetail(u, st, name){
 }
 
 
+
 function aquariumSlotLabel(a, idx){
   if (!a) return `빈 슬롯 #${idx+1}`;
   const name = withStarName(a.n, a.l);
@@ -2949,7 +2950,7 @@ if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton(
   const edit = mkSafeEditor(interaction);
   return edit(renderSellHome(u));
 }
-
+      
 // === [모두 판매] ===
 if (id === "fish:sell_all" && interaction.isButton()) {
   await interaction.deferUpdate();
@@ -3003,6 +3004,17 @@ if (id === "fish:sell_rarity" && interaction.isButton()) {
   );
 
   return edit({ embeds:[eb], components:[ new ActionRowBuilder().addComponents(menu), back ] });
+}
+
+// 도감 상세 보기: 셀렉트 핸들러
+if (interaction.isStringSelectMenu() && id === "dex:select") {
+  const val = interaction.values?.[0];
+  if (!val) return interaction.deferUpdate();
+  st.mode = "detail";
+  st.current = val; // 선택한 물고기 ID
+  dexSessions.set(userId, st);
+  const payload = renderDexDetail(u, st);
+  return interaction.update({ ...payload });
 }
 
 
@@ -4553,6 +4565,29 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
       shopSessions.delete(userId);
       return interaction.update({ content:"상점을 닫았습니다.", embeds:[], components:[] });
     }
+
+if (id.startsWith("dex:open|")) {
+  const fid = id.split("|")[1];
+  if (!fid) return interaction.deferUpdate();
+  st.mode = "detail";
+  st.current = fid;
+  dexSessions.set(userId, st);
+  const payload = renderDexDetail(u, st);
+  return interaction.update({ ...payload });
+}
+if (id === "dex:dprev" || id === "dex:dnext") {
+  const all = FISH_BY_RARITY[st.rarity] || [];        // 같은 등급 풀
+  const idx = Math.max(0, all.indexOf(st.current));    // current가 id 문자열이라고 가정
+  const dir = (id === "dex:dnext") ? 1 : -1;
+  let ni = idx + dir;
+  if (ni < 0) ni = all.length - 1;
+  if (ni >= all.length) ni = 0;
+  st.current = all[ni];
+  st.mode = "detail";
+  dexSessions.set(userId, st);
+  const payload = renderDexDetail(u, st);
+  return interaction.update({ ...payload });
+}
 
     if (id.startsWith("dex:")) {
       const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
