@@ -3380,13 +3380,14 @@ u.aquarium.push({
 
 
       if (interaction.customId === "dex:select") {
-        const name = interaction.values[0];
-        const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
-        st.mode = "detail"; st.current = name;
-        dexSessions.set(userId, st);
-        const payload = renderDexDetail(u, st, name);
-        return interaction.update({ ...payload });
-      }
+  const opt = interaction.values?.[0];
+  if (!opt) return;
+  const st = dexSessions.get(userId) || { rarity:"노말", page:0, mode:"list" };
+  st.current = opt; st.mode = "detail";
+  dexSessions.set(userId, st);
+  const payload = renderDexDetail(u, st, opt);
+  return interaction.update({ ...payload });
+}
 
       return;
     }
