@@ -411,8 +411,8 @@ const RELIC_SPECS = {
   "에메랄드 상어 비늘": {
     key: "emer_shark",
     image: "https://media.discordapp.net/attachments/1412481195039789126/1412481231681228860/5f407864f33a09e4.png?format=webp&quality=lossless&width=800&height=800",
-    // 유니크 입질 확률 +퍼센트포인트 (Lv5는 Lv4 유지 명시)
-    uniqPct: [0.002, 0.004, 0.006, 0.010, 0.010]
+    // 유니크 입질 확률 +퍼센트포인트
+    uniqPct: [0.002, 0.004, 0.006, 0.008, 0.010]
   },
   "황금 지렁이": {
     key: "gold_worm",
@@ -458,6 +458,43 @@ const RELIC_SPECS = {
   }
 };
 const RELIC_NAMES = Object.keys(RELIC_SPECS);
+
+// === [유물 시스템] 지급/레벨업 ===
+function grantRandomRelic(u, db) {
+  u.relic ??= { equipped:null, levels:{} };
+
+  // 모든 상황에서 공통 확률로 낚이는 컨셉이라 특정 유물 가중치 없이 균등
+  const name = RELIC_NAMES[Math.floor(Math.random() * RELIC_NAMES.length)];
+  const cur  = Math.max(0, u.relic.levels?.[name] || 0);
+
+  // 5레벨 이하면 레벨업
+  if (cur < 5) {
+    const next = cur + 1;
+    u.relic.levels[name] = next;
+
+    // 설명 문자열
+    const levelLine = `현재 레벨: **Lv.${next}**`;
+    const tip = (u.relic.equipped === name)
+      ? "장착 중인 유물의 효과가 강화되었습니다!"
+      : "효과를 받으려면 장착해야 합니다. 🔮 `/낚시 유물` 또는 인벤토리 **[유물]** 버튼에서 장착하세요.";
+
+    return {
+      name,
+      image: RELIC_SPECS[name]?.image || null,
+      desc: `새로운 유물을 획득했어요!\n**${name}**\n${levelLine}\n\n${tip}`
+    };
+  }
+
+  // 5레벨이면 동일 유물은 코인 300,000으로 대체
+  const bonus = 300000;
+  gainCoins(u, db, bonus);
+  return {
+    name,
+    image: RELIC_SPECS[name]?.image || null,
+    desc: `이미 **${name}**가 만렙(Lv.5)입니다.\n대신 **${bonus.toLocaleString()} 코인**을 받았습니다!`
+  };
+}
+
 
 
 // === [수족관 시스템] 기본 정의 ===
@@ -921,7 +958,7 @@ const LENGTH_TABLE = {
   "두꺼비":[10,30],
   "망둑어":[15,60],
   "해파리":[30,80],
-  "숭어":[,],
+  "숭어":[20,65],
   "가재":[8,20],
   "연어":[60,120],
   "다랑어":[80,200],
@@ -3608,12 +3645,10 @@ if (id === "fish:share") {
   if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
   uu.inv.baits[uu.equip.bait] -= 1;
   applyQuestEvent(uu, db, "bait_used", { count: 1 });
-
-  // ⚡ 유물 0.3% 조우: 장비/버프/티어 무시, 릴 없이 즉시 처리
   if (Math.random() < 0.003) {
-    const got = grantRandomRelic(uu, db);
-    return { ok: "relic", got };
-  }
+  const got = grantRandomRelic(uu, db);
+  return { ok: "relic", got };
+}
 
   const fight = startFight(uu);
   return { ok: true, fight, equip: { ...uu.equip }, timeBand: currentTimeBand() };
