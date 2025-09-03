@@ -1671,7 +1671,7 @@ function renderRelicHome(u){
 
   // 보유 유물만 선택 가능
   const menu = new StringSelectMenuBuilder()
-    .setCustomId("relic-equip-choose")
+    .setCustomId("relic:choose")
     .setPlaceholder(owned.length ? "장착할 유물을 선택" : "보유 유물이 없습니다")
     .setDisabled(owned.length === 0)
     .addOptions(owned.map(n => ({
@@ -1702,21 +1702,19 @@ async function handleRelicComponent(u, db, interaction, id){
     u.relics.equipped = null;
     return edit(renderRelicHome(u));
   }
-  if (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose") {
+  if (interaction.isStringSelectMenu() && interaction.customId === "relic:choose") {
   const sel = interaction.values?.[0];
-  if (sel && RELICS[sel]) {
-    ensureRelics(u);
-    // 미보유 유물 장착 방지
-    if (relicLv(u, sel) <= 0) {
-      try {
-        await interaction.followUp({ content: "⚠️ 보유하지 않은 유물은 장착할 수 없습니다.", ephemeral: true });
-      } catch {}
-      return;
-    }
-    u.relics.equipped = sel;
-    return edit(renderRelicHome(u));
+  if (!sel || !RELICS[sel]) return;
+
+  ensureRelics(u);
+  if (relicLv(u, sel) <= 0) {
+    try { await interaction.followUp({ content: "⚠️ 보유하지 않은 유물은 장착할 수 없습니다.", ephemeral: true }); } catch {}
+    return;
   }
-}
+  u.relics.equipped = sel;
+  return edit(renderRelicHome(u)); // (update/해당 메시지 교체)
+    }
+  }
 }
 
 function buildInventoryHome(u){
