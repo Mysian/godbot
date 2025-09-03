@@ -1257,7 +1257,7 @@ function genDailyQuests(){
     q_aqua_levelup(1, "daily"),
   ];
   // 무작위 3개 추출
-  return shufflePick(list, 5);
+  return shufflePick(list, 3);
 }
 function genWeeklyQuests(){
   const seqA = q_seq(["노말","레어","유니크"], 3, "weekly");
@@ -2337,7 +2337,6 @@ async function buildRankEmbedPayload(db, interaction, mode){
   for(const [id, u] of Object.entries(db.users||{})){
     ensureUser(u);
     ensureRelics(u);
-    return u;
     for(const [name,count] of Object.entries(u.stats.speciesCount||{})){
       const rar = RARITY_OF[name] || (JUNK_SET.has(name) ? "잡동사니" : null);
       if(!rar) continue;
@@ -2416,7 +2415,6 @@ async function buildRarityRankEmbed(db, interaction){
   const base = Object.entries(db.users||{}).map(([id,u])=>{
     ensureUser(u);
     ensureRelics(u);
-    return u;
     let bestN = null; let bestL = 0;
     for (const [n,b] of Object.entries(u.stats.best||{})) { const L = b.length||0; if (L > bestL) { bestL = L; bestN = n; } }
     if ((u.stats.max?.length||0) >= bestL) { bestL = u.stats.max?.length||0; bestN = u.stats.max?.name||bestN; }
@@ -2554,8 +2552,7 @@ await interaction.reply({ embeds:[eb], components:[row, row2], ephemeral:true })
 
   if (sub === "판매") {
   return await withDB(async db=>{
-    const u = (db.users[userId] ||= {}); ensureUser(u);
-    ensureRelics(u);
+    const u = (db.users[userId] ||= {}); ensureUser(u); ensureRelics(u);
     const fishes = u.inv.fishes||[];
     const sellable = fishes.filter(f => !f.lock);
     const totalValue = sellable.reduce((sum, f) => sum + (f.price||0), 0);
@@ -2938,21 +2935,20 @@ if (id === "my:record") {
 
 // === [유물 컴포넌트 라우팅] ===
 if (
-  (interaction.isButton() && (
-    interaction.customId === "relic:home" ||
-    interaction.customId === "inv:relic" ||
-    interaction.customId === "relic:unequip"
-  )) ||
-  (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose")
-) {
-  await withDB(async db => {
-    const u = (db.users[interaction.user.id] ||= {}); 
-    ensureUser(u);
-    await interaction.deferUpdate();
-    await handleRelicComponent(u, db, interaction, interaction.customId);
-  });
-  return; 
-}
+    (interaction.isButton() && (
+      interaction.customId === "relic:home" ||
+      interaction.customId === "inv:relic" ||
+      interaction.customId === "relic:unequip"
+    )) ||
+    (interaction.isStringSelectMenu() && interaction.customId === "relic-equip-choose")
+  ) {
+    await withDB(async db => {
+      const u = (db.users[interaction.user.id] ||= {}); ensureUser(u);
+      await interaction.deferUpdate();
+      await handleRelicComponent(u, db, interaction, interaction.customId);
+    });
+    return;
+  }
 
 // === [판매 홈으로 돌아가기] ===
 if ((id === "sell:cancel" || id === "fish:sell_cancel") && interaction.isButton()) {
