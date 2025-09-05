@@ -4354,21 +4354,76 @@ if (interaction.customId === "sell-rarity-choose") {
       return interaction.reply({ content:`장착 완료: ${slot} → ${name}`, ephemeral:true });
     }
     if (id === "open:chest") {
-      if ((u.inv.chests||0)<=0) return interaction.reply({ content:"보물상자가 없습니다.", ephemeral:true });
-      if ((u.inv.keys||0)<=0)   return interaction.reply({ content:"열쇠가 없습니다.", ephemeral:true });
-      u.inv.chests -= 1; u.inv.keys -= 1;
-      applyQuestEvent(u, db, "chest_open", { count: 1 });  
-      const pool = CHEST_REWARDS.loot;
-      const w = {}; for (const it of pool) w[it.name] = it.chance;
-      const pick = pickWeighted(w);
-      const item = pool.find(x=>x.name===pick);
-      if (item.kind === "bait")  { addBait(u, item.name, item.qty); return interaction.reply({ content:`상자를 개봉하여 ${item.name} ${item.qty}개를 받으셨습니다.`, ephemeral:true }); }
-      if (item.kind === "be")    { const amt = randInt(item.min, item.max); await addBE(userId, amt, "[낚시] 상자 보상"); return interaction.reply({ content:`상자를 개봉하여 파랑 정수 ${amt.toLocaleString()}원을 받으셨습니다.`, ephemeral:true }); }
-      if (item.kind === "float") { addFloat(u, item.name); return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
-      if (item.kind === "rod")   { addRod(u, item.name);   return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true }); }
-      if (item.kind === "coin") { const amt = randInt(item.min, item.max); gainCoins(u, db, amt); return interaction.reply({ content:`상자에서 ${amt} 코인을 받으셨습니다.`, ephemeral:true }); }
-      return interaction.reply({ content:"상자 보상 처리 중 오류가 발생했습니다.", ephemeral:true });
+  if ((u.inv.chests||0) <= 0) return interaction.reply({ content:"보물상자가 없습니다.", ephemeral:true });
+  if ((u.inv.keys||0)   <= 0) return interaction.reply({ content:"열쇠가 없습니다.", ephemeral:true });
+
+  u.inv.chests -= 1;
+  u.inv.keys   -= 1;
+
+  try {
+    applyQuestEvent(u, db, "chest_open", { count: 1 });
+
+    const pool = CHEST_REWARDS.loot;
+    // 이름 중복 덮어쓰기 방지: 인덱스로 키를 만든다
+    const w = Object.fromEntries(pool.map((it, i) => [`#${i}`, it.chance]));
+    const pickKey = pickWeighted(w);
+    const idx = parseInt(pickKey.slice(1), 10);
+    const item = pool[idx];
+
+    if (item.kind === "bait") {
+      addBait(u, item.name, item.qty);
+      return interaction.reply({ content:`상자를 개봉하여 ${item.name} ${item.qty}개를 받으셨습니다.`, ephemeral:true });
     }
+    if (item.kind === "be") {
+      const amt = randInt(item.min, item.max);
+      await addBE(userId, amt, "[낚시] 상자 보상");
+      return interaction.reply({ content:`상자를 개봉하여 파랑 정수 ${amt.toLocaleString()}원을 받으셨습니다.`, ephemeral:true });
+    }
+    if (item.kind === "float") {
+      addFloat(u, item.name);
+      return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true });
+    }
+    if (item.kind === "rod") {
+      addRod(u, item.name);
+      return interaction.reply({ content:`상자를 개봉하여 ${item.name}를 획득하셨습니다.`, ephemeral:true });
+    }
+    if (item.kind === "coin") {
+      const amt = randInt(item.min, item.max);
+      gainCoins(u, db, amt);
+      return interaction.reply({ content:`상자에서 ${amt.toLocaleString()} 코인을 받으셨습니다.`, ephemeral:true });
+    }
+    if (item.kind === "relic") {
+      ensureRelics(u); // 유물 슬롯 초기화
+      const name = RELIC_LIST[Math.floor(Math.random()*RELIC_LIST.length)]; // 랜덤 유물
+      const cur  = relicLv(u, name);
+      const max  = (RELICS[name]?.max ?? 5);
+
+      if (cur < max) {
+        u.relics.lv[name] = cur + 1;
+        // 필요 시 저장: await saveUser(db, u);
+        return interaction.reply({
+          content: `🧿 유물 획득! **${name}** Lv.${cur+1}`,
+          ephemeral: true
+        });
+      } else {
+        // 최대 레벨이면 코인 보상
+        gainCoins(u, db, 300000);
+        return interaction.reply({
+          content: `🧿 유물 중복! **+300,000 코인** 지급`,
+          ephemeral: true
+        });
+      }
+    }
+
+    throw new Error("지원하지 않는 chest item.kind");
+  } catch (e) {
+    // 롤백
+    u.inv.chests += 1;
+    u.inv.keys   += 1;
+    console.error("[open:chest] error:", e);
+    return interaction.reply({ content:"상자 보상 처리 중 오류가 발생했습니다.", ephemeral:true });
+  }
+}
     if (id === "info:key") {
       return interaction.reply({ content:`보유 열쇠: ${u.inv.keys||0}개`, ephemeral:true });
     }
@@ -4801,8 +4856,9 @@ const CHEST_REWARDS = {
 
     // 🟠 찌 (은/금/다이아)
     { kind:"float", name:"은 찌",    chance:6 },
-    { kind:"float", name:"금 찌",    chance:2 },
-    { kind:"float", name:"다이아 찌", chance:0.5 },
+    { kind:"float", name:"금 찌",    chance:4 },
+    { kind:"float", name:"다이아 찌", chance:2 },
+    { kind: "relic", name: "유물", chance: 0.5 },
   ]
 };
 
