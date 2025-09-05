@@ -3643,7 +3643,7 @@ if (id === "fish:share") {
   uu.inv.baits[uu.equip.bait] -= 1;
   applyQuestEvent(uu, db, "bait_used", { count: 1 });
 
-  if (Math.random() < 0.006) {
+  if (Math.random() < 0.004) {
     ensureRelics(uu);
     const name = RELIC_LIST[Math.floor(Math.random()*RELIC_LIST.length)];
     const cur = relicLv(uu, name);
