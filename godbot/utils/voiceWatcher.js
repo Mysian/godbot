@@ -1,5 +1,5 @@
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, MessageFlags } = require('discord.js');
 const os = require("os");
 const activityTracker = require("./activity-tracker");
 
@@ -75,7 +75,6 @@ module.exports = function(client) {
           ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildStageVoice;
         if (!isVoiceChat) return;
         const vc = ch;
-        await message.guild.members.fetch();
         const humans = vc.members.filter(m => !m.user.bot);
         const bots = vc.members.filter(m => m.user.bot);
         const humanNames = humans.map(m => m.displayName || m.user.username).slice(0, 25);
@@ -95,7 +94,7 @@ module.exports = function(client) {
             { name: '채널 타입', value: typeLabel, inline: true },
             { name: '인원 제한', value: limit, inline: true },
             { name: '비트레이트', value: bitrate, inline: true },
-            { name: '지역', value: region, inline: true },
+            { name: '지역', value: region, inline: true }
           )
           .setFooter({ text: '맨션 시점 기준 스냅샷' });
         await ch.send({ embeds: [embed] });
@@ -115,7 +114,7 @@ module.exports = function(client) {
         guildId: guild.id,
         adapterCreator: guild.voiceAdapterCreator,
         selfDeaf: true,
-        selfMute: true,
+        selfMute: true
       });
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
       const statusChannel = guild.channels.cache.get(STATUS_CHANNEL_ID);
@@ -123,7 +122,6 @@ module.exports = function(client) {
       if (!statusChannel || !statusChannel.isTextBased()) return;
 
       async function buildLiveEmbed() {
-        await guild.members.fetch();
         let total = 0;
         let channelCounts = [];
         for (const id of VOICE_CHANNEL_IDS) {
@@ -188,26 +186,32 @@ module.exports = function(client) {
       }
 
       async function buildTop10Embed(period = '7') {
-        await guild.members.fetch();
         const { from, to } = getDateRange(period);
-        let stats = activityTracker.getStats({ from, to, filterType: "voice" });
+        let stats = [];
+        try {
+          stats = activityTracker.getStats({ from, to, filterType: "voice" }) || [];
+        } catch (_) {
+          stats = [];
+        }
         stats = stats.filter(s => {
           const member = guild.members.cache.get(s.userId);
-          if (!member || member.user.bot) return false;
+          if (member && member.user.bot) return false;
           if (EXCLUDED_USER_IDS.includes(s.userId)) return false;
-          if (member.roles.cache.some(r => EXCLUDED_ROLE_IDS.includes(r.id))) return false;
+          if (member && member.roles.cache.some(r => EXCLUDED_ROLE_IDS.includes(r.id))) return false;
           return s.voice > 0;
         });
         const topVoice = stats.sort((a, b) => b.voice - a.voice).slice(0, 10);
-        let userMap = {};
-        for (const member of guild.members.cache.values()) {
-          userMap[member.user.id] = member.displayName || member.user.username;
+        const nameMap = new Map();
+        for (const s of topVoice) {
+          let name = guild.members.cache.get(s.userId)?.displayName || guild.members.cache.get(s.userId)?.user?.username || null;
+          if (!name) {
+            const m = await guild.members.fetch(s.userId).catch(() => null);
+            name = m?.displayName || m?.user?.username || `Unknown(${s.userId})`;
+          }
+          nameMap.set(s.userId, name);
         }
         const voiceStr = topVoice.length
-          ? topVoice.map((s, i) => {
-              const name = userMap[s.userId] || `Unknown(${s.userId})`;
-              return `${i + 1}위. ${name} [${formatVoiceTime(s.voice)}]`;
-            }).join('\n')
+          ? topVoice.map((s, i) => `${i + 1}위. ${nameMap.get(s.userId)} [${formatVoiceTime(s.voice)}]`).join('\n')
           : "데이터 없음";
         return new EmbedBuilder()
           .setTitle('🏆 최근 7일간 음성채널 이용 TOP 10')
@@ -286,7 +290,7 @@ module.exports = function(client) {
               guildId: guild.id,
               adapterCreator: guild.voiceAdapterCreator,
               selfDeaf: true,
-              selfMute: true,
+              selfMute: true
             });
           }
         } catch (_) {}
@@ -324,27 +328,27 @@ module.exports = function(client) {
           if (interaction.customId !== 'share_live' && interaction.customId !== 'share_top10') return;
           const member = interaction.guild.members.cache.get(interaction.user.id);
           if (!member || !member.voice || !member.voice.channelId) {
-            await interaction.reply({ content: '음성채널에 접속 중일 때만 공유할 수 있어요!', ephemeral: true });
+            await interaction.reply({ content: '음성채널에 접속 중일 때만 공유할 수 있어요!', flags: MessageFlags.Ephemeral });
             return;
           }
           const vc = member.voice.channel;
           if (!vc || !vc.isTextBased || !vc.isTextBased()) {
-            await interaction.reply({ content: '해당 음성채널은 텍스트 채팅을 지원하지 않아서 공유할 수 없어요.', ephemeral: true });
+            await interaction.reply({ content: '해당 음성채널은 텍스트 채팅을 지원하지 않아서 공유할 수 없어요.', flags: MessageFlags.Ephemeral });
             return;
           }
           if (interaction.customId === 'share_live') {
             const embed = await buildLiveEmbed();
             await vc.send({ embeds: [embed] });
-            await interaction.reply({ content: '해당 음성채널 채팅방에 현황을 공유했어요!', ephemeral: true });
+            await interaction.reply({ content: '해당 음성채널 채팅방에 현황을 공유했어요!', flags: MessageFlags.Ephemeral });
           } else if (interaction.customId === 'share_top10') {
             const embed = await buildTop10Embed('7');
             await vc.send({ embeds: [embed] });
-            await interaction.reply({ content: '해당 음성채널 채팅방에 TOP10을 공유했어요!', ephemeral: true });
+            await interaction.reply({ content: '해당 음성채널 채팅방에 TOP10을 공유했어요!', flags: MessageFlags.Ephemeral });
           }
         } catch (e) {
           try {
             if (!interaction.replied && !interaction.deferred) {
-              await interaction.reply({ content: '처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.', ephemeral: true });
+              await interaction.reply({ content: '처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.', flags: MessageFlags.Ephemeral });
             }
           } catch {}
         }
