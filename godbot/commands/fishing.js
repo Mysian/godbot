@@ -4604,6 +4604,7 @@ if (interaction.customId === "sell-rarity-choose") {
           statLine("제압력", spec.dmg, tb.dmg),
           statLine("저항 감소", spec.resistReduce, tb.resistReduce),
           `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+          `조작 시 제한시간 +${(ROD_ACTION_BONUS[name]||0)}s`,
           "_(+티어 능력치)_"
         );
       } else if (st.kind==="float") {
