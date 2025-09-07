@@ -10,6 +10,8 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const v8 = require('v8');
 
 const LONG_INACTIVE_DAYS = 90;
 const NEWBIE_ROLE_ID = '1295701019430227988';
@@ -18,8 +20,8 @@ const PAGE_SIZE = 30;
 const EXEMPT_ROLE_IDS = [
   '1371476512024559756',
   '1208987442234007582',
-  '1207437971037356142', // 서버 부스터
-  '1397076919127900171'  // 후원 역할
+  '1207437971037356142',
+  '1397076919127900171'
 ];
 const LOG_CHANNEL_ID = '1380874052855529605';
 const BOOSTER_ROLE_ID = '1207437971037356142';
@@ -347,6 +349,57 @@ async function runWithConcurrency(items, concurrency, handler, onTick) {
   });
 }
 
+function formatBytes(b) {
+  if (b < 1024) return `${b} B`;
+  const u = ['KB','MB','GB','TB'];
+  let i = -1; do { b /= 1024; i++; } while (b >= 1024 && i < u.length-1);
+  return `${b.toFixed(2)} ${u[i]}`;
+}
+
+async function measureEventLoopLag(sampleMs = 600, interval = 50) {
+  const n = Math.max(1, Math.floor(sampleMs / interval));
+  let total = 0, count = 0;
+  return await new Promise(resolve => {
+    const tick = () => {
+      const start = process.hrtime.bigint();
+      setTimeout(() => {
+        const diff = Number(process.hrtime.bigint() - start) / 1e6 - interval;
+        total += Math.max(0, diff);
+        count++;
+        if (count >= n) resolve(total / count);
+        else tick();
+      }, interval);
+    };
+    tick();
+  });
+}
+
+function buildDiagEmbed(client, guild, extra = {}) {
+  const mu = process.memoryUsage();
+  const heap = v8.getHeapStatistics?.() || {};
+  const shards = [...client.ws.shards.values()];
+  let msgCache = 0;
+  guild.channels.cache.forEach(ch => {
+    if (ch.messages?.cache) msgCache += ch.messages.cache.size;
+  });
+  return new EmbedBuilder()
+    .setTitle('봇 상태 점검')
+    .addFields(
+      { name: 'Uptime', value: `${Math.floor(process.uptime()/60)}분`, inline: true },
+      { name: 'Ping', value: `${client.ws.ping}ms`, inline: true },
+      { name: 'Shard', value: `${shards.length}`, inline: true },
+      { name: 'RSS', value: formatBytes(mu.rss), inline: true },
+      { name: 'Heap Used', value: formatBytes(mu.heapUsed), inline: true },
+      { name: 'External', value: formatBytes(mu.external || 0), inline: true },
+      { name: 'EL Lag(avg)', value: `${extra.lag?.toFixed?.(1) ?? 'N/A'} ms`, inline: true },
+      { name: 'OS Load(1m)', value: `${os.loadavg()[0].toFixed(2)}`, inline: true },
+      { name: 'Msg Cache(이 길드)', value: `${msgCache}`, inline: true },
+      { name: 'Node', value: process.version, inline: true }
+    )
+    .setColor('#2d9bf0')
+    .setTimestamp();
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('고급관리')
@@ -361,7 +414,13 @@ module.exports = {
           { name: '음성채널 알림 설정', value: 'voice_notify' },
           { name: '음성채널 자동이동 설정', value: 'voice_auto' },
           { name: '세금누락 강제처리', value: 'tax_force' },
-          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' }
+          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' },
+          { name: '봇 상태 점검', value: 'diag' },
+          { name: '메모리 정리(GC)', value: 'mem_gc' },
+          { name: '메시지 캐시 스윕(이 길드)', value: 'cache_sweep' },
+          { name: '전체 텍스트 채널 슬로우모드', value: 'slowmode' },
+          { name: '세션 초기화(이 모듈)', value: 'session_reset' },
+          { name: '샤드/게이트웨이 상태', value: 'shard' }
         )
     ),
   async execute(interaction) {
@@ -424,7 +483,7 @@ module.exports = {
         .setTitle('음성채널 장시간 1인 자동이동 설정')
         .setDescription(
           `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
-          `- 감시 카테고리 내에서 1명이 120분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+          `- 감시 카테고리 내에서 1명이 ${VOICE_AUTO_MINUTES}분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
           `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
         )
         .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555);
@@ -448,7 +507,7 @@ module.exports = {
               .setTitle('음성채널 장시간 1인 자동이동 설정')
               .setDescription(
                 `현재 상태: **${voiceAutoEnabled ? 'ON' : 'OFF'}**\n\n` +
-                `- 감시 카테고리 내에서 1명이 60분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
+                `- 감시 카테고리 내에서 1명이 ${VOICE_AUTO_MINUTES}분 이상 혼자 있으면 자동으로 지정 채널로 이동합니다.\n` +
                 `- 버튼을 클릭해 ON/OFF 전환이 가능합니다.`
               )
               .setColor(voiceAutoEnabled ? 0x43b581 : 0xff5555)
@@ -553,6 +612,174 @@ module.exports = {
           await i.followUp({ content: `색상 칭호 해제 완료! 성공: ${success}명 / 실패: ${failed}명`, ephemeral: true });
         }
       });
+      return;
+    }
+
+    if (option === 'diag') {
+      const lag = await measureEventLoopLag();
+      const embed = buildDiagEmbed(interaction.client, guild, { lag });
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    if (option === 'mem_gc') {
+      const before = process.memoryUsage();
+      let note = '';
+      if (global.gc) {
+        global.gc();
+        note = 'GC 실행 완료';
+      } else {
+        note = 'global.gc가 비활성화됨. node --expose-gc로 실행 권장';
+      }
+      const after = process.memoryUsage();
+      const freed = before.heapUsed - after.heapUsed;
+      const embed = new EmbedBuilder()
+        .setTitle('메모리 정리(GC)')
+        .setDescription(`${note}`)
+        .addFields(
+          { name: 'Before(Heap Used)', value: formatBytes(before.heapUsed), inline: true },
+          { name: 'After(Heap Used)', value: formatBytes(after.heapUsed), inline: true },
+          { name: 'Freed', value: `${freed > 0 ? '-' : ''}${formatBytes(Math.abs(freed))}`, inline: true },
+        )
+        .setColor('#43b581')
+        .setTimestamp();
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    if (option === 'cache_sweep') {
+      await interaction.editReply({ content: '이 길드 메시지 캐시 스윕 중...', ephemeral: true });
+      let chans = 0, swept = 0;
+      guild.channels.cache.forEach(ch => {
+        if (ch?.messages?.cache) chans++;
+      });
+      for (const ch of guild.channels.cache.values()) {
+        if (ch?.messages?.cache) {
+          swept += ch.messages.cache.size;
+          ch.messages.cache.clear();
+        }
+      }
+      const embed = new EmbedBuilder()
+        .setTitle('메시지 캐시 스윕')
+        .setDescription(`채널 ${chans}개 대상, 캐시 ${swept}건 비움`)
+        .setColor('#f59e0b')
+        .setTimestamp();
+      await interaction.followUp({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    if (option === 'slowmode') {
+      const secondsList = [
+        { label: '해제(0s)', value: '0' },
+        { label: '3초', value: '3' },
+        { label: '5초', value: '5' },
+        { label: '10초', value: '10' },
+        { label: '15초', value: '15' },
+        { label: '30초', value: '30' },
+        { label: '60초', value: '60' }
+      ];
+      let selected = '5';
+
+      const makeRow = (cur) => new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('slow_select')
+          .setPlaceholder('슬로우모드 시간 선택')
+          .addOptions(secondsList.map(x => ({ ...x, default: x.value === cur }))),
+        new ButtonBuilder().setCustomId('slow_apply').setLabel('전체 적용').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('slow_cancel').setLabel('닫기').setStyle(ButtonStyle.Secondary)
+      );
+
+      const base = new EmbedBuilder()
+        .setTitle('전체 텍스트 채널 슬로우모드')
+        .setDescription('모든 텍스트 기반 채널에 동일한 슬로우모드를 일괄 적용합니다. (권한 허용 채널만)')
+        .setColor('#8b5cf6');
+
+      const msg = await interaction.editReply({ embeds: [base], components: [makeRow(selected)], ephemeral: true });
+
+      const filt = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter: filt, time: 60_000 });
+
+      collector.on('collect', async i => {
+        if (i.customId === 'slow_select') {
+          selected = i.values[0];
+          await i.update({ embeds: [base.setFooter({ text: `선택: ${selected}s` })], components: [makeRow(selected)], ephemeral: true });
+        } else if (i.customId === 'slow_apply') {
+          await i.deferUpdate();
+          const secs = parseInt(selected, 10);
+          const targets = guild.channels.cache.filter(ch =>
+            ch?.isTextBased?.() && typeof ch.setRateLimitPerUser === 'function'
+          );
+          let success = 0, fail = 0;
+          const loading = await interaction.followUp({
+            embeds: [progressEmbed(`슬로우모드 ${secs}s 적용중`, targets.size, 0, 0)],
+            fetchReply: true,
+            ephemeral: true
+          });
+          const update = async () => {
+            await interaction.webhook.editMessage(loading.id, {
+              embeds: [progressEmbed(`슬로우모드 ${secs}s 적용중`, targets.size, success, fail)]
+            }).catch(() => {});
+          };
+          await runWithConcurrency([...targets.values()], 3, async ch => {
+            try {
+              await ch.setRateLimitPerUser(secs, '고급관리 - 전체 슬로우모드');
+              success++;
+            } catch { fail++; }
+            await update();
+          });
+          await interaction.followUp({
+            embeds: [new EmbedBuilder()
+              .setTitle('슬로우모드 적용 완료')
+              .setDescription(`성공 ${success} | 실패 ${fail} | 총 ${targets.size}`)
+              .setColor('#22c55e')],
+            ephemeral: true
+          });
+          collector.stop();
+        } else if (i.customId === 'slow_cancel') {
+          collector.stop();
+        }
+      });
+      collector.on('end', async () => {
+        try { await msg.edit({ components: [] }); } catch {}
+      });
+      return;
+    }
+
+    if (option === 'session_reset') {
+      for (const t of voiceAutoTimers.values()) clearTimeout(t);
+      voiceAutoTimers.clear();
+      voiceAutoEnabled = false;
+      colorRoleInactiveOn = false;
+      await interaction.editReply({
+        embeds: [new EmbedBuilder()
+          .setTitle('세션 초기화(이 모듈)')
+          .setDescription('• 음성 자동이동 타이머 초기화\n• 음성 자동이동 OFF\n• 30일 미접속 색상칭호 OFF')
+          .setColor('#ef4444')],
+        ephemeral: true
+      });
+      return;
+    }
+
+    if (option === 'shard') {
+      const shards = [...interaction.client.ws.shards.values()];
+      const embed = new EmbedBuilder()
+        .setTitle('샤드/게이트웨이 상태')
+        .setColor('#0ea5e9')
+        .setTimestamp();
+
+      if (shards.length === 0) {
+        embed.setDescription('단일 프로세스, 샤드 0 (sharding 미사용)');
+      } else {
+        shards.forEach(sh => {
+          const st = sh.status;
+          embed.addFields({
+            name: `Shard #${sh.id}`,
+            value: `Status: **${st}**\nLatency: ${sh.ping}ms`,
+            inline: true
+          });
+        });
+      }
+      await interaction.editReply({ embeds: [embed], ephemeral: true });
       return;
     }
 
