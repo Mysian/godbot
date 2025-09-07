@@ -7,6 +7,39 @@ const includedChannelIds = [];
 const excludedCategoryIds = ["1318529703480397954", "1318445879455125514", "1204329649530998794"];
 const excludedChannelIds = ["1202971727915651092"];
 
+function ensureDir(file) {
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function safeReadJSONSync(file, fallback = {}) {
+  try {
+    if (!fs.existsSync(file)) return fallback;
+    const raw = fs.readFileSync(file, "utf8");
+    if (!raw || !raw.trim()) return fallback;
+    return JSON.parse(raw);
+  } catch (_) {
+    try {
+      const bak = file + ".bak";
+      if (fs.existsSync(bak)) {
+        const braw = fs.readFileSync(bak, "utf8");
+        if (braw && braw.trim()) return JSON.parse(braw);
+      }
+    } catch (_) {}
+    try { fs.renameSync(file, file + ".corrupt"); } catch (_) {}
+    return fallback;
+  }
+}
+
+function atomicWriteJSONSync(file, obj) {
+  ensureDir(file);
+  const json = JSON.stringify(obj, null, 2);
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, json);
+  fs.renameSync(tmp, file);
+  try { fs.writeFileSync(file + ".bak", json); } catch (_) {}
+}
+
 function isTracked(channel, type = "all") {
   if (!channel) return false;
   const parentId = channel.parentId != null ? String(channel.parentId) : null;
@@ -29,11 +62,11 @@ function isTracked(channel, type = "all") {
 }
 
 function loadData() {
-  if (!fs.existsSync(dataPath)) return {};
-  return JSON.parse(fs.readFileSync(dataPath, "utf8"));
+  ensureDir(dataPath);
+  return safeReadJSONSync(dataPath, {});
 }
 function saveData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
+  atomicWriteJSONSync(dataPath, data);
 }
 
 function pad2(n) {
