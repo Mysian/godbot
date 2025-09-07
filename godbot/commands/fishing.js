@@ -435,6 +435,13 @@ const ROD_SPECS = {
   "다이아 낚싯대": { maxDur: 490, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
   "전설의 낚싯대": { maxDur: 880, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
 };
+const ROD_ACTION_BONUS = {
+  "나무 낚싯대": 0.2,
+  "강철 낚싯대": 0.5,
+  "금 낚싯대": 0.7,
+  "다이아 낚싯대": 1.0,
+  "전설의 낚싯대": 2.0,
+};
 const FLOAT_SPECS = {
   "동 찌":    { maxDur: 30,  biteSpeed: -3,  resistReduce: 2,  rarityBias: 0 },
   "은 찌":    { maxDur: 60, biteSpeed: -6,  resistReduce: 4,  rarityBias: 2 },
@@ -446,6 +453,7 @@ const BAIT_SPECS = {
   "새우 미끼":          { pack: 20, biteSpeed: -4, rarityBias: 2  },
   "빛나는 젤리 미끼":  { pack: 20, biteSpeed: -7, rarityBias: 6  }
 };
+
 
 const PRICES = {
   rods: {
@@ -3715,10 +3723,19 @@ if (result.relic) {
     resetIdle();
     s.resetIdle = resetIdle;
 
-    s.fightTotalTimer = setTimeout(() => {
-      clearSession(userId);
-      s.safeEdit({ content: "너무 오래 끌어 대상이 빠져나갔습니다.", embeds: [], components: [] }).catch(() => {});
-    }, FIGHT_TOTAL_TIMEOUT * 1000);
+    s.fightStart = Date.now(); 
+    s.fightDeadline = Date.now() + FIGHT_TOTAL_TIMEOUT * 1000;
+
+  const resetTotal = () => {
+    if (s.fightTotalTimer) clearTimeout(s.fightTotalTimer);
+    const remain = Math.max(0, s.fightDeadline - Date.now());
+      s.fightTotalTimer = setTimeout(() => {
+        clearSession(userId);
+        s.safeEdit({ content: "너무 오래 끌어 대상이 빠져나갔습니다.", embeds: [], components: [] }).catch(() => {});
+      }, remain);
+    };
+  resetTotal();
+  s.resetTotal = resetTotal;
 
 const hint = maybeRarityHint(u, s.target);
 const desc = hint || "정체를 알 수 없는 무언가가 걸렸습니다.\n릴을 감거나 풀며 상황을 살펴보세요.";
@@ -3765,9 +3782,14 @@ const eb = new EmbedBuilder()
       return interaction.update({ embeds:[eb], components:[] });
     }
     if (id === "fish:reel" || id === "fish:loosen") {
-      if (s.resetIdle) s.resetIdle();
-      const act = id === "fish:reel" ? "reel" : "loosen";
-      const st = applyReel(u, s.target, s, act); s.target = st;
+  if (s.resetIdle) s.resetIdle();
+  const act = id === "fish:reel" ? "reel" : "loosen";
+  const st = applyReel(u, s.target, s, act); s.target = st;
+  const addSec = ROD_ACTION_BONUS[u.equip.rod] || 0;
+    if (addSec > 0 && typeof s.fightDeadline === "number") {
+      s.fightDeadline += addSec * 1000;
+      if (s.resetTotal) s.resetTotal();
+    }
 
             if (st.escape) {
         clearSession(userId);
@@ -4173,6 +4195,7 @@ if (interaction.customId === "sell-rarity-choose") {
               statLine("제압력", spec.dmg, tb.dmg),
               statLine("저항 감소", spec.resistReduce, tb.resistReduce),
               `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              `조작 시 제한시간 +${(ROD_ACTION_BONUS[name]||0)}s`,
               "_(+티어 능력치)_"
             );
           }
@@ -4312,6 +4335,7 @@ if (interaction.customId === "sell-rarity-choose") {
               statLine("제압력", spec.dmg, tb.dmg),
               statLine("저항 감소", spec.resistReduce, tb.resistReduce),
               `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+              `조작 시 제한시간 +${(ROD_ACTION_BONUS[name]||0)}s`,
               "_(+티어 능력치)_"
             );
           }
@@ -4516,6 +4540,7 @@ if (interaction.customId === "sell-rarity-choose") {
             statLine("제압력", spec.dmg, tb.dmg),
             statLine("저항 감소", spec.resistReduce, tb.resistReduce),
             `희귀도 +${spec.rarityBias} (${signed(tb.rarityBias)})`,
+            `조작 시 제한시간 +${(ROD_ACTION_BONUS[name]||0)}s`,
             "_(+티어 능력치)_"
           );
         } else if (k==="float") {
