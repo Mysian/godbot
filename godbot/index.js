@@ -95,8 +95,7 @@ setInterval(async () => {
   try {
     const guild = client.guilds.cache.get(GUILD_ID);
     if (!guild) return;
-    const members = await guild.members.fetch();
-    await autoMarketUpdate(members);
+    await autoMarketUpdate(guild);
   } catch (e) {
     console.error('갓비트 자동상장 오류:', e);
   }
