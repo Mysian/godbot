@@ -1,11 +1,11 @@
 const fs = require("fs");
 const path = require("path");
-const dataPath = path.join(__dirname, "../activity-data.json");
 
-const includedCategoryIds = [];
-const includedChannelIds = [];
-const excludedCategoryIds = ["1318529703480397954", "1318445879455125514", "1204329649530998794"];
-const excludedChannelIds = ["1202971727915651092"];
+const CANDIDATE_PATHS = [
+  path.join(__dirname, "../data/activity-data.json"),
+  path.join(__dirname, "../activity-data.json"),
+  path.join(__dirname, "../data/activity.json")
+];
 
 function ensureDir(file) {
   const dir = path.dirname(file);
@@ -40,6 +40,20 @@ function atomicWriteJSONSync(file, obj) {
   try { fs.writeFileSync(file + ".bak", json); } catch (_) {}
 }
 
+function pickDataPath() {
+  for (const p of CANDIDATE_PATHS) {
+    try { if (fs.existsSync(p) && fs.statSync(p).isFile()) return p; } catch (_) {}
+  }
+  return CANDIDATE_PATHS[0];
+}
+
+let dataPath = pickDataPath();
+
+const includedCategoryIds = [];
+const includedChannelIds = [];
+const excludedCategoryIds = ["1318529703480397954", "1318445879455125514", "1204329649530998794"];
+const excludedChannelIds = ["1202971727915651092"];
+
 function isTracked(channel, type = "all") {
   if (!channel) return false;
   const parentId = channel.parentId != null ? String(channel.parentId) : null;
@@ -69,9 +83,7 @@ function saveData(data) {
   atomicWriteJSONSync(dataPath, data);
 }
 
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
+function pad2(n) { return String(n).padStart(2, "0"); }
 function kstParts(at = new Date()) {
   const base = at instanceof Date ? at : new Date(at);
   const k = new Date(base.getTime() + 9 * 60 * 60 * 1000);
@@ -81,12 +93,9 @@ function kstParts(at = new Date()) {
   const h = pad2(k.getUTCHours());
   return { dateStr: `${y}-${m}-${d}`, hourStr: h };
 }
-function nowKstMs() {
-  return Date.now() + 9 * 60 * 60 * 1000;
-}
-function kstMidnightMs(dateStr) {
-  return new Date(`${dateStr}T00:00:00+09:00`).getTime();
-}
+function nowKstMs() { return Date.now() + 9 * 60 * 60 * 1000; }
+function kstMidnightMs(dateStr) { return new Date(`${dateStr}T00:00:00+09:00`).getTime(); }
+
 function pruneOld(data) {
   const keepDays = 90;
   const nowMs = nowKstMs();
@@ -112,6 +121,7 @@ function ensureDay(data, userId, dateStr) {
   if (!d.hourMessageByChannel) d.hourMessageByChannel = {};
   return d;
 }
+
 function bumpHourBucket(dayObj, hour, kind, amount) {
   if (!dayObj.hours[hour]) dayObj.hours[hour] = { message: 0, voice: 0 };
   dayObj.hours[hour][kind] += amount;
@@ -133,6 +143,7 @@ function addMessage(userId, channel, at = new Date()) {
   pruneOld(data);
   saveData(data);
 }
+
 function addVoice(userId, seconds, channel, at = new Date()) {
   if (!isTracked(channel, "voice")) return;
   const { dateStr, hourStr } = kstParts(at);
@@ -150,7 +161,7 @@ function addVoice(userId, seconds, channel, at = new Date()) {
   saveData(data);
 }
 
-function getStats({ from, to, filterType = "all", userId = null }) {
+function getStats({ from, to, filterType = "all", userId = null } = {}) {
   const data = loadData();
   const result = [];
   for (const uid in data) {
@@ -187,7 +198,7 @@ function getLastActiveDate(userId) {
   return new Date(`${dates[0]}T00:00:00+09:00`);
 }
 
-function getVoiceChannelUsage({ from, to, userId = null }) {
+function getVoiceChannelUsage({ from, to, userId = null } = {}) {
   const data = loadData();
   if (userId) {
     const user = data[userId] || {};
@@ -214,7 +225,7 @@ function getVoiceChannelUsage({ from, to, userId = null }) {
   return list;
 }
 
-function getDailyHourlyStats({ from, to, userId = null }) {
+function getDailyHourlyStats({ from, to, userId = null } = {}) {
   const data = loadData();
   const out = {};
   const pushHour = (date, hour, kind, val) => {
@@ -236,11 +247,7 @@ function getDailyHourlyStats({ from, to, userId = null }) {
       }
     }
   };
-  if (userId) {
-    iterUser(data[userId] || {});
-  } else {
-    for (const uid in data) iterUser(data[uid]);
-  }
+  if (userId) iterUser(data[userId] || {}); else for (const uid in data) iterUser(data[uid]);
   return out;
 }
 
@@ -290,9 +297,7 @@ function purgeExcludedHistory(channelIndex) {
           const scid = String(cid);
           if (isExcluded(scid)) {
             const sec = map[scid] || 0;
-            if (day.hours?.[hour]) {
-              day.hours[hour].voice = Math.max(0, (day.hours[hour].voice || 0) - sec);
-            }
+            if (day.hours?.[hour]) day.hours[hour].voice = Math.max(0, (day.hours[hour].voice || 0) - sec);
             removedVoice += sec;
             delete map[scid];
           }
@@ -306,9 +311,7 @@ function purgeExcludedHistory(channelIndex) {
           const scid = String(cid);
           if (isExcluded(scid)) {
             const cnt = map[scid] || 0;
-            if (day.hours?.[hour]) {
-              day.hours[hour].message = Math.max(0, (day.hours[hour].message || 0) - cnt);
-            }
+            if (day.hours?.[hour]) day.hours[hour].message = Math.max(0, (day.hours[hour].message || 0) - cnt);
             removedMsg += cnt;
             delete map[scid];
           }
