@@ -666,7 +666,7 @@ client.on(Events.InteractionCreate, async interaction => {
     return;
   }
 
-  if (!interaction.isButton) return;
+  if (!interaction.isButton()) return;
   if (interaction.customId.endsWith('_open')) {
     try {
       if (interaction.customId === 'complaint_open') return await complaint.execute(interaction);
@@ -735,7 +735,7 @@ cron.schedule('0 18 * * *', async () => {
 
 const lockfile = require('proper-lockfile');
 const coinsPath = path.join(__dirname, './data/godbit-coins.json');
-const SIMPLE_COIN_CHANNEL = '1381193562330370048');
+const SIMPLE_COIN_CHANNEL = '1381193562330370048';
 
 client.on('messageCreate', async (msg) => {
   if (msg.channel.id !== SIMPLE_COIN_CHANNEL) return;
