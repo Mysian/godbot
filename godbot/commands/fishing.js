@@ -4622,7 +4622,10 @@ if (interaction.customId === "sell-rarity-choose") {
 
     if (id.startsWith("shop:start|")) {
       const kind = id.split("|")[1];
-      const order = kind==="rod"? RODS : kind==="float"? FLOATS : BAITS : BUFF_NAMES;
+      const order = kind==="rod"   ? RODS
+            : kind==="float" ? FLOATS
+            : kind==="bait"  ? BAITS
+            :                  BUFF_NAMES;
       shopSessions.set(userId, { kind, idx:0 });
 
       function renderShop(k, i) {
@@ -4726,7 +4729,10 @@ if (interaction.customId === "sell-rarity-choose") {
     }
     if (id==="shop:prev" || id==="shop:next") {
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
-      const order = st.kind==="rod"? RODS : st.kind==="float"? FLOATS : BAITS : BUFF_NAMES;
+      const order = st.kind==="rod"   ? RODS
+            : st.kind==="float" ? FLOATS
+            : st.kind==="bait"  ? BAITS
+            :                     BUFF_NAMES;
       st.idx += (id==="shop:next"?1:-1); st.idx = Math.max(0, Math.min(order.length-1, st.idx));
       shopSessions.set(userId, st);
 
