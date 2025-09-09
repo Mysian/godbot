@@ -1346,34 +1346,31 @@ function loadStatus() {
 }
 
 
-// ✅ 멘션 상태 메시지 안내
-const EXCLUDED_CHANNEL_IDS = [
-  "1209147973255036959", // 제외할 채널ID
-  "1203201767085572096",
-  "1201723672495128636",
-  "1264514955269640252"
+// ✅ 멘션 상태 메시지 안내 (허용 리스트 방식)
+const ALLOWED_CHANNEL_IDS = [
+  "1202425624061415464", // ✅ 상태 안내 허용 채널
 ];
-const EXCLUDED_CATEGORY_IDS = [
-  "1204329649530998794", // 제외할 카테고리ID
-  "1211601490137980988"
+const ALLOWED_CATEGORY_IDS = [
+  "1207980297854124032", // ✅ 상태 안내 허용 카테고리
 ];
 
 client.on("messageCreate", async msg => {
   if (!msg.guild || msg.author.bot) return;
-  // 채널ID 혹은 카테고리ID가 예외라면 리턴
-  if (
-    EXCLUDED_CHANNEL_IDS.includes(msg.channel.id) ||
-    (msg.channel.parentId && EXCLUDED_CATEGORY_IDS.includes(msg.channel.parentId))
-  ) return;
+
+  const inAllowedTextChannel = ALLOWED_CHANNEL_IDS.includes(msg.channel.id);
+  const inAllowedCategory    = msg.channel.parentId && ALLOWED_CATEGORY_IDS.includes(msg.channel.parentId);
+  if (!inAllowedTextChannel && !inAllowedCategory) return;
 
   const status = loadStatus();
-  const mentioned = msg.mentions.members?.find(u => status[u.id]);
-  if (mentioned) {
-    try {
-      await msg.channel.send(`-# [상태] ${mentioned.displayName}님은 ${status[mentioned.id]}`);
-    } catch (e) {}
-  }
+  const members = [...(msg.mentions.members?.values() ?? [])]
+    .filter(m => status[m.id]);
+
+  if (members.length === 0) return;
+
+  const lines = members.map(m => `-# [상태] ${m.displayName}님은 ${status[m.id]}`);
+  try { await msg.channel.send(lines.join("\n")); } catch {}
 });
+
 
 client.on('guildMemberRemove', member => {
   activityLogger.removeUser(member.id);
