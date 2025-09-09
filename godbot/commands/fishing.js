@@ -941,7 +941,7 @@ function withStarName(name, length) {
 }
 
 const RARITY_PRICE_MULT = { "노말":0.8, "레어":2, "유니크":5, "레전드":10, "에픽":20, "언노운":90 };
-const RARITY_HP_MULT = { "노말":1, "레어":1.7, "유니크":2.5, "레전드":3.5, "에픽":5.0, "언노운":20.0 };
+const RARITY_HP_MULT = { "노말":1, "레어":1.5, "유니크":2.0, "레전드":2.5, "에픽":3.0, "언노운":20.0 };
 
 const LENGTH_TABLE = {
   "멸치":[5,15],
