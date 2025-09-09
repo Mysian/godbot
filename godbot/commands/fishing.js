@@ -345,28 +345,35 @@ function statLine(label, base, buff, unit='', basePrefix=''){
   return `${label} ${basePrefix}${base}${unit} (${signed(buff||0)}${unit})`;
 }
 function sumBiteSpeed(u){
-  const r  = ROD_SPECS[u.equip.rod]?.biteSpeed    || 0;
-  const f  = FLOAT_SPECS[u.equip.float]?.biteSpeed || 0;
-  const b  = BAIT_SPECS[u.equip.bait]?.biteSpeed   || 0;
-  const t  = getTierBuff(u.tier).biteSpeed         || 0;
-  const tm = getTimeBuff(currentTimeBand()).biteSpeed || 0;
+  const r   = ROD_SPECS[u.equip.rod]?.biteSpeed    || 0;
+  const f   = FLOAT_SPECS[u.equip.float]?.biteSpeed || 0;
+  const b   = BAIT_SPECS[u.equip.bait]?.biteSpeed   || 0;
+  const t   = getTierBuff(u.tier).biteSpeed         || 0;
+  const tm  = getTimeBuff(currentTimeBand()).biteSpeed || 0;
+  const tbuf = getTimedBuff(u);
   const rel = relicEffect(u);
-return r + f + b + t + tm + (rel.bite||0);
+  return r + f + b + t + tm + (tbuf.biteSpeed||0) + (rel.bite||0);
 }
 function effectiveDmg(u){
-  return (ROD_SPECS[u.equip.rod]?.dmg || 6) + (getTierBuff(u.tier).dmg||0);
+  const tbuf = getTimedBuff(u);
+  return (ROD_SPECS[u.equip.rod]?.dmg || 6)
+       + (getTierBuff(u.tier).dmg||0)
+       + (tbuf.dmg||0);
 }
 function effectiveResistReduce(u){
+  const tbuf = getTimedBuff(u);
   return (ROD_SPECS[u.equip.rod]?.resistReduce||0)
-        + (FLOAT_SPECS[u.equip.float]?.resistReduce||0)
-        + (getTierBuff(u.tier).resistReduce||0);
+       + (FLOAT_SPECS[u.equip.float]?.resistReduce||0)
+       + (getTierBuff(u.tier).resistReduce||0)
+       + (tbuf.resistReduce||0);
 }
 function effectiveRarityBias(u){
   const r=(ROD_SPECS[u.equip.rod]?.rarityBias||0);
   const f=(FLOAT_SPECS[u.equip.float]?.rarityBias||0);
   const b=(BAIT_SPECS[u.equip.bait]?.rarityBias||0);
   const t=(getTierBuff(u.tier).rarityBias||0);
-  return r+f+b+t;
+  const tbuf = getTimedBuff(u); 
+  return r+f+b+t+(tbuf.rarityBias||0);
 }
 
 const REWARDS_TIER = {
