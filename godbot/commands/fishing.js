@@ -4089,7 +4089,6 @@ clearSession(userId);
 
       }
 
-
       const hpRatio = (st.hp||1) / (st.maxHP||1);
       const line = hintLine(s.tension, hpRatio);
       const eb = new EmbedBuilder().setTitle(`🎣 파이팅 중`)
@@ -4097,7 +4096,7 @@ clearSession(userId);
         .setColor(0x44ddaa)
         .setImage(s.sceneBiteURL || getSceneURL(u.equip.rod, u.equip.float, u.equip.bait, s.timeBand||currentTimeBand(), "입질"));
       return updateOrEdit(interaction, { embeds:[eb], components:[buttonsFight()] });
-    }
+
 if (id === "fish:sell_all") {
   const fishes = u.inv.fishes || [];
   const sellable = fishes.filter(f => !f.lock);
