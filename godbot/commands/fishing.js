@@ -430,10 +430,10 @@ const RARITY_EMOJIS = {
 
 const ROD_SPECS = {
   "나무 낚싯대":   { maxDur: 50,  biteSpeed: -4,  dmg: 6,  resistReduce: 0,  rarityBias: 0 },
-  "강철 낚싯대":   { maxDur: 120,  biteSpeed: -8,  dmg: 9,  resistReduce: 3,  rarityBias: 2 },
-  "금 낚싯대":     { maxDur: 250, biteSpeed: -12, dmg: 12, resistReduce: 5,  rarityBias: 5 },
-  "다이아 낚싯대": { maxDur: 490, biteSpeed: -18, dmg: 15, resistReduce: 8,  rarityBias: 10 },
-  "전설의 낚싯대": { maxDur: 880, biteSpeed: -25, dmg: 20, resistReduce: 12, rarityBias: 18 }
+  "강철 낚싯대":   { maxDur: 110,  biteSpeed: -8,  dmg: 12,  resistReduce: 3,  rarityBias: 2 },
+  "금 낚싯대":     { maxDur: 220, biteSpeed: -12, dmg: 15, resistReduce: 6,  rarityBias: 5 },
+  "다이아 낚싯대": { maxDur: 440, biteSpeed: -20, dmg: 20, resistReduce: 10,  rarityBias: 10 },
+  "전설의 낚싯대": { maxDur: 880, biteSpeed: -40, dmg: 40, resistReduce: 20, rarityBias: 18 }
 };
 const ROD_ACTION_BONUS = {
   "나무 낚싯대": 0.2,
@@ -443,15 +443,15 @@ const ROD_ACTION_BONUS = {
   "전설의 낚싯대": 2.0,
 };
 const FLOAT_SPECS = {
-  "동 찌":    { maxDur: 30,  biteSpeed: -3,  resistReduce: 2,  rarityBias: 0 },
-  "은 찌":    { maxDur: 60, biteSpeed: -6,  resistReduce: 4,  rarityBias: 2 },
-  "금 찌":    { maxDur: 90, biteSpeed: -9,  resistReduce: 7,  rarityBias: 4 },
-  "다이아 찌": { maxDur: 200, biteSpeed: -12, resistReduce: 10, rarityBias: 7 }
+  "동 찌":    { maxDur: 30,  biteSpeed: -2,  resistReduce: 2,  rarityBias: 0 },
+  "은 찌":    { maxDur: 60, biteSpeed: -5,  resistReduce: 4,  rarityBias: 3 },
+  "금 찌":    { maxDur: 90, biteSpeed: -10,  resistReduce: 7,  rarityBias: 5 },
+  "다이아 찌": { maxDur: 200, biteSpeed: -20, resistReduce: 15, rarityBias: 8 }
 };
 const BAIT_SPECS = {
   "지렁이 미끼":        { pack: 20, biteSpeed: -2, rarityBias: 0  },
   "새우 미끼":          { pack: 20, biteSpeed: -4, rarityBias: 2  },
-  "빛나는 젤리 미끼":  { pack: 20, biteSpeed: -7, rarityBias: 6  }
+  "빛나는 젤리 미끼":  { pack: 20, biteSpeed: -10, rarityBias: 9  }
 };
 
 
