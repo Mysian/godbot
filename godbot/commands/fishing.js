@@ -899,8 +899,26 @@ function addRod(u, name)   { u.inv.rods[name]   = ROD_SPECS[name]?.maxDur || 0; 
 function addFloat(u, name) { u.inv.floats[name] = FLOAT_SPECS[name]?.maxDur || 0; }
 function addBait(u, name, qty=0) { u.inv.baits[name] = (u.inv.baits[name]||0) + qty; }
 function useDurability(u, slot) {
-  if (slot === "rod"   && u.equip.rod)   u.inv.rods[u.equip.rod]   = Math.max(0, (u.inv.rods[u.equip.rod]||0)-1);
-  if (slot === "float" && u.equip.float) u.inv.floats[u.equip.float] = Math.max(0, (u.inv.floats[u.equip.float]||0)-1);
+  if (slot === "rod" && u.equip.rod) {
+    const name = u.equip.rod;
+    const cur = (u.inv.rods[name] || 0) - 1;
+    if (cur <= 0) {
+      delete u.inv.rods[name];
+      u.equip.rod = null; // 장착 해제
+    } else {
+      u.inv.rods[name] = cur;
+    }
+  }
+  if (slot === "float" && u.equip.float) {
+    const name = u.equip.float;
+    const cur = (u.inv.floats[name] || 0) - 1;
+    if (cur <= 0) {
+      delete u.inv.floats[name];
+      u.equip.float = null; // 장착 해제
+    } else {
+      u.inv.floats[name] = cur;
+    }
+  }
 }
 function hasAllGear(u) {
   return u.equip.rod && u.equip.float && u.equip.bait &&
@@ -3685,9 +3703,17 @@ if (id === "fish:share") {
 
   s.biteTimer = setTimeout(async () => {
     const result = await updateUser(userId, (uu, db) => {
-  if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
-  uu.inv.baits[uu.equip.bait] -= 1;
-  applyQuestEvent(uu, db, "bait_used", { count: 1 });
+    if (!uu.equip?.bait || (uu.inv.baits[uu.equip.bait] || 0) <= 0) return { ok: false, reason: "no_bait" };
+    const bname = uu.equip.bait;
+    const bcur  = (uu.inv.baits[bname] || 0) - 1;
+    if (bcur <= 0) {
+      delete uu.inv.baits[bname];
+      uu.equip.bait = null; // 장착 해제
+    } else {
+      uu.inv.baits[bname] = bcur;
+    }
+    applyQuestEvent(uu, db, "bait_used", { count: 1 });
+
 
   if (Math.random() < 0.004) {
     ensureRelics(uu);
@@ -3836,6 +3862,8 @@ const eb = new EmbedBuilder()
         return updateOrEdit(interaction, { embeds:[eb], components:[buttonsAfterCatch(false), buttonsQuestRow()] });
       }
       if (st.hp <= 0) {
+      const usedRod = u.equip.rod;
+      const usedFloat = u.equip.float;
         useDurability(u, "rod"); 
         useDurability(u, "float");
         applyQuestEvent(u, db, "durability_used", { count: 2 });
@@ -3864,8 +3892,9 @@ const eb = new EmbedBuilder()
   applyQuestEvent(u, db, "fish_caught", {
     band: s.timeBand || currentTimeBand(),
     name: st.name, rarity: st.rarity,
-    rod: u.equip.rod, float: u.equip.float
+    rod: usedRod, float: usedFloat
   });
+}
 
   // 연속 판별(잡동 초기화 / 동일등급 연속 / 레어도 순서 3연속)
   u.quests.temp ??= { recentRarities:[], junkStreak:0, lastRarity:null, sameRarityStreak:0 };
