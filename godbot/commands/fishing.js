@@ -1690,8 +1690,7 @@ function startFight(u) {
     const st = baseItemFight(u, rar);
     return { ...st, type:"fightItem", itemType:"chest", name, rarity:"유니크", qty: 1 };
   }
-
-  const RELIC_BITE_PROB = 0.003;
+  
   const length = drawLength(name);
   const hpBase = Math.round((length/2) * (RARITY_HP_MULT[rar]||1));
   const hp = Math.max(30, Math.min(8000, hpBase));
@@ -5059,7 +5058,7 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
   });
 }
 
-
+const RELIC_BITE_PROB = 0.003;
 const COIN_DROP_RANGE = [50, 500];
 const BE_DROP_RANGE   = [10, 30000];
 const DROP_TABLE = {
