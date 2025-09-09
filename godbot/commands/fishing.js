@@ -270,6 +270,50 @@ function timeBuffField(band){
   return { name:"시간대 보정", value:`(${band}) ${formatBuff(b)}`, inline:false };
 }
 
+// ===== [시간제 버프: 스펙/유틸] =====
+const BUFF_SPECS = {
+  "입질시간 [-10s]": { key:"bite",   biteSpeed:-10, hours:3, label:"입질시간 -10s (3시간)" },
+  "제압력 [+20]"   : { key:"dmg",    dmg:20,        hours:1, label:"제압력 +20 (1시간)"   },
+  "저항 감소 [+10]": { key:"resist", resistReduce:10,hours:1, label:"저항 감소 +10 (1시간)"},
+  "희귀도 [+10]"   : { key:"rarity", rarityBias:10, hours:1, label:"희귀도 +10 (1시간)"   },
+};
+const BUFF_NAMES = Object.keys(BUFF_SPECS);
+const nowMs = () => Date.now();
+
+function formatRemain(expMs) {
+  const left = Math.max(0, Math.floor((expMs - nowMs())/1000));
+  const h = Math.floor(left/3600);
+  const m = Math.floor((left%3600)/60);
+  const s = left%60;
+  return h ? `${h}시간 ${m}분` : `${m}분 ${s}초`;
+}
+
+function getTimedBuff(u) {
+  const out = { biteSpeed:0, dmg:0, resistReduce:0, rarityBias:0 };
+  if (!u?.buffs) return out;
+  for (const name of BUFF_NAMES) {
+    const spec = BUFF_SPECS[name];
+    const exp  = u.buffs[spec.key] || 0;
+    if (exp > nowMs()) {
+      if (spec.biteSpeed)   out.biteSpeed   += spec.biteSpeed;
+      if (spec.dmg)         out.dmg         += spec.dmg;
+      if (spec.resistReduce)out.resistReduce+= spec.resistReduce;
+      if (spec.rarityBias)  out.rarityBias  += spec.rarityBias;
+    }
+  }
+  return out;
+}
+
+// 낚시터 임베드용: 현재 활성 버프 간단 표기
+function activeBuffField(u) {
+  const lines = [];
+  for (const name of BUFF_NAMES) {
+    const spec = BUFF_SPECS[name];
+    const exp = u.buffs?.[spec.key] || 0;
+    if (exp > nowMs()) lines.push(`${name} (${formatRemain(exp)})`);
+  }
+  return lines.length ? { name:"버프 효과", value: lines.join(" / "), inline:false } : null;
+}
 
 // --- 티어 보정(소폭 상향) ---
 const TIER_BUFFS = {
@@ -473,7 +517,13 @@ const PRICES = {
     "지렁이 미끼":       { coin: 100,   be: 20000  },
     "새우 미끼":         { coin: 5000,  be: 200000 },
     "빛나는 젤리 미끼": { coin: 100000, be: null   }
-  }
+  },
+  buffs: {
+    "입질시간 [-10s]": { coin: 100000,  be: 500000 },
+    "제압력 [+20]"   : { coin: 100000,  be: 500000 },
+    "저항 감소 [+10]": { coin: 100000,  be: 500000 },
+    "희귀도 [+10]"   : { coin: 500000,  be: 3000000 },
+  },
 };
 
 // === [수족관 시스템] 기본 정의 ===
@@ -890,6 +940,7 @@ function ensureUser(u) {
   // 설정 키
   u.settings ??= {};
   u.settings.autoBuy ??= false;
+  u.buffs ??= {};
 
   // 수족관 보정(레거시 사용자 포함)
   ensureAquarium(u);
@@ -1500,6 +1551,7 @@ function sceneEmbed(user, title, desc, imageURL, extraFields = [], color) {
   const bf = buffField(user); if (bf) eb.addFields(bf);
   const band = currentTimeBand();
   const tf = timeBuffField(band); if (tf) eb.addFields(tf);
+  const abf = activeBuffField(user);  if (abf) eb.addFields(abf);
   eb.setFooter({ text: `낚시 코인: ${user.coins.toLocaleString()} | 티어: ${user.tier} [${(user.stats.points||0).toLocaleString()}점]` });
   return eb;
 }
@@ -2614,6 +2666,7 @@ async function execute(interaction) {
   new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
   new ButtonBuilder().setCustomId("shop:start|float").setLabel("🟠 찌 보기").setStyle(ButtonStyle.Primary),
   new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Primary),
+  new ButtonBuilder().setCustomId("shop:start|buff").setLabel("🧪 버프 보기").setStyle(ButtonStyle.Primary),
 );
 const row2 = new ActionRowBuilder().addComponents(
   new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
@@ -4527,6 +4580,7 @@ if (interaction.customId === "sell-rarity-choose") {
         new ButtonBuilder().setCustomId("shop:start|rod").setLabel("🎣 낚싯대 보기").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("shop:start|float").setLabel("🟠 찌 보기").setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("shop:start|bait").setLabel("🪱 미끼 보기").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("shop:start|buff").setLabel("🧪 버프 보기").setStyle(ButtonStyle.Primary),
     );
       const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
@@ -4561,12 +4615,51 @@ if (interaction.customId === "sell-rarity-choose") {
 
     if (id.startsWith("shop:start|")) {
       const kind = id.split("|")[1];
-      const order = kind==="rod"? RODS : kind==="float"? FLOATS : BAITS;
+      const order = kind==="rod"? RODS : kind==="float"? FLOATS : BAITS : BUFF_NAMES;
       shopSessions.set(userId, { kind, idx:0 });
 
       function renderShop(k, i) {
         const name = order[i];
         const icon = getIconURL(name)||null;
+
+        
+  if (k === "buff") { // ✅ 신규: 버프 상점 렌더
+    const price = PRICES.buffs[name];
+    const spec  = BUFF_SPECS[name];
+    const exp   = (u.buffs?.[spec.key] || 0);
+    const active = exp > Date.now();
+
+    const lines = [
+      spec.label,
+      active ? `상태: 활성 (남은 ${formatRemain(exp)})` : "상태: 비활성",
+    ];
+
+    const eb = new EmbedBuilder()
+      .setTitle(`🧪 버프 — ${name}`)
+      .setDescription(lines.join("\n"))
+      .addFields(
+        { name:"코인", value: price.coin!=null ? price.coin.toLocaleString() : "-", inline:true },
+        { name:"정수", value: price.be!=null   ? price.be.toLocaleString()   : "-", inline:true },
+      )
+      .setColor(0x55cc77);
+    if (icon) eb.setImage(icon);
+    eb.setFooter({ text:`보유 코인: ${u.coins.toLocaleString()} | 정수: ${getBE(userId).toLocaleString()}` });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("shop:prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(i<=0),
+      new ButtonBuilder().setCustomId("shop:next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(i>=order.length-1),
+      new ButtonBuilder().setCustomId(`shop:buy|coin|${name}`).setLabel("코인 구매").setStyle(ButtonStyle.Success).setDisabled(price.coin==null || active),
+      new ButtonBuilder().setCustomId(`shop:buy|be|${name}`).setLabel("정수 구매").setStyle(ButtonStyle.Primary).setDisabled(price.be==null   || active),
+      new ButtonBuilder().setCustomId("shop:close").setLabel("닫기").setStyle(ButtonStyle.Secondary),
+    );
+    const backRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터 입장").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("shop:home").setLabel("↩ 상점으로 돌아가기").setStyle(ButtonStyle.Secondary),
+    );
+
+    return { eb, row, backRow };
+  }
+        
         const price = PRICES[k==="rod"?"rods":k==="float"?"floats":"baits"][name];
         const spec  = k==="rod"? ROD_SPECS[name] : k==="float"? FLOAT_SPECS[name] : BAIT_SPECS[name];
         const lines = [];
@@ -4626,7 +4719,7 @@ if (interaction.customId === "sell-rarity-choose") {
     }
     if (id==="shop:prev" || id==="shop:next") {
       const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
-      const order = st.kind==="rod"? RODS : st.kind==="float"? FLOATS : BAITS;
+      const order = st.kind==="rod"? RODS : st.kind==="float"? FLOATS : BAITS : BUFF_NAMES;
       st.idx += (id==="shop:next"?1:-1); st.idx = Math.max(0, Math.min(order.length-1, st.idx));
       shopSessions.set(userId, st);
 
@@ -4685,8 +4778,33 @@ if (interaction.customId === "sell-rarity-choose") {
         }
     if (id.startsWith("shop:buy|")) {
       const [, pay, name] = id.split("|");
-      const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
-      const kind = st.kind; const price = PRICES[kind==="rod"?"rods":kind==="float"?"floats":"baits"][name];
+const st = shopSessions.get(userId); if (!st) return interaction.reply({ content:"상점 보기 세션이 없습니다.", ephemeral:true });
+const kind = st.kind;
+
+if (kind === "buff") { // ✅ 신규: 버프 결제/적용
+  const price = PRICES.buffs[name];
+  const spec  = BUFF_SPECS[name];
+  if (!price || !spec) return interaction.reply({ content:"버프 정보를 찾지 못했습니다.", ephemeral:true });
+
+  const exp = (u.buffs?.[spec.key] || 0);
+  if (exp > Date.now()) {
+    return interaction.reply({ content:"이미 동일 종류의 버프가 적용 중입니다. (잔여시간이 남아 재구매 불가)", ephemeral:true });
+  }
+
+  if (pay === "coin") {
+    const cost = price.coin; if (cost==null) return interaction.reply({ content:"코인 결제가 불가합니다.", ephemeral:true });
+    if ((u.coins||0) < cost) return interaction.reply({ content:`코인이 부족합니다. (필요: ${cost})`, ephemeral:true });
+    spendCoins(u, db, cost);
+  } else {
+    const cost = price.be; if (cost==null) return interaction.reply({ content:"정수 결제가 불가합니다.", ephemeral:true });
+    if ((getBE(userId)||0) < cost) return interaction.reply({ content:`정수가 부족합니다. (필요: ${cost.toLocaleString()}원)`, ephemeral:true });
+    await addBE(userId, -cost, `[낚시] 버프 구매: ${name}`);
+  }
+
+  u.buffs ??= {};
+  u.buffs[spec.key] = Date.now() + spec.hours*60*60*1000; // ✅ 즉시 적용(장착 불필요)
+  return interaction.reply({ content:`버프 적용 완료: ${name} (${spec.label})`, ephemeral:true });
+} const price = PRICES[kind==="rod"?"rods":kind==="float"?"floats":"baits"][name];
       if (!price) return interaction.reply({ content:"가격 정보를 불러오지 못했습니다.", ephemeral:true });
 
       if (kind === "bait") {
