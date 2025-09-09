@@ -1691,6 +1691,7 @@ function startFight(u) {
     return { ...st, type:"fightItem", itemType:"chest", name, rarity:"유니크", qty: 1 };
   }
 
+  const RELIC_BITE_PROB = 0.004;
   const length = drawLength(name);
   const hpBase = Math.round((length/2) * (RARITY_HP_MULT[rar]||1));
   const hp = Math.max(30, Math.min(8000, hpBase));
@@ -3749,7 +3750,7 @@ if (id === "fish:share") {
   uu.inv.baits[uu.equip.bait] -= 1;
   applyQuestEvent(uu, db, "bait_used", { count: 1 });
 
-  if (Math.random() < 0.004) {
+  if (Math.random() < RELIC_BITE_PROB) {
     ensureRelics(uu);
     const name = RELIC_LIST[Math.floor(Math.random()*RELIC_LIST.length)];
     const cur = relicLv(uu, name);
@@ -3775,7 +3776,6 @@ if (id === "fish:share") {
       return s.safeEdit({ content: "미끼가 없어 입질이 이어지지 않았습니다.", components: [], embeds: [] }).catch(() => {});
     }
 
-    // 유물 즉시 획득 처리
 if (result.relic) {
   clearSession(userId);
 
@@ -3787,9 +3787,11 @@ if (result.relic) {
       ? `${result.relic.name} 중복으로 +${result.relic.coin.toLocaleString()} 코인`
       : `${result.relic.name} Lv.${result.relic.newLv} 획득!`,
     icon: result.relic.img,
-    ts: Date.now()
+    ts: Date.now(),
+    channelId: interaction.channelId // (선택) 공유 버튼과 동일 UX 위해 채널 기록
   });
 
+  // 물고기 결과와 동일한 경로로 전송 (updateOrEdit)
   const eb = sceneEmbed(
     await getUser(userId),
     "🧿 유물 획득!",
@@ -3799,8 +3801,13 @@ if (result.relic) {
     result.relic.img
   );
 
-  return s.safeEdit({ embeds:[eb], components:[buttonsAfterCatch(), buttonsQuestRow()] });
+  await updateOrEdit(interaction, {
+    embeds: [eb],
+    components: [buttonsAfterCatch(), buttonsQuestRow()]
+  });
+  return;
 }
+
 
     const fobj = result.fight;
 
