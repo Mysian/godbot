@@ -1691,7 +1691,7 @@ function startFight(u) {
     return { ...st, type:"fightItem", itemType:"chest", name, rarity:"유니크", qty: 1 };
   }
 
-  const RELIC_BITE_PROB = 0.004;
+  const RELIC_BITE_PROB = 0.003;
   const length = drawLength(name);
   const hpBase = Math.round((length/2) * (RARITY_HP_MULT[rar]||1));
   const hp = Math.max(30, Math.min(8000, hpBase));
