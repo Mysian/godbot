@@ -489,13 +489,32 @@ function ensureAquarium(u){
   u.aquarium ??= [];
   if (!Array.isArray(u.aquarium)) u.aquarium = [];
   for (const f of u.aquarium) {
-    f.lv = Math.min(Math.max(f.lv ?? 1, 1), 10);
-    f.xp ??= 0;
-    f.base ??= (f.price || 0); // 인벤에서 옮겨올 때의 원가 저장
-    f.feedKey ??= dailyKeyKST();
-    f.feedCount ??= 0;
-    f.lastPraiseAt ??= 0;
+    // 개별 물고기 최대 레벨(⭐×10, 최대 50)
+    f.maxLv ??= computeMaxLv(f.n, f.l);
+    // 레벨은 1 ~ maxLv로 클램프
+    f.lv = Math.min(Math.max(f.lv ?? 1, 1), f.maxLv);
+    // XP, 원가(배율 기준), 쿨타임 메타 유지
+    f.xp   ??= 0;
+    f.base ??= (f.price || 0);
+    // 쿨 관련 필드는 "존재하면 유지" — 여기서 새로 0 세팅하지 않는다.
+    if (typeof f.feedKey !== "string")   f.feedKey = dailyKeyKST();
+    if (typeof f.feedCount !== "number") f.feedCount = 0;
+    if (typeof f.lastPraiseAt !== "number") f.lastPraiseAt = 0;
   }
+}
+
+
+// ⭐(별) 개수 계산 → 최대 레벨(별×10, 최대 50)
+function starCountOf(name, length){
+  const range = LENGTH_TABLE[name];
+  if (!range) return 1;
+  const [min, max] = range;
+  if (max <= min) return 1;
+  const ratio = (length - min) / (max - min);
+  return Math.max(1, Math.min(5, Math.round(ratio * 5)));
+}
+function computeMaxLv(name, length){
+  return Math.min(50, (starCountOf(name, length) || 1) * 10);
 }
 
 // 먹이 경험치 계산: 레어도/별/크기근접도 가중
@@ -522,17 +541,21 @@ function feedXpGain(target, feed) {
   return Math.round(base * rMul * sMul * cMul);
 }
 
-function xpNeed(lv){
-  if (lv >= 10) return Infinity; 
-  return AQUA_XP_TABLE[lv] || 999999;
+function xpNeed(lv, maxLv){
+  if (lv >= maxLv) return Infinity;
+  // 테이블 밖(>9레벨)은 마지막 값을 기하성장으로 확장
+  const last = AQUA_XP_TABLE[AQUA_XP_TABLE.length-1] || 9000;
+  return AQUA_XP_TABLE[lv] ?? Math.round(last * Math.pow(1.15, lv - (AQUA_XP_TABLE.length - 1)));
 }
 
-function tryLevelUp(a){ 
-  while (a.lv < 10 && a.xp >= xpNeed(a.lv)) {
-    a.xp -= xpNeed(a.lv);
+function tryLevelUp(a){
+  const cap = a.maxLv || 10;
+  while (a.lv < cap && a.xp >= xpNeed(a.lv, cap)) {
+    a.xp -= xpNeed(a.lv, cap);
     a.lv++;
   }
 }
+
 
 function valueWithLevel(base, lv){ return Math.round((base||0) * aquaValueMult(lv||1)); }
 
@@ -2169,8 +2192,8 @@ function buildAquariumView(u, idx){
 
   resetFeedIfNewDay(a);
   const name = withStarName(a.n, a.l);
-  const need = xpNeed(a.lv);
-  const cur = Math.min(a.xp, need);
+  const need = xpNeed(a.lv, a.maxLv);
+  const cur  = Math.min(a.xp, need);
   const price = valueWithLevel(a.base, a.lv);
 
   const eb = new EmbedBuilder()
@@ -2179,15 +2202,17 @@ function buildAquariumView(u, idx){
     .setColor(0x44cc99)
     .addFields(
       { name:"등급/크기", value:`${a.r} / ${a.l}cm`, inline:true },
-      { name:"레벨", value:`Lv.${a.lv} ${a.lv<10?`(${cur}/${need})`: "(만렙)"}`, inline:true },
+      { name:"레벨", value:`Lv.${a.lv} ${a.lv<a.maxLv?`(${cur}/${need})`:"(만렙)"}`, inline:true },
       { name:"현재 가치", value:`${price.toLocaleString()} 코인`, inline:true },
       { name:"먹이/칭찬", value:`오늘 먹이 ${a.feedCount}/5 · ${canPraise(a)?"칭찬 가능":"칭찬 쿨다운"}`, inline:false }
     );
 
   const rows = [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`aqua:praise|${idx}`).setLabel("💬 칭찬하기").setStyle(ButtonStyle.Secondary).setDisabled(!canPraise(a) || a.lv>=10),
-      new ButtonBuilder().setCustomId(`aqua:feed|${idx}`).setLabel("🪱 먹이주기").setStyle(ButtonStyle.Success).setDisabled(a.feedCount>=5 || a.lv>=10),
+    new ButtonBuilder().setCustomId(`aqua:praise|${idx}`).setLabel("💬 칭찬하기")
+      .setStyle(ButtonStyle.Secondary).setDisabled(!canPraise(a) || a.lv>=a.maxLv),
+    new ButtonBuilder().setCustomId(`aqua:feed|${idx}`).setLabel("🪱 먹이주기")
+      .setStyle(ButtonStyle.Success).setDisabled(a.feedCount>=5 || a.lv>=a.maxLv),
       new ButtonBuilder().setCustomId(`aqua:release|${idx}`).setLabel("📦 방출하기").setStyle(ButtonStyle.Danger)
     ),
     new ActionRowBuilder().addComponents(
@@ -2799,12 +2824,12 @@ if (id.startsWith("aqua:") && interaction.isButton()) {
   if (cmd === "help") {
     return edit({
       content: [
-        "• 수족관은 최대 5마리까지 보관",
-        "• Lv.1→10 성장 (레벨당 가치 1.1배 누적)",
-        "• 칭찬: 1시간 쿨다운, 소량 경험치",
-        "• 먹이: 하루 5회, 자신보다 작은 물고기만 가능 (레어도/별/크기근접 비례)",
-        "• 방출: 인벤토리로 복귀(현 레벨 가격 반영)"
-      ].join("\n"),
+  "• 수족관은 최대 5마리까지 보관",
+  "• 성장: ⭐(별)×10레벨 (예: 3성=Lv.30), 최대 Lv.50 / 레벨당 가치 1.1배 누적",
+  "• 칭찬: 1시간 쿨다운, 소량 경험치",
+  "• 먹이: 하루 5회, 자신보다 작은 물고기만 가능 (레어도/별/크기근접 비례)",
+  "• 방출: 인벤토리로 복귀(현 레벨 가격 반영)"
+].join("\n"),
       embeds: [],
       components: [ new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("aqua:home").setLabel("🏠 돌아가기").setStyle(ButtonStyle.Secondary)
@@ -2870,16 +2895,21 @@ if (a.lv > beforeLv) {
     const a = u.aquarium[idx];
     if (!a) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
 
-    const price = valueWithLevel(a.base, a.lv);
+const price = valueWithLevel(a.base, a.lv);
 const back = {
   n: a.n,
   r: a.r,
   l: a.l,
-  price,         // 현재 레벨이 반영된 표시/판매가
+  price,         // 현 레벨 반영가
   lock: false,
-  alv: a.lv,     // 수족관 레벨 저장
-  axp: a.xp,     // 수족관 경험치 저장
-  abase: a.base  // 원가(배율의 기준값) 저장 → 중첩 방지 핵심
+  // 수족관 메타를 인벤 물고기에 백업 저장
+  alv: a.lv,
+  axp: a.xp,
+  abase: a.base,
+  amaxLv: a.maxLv,
+  afeedKey: a.feedKey,
+  afeedCount: a.feedCount,
+  alastPraiseAt: a.lastPraiseAt
 };
 u.inv.fishes.push(back);
 u.aquarium.splice(idx, 1);
@@ -3270,31 +3300,39 @@ if (interaction.isStringSelectMenu() && interaction.customId.startsWith("aqua:")
   const edit = mkSafeEditor(interaction);
 
   // 추가 선택
-  if (sid === "aqua:add_select") {
-    ensureAquarium(u);
-    if (u.aquarium.length >= AQUARIUM_MAX) {
-      return edit({ content:"수족관이 꽉 찼어!", ...(buildAquariumHome(u)) });
-    }
-    const idx = Number(first);
-    const f = (u.inv.fishes||[])[idx];
-    if (!f) return edit({ content:"선택한 물고기를 찾지 못했어.", embeds:[], components:[] });
-
-    (u.inv.fishes||[]).splice(idx,1);
-const base = (f.abase ?? f.price) || 0; // 메타가 있으면 abase(원가), 없으면 현재표시가를 최초 기준으로
-const lv   = f.alv ?? 1;
-const xp   = f.axp ?? 0;
-
-u.aquarium.push({
-  n: f.n, r: f.r, l: f.l,
-  base, lv, xp,
-  feedKey: dailyKeyKST(),
-  feedCount: 0,
-  lastPraiseAt: 0
-});
-
-
-    return edit({ content:`${withStarName(f.n,f.l)}가 수족관에 입장!`, ...(buildAquariumHome(u)) });
+if (sid === "aqua:add_select") {
+  ensureAquarium(u);
+  if (u.aquarium.length >= AQUARIUM_MAX) {
+    return edit({ content:"수족관이 꽉 찼어!", ...(buildAquariumHome(u)) });
   }
+  const idx = Number(first);
+  const f = (u.inv.fishes||[])[idx];
+  if (!f) return edit({ content:"선택한 물고기를 찾지 못했어.", embeds:[], components:[] });
+
+  (u.inv.fishes||[]).splice(idx,1);
+
+  const base  = (f.abase ?? f.price) || 0;
+  const maxLv = f.amaxLv ?? computeMaxLv(f.n, f.l);
+  const lv0   = Math.min(Math.max(f.alv ?? 1, 1), maxLv);
+  const xp0   = f.axp ?? 0;
+
+  // 쿨타임/일일키 복원 (같은 날이면 feedCount 유지, 날짜 바뀌면 0)
+  const today = dailyKeyKST();
+  const feedKey0    = f.afeedKey === today ? f.afeedKey : today;
+  const feedCount0  = f.afeedKey === today ? (f.afeedCount || 0) : 0;
+  const lastPraise0 = f.alastPraiseAt ?? 0;
+
+  u.aquarium.push({
+    n: f.n, r: f.r, l: f.l,
+    base, lv: lv0, xp: xp0, maxLv,
+    feedKey: feedKey0,
+    feedCount: feedCount0,
+    lastPraiseAt: lastPraise0
+  });
+
+  return edit({ content:`${withStarName(f.n,f.l)}가 수족관에 입장!`, ...(buildAquariumHome(u)) });
+}
+
 
   // 먹이 선택
   if (sid.startsWith("aqua:feed_select|")) {
