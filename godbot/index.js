@@ -352,6 +352,10 @@ const remoteCmd = client.commands.get("리모콘");
 const donateCmd = client.commands.get('후원');
 const fortuneCmd = require("./commands/fortune.js");
 
+const scrimAnnounce =
+  client.commands.get("내전공지") ||
+  require("./commands/scrim-announce.js");
+
 client.on(Events.InteractionCreate, async interaction => {
 
 // 0. 게임 검색 모달 제출 처리 → 즉시 태그 토글
@@ -1081,6 +1085,29 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
   return; // 다른 핸들러가 중복 처리하지 않도록 종료
+}
+
+// === 내전 공지(스크림) 상호작용 라우팅 ===
+if (
+  (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
+  interaction.customId?.startsWith("scrim:")
+) {
+  try {
+    const cmd = client.commands.get("내전공지") || scrimAnnounce;
+    if (cmd?.onComponent) {
+      await cmd.onComponent(interaction);
+    } else {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ 내전 공지 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error("[scrim component 오류]", err);
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({ content: "❌ 내전 공지 버튼 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return; 
 }
 
 // === 낚시 통합 상호작용 라우팅 ===
