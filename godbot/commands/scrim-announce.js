@@ -8,10 +8,11 @@ const {
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
-const FIXED_ROLE_ID = "1255580383559422033"; // 고정 멘션 역할
+const FIXED_ROLE_ID = "1255580383559422033"; // 고정 멘션 역할ID
 
-// === 간단 영속 저장소 (메시지별 페이지/URL 기억) ===
+// === 간단 영속 저장소 (토큰별 페이지 상태) ===
 const dataDir = path.join(__dirname, "../data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const DB_PATH = path.join(dataDir, "scrims.json");
@@ -35,13 +36,14 @@ function isHttpUrl(str) {
   return /^https?:\/\/\S+/i.test(str || "");
 }
 
-function buildEmbeds(titleText, pageLabel, imgUrl) {
-  // 이미지 위주(상단), URL은 하단에 "큰 코드블럭"으로
+function buildEmbeds(titleText, pageLabel, imgUrl, showUrl) {
   const imgEmbed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`📣 ${titleText} — ${pageLabel}`)
     .setImage(imgUrl)
     .setTimestamp(new Date());
+
+  if (!showUrl) return [imgEmbed];
 
   const urlEmbed = new EmbedBuilder()
     .setColor(0x2f3136)
@@ -50,9 +52,9 @@ function buildEmbeds(titleText, pageLabel, imgUrl) {
   return [imgEmbed, urlEmbed];
 }
 
-function buildComponents(messageId, pageIndex, pages) {
+function buildComponents(token, pageIndex, pages) {
   const prev = new ButtonBuilder()
-    .setCustomId(`scrim:nav|${messageId}|prev`)
+    .setCustomId(`scrim:nav|${token}|prev`)
     .setLabel("◀")
     .setStyle(ButtonStyle.Secondary);
 
@@ -63,7 +65,7 @@ function buildComponents(messageId, pageIndex, pages) {
     .setDisabled(true);
 
   const next = new ButtonBuilder()
-    .setCustomId(`scrim:nav|${messageId}|next`)
+    .setCustomId(`scrim:nav|${token}|next`)
     .setLabel("▶")
     .setStyle(ButtonStyle.Secondary);
 
@@ -71,13 +73,12 @@ function buildComponents(messageId, pageIndex, pages) {
 
   const jumpBtns = pages.map((p, i) =>
     new ButtonBuilder()
-      .setCustomId(`scrim:jump|${messageId}|${i}`)
+      .setCustomId(`scrim:jump|${token}|${i}`)
       .setLabel(p.label)
       .setStyle(i === pageIndex ? ButtonStyle.Primary : ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(...jumpBtns);
 
-  // 현재 페이지 이미지 직접 열기 (링크 버튼, 매 업데이트마다 현재 URL로 갱신)
   const openLink = new ButtonBuilder()
     .setStyle(ButtonStyle.Link)
     .setLabel("이미지 열기")
@@ -120,6 +121,12 @@ module.exports = {
         .setName("제목")
         .setDescription("임베드 제목(미입력시 역할 이름 사용)")
         .setRequired(false)
+    )
+    .addBooleanOption(o =>
+      o
+        .setName("url표시")
+        .setDescription("임베드 하단에 이미지 URL을 크게 표시 (기본: 끔)")
+        .setRequired(false)
     ),
 
   // /내전공지 실행
@@ -129,6 +136,7 @@ module.exports = {
     const rulesUrl = interaction.options.getString("팀규칙", true);
     const rewardUrl = interaction.options.getString("보상", true);
     const customTitle = interaction.options.getString("제목") || gameRole.name;
+    const showUrl = interaction.options.getBoolean("url표시") ?? false;
 
     if (![coverUrl, rulesUrl, rewardUrl].every(isHttpUrl)) {
       return interaction.reply({
@@ -143,51 +151,38 @@ module.exports = {
       { label: "보상", url: rewardUrl },
     ];
 
-    // 1) 임시 컴포넌트로 우선 전송 (멘션 포함)
-    const pageIndex = 0;
-    const [imgEmbed, urlEmbed] = buildEmbeds(
-      customTitle,
-      pages[pageIndex].label,
-      pages[pageIndex].url
-    );
+    // 토큰으로 식별 (메시지ID 의존 제거 → 첫 게시부터 최종 UI)
+    const token = crypto.randomUUID().slice(0, 12);
 
-    await interaction.reply({
-      content: `<@&${FIXED_ROLE_ID}> <@&${gameRole.id}>`,
-      embeds: [imgEmbed, urlEmbed],
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("scrim:loading")
-            .setLabel("로딩…")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true)
-        ),
-      ],
-      allowedMentions: { roles: [FIXED_ROLE_ID, gameRole.id] },
-    });
-
-    // 2) 메시지 ID로 실제 컴포넌트/DB 세팅
-    const msg = await interaction.fetchReply();
-    const messageId = msg.id;
-
+    // DB에 먼저 저장
     const db = loadDB();
-    db[messageId] = {
+    db[token] = {
       title: customTitle,
       roleIds: [FIXED_ROLE_ID, gameRole.id],
       pages,
       page: 0,
-      channelId: msg.channelId,
-      guildId: msg.guildId,
+      showUrl,
+      channelId: interaction.channelId,
+      guildId: interaction.guildId,
       authorId: interaction.user.id,
       createdAt: Date.now(),
     };
     saveDB(db);
 
-    const rows = buildComponents(messageId, 0, pages);
-    await msg.edit({
+    const [imgEmbed, urlEmbed] = buildEmbeds(
+      customTitle,
+      pages[0].label,
+      pages[0].url,
+      showUrl
+    );
+    const rows = buildComponents(token, 0, pages);
+
+    // 처음부터 최종 형태로 전송 (로딩 버튼 없음)
+    await interaction.reply({
+      content: `<@&${FIXED_ROLE_ID}> <@&${gameRole.id}>`,
+      embeds: showUrl ? [imgEmbed, urlEmbed] : [imgEmbed],
       components: rows,
-      // 멘션 반복 방지
-      allowedMentions: { parse: [] },
+      allowedMentions: { roles: [FIXED_ROLE_ID, gameRole.id], parse: [] },
     });
   },
 
@@ -197,19 +192,18 @@ module.exports = {
       const cid = interaction.customId;
       if (!cid.startsWith("scrim:")) return;
 
-      if (cid === "scrim:noop" || cid === "scrim:loading") {
+      if (cid === "scrim:noop") {
         return interaction.deferUpdate().catch(() => {});
       }
 
-      const payload = cid.slice("scrim:".length); // nav|<mid>|prev  /  jump|<mid>|<i>
-      const [kind, mid, arg] = payload.split("|");
+      const payload = cid.slice("scrim:".length); // nav|<token>|prev  /  jump|<token>|<i>
+      const [kind, token, arg] = payload.split("|");
       const db = loadDB();
-      const rec = db[mid];
+      const rec = db[token];
 
       if (!rec) {
         return interaction.reply({
-          content:
-            "⚠️ 공지 데이터가 유실되었어. 새로 게시해줘!",
+          content: "⚠️ 공지 데이터가 유실됐어. 새로 게시해줘!",
           ephemeral: true,
         });
       }
@@ -225,18 +219,19 @@ module.exports = {
       }
 
       rec.page = page;
-      db[mid] = rec;
+      db[token] = rec;
       saveDB(db);
 
-      const [imgEmbed, urlEmbed] = buildEmbeds(
+      const embeds = buildEmbeds(
         rec.title,
         rec.pages[page].label,
-        rec.pages[page].url
+        rec.pages[page].url,
+        rec.showUrl
       );
-      const rows = buildComponents(mid, page, rec.pages);
+      const rows = buildComponents(token, page, rec.pages);
 
       return interaction.update({
-        embeds: [imgEmbed, urlEmbed],
+        embeds,
         components: rows,
         allowedMentions: { parse: [] },
       });
