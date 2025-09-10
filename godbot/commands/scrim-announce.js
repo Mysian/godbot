@@ -12,7 +12,7 @@ const crypto = require("crypto");
 
 const FIXED_ROLE_ID = "1255580383559422033"; // 고정 멘션 역할ID
 
-// === 간단 영속 저장소 (토큰별 페이지 상태) ===
+// === 간단 영속 저장소 (토큰별 상태) ===
 const dataDir = path.join(__dirname, "../data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 const DB_PATH = path.join(dataDir, "scrims.json");
@@ -78,6 +78,50 @@ function buildComponents(token, pageIndex, pages) {
       .setStyle(i === pageIndex ? ButtonStyle.Primary : ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(...jumpBtns);
+
+  const openLink = new ButtonBuilder()
+    .setStyle(ButtonStyle.Link)
+    .setLabel("이미지 열기")
+    .setURL(pages[pageIndex].url);
+
+  // ✅ 요청: “이미지 열기” 옆에 개인용 미리보기
+  const peek = new ButtonBuilder()
+    .setCustomId(`scrim:peek|${token}`)
+    .setLabel("따로 확인")
+    .setStyle(ButtonStyle.Primary);
+
+  const row3 = new ActionRowBuilder().addComponents(openLink, peek);
+
+  return [row1, row2, row3];
+}
+
+// 개인용(에페메럴) 페이징 컴포넌트 — 메인 메시지랑 분리된 상태
+function buildPrivateComponents(token, pageIndex, pages, userId) {
+  const pprev = new ButtonBuilder()
+    .setCustomId(`scrim:pnav|${token}|${userId}|${pageIndex}|prev`)
+    .setLabel("◀")
+    .setStyle(ButtonStyle.Secondary);
+
+  const pindicator = new ButtonBuilder()
+    .setCustomId("scrim:noop")
+    .setLabel(`${pageIndex + 1} / ${pages.length}`)
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(true);
+
+  const pnext = new ButtonBuilder()
+    .setCustomId(`scrim:pnav|${token}|${userId}|${pageIndex}|next`)
+    .setLabel("▶")
+    .setStyle(ButtonStyle.Secondary);
+
+  const row1 = new ActionRowBuilder().addComponents(pprev, pindicator, pnext);
+
+  const pjumpBtns = pages.map((p, i) =>
+    new ButtonBuilder()
+      .setCustomId(`scrim:pjump|${token}|${userId}|${i}`)
+      .setLabel(p.label)
+      .setStyle(i === pageIndex ? ButtonStyle.Primary : ButtonStyle.Secondary)
+  );
+  const row2 = new ActionRowBuilder().addComponents(...pjumpBtns);
 
   const openLink = new ButtonBuilder()
     .setStyle(ButtonStyle.Link)
@@ -151,10 +195,10 @@ module.exports = {
       { label: "보상", url: rewardUrl },
     ];
 
-    // 토큰으로 식별 (메시지ID 의존 제거 → 첫 게시부터 최종 UI)
+    // 토큰 생성
     const token = crypto.randomUUID().slice(0, 12);
 
-    // DB에 먼저 저장
+    // DB 저장
     const db = loadDB();
     db[token] = {
       title: customTitle,
@@ -169,18 +213,13 @@ module.exports = {
     };
     saveDB(db);
 
-    const [imgEmbed, urlEmbed] = buildEmbeds(
-      customTitle,
-      pages[0].label,
-      pages[0].url,
-      showUrl
-    );
+    const embeds = buildEmbeds(customTitle, pages[0].label, pages[0].url, showUrl);
     const rows = buildComponents(token, 0, pages);
 
-    // 처음부터 최종 형태로 전송 (로딩 버튼 없음)
+    // 최종 전송
     await interaction.reply({
       content: `<@&${FIXED_ROLE_ID}> <@&${gameRole.id}>`,
-      embeds: showUrl ? [imgEmbed, urlEmbed] : [imgEmbed],
+      embeds,
       components: rows,
       allowedMentions: { roles: [FIXED_ROLE_ID, gameRole.id], parse: [] },
     });
@@ -196,45 +235,117 @@ module.exports = {
         return interaction.deferUpdate().catch(() => {});
       }
 
-      const payload = cid.slice("scrim:".length); // nav|<token>|prev  /  jump|<token>|<i>
-      const [kind, token, arg] = payload.split("|");
+      const payload = cid.slice("scrim:".length);
+      const parts = payload.split("|");
       const db = loadDB();
-      const rec = db[token];
 
-      if (!rec) {
+      // 메인: prev/next/jump
+      if (payload.startsWith("nav|") || payload.startsWith("jump|")) {
+        const kind = parts[0]; // nav or jump
+        const token = parts[1];
+        const arg = parts[2];
+
+        const rec = db[token];
+        if (!rec) {
+          return interaction.reply({ content: "⚠️ 공지 데이터가 유실됐어. 새로 게시해줘!", ephemeral: true });
+        }
+
+        let page = rec.page || 0;
+        if (kind === "nav") {
+          page = arg === "prev" ? (page - 1 + rec.pages.length) % rec.pages.length : (page + 1) % rec.pages.length;
+        } else {
+          const idx = Math.max(0, Math.min(rec.pages.length - 1, Number(arg)));
+          page = idx;
+        }
+
+        rec.page = page;
+        db[token] = rec;
+        saveDB(db);
+
+        const embeds = buildEmbeds(rec.title, rec.pages[page].label, rec.pages[page].url, rec.showUrl);
+        const rows = buildComponents(token, page, rec.pages);
+
+        return interaction.update({
+          embeds,
+          components: rows,
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      // ✅ 개인용: “따로 확인” (peek)
+      if (payload.startsWith("peek|")) {
+        const token = parts[1];
+        const rec = db[token];
+        if (!rec) {
+          return interaction.reply({ content: "⚠️ 공지 데이터가 유실됐어. 새로 게시해줘!", ephemeral: true });
+        }
+        const page = rec.page || 0;
+
+        const embeds = buildEmbeds(rec.title, rec.pages[page].label, rec.pages[page].url, rec.showUrl);
+        const rows = buildPrivateComponents(token, page, rec.pages, interaction.user.id);
+
         return interaction.reply({
-          content: "⚠️ 공지 데이터가 유실됐어. 새로 게시해줘!",
+          content: "개인용 보기 (다른 사람에게는 보이지 않음)",
+          embeds,
+          components: rows,
           ephemeral: true,
         });
       }
 
-      let page = rec.page || 0;
-      if (kind === "nav") {
-        page = arg === "prev" ? (page - 1 + rec.pages.length) % rec.pages.length : (page + 1) % rec.pages.length;
-      } else if (kind === "jump") {
-        const idx = Math.max(0, Math.min(rec.pages.length - 1, Number(arg)));
-        page = idx;
-      } else {
-        return interaction.deferUpdate().catch(() => {});
+      // ✅ 개인용: prev/next (stateless, 커스텀ID에 현재 페이지 내장)
+      if (payload.startsWith("pnav|")) {
+        const [, token, userId, curPageStr, direction] = parts;
+        if (interaction.user.id !== userId) {
+          // 혹시라도 다른 유저가 눌렀다면 무시
+          return interaction.reply({ content: "이 개인용 보기는 너만 조작할 수 있어.", ephemeral: true });
+        }
+
+        const rec = db[token];
+        if (!rec) {
+          return interaction.reply({ content: "⚠️ 공지 데이터가 유실됐어. 새로 게시해줘!", ephemeral: true });
+        }
+
+        let page = Number(curPageStr) || 0;
+        page = direction === "prev"
+          ? (page - 1 + rec.pages.length) % rec.pages.length
+          : (page + 1) % rec.pages.length;
+
+        const embeds = buildEmbeds(rec.title, rec.pages[page].label, rec.pages[page].url, rec.showUrl);
+        const rows = buildPrivateComponents(token, page, rec.pages, userId);
+
+        // 개인용은 update (이 에페메럴 메시지 안에서만 바뀜, 메인 공지에 영향 없음)
+        return interaction.update({
+          embeds,
+          components: rows,
+          allowedMentions: { parse: [] },
+        });
       }
 
-      rec.page = page;
-      db[token] = rec;
-      saveDB(db);
+      // ✅ 개인용: jump
+      if (payload.startsWith("pjump|")) {
+        const [, token, userId, targetStr] = parts;
+        if (interaction.user.id !== userId) {
+          return interaction.reply({ content: "이 개인용 보기는 너만 조작할 수 있어.", ephemeral: true });
+        }
 
-      const embeds = buildEmbeds(
-        rec.title,
-        rec.pages[page].label,
-        rec.pages[page].url,
-        rec.showUrl
-      );
-      const rows = buildComponents(token, page, rec.pages);
+        const rec = db[token];
+        if (!rec) {
+          return interaction.reply({ content: "⚠️ 공지 데이터가 유실됐어. 새로 게시해줘!", ephemeral: true });
+        }
 
-      return interaction.update({
-        embeds,
-        components: rows,
-        allowedMentions: { parse: [] },
-      });
+        const page = Math.max(0, Math.min(rec.pages.length - 1, Number(targetStr)));
+        const embeds = buildEmbeds(rec.title, rec.pages[page].label, rec.pages[page].url, rec.showUrl);
+        const rows = buildPrivateComponents(token, page, rec.pages, userId);
+
+        return interaction.update({
+          embeds,
+          components: rows,
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      // 그 외
+      return interaction.deferUpdate().catch(() => {});
     } catch (e) {
       return interaction.reply({
         content: "버튼 처리 중 오류가 발생했어.",
