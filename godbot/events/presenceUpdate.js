@@ -43,6 +43,8 @@ const GAME_NAME_MAP = new Map([
   ["서든어택", "서든어택"],
   ["sudden attack", "서든어택"],
   ["wuthering waves", "명조"],
+  ["ETERNAL RETURN", "이터널 리턴"],
+  ["이터널 리턴", "이터널 리턴"],
 ]);
 
 // ===== 유사도 매칭 유틸 =====
