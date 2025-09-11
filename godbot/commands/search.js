@@ -24,7 +24,7 @@ const CFG = {
 };
 
 // 튜닝 파라미터
-const MIN_PRIMARY_FILL = 5;       // 1차 엔진 라운드에서 이 개수 이상 확보되면 다음 라운드로
+const MIN_PRIMARY_FILL = 10;       // 1차 엔진 라운드에서 이 개수 이상 확보되면 다음 라운드로
 const PREFETCH_OG_COUNT = 5;      // 초기 응답 전에 상위 N개의 OG 이미지/설명 미리 채움
 const PER_OG_TIMEOUT = 1500;      // OG 파싱 타임아웃(ms)
 
@@ -293,21 +293,23 @@ async function searchCascade(query, count) {
 
   // 2라운드: 남은 엔진 돌려서 목표 개수까지 보충
   if (pool.length < count) {
-    for (const eng of order) {
-      if (used.includes(eng)) continue;
-      let res = [];
-      try {
-        if (eng === "duck-html")      res = await duckHtmlSearch(query, count);
-        else if (eng === "wiki")      res = await wikiKoSearch(query, count);
-        else                          res = await searchWeb(eng, query, count);
-      } catch { res = []; }
-      if (res?.length) {
-        used.push(eng);
-        pool = dedupeMerge(pool, res);
-        if (pool.length >= count) break;
-      }
+  for (const eng of order) {
+    if (used.includes(eng)) continue;
+    if (eng === "wiki" && pool.length > 0) continue;
+
+    let res = [];
+    try {
+      if (eng === "wiki")      res = await wikiKoSearch(query, count);
+      else                     res = await searchWeb(eng, query, count);
+    } catch { res = []; }
+
+    if (res?.length) {
+      used.push(eng);
+      pool = dedupeMerge(pool, res);
+      if (pool.length >= count) break;
     }
   }
+}
 
   // 3라운드: 상위 N개 결과에 OG 이미지/설명 선탑재
   await enrichWithOg(pool, Math.min(PREFETCH_OG_COUNT, pool.length));
