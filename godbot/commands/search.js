@@ -138,10 +138,10 @@ module.exports = {
 // ================= 유틸/공통 =================
 function computeEngineOrder() {
   const order = [];
-  if (CFG.naverId && CFG.naverSecret) order.push("naver");
-  if (CFG.googleKey && CFG.googleCseId) order.push("google");
-  if (CFG.bingKey) order.push("bing");
-  order.push("wiki");
+  if (CFG.googleKey && CFG.googleCseId) order.push("google"); // ✅ 1순위
+  if (CFG.naverId && CFG.naverSecret) order.push("naver");    // ✅ 2순위
+  if (CFG.bingKey) order.push("bing");                        // ✅ 3순위
+  order.push("wiki");                                         // ✅ 마지막 백업
   return order;
 }
 
