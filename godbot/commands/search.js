@@ -23,6 +23,11 @@ const CFG = {
   naverSecret: process.env.NAVER_CLIENT_SECRET,
 };
 
+// 튜닝 파라미터
+const MIN_PRIMARY_FILL = 5;       // 1차 엔진 라운드에서 이 개수 이상 확보되면 다음 라운드로
+const PREFETCH_OG_COUNT = 5;      // 초기 응답 전에 상위 N개의 OG 이미지/설명 미리 채움
+const PER_OG_TIMEOUT = 1500;      // OG 파싱 타임아웃(ms)
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("검색")
@@ -43,63 +48,45 @@ module.exports = {
 
     await interaction.deferReply({ ephemeral: true });
 
-    // 1) 엔진 선택
-    const engine = pickEngine(); // bing/google/naver/duck
+    // 멀티엔진 캐스케이드 검색
+    const { items, enginesUsed } = await searchCascade(query, MAX_RESULTS);
 
-    // 2) 검색 (강화 폴백 체인)
-    let results = [];
-    let usedEngine = engine;
-    try {
-      results = await searchWeb(engine, query, MAX_RESULTS);
-      if (!results || results.length === 0) throw new Error("no results");
-    } catch {
-      // DuckDuckGo Instant 실패시 HTML 파싱으로 재시도(한글 강화)
-      try {
-        results = await duckHtmlSearch(query, MAX_RESULTS);
-        usedEngine = "duck-html";
-      } catch {
-        // 그래도 없으면 ko.wikipedia 폴백
-        try {
-          results = await wikiKoSearch(query, MAX_RESULTS);
-          usedEngine = "wiki";
-        } catch (e3) {
-          return interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(0x5865F2)
-                .setTitle("🔎 검색 결과 없음")
-                .setDescription(`죄송합니다, 검색 결과를 찾을 수 없습니다.\n\`${query}\`와(과) 관련된 다른 키워드로 다시 시도해 주세요.`)
-            ]
-          });
-        }
-      }
+    if (!items.length) {
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle("🔎 검색 결과 없음")
+            .setDescription(`죄송합니다, 검색 결과를 찾을 수 없습니다.\n\`${query}\`와(과) 관련된 다른 키워드로 다시 시도해 주세요.`)
+        ]
+      });
     }
 
-    // 3) 대표 이미지(쿼리 이미지) 1회 조회 (페이지별 썸네일 없을 때만 사용)
+    // 1) 대표 이미지(쿼리 이미지) — 필요시만 사용
     let heroImage = null;
     try {
-      heroImage = await getQueryImage(usedEngine, query, results[0]?.url);
+      // 엔진 혼합이므로 DDG 단계 힌트를 주기 위해 'duck-html' 로 전달
+      heroImage = await getQueryImage("duck-html", query, items[0]?.url);
     } catch {}
 
-    // 4) 세션 저장 (페이지별 OG 이미지 캐시 준비)
+    // 세션 저장
     const key = `${interaction.guild.id}:${interaction.user.id}`;
     sessions.set(key, {
       query,
-      engine: usedEngine,
-      items: results.slice(0, MAX_RESULTS),
+      engine: enginesUsed.length > 1 ? "multi" : (enginesUsed[0] || "multi"),
+      items: items.slice(0, MAX_RESULTS),
       index: 0,
       heroImage,
       expireAt: Date.now() + SESSION_TTL_MS,
       imageCache: new Map(),
     });
 
-    // 5) 첫 페이지: 필요하면 OG 이미지 즉시 보강
-    await ensurePageImageCached(key, 0).catch(() => {});
+    // 첫 페이지 페이로드
     const payload = renderPage({
       guild: interaction.guild,
       user: interaction.user,
       query,
-      engine: usedEngine,
+      engine: sessions.get(key).engine,
       items: sessions.get(key).items,
       index: 0,
       heroImage,
@@ -149,11 +136,14 @@ module.exports = {
 };
 
 // ================= 유틸/공통 =================
-function pickEngine() {
-  if (CFG.bingKey) return "bing";
-  if (CFG.googleKey && CFG.googleCseId) return "google";
-  if (CFG.naverId && CFG.naverSecret) return "naver";
-  return "duck"; // 키 없으면 덕덕고 Instant(JSON) 기본
+function computeEngineOrder() {
+  const order = [];
+  if (CFG.naverId && CFG.naverSecret) order.push("naver");
+  if (CFG.googleKey && CFG.googleCseId) order.push("google");
+  if (CFG.bingKey) order.push("bing");
+  order.push("duck-html"); // 키 없이 한국어 결과 확보용
+  order.push("wiki");      // 마지막 안전망
+  return order;
 }
 
 function truncate(s, n) {
@@ -188,12 +178,13 @@ function faviconUrl(u) {
 }
 
 function engineBadge(engine) {
-  if (engine === "bing")     return "Bing Web Search";
-  if (engine === "google")   return "Google Programmable Search";
-  if (engine === "naver")    return "Naver Search";
-  if (engine === "duck")     return "DuckDuckGo Instant";
-  if (engine === "duck-html")return "DuckDuckGo HTML";
-  if (engine === "wiki")     return "Wikipedia (ko)";
+  if (engine === "bing")      return "Bing Web Search";
+  if (engine === "google")    return "Google Programmable Search";
+  if (engine === "naver")     return "Naver Search";
+  if (engine === "duck")      return "DuckDuckGo Instant";
+  if (engine === "duck-html") return "DuckDuckGo HTML";
+  if (engine === "wiki")      return "Wikipedia (ko)";
+  if (engine === "multi")     return "Multi-Engine (KR priority)";
   return "Web Search";
 }
 
@@ -250,11 +241,96 @@ async function ensurePageImageCached(key, index) {
   const it = sess.items[index];
   if (!it || !it.url || it.image) return; // 이미 이미지 있음
   try {
-    const og = await getOgImage(it.url, 2000); // 2초 타임아웃
-    if (og) {
-      sess.imageCache.set(index, og);
+    const meta = await getOgMeta(it.url, 2000); // 2초 타임아웃
+    if (meta?.image) sess.imageCache.set(index, meta.image);
+    if (meta?.description && (!it.snippet || it.snippet.length < 30)) {
+      it.snippet = meta.description;
     }
   } catch {}
+}
+
+// =============== 멀티엔진 캐스케이드 검색 ===============
+function normalizeUrl(u) {
+  try {
+    const x = new URL(u);
+    x.hash = "";
+    if (x.hostname.startsWith("www.")) x.hostname = x.hostname.slice(4);
+    return x.toString();
+  } catch {
+    return u || "";
+  }
+}
+
+function dedupeMerge(base, add) {
+  const seen = new Set(base.map(v => normalizeUrl(v.url)));
+  for (const it of add || []) {
+    const key = normalizeUrl(it.url);
+    if (!key || seen.has(key)) continue;
+    base.push(it);
+    seen.add(key);
+  }
+  return base;
+}
+
+async function searchCascade(query, count) {
+  const order = computeEngineOrder();
+  const used = [];
+  let pool = [];
+
+  // 1라운드: 상위 엔진 순회하며 빠르게 채우기
+  for (const eng of order) {
+    let res = [];
+    try {
+      if (eng === "duck-html")      res = await duckHtmlSearch(query, count);
+      else if (eng === "wiki")      res = await wikiKoSearch(query, count);
+      else                          res = await searchWeb(eng, query, count);
+    } catch { res = []; }
+    if (res?.length) {
+      used.push(eng);
+      pool = dedupeMerge(pool, res);
+      if (pool.length >= Math.min(count, MIN_PRIMARY_FILL)) break;
+    }
+  }
+
+  // 2라운드: 남은 엔진 돌려서 목표 개수까지 보충
+  if (pool.length < count) {
+    for (const eng of order) {
+      if (used.includes(eng)) continue;
+      let res = [];
+      try {
+        if (eng === "duck-html")      res = await duckHtmlSearch(query, count);
+        else if (eng === "wiki")      res = await wikiKoSearch(query, count);
+        else                          res = await searchWeb(eng, query, count);
+      } catch { res = []; }
+      if (res?.length) {
+        used.push(eng);
+        pool = dedupeMerge(pool, res);
+        if (pool.length >= count) break;
+      }
+    }
+  }
+
+  // 3라운드: 상위 N개 결과에 OG 이미지/설명 선탑재
+  await enrichWithOg(pool, Math.min(PREFETCH_OG_COUNT, pool.length));
+
+  return { items: pool.slice(0, count), enginesUsed: used };
+}
+
+async function enrichWithOg(items, n) {
+  const tasks = [];
+  for (let i = 0; i < n; i++) {
+    const it = items[i];
+    if (!it?.url) continue;
+    tasks.push(
+      getOgMeta(it.url, PER_OG_TIMEOUT).then(meta => {
+        if (meta?.image && !it.image) it.image = meta.image;
+        if (meta?.description && (!it.snippet || it.snippet.length < 30)) {
+          it.snippet = meta.description;
+        }
+      }).catch(() => {})
+    );
+  }
+  await Promise.all(tasks);
 }
 
 // =============== 엔진별 구현 ===============
@@ -468,13 +544,27 @@ async function getQueryImage(engine, query, firstUrl) {
   return null;
 }
 
-// ======= OG 이미지 파서(타임아웃 지원) =======
+// ======= OG 메타 파서(이미지 + 설명, 타임아웃 지원) =======
 async function getOgImage(url, timeoutMs = 2000) {
   const html = await timeoutFetchText(url, { headers: { "Accept": "text/html" } }, timeoutMs);
-  // og:image 또는 twitter:image
   const og = (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || [])[1]
-         || (html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) || [])[1];
+          || (html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) || [])[1];
   return og || null;
+}
+async function getOgMeta(url, timeoutMs = 2000) {
+  const html = await timeoutFetchText(url, { headers: { "Accept": "text/html" } }, timeoutMs);
+  const image =
+    (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || [])[1] ||
+    (html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) || [])[1] ||
+    null;
+  const desc =
+    (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) || [])[1] ||
+    (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) || [])[1] ||
+    null;
+  return {
+    image,
+    description: desc ? truncate(stripHtml(desc), 300) : null,
+  };
 }
 
 // ======= fetch 유틸 =======
