@@ -136,15 +136,6 @@ module.exports = {
   },
 };
 
-function computeEngineOrder() {
-  const order = [];
-  if (CFG.googleKey && CFG.googleCseId) order.push("google");
-  if (CFG.naverId && CFG.naverSecret) order.push("naver");
-  if (CFG.bingKey) order.push("bing");
-  order.push("wiki");
-  return order;
-}
-
 function truncate(s, n) {
   s = (s ?? "").toString();
   if (s.length <= n) return s;
@@ -328,8 +319,9 @@ async function searchWeb(engine, query, count) {
 }
 
 async function bingWebSearch(query, count) {
+  if (!CFG.bingKey) return [];
   const url = `${CFG.bingEndpoint}?q=${encodeURIComponent(query)}&mkt=ko-KR&count=${count}&safeSearch=Strict&textDecorations=false&textFormat=Raw`;
-  const res = await fetch(url, { headers: { "Ocp-Apim-Subscription-Key": CFG.bingKey } });
+  const res = await fetch(url, { headers: { "Ocp-Apim-Subscription-Key": CFG.bingKey, "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.6,en;q=0.5" } });
   if (!res.ok) throw new Error(`Bing ${res.status}: ${await safeText(res)}`);
   const j = await res.json();
   const list = (j.webPages?.value || []).map(v => ({
@@ -342,8 +334,9 @@ async function bingWebSearch(query, count) {
 }
 
 async function googleCseSearch(query, count) {
+  if (!CFG.googleKey || !CFG.googleCseId) return [];
   const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(CFG.googleKey)}&cx=${encodeURIComponent(CFG.googleCseId)}&q=${encodeURIComponent(query)}&num=${count}&lr=lang_ko&safe=active&hl=ko&gl=kr&cr=countryKR`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.6,en;q=0.5" } });
   if (!res.ok) throw new Error(`Google CSE ${res.status}: ${await safeText(res)}`);
   const j = await res.json();
   const items = j.items || [];
@@ -363,11 +356,13 @@ async function googleCseSearch(query, count) {
 }
 
 async function naverWebSearch(query, count) {
+  if (!CFG.naverId || !CFG.naverSecret) return [];
   const url = `https://openapi.naver.com/v1/search/webkr.json?query=${encodeURIComponent(query)}&display=${count}`;
   const res = await fetch(url, {
     headers: {
       "X-Naver-Client-Id": CFG.naverId,
       "X-Naver-Client-Secret": CFG.naverSecret,
+      "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.6,en;q=0.5",
     },
   });
   if (!res.ok) throw new Error(`Naver ${res.status}: ${await safeText(res)}`);
@@ -383,7 +378,7 @@ async function naverWebSearch(query, count) {
 
 async function duckSearch(query, count) {
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&t=discord-bot&kl=kr-kr`;
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  const res = await fetch(url, { headers: { "Accept": "application/json", "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.6,en;q=0.5" } });
   if (!res.ok) throw new Error(`DuckDuckGo ${res.status}: ${await safeText(res)}`);
   const j = await res.json();
 
@@ -463,7 +458,7 @@ function fixDuckImage(img) {
 
 async function wikiKoSearch(query, count) {
   const url = `https://ko.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(query)}&limit=${count}`;
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  const res = await fetch(url, { headers: { "Accept": "application/json", "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.6,en;q=0.5" } });
   if (!res.ok) throw new Error(`wiki ${res.status}`);
   const j = await res.json();
   const items = j?.pages || [];
@@ -539,11 +534,13 @@ async function timeoutFetchText(url, options = {}, timeoutMs = 3000) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.text();
 }
+
 async function timeoutFetchJson(url, options = {}, timeoutMs = 3000) {
   const res = await timeoutFetch(url, options, timeoutMs);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
+
 async function timeoutFetch(url, options = {}, timeoutMs = 3000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
@@ -559,7 +556,6 @@ async function safeText(res) {
   try { return await res.text(); } catch { return ""; }
 }
 
-const MIN_PRIMARY_FILL = 10;
 const PREFETCH_OG_COUNT = 5;
 const PER_OG_TIMEOUT = 1500;
 
@@ -706,4 +702,3 @@ async function findBestMemberItem(guild, raw) {
   if (best && bestScore >= 0.72) return memberToItem(best);
   return null;
 }
-``` :contentReference[oaicite:0]{index=0}
