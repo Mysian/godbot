@@ -272,50 +272,43 @@ function dedupeMerge(base, add) {
 }
 
 async function searchCascade(query, count) {
-  const order = computeEngineOrder();
-  const used = [];
+  const quota = { google: 3, naver: 3, bing: 2, wiki: 2 };
+  const engines = Object.keys(quota);
+
   let pool = [];
+  const used = [];
 
-  // 1라운드: 상위 엔진 순회하며 빠르게 채우기
-  for (const eng of order) {
+  for (const eng of engines) {
     let res = [];
     try {
-      if (eng === "duck-html")      res = await duckHtmlSearch(query, count);
-      else if (eng === "wiki")      res = await wikiKoSearch(query, count);
-      else                          res = await searchWeb(eng, query, count);
+      if (eng === "wiki") {
+        res = await wikiKoSearch(query, quota[eng]);
+      } else {
+        res = await searchWeb(eng, query, quota[eng]);
+      }
     } catch { res = []; }
+
     if (res?.length) {
       used.push(eng);
-      pool = dedupeMerge(pool, res);
-      if (pool.length >= Math.min(count, MIN_PRIMARY_FILL)) break;
+      pool = dedupeMerge(pool, res.slice(0, quota[eng]));
     }
   }
 
-  // 2라운드: 남은 엔진 돌려서 목표 개수까지 보충
+  // 보충: 혹시 일부 엔진에서 못 채웠으면 남은 개수 위키로
   if (pool.length < count) {
-  for (const eng of order) {
-    if (used.includes(eng)) continue;
-    if (eng === "wiki" && pool.length > 0) continue;
-
-    let res = [];
     try {
-      if (eng === "wiki")      res = await wikiKoSearch(query, count);
-      else                     res = await searchWeb(eng, query, count);
-    } catch { res = []; }
-
-    if (res?.length) {
-      used.push(eng);
-      pool = dedupeMerge(pool, res);
-      if (pool.length >= count) break;
-    }
+      const wikiRes = await wikiKoSearch(query, count - pool.length);
+      pool = dedupeMerge(pool, wikiRes);
+      if (!used.includes("wiki")) used.push("wiki");
+    } catch {}
   }
-}
 
-  // 3라운드: 상위 N개 결과에 OG 이미지/설명 선탑재
+  // ✅ enrichWithOg 실행을 return 위로 옮기기
   await enrichWithOg(pool, Math.min(PREFETCH_OG_COUNT, pool.length));
 
   return { items: pool.slice(0, count), enginesUsed: used };
 }
+
 
 async function enrichWithOg(items, n) {
   const tasks = [];
