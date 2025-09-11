@@ -480,6 +480,21 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return fortuneCmd.handleButton(interaction);
   }
 
+  // 🌐 웹 검색 페이지네이션(wsearch:)
+if (interaction.isButton() && interaction.customId?.startsWith("wsearch:")) {
+  const cmd = client.commands.get("검색") || require("./commands/search.js");
+  try {
+    await cmd.handleComponent(interaction);
+  } catch (err) {
+    console.error("[웹검색 component 오류]", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 검색 버튼 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
+
+
   // 2. 모달 통합 처리
   if (interaction.isModalSubmit()) {
     let handled = false;
