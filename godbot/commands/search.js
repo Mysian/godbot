@@ -141,8 +141,7 @@ function computeEngineOrder() {
   if (CFG.naverId && CFG.naverSecret) order.push("naver");
   if (CFG.googleKey && CFG.googleCseId) order.push("google");
   if (CFG.bingKey) order.push("bing");
-  order.push("duck-html"); // 키 없이 한국어 결과 확보용
-  order.push("wiki");      // 마지막 안전망
+  order.push("wiki");
   return order;
 }
 
