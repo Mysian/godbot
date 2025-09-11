@@ -6,7 +6,6 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits,
 } = require("discord.js");
 
 const MAX_RESULTS = 10;
@@ -27,7 +26,7 @@ const CFG = {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("검색")
-    .setDescription("실제 검색 엔진(구글/빙/네이버)으로 웹 검색")
+    .setDescription("실제 검색 엔진(구글/빙/네이버/덕덕고)으로 웹 검색")
     .addStringOption(o =>
       o.setName("검색어").setDescription("찾을 내용").setRequired(true)
     ),
@@ -45,29 +44,25 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     // 1) 엔진 선택 (자동 폴백)
-    const engine = pickEngine();
+    const engine = pickEngine(); // bing/google/naver/duck
 
-    if (!engine) {
-      return interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xED4245)
-            .setTitle("🔧 검색 엔진 설정 필요")
-            .setDescription([
-              "- Bing: `BING_KEY` (선택: `BING_ENDPOINT`, `BING_IMAGE_ENDPOINT`)",
-              "- Google CSE: `GOOGLE_API_KEY`, `GOOGLE_CSE_ID`",
-              "- Naver: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`"
-            ].join("\n"))
-        ]
-      });
-    }
-
-    // 2) 웹 검색
+    // 2) 웹 검색 (선택 엔진 실패 시 DuckDuckGo로 2차 폴백)
     let results = [];
+    let usedEngine = engine;
     try {
       results = await searchWeb(engine, query, MAX_RESULTS);
+      if (!results || results.length === 0) throw new Error("no results");
     } catch (e) {
-      return interaction.editReply({ content: `검색 실패: ${e.message || e}`, ephemeral: true });
+      if (engine !== "duck") {
+        try {
+          results = await duckSearch(query, MAX_RESULTS);
+          usedEngine = "duck";
+        } catch {
+          return interaction.editReply({ content: `검색 실패: ${e.message || e}`, ephemeral: true });
+        }
+      } else {
+        return interaction.editReply({ content: `검색 실패: ${e.message || e}`, ephemeral: true });
+      }
     }
 
     if (!results || results.length === 0) {
@@ -84,14 +79,14 @@ module.exports = {
     // 3) 대표 이미지(쿼리 이미지) 1회 조회 (페이지별 결과 썸네일 없을 때만 사용)
     let heroImage = null;
     try {
-      heroImage = await getQueryImage(engine, query);
+      heroImage = await getQueryImage(usedEngine, query, results[0]?.url);
     } catch {}
 
     // 4) 세션 저장
     const key = `${interaction.guild.id}:${interaction.user.id}`;
     sessions.set(key, {
       query,
-      engine,
+      engine: usedEngine,
       items: results.slice(0, MAX_RESULTS),
       index: 0,
       heroImage,
@@ -103,7 +98,7 @@ module.exports = {
       guild: interaction.guild,
       user: interaction.user,
       query,
-      engine,
+      engine: usedEngine,
       items: results,
       index: 0,
       heroImage,
@@ -155,7 +150,7 @@ function pickEngine() {
   if (CFG.bingKey) return "bing";
   if (CFG.googleKey && CFG.googleCseId) return "google";
   if (CFG.naverId && CFG.naverSecret) return "naver";
-  return null;
+  return "duck"; // 키 없으면 덕덕고 기본 동작
 }
 
 function truncate(s, n) {
@@ -184,6 +179,7 @@ function engineBadge(engine) {
   if (engine === "bing")   return "Bing Web Search";
   if (engine === "google") return "Google Programmable Search";
   if (engine === "naver")  return "Naver Search";
+  if (engine === "duck")   return "DuckDuckGo Instant";
   return "Web Search";
 }
 
@@ -237,6 +233,7 @@ async function searchWeb(engine, query, count) {
   if (engine === "bing")   return await bingWebSearch(query, count);
   if (engine === "google") return await googleCseSearch(query, count);
   if (engine === "naver")  return await naverWebSearch(query, count);
+  if (engine === "duck")   return await duckSearch(query, count);
   throw new Error("지원하지 않는 엔진");
 }
 
@@ -253,7 +250,7 @@ async function bingWebSearch(query, count) {
     title: v.name,
     url: v.url,
     snippet: v.snippet,
-    image: v?.image?.thumbnailUrl || null, // 있을 때만
+    image: v?.image?.thumbnailUrl || null,
   }));
   return list;
 }
@@ -304,9 +301,77 @@ async function naverWebSearch(query, count) {
   }));
 }
 
+// ---- DuckDuckGo Instant Answer (키 불필요, 기본 폴백) ----
+async function duckSearch(query, count) {
+  // 참고: 비공식 크롤링 아님. Instant Answer JSON 사용.
+  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&t=discord-bot`;
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) {
+    const t = await safeText(res);
+    throw new Error(`DuckDuckGo ${res.status}: ${t}`);
+  }
+  const j = await res.json();
+
+  const out = [];
+  // 1) 메인 요약
+  if (j.AbstractURL) {
+    out.push({
+      title: j.Heading || j.AbstractSource || j.AbstractURL,
+      url: j.AbstractURL,
+      snippet: j.AbstractText || j.Heading || j.AbstractURL,
+      image: fixDuckImage(j.Image),
+    });
+  }
+  // 2) 관련 토픽(섹션 포함)
+  if (Array.isArray(j.RelatedTopics)) {
+    for (const rt of j.RelatedTopics) {
+      if (rt.Topics && Array.isArray(rt.Topics)) {
+        for (const t of rt.Topics) {
+          if (t.FirstURL && t.Text) {
+            out.push({
+              title: t.Text.split(" - ")[0] || t.Text,
+              url: t.FirstURL,
+              snippet: t.Text,
+              image: fixDuckImage(t.Icon?.URL),
+            });
+          }
+        }
+      } else if (rt.FirstURL && rt.Text) {
+        out.push({
+          title: rt.Text.split(" - ")[0] || rt.Text,
+          url: rt.FirstURL,
+          snippet: rt.Text,
+          image: fixDuckImage(rt.Icon?.URL),
+        });
+      }
+      if (out.length >= count) break;
+    }
+  }
+
+  // 결과가 부족할 때는 메인 Heading만이라도
+  if (out.length === 0 && (j.Heading || j.AbstractText || j.AbstractURL)) {
+    out.push({
+      title: j.Heading || j.AbstractURL || query,
+      url: j.AbstractURL || `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+      snippet: j.AbstractText || query,
+      image: fixDuckImage(j.Image),
+    });
+  }
+
+  return out.slice(0, count);
+}
+
+function fixDuckImage(img) {
+  if (!img) return null;
+  // ex) "/i/xxxxxxxxx.png" → "https://duckduckgo.com/i/xxxxxxxxx.png"
+  if (img.startsWith("/")) return `https://duckduckgo.com${img}`;
+  if (img.startsWith("http")) return img;
+  return null;
+}
+
 // =============== 쿼리 대표 이미지 ===============
-async function getQueryImage(engine, query) {
-  // 1) Bing 이미지 API 있으면 최우선
+async function getQueryImage(engine, query, firstUrl) {
+  // 1) Bing 이미지 API
   if (CFG.bingKey && CFG.bingImageEndpoint) {
     try {
       const url = `${CFG.bingImageEndpoint}?q=${encodeURIComponent(query)}&mkt=ko-KR&count=1&safeSearch=Strict&imageType=Photo`;
@@ -320,7 +385,20 @@ async function getQueryImage(engine, query) {
     } catch {}
   }
 
-  // 2) Google CSE 이미지 메타를 이용(일반 검색에서 이미 뽑은 적 없을 때)
+  // 2) DuckDuckGo Instant Answer 이미지
+  if (engine === "duck") {
+    try {
+      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&t=discord-bot`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (res.ok) {
+        const j = await res.json();
+        const img = fixDuckImage(j.Image);
+        if (img) return img;
+      }
+    } catch {}
+  }
+
+  // 3) Google CSE 이미지 검색 (키 있을 때만)
   if (CFG.googleKey && CFG.googleCseId) {
     try {
       const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(CFG.googleKey)}&cx=${encodeURIComponent(CFG.googleCseId)}&q=${encodeURIComponent(query)}&searchType=image&num=1&safe=active`;
@@ -334,22 +412,12 @@ async function getQueryImage(engine, query) {
     } catch {}
   }
 
-  // 3) Naver 이미지 (마지막 폴백)
-  if (CFG.naverId && CFG.naverSecret) {
+  // 4) 마지막 폴백: 첫 결과 페이지의 OG 이미지 시도
+  if (firstUrl) {
     try {
-      const url = `https://openapi.naver.com/v1/search/image?query=${encodeURIComponent(query)}&display=1&filter=large`;
-      const res = await fetch(url, {
-        headers: {
-          "X-Naver-Client-Id": CFG.naverId,
-          "X-Naver-Client-Secret": CFG.naverSecret,
-        }
-      });
-      if (res.ok) {
-        const j = await res.json();
-        const v = j.items?.[0];
-        if (v?.link) return v.link;
-        if (v?.thumbnail) return v.thumbnail;
-      }
+      const html = await fetch(firstUrl, { headers: { "Accept": "text/html" } }).then(r => r.ok ? r.text() : "");
+      const og = (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || [])[1];
+      if (og) return og;
     } catch {}
   }
 
