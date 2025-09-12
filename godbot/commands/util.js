@@ -373,7 +373,7 @@ module.exports = {
     .addSubcommand(sc => sc.setName("계산기").setDescription("버튼 계산기"))
     .addSubcommand(sc => sc.setName("메모장").setDescription("개인 메모/검색/수정/삭제"))
     .addSubcommand(sc => sc.setName("복권번호").setDescription("1~45 중 6개, 총 5줄"))
-    .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변"))
+    .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변")),
 
   
   // Slash 명령 처리
