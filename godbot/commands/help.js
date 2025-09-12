@@ -68,9 +68,9 @@ module.exports = {
     embeds.push(
       new EmbedBuilder()
         .setTitle("📚 도움말 (3/4)")
-        .setDescription("게임/미니게임/챔피언/모험/랭킹 명령어")
+        .setDescription("유틸/게임/챔피언/모험/랭킹 명령어")
         .addFields(
-          { name: "🎲 /게임", value: "미니게임 즐기기 (알바/도박/랜덤 등)", inline: true },
+          { name: "🔨 /유틸", value: "유용한 기능! (메모장/계산기/복권 등)", inline: true },
           { name: "🍱 /점메추", value: "점심 메뉴 추천", inline: true },
           { name: "🍛 /저메추", value: "저녁 메뉴 추천", inline: true },
           { name: "🔮 /오늘의운세", value: "매일 자정 운세 확인", inline: true },
@@ -158,5 +158,6 @@ embeds.push(
     });
   },
 };
+
 
 
