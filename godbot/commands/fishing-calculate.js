@@ -7,6 +7,53 @@ const TIME_BUFFS = {
   "노을": { biteSpeed: -1, dmg: 0, resistReduce: 0, rarityBias: 1 },
   "밤":   { biteSpeed:  0, dmg: 0, resistReduce: 0, rarityBias: 2 },
 };
+// ── 유물/상자 확률 계산용 상수(원본 fishing.js 기준)
+const RELIC_BITE_PROB = 0.003; // 입질당 0.3%【원본 근거】
+
+// 보물상자 루팅 테이블(가중치) — fishing.js와 동일
+const CHEST_REWARDS = {
+  loot: [
+    // 🪙 코인
+    { kind:"coin", name:"낚시 코인", min:10000,  max:30000,  chance:12 },
+    { kind:"coin", name:"낚시 코인", min:30001,  max:50000,  chance:6  },
+    { kind:"coin", name:"낚시 코인", min:50001,  max:100000, chance:2  },
+
+    // 🔷 파랑 정수
+    { kind:"be",   name:"파랑 정수", min:10000,   max:100000,  chance:10 },
+    { kind:"be",   name:"파랑 정수", min:100001,  max:200000,  chance:5  },
+    { kind:"be",   name:"파랑 정수", min:200001,  max:500000,  chance:1  },
+
+    // 🎣 낚싯대
+    { kind:"rod",  name:"강철 낚싯대",   chance:4   },
+    { kind:"rod",  name:"금 낚싯대",     chance:2   },
+    { kind:"rod",  name:"다이아 낚싯대", chance:0.5 },
+
+    // 🪱 빛나는 젤리 미끼
+    { kind:"bait", name:"빛나는 젤리 미끼", qty:3,  chance:8 },
+    { kind:"bait", name:"빛나는 젤리 미끼", qty:10, chance:4 },
+    { kind:"bait", name:"빛나는 젤리 미끼", qty:20, chance:1 },
+
+    // 🟠 찌
+    { kind:"float", name:"은 찌",    chance:6 },
+    { kind:"float", name:"금 찌",    chance:4 },
+    { kind:"float", name:"다이아 찌", chance:2 },
+
+    // 🧿 유물
+    { kind:"relic", name:"유물", chance:0.5 },
+  ]
+};
+// 가중치 합/정규화 및 유물 확률 계산 헬퍼
+function chestTotalWeight(includeRelic=true){
+  return CHEST_REWARDS.loot
+    .filter(x => includeRelic ? true : x.kind !== "relic")
+    .reduce((s,x)=>s+(x.chance||0), 0);
+}
+function chestRelicProb(includeRelic=true){
+  if (!includeRelic) return 0;
+  const total = chestTotalWeight(true); // 68.0
+  const relicW = (CHEST_REWARDS.loot.find(x=>x.kind==="relic")?.chance)||0;
+  return total>0 ? relicW/total : 0;
+}
 const TIER_BUFFS = {
   "브론즈":       { biteSpeed:  0, dmg: 0, resistReduce: 0, rarityBias: 0 },
   "실버":         { biteSpeed: -1, dmg: 1, resistReduce: 1, rarityBias: 1 },
@@ -111,7 +158,7 @@ const LENGTH_TABLE = {
   "유령고래": [100,200],
   "클리오네의 정령": [10,50]
 };
-const RARITY_HP_MULT = { "노말":1, "레어":1.5, "유니크":2.0, "레전드":3.0, "에픽":4.0, "언노운":20.0 };
+const RARITY_HP_MULT = { "노말":1, "레어":1.5, "유니크":2.0, "레전드":2.5, "에픽":3.0, "언노운":20.0 };
 
 function getTierBuff(tier){ return TIER_BUFFS[tier] || TIER_BUFFS["브론즈"]; }
 function getTimeBuff(band){ return TIME_BUFFS[band] || { biteSpeed:0, dmg:0, resistReduce:0, rarityBias:0 }; }
@@ -192,6 +239,7 @@ const data = new SlashCommandBuilder()
     .addStringOption(o=>o.setName("낚싯대").setDescription("낚싯대").setRequired(true).addChoices(...Object.keys(ROD_SPECS).map(v=>({name:v, value:v}))))
     .addStringOption(o=>o.setName("찌").setDescription("찌").setRequired(true).addChoices(...Object.keys(FLOAT_SPECS).map(v=>({name:v, value:v}))))
     .addStringOption(o=>o.setName("미끼").setDescription("미끼").setRequired(true).addChoices(...Object.keys(BAIT_SPECS).map(v=>({name:v, value:v}))))
+    .addStringOption(o=>o.setName("유물").setDescription("보물상자에서 유물을 ‘풀에 포함’할지/‘없음’으로 볼지").addChoices({ name:"유물 포함", value:"with" },{ name:"유물 없음", value:"none" }))
   );
 
 async function execute(interaction){
@@ -202,6 +250,7 @@ async function execute(interaction){
   const rod = interaction.options.getString("낚싯대", true);
   const float = interaction.options.getString("찌", true);
   const bait = interaction.options.getString("미끼", true);
+  const relicOpt = interaction.options.getString("유물") || "with";
 
   const w = rarityWeights(rod,float,bait,tier,timeBand);
   const p = normalizeWeights(w);
@@ -216,6 +265,15 @@ async function execute(interaction){
     const lo = pct(rng.min), hi = pct(rng.max);
     return `• [${r}] 조우 ${enc} | 포획 ${lo} ~ ${hi}`;
   });
+
+const pRelicBite = RELIC_BITE_PROB; // 0.3%
+const pChestRelic = chestRelicProb(relicOpt !== "none"); // 0.735% or 0
+const pChestNoRelic = 1 - pChestRelic;
+
+rows.push("");
+rows.push(`• 유물 입질 확률(낚시 중): ${(pRelicBite*100).toFixed(3)}%`);
+rows.push(`• 유물 획득 확률(보물상자): ${(pChestRelic*100).toFixed(3)}% (${relicOpt==="none"?"유물 풀 제외":"유물 포함"})`);
+rows.push(`• 유물 없음(보물상자): ${(pChestNoRelic*100).toFixed(3)}%`);
 
   const eb = new EmbedBuilder()
     .setTitle("🎯 낚시 확률 계산")
