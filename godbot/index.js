@@ -351,6 +351,7 @@ const champBattle = require('./commands/champ-battle');
 const remoteCmd = client.commands.get("리모콘");
 const donateCmd = client.commands.get('후원');
 const fortuneCmd = require("./commands/fortune.js");
+const utilCmd = client.commands.get("유틸") || require("./commands/util.js");
 
 const scrimAnnounce =
   client.commands.get("내전공지") ||
@@ -492,6 +493,25 @@ if (interaction.isButton() && interaction.customId?.startsWith("wsearch:")) {
     }
   }
   return;
+}
+
+  // === 유틸: 계산기/메모장/복권 상호작용 ===
+if (
+  (interaction.isButton() || interaction.isModalSubmit()) &&
+  (
+    interaction.customId?.startsWith("calc:")  ||
+    interaction.customId?.startsWith("memo:")  ||
+    interaction.customId?.startsWith("lotto:")
+  )
+) {
+  try {
+    return await utilCmd.route(interaction);
+  } catch (e) {
+    console.error("[유틸 route 오류]", e);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 유틸 처리 중 오류", ephemeral: true }).catch(()=>{});
+    }
+  }
 }
 
 
