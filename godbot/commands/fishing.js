@@ -1475,6 +1475,9 @@ function applyQuestEvent(u, db, event, data={}){
       case "junk_collect":
         if (event==="junk_caught") inc(u, q.id, 1);
         break;
+      case "chest_open":
+        if (event === "chest_open") inc(u, q.id, data.count || 1);
+        break;
       case "catch_specific":
         if (event==="fish_caught" && data.name===q.species) inc(u, q.id, 1);
         break;
