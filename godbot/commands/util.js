@@ -27,6 +27,7 @@ const CUSTOM_PREFIX = "util:";     // 공통 prefix
 const CALC_PREFIX   = "calc:";     // 계산기
 const MEMO_PREFIX   = "memo:";     // 메모장
 const LOTTO_PREFIX  = "lotto:";    // 복권
+const CONCH_PREFIX  = "conch:";    // 소라고동
 
 // 메모 페이징
 const MEMO_PAGE_SIZE = 10;
@@ -52,6 +53,23 @@ function nowKST() {
   const now = new Date();
   // KST = UTC+9, 로컬 환경 상관 없이 표시용은 그냥 now로 사용
   return now;
+}
+
+function renderConchIntroEmbed() {
+  return new EmbedBuilder()
+    .setTitle("🐚 마법의 소라고동")
+    .setDescription("아무 말이나 **질문**을 해봐!\n> **봇이 ‘그래’ 또는 ‘아니’ 중 하나로만** 대답해줄게.\n\n**안내**: _봇이 **그래/아니**로 답변 가능한 질문을 해주세요._")
+    .setColor(0xA66BFF);
+}
+function renderConchIntroButtons() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(CONCH_PREFIX + "ask")
+        .setLabel("질문하기")
+        .setStyle(ButtonStyle.Primary)
+    ),
+  ];
 }
 
 /** 문자열 seed -> 32bit 정수 */
@@ -353,8 +371,10 @@ module.exports = {
     .setName("유틸")
     .setDescription("유틸리티 도구 모음")
     .addSubcommand(sc => sc.setName("계산기").setDescription("버튼 계산기"))
-    .addSubcommand(sc => sc.setName("메모장").setDescription("개인 메모/검색/삭제"))
+    .addSubcommand(sc => sc.setName("메모장").setDescription("개인 메모/검색/수정/삭제"))
     .addSubcommand(sc => sc.setName("복권번호").setDescription("1~45 중 6개, 총 5줄")),
+    .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변"))
+
   
   // Slash 명령 처리
   async execute(interaction) {
@@ -384,6 +404,12 @@ module.exports = {
       const lines = genLottoLines(5, `${userId}:${Date.now()}`);
       const embed = renderLottoEmbed(userId, lines);
       const rows = renderLottoButtons();
+      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    }
+
+    if (sub === "마법의소라고동") {
+      const embed = renderConchIntroEmbed();
+      const rows  = renderConchIntroButtons();
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
     }
   },
@@ -636,6 +662,39 @@ if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
       const rows = renderLottoButtons();
       return interaction.update({ embeds: [embed], components: rows });
     }
+
+        // ===== 소라고동: 질문하기 버튼 =====
+    if (customId === CONCH_PREFIX + "ask") {
+      const modal = new ModalBuilder()
+        .setCustomId(CONCH_PREFIX + "ask_submit")
+        .setTitle("마법의 소라고동에게 물어보기");
+
+      const ti = new TextInputBuilder()
+        .setCustomId("q")
+        .setLabel("질문을 입력하세요 (예: 오늘 나갈까?)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(ti));
+      return interaction.showModal(modal);
+    }
+
+          // ===== 소라고동: 모달 제출 =====
+      if (customId === CONCH_PREFIX + "ask_submit") {
+        const q = (interaction.fields.getTextInputValue("q") || "").trim();
+        const answer = Math.random() < 0.5 ? "그래" : "아니";
+
+        const embed = new EmbedBuilder()
+          .setTitle("🐚 마법의 소라고동")
+          .addFields(
+            { name: "질문", value: q.length ? q : "(질문 없음)" },
+            { name: "대답", value: `**${answer}**` },
+          )
+          .setFooter({ text: "봇이 그래/아니로만 답하는 모드야!" })
+          .setColor(0xA66BFF);
+
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
 
     /* ===== 메모: 모달 submit ===== */
     if (interaction.isModalSubmit()) {
