@@ -37,6 +37,12 @@ const calcSessions = new Map(); // userId -> { a, b, op, input, last, updatedAt 
 /* =========================
  * 유틸 함수
  * ========================= */
+function formatKST(ts) {
+  if (ts == null) return "";
+  const d = new Date(ts);
+  return d.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
+}
+
 function clampLen(str, max) {
   if (!str) return "";
   return str.length <= max ? str : (str.slice(0, max - 1) + "…");
@@ -225,10 +231,10 @@ function renderMemoListEmbed(userId, list, page, query) {
   const slice = list.slice(start, start + MEMO_PAGE_SIZE);
 
   const lines = slice.map((m, i) => {
-    const idx = start + i + 1;
+    const idx = start + i + 1;               // 번호
     const title = clampLen(m.title || "(제목 없음)", 40);
-    const d = new Date(m.createdAt);
-    return `**${idx}.** ${title} ・ ${d.toLocaleString()}`;
+    const d = formatKST(m.createdAt);        // ✅ 한국시간
+    return `**${idx}.** ${title} ・ ${d}`;
   });
   const desc = (query ? `🔎 검색어: **${query}**\n` : "") + (lines.length ? lines.join("\n") : "메모가 없습니다.");
 
@@ -238,6 +244,7 @@ function renderMemoListEmbed(userId, list, page, query) {
     .setFooter({ text: `총 ${total}개 ・ ${p + 1}/${maxPage + 1}` })
     .setColor(0x2ECC71);
 }
+
 function renderMemoListButtons(list, page, query) {
   const total = list.length;
   const maxPage = Math.max(0, Math.ceil(total / MEMO_PAGE_SIZE) - 1);
@@ -245,18 +252,18 @@ function renderMemoListButtons(list, page, query) {
   const start = p * MEMO_PAGE_SIZE;
   const slice = list.slice(start, start + MEMO_PAGE_SIZE);
 
-  // 항목 버튼 (최대 10개 → 2줄)
   const rowA = new ActionRowBuilder();
   const rowB = new ActionRowBuilder();
+
   slice.forEach((m, i) => {
+    const idx = start + i + 1; // ✅ 제목 대신 “번호”만
     const btn = new ButtonBuilder()
-      .setCustomId(MEMO_PREFIX + `open|${m.id}|${p}`) // 열기
-      .setLabel(clampLen(m.title || "(제목 없음)", 25))
+      .setCustomId(MEMO_PREFIX + `open|${m.id}|${p}`)
+      .setLabel(String(idx))
       .setStyle(ButtonStyle.Secondary);
     if (i < 5) rowA.addComponents(btn); else rowB.addComponents(btn);
   });
 
-  // 네비 + 검색/추가
   const rowNav = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(MEMO_PREFIX + `prev|${p}`).setLabel("◀ 이전").setStyle(ButtonStyle.Primary).setDisabled(p <= 0),
     new ButtonBuilder().setCustomId(MEMO_PREFIX + "page").setLabel(`${p + 1}/${maxPage + 1}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
@@ -271,23 +278,30 @@ function renderMemoListButtons(list, page, query) {
   rows.push(rowNav);
   return rows;
 }
+
 function renderMemoDetailEmbed(m) {
-  const exp = m.expiresAt ? new Date(m.expiresAt).toLocaleString() : "무기한";
+  const exp = m.expiresAt ? formatKST(m.expiresAt) : "무기한";   // ✅ KST
+  const body = (m.body && m.body.trim().length) ? m.body : "(내용 없음)";
+  const bodyBox = "```\n" + body + "\n```";                      // ✅ 코드블록
+
   return new EmbedBuilder()
     .setTitle(`🗒 ${m.title || "(제목 없음)"}`)
-    .setDescription(m.body || "(내용 없음)")
+    .setDescription(bodyBox)
     .addFields({ name: "보관 기한", value: exp, inline: false })
-    .setFooter({ text: `작성: ${new Date(m.createdAt).toLocaleString()} ・ ID: ${m.id}` })
+    .setFooter({ text: `작성: ${formatKST(m.createdAt)} ・ ID: ${m.id}` }) // ✅ KST
     .setColor(0x3498DB);
 }
+
 function renderMemoDetailButtons(page) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(MEMO_PREFIX + `back|${page}`).setLabel("목록으로").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(MEMO_PREFIX + `edit|${page}`).setLabel("수정").setStyle(ButtonStyle.Primary), // ✅ 가운데 [수정]
       new ButtonBuilder().setCustomId(MEMO_PREFIX + `del`).setEmoji("🗑").setLabel("삭제").setStyle(ButtonStyle.Danger),
     ),
   ];
 }
+
 
 /* =========================
  * 복권번호
@@ -520,6 +534,98 @@ module.exports = {
         const rows = renderMemoListButtons(next, page, "");
         return interaction.update({ content: "🗑 삭제 완료", embeds: [embed], components: rows });
       }
+      // 상세에서 수정 (모달 열기)
+if (customId.startsWith(MEMO_PREFIX + "edit|")) {
+  const [, pageStr] = customId.split("|");
+  const embeds = interaction.message.embeds || [];
+  if (!embeds.length || !embeds[0].footer?.text) {
+    return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
+  }
+  const footer = embeds[0].footer.text; // "작성: ... ・ ID: <id>"
+  const idMatch = footer.match(/ID:\s*(\S+)/);
+  const editId = idMatch ? idMatch[1] : null;
+  if (!editId) {
+    return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
+  }
+
+  const list = await readMemos(user.id);
+  const memo = list.find(m => String(m.id) === String(editId));
+  if (!memo) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
+
+  // TTL 남은 일수(정수) 계산
+  let ttlDays = "";
+  if (memo.expiresAt) {
+    const leftMs = memo.expiresAt - Date.now();
+    if (leftMs > 0) ttlDays = String(Math.ceil(leftMs / (24 * 60 * 60 * 1000)));
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(MEMO_PREFIX + `edit_submit|${memo.id}|${pageStr || "0"}`)
+    .setTitle("메모 수정");
+
+  const tiTitle = new TextInputBuilder()
+    .setCustomId("title")
+    .setLabel("제목")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setValue(memo.title || "");
+
+  const tiBody = new TextInputBuilder()
+    .setCustomId("body")
+    .setLabel("내용")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setValue(memo.body || "");
+
+  const tiTTL = new TextInputBuilder()
+    .setCustomId("ttl")
+    .setLabel("보관 기한(일) — 0/공백=무기한")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setValue(ttlDays);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(tiTitle),
+    new ActionRowBuilder().addComponents(tiBody),
+    new ActionRowBuilder().addComponents(tiTTL),
+  );
+  return interaction.showModal(modal);
+}
+
+      // 수정 제출
+if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
+  const [, id, pageStr] = customId.split("|");
+  const userId = interaction.user.id;
+
+  const title = (interaction.fields.getTextInputValue("title") || "").trim();
+  const body  = (interaction.fields.getTextInputValue("body")  || "").trim();
+  const ttlStr = (interaction.fields.getTextInputValue("ttl")  || "").trim();
+
+  let expiresAt = null;
+  if (ttlStr) {
+    const days = Number(ttlStr);
+    if (!isNaN(days) && days > 0) {
+      expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
+    }
+  }
+
+  const list = await readMemos(userId);
+  const idx = list.findIndex(m => String(m.id) === String(id));
+  if (idx === -1) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
+
+  // 업데이트
+  list[idx].title = title;
+  list[idx].body  = body;
+  list[idx].expiresAt = expiresAt;
+
+  await writeMemos(userId, list);
+
+  // 수정된 상세 임베드 보여주기 (새 에페메랄 메시지)
+  const updated = list[idx];
+  const embed = renderMemoDetailEmbed(updated);
+  const rows  = renderMemoDetailButtons(Number(pageStr) || 0);
+  return interaction.reply({ content: "✅ 수정 완료", embeds: [embed], components: rows, ephemeral: true });
+}
     }
 
     /* ===== 복권: 버튼 ===== */
