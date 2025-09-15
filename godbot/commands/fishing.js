@@ -4904,7 +4904,10 @@ if (need === 0) return interaction.reply({ content:`이미 ${name}가 가득(${p
           if ((getBE(userId)||0) < cost) return interaction.reply({ content:`정수가 부족합니다. (필요: ${cost}원)`, ephemeral:true });
           await addBE(userId, -cost, `[낚시] ${name} 구매`);
         }
-        if (kind==="rod") addRod(u, name);
+        if (kind==="rod") {
+        addRod(u, name);
+        if (name === "전설의 낚싯대") recordFirst(db, "legendRod", userId);
+        }
         if (kind==="float") addFloat(u, name);
         return interaction.reply({ content:`구매 완료: ${name}`, ephemeral:true });
       }
