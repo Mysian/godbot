@@ -46,6 +46,7 @@ const GAME_NAME_MAP = new Map([
   ["ETERNAL RETURN", "이터널 리턴"],
   ["이터널 리턴", "이터널 리턴"],
   ["Valheim", "발헤임"],
+  ["Enshrouded", "인슈라오디드"],
 ]);
 
 // ===== 유사도 매칭 유틸 =====
