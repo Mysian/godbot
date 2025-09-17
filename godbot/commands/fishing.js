@@ -4524,27 +4524,34 @@ if (interaction.customId === "sell-rarity-choose") {
       return interaction.reply({ content:`상자에서 ${amt.toLocaleString()} 코인을 받으셨습니다.`, ephemeral:true });
     }
     if (item.kind === "relic") {
-      ensureRelics(u); // 유물 슬롯 초기화
-      const name = RELIC_LIST[Math.floor(Math.random()*RELIC_LIST.length)]; // 랜덤 유물
-      const cur  = relicLv(u, name);
-      const max  = (RELICS[name]?.max ?? 5);
+  ensureRelics(u);
+  const name = RELIC_LIST[Math.floor(Math.random()*RELIC_LIST.length)];
+  const cur  = relicLv(u, name);
+  const max  = (RELICS[name]?.max ?? 5);
 
-      if (cur < max) {
-        u.relics.lv[name] = cur + 1;
-        // 필요 시 저장: await saveUser(db, u);
-        return interaction.reply({
-          content: `🧿 유물 획득! **${name}** Lv.${cur+1}`,
-          ephemeral: true
-        });
-      } else {
-        // 최대 레벨이면 코인 보상
-        gainCoins(u, db, 300000);
-        return interaction.reply({
-          content: `🧿 유물 중복! **+300,000 코인** 지급`,
-          ephemeral: true
-        });
-      }
-    }
+  let title, desc, image;
+  if (cur < max) {
+    u.relics.lv[name] = cur + 1;
+    title = "🧿 유물 획득!";
+    desc  = `**${name}** Lv.${cur+1}`;
+    image = relicImg(name);
+  } else {
+    gainCoins(u, db, 300000);
+    title = "🧿 유물 중복!";
+    desc  = "**+300,000 코인**이 지급되었습니다.";
+    image = relicImg(name);
+  }
+
+  const eb = sceneEmbed(u, title, desc, image);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("relic:home").setLabel("🧿 유물").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("inv:home").setLabel("🎒 인벤토리").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("nav:pond").setLabel("🏞️ 낚시터").setStyle(ButtonStyle.Secondary),
+  );
+
+  return interaction.reply({ embeds: [eb], components: [row], ephemeral: true });
+}
 
     throw new Error("지원하지 않는 chest item.kind");
   } catch (e) {
