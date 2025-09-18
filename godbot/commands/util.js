@@ -402,8 +402,12 @@ async function searchBingImages(q, lang) {
   url.searchParams.set("safeSearch", "Moderate");
   url.searchParams.set("mkt", lang || "ko-KR");
   url.searchParams.set("imageType", "Photo");
-  const res = await fetch(url, {
-    headers: { "Ocp-Apim-Subscription-Key": IMG_CFG.bingKey, "Accept-Language": lang || "ko-KR" },
+  const res = await fetchSafe(url, {
+    headers: {
+      "Ocp-Apim-Subscription-Key": IMG_CFG.bingKey,
+      "Accept-Language": lang || "ko-KR",
+      "User-Agent": "Mozilla/5.0",
+    },
   });
   if (!res.ok) return [];
   const json = await res.json();
@@ -411,6 +415,7 @@ async function searchBingImages(q, lang) {
   const urls = items.map(v => sanitizeImageUrl(v.contentUrl || v.contentUrlHttps || v.thumbnailUrl)).filter(Boolean);
   return urls;
 }
+
 async function searchGoogleImages(q) {
   if (!IMG_CFG.googleKey || !IMG_CFG.googleCseId) return [];
   const url = new URL("https://www.googleapis.com/customsearch/v1");
@@ -419,23 +424,25 @@ async function searchGoogleImages(q) {
   url.searchParams.set("q", q);
   url.searchParams.set("searchType", "image");
   url.searchParams.set("num", "10");
-  const res = await fetch(url);
+  const res = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) return [];
   const json = await res.json();
   const items = Array.isArray(json.items) ? json.items : [];
   const urls = items.map(it => sanitizeImageUrl(it.link)).filter(Boolean);
   return urls;
 }
+
 async function searchNaverImages(q) {
   if (!IMG_CFG.naverId || !IMG_CFG.naverSecret) return [];
   const url = new URL("https://openapi.naver.com/v1/search/image.json");
   url.searchParams.set("query", q);
   url.searchParams.set("display", "30");
   url.searchParams.set("sort", "sim");
-  const res = await fetch(url, {
+  const res = await fetchSafe(url, {
     headers: {
       "X-Naver-Client-Id": IMG_CFG.naverId,
       "X-Naver-Client-Secret": IMG_CFG.naverSecret,
+      "User-Agent": "Mozilla/5.0",
     },
   });
   if (!res.ok) return [];
@@ -464,19 +471,39 @@ async function searchDuckDuckGoImages(q) {
   }
 }
 
-// ✅ Wikimedia Commons(무키). 키워드로 미디어 파일 직접 가져옴
+// ✅ Unsplash(무키) — 리다이렉트지만 디스코드가 따라감, 주제 관련 랜덤 1장
+function unsplashDirectUrl(q) {
+  const qp = encodeURIComponent(q);
+  return `https://source.unsplash.com/featured/1280x720/?${qp}`;
+}
+async function searchUnsplashNoKey(q) {
+  return [unsplashDirectUrl(q)];
+}
+
+// ✅ LoremFlickr(무키) — 캐시 락으로 매번 다른 랜덤 1장
+function loremFlickrDirectUrl(q) {
+  const tag = encodeURIComponent(q.replace(/\s+/g, ','));
+  const lock = Math.floor(Math.random() * 1e9);
+  return `https://loremflickr.com/1280/720/${tag}?lock=${lock}`;
+}
+async function searchLoremFlickrDirect(q) {
+  return [loremFlickrDirectUrl(q)];
+}
+
+
+// ✅ Wikimedia Commons(무키) — "파일" 네임스페이스(6)만 검색해서 이미지 보장
 async function searchWikimediaImages(q) {
   try {
     const url = new URL("https://commons.wikimedia.org/w/api.php");
     url.searchParams.set("action", "query");
     url.searchParams.set("generator", "search");
     url.searchParams.set("gsrsearch", q);
-    url.searchParams.set("gsrlimit", "20");
+    url.searchParams.set("gsrlimit", "30");
+    url.searchParams.set("gsrnamespace", "6"); // 파일 네임스페이스만
     url.searchParams.set("prop", "imageinfo");
     url.searchParams.set("iiprop", "url");
-    url.searchParams.set("iiurlwidth", "1600"); // 적당히 큰 썸네일
+    url.searchParams.set("iiurlwidth", "1600");
     url.searchParams.set("format", "json");
-    // origin=* 는 브라우저 CORS용이라 서버에선 불필요
 
     const res = await fetchSafe(url);
     if (!res.ok) return [];
@@ -485,15 +512,16 @@ async function searchWikimediaImages(q) {
     const urls = [];
     for (const k in pages) {
       const info = pages[k]?.imageinfo?.[0];
-      const u = sanitizeImageUrl(info?.thumburl || info?.url);
-      if (u) urls.push(u);
+      const u = (info?.thumburl || info?.url) || null;
+      const su = sanitizeImageUrl(u);
+      if (su) urls.push(su);
     }
     return urls;
-  } catch (e) {
-    // console.warn("[Wikimedia]", e);
+  } catch {
     return [];
   }
 }
+
 
 async function findImages(q, lang) {
   const seen = new Set();
@@ -502,19 +530,28 @@ async function findImages(q, lang) {
     try {
       const arr = await fn();
       for (const u of arr) {
-        if (!seen.has(u)) { seen.add(u); out.push(u); }
+        const su = sanitizeImageUrl(u);
+        if (su && !seen.has(su)) { seen.add(su); out.push(su); }
       }
     } catch { /* ignore */ }
   }
-  // ① 유료/키 기반(있으면 사용)
-  await addFrom(() => searchBingImages(q, lang));
-  await addFrom(() => searchGoogleImages(q));
-  await addFrom(() => searchNaverImages(q));
-  // ② 무키 폴백(키 없어도 동작)
-  if (out.length < 1) await addFrom(() => searchDuckDuckGoImages(q));
-  if (out.length < 1) await addFrom(() => searchWikimediaImages(q));
+
+  // 0) 무키 ‘즉시 성공’ 라인 — 여기서 최소 1장은 보장
+  await addFrom(() => searchUnsplashNoKey(q));
+  if (out.length < 1) await addFrom(() => searchLoremFlickrDirect(q));
+
+  // 1) 키 기반 (있으면 다양성 ↑)
+  if (out.length < 3) await addFrom(() => searchBingImages(q, lang));
+  if (out.length < 3) await addFrom(() => searchGoogleImages(q));
+  if (out.length < 3) await addFrom(() => searchNaverImages(q));
+
+  // 2) 무키 API 폴백 (DDG는 종종 막히지만 성공할 때 많음)
+  if (out.length < 3) await addFrom(() => searchWikimediaImages(q));
+  if (out.length < 3) await addFrom(() => searchDuckDuckGoImages(q));
+
   return out;
 }
+
 function renderImageEmbed(q, url, lang, shared = false) {
   const eb = new EmbedBuilder()
     .setTitle(`🖼️ 이미지: ${q}`)
