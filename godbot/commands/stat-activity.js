@@ -419,7 +419,7 @@ module.exports = {
 }
         const totalPages = Math.ceil(Object.keys(counts).length / pageSize) || 1;
         return { embed, totalPages };
-      } else {
+        else {
         return buildStatsEmbed({ guild: interaction.guild, page: mainPage, filterType, period });
       }
     }
@@ -499,4 +499,5 @@ module.exports = {
     });
   }
 };
+
 
