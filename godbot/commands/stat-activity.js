@@ -242,12 +242,12 @@ function buildActivityEmbed({ guild, period = "7", page = 0, logs }) {
   }
 
   // 3) 정렬(내림차순), 페이지 슬라이스
-  const sorted = [...groupCount.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([group]) => groupLabel.get(group));
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const slice = sorted.slice(page * pageSize, (page + 1) * pageSize);
+const sorted = [...groupCount.entries()]
+  .sort((a, b) => b[1] - a[1])
+  .map(([group]) => groupLabel.get(group));
+const capped = sorted.slice(0, 50);
+const totalPages = Math.max(1, Math.ceil(capped.length / pageSize));
+const slice = capped.slice(page * pageSize, (page + 1) * pageSize);
 
   // 4) 출력(순위만, "~회" 미출력)
   const desc = slice.length
@@ -464,9 +464,11 @@ async function getEmbed() {
 
     let currentTotalPages = totalPages;
 
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter: i => i.user.id === interaction.user.id && (i.isButton() || i.isStringSelectMenu()),
-      time: 2 * 60 * 1000,
+  const collector = interaction.channel.createMessageComponentCollector({
+    filter: i => i.user.id === interaction.user.id && (i.isButton() || i.isStringSelectMenu()),
+    // 최대 15분이 디스코드 상호작용 실사용 한계. 필요하면 아래처럼 넉넉히.
+    time: 10 * 60 * 1000,    // 전체 수명(무조건 이 시간 뒤 종료)
+    idle: 5 * 60 * 1000,     // 이 시간 동안 입력 없으면 조기 종료(원하면 주석 처리)
     });
 
     collector.on("collect", async i => {
@@ -524,6 +526,7 @@ async function getEmbed() {
     });
   }
 };
+
 
 
 
