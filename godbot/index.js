@@ -504,7 +504,9 @@ if (
     interaction.customId?.startsWith("calc:")  ||
     interaction.customId?.startsWith("memo:")  ||
     interaction.customId?.startsWith("lotto:") ||
-    interaction.customId?.startsWith("conch:")
+    interaction.customId?.startsWith("conch:") ||
+    interaction.customId?.startsWith("conch:") ||
+    interaction.customId?.startsWith("img:")
   )
 ) {
   try {
