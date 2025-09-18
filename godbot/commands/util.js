@@ -991,8 +991,8 @@ module.exports = {
     /* ===== 이미지: 버튼 ===== */
     if (customId.startsWith(IMG_PREFIX)) {
       pruneOldImageSessions();
-      const [_, action, sessionId] = customId.split("|");
-         let sess = imageSessions.get(sessionId);
+      let [, action, sessionId] = customId.split("|");
+      let sess = imageSessions.get(sessionId);
 
      // 🔁 세션이 없으면 임베드로부터 즉석 복구 (재시작/핫리로드 대응)
      if (!sess) {
