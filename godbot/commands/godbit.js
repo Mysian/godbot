@@ -53,16 +53,20 @@ function applyWallEffect(price, delta, volume = 0) {
 }
 
 const CHART_FILTERS = [
-  { label: "10분",  value: "10m",  points: 7, interval: 10 },
-  { label: "30분",  value: "30m",  points: 7, interval: 30 },
-  { label: "1시간", value: "1h",   points: 7, interval: 60 },
-  { label: "3시간", value: "3h",   points: 7, interval: 180 },
-  { label: "6시간", value: "6h",   points: 7, interval: 360 },
-  { label: "12시간",value: "12h",  points: 7, interval: 720 },
-  { label: "1일",   value: "1d",   points: 7, interval: 1440 },
-  { label: "3일",   value: "3d",   points: 7, interval: 1440*3 },
-  { label: "일주일",value: "7d",   points: 7, interval: 1440*7 },
+  { label: "10분",   value: "10m",  points: 7,  interval: 10 },
+  { label: "30분",   value: "30m",  points: 7,  interval: 30 },
+  { label: "1시간",  value: "1h",   points: 7,  interval: 60 },
+  { label: "3시간",  value: "3h",   points: 7,  interval: 180 },
+  { label: "6시간",  value: "6h",   points: 7,  interval: 360 },
+  { label: "12시간", value: "12h",  points: 7,  interval: 720 },
+  { label: "1일",    value: "1d",   points: 7,  interval: 1440 },
+  { label: "3일",    value: "3d",   points: 7,  interval: 1440*3 },
+  { label: "일주일", value: "7d",   points: 7,  interval: 1440*7 },
+  { label: "보름",   value: "15d",  points: 7,  interval: 1440*15 },
+  { label: "30일",   value: "30d",  points: 7,  interval: 1440*30 },
+  { label: "1년",    value: "1y",   points: 12, interval: 1440*30 },
 ];
+
 
 const CORR_PAIRS = [
   ["까리코인", "영갓코인"],
@@ -114,6 +118,8 @@ async function saveJson(file, data) {
 
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
+
+  // 1분 전용(기존 로직 유지)
   if (chartValue === '1m') {
     const start = info.history.length - chartRange;
     const data = (info.history || []).slice(start < 0 ? 0 : start);
@@ -126,35 +132,46 @@ function getSampledHistory(info, chartRange, chartInterval, chartValue) {
     while (labels.length < chartRange) labels.unshift('-');
     return { data, labels };
   }
+
   const data = [];
   const labels = [];
-  let prevTime = null;
+  let prevMs = null;
   let n = 0;
+
   for (let i = info.history.length - 1; i >= 0; i--) {
+    // UTC ISO → KST ms(UTC+9)로 직접 보정 (문자열 재파싱 금지)
     const t = new Date(info.historyT[i]);
-    const kst = new Date(t.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-    if (!prevTime || (prevTime - kst) >= chartInterval * 60 * 1000) {
+    const kstMs = t.getTime() + 9 * 60 * 60 * 1000; // KST
+
+    if (prevMs === null || (prevMs - kstMs) >= chartInterval * 60 * 1000) {
       data.unshift(info.history[i]);
+
+      const kd = new Date(kstMs); // kd의 UTC 필드를 KST처럼 사용
       let label = '-';
+
       if (['10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
-        label = kst.getHours().toString().padStart(2, '0') + ':' + kst.getMinutes().toString().padStart(2, '0');
+        const hh = String(kd.getUTCHours()).padStart(2, '0');
+        const mm = String(kd.getUTCMinutes()).padStart(2, '0');
+        label = `${hh}:${mm}`;
       } else if (['1d','3d','7d','15d','30d'].includes(chartValue)) {
-        label = (kst.getMonth()+1).toString().padStart(2,'0') + '.' + kst.getDate().toString().padStart(2,'0');
+        const mon = String(kd.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(kd.getUTCDate()).padStart(2, '0');
+        label = `${mon}.${day}`;
       } else if (chartValue === '1y') {
-        label = kst.getFullYear().toString();
+        label = String(kd.getUTCFullYear());
       }
+
       labels.unshift(label);
-      prevTime = kst;
+      prevMs = kstMs;
       n++;
       if (n >= chartRange) break;
     }
   }
-  while (data.length < chartRange) {
-    data.unshift(0);
-    labels.unshift('-');
-  }
+
+  while (data.length < chartRange) { data.unshift(0); labels.unshift('-'); }
   return { data, labels };
 }
+
 
 async function ensureBaseCoin(coins) {
   const now = new Date().toISOString();
