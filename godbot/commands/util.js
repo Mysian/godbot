@@ -148,11 +148,11 @@ async function writeMemos(userId, list) {
  * 계산기
  * ========================= */
 function renderCalcEmbed(userId) {
-  const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now() };
+  const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
   const { a, op, input, last } = st;
   const display = input || (a !== null ? String(a) : "0");
   const expr = `${a !== null ? a : ""} ${op || ""} ${input ? input : ""}`.trim() || (last !== null ? `ans: ${last}` : "ready");
-  return new EmbedBuilder()
+  const eb = new EmbedBuilder()
     .setTitle("🧮 계산기")
     .setDescription("간단 계산 현황")
     .addFields(
@@ -160,6 +160,12 @@ function renderCalcEmbed(userId) {
       { name: "식", value: expr || "-", inline: false },
     )
     .setColor(0x5865F2);
+
+  if (st.showHist && Array.isArray(st.hist) && st.hist.length) {
+    const lines = st.hist.slice(0, 8).join("\n"); // 디스코드 필드 길이 여유
+    eb.addFields({ name: "최근 계산 (최대 10개)", value: "```\n" + lines + "\n```", inline: false });
+  }
+  return eb;
 }
 function renderCalcButtons(st) {
   // 4x4
@@ -187,7 +193,12 @@ function renderCalcButtons(st) {
     new ButtonBuilder().setCustomId(CALC_PREFIX + "dot").setLabel(".").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(CALC_PREFIX + "eq").setLabel("=").setStyle(ButtonStyle.Success),
   );
-  return [row1, row2, row3, row4];
+  const row5 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(CALC_PREFIX + "clear").setLabel("CLEAR").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(CALC_PREFIX + "history").setLabel("HISTORY").setStyle(ButtonStyle.Secondary),
+  );
+  return [row1, row2, row3, row4, row5];
+
 }
 function pushDigit(st, d) {
   if (!st.input) st.input = d;
@@ -221,6 +232,14 @@ function applyOp(st, op) {
   }
   st.op = op; // '+' or '-'
 }
+function pushHistory(st, a, op, b, res) {
+  try {
+    const line = `${a} ${op} ${b} = ${Number.isFinite(res) ? res : String(res)}`;
+    st.hist = Array.isArray(st.hist) ? st.hist : [];
+    st.hist.unshift(line);
+    if (st.hist.length > 10) st.hist.length = 10; // 최대 10개 유지
+  } catch { /* noop */ }
+}
 function calcEqual(st) {
   const a = st.a;
   const b = st.input ? Number(st.input) : null;
@@ -232,10 +251,12 @@ function calcEqual(st) {
   else if (st.op === "/") res = b === 0 ? NaN : a / b;
 
   st.last = res;
+  pushHistory(st, a, st.op, b, res);
   st.a = res;
   st.input = "";
   st.op = null;
   st.updatedAt = Date.now();
+
 }
 
 /* =========================
@@ -384,8 +405,9 @@ module.exports = {
     if (sub === "계산기") {
       // 세션 초기화/유지
       if (!calcSessions.has(userId)) {
-        calcSessions.set(userId, { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now() });
-      }
+  calcSessions.set(userId, { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false });
+}
+
       const st = calcSessions.get(userId);
       const embed = renderCalcEmbed(userId);
       const rows = renderCalcButtons(st);
@@ -421,7 +443,7 @@ module.exports = {
     /* ===== 계산기 ===== */
     if (customId.startsWith(CALC_PREFIX)) {
       const userId = user.id;
-      const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now() };
+      const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
 
       if (customId === CALC_PREFIX + "neg") toggleSign(st);
       else if (customId === CALC_PREFIX + "dot") pushDot(st);
@@ -433,6 +455,19 @@ module.exports = {
         const op = customId.split("|")[1];
         if (op === "+" || op === "-") applyOp(st, op);
         else if (op === "muldiv") applyOp(st, "muldiv");
+      }
+      else if (customId === CALC_PREFIX + "clear") {
+        st.a = null;
+        st.b = null;
+        st.op = null;
+        st.input = "";
+        st.last = null;
+        st.updatedAt = Date.now();
+      }
+      // HISTORY: 표시 토글
+      else if (customId === CALC_PREFIX + "history") {
+        st.showHist = !st.showHist;
+        st.updatedAt = Date.now();
       }
 
       calcSessions.set(userId, st);
