@@ -243,6 +243,111 @@ function renderRadarPng({ labels, values }) {
   return canvas.toBuffer("image/png");
 }
 
+// [ADD] 공개용 프로필 공유 임베드 빌더
+async function buildProfileShareEmbed(interaction, targetUser) {
+  const userId = targetUser.id;
+
+  // 원본과 동일한 데이터 로딩
+  const profiles = readJson(profilesPath);
+  const favor = readJson(favorPath);
+  const be = readJson(bePath);
+
+  const defaultProfile = { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false };
+  const profile = { ...defaultProfile, ...(profiles[userId] || {}) };
+
+  const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
+  const playStyle = getPlayStyle(targetMember);
+  const favorVal = favor[userId] ?? 0;
+  const beAmount = formatAmount(be[userId]?.amount ?? 0);
+  const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
+  const joinedStr = `<t:${Math.floor((targetMember?.joinedAt || new Date()).getTime() / 1000)}:R>`;
+
+  // 7일 활동
+  let recentMsg = 0, recentVoice = 0;
+  try {
+    const now = new Date();
+    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const stat = activity?.getStats ? activity.getStats({ from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10), userId }) : [];
+    if (stat?.length) {
+      recentMsg = stat[0].message ?? 0;
+      recentVoice = stat[0].voice ?? 0;
+    }
+  } catch {}
+
+  // 최근 활동 1건
+  let recentActivitiesStr = "없거나 활동 공유를 하고 있지 않음";
+  try {
+    const logs = activityLogger.getUserActivities?.(userId) || [];
+    logs.sort((a, b) => (b.time || 0) - (a.time || 0));
+    const recentLogs = logs.slice(0, 1);
+    if (recentLogs.length) {
+      recentActivitiesStr = recentLogs.map(log => `• ${formatActivityName(log)} [${formatTimeString(log.time)}]`).join("\n");
+    }
+  } catch {
+    recentActivitiesStr = "불러오기 실패";
+  }
+
+  const favVoiceChannel = await getFavVoiceChannelText(userId, interaction.guild).catch(() => "데이터 없음");
+  const favTimeRange = await getFavTimeRangeText(userId).catch(() => "데이터 없음");
+
+  // 오각형 이미지
+  const radar = buildRadarStats30d(userId);
+  const png = renderRadarPng(radar);
+  const attachment = new AttachmentBuilder(png, { name: "profile-stats.png" });
+
+  // 평가 현황(항목별 인원수는 표시 안 함: 기존 로직 재사용)
+  const ratingFieldValue = buildRatingFieldValue(userId);
+
+  // 공개용이라 메모 필드(🔒)는 제외
+  const fields = [
+    { name: "🎮 스타일", value: playStyle, inline: true },
+    { name: "💗 호감도", value: String(favorVal), inline: true },
+    { name: "⏰ 입장", value: joinedStr, inline: true },
+    { name: "🎲 선호 게임", value: profile.favGames.length ? profile.favGames.map(g => `• ${g}`).join("\n") : "없음", inline: false },
+    { name: "🟠 오버워치", value: `${getTierEmoji(profile.owTier)} ${profile.owTier || "없음"}`, inline: true },
+    { name: "🔵 롤", value: `${getTierEmoji(profile.lolTier)} ${profile.lolTier || "없음"}`, inline: true },
+    { name: "💻 스팀", value: profile.steamNick || "없음", inline: true },
+    { name: "🔖 롤 닉네임", value: profile.lolNick || "없음", inline: true },
+    { name: "🟦 배틀넷", value: profile.bnetNick || "없음", inline: true },
+    { name: "📊 최근 7일 채팅", value: `${recentMsg}회`, inline: true },
+    { name: "🔊 최근 7일 음성", value: formatVoice(recentVoice), inline: true },
+    { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false },
+    { name: "🎤 자주 이용하는 음성채널", value: favVoiceChannel, inline: false },
+    { name: "⏱️ 자주 등장하는 시간대", value: favTimeRange, inline: false },
+    { name: "⭐ 유저 평가 현황", value: ratingFieldValue, inline: false },
+  ];
+
+  const embed = new EmbedBuilder()
+    .setTitle("프로필 공유")
+    .setThumbnail(targetUser.displayAvatarURL())
+    .setColor(favorVal >= 15 ? 0xff71b3 : favorVal >= 5 ? 0x82d8ff : 0xbcbcbc)
+    .setDescription([
+      `<@${userId}> 님의 프로필`,
+      statusMsg,
+      `🔷 파랑 정수(BE): **${beAmount} BE**`
+    ].join("\n"))
+    .addFields(fields)
+    .setImage("attachment://profile-stats.png")
+    .setFooter({ text: `공유자: ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL() });
+
+  return { embeds: [embed], files: [attachment] };
+}
+
+// [ADD] 오각형만 공유 임베드 빌더
+async function buildRadarOnlyShareEmbed(interaction, targetUser) {
+  const userId = targetUser.id;
+  const radar = buildRadarStats30d(userId);
+  const png = renderRadarPng(radar);
+  const attachment = new AttachmentBuilder(png, { name: "server-radar.png" });
+  const embed = new EmbedBuilder()
+    .setTitle("서버 스탯 오각형")
+    .setDescription(`<@${userId}> 님의 지난 30일 서버 활동 스탯`)
+    .setImage("attachment://server-radar.png")
+    .setColor(0x5db7ff)
+    .setFooter({ text: `공유자: ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL() });
+  return { embeds: [embed], files: [attachment] };
+}
+
 async function getFavVoiceChannelText(userId, guild, now = new Date()) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
@@ -526,7 +631,7 @@ async function buildProfileView(interaction, targetUser) {
     const rateBtnLabel = viewerEntry ? "해당 유저 평가 수정하기" : "해당 유저 평가하기";
     const memoBtnLabel = viewerMemoText ? "메모 수정" : "메모하기";
     const components = [
-    new ActionRowBuilder().addComponents(
+  new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`profile:rate|${userId}`).setStyle(ButtonStyle.Primary).setLabel(rateBtnLabel),
     new ButtonBuilder().setCustomId(`profile:memo|${userId}`).setStyle(ButtonStyle.Secondary).setLabel(memoBtnLabel)
   ),
@@ -541,6 +646,19 @@ async function buildProfileView(interaction, targetUser) {
       .setStyle(ButtonStyle.Danger)
       .setEmoji("💔")
       .setLabel("호감도 차감")
+  ),
+  // [ADD] 3번째 버튼 줄: 공유
+  new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profile:share|${userId}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("📣")
+      .setLabel("프로필 공유"),
+    new ButtonBuilder()
+      .setCustomId(`profile:share_radar|${userId}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("📊")
+      .setLabel("서버 스탯 오각형 공유")
   )
 ];
 
@@ -599,139 +717,162 @@ module.exports = {
     i.customId === `profile:rate|${target.id}` ||
     i.customId === `profile:memo|${target.id}` ||
     i.customId === `profile:favor+|${target.id}` ||
-    i.customId === `profile:favor-|${target.id}`
+    i.customId === `profile:favor-|${target.id}` ||
+    i.customId === `profile:share|${target.id}` ||
+    i.customId === `profile:share_radar|${target.id}`
   );
 };
 
     const collector = msg.createMessageComponentCollector({ filter, time: 10 * 60 * 1000 });
 
     collector.on("collect", async i => {
-      if (i.customId === `profile:rate|${target.id}`) {
-        const modal = new ModalBuilder().setCustomId(`profile:rate|${target.id}`).setTitle("유저 평가 입력");
-        const ti = (id, label, placeholder) => new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setPlaceholder(placeholder).setRequired(true);
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(ti("r_kindness", "친절함 (1~5)", "예: 5")),
-          new ActionRowBuilder().addComponents(ti("r_manners", "예절 (1~5)", "예: 4")),
-          new ActionRowBuilder().addComponents(ti("r_charm", "매력 (1~5)", "예: 3")),
-          new ActionRowBuilder().addComponents(ti("r_affinity", "친화력 (1~5)", "예: 5")),
-          new ActionRowBuilder().addComponents(ti("r_skill", "게임 실력 (1~5)", "예: 4"))
-        );
-        await i.showModal(modal);
-        let submitted = null;
-        try {
-          submitted = await i.awaitModalSubmit({ time: 120000, filter: m => m.customId === `profile:rate|${target.id}` && m.user.id === interaction.user.id });
-        } catch {}
-        if (!submitted) return;
-        const scores = {
-          kindness: submitted.fields.getTextInputValue("r_kindness"),
-          manners: submitted.fields.getTextInputValue("r_manners"),
-          charm: submitted.fields.getTextInputValue("r_charm"),
-          affinity: submitted.fields.getTextInputValue("r_affinity"),
-          skill: submitted.fields.getTextInputValue("r_skill"),
-        };
-        upsertRating(target.id, interaction.user.id, scores);
-        const { overall } = summarizeRatings(target.id);
-        await submitted.reply({ content: `평가가 저장되었습니다. 현재 종합 ${overall.toFixed(1)}점입니다.`, ephemeral: true });
-        const refreshed = await buildProfileView(interaction, target);
-        await interaction.editReply({
-          embeds: refreshed.embeds,
-          files: refreshed.files,
-          components: refreshed.components
-        });
-            } else if (i.customId === `profile:memo|${target.id}`) {
-        const modal = new ModalBuilder().setCustomId(`profile:memo|${target.id}`).setTitle("메모 입력/수정");
-        const input = new TextInputBuilder()
-          .setCustomId("memo_text")
-          .setLabel("메모 내용 (본인만 열람, 1회성)")
-          .setStyle(TextInputStyle.Paragraph)
-          .setMaxLength(500)
-          .setRequired(true)
-          .setPlaceholder("메모를 입력하세요.");
-        modal.addComponents(new ActionRowBuilder().addComponents(input));
-        await i.showModal(modal);
+  if (i.customId === `profile:rate|${target.id}`) {
+    // === [평가] ===
+    const modal = new ModalBuilder().setCustomId(`profile:rate|${target.id}`).setTitle("유저 평가 입력");
+    const ti = (id, label, placeholder) =>
+      new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setPlaceholder(placeholder).setRequired(true);
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(ti("r_kindness", "친절함 (1~5)", "예: 5")),
+      new ActionRowBuilder().addComponents(ti("r_manners", "예절 (1~5)", "예: 4")),
+      new ActionRowBuilder().addComponents(ti("r_charm", "매력 (1~5)", "예: 3")),
+      new ActionRowBuilder().addComponents(ti("r_affinity", "친화력 (1~5)", "예: 5")),
+      new ActionRowBuilder().addComponents(ti("r_skill", "게임 실력 (1~5)", "예: 4")),
+    );
+    await i.showModal(modal);
 
-        let submitted = null;
-        try {
-          submitted = await i.awaitModalSubmit({
-            time: 120000,
-            filter: m => m.customId === `profile:memo|${target.id}` && m.user.id === interaction.user.id
-          });
-        } catch {}
-        if (!submitted) return;
+    let submitted = null;
+    try {
+      submitted = await i.awaitModalSubmit({
+        time: 120000,
+        filter: m => m.customId === `profile:rate|${target.id}` && m.user.id === interaction.user.id
+      });
+    } catch {}
+    if (!submitted) return;
 
-        const text = submitted.fields.getTextInputValue("memo_text");
-        upsertMemo(target.id, interaction.user.id, text);
+    const scores = {
+      kindness: submitted.fields.getTextInputValue("r_kindness"),
+      manners: submitted.fields.getTextInputValue("r_manners"),
+      charm: submitted.fields.getTextInputValue("r_charm"),
+      affinity: submitted.fields.getTextInputValue("r_affinity"),
+      skill: submitted.fields.getTextInputValue("r_skill"),
+    };
+    upsertRating(target.id, interaction.user.id, scores);
 
-        await submitted.reply({
-          content: `메모가 저장되었습니다.\n\n당신에게만 보이는 메모: ${text}`,
-          ephemeral: true
-        });
+    const { overall } = summarizeRatings(target.id);
+    await submitted.reply({ content: `평가가 저장되었습니다. 현재 종합 ${overall.toFixed(1)}점입니다.`, ephemeral: true });
 
-        // 메모 반영 즉시 프로필 새로고침
-        const refreshed = await buildProfileView(interaction, target);
-        await interaction.editReply({
-          embeds: refreshed.embeds,
-          files: refreshed.files,
-          components: refreshed.components
-        });
+    const refreshed = await buildProfileView(interaction, target);
+    await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
+  }
 
-      } else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
-        const isGive = i.customId.includes("favor+");
-        const giver = interaction.user.id;
-        const receiver = target.id;
+  else if (i.customId === `profile:memo|${target.id}`) {
+    // === [메모] ===
+    const modal = new ModalBuilder().setCustomId(`profile:memo|${target.id}`).setTitle("메모 입력/수정");
+    const input = new TextInputBuilder()
+      .setCustomId("memo_text")
+      .setLabel("메모 내용 (본인만 열람, 1회성)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setMaxLength(500)
+      .setRequired(true)
+      .setPlaceholder("메모를 입력하세요.");
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await i.showModal(modal);
 
-        if (giver === receiver) {
-          return i.reply({
-            content: isGive ? "자기 자신에게는 호감도를 줄 수 없어." : "자기 자신에게는 호감도를 차감할 수 없어.",
-            ephemeral: true
-          });
-        }
+    let submitted = null;
+    try {
+      submitted = await i.awaitModalSubmit({
+        time: 120000,
+        filter: m => m.customId === `profile:memo|${target.id}` && m.user.id === interaction.user.id
+      });
+    } catch {}
+    if (!submitted) return;
 
-        const favor = readJson(favorPath);
-        const cooldown = readJson(cooldownPath);
-        const now = Date.now();
+    const text = submitted.fields.getTextInputValue("memo_text");
+    upsertMemo(target.id, interaction.user.id, text);
+    await submitted.reply({ content: `메모가 저장되었습니다.\n\n당신에게만 보이는 메모: ${text}`, ephemeral: true });
 
-        const cdKey = (isGive ? "" : "rm_") + `${giver}_${receiver}`;
-        const DAY = 24 * 60 * 60 * 1000;
-        if (cooldown[cdKey] && now - cooldown[cdKey] < DAY) {
-          const left = DAY - (now - cooldown[cdKey]);
-          const hr = Math.floor(left / 3600000);
-          const min = Math.floor((left % 3600000) / 60000);
-          return i.reply({ content: `쿨타임이 남아 있어. (남은 시간: ${hr}시간 ${min}분)`, ephemeral: true });
-        }
+    const refreshed = await buildProfileView(interaction, target);
+    await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
+  }
 
-        favor[receiver] = (favor[receiver] || 0) + (isGive ? 1 : -1);
-        cooldown[cdKey] = now;
-        writeJson(favorPath, favor);
-        writeJson(cooldownPath, cooldown);
+  else if (i.customId === `profile:share|${target.id}`) {
+    // === [프로필 공유] ===
+    // 비공개 보호
+    const profileRec = readJson(profilesPath)[target.id] || {};
+    const isPrivate = !!profileRec.isPrivate;
+    const canBypass = hasAnyRole(i.member, PRIVACY_BYPASS_ROLE_IDS);
+    if (isPrivate && i.user.id !== target.id && !canBypass) {
+      return i.reply({ content: "비공개 프로필은 공유할 수 없어.", ephemeral: true });
+    }
 
-        try {
-          if (isGive) {
-            relationship.onPositive(giver, receiver, 0.3);
-            relationship.onPositive(receiver, giver, 0.3);
-          } else {
-            relationship.addScore(giver, receiver, -0.3);
-          }
-        } catch {}
+    await i.deferReply({ ephemeral: true });
+    const pub = await buildProfileShareEmbed(interaction, target);
+    await i.channel.send({ embeds: pub.embeds, files: pub.files }); // ← 공개 공유
+    await i.editReply({ content: "채널에 프로필을 공유했어!" });
+  }
 
-        const reward = Math.floor(Math.random() * 2) + 1;
-        addBE(giver, reward, isGive ? "호감도 지급 성공 보상" : "호감도 차감 성공 보상");
+  else if (i.customId === `profile:share_radar|${target.id}`) {
+    // === [오각형만 공유] ===
+    await i.deferReply({ ephemeral: true });
+    const pub = await buildRadarOnlyShareEmbed(interaction, target);
+    await i.channel.send({ embeds: pub.embeds, files: pub.files }); // ← 공개 공유
+    await i.editReply({ content: "채널에 오각형 스탯을 공유했어!" });
+  }
 
-        await i.reply({
-          content: isGive
-            ? `<@${receiver}>에게 호감도를 1점 지급했어!\n🎁 파랑 정수 ${reward} BE를 획득했어!`
-            : `<@${receiver}>의 호감도를 1점 차감했어.\n🎁 파랑 정수 ${reward} BE를 획득했어!`,
-          ephemeral: true
-        });
+  else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
+    // === [호감도 ±] ===
+    const isGive = i.customId.includes("favor+");
+    const giver = interaction.user.id;
+    const receiver = target.id;
 
-        const refreshed = await buildProfileView(interaction, target);
-        await interaction.editReply({
-          embeds: refreshed.embeds,
-          files: refreshed.files,
-          components: refreshed.components
-        });
+    if (giver === receiver) {
+      return i.reply({
+        content: isGive ? "자기 자신에게는 호감도를 줄 수 없어." : "자기 자신에게는 호감도를 차감할 수 없어.",
+        ephemeral: true
+      });
+    }
+
+    const favor = readJson(favorPath);
+    const cooldown = readJson(cooldownPath);
+    const now = Date.now();
+
+    const cdKey = (isGive ? "" : "rm_") + `${giver}_${receiver}`;
+    const DAY = 24 * 60 * 60 * 1000;
+    if (cooldown[cdKey] && now - cooldown[cdKey] < DAY) {
+      const left = DAY - (now - cooldown[cdKey]);
+      const hr = Math.floor(left / 3600000);
+      const min = Math.floor((left % 3600000) / 60000);
+      return i.reply({ content: `쿨타임이 남아 있어. (남은 시간: ${hr}시간 ${min}분)`, ephemeral: true });
+    }
+
+    favor[receiver] = (favor[receiver] || 0) + (isGive ? 1 : -1);
+    cooldown[cdKey] = now;
+    writeJson(favorPath, favor);
+    writeJson(cooldownPath, cooldown);
+
+    try {
+      if (isGive) {
+        relationship.onPositive(giver, receiver, 0.3);
+        relationship.onPositive(receiver, giver, 0.3);
+      } else {
+        relationship.addScore(giver, receiver, -0.3);
       }
+    } catch {}
+
+    const reward = Math.floor(Math.random() * 2) + 1;
+    addBE(giver, reward, isGive ? "호감도 지급 성공 보상" : "호감도 차감 성공 보상");
+
+    await i.reply({
+      content: isGive
+        ? `<@${receiver}>에게 호감도를 1점 지급했어!\n🎁 파랑 정수 ${reward} BE를 획득했어!`
+        : `<@${receiver}>의 호감도를 1점 차감했어.\n🎁 파랑 정수 ${reward} BE를 획득했어!`,
+      ephemeral: true
     });
+
+    const refreshed = await buildProfileView(interaction, target);
+    await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
+  }
+});
   },
   buildView: buildProfileView
 };
