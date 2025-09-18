@@ -992,10 +992,39 @@ module.exports = {
     if (customId.startsWith(IMG_PREFIX)) {
       pruneOldImageSessions();
       const [_, action, sessionId] = customId.split("|");
-      const sess = imageSessions.get(sessionId);
-      if (!sess) {
-        return interaction.reply({ content: "세션이 만료되었어. 다시 /유틸 이미지 로 검색해줘.", ephemeral: true });
-      }
+         let sess = imageSessions.get(sessionId);
+
+     // 🔁 세션이 없으면 임베드로부터 즉석 복구 (재시작/핫리로드 대응)
+     if (!sess) {
+       try {
+         const embed = interaction.message.embeds?.[0];
+         const title = embed?.title || "";            // 예: "🖼️ 이미지: 고양이"
+         const imgUrl = embed?.image?.url || null;    // 현재 표시 중인 이미지 URL
+         // 제목에서 검색어 추출
+         const m = title.match(/이미지:\s*(.+)$/);
+         const q = (m && m[1]) ? m[1].trim() : null;
+         if (!q) throw new Error("cannot parse query from embed title");
+         const lang = detectLang(q);
+         let list = await findImages(q, lang);
+         if (!Array.isArray(list) || !list.length) {
+           return interaction.reply({ content: "이미지 소스를 다시 불러오지 못했어. 한 번만 다시 시도해줘!", ephemeral: true });
+         }
+         // 현재 임베드의 이미지가 리스트에 있으면 그 인덱스로 복구
+         let idx = 0;
+         if (imgUrl) {
+           const found = list.findIndex(u => u === imgUrl);
+           if (found >= 0) idx = found;
+         }
+         const newId = crypto.randomBytes(8).toString("hex");
+         sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
+         imageSessions.set(newId, sess);
+         // 세션ID가 바뀌었으니, 이후 로직에서 사용할 sessionId를 교체
+         // (버튼도 새 세션ID로 재그리도록 아래에서 update 처리)
+         sessionId = newId; // NOTE: const → let 으로 위 선언 바꿨다면 가능. 아니면 아래에서 재생성 시 rows에 newId 넣어줌.
+       } catch (e) {
+         return interaction.reply({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", ephemeral: true });
+       }
+     }
       const isOwner = (sess.ownerId === user.id);
       // 안전을 위해: 세션 소유자만 조작 가능(원하면 해제 가능)
       if (!isOwner) {
