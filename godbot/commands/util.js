@@ -14,6 +14,11 @@ const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
 const crypto = require("crypto");
+const _nodeFetch = async (...args) => {
+  const { default: f } = await import('node-fetch');
+  return f(...args);
+};
+const fetchSafe = (...args) => (global.fetch ? global.fetch(...args) : _nodeFetch(...args));
 
 /* =========================
  * 공통 설정
@@ -439,8 +444,58 @@ async function searchNaverImages(q) {
   const urls = items.map(it => sanitizeImageUrl(it.link)).filter(Boolean);
   return urls;
 }
+// ✅ DuckDuckGo 이미지(무키). 서버에서 가끔 rate limit 있으나 성공률 높음
+async function searchDuckDuckGoImages(q) {
+  try {
+    const url = new URL("https://duckduckgo.com/i.js");
+    url.searchParams.set("q", q);
+    url.searchParams.set("o", "json");
+    url.searchParams.set("iax", "images");
+    url.searchParams.set("ia", "images");
+    const res = await fetchSafe(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const items = Array.isArray(json.results) ? json.results : [];
+    const urls = items.map(it => sanitizeImageUrl(it.image || it.thumbnail)).filter(Boolean);
+    return urls;
+  } catch (e) {
+    // console.warn("[DDG]", e);
+    return [];
+  }
+}
+
+// ✅ Wikimedia Commons(무키). 키워드로 미디어 파일 직접 가져옴
+async function searchWikimediaImages(q) {
+  try {
+    const url = new URL("https://commons.wikimedia.org/w/api.php");
+    url.searchParams.set("action", "query");
+    url.searchParams.set("generator", "search");
+    url.searchParams.set("gsrsearch", q);
+    url.searchParams.set("gsrlimit", "20");
+    url.searchParams.set("prop", "imageinfo");
+    url.searchParams.set("iiprop", "url");
+    url.searchParams.set("iiurlwidth", "1600"); // 적당히 큰 썸네일
+    url.searchParams.set("format", "json");
+    // origin=* 는 브라우저 CORS용이라 서버에선 불필요
+
+    const res = await fetchSafe(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const pages = json?.query?.pages || {};
+    const urls = [];
+    for (const k in pages) {
+      const info = pages[k]?.imageinfo?.[0];
+      const u = sanitizeImageUrl(info?.thumburl || info?.url);
+      if (u) urls.push(u);
+    }
+    return urls;
+  } catch (e) {
+    // console.warn("[Wikimedia]", e);
+    return [];
+  }
+}
+
 async function findImages(q, lang) {
-  // 제공자 순차 시도 + dedupe
   const seen = new Set();
   const out = [];
   async function addFrom(fn) {
@@ -449,11 +504,15 @@ async function findImages(q, lang) {
       for (const u of arr) {
         if (!seen.has(u)) { seen.add(u); out.push(u); }
       }
-    } catch { /* ignore provider error */ }
+    } catch { /* ignore */ }
   }
+  // ① 유료/키 기반(있으면 사용)
   await addFrom(() => searchBingImages(q, lang));
   await addFrom(() => searchGoogleImages(q));
   await addFrom(() => searchNaverImages(q));
+  // ② 무키 폴백(키 없어도 동작)
+  if (out.length < 1) await addFrom(() => searchDuckDuckGoImages(q));
+  if (out.length < 1) await addFrom(() => searchWikimediaImages(q));
   return out;
 }
 function renderImageEmbed(q, url, lang, shared = false) {
