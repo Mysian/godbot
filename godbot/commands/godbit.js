@@ -119,50 +119,52 @@ async function saveJson(file, data) {
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
 
-  // 1분 전용(기존 로직 유지)
+  // 1분 뷰는 그대로
   if (chartValue === '1m') {
     const start = info.history.length - chartRange;
     const data = (info.history || []).slice(start < 0 ? 0 : start);
     const labels = [];
-    for (let i = 0; i < chartRange; i++) {
-      if (i === chartRange - 1) labels.push('현재');
-      else labels.push(`${chartRange - 1 - i}분전`);
-    }
+    for (let i = 0; i < chartRange; i++) labels.push(i === chartRange - 1 ? '현재' : `${chartRange - 1 - i}분전`);
     while (data.length < chartRange) data.unshift(0);
     while (labels.length < chartRange) labels.unshift('-');
     return { data, labels };
   }
 
+  // ✅ KST 전용 포맷터 (재파싱 금지, Date 그대로 포맷)
+  const fmtTime = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  const fmtDate = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit'
+  });
+  const fmtYear = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', year: 'numeric'
+  });
+
   const data = [];
   const labels = [];
-  let prevMs = null;
+  let prevKstMs = null;
   let n = 0;
 
   for (let i = info.history.length - 1; i >= 0; i--) {
-    // UTC ISO → KST ms(UTC+9)로 직접 보정 (문자열 재파싱 금지)
-    const t = new Date(info.historyT[i]);
-    const kstMs = t.getTime() + 9 * 60 * 60 * 1000; // KST
-
-    if (prevMs === null || (prevMs - kstMs) >= chartInterval * 60 * 1000) {
+    const t = new Date(info.historyT[i]);          // 저장된 ISO(UTC) 그대로 사용
+    const kstMs = t.getTime() + 9*60*60*1000;      // 간격 비교는 ms로 (KST)
+    if (prevKstMs === null || (prevKstMs - kstMs) >= chartInterval * 60 * 1000) {
       data.unshift(info.history[i]);
 
-      const kd = new Date(kstMs); // kd의 UTC 필드를 KST처럼 사용
+      // ⬇️ 라벨은 포맷터로 바로 KST 문자열 생성
       let label = '-';
-
       if (['10m','30m','1h','3h','6h','12h'].includes(chartValue)) {
-        const hh = String(kd.getUTCHours()).padStart(2, '0');
-        const mm = String(kd.getUTCMinutes()).padStart(2, '0');
-        label = `${hh}:${mm}`;
+        label = fmtTime.format(t);                  // 예: "09:38"
       } else if (['1d','3d','7d','15d','30d'].includes(chartValue)) {
-        const mon = String(kd.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(kd.getUTCDate()).padStart(2, '0');
-        label = `${mon}.${day}`;
+        const md = fmtDate.format(t);               // 예: "09.18"
+        label = md.replace(/\//g, '.');             // 환경차 예방
       } else if (chartValue === '1y') {
-        label = String(kd.getUTCFullYear());
+        label = fmtYear.format(t);                  // 예: "2025"
       }
 
       labels.unshift(label);
-      prevMs = kstMs;
+      prevKstMs = kstMs;
       n++;
       if (n >= chartRange) break;
     }
@@ -171,6 +173,7 @@ function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   while (data.length < chartRange) { data.unshift(0); labels.unshift('-'); }
   return { data, labels };
 }
+
 
 
 async function ensureBaseCoin(coins) {
