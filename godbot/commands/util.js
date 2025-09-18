@@ -1,3 +1,4 @@
+// util.js
 "use strict";
 
 const {
@@ -34,6 +35,9 @@ const MEMO_PAGE_SIZE = 10;
 
 // 계산기 세션 (메모리는 일시적이라 충분)
 const calcSessions = new Map(); // userId -> { a, b, op, input, last, updatedAt }
+
+/* OCR 공통 */
+const MAX_DISCORD_TEXT = 1900;
 
 /* =========================
  * 유틸 함수
@@ -75,7 +79,6 @@ function renderConchIntroButtons() {
 /** 문자열 seed -> 32bit 정수 */
 function seedFromString(s) {
   const h = crypto.createHash("sha256").update(s).digest();
-  // 앞 4바이트를 정수로
   return h.readUInt32LE(0);
 }
 
@@ -91,9 +94,8 @@ function mulberry32(seed) {
   };
 }
 
-/** 주차(ISO 비슷하게) */
+/** 주차 키 */
 function weekKeyKST(d = nowKST()) {
-  // 주 단위 고정 추천을 위해 "YYYY-WW" 키 생성
   const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const onejan = new Date(dt.getFullYear(), 0, 1);
   const dayms = 24 * 60 * 60 * 1000;
@@ -119,7 +121,6 @@ async function readMemos(userId) {
     const raw = fs.readFileSync(f, "utf8").trim();
     let arr = [];
     if (raw) arr = JSON.parse(raw);
-    // 만료 제거
     const now = Date.now();
     let changed = false;
     arr = arr.filter(m => {
@@ -162,13 +163,12 @@ function renderCalcEmbed(userId) {
     .setColor(0x5865F2);
 
   if (st.showHist && Array.isArray(st.hist) && st.hist.length) {
-    const lines = st.hist.slice(0, 8).join("\n"); // 디스코드 필드 길이 여유
+    const lines = st.hist.slice(0, 8).join("\n");
     eb.addFields({ name: "최근 계산 (최대 10개)", value: "```\n" + lines + "\n```", inline: false });
   }
   return eb;
 }
 function renderCalcButtons(st) {
-  // 4x4
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(CALC_PREFIX + "key|7").setLabel("7").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(CALC_PREFIX + "key|8").setLabel("8").setStyle(ButtonStyle.Secondary),
@@ -198,7 +198,6 @@ function renderCalcButtons(st) {
     new ButtonBuilder().setCustomId(CALC_PREFIX + "history").setLabel("HISTORY").setStyle(ButtonStyle.Secondary),
   );
   return [row1, row2, row3, row4, row5];
-
 }
 function pushDigit(st, d) {
   if (!st.input) st.input = d;
@@ -214,7 +213,6 @@ function toggleSign(st) {
   else st.input = "-" + st.input;
 }
 function applyOp(st, op) {
-  // muldiv 토글: op가 * 또는 / 로 순환
   if (op === "muldiv") {
     if (st.op === "*" ) st.op = "/";
     else if (st.op === "/") st.op = "*";
@@ -225,25 +223,24 @@ function applyOp(st, op) {
     }
     return;
   }
-  // + 또는 -
   if (st.a === null && st.input) {
     st.a = Number(st.input);
     st.input = "";
   }
-  st.op = op; // '+' or '-'
+  st.op = op;
 }
 function pushHistory(st, a, op, b, res) {
   try {
     const line = `${a} ${op} ${b} = ${Number.isFinite(res) ? res : String(res)}`;
     st.hist = Array.isArray(st.hist) ? st.hist : [];
     st.hist.unshift(line);
-    if (st.hist.length > 10) st.hist.length = 10; // 최대 10개 유지
-  } catch { /* noop */ }
+    if (st.hist.length > 10) st.hist.length = 10;
+  } catch {}
 }
 function calcEqual(st) {
   const a = st.a;
   const b = st.input ? Number(st.input) : null;
-  if (a === null || st.op === null || b === null) return; // 불완전
+  if (a === null || st.op === null || b === null) return;
   let res = 0;
   if (st.op === "+") res = a + b;
   else if (st.op === "-") res = a - b;
@@ -256,7 +253,6 @@ function calcEqual(st) {
   st.input = "";
   st.op = null;
   st.updatedAt = Date.now();
-
 }
 
 /* =========================
@@ -270,9 +266,9 @@ function renderMemoListEmbed(userId, list, page, query) {
   const slice = list.slice(start, start + MEMO_PAGE_SIZE);
 
   const lines = slice.map((m, i) => {
-    const idx = start + i + 1;               // 번호
+    const idx = start + i + 1;
     const title = clampLen(m.title || "(제목 없음)", 40);
-    const d = formatKST(m.createdAt);        // ✅ 한국시간
+    const d = formatKST(m.createdAt);
     return `**${idx}.** ${title} ・ ${d}`;
   });
   const desc = (query ? `🔎 검색어: **${query}**\n` : "") + (lines.length ? lines.join("\n") : "메모가 없습니다.");
@@ -295,7 +291,7 @@ function renderMemoListButtons(list, page, query) {
   const rowB = new ActionRowBuilder();
 
   slice.forEach((m, i) => {
-    const idx = start + i + 1; // ✅ 제목 대신 “번호”만
+    const idx = start + i + 1;
     const btn = new ButtonBuilder()
       .setCustomId(MEMO_PREFIX + `open|${m.id}|${p}`)
       .setLabel(String(idx))
@@ -319,15 +315,15 @@ function renderMemoListButtons(list, page, query) {
 }
 
 function renderMemoDetailEmbed(m) {
-  const exp = m.expiresAt ? formatKST(m.expiresAt) : "무기한";   // ✅ KST
+  const exp = m.expiresAt ? formatKST(m.expiresAt) : "무기한";
   const body = (m.body && m.body.trim().length) ? m.body : "(내용 없음)";
-  const bodyBox = "```\n" + body + "\n```";                      // ✅ 코드블록
+  const bodyBox = "```\n" + body + "\n```";
 
   return new EmbedBuilder()
     .setTitle(`🗒 ${m.title || "(제목 없음)"}`)
     .setDescription(bodyBox)
     .addFields({ name: "보관 기한", value: exp, inline: false })
-    .setFooter({ text: `작성: ${formatKST(m.createdAt)} ・ ID: ${m.id}` }) // ✅ KST
+    .setFooter({ text: `작성: ${formatKST(m.createdAt)} ・ ID: ${m.id}` })
     .setColor(0x3498DB);
 }
 
@@ -335,22 +331,20 @@ function renderMemoDetailButtons(page) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(MEMO_PREFIX + `back|${page}`).setLabel("목록으로").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(MEMO_PREFIX + `edit|${page}`).setLabel("수정").setStyle(ButtonStyle.Primary), // ✅ 가운데 [수정]
+      new ButtonBuilder().setCustomId(MEMO_PREFIX + `edit|${page}`).setLabel("수정").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(MEMO_PREFIX + `del`).setEmoji("🗑").setLabel("삭제").setStyle(ButtonStyle.Danger),
     ),
   ];
 }
 
-
 /* =========================
  * 복권번호
  * ========================= */
 function bestBuyDay(userId) {
-  // userId + 주차로 고정 추천 (월~토 중 하나)
   const key = weekKeyKST(nowKST());
   const seed = seedFromString(`${userId}:${key}`);
   const rnd = mulberry32(seed)();
-  const idx = Math.floor(rnd * 6); // 0~5
+  const idx = Math.floor(rnd * 6);
   const days = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
   return days[idx];
 }
@@ -385,6 +379,80 @@ function renderLottoButtons() {
 }
 
 /* =========================
+ * 이미지 → 텍스트 (OCR)
+ * ========================= */
+function cleanOcrText(text) {
+  if (!text) return "";
+  // 공백 정리
+  let t = text.replace(/\r/g, "");
+  // 탭/다중공백 → 단일공백, 빈 줄 정리
+  t = t.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
+  // 트림
+  t = t.trim();
+  return t;
+}
+
+async function tryOcrWithTesseract(buffer, lang) {
+  try {
+    const Tesseract = await import("tesseract.js"); // 동적 임포트
+    const res = await Tesseract.recognize(buffer, lang || "kor+eng");
+    const text = cleanOcrText(res?.data?.text || "");
+    return { ok: !!text, text, engine: "tesseract.js" };
+  } catch {
+    return { ok: false, text: "", engine: "tesseract.js" };
+  }
+}
+
+async function tryOcrWithOcrSpaceByUrl(url, lang) {
+  try {
+    const key = process.env.OCR_SPACE_KEY || "helloworld";
+    const language = (lang && lang.includes("kor")) ? "kor" : "eng"; // OCR.space는 다중언어 미지원 → 근사치
+    const body = new URLSearchParams({
+      apikey: key,
+      url,
+      language,
+      isOverlayRequired: "false",
+      OCREngine: "2",
+      scale: "true",
+      isTable: "true",
+    });
+    const res = await fetch("https://api.ocr.space/parse/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const json = await res.json();
+    const text = cleanOcrText(json?.ParsedResults?.[0]?.ParsedText || "");
+    return { ok: !!text, text, engine: "ocr.space" };
+  } catch {
+    return { ok: false, text: "", engine: "ocr.space" };
+  }
+}
+
+async function extractTextFromImage(attachmentUrl, lang) {
+  // 1) 이미지 다운로드 (Tesseract용)
+  let buf = null;
+  try {
+    const r = await fetch(attachmentUrl);
+    if (!r.ok) throw new Error("download failed");
+    const ab = await r.arrayBuffer();
+    buf = Buffer.from(ab);
+  } catch {
+    // 다운로드 실패해도 OCR.space는 URL로 직접 처리 가능 → 계속 진행
+  }
+
+  // 2) Tesseract 우선 시도 (로컬에서 빠르게 처리)
+  if (buf) {
+    const t1 = await tryOcrWithTesseract(buf, lang);
+    if (t1.ok) return t1;
+  }
+
+  // 3) 폴백: OCR.space (키 없으면 helloworld로 동작하나 제한적)
+  const t2 = await tryOcrWithOcrSpaceByUrl(attachmentUrl, lang);
+  return t2;
+}
+
+/* =========================
  * SlashCommand 정의
  * ========================= */
 module.exports = {
@@ -394,20 +462,35 @@ module.exports = {
     .addSubcommand(sc => sc.setName("계산기").setDescription("버튼 계산기"))
     .addSubcommand(sc => sc.setName("메모장").setDescription("개인 메모/검색/수정/삭제"))
     .addSubcommand(sc => sc.setName("복권번호").setDescription("1~45 중 6개, 총 5줄"))
-    .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변")),
+    .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변"))
+    .addSubcommand(sc =>
+      sc.setName("이미지텍스트화")
+        .setDescription("첨부 이미지의 텍스트(OCR) 추출")
+        .addAttachmentOption(o =>
+          o.setName("이미지")
+            .setDescription("분석할 이미지 파일")
+            .setRequired(true)
+        )
+        .addStringOption(o =>
+          o.setName("언어")
+            .setDescription("인식 언어 (기본: 한/영)")
+            .addChoices(
+              { name: "한/영", value: "kor+eng" },
+              { name: "한국어", value: "kor" },
+              { name: "영어", value: "eng" },
+            )
+        )
+    ),
 
-  
   // Slash 명령 처리
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const userId = interaction.user.id;
 
     if (sub === "계산기") {
-      // 세션 초기화/유지
       if (!calcSessions.has(userId)) {
-  calcSessions.set(userId, { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false });
-}
-
+        calcSessions.set(userId, { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false });
+      }
       const st = calcSessions.get(userId);
       const embed = renderCalcEmbed(userId);
       const rows = renderCalcButtons(st);
@@ -433,6 +516,48 @@ module.exports = {
       const embed = renderConchIntroEmbed();
       const rows  = renderConchIntroButtons();
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    }
+
+    if (sub === "이미지텍스트화") {
+      const att = interaction.options.getAttachment("이미지");
+      const lang = interaction.options.getString("언어") || "kor+eng";
+
+      // 기본 유효성
+      const ct = (att.contentType || "").toLowerCase();
+      const isImage = ct.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|tiff?)$/i.test(att.name || "");
+      if (!isImage) {
+        return interaction.reply({ content: "이미지 파일만 가능해.", ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const { ok, text, engine } = await extractTextFromImage(att.url, lang);
+      const out = (text || "").trim();
+
+      const eb = new EmbedBuilder()
+        .setTitle("🖼️ 이미지 → 텍스트 (OCR)")
+        .setDescription(out ? "아래 내용이 추출됐어." : "텍스트를 찾기 어려웠어. 이미지 해상도/명암을 확인해줘.")
+        .addFields(
+          { name: "파일명", value: att.name || "(이름 없음)", inline: true },
+          { name: "엔진", value: engine, inline: true },
+          { name: "언어", value: lang, inline: true },
+        )
+        .setColor(out ? 0x00B894 : 0xE17055);
+
+      // 결과 전송 (긴 경우 파일 첨부)
+      if (out && out.length > MAX_DISCORD_TEXT) {
+        const preview = out.slice(0, MAX_DISCORD_TEXT - 10) + "…";
+        eb.addFields({ name: "미리보기", value: "```\n" + preview + "\n```" });
+        return interaction.editReply({
+          embeds: [eb],
+          files: [{ name: "ocr.txt", attachment: Buffer.from(out, "utf8") }],
+        });
+      } else if (out) {
+        eb.addFields({ name: "결과", value: "```\n" + out + "\n```" });
+        return interaction.editReply({ embeds: [eb] });
+      } else {
+        return interaction.editReply({ embeds: [eb] });
+      }
     }
   },
 
@@ -464,7 +589,6 @@ module.exports = {
         st.last = null;
         st.updatedAt = Date.now();
       }
-      // HISTORY: 표시 토글
       else if (customId === CALC_PREFIX + "history") {
         st.showHist = !st.showHist;
         st.updatedAt = Date.now();
@@ -480,7 +604,6 @@ module.exports = {
     if (customId.startsWith(MEMO_PREFIX)) {
       const userId = user.id;
 
-      // 페이지 이동
       if (customId.startsWith(MEMO_PREFIX + "prev|")) {
         const currPage = Number(customId.split("|")[1]) || 0;
         const list = await readMemos(userId);
@@ -499,7 +622,6 @@ module.exports = {
         return interaction.update({ embeds: [embed], components: rows });
       }
 
-      // 검색 모달 열기
       if (customId.startsWith(MEMO_PREFIX + "search|")) {
         const [, encQuery, pageStr] = customId.split("|");
         const modal = new ModalBuilder()
@@ -515,7 +637,6 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // 새 메모 모달 열기
       if (customId.startsWith(MEMO_PREFIX + "add|")) {
         const [, pageStr] = customId.split("|");
         const modal = new ModalBuilder()
@@ -546,7 +667,6 @@ module.exports = {
         return interaction.showModal(modal);
       }
 
-      // 상세 열기
       if (customId.startsWith(MEMO_PREFIX + "open|")) {
         const [, id, pageStr] = customId.split("|");
         const list = await readMemos(userId);
@@ -556,14 +676,9 @@ module.exports = {
         }
         const embed = renderMemoDetailEmbed(memo);
         const rows = renderMemoDetailButtons(Number(pageStr) || 0);
-        // 삭제 대상 ID를 message state에 담기 위해 버튼 customId에 포함 X → message metadata 필요
-        // 간단히: 버튼은 'del' 고정, 삭제 시 가장 최근 detail을 기준으로 처리
-        // (유저 단독 에페메랄이므로 안전)
-        // 삭제 대상 id를 푸터로 담아둠 → route에서 embed 푸터에서 꺼내서 사용
         return interaction.update({ embeds: [embed], components: rows });
       }
 
-      // 상세에서 목록으로
       if (customId.startsWith(MEMO_PREFIX + "back|")) {
         const [, pageStr] = customId.split("|");
         const page = Number(pageStr) || 0;
@@ -573,14 +688,12 @@ module.exports = {
         return interaction.update({ embeds: [embed], components: rows });
       }
 
-      // 상세에서 삭제
       if (customId === MEMO_PREFIX + "del") {
-        // 현재 메시지의 embed 푸터에서 ID 추출
         const embeds = interaction.message.embeds || [];
         if (!embeds.length || !embeds[0].footer?.text) {
           return interaction.reply({ content: "삭제 대상을 찾을 수 없어.", ephemeral: true });
         }
-        const footer = embeds[0].footer.text; // "작성: ... ・ ID: <id>"
+        const footer = embeds[0].footer.text;
         const idMatch = footer.match(/ID:\s*(\S+)/);
         const delId = idMatch ? idMatch[1] : null;
         if (!delId) {
@@ -589,104 +702,101 @@ module.exports = {
         const list = await readMemos(userId);
         const next = list.filter(m => String(m.id) !== String(delId));
         await writeMemos(userId, next);
-        // 삭제 후 목록 1페이지로
         const page = 0;
         const embed = renderMemoListEmbed(userId, next, page, "");
         const rows = renderMemoListButtons(next, page, "");
         return interaction.update({ content: "🗑 삭제 완료", embeds: [embed], components: rows });
       }
+
       // 상세에서 수정 (모달 열기)
-if (customId.startsWith(MEMO_PREFIX + "edit|")) {
-  const [, pageStr] = customId.split("|");
-  const embeds = interaction.message.embeds || [];
-  if (!embeds.length || !embeds[0].footer?.text) {
-    return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
-  }
-  const footer = embeds[0].footer.text; // "작성: ... ・ ID: <id>"
-  const idMatch = footer.match(/ID:\s*(\S+)/);
-  const editId = idMatch ? idMatch[1] : null;
-  if (!editId) {
-    return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
-  }
+      if (customId.startsWith(MEMO_PREFIX + "edit|")) {
+        const [, pageStr] = customId.split("|");
+        const embeds = interaction.message.embeds || [];
+        if (!embeds.length || !embeds[0].footer?.text) {
+          return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
+        }
+        const footer = embeds[0].footer.text;
+        const idMatch = footer.match(/ID:\s*(\S+)/);
+        const editId = idMatch ? idMatch[1] : null;
+        if (!editId) {
+          return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
+        }
 
-  const list = await readMemos(user.id);
-  const memo = list.find(m => String(m.id) === String(editId));
-  if (!memo) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
+        const list = await readMemos(user.id);
+        const memo = list.find(m => String(m.id) === String(editId));
+        if (!memo) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
 
-  // TTL 남은 일수(정수) 계산
-  let ttlDays = "";
-  if (memo.expiresAt) {
-    const leftMs = memo.expiresAt - Date.now();
-    if (leftMs > 0) ttlDays = String(Math.ceil(leftMs / (24 * 60 * 60 * 1000)));
-  }
+        let ttlDays = "";
+        if (memo.expiresAt) {
+          const leftMs = memo.expiresAt - Date.now();
+          if (leftMs > 0) ttlDays = String(Math.ceil(leftMs / (24 * 60 * 60 * 1000)));
+        }
 
-  const modal = new ModalBuilder()
-    .setCustomId(MEMO_PREFIX + `edit_submit|${memo.id}|${pageStr || "0"}`)
-    .setTitle("메모 수정");
+        const modal = new ModalBuilder()
+          .setCustomId(MEMO_PREFIX + `edit_submit|${memo.id}|${pageStr || "0"}`)
+          .setTitle("메모 수정");
 
-  const tiTitle = new TextInputBuilder()
-    .setCustomId("title")
-    .setLabel("제목")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setValue(memo.title || "");
+        const tiTitle = new TextInputBuilder()
+          .setCustomId("title")
+          .setLabel("제목")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setValue(memo.title || "");
 
-  const tiBody = new TextInputBuilder()
-    .setCustomId("body")
-    .setLabel("내용")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false)
-    .setValue(memo.body || "");
+        const tiBody = new TextInputBuilder()
+          .setCustomId("body")
+          .setLabel("내용")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setValue(memo.body || "");
 
-  const tiTTL = new TextInputBuilder()
-    .setCustomId("ttl")
-    .setLabel("보관 기한(일) — 0/공백=무기한")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setValue(ttlDays);
+        const tiTTL = new TextInputBuilder()
+          .setCustomId("ttl")
+          .setLabel("보관 기한(일) — 0/공백=무기한")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setValue(ttlDays);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(tiTitle),
-    new ActionRowBuilder().addComponents(tiBody),
-    new ActionRowBuilder().addComponents(tiTTL),
-  );
-  return interaction.showModal(modal);
-}
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(tiTitle),
+          new ActionRowBuilder().addComponents(tiBody),
+          new ActionRowBuilder().addComponents(tiTTL),
+        );
+        return interaction.showModal(modal);
+      }
 
       // 수정 제출
-if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
-  const [, id, pageStr] = customId.split("|");
-  const userId = interaction.user.id;
+      if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
+        const [, id, pageStr] = customId.split("|");
+        const userId = interaction.user.id;
 
-  const title = (interaction.fields.getTextInputValue("title") || "").trim();
-  const body  = (interaction.fields.getTextInputValue("body")  || "").trim();
-  const ttlStr = (interaction.fields.getTextInputValue("ttl")  || "").trim();
+        const title = (interaction.fields.getTextInputValue("title") || "").trim();
+        const body  = (interaction.fields.getTextInputValue("body")  || "").trim();
+        const ttlStr = (interaction.fields.getTextInputValue("ttl")  || "").trim();
 
-  let expiresAt = null;
-  if (ttlStr) {
-    const days = Number(ttlStr);
-    if (!isNaN(days) && days > 0) {
-      expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
-    }
-  }
+        let expiresAt = null;
+        if (ttlStr) {
+          const days = Number(ttlStr);
+          if (!isNaN(days) && days > 0) {
+            expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
+          }
+        }
 
-  const list = await readMemos(userId);
-  const idx = list.findIndex(m => String(m.id) === String(id));
-  if (idx === -1) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
+        const list = await readMemos(userId);
+        const idx = list.findIndex(m => String(m.id) === String(id));
+        if (idx === -1) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
 
-  // 업데이트
-  list[idx].title = title;
-  list[idx].body  = body;
-  list[idx].expiresAt = expiresAt;
+        list[idx].title = title;
+        list[idx].body  = body;
+        list[idx].expiresAt = expiresAt;
 
-  await writeMemos(userId, list);
+        await writeMemos(userId, list);
 
-  // 수정된 상세 임베드 보여주기 (새 에페메랄 메시지)
-  const updated = list[idx];
-  const embed = renderMemoDetailEmbed(updated);
-  const rows  = renderMemoDetailButtons(Number(pageStr) || 0);
-  return interaction.reply({ content: "✅ 수정 완료", embeds: [embed], components: rows, ephemeral: true });
-}
+        const updated = list[idx];
+        const embed = renderMemoDetailEmbed(updated);
+        const rows  = renderMemoDetailButtons(Number(pageStr) || 0);
+        return interaction.reply({ content: "✅ 수정 완료", embeds: [embed], components: rows, ephemeral: true });
+      }
     }
 
     /* ===== 복권: 버튼 ===== */
@@ -698,7 +808,7 @@ if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
       return interaction.update({ embeds: [embed], components: rows });
     }
 
-        // ===== 소라고동: 질문하기 버튼 =====
+    // ===== 소라고동: 질문하기 버튼 =====
     if (customId === CONCH_PREFIX + "ask") {
       const modal = new ModalBuilder()
         .setCustomId(CONCH_PREFIX + "ask_submit")
@@ -714,27 +824,26 @@ if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
       return interaction.showModal(modal);
     }
 
-          // ===== 소라고동: 모달 제출 =====
-      if (customId === CONCH_PREFIX + "ask_submit") {
-        const q = (interaction.fields.getTextInputValue("q") || "").trim();
-        const answer = Math.random() < 0.5 ? "그래" : "아니";
+    // ===== 소라고동: 모달 제출 =====
+    if (customId === CONCH_PREFIX + "ask_submit") {
+      const q = (interaction.fields.getTextInputValue("q") || "").trim();
+      const answer = Math.random() < 0.5 ? "그래" : "아니";
 
-        const embed = new EmbedBuilder()
-          .setTitle("🐚 마법의 소라고동")
-          .addFields(
-            { name: "질문", value: q.length ? q : "(질문 없음)" },
-            { name: "대답", value: `**${answer}**` },
-          )
-          .setFooter({ text: "봇이 그래/아니로만 답하는 모드야!" })
-          .setColor(0xA66BFF);
+      const embed = new EmbedBuilder()
+        .setTitle("🐚 마법의 소라고동")
+        .addFields(
+          { name: "질문", value: q.length ? q : "(질문 없음)" },
+          { name: "대답", value: `**${answer}**` },
+        )
+        .setFooter({ text: "봇이 그래/아니로만 답하는 모드야!" })
+        .setColor(0xA66BFF);
 
-        return interaction.reply({ embeds: [embed], ephemeral: true });
-      }
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
 
     /* ===== 메모: 모달 submit ===== */
     if (interaction.isModalSubmit()) {
       const { customId } = interaction;
-      // 검색 제출
       if (customId.startsWith(MEMO_PREFIX + "search_submit|")) {
         const [, pageStr] = customId.split("|");
         const q = (interaction.fields.getTextInputValue("q") || "").trim();
@@ -744,13 +853,12 @@ if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
               (m.title || "").toLowerCase().includes(q.toLowerCase()) ||
               (m.body || "").toLowerCase().includes(q.toLowerCase()))
           : listAll;
-        const page = 0; // 검색 시 1페이지부터
+        const page = 0;
         const embed = renderMemoListEmbed(interaction.user.id, list, page, q);
         const rows = renderMemoListButtons(list, page, q);
         return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
       }
 
-      // 추가 제출
       if (customId.startsWith(MEMO_PREFIX + "add_submit|")) {
         const [, pageStr] = customId.split("|");
         const userId = interaction.user.id;
