@@ -23,7 +23,7 @@ const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
 const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 
 // ====== 활동 이름 정규화/제외 ======
-const EXCLUDED_APPS = new Set(["Valorant Tracker App", "Outplayed", "DOR.GG", "Essential"]);
+const EXCLUDED_APPS = new Set(["Valorant Tracker App", "Outplayed", "DOR.GG", "Essential", "Visual Studio Code", "TETR.IO", "Mabinogi Mobile", "Wallpaper Engine"]);
 
 const GAME_CANON = [
   { group: "pubg",      ko: "배틀그라운드",       names: ["PUBG: BATTLEGROUNDS", "PLAYERUNKNOWN'S BATTLEGROUNDS", "PUBG: BATTLEGROUNDS KAKAO"] },
@@ -33,9 +33,33 @@ const GAME_CANON = [
   { group: "r6",        ko: "레인보우 식스 시즈", names: ["Rainbow Six Siege", "Tom Clancy's Rainbow Six Siege X"] },
   { group: "minecraft", ko: "마인크래프트",       names: ["Minecraft", "CurseForge"] },
   { group: "ow2",       ko: "오버워치2",          names: ["Overwatch 2"] },
-  { group: "djmax5",       ko: "디제이맥스V",     names: ["DJMAX RESPECT V"] },
-  { group: "corek",       ko: "코어키퍼",         names: ["Core Keeper"] },
-  { group: "ms",       ko: "메이플스토리",         names: ["MapleStory"] },
+  { group: "djmax5",    ko: "디제이맥스V",        names: ["DJMAX RESPECT V"] },
+  { group: "corek",     ko: "코어키퍼",           names: ["Core Keeper"] },
+  { group: "ms",        ko: "메이플스토리",        names: ["MapleStory"] },
+  { group: "ffXO",       ko: "파이널 판타지 XIV",         names: ["FINAL FANTASY XIV Online"] },
+  { group: "fisfis",       ko: "냐옹이 낚시 일기",         names: ["Fischer's Fishing Journey"] },
+  { group: "limcom",       ko: "림버스 컴퍼니",         names: ["Limbus Company"] },
+  { group: "prohastII",       ko: "프로미넌스2 RPG",         names: ["Prominence II RPG Hasturian Era"] },
+  { group: "talesr",       ko: "테일즈런너",         names: ["Tales Runner"] },
+  { group: "GrandC",       ko: "그랜드체이스",         names: ["GrandChase"] },
+  { group: "losta",       ko: "로스트아크",         names: ["Lost Ark"] },
+  { group: "bluear",       ko: "블루 아카이브",         names: ["Blue Archive"] },
+  { group: "star2",       ko: "스타크래프트2",         names: ["StarCraft II"] },
+  { group: "starvall",       ko: "스타듀밸리",         names: ["Stardew Valley"] },
+  { group: "ttc",       ko: "테탑시",         names: ["Tabletop Simulator"] },
+  { group: "monhunri",       ko: "몬스터헌터 라이즈",         names: ["MONSTER HUNTER RISE"] },
+  { group: "debyda",       ko: "데바데",         names: ["Dead by Daylight"] },
+  { group: "wutwav",       ko: "명조",         names: ["Wuthering Waves"] },
+  { group: "delfor",       ko: "델타포스",         names: ["Delta Force", "Delta Force Game"] },
+  { group: "apeleg",       ko: "에이펙스 레전드",         names: ["Apex Legends"] },
+  { group: "star1",       ko: "스타크래프트1",         names: ["StarCraft"] },
+  { group: "cyps",       ko: "사이퍼즈",         names: ["Cyphers"] },
+  { group: "micoroom",       ko: "미니 코지 룸",         names: ["Mini Cozy Room: Lo-Fi"] },
+  { group: "priescsim",       ko: "프리즌 이스케이프 시뮬레이터",         names: ["Prison Escape Simulator: Dig Out"] },
+  { group: "pek",         ko: "피크",         names: ["PEAK"] },
+  { group: "genim",       ko: "원신",         names: ["Genshin Impact"] },
+  { group: "zzz",       ko: "젠레스 존 제로",         names: ["Zenless Zone Zero"] },
+  { group: "balga3",       ko: "발더스 게이트3",         names: ["Baldur's Gate 3"] },
 ];
 
 const NAME_TO_GROUP = new Map();
@@ -500,6 +524,7 @@ async function getEmbed() {
     });
   }
 };
+
 
 
 
