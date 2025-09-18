@@ -84,7 +84,7 @@ function resolveNick(interaction) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("풀석")
-    .setDescription("풀석 쓰러지기(유저별 일일 순차 멘트)"),
+    .setDescription("진심이세요? 에휴"),
   async execute(interaction) {
     const nick = resolveNick(interaction);
     const userId = interaction.user.id;
