@@ -488,9 +488,9 @@ async function buildProfileView(interaction, targetUser) {
   const viewerMemoText = getMemo(userId, viewerId);
   const memoFieldValue = viewerMemoText ? viewerMemoText : "등록된 메모가 없습니다.";
   const fields = [
-    { name: "🎮 플레이 스타일", value: playStyle, inline: true },
+    { name: "🎮 스타일", value: playStyle, inline: true },
     { name: `${getFavorEmoji(favorVal)} 호감도`, value: String(favorVal), inline: true },
-    { name: "⏰ 서버 입장", value: joinedStr, inline: true },
+    { name: "⏰ 입장", value: joinedStr, inline: true },
     { name: "🎲 선호 게임", value: profile.favGames.length ? profile.favGames.map(g => `• ${g}`).join("\n") : "없음", inline: false },
     { name: "🟠 오버워치", value: `${getTierEmoji(profile.owTier)} ${profile.owTier || "없음"}`, inline: true },
     { name: "🔵 롤", value: `${getTierEmoji(profile.lolTier)} ${profile.lolTier || "없음"}`, inline: true },
