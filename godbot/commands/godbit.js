@@ -724,13 +724,18 @@ module.exports = {
         }
 
         const chartValue = filterConfig.value;
-        const chartDataArr = slice.map((item, i) =>
-          getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
-        );
-        let labels = [];
-        if (chartDataArr.length > 0) {
-          labels = chartDataArr[0].labels;
-        }
+        const chartDataArr = slice.map((item) =>
+  getSampledHistory(item.info, chartRange, filterConfig.interval, chartValue)
+);
+
+let latestIdx = 0;
+let latestTs = 0;
+for (let i = 0; i < slice.length; i++) {
+  const arr = slice[i].info?.historyT;
+  const ts = arr && arr.length ? new Date(arr[arr.length - 1]).getTime() : 0;
+  if (ts > latestTs) { latestTs = ts; latestIdx = i; }
+}
+const labels = chartDataArr[latestIdx]?.labels || [];
         const datasets = slice.map((item, i) => ({
           label: item.name,
           data: chartDataArr[i].data,
