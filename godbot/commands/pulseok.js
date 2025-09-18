@@ -1,15 +1,4 @@
 "use strict";
-
-/**
- * /풀석 — 유저별 일일 순차 멘트
- * - 같은 유저가 같은 날 여러 번 쓰면 배열 순서대로 진행
- * - 한국(Asia/Seoul) 자정 지나면 모든 유저 순서 초기화
- * - 마지막(8번째) 멘트 이후에는 당일 동안 더 이상 공개 반응 없음(에페메럴 안내)
- *
- * 필요 패키지: proper-lockfile (프로젝트에 이미 사용 중)
- *   npm i proper-lockfile
- */
-
 const {
   SlashCommandBuilder
 } = require("discord.js");
@@ -58,6 +47,27 @@ function safeSave(obj) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(obj, null, 2), "utf8");
 }
 
+function ensureStateFile() {
+  try {
+    if (!fs.existsSync(STATE_PATH)) {
+      const fresh = { lastDate: null, users: {} };
+      fs.writeFileSync(STATE_PATH, JSON.stringify(fresh, null, 2), "utf8");
+    } else {
+      // 파일이 있지만 내용이 비어있을 수도 있으니 보정
+      const raw = fs.readFileSync(STATE_PATH, "utf8");
+      if (!raw || !raw.trim()) {
+        const fresh = { lastDate: null, users: {} };
+        fs.writeFileSync(STATE_PATH, JSON.stringify(fresh, null, 2), "utf8");
+      }
+    }
+  } catch {
+    try { fs.renameSync(STATE_PATH, STATE_PATH + `.corrupt.${Date.now()}`); } catch {}
+    const fresh = { lastDate: null, users: {} };
+    fs.writeFileSync(STATE_PATH, JSON.stringify(fresh, null, 2), "utf8");
+  }
+}
+
+
 // ====== 멘트 템플릿 ======
 const LINES = [
   "{nick}님이 풀썩 쓰러져버렸습니다!",
@@ -89,6 +99,21 @@ module.exports = {
     const nick = resolveNick(interaction);
     const userId = interaction.user.id;
     const today = getKSTDateStr();
+
+      async execute(interaction) {
+    const nick = resolveNick(interaction);
+    const userId = interaction.user.id;
+    const today = getKSTDateStr();
+
+    // 🔧 먼저 상태 파일을 보증
+    ensureStateFile();
+
+    // 파일 잠금
+    let release;
+    try {
+      release = await lockfile.lock(STATE_PATH, {
+        retries: { retries: 5, factor: 1.5, minTimeout: 60, maxTimeout: 300 }
+      });
 
     // 파일 잠금
     let release;
