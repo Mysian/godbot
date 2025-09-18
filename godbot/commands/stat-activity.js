@@ -22,6 +22,52 @@ const PERIODS = [
 const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
 const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 
+// ====== 활동 이름 정규화/제외 ======
+const EXCLUDED_APPS = new Set(["Valorant Tracker App"]);
+
+const GAME_CANON = [
+  { group: "pubg",      ko: "배틀그라운드",       names: ["PUBG: BATTLEGROUNDS", "PLAYERUNKNOWN'S BATTLEGROUNDS"] },
+  { group: "lol",       ko: "리그 오브 레전드",   names: ["League of Legends"] },
+  { group: "er",        ko: "이터널 리턴",       names: ["Eternal Return"] },
+  { group: "valorant",  ko: "발로란트",           names: ["VALORANT", "Valorant"] },
+  { group: "r6",        ko: "레인보우 식스 시즈", names: ["Rainbow Six Siege"] },
+  { group: "minecraft", ko: "마인크래프트",       names: ["Minecraft"] },
+  { group: "ow2",       ko: "오버워치2",          names: ["Overwatch 2"] },
+];
+
+const NAME_TO_GROUP = new Map();
+const GROUP_TO_LABEL = new Map();
+for (const row of GAME_CANON) {
+  GROUP_TO_LABEL.set(row.group, row.ko);
+  for (const n of row.names) NAME_TO_GROUP.set(n.toLowerCase(), row.group);
+}
+
+function canonGame(raw) {
+  if (!raw) return null;
+  if (EXCLUDED_APPS.has(raw)) return null;
+  const key = raw.toLowerCase();
+  const group = NAME_TO_GROUP.get(key) || key; // 미등록명은 자체 그룹으로
+  const label = GROUP_TO_LABEL.get(group) || raw;
+  return { group, label };
+}
+
+function actDateStr(act) {
+  // 우선순위: act.date(YYYY-MM-DD) → epoch/ISO(ts/start/timestamp)
+  if (typeof act?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(act.date)) return act.date;
+  const t = typeof act?.ts === "number" ? act.ts
+    : typeof act?.start === "number" ? act.start
+    : typeof act?.timestamp === "number" ? act.timestamp
+    : typeof act?.ts === "string" ? Date.parse(act.ts)
+    : typeof act?.start === "string" ? Date.parse(act.start)
+    : typeof act?.timestamp === "string" ? Date.parse(act.timestamp)
+    : null;
+  if (t && !Number.isNaN(t)) {
+    const d = new Date(t + 9 * 60 * 60 * 1000); // KST 보정
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+  }
+  return null; // 날짜 없으면 이후 로직에서 무시/포함 선택 가능
+}
+
 // ====== 음성채널 화이트리스트 ======
 const VOICE_CHANNELS = [
   ["101호","1222085152600096778"],
@@ -129,34 +175,68 @@ function filterMemberUsable(guild, userId) {
 }
 
 // ====== 기존: 활동 임베드(전체) ======
-function buildActivityEmbed({ guild, page = 0 }) {
+function buildActivityEmbed({ guild, period = "7", page = 0, logs }) {
   const pageSize = 10;
-  let activityData = fs.existsSync("activity-logs.json")
-    ? JSON.parse(fs.readFileSync("activity-logs.json", "utf-8"))
-    : {};
-  const activityCounts = {};
-  for (const uid in activityData) {
+  const { from, to } = getDateRange(period);
+
+  // 1) 원본 이름 기준 카운트
+  const countsByRaw = new Map();
+  const data = logs || {};
+  for (const uid in data) {
     if (!filterMemberUsable(guild, uid)) continue;
-    const list = activityData[uid];
+    const list = data[uid] || [];
     for (const act of list) {
       if (act.activityType !== "game") continue;
-      const name = act.details.name;
-      if (!activityCounts[name]) activityCounts[name] = 0;
-      activityCounts[name]++;
+      const name = act?.details?.name || act?.name;
+      if (!name || EXCLUDED_APPS.has(name)) continue;
+
+      const dstr = actDateStr(act);
+      // 날짜 정보가 있으면 기간 필터 적용, 없으면 포함(원하면 이 줄을 continue로 바꿔 제외 가능)
+      if (dstr) {
+        if (from && dstr < from) continue;
+        if (to && dstr > to) continue;
+      }
+
+      countsByRaw.set(name, (countsByRaw.get(name) || 0) + 1);
     }
   }
-  const sorted = Object.entries(activityCounts).sort((a, b) => b[1] - a[1]);
-  const totalPages = Math.ceil(sorted.length / pageSize) || 1;
-  const show = sorted.slice(page * pageSize, (page + 1) * pageSize);
 
-  let desc = show.length
-    ? show.map((a, idx) => `**${page * pageSize + idx + 1}위** ${a[0]} ${a[1]}회`).join("\n")
+  // 2) 그룹(정규화) 단위로 묶되, "합산"이 아니라 "최댓값만" 채택(요청사항: 더 많은 쪽만 노출)
+  const groupCount = new Map(); // group -> count(max)
+  const groupLabel = new Map(); // group -> ko label(or 원문)
+  for (const [rawName, cnt] of countsByRaw) {
+    const canon = canonGame(rawName);
+    if (!canon) continue;
+    const prev = groupCount.get(canon.group) || 0;
+    if (cnt > prev) {
+      groupCount.set(canon.group, cnt);
+      groupLabel.set(canon.group, canon.label);
+    }
+  }
+
+  // 3) 정렬(내림차순), 페이지 슬라이스
+  const sorted = [...groupCount.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([group]) => groupLabel.get(group));
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const slice = sorted.slice(page * pageSize, (page + 1) * pageSize);
+
+  // 4) 출력(순위만, "~회" 미출력)
+  const desc = slice.length
+    ? slice.map((label, idx) => `**${page * pageSize + idx + 1}위** ${label}`).join("\n")
     : "활동 기록 없음";
-  return new EmbedBuilder()
-    .setTitle(`🎮 전체 활동 TOP`)
-    .setDescription(desc)
-    .setFooter({ text: `${page + 1} / ${totalPages} 페이지` });
+
+  const periodLabel = PERIODS.find(p => p.value === period)?.label || "전체";
+  return {
+    embed: new EmbedBuilder()
+      .setTitle(`🎮 전체 활동 TOP`)
+      .setDescription(desc)
+      .setFooter({ text: `기간: ${periodLabel} | ${page + 1}/${totalPages}페이지` }),
+    totalPages
+  };
 }
+
 
 // ====== 기존: 유저별 랭킹 임베드 ======
 function buildStatsEmbed({ guild, page = 0, filterType = "all", period = "1" }) {
@@ -312,10 +392,15 @@ module.exports = {
     .setName("이용현황")
     .setDescription("기간별 전체 활동/채팅/음성 랭킹 + 시간대/채널 현황"),
   async execute(interaction) {
+    const activityCache = fs.existsSync("activity-logs.json")
+  ? JSON.parse(fs.readFileSync("activity-logs.json", "utf-8"))
+  : {};
     let period = '1';
     let filterType = "all";   // all, message, voice, activity
     let mainPage = 0;
     let viewMode = "list";    // list, hourly, channels
+
+    
 
     async function getEmbed() {
       if (viewMode === "hourly") {
@@ -325,21 +410,13 @@ module.exports = {
         return buildVoiceChannelEmbed({ guild: interaction.guild, period, page: mainPage });
       }
       if (filterType === "activity") {
-        const pageSize = 10;
-        const embed = buildActivityEmbed({ guild: interaction.guild, page: mainPage });
-        // totalPages 재계산
-        let activityData = fs.existsSync("activity-logs.json")
-          ? JSON.parse(fs.readFileSync("activity-logs.json", "utf-8"))
-          : {};
-        const counts = {};
-        for (const uid in activityData) {
-          if (!filterMemberUsable(interaction.guild, uid)) continue;
-          for (const act of activityData[uid]) {
-            if (act.activityType !== "game") continue;
-            const n = act.details.name;
-            counts[n] = (counts[n] || 0) + 1;
-          }
-        }
+  return buildActivityEmbed({
+    guild: interaction.guild,
+    period,
+    page: mainPage,
+    logs: activityCache
+  });
+}
         const totalPages = Math.ceil(Object.keys(counts).length / pageSize) || 1;
         return { embed, totalPages };
       } else {
@@ -422,3 +499,4 @@ module.exports = {
     });
   }
 };
+
