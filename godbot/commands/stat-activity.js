@@ -392,8 +392,9 @@ module.exports = {
     .setName("이용현황")
     .setDescription("기간별 전체 활동/채팅/음성 랭킹 + 시간대/채널 현황"),
   async execute(interaction) {
-    const activityCache = fs.existsSync("activity-logs.json")
-  ? JSON.parse(fs.readFileSync("activity-logs.json", "utf-8"))
+    const ACTLOG = path.join(__dirname, "../activity-logs.json");
+    const activityCache = fs.existsSync(ACTLOG)
+  ? JSON.parse(fs.readFileSync(ACTLOG, "utf-8"))
   : {};
     let period = '1';
     let filterType = "all";   // all, message, voice, activity
@@ -402,28 +403,25 @@ module.exports = {
 
     
 
-    async function getEmbed() {
-      if (viewMode === "hourly") {
-        return buildHourlyEmbed({ guild: interaction.guild, period });
-      }
-      if (viewMode === "channels") {
-        return buildVoiceChannelEmbed({ guild: interaction.guild, period, page: mainPage });
-      }
-      if (filterType === "activity") {
-  return buildActivityEmbed({
-    guild: interaction.guild,
-    period,
-    page: mainPage,
-    logs: activityCache
-  });
+async function getEmbed() {
+  if (viewMode === "hourly") {
+    return buildHourlyEmbed({ guild: interaction.guild, period });
+  }
+  if (viewMode === "channels") {
+    return buildVoiceChannelEmbed({ guild: interaction.guild, period, page: mainPage });
+  }
+  if (filterType === "activity") {
+    return buildActivityEmbed({
+      guild: interaction.guild,
+      period,
+      page: mainPage,
+      logs: activityCache
+    });
+  } else {
+    return buildStatsEmbed({ guild: interaction.guild, page: mainPage, filterType, period });
+  }
 }
-        const totalPages = Math.ceil(Object.keys(counts).length / pageSize) || 1;
-        return { embed, totalPages };
-        else {
-        return buildStatsEmbed({ guild: interaction.guild, page: mainPage, filterType, period });
-      }
-    }
-
+    
     const { embed, totalPages } = await getEmbed();
 
     await interaction.reply({
