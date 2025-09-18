@@ -14,16 +14,23 @@ const {
 const fs = require("fs");
 const path = require("path");
 const { createCanvas } = require("canvas");
-
 const relationship = require("../utils/relationship.js");
 const activity = require("../utils/activity-tracker.js");
 const activityLogger = require("../utils/activity-logger.js");
-
 const profilesPath = path.join(__dirname, "../data/profiles.json");
 const favorPath = path.join(__dirname, "../data/favor.json");
 const bePath = path.join(__dirname, "../data/BE.json");
 const ratingsPath = path.join(__dirname, "../data/ratings.json");
 const memosPath = path.join(__dirname, "../data/memos.json");
+const cooldownPath = path.join(__dirname, "../data/favor-cooldown.json");
+
+function addBE(userId, amount, reason) {
+  const be = readJson(bePath);
+  if (!be[userId]) be[userId] = { amount: 0, history: [] };
+  be[userId].amount = (be[userId].amount || 0) + amount;
+  (be[userId].history ||= []).push({ type: "earn", amount, reason, timestamp: Date.now() });
+  writeJson(bePath, be);
+}
 
 const PLAY_STYLE_ROLES = {
   "빡겜러": "1210762363704311838",
@@ -522,8 +529,21 @@ async function buildProfileView(interaction, targetUser) {
     new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`profile:rate|${userId}`).setStyle(ButtonStyle.Primary).setLabel(rateBtnLabel),
     new ButtonBuilder().setCustomId(`profile:memo|${userId}`).setStyle(ButtonStyle.Secondary).setLabel(memoBtnLabel)
-    )
+  ),
+  new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profile:favor+|${userId}`)
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("♥️")
+      .setLabel("호감도 지급"),
+    new ButtonBuilder()
+      .setCustomId(`profile:favor-|${userId}`)
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji("💔")
+      .setLabel("호감도 차감")
+  )
 ];
+
 
   return { embeds: [embed], files: [attachment], components, ephemeral: true };
 }
@@ -574,10 +594,15 @@ module.exports = {
     if (!msg) return;
 
     const filter = i => {
-      if (i.user.id !== interaction.user.id) return false;
-      if (!i.customId) return false;
-      return i.customId === `profile:rate|${target.id}` || i.customId === `profile:memo|${target.id}`;
-    };
+  if (i.user.id !== interaction.user.id) return false;
+  if (!i.customId) return false;
+  return (
+    i.customId === `profile:rate|${target.id}` ||
+    i.customId === `profile:memo|${target.id}` ||
+    i.customId === `profile:favor+|${target.id}` ||
+    i.customId === `profile:favor-|${target.id}`
+  );
+};
 
     const collector = msg.createMessageComponentCollector({ filter, time: 10 * 60 * 1000 });
 
@@ -640,7 +665,56 @@ module.exports = {
   await submitted.reply({
     content: `메모가 저장되었습니다.\n\n당신에게만 보이는 메모: ${text}`,
     ephemeral: true
+
+  else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
+  const isGive = i.customId.includes("favor+");
+  const giver = interaction.user.id;
+  const receiver = target.id;
+
+  if (giver === receiver) {
+    return i.reply({
+      content: isGive ? "자기 자신에게는 호감도를 줄 수 없어." : "자기 자신에게는 호감도를 차감할 수 없어.",
+      ephemeral: true
+    });
+  }
+
+  const favor = readJson(favorPath);
+  const cooldown = readJson(cooldownPath);
+  const now = Date.now();
+
+  const cdKey = (isGive ? "" : "rm_") + `${giver}_${receiver}`;
+  const DAY = 24 * 60 * 60 * 1000;
+  if (cooldown[cdKey] && now - cooldown[cdKey] < DAY) {
+    const left = DAY - (now - cooldown[cdKey]);
+    const hr = Math.floor(left / 3600000);
+    const min = Math.floor((left % 3600000) / 60000);
+    return i.reply({ content: `쿨타임이 남아 있어. (남은 시간: ${hr}시간 ${min}분)`, ephemeral: true });
+  }
+
+  favor[receiver] = (favor[receiver] || 0) + (isGive ? 1 : -1);
+  cooldown[cdKey] = now;
+  writeJson(favorPath, favor);
+  writeJson(cooldownPath, cooldown);
+
+  try {
+    if (isGive) {
+      relationship.onPositive(giver, receiver, 0.3);
+      relationship.onPositive(receiver, giver, 0.3);
+    } else {
+      relationship.addScore(giver, receiver, -0.3);
+    }
+  } catch {}
+
+  const reward = Math.floor(Math.random() * 2) + 1;
+  addBE(giver, reward, isGive ? "호감도 지급 성공 보상" : "호감도 차감 성공 보상");
+
+  await i.reply({
+    content: isGive
+      ? `<@${receiver}>에게 호감도를 1점 지급했어!\n🎁 파랑 정수 ${reward} BE를 획득했어!`
+      : `<@${receiver}>의 호감도를 1점 차감했어.\n🎁 파랑 정수 ${reward} BE를 획득했어!`,
+    ephemeral: true
   });
+
   const refreshed = await buildProfileView(interaction, target);
   await interaction.editReply({
     embeds: refreshed.embeds,
