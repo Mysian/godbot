@@ -99,12 +99,6 @@ module.exports = {
     const nick = resolveNick(interaction);
     const userId = interaction.user.id;
     const today = getKSTDateStr();
-
-      async execute(interaction) {
-    const nick = resolveNick(interaction);
-    const userId = interaction.user.id;
-    const today = getKSTDateStr();
-
     // 🔧 먼저 상태 파일을 보증
     ensureStateFile();
 
