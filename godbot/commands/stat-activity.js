@@ -23,16 +23,19 @@ const EXCLUDED_USER_IDS = ["285645561582059520", "638742607861645372"];
 const EXCLUDED_ROLE_IDS = ["1205052922296016906"];
 
 // ====== 활동 이름 정규화/제외 ======
-const EXCLUDED_APPS = new Set(["Valorant Tracker App"]);
+const EXCLUDED_APPS = new Set(["Valorant Tracker App", "Outplayed", "DOR.GG", "Essential"]);
 
 const GAME_CANON = [
-  { group: "pubg",      ko: "배틀그라운드",       names: ["PUBG: BATTLEGROUNDS", "PLAYERUNKNOWN'S BATTLEGROUNDS"] },
+  { group: "pubg",      ko: "배틀그라운드",       names: ["PUBG: BATTLEGROUNDS", "PLAYERUNKNOWN'S BATTLEGROUNDS", "PUBG: BATTLEGROUNDS KAKAO"] },
   { group: "lol",       ko: "리그 오브 레전드",   names: ["League of Legends"] },
   { group: "er",        ko: "이터널 리턴",       names: ["Eternal Return"] },
   { group: "valorant",  ko: "발로란트",           names: ["VALORANT", "Valorant"] },
-  { group: "r6",        ko: "레인보우 식스 시즈", names: ["Rainbow Six Siege"] },
-  { group: "minecraft", ko: "마인크래프트",       names: ["Minecraft"] },
+  { group: "r6",        ko: "레인보우 식스 시즈", names: ["Rainbow Six Siege", "Tom Clancy's Rainbow Six Siege X"] },
+  { group: "minecraft", ko: "마인크래프트",       names: ["Minecraft", "CurseForge"] },
   { group: "ow2",       ko: "오버워치2",          names: ["Overwatch 2"] },
+  { group: "djmax5",       ko: "디제이맥스V",     names: ["DJMAX RESPECT V"] },
+  { group: "corek",       ko: "코어키퍼",         names: ["Core Keeper"] },
+  { group: "ms",       ko: "메이플스토리",         names: ["MapleStory"] },
 ];
 
 const NAME_TO_GROUP = new Map();
@@ -497,5 +500,6 @@ async function getEmbed() {
     });
   }
 };
+
 
 
