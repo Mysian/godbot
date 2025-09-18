@@ -1,7 +1,5 @@
 "use strict";
-const {
-  SlashCommandBuilder
-} = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 const lockfile = require("proper-lockfile");
@@ -13,7 +11,6 @@ const STATE_PATH = path.join(DATA_DIR, "pulseok-state.json");
 
 // ====== KST 날짜 유틸 ======
 function getKSTDateStr() {
-  // 'YYYY-MM-DD' 반환
   const now = new Date();
   const kst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
   const y = kst.getFullYear();
@@ -37,7 +34,6 @@ function safeLoad() {
     if (typeof obj.users !== "object" || obj.users === null) obj.users = {};
     return obj;
   } catch {
-    // 손상 시 백업 후 초기화
     try { fs.renameSync(STATE_PATH, STATE_PATH + `.corrupt.${Date.now()}`); } catch {}
     return { lastDate: null, users: {} };
   }
@@ -53,7 +49,6 @@ function ensureStateFile() {
       const fresh = { lastDate: null, users: {} };
       fs.writeFileSync(STATE_PATH, JSON.stringify(fresh, null, 2), "utf8");
     } else {
-      // 파일이 있지만 내용이 비어있을 수도 있으니 보정
       const raw = fs.readFileSync(STATE_PATH, "utf8");
       if (!raw || !raw.trim()) {
         const fresh = { lastDate: null, users: {} };
@@ -66,7 +61,6 @@ function ensureStateFile() {
     fs.writeFileSync(STATE_PATH, JSON.stringify(fresh, null, 2), "utf8");
   }
 }
-
 
 // ====== 멘트 템플릿 ======
 const LINES = [
@@ -81,24 +75,20 @@ const LINES = [
 ];
 
 function resolveNick(interaction) {
-  // 닉네임 → 서버 닉네임 우선, 없으면 글로벌/유저명
   const m = interaction.member;
   const u = interaction.user;
-  return (
-    (m && (m.nickname || m.displayName)) ||
-    u.globalName ||
-    u.username
-  );
+  return (m && (m.nickname || m.displayName)) || u.globalName || u.username;
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("풀석")
-    .setDescription("진심이세요? 에휴"),
+    .setDescription("풀석 쓰러지기(유저별 일일 순차 멘트)"),
   async execute(interaction) {
     const nick = resolveNick(interaction);
     const userId = interaction.user.id;
     const today = getKSTDateStr();
+
     // 🔧 먼저 상태 파일을 보증
     ensureStateFile();
 
@@ -106,14 +96,7 @@ module.exports = {
     let release;
     try {
       release = await lockfile.lock(STATE_PATH, {
-        retries: { retries: 5, factor: 1.5, minTimeout: 60, maxTimeout: 300 }
-      });
-
-    // 파일 잠금
-    let release;
-    try {
-      release = await lockfile.lock(STATE_PATH, {
-        retries: { retries: 5, factor: 1.5, minTimeout: 60, maxTimeout: 300 }
+        retries: { retries: 5, factor: 1.5, minTimeout: 60, maxTimeout: 300 },
       });
 
       const state = safeLoad();
@@ -127,23 +110,17 @@ module.exports = {
       const current = Number.isInteger(state.users[userId]) ? state.users[userId] : 0;
 
       if (current < LINES.length) {
-        // 공개 메시지(채널에 보임)
         const text = LINES[current].replace("{nick}", nick);
-        // 다음 인덱스 저장 (최대값에서 더 증가하지 않도록 클램프)
-        const next = Math.min(current + 1, LINES.length);
-        state.users[userId] = next;
+        state.users[userId] = Math.min(current + 1, LINES.length);
         safeSave(state);
-
         await interaction.reply({ content: text, ephemeral: false });
       } else {
-        // 한도를 넘었으면 당일 동안은 에페메럴 안내만
         await interaction.reply({
           content: "갓봇이 당신의 풀석을 지겨워합니다. 자정 이후에 다시 찾아오세요",
           ephemeral: true,
         });
       }
     } catch (err) {
-      // 잠금 실패/IO 오류 시에도 유저 경험을 해치지 않도록 에페메럴 안내
       try {
         await interaction.reply({
           content: "잠깐! 처리 중 문제가 생겼어. 다시 한 번만 시도해줘.",
