@@ -50,8 +50,6 @@ module.exports = {
           { name: "📝 /프로필등록", value: "서버에 나만의 프로필 등록", inline: true },
           { name: "👤 /프로필 [유저명]", value: "자신 또는 다른 유저의 프로필 조회", inline: true },
           { name: "🖥️ /이용현황", value: "서버 이용현황을 상세 확인", inline: true },
-          { name: "❤️ /호감도지급 [유저]", value: "다른 유저에게 호감도 지급 (대상마다 하루 1회)", inline: true },
-          { name: "💔 /호감도차감 [유저]", value: "다른 유저의 호감도 차감 (대상마다 하루 1회)", inline: true },
           { name: "💼 /인벤토리", value: "내 정수 아이템(소모품/스킬/강화) 확인", inline: true },
           { name: "🛒 /상점", value: "파랑 정수(BE)로 아이템 구매", inline: true },
           { name: "💸 /정수송금 [유저] [금액]", value: "유저에게 정수 송금 (수수료 10%)", inline: true },
@@ -158,6 +156,7 @@ embeds.push(
     });
   },
 };
+
 
 
 
