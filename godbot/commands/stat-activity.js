@@ -257,7 +257,7 @@ const slice = capped.slice(page * pageSize, (page + 1) * pageSize);
   const periodLabel = PERIODS.find(p => p.value === period)?.label || "전체";
   return {
     embed: new EmbedBuilder()
-      .setTitle(`🎮 전체 활동 TOP`)
+      .setTitle(`🎮 전체 활동 TOP 50`)
       .setDescription(desc)
       .setFooter({ text: `기간: ${periodLabel} | ${page + 1}/${totalPages}페이지` }),
     totalPages
@@ -526,6 +526,7 @@ async function getEmbed() {
     });
   }
 };
+
 
 
 
