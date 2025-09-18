@@ -520,6 +520,7 @@ if (
 
   // 2. 모달 통합 처리
   if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('profile:')) return;
     let handled = false;
     for (const [key, handler] of modalHandlers.entries()) {
       if (interaction.customId.startsWith(key)) {
@@ -1220,6 +1221,9 @@ if (
 
   // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
+
+// ✅ 프로필 전용 버튼은 개별 collector가 처리 → 전역 우회
+if (interaction.customId.startsWith('profile:')) return;
 
   // "_open"으로 끝나는 버튼만 index.js에서 직접 처리!
   if (interaction.customId.endsWith('_open')) {
