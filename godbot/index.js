@@ -95,11 +95,13 @@ setInterval(async () => {
   try {
     const guild = client.guilds.cache.get(GUILD_ID);
     if (!guild) return;
-    await autoMarketUpdate(guild);
+    const members =
+      (guild.members?.cache?.size ? guild.members.cache : await guild.members.fetch());
+    await autoMarketUpdate(members, client);
   } catch (e) {
     console.error('갓비트 자동상장 오류:', e);
   }
-}, 600_000);
+}, 600_000); // 필요하면 60_000(1분)로 낮춰도 OK
 
 // ✅ 봇 준비 완료 시 로그 전송 + 활동 상태 번갈아 표시
 client.once(Events.ClientReady, async () => {
