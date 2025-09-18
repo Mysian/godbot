@@ -501,7 +501,7 @@ async function buildProfileView(interaction, targetUser) {
     { name: "📊 최근 7일 채팅", value: `${recentMsg}회`, inline: true },
     { name: "🔊 최근 7일 음성", value: formatVoice(recentVoice), inline: true },
     { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false },
-    { name: "🎤 자주 사용하는 음성채널", value: favVoiceChannel, inline: false },
+    { name: "🎤 자주 이용하는 음성채널", value: favVoiceChannel, inline: false },
     { name: "⏱️ 자주 등장하는 시간대", value: favTimeRange, inline: false },
     { name: "⭐ 유저 평가 현황", value: ratingFieldValue, inline: false },
     { name: "🔒 당신에게만 보이는 메모", value: memoFieldValue, inline: false }
@@ -543,7 +543,6 @@ async function buildProfileView(interaction, targetUser) {
       .setLabel("호감도 차감")
   )
 ];
-
 
   return { embeds: [embed], files: [attachment], components, ephemeral: true };
 }
