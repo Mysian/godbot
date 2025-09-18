@@ -5,6 +5,16 @@ const path = require('path');
 const dataPath = path.join(__dirname, '../activity-logs.json');
 const MAX_DAYS = 90;
 
+// === 활동 수집 스로틀 설정 ===
+const ACTIVITY_THROTTLE_MS = {
+  default: 30000,   // 기본 30초
+  message: 10000,   // 메시지류는 10초
+  presence: 60000,  // presence/상태는 60초
+  // 필요하면 타입별로 추가
+};
+const lastLogAt = new Map(); // key: `${userId}:${activityType}` → last ts
+
+
 // 메모리 캐시
 let cache = {};
 let dirty = false;
@@ -58,14 +68,25 @@ function flush() {
 
 // 활동 추가
 function addActivity(userId, activityType, details) {
-  if (!userId || typeof userId !== 'string') return; // 방어
+  if (!userId || typeof userId !== 'string') return;
+  const now = Date.now();
+  const type = activityType || 'unknown';
+  const key = `${userId}:${type}`;
+  const limit = ACTIVITY_THROTTLE_MS[type] ?? ACTIVITY_THROTTLE_MS.default;
+  const last = lastLogAt.get(key) || 0;
+
+  // 너무 자주 들어오면 드랍
+  if (now - last < limit) return;
+  lastLogAt.set(key, now);
+
   if (!cache[userId]) cache[userId] = [];
-  cache[userId].push({ activityType, details, time: Date.now() });
+  cache[userId].push({ activityType: type, details, time: now });
   dirty = true;
 }
 
+
 // 1분(60,000ms)마다 저장
-setInterval(flush, 60000).unref?.();
+setInterval(flush, 300000).unref?.();
 
 // 유저 활동 조회
 function getUserActivities(userId) {
