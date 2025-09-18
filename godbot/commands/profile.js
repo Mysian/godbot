@@ -639,89 +639,99 @@ module.exports = {
           files: refreshed.files,
           components: refreshed.components
         });
+            } else if (i.customId === `profile:memo|${target.id}`) {
+        const modal = new ModalBuilder().setCustomId(`profile:memo|${target.id}`).setTitle("메모 입력/수정");
+        const input = new TextInputBuilder()
+          .setCustomId("memo_text")
+          .setLabel("메모 내용 (본인만 열람, 1회성)")
+          .setStyle(TextInputStyle.Paragraph)
+          .setMaxLength(500)
+          .setRequired(true)
+          .setPlaceholder("메모를 입력하세요.");
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        await i.showModal(modal);
 
-      } else if (i.customId === `profile:memo|${target.id}`) {
-  const modal = new ModalBuilder().setCustomId(`profile:memo|${target.id}`).setTitle("메모 입력/수정");
-  const input = new TextInputBuilder()
-    .setCustomId("memo_text")
-    .setLabel("메모 내용 (본인만 열람, 1회성)")
-    .setStyle(TextInputStyle.Paragraph)
-    .setMaxLength(500)
-    .setRequired(true)
-    .setPlaceholder("메모를 입력하세요.");
-  modal.addComponents(new ActionRowBuilder().addComponents(input));
-  await i.showModal(modal);
+        let submitted = null;
+        try {
+          submitted = await i.awaitModalSubmit({
+            time: 120000,
+            filter: m => m.customId === `profile:memo|${target.id}` && m.user.id === interaction.user.id
+          });
+        } catch {}
+        if (!submitted) return;
 
-  let submitted = null;
-  try {
-    submitted = await i.awaitModalSubmit({
-      time: 120000,
-      filter: m => m.customId === `profile:memo|${target.id}` && m.user.id === interaction.user.id
-    });
-  } catch {}
-  if (!submitted) return;
-  const text = submitted.fields.getTextInputValue("memo_text");
-  upsertMemo(target.id, interaction.user.id, text);
-  await submitted.reply({
-    content: `메모가 저장되었습니다.\n\n당신에게만 보이는 메모: ${text}`,
-    ephemeral: true
+        const text = submitted.fields.getTextInputValue("memo_text");
+        upsertMemo(target.id, interaction.user.id, text);
 
-  else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
-  const isGive = i.customId.includes("favor+");
-  const giver = interaction.user.id;
-  const receiver = target.id;
+        await submitted.reply({
+          content: `메모가 저장되었습니다.\n\n당신에게만 보이는 메모: ${text}`,
+          ephemeral: true
+        });
 
-  if (giver === receiver) {
-    return i.reply({
-      content: isGive ? "자기 자신에게는 호감도를 줄 수 없어." : "자기 자신에게는 호감도를 차감할 수 없어.",
-      ephemeral: true
-    });
-  }
+        // 메모 반영 즉시 프로필 새로고침
+        const refreshed = await buildProfileView(interaction, target);
+        await interaction.editReply({
+          embeds: refreshed.embeds,
+          files: refreshed.files,
+          components: refreshed.components
+        });
 
-  const favor = readJson(favorPath);
-  const cooldown = readJson(cooldownPath);
-  const now = Date.now();
+      } else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
+        const isGive = i.customId.includes("favor+");
+        const giver = interaction.user.id;
+        const receiver = target.id;
 
-  const cdKey = (isGive ? "" : "rm_") + `${giver}_${receiver}`;
-  const DAY = 24 * 60 * 60 * 1000;
-  if (cooldown[cdKey] && now - cooldown[cdKey] < DAY) {
-    const left = DAY - (now - cooldown[cdKey]);
-    const hr = Math.floor(left / 3600000);
-    const min = Math.floor((left % 3600000) / 60000);
-    return i.reply({ content: `쿨타임이 남아 있어. (남은 시간: ${hr}시간 ${min}분)`, ephemeral: true });
-  }
+        if (giver === receiver) {
+          return i.reply({
+            content: isGive ? "자기 자신에게는 호감도를 줄 수 없어." : "자기 자신에게는 호감도를 차감할 수 없어.",
+            ephemeral: true
+          });
+        }
 
-  favor[receiver] = (favor[receiver] || 0) + (isGive ? 1 : -1);
-  cooldown[cdKey] = now;
-  writeJson(favorPath, favor);
-  writeJson(cooldownPath, cooldown);
+        const favor = readJson(favorPath);
+        const cooldown = readJson(cooldownPath);
+        const now = Date.now();
 
-  try {
-    if (isGive) {
-      relationship.onPositive(giver, receiver, 0.3);
-      relationship.onPositive(receiver, giver, 0.3);
-    } else {
-      relationship.addScore(giver, receiver, -0.3);
-    }
-  } catch {}
+        const cdKey = (isGive ? "" : "rm_") + `${giver}_${receiver}`;
+        const DAY = 24 * 60 * 60 * 1000;
+        if (cooldown[cdKey] && now - cooldown[cdKey] < DAY) {
+          const left = DAY - (now - cooldown[cdKey]);
+          const hr = Math.floor(left / 3600000);
+          const min = Math.floor((left % 3600000) / 60000);
+          return i.reply({ content: `쿨타임이 남아 있어. (남은 시간: ${hr}시간 ${min}분)`, ephemeral: true });
+        }
 
-  const reward = Math.floor(Math.random() * 2) + 1;
-  addBE(giver, reward, isGive ? "호감도 지급 성공 보상" : "호감도 차감 성공 보상");
+        favor[receiver] = (favor[receiver] || 0) + (isGive ? 1 : -1);
+        cooldown[cdKey] = now;
+        writeJson(favorPath, favor);
+        writeJson(cooldownPath, cooldown);
 
-  await i.reply({
-    content: isGive
-      ? `<@${receiver}>에게 호감도를 1점 지급했어!\n🎁 파랑 정수 ${reward} BE를 획득했어!`
-      : `<@${receiver}>의 호감도를 1점 차감했어.\n🎁 파랑 정수 ${reward} BE를 획득했어!`,
-    ephemeral: true
-  });
+        try {
+          if (isGive) {
+            relationship.onPositive(giver, receiver, 0.3);
+            relationship.onPositive(receiver, giver, 0.3);
+          } else {
+            relationship.addScore(giver, receiver, -0.3);
+          }
+        } catch {}
 
-  const refreshed = await buildProfileView(interaction, target);
-  await interaction.editReply({
-    embeds: refreshed.embeds,
-    files: refreshed.files,
-    components: refreshed.components
-  });
-}
+        const reward = Math.floor(Math.random() * 2) + 1;
+        addBE(giver, reward, isGive ? "호감도 지급 성공 보상" : "호감도 차감 성공 보상");
+
+        await i.reply({
+          content: isGive
+            ? `<@${receiver}>에게 호감도를 1점 지급했어!\n🎁 파랑 정수 ${reward} BE를 획득했어!`
+            : `<@${receiver}>의 호감도를 1점 차감했어.\n🎁 파랑 정수 ${reward} BE를 획득했어!`,
+          ephemeral: true
+        });
+
+        const refreshed = await buildProfileView(interaction, target);
+        await interaction.editReply({
+          embeds: refreshed.embeds,
+          files: refreshed.files,
+          components: refreshed.components
+        });
+      }
     });
   },
   buildView: buildProfileView
