@@ -530,19 +530,30 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
   }
 
   const listStartPage = 2;
-  const pageVideos = pageify(videos, 10)[pageIndex - listStartPage] || [];
-  const lines = pageVideos.map((v, i)=>{
-    const idx = (pageIndex - listStartPage)*10 + i + 1;
-    const t = cut(v.snippet?.title||"제목 없음", 80);
-    const vc = fmtNum(v.statistics?.viewCount||0);
+const pageVideos = pageify(videos, 10)[pageIndex - listStartPage] || [];
+eb.setTitle("최근 업로드");
+
+if (pageVideos.length === 0) {
+  eb.addFields({ name: "영상 목록", value: "표시할 영상이 없습니다." });
+} else {
+  for (let i = 0; i < pageVideos.length; i++) {
+    const v = pageVideos[i];
+    const idx = (pageIndex - listStartPage) * 10 + i + 1;
+    const t = cut(v.snippet?.title || "제목 없음", 80); // 필드 name 한도 256자 고려
+    const vc = fmtNum(v.statistics?.viewCount || 0);
     const lk = v.statistics?.likeCount ? fmtNum(v.statistics.likeCount) : "비공개";
     const when = toKST(v.snippet?.publishedAt);
     const dura = parseISO8601Duration(v.contentDetails?.duration);
     const u = `https://www.youtube.com/watch?v=${v.id}`;
-    return `**${idx}.** [${t}](${u}) • ${when} • ${dura} • 조회 ${vc} · 좋아요 ${lk}`;
-  });
-  eb.setTitle("최근 업로드").addFields({ name: "영상 목록", value: lines.join("\n") || "표시할 영상이 없습니다." });
-  return { embeds: [eb], files: [] };
+
+    eb.addFields({
+      name: `${idx}. ${t}`,
+      value: `${when} • ${dura}\n조회 ${vc} · 좋아요 ${lk}\n${u}`,
+    });
+  }
+}
+return { embeds: [eb], files: [] };
+
 }
 
 async function handleSearch(interaction, query, key) {
