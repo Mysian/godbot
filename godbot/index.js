@@ -497,28 +497,6 @@ if (interaction.isButton() && interaction.customId?.startsWith("wsearch:")) {
   return;
 }
 
-  // === 유튜브 버튼 라우팅 (검색/채널분석 페이지네이션)
-//   yt:   → 영상 검색 페이지 전환
-//   ytc:  → 채널분석 페이지 전환
-if (interaction.isButton() && (
-  interaction.customId?.startsWith("yt:")  ||
-  interaction.customId?.startsWith("ytc:")
-)) {
-  try {
-    const cmd = client.commands.get("유튜브") || require("./commands/youtube.js");
-    if (typeof cmd.handleComponent === "function") {
-      await cmd.handleComponent(interaction);
-      return;
-    }
-  } catch (err) {
-    console.error("[유튜브 component 오류]", err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ 유튜브 버튼 처리 중 오류", ephemeral: true }).catch(() => {});
-    }
-    return;
-  }
-}
-
   // === 유틸: 계산기/메모장/복권 상호작용 ===
 if (
   (interaction.isButton() || interaction.isModalSubmit()) &&
