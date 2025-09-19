@@ -16,7 +16,6 @@ const SEARCH_PAGE_SIZE = 10;
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const SESS_PREFIX = "yt:";
 const sessions = new Map();
-const POST_MODE = process.env.YT_POST_MODE || "double";
 
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
@@ -233,18 +232,13 @@ function buildPagerRow(sessionId, index, total) {
 
 async function respondWithPlayable(interaction, payload) {
   const { contentUrl, embed, components } = payload;
-  const sendFirst = async (opts) => {
+  const ensureEphemeralReply = async (opts) => {
     if (interaction.deferred || interaction.replied) return interaction.editReply(opts);
-    return interaction.reply(opts);
+    return interaction.reply({ ...opts, ephemeral: true });
   };
-  if (POST_MODE === "double") {
-    const infoMsg = await sendFirst({ content: "", embeds: [embed], components, ephemeral: false, allowedMentions: { parse: [] } });
-    const playerMsg = await interaction.followUp({ content: contentUrl, allowedMentions: { parse: [] } });
-    return { infoMsg, playerMsg };
-  } else {
-    const msg = await sendFirst({ content: contentUrl, embeds: [embed], components, ephemeral: false, allowedMentions: { parse: [] } });
-    return { infoMsg: msg, playerMsg: null };
-  }
+  const infoMsg = await ensureEphemeralReply({ content: "", embeds: [embed], components, allowedMentions: { parse: [] } });
+  const playerMsg = await interaction.followUp({ content: contentUrl, allowedMentions: { parse: [] }, ephemeral: false });
+  return { infoMsg, playerMsg };
 }
 
 module.exports = {
@@ -275,7 +269,7 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     if (sub === "검색") {
       const q = interaction.options.getString("검색어", true).trim();
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
 
       let list = [];
       try {
@@ -314,7 +308,7 @@ module.exports = {
       const { playerMsg } = await respondWithPlayable(interaction, { contentUrl: url, embed, components: [row] });
 
       const sess0 = sessions.get(sessionId);
-      if (sess0 && POST_MODE === "double") {
+      if (sess0) {
         sess0.playerMsgId = playerMsg?.id || null;
         sessions.set(sessionId, sess0);
       }
@@ -352,7 +346,7 @@ module.exports = {
           const { embed: eb2, url: u2 } = buildEmbedForVideo(more2.video, more2.channel, more2.recentComment, sess.index, sess.list.length);
           const row2 = buildPagerRow(sid, sess.index, sess.list.length);
 
-          if (POST_MODE === "double" && sess.playerMsgId) {
+          if (sess.playerMsgId) {
             try {
               const ch = await btn.client.channels.fetch(sess.channelId);
               const pmsg = await ch.messages.fetch(sess.playerMsgId);
@@ -361,7 +355,7 @@ module.exports = {
           }
 
           await btn.update({
-            content: (POST_MODE === "double") ? "" : u2,
+            content: "",
             embeds: [eb2],
             components: [row2],
           });
@@ -393,7 +387,7 @@ module.exports = {
         return interaction.reply({ content: "유효한 유튜브 영상 링크/ID가 아니야.", ephemeral: true });
       }
 
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
       let info = null;
       try {
         info = await ytVideoInfo(vid, key);
