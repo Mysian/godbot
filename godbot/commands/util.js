@@ -164,26 +164,6 @@ async function ensureUsable(urls, maxKeep = 12) {
   return out;
 }
 
-async function withTimeout(promise, ms, onTimeout = null) {
-  let timer;
-  try {
-    const race = Promise.race([
-      promise,
-      new Promise((resolve, reject) => {
-        timer = setTimeout(() => resolve(Symbol.for("TIMEOUT")), ms);
-      })
-    ]);
-    const res = await race;
-    if (res === Symbol.for("TIMEOUT")) {
-      return typeof onTimeout === "function" ? onTimeout() : null;
-    }
-    return res;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-
 
 /* =========================
  * 메모 파일 IO (proper-lockfile)
@@ -854,37 +834,37 @@ module.exports = {
 
     // ✅ 신규: 이미지
     if (sub === "이미지") {
-  pruneOldImageSessions();
-  const qRaw = interaction.options.getString("대상", true).trim();
-  const q = qRaw.replace(/\s+/g, " ");
-  if (!q.length) return interaction.reply({ content: "대상을 입력해줘.", ephemeral: true });
+      pruneOldImageSessions();
+      const qRaw = interaction.options.getString("대상", true).trim();
+      const q = qRaw.replace(/\s+/g, " ");
+      if (!q.length) return interaction.reply({ content: "대상을 입력해줘.", ephemeral: true });
 
-  const lang = detectLang(q);
+      const lang = detectLang(q);
 
-  // 🔹 응답 시간 확보
-  await interaction.deferReply({ ephemeral: true });
+      // 검색
+      let urls = await findImages(q, lang);
 
-  // (선택) 타임아웃 래퍼 적용 — 4.5초 넘으면 Unsplash 1장으로 즉시 반환
-  let urls = await withTimeout(findImages(q, lang), 4500, () => [unsplashDirectUrl(q)]);
+// 디버그 로그(콘솔에서 확인)
+try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
 
-  // 디버그
-  try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
+// (필터 완화 — 필요 없음지만 혹시 모를 null 제거)
+urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
 
-  urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
-  if (!urls.length) urls = [ unsplashDirectUrl(q) ];
-  if (!urls.length) {
-    return interaction.editReply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다." });
-  }
+// ✅ 최후 폴백(혹시 0이면 Unsplash 1장)
+if (!urls.length) urls = [ unsplashDirectUrl(q) ];
 
-  const { item: url, idx } = pickRandom(urls, `${q}:${Date.now()}:${interaction.user.id}`);
-  const sessionId = crypto.randomBytes(8).toString("hex");
-  imageSessions.set(sessionId, { q, lang, list: urls, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() });
-
-  const embed = renderImageEmbed(q, url, lang, false);
-  const rows = renderImageButtons(sessionId, false);
-  return interaction.editReply({ embeds: [embed], components: rows });
+if (!urls.length) {
+  return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
 }
 
+      const { item: url, idx } = pickRandom(urls, `${q}:${Date.now()}:${interaction.user.id}`);
+      const sessionId = crypto.randomBytes(8).toString("hex");
+      imageSessions.set(sessionId, { q, lang, list: urls, idx, shared: false, ownerId: userId, createdAt: Date.now() });
+
+      const embed = renderImageEmbed(q, url, lang, false);
+      const rows = renderImageButtons(sessionId, false);
+      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    }
   },
 
   // 버튼/모달 라우팅 (index.js에서 위임 호출)
@@ -1207,10 +1187,6 @@ module.exports = {
     /* ===== 이미지: 버튼 ===== */
 if (customId.startsWith(IMG_PREFIX)) {
   try {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferUpdate();
-    }
-
     pruneOldImageSessions();
 
     let [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
@@ -1224,12 +1200,12 @@ if (customId.startsWith(IMG_PREFIX)) {
       const q = (m && m[1]) ? m[1].trim() : null;
       if (!q) {
         // 메시지 자체가 깨졌으면 안내 후 종료
-        return interaction.editReply({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+        return interaction.update({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
       }
       const lang = detectLang(q);
       const list = await findImages(q, lang);
       if (!Array.isArray(list) || !list.length) {
-        return interaction.editReply({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+        return interaction.update({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
       }
       let idx = 0;
       const currUrl = embedNow?.image?.url || null;
@@ -1245,7 +1221,7 @@ if (customId.startsWith(IMG_PREFIX)) {
 
     // 소유자만 조작 허용
     if (sess.ownerId !== interaction.user.id) {
-      return interaction.editReply({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
+      return interaction.update({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
     }
 
     // === 공유 ===
@@ -1277,7 +1253,7 @@ if (customId.startsWith(IMG_PREFIX)) {
     // === 다른 이미지 ===
     if (action === "more") {
       if (!Array.isArray(sess.list) || !sess.list.length) {
-        return interaction.editReply({ content: "결과가 더 없어.", embeds: [], components: [] });
+        return interaction.update({ content: "결과가 더 없어.", embeds: [], components: [] });
       }
       let nextIdx = sess.idx;
       if (sess.list.length > 1) {
@@ -1294,11 +1270,11 @@ if (customId.startsWith(IMG_PREFIX)) {
       const url = sess.list[sess.idx];
       const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
       const rows = renderImageButtons(sessionId, false);
-      return interaction.editReply({ embeds: [eb], components: rows });
+      return interaction.update({ embeds: [eb], components: rows });
     }
 
     // 알 수 없는 action 보호
-    return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
+    return interaction.update({ content: "알 수 없는 동작이야.", components: [] });
 
   } catch (err) {
     console.error("[IMG BTN 오류]", err);
