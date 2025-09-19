@@ -252,16 +252,17 @@ async function respondWithPlayable(interaction, payload, mode = "single") {
   if (mode === "split") {
     // 1) 임베드 먼저 (공개 메시지)
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: "", embeds: [embed], components, });
-    } else {
-      await interaction.reply({ content: "", embeds: [embed], components, ephemeral: false });
-    }
-    // 2) 같은 스레드에 URL만 후속 메시지 → 링크 미리보기가 "아래"에 붙음
-    await interaction.followUp({ content: contentUrl });
-    return;
-  }
+  await interaction.editReply({ content: "", embeds: [embed], components });
+} else {
+  await interaction.reply({ content: "", embeds: [embed], components, ephemeral: false });
+}
 
-  // 기본(한 메시지 안에 URL+임베드) — 클라이언트가 순서를 임의로 렌더링할 수 있음
+const url = videoUrl;
+await interaction.channel.send({
+  content: url,    
+  allowedMentions: { parse: [] },
+});
+    
   if (interaction.deferred || interaction.replied) {
     await interaction.editReply({ content: contentUrl, embeds: [embed], components });
   } else {
