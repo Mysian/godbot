@@ -1364,16 +1364,6 @@ try {
 
 // 알 수 없는 action 보호
 return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
-
-} catch (err) {
-    console.error("[IMG BTN 오류]", err);
-    // 이미 update를 못했을 수 있으니 followUp로 보장
-    if (!interaction.replied && !interaction.deferred) {
-      try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
-    } else {
-      try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
-    }
-  }
  }
   },
 };
