@@ -1,3 +1,4 @@
+// godbot/commands/youtube.js
 "use strict";
 
 const {
@@ -8,74 +9,70 @@ const {
   ButtonStyle,
   ComponentType,
 } = require("discord.js");
-const https = require("https");
-const { URL } = require("url");
 
 const REGION = "KR";
-const HL = "ko";
-const SEARCH_PAGE_SIZE = 10;
-const SESSION_TTL_MS = 10 * 60 * 1000;
-const REQ_TIMEOUT_MS = 6000;
+const HL = "ko_KR";
+const SEARCH_PAGE_SIZE = 10;     // 한 번에 받아올 검색 결과 수
+const SESSION_TTL_MS = 10 * 60 * 1000; // 10분
 const SESS_PREFIX = "yt:";
 const sessions = new Map();
-const healthCache = {
-  piped: { base: null, expires: 0 },
-  inv: { base: null, expires: 0 },
-};
-const HEALTH_TTL_MS = 30 * 60 * 1000;
 
-async function raceGetJson(bases, pathWithQuery) {
-  const tasks = bases.map(base => httpGetJsonRaw(base + pathWithQuery).then(data => ({ base, data })));
-  return await Promise.any(tasks);
+// ===== fetch 확보 =====
+let _fetch = globalThis.fetch;
+if (typeof _fetch !== "function") {
+  try { _fetch = require("node-fetch"); } catch {}
 }
-
-const PIPED_ENDPOINTS = [
-  "https://pipedapi.kavin.rocks",
-  "https://pipedapi.adminforge.de",
-  "https://api.piped.privacydev.net",
-  "https://api.piped.projectsegfau.lt",
-  "https://pipedapi.us.projectsegfau.lt"
-];
-
-const INVIDIOUS_ENDPOINTS = [
-  "https://yewtu.be",
-  "https://invidious.projectsegfau.lt",
-  "https://invidious.slipfox.xyz",
-  "https://iv.ggtyler.dev"
-];
+async function httpGet(url) {
+  const res = await _fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 function fmtNum(n) {
-  if (n === undefined || n === null || Number.isNaN(Number(n))) return "정보 없음";
+  if (n === undefined || n === null) return "정보 없음";
   return Number(n).toLocaleString("ko-KR");
 }
-function cut(str, n) { if (!str) return ""; return str.length > n ? (str.slice(0, n - 1) + "…") : str; }
-function parseLenToHHMMSS(x) {
-  if (typeof x === "number") {
-    const s = Math.max(0, x|0);
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-    const parts = []; if (h > 0) parts.push(String(h));
-    parts.push(String(m).padStart(2,"0")); parts.push(String(sec).padStart(2,"0"));
-    return parts.join(":");
-  }
-  if (!x) return "알 수 없음";
-  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(x);
+function toKST(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  } catch { return iso || "알 수 없음"; }
+}
+function parseISO8601Duration(iso) {
+  // PT#H#M#S -> hh:mm:ss
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || "");
   if (!m) return "알 수 없음";
-  const hh = parseInt(m[1]||0,10), mi = parseInt(m[2]||0,10), ss = parseInt(m[3]||0,10);
-  const parts = []; if (hh>0) parts.push(String(hh));
-  parts.push(String(mi).padStart(2,"0")); parts.push(String(ss).padStart(2,"0"));
+  const h = parseInt(m[1] || 0, 10);
+  const min = parseInt(m[2] || 0, 10);
+  const s = parseInt(m[3] || 0, 10);
+  const parts = [];
+  if (h > 0) parts.push(String(h));
+  parts.push(String(min).padStart(2, "0"));
+  parts.push(String(s).padStart(2, "0"));
   return parts.join(":");
+}
+function cut(str, n) {
+  if (!str) return "";
+  return str.length > n ? (str.slice(0, n - 1) + "…") : str;
 }
 function extractVideoId(input) {
   if (!input) return null;
   try {
+    // 순수 ID로 들어오면 그대로
     if (/^[A-Za-z0-9_\-]{11}$/.test(input)) return input;
+
     const url = new URL(input);
+    // shorts
+    // https://www.youtube.com/shorts/VIDEOID
     if (url.pathname.startsWith("/shorts/")) {
       const id = url.pathname.split("/")[2];
       if (id && id.length >= 11) return id.slice(0,11);
     }
+    // watch?v=
     const v = url.searchParams.get("v");
     if (v && /^[A-Za-z0-9_\-]{11}$/.test(v)) return v;
+
+    // youtu.be/VIDEOID
     if (url.hostname.includes("youtu.be")) {
       const id = url.pathname.replace("/", "");
       if (/^[A-Za-z0-9_\-]{11}$/.test(id)) return id;
@@ -83,256 +80,151 @@ function extractVideoId(input) {
   } catch {}
   return null;
 }
-const ytSearchUrl = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
-const ytWatchUrl  = (id) => `https://www.youtube.com/watch?v=${id}`;
 
-function httpGetJsonRaw(fullUrl) {
-  return new Promise((resolve, reject) => {
-    const u = new URL(fullUrl);
-    const opt = {
-      protocol: u.protocol,
-      hostname: u.hostname,
-      port: u.port || (u.protocol === "https:" ? 443 : 80),
-      path: u.pathname + (u.search || ""),
-      method: "GET",
-      headers: {
-        "user-agent": "godbot/yt (discord.js)",
-        "accept": "application/json,text/plain,*/*",
-        "accept-language": "ko-KR,ko;q=0.9,en;q=0.5",
-        "accept-encoding": "identity",
-      },
-      rejectUnauthorized: true,
-      timeout: REQ_TIMEOUT_MS,
-    };
+async function ytSearch(query, key) {
+  // 1) 검색으로 videoId 모으기
+  const base = new URL("https://www.googleapis.com/youtube/v3/search");
+  base.searchParams.set("part", "snippet");
+  base.searchParams.set("type", "video");
+  base.searchParams.set("q", query);
+  base.searchParams.set("maxResults", String(SEARCH_PAGE_SIZE));
+  base.searchParams.set("relevanceLanguage", "ko");
+  base.searchParams.set("regionCode", REGION);
+  base.searchParams.set("hl", HL);
+  base.searchParams.set("key", key);
 
-    const req = https.request(opt, (res) => {
-      const { statusCode } = res;
-      let data = "";
-      res.setEncoding("utf8");
-      res.on("data", (chunk) => data += chunk);
-      res.on("end", () => {
-        if (statusCode >= 500) {
-          return reject(new Error(`업스트림 5xx (${statusCode})`));
-        }
-        if (statusCode < 200 || statusCode >= 300) {
-          return reject(new Error(`HTTP ${statusCode}`));
-        }
-        try {
-          const j = JSON.parse(data);
-          resolve(j);
-        } catch (e) {
-          if (typeof data === "string" && data.trim().startsWith("<")) {
-            return reject(new Error("JSON 파싱 실패(HTML 응답)"));
-          }
-          reject(new Error("JSON 파싱 실패"));
-        }
-      });
-    });
+  const s = await httpGet(base.toString());
+  const ids = (s.items || []).map(i => i.id && i.id.videoId).filter(Boolean);
+  if (ids.length === 0) return [];
 
-    req.on("timeout", () => { req.destroy(new Error("요청 타임아웃")); });
-    req.on("error", (err) => reject(err));
-    req.end();
-  });
+  // 2) videos.list 로 메타/통계/길이
+  const vapi = new URL("https://www.googleapis.com/youtube/v3/videos");
+  vapi.searchParams.set("part", "snippet,statistics,contentDetails");
+  vapi.searchParams.set("hl", HL);
+  vapi.searchParams.set("id", ids.join(","));
+  vapi.searchParams.set("key", key);
+
+  const vres = await httpGet(vapi.toString());
+  const dict = new Map();
+  for (const it of (vres.items || [])) dict.set(it.id, it);
+
+  // 검색 결과 순서 유지
+  const out = [];
+  for (const id of ids) {
+    const it = dict.get(id);
+    if (it) out.push(it);
+  }
+  return out;
 }
 
-async function pipedGet(pathWithQuery) {
-  const now = Date.now();
-  if (healthCache.piped.base && healthCache.piped.expires > now) {
-    try {
-      const data = await httpGetJsonRaw(healthCache.piped.base + pathWithQuery);
-      return { data, base: healthCache.piped.base };
-    } catch {}
-  }
-  const prefer = healthCache.piped.base && healthCache.piped.expires > now
-    ? [healthCache.piped.base, ...PIPED_ENDPOINTS.filter(b => b !== healthCache.piped.base)]
-    : PIPED_ENDPOINTS;
-  try {
-    const { base, data } = await raceGetJson(prefer, pathWithQuery);
-    healthCache.piped = { base, expires: now + HEALTH_TTL_MS };
-    return { data, base };
-  } catch (e) {
-    throw new Error(`Piped 실패: ${e.message || e}`);
-  }
-}
+async function ytVideoInfo(videoId, key) {
+  const vapi = new URL("https://www.googleapis.com/youtube/v3/videos");
+  vapi.searchParams.set("part", "snippet,statistics,contentDetails");
+  vapi.searchParams.set("hl", HL);
+  vapi.searchParams.set("id", videoId);
+  vapi.searchParams.set("key", key);
+  const vres = await httpGet(vapi.toString());
+  const v = (vres.items || [])[0];
+  if (!v) return null;
 
-async function invidiousGet(pathWithQuery) {
-  const now = Date.now();
-  if (healthCache.inv.base && healthCache.inv.expires > now) {
-    try {
-      const data = await httpGetJsonRaw(healthCache.inv.base + pathWithQuery);
-      return { data, base: healthCache.inv.base };
-    } catch {}
-  }
-  const prefer = healthCache.inv.base && healthCache.inv.expires > now
-    ? [healthCache.inv.base, ...INVIDIOUS_ENDPOINTS.filter(b => b !== healthCache.inv.base)]
-    : INVIDIOUS_ENDPOINTS;
-  try {
-    const { base, data } = await raceGetJson(prefer, pathWithQuery);
-    healthCache.inv = { base, expires: now + HEALTH_TTL_MS };
-    return { data, base };
-  } catch (e) {
-    throw new Error(`Invidious 실패: ${e.message || e}`);
-  }
-}
-
-
-async function invSearchNoKey(query) {
-  const q = encodeURIComponent(query);
-  const { data } = await invidiousGet(`/api/v1/search?q=${q}&type=video&region=${REGION}`);
-  const arr = Array.isArray(data) ? data : [];
-  return arr.slice(0, SEARCH_PAGE_SIZE).map(v => ({
-    id: v.videoId,
-    title: v.title,
-    uploaderName: v.author,
-    uploadDate: v.publishedText,
-    duration: Number(v.lengthSeconds || 0),
-    views: Number(v.viewCount || 0),
-    thumbnail: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
-      ? v.videoThumbnails[v.videoThumbnails.length - 1].url
-      : `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
-    shortDescription: v.description || "",
-  }));
-}
-
-async function ytSearchNoKey(query) {
-  const q = encodeURIComponent(query);
-  const pipedPath = `/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`;
-  const invPath = `/api/v1/search?q=${q}&type=video&region=${REGION}`;
-
-  const pipedTask = (async () => {
-    const { data } = await pipedGet(pipedPath);
-    const list = Array.isArray(data) ? data : [];
-    return list.slice(0, SEARCH_PAGE_SIZE).map(x => ({
-      id: x.id,
-      title: x.title,
-      uploaderName: x.uploaderName || x.uploader,
-      uploadDate: x.uploadDate || x.uploadedDate,
-      duration: Number(x.duration || 0),
-      views: Number(x.views || 0),
-      thumbnail: x.thumbnail || x.thumbnailUrl,
-      shortDescription: x.shortDescription || x.description || "",
-    }));
-  })();
-
-  const invTask = (async () => {
-    const { data } = await invidiousGet(invPath);
-    const arr = Array.isArray(data) ? data : [];
-    return arr.slice(0, SEARCH_PAGE_SIZE).map(v => ({
-      id: v.videoId,
-      title: v.title,
-      uploaderName: v.author,
-      uploadDate: v.publishedText,
-      duration: Number(v.lengthSeconds || 0),
-      views: Number(v.viewCount || 0),
-      thumbnail: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
-        ? v.videoThumbnails[v.videoThumbnails.length - 1].url
-        : `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
-      shortDescription: v.description || "",
-    }));
-  })();
-
-  try {
-    const result = await Promise.any([pipedTask, invTask]);
-    return result;
-  } catch (e) {
-    return [];
-  }
-}
-
-
-async function ytVideoInfoNoKey(videoId) {
-  const { data: v } = await pipedGet(`/api/v1/streams/${videoId}?region=${REGION}&hl=${HL}`);
-  if (!v || !v.title) return null;
+  // 채널 정보
+  const chId = v.snippet?.channelId;
   let ch = null;
-  const uploaderUrl = v.uploaderUrl;
-  const chId = uploaderUrl && uploaderUrl.startsWith("/channel/") ? uploaderUrl.split("/")[2] : null;
   if (chId) {
-    try {
-      const { data: chData } = await pipedGet(`/api/v1/channel/${chId}`);
-      ch = chData || null;
-    } catch {}
+    const chApi = new URL("https://www.googleapis.com/youtube/v3/channels");
+    chApi.searchParams.set("part", "snippet,statistics");
+    chApi.searchParams.set("hl", HL);
+    chApi.searchParams.set("id", chId);
+    chApi.searchParams.set("key", key);
+    const cres = await httpGet(chApi.toString());
+    ch = (cres.items || [])[0] || null;
   }
-  let recent = null;
+
+  // 최신 댓글 1개
+  let recentC = null;
   try {
-    const { data: c } = await pipedGet(`/api/v1/comments/${videoId}?region=${REGION}&hl=${HL}&sort=new`);
-    const arr = Array.isArray(c?.comments) ? c.comments : [];
-    recent = arr[0] || null;
-  } catch {}
-  return { v, ch, recent };
+    const cApi = new URL("https://www.googleapis.com/youtube/v3/commentThreads");
+    cApi.searchParams.set("part", "snippet");
+    cApi.searchParams.set("videoId", videoId);
+    cApi.searchParams.set("maxResults", "1");
+    cApi.searchParams.set("order", "time");
+    cApi.searchParams.set("textFormat", "plainText");
+    cApi.searchParams.set("key", key);
+    const cres = await httpGet(cApi.toString());
+    recentC = (cres.items || [])[0] || null;
+  } catch {
+    // 댓글 비활성/권한 문제 등
+  }
+
+  return { video: v, channel: ch, recentComment: recentC };
 }
 
-function buildEmbedForSearchItem(item, indexPos, total, queryForLink) {
-  const vid = item.id || (item.url && item.url.includes("v=") ? item.url.split("v=")[1] : null);
-  const url = vid ? ytWatchUrl(vid) : (item.url || ytSearchUrl(queryForLink));
-  const title = item.title || "제목 없음";
-  const chName = item.uploaderName || item.uploader || "채널 정보 없음";
-  const uploaded = item.uploadDate || item.uploadedDate || "업로드 정보 없음";
-  const views = fmtNum(item.views);
-  const dur = parseLenToHHMMSS(item.duration ?? 0);
-  const thumb = item.thumbnail || item.thumbnailUrl;
+function buildEmbedForVideo(v, ch, recent, indexPos = null, total = null) {
+  const vid = v.id;
+  const sn = v.snippet || {};
+  const st = v.statistics || {};
+  const cd = v.contentDetails || {};
+
+  const url = `https://www.youtube.com/watch?v=${vid}`;
+  const title = sn.title || "제목 없음";
+  const chName = sn.channelTitle || "채널 정보 없음";
+  const uploaded = toKST(sn.publishedAt);
+  const views = fmtNum(st.viewCount);
+  const likes = st.likeCount ? fmtNum(st.likeCount) : "공개 안 됨";
+  const cmts = st.commentCount ? fmtNum(st.commentCount) : "비공개/없음";
+  const dur = parseISO8601Duration(cd.duration);
+  const thumb = sn.thumbnails?.maxres?.url
+             || sn.thumbnails?.standard?.url
+             || sn.thumbnails?.high?.url
+             || sn.thumbnails?.medium?.url
+             || sn.thumbnails?.default?.url;
+
+  const desc = [
+    `채널: **${chName}**`,
+    `업로드: **${uploaded} (KST)**`,
+    `길이: **${dur}**`,
+    `조회수: **${views}** · 좋아요: **${likes}** · 댓글: **${cmts}**`,
+  ].join("\n");
 
   const eb = new EmbedBuilder()
     .setColor(0xff0000)
     .setTitle(title)
     .setURL(url)
-    .setDescription([
-      `채널: **${chName}**`,
-      `업로드: **${uploaded}**`,
-      `길이: **${dur}**`,
-      `조회수: **${views}**`,
-    ].join("\n"))
-    .setFooter({ text: `결과 ${indexPos + 1}/${total}` });
-  if (thumb) eb.setThumbnail(thumb);
+    .setDescription(desc)
+    .setThumbnail(thumb)
+    .setFooter(indexPos != null && total != null ? { text: `결과 ${indexPos + 1}/${total}` } : null);
 
-  const vdesc = item.shortDescription || item.description;
-  if (vdesc) eb.addFields({ name: "영상 설명", value: cut(vdesc, 600) });
+  const videoDesc = sn.description ? cut(sn.description, 600) : null;
+  if (videoDesc) {
+    eb.addFields({ name: "영상 설명", value: videoDesc });
+  }
 
-  return { embed: eb, url };
-}
-
-function buildEmbedFromPiped({ v, ch, recent }) {
-  const vid = v.id || v.videoId;
-  const url = ytWatchUrl(vid);
-  const title = v.title || "제목 없음";
-  const chName = v.uploader || "채널 정보 없음";
-  const uploaded = v.uploadDate || "업로드 정보 없음";
-  const views = fmtNum(v.views);
-  const likes = v.likeCount != null ? fmtNum(v.likeCount) : (v.likes != null ? fmtNum(v.likes) : "공개 안 됨");
-  const dur = parseLenToHHMMSS(v.duration ?? v.contentLengthSeconds ?? 0);
-  const thumb = v.thumbnailUrl || (Array.isArray(v.thumbnails) ? v.thumbnails[0] : null);
-
-  const eb = new EmbedBuilder()
-    .setColor(0xff0000)
-    .setTitle(title)
-    .setURL(url)
-    .setDescription([
-      `채널: **${chName}**`,
-      `업로드: **${uploaded}**`,
-      `길이: **${dur}**`,
-      `조회수: **${views}** · 좋아요: **${likes}**`,
-    ].join("\n"));
-
-  if (thumb) eb.setThumbnail(thumb);
-
-  const videoDesc = v.shortDescription || v.description;
-  if (videoDesc) eb.addFields({ name: "영상 설명", value: cut(videoDesc, 600) });
-
-  if (ch && ch.name) {
-    const subs = ch.subscriberCount != null ? fmtNum(ch.subscriberCount) : "비공개";
-    const vids = Array.isArray(ch.relatedStreams) ? fmtNum(ch.relatedStreams.length)
-              : (ch.videos != null ? fmtNum(ch.videos) : "정보 없음");
+  if (ch) {
+    const cSn = ch.snippet || {};
+    const cSt = ch.statistics || {};
+    const subs = cSt.hiddenSubscriberCount ? "비공개" : fmtNum(cSt.subscriberCount);
+    const vids = fmtNum(cSt.videoCount);
     eb.addFields({
       name: "업로더",
-      value: `이름: **${ch.name}**\n구독자: **${subs}**, 업로드 영상 수: **${vids}**`,
+      value: [
+        `이름: **${cSn.title || "정보 없음"}**`,
+        `구독자: **${subs}**, 업로드 영상 수: **${vids}**`,
+      ].join("\n"),
       inline: false,
     });
   }
 
-  if (recent && (recent.commentText || recent.content)) {
-    const rn = recent.author ?? recent.authorName ?? "익명";
-    const rt = recent.commentedTime ?? recent.commentedAt ?? recent.uploaded ?? "";
-    const rv = cut(recent.commentText || recent.content || "", 300) || "(내용 없음)";
-    eb.addFields({ name: "최근 댓글 (최신순)", value: `**${rn}** • ${rt}\n${rv}` });
+  if (recent) {
+    const r = recent.snippet?.topLevelComment?.snippet;
+    if (r) {
+      const rn = r.authorDisplayName || "익명";
+      const rt = toKST(r.publishedAt || r.updatedAt);
+      const rv = cut(r.textDisplay || r.textOriginal || "", 300) || "(내용 없음)";
+      eb.addFields({
+        name: "최근 댓글 (최신순)",
+        value: `**${rn}** • ${rt}\n${rv}`,
+      });
+    }
   }
 
   return { embed: eb, url };
@@ -354,82 +246,86 @@ function buildPagerRow(sessionId, index, total) {
   return new ActionRowBuilder().addComponents(prev, next);
 }
 
-function buildSearchLinkRow(query) {
-  const link = new ButtonBuilder()
-    .setStyle(ButtonStyle.Link)
-    .setLabel("유튜브에서 전체 검색 결과 보기")
-    .setURL(ytSearchUrl(query));
-  return new ActionRowBuilder().addComponents(link);
-}
-
 async function respondWithPlayable(interaction, payload) {
-  const { content, embed, components } = payload;
+  // 디스코드 특성상 "큰 영상 미리보기(재생 가능)"는 메시지 본문에 유튜브 URL이 있어야 자동 생성됨.
+  // 그래서 content에 URL을 넣고, 정보는 Embed로 함께 보낸다.
+  // (ephemeral로 보내면 미리보기 안 뜸 → 반드시 공개 메시지)
+  const { contentUrl, embed, components } = payload;
   if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content, embeds: [embed], components });
+    await interaction.editReply({ content: contentUrl, embeds: [embed], components });
   } else {
-    await interaction.reply({ content, embeds: [embed], components, ephemeral: false });
+    await interaction.reply({ content: contentUrl, embeds: [embed], components, ephemeral: false });
   }
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("유튜브")
-    .setDescription("유튜브 검색/조회 (API 키 불필요)")
+    .setDescription("유튜브 검색/조회")
     .addSubcommand(sc =>
       sc.setName("검색")
         .setDescription("유튜브에서 영상을 검색합니다.")
         .addStringOption(o =>
-          o.setName("검색어").setDescription("검색할 키워드").setRequired(true)))
+          o.setName("검색어")
+           .setDescription("검색할 키워드")
+           .setRequired(true)))
     .addSubcommand(sc =>
       sc.setName("조회")
-        .setDescription("유튜브 영상 링크/ID로 정보를 조회합니다.")
+        .setDescription("유튜브 영상 링크로 정보를 조회합니다.")
         .addStringOption(o =>
-          o.setName("영상링크").setDescription("https://youtu.be/... 또는 영상 ID(11자리)").setRequired(true))),
+          o.setName("영상링크")
+           .setDescription("https://youtu.be/... 또는 https://www.youtube.com/watch?v=...")
+           .setRequired(true)))
+  ,
   async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
+    const key = process.env.YT_API_KEY;
+    if (!key) {
+      return interaction.reply({ content: "🔧 `YT_API_KEY` 환경변수를 설정해줘.", ephemeral: true });
+    }
 
+    const sub = interaction.options.getSubcommand();
     if (sub === "검색") {
       const q = interaction.options.getString("검색어", true).trim();
       await interaction.deferReply();
 
       let list = [];
       try {
-        list = await ytSearchNoKey(q);
+        list = await ytSearch(q, key);
       } catch (e) {
-        const msg = (e && e.message) ? e.message : "원인 불명";
-        return interaction.editReply({
-          content: [
-            "죄송합니다, **검색 백엔드가 일시적으로 불안정**해.",
-            `오류: ${msg}`,
-            `대신 이 링크로는 바로 볼 수 있어: ${ytSearchUrl(q)}`
-          ].join("\n")
-        });
-      }
-      if (!list.length) {
-        return interaction.editReply({
-          content: `죄송합니다, 검색 결과를 찾을 수 없습니다.\n검색 링크: ${ytSearchUrl(q)}`
-        });
+        return interaction.editReply({ content: "죄송합니다, 검색 중 오류가 발생했습니다." });
       }
 
+      if (list.length === 0) {
+        return interaction.editReply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다." });
+      }
+
+      // 세션 만들고 첫 페이지 렌더
       const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
       const owner = interaction.user.id;
       const expireAt = Date.now() + SESSION_TTL_MS;
 
-      sessions.set(sessionId, { type: "search", query: q, owner, expireAt, index: 0, list });
-
-      const first = list[0];
-      const { embed, url } = buildEmbedForSearchItem(first, 0, list.length, q);
-      const row = buildPagerRow(sessionId, 0, list.length);
-      const linkRow = buildSearchLinkRow(q);
-
-      await respondWithPlayable(interaction, {
-        content: `${url}\n검색 전체 보기: ${ytSearchUrl(q)}`,
-        embed,
-        components: [row, linkRow],
+      sessions.set(sessionId, {
+        type: "search",
+        query: q,
+        owner,
+        expireAt,
+        index: 0,
+        list, // videos.list 결과 배열
       });
 
-      const msgObj = await interaction.fetchReply();
-      const collector = msgObj.createMessageComponentCollector({
+      const v = list[0];
+      const more = await ytVideoInfo(v.id, key);
+      if (!more) {
+        return interaction.editReply({ content: "죄송합니다, 검색 결과를 표시할 수 없습니다." });
+      }
+
+      const { embed, url } = buildEmbedForVideo(more.video, more.channel, more.recentComment, 0, list.length);
+      const row = buildPagerRow(sessionId, 0, list.length);
+      await respondWithPlayable(interaction, { contentUrl: url, embed, components: [row] });
+
+      // 버튼 콜렉터
+      const msg = await interaction.fetchReply();
+      const collector = msg.createMessageComponentCollector({
         componentType: ComponentType.Button,
         time: SESSION_TTL_MS,
       });
@@ -443,9 +339,13 @@ module.exports = {
 
           const sess = sessions.get(sid);
           if (!sess) return btn.reply({ content: "세션이 만료되었어. 다시 검색해줘!", ephemeral: true });
+
+          // 요청자 제한
           if (btn.user.id !== sess.owner) {
             return btn.reply({ content: "이 검색 결과는 요청자만 조작할 수 있어.", ephemeral: true });
           }
+
+          // 만료 체크
           if (Date.now() > sess.expireAt) {
             sessions.delete(sid);
             return btn.reply({ content: "세션이 만료되었어. 다시 검색해줘!", ephemeral: true });
@@ -455,14 +355,12 @@ module.exports = {
           if (op === "next") sess.index = Math.min(sess.list.length - 1, sess.index + 1);
 
           const cur = sess.list[sess.index];
-          const { embed: eb2, url: u2 } = buildEmbedForSearchItem(cur, sess.index, sess.list.length, sess.query);
+          const more2 = await ytVideoInfo(cur.id, key);
+          if (!more2) return btn.deferUpdate();
+
+          const { embed: eb2, url: u2 } = buildEmbedForVideo(more2.video, more2.channel, more2.recentComment, sess.index, sess.list.length);
           const row2 = buildPagerRow(sid, sess.index, sess.list.length);
-          const linkRow2 = buildSearchLinkRow(sess.query);
-          await btn.update({
-            content: `${u2}\n검색 전체 보기: ${ytSearchUrl(sess.query)}`,
-            embeds: [eb2],
-            components: [row2, linkRow2],
-          });
+          await btn.update({ content: u2, embeds: [eb2], components: [row2] });
         } catch {
           try { await btn.deferUpdate(); } catch {}
         }
@@ -473,12 +371,12 @@ module.exports = {
         if (sess && Date.now() > sess.expireAt) sessions.delete(sessionId);
         try {
           const cur = await interaction.fetchReply();
-          const rows = cur.components || [];
-          const disabled = rows.map(r => {
-            const comps = r.components?.map(c => ButtonBuilder.from(c).setDisabled(true)) || [];
-            return new ActionRowBuilder().addComponents(comps);
-          });
-          await interaction.editReply({ components: disabled });
+          const comps = cur.components?.[0]?.components || [];
+          // 버튼 비활성화 처리
+          const row = new ActionRowBuilder().addComponents(
+            comps.map(c => ButtonBuilder.from(c).setDisabled(true))
+          );
+          await interaction.editReply({ components: [row] });
         } catch {}
       });
 
@@ -487,25 +385,25 @@ module.exports = {
 
     if (sub === "조회") {
       const link = interaction.options.getString("영상링크", true).trim();
-      const vid = extractVideoId(link) || link;
-      if (!/^[A-Za-z0-9_\-]{11}$/.test(vid)) {
+      const vid = extractVideoId(link);
+      if (!vid) {
         return interaction.reply({ content: "유효한 유튜브 영상 링크/ID가 아니야.", ephemeral: true });
       }
 
       await interaction.deferReply();
+      let info = null;
       try {
-        const info = await ytVideoInfoNoKey(vid);
-        if (!info) return interaction.editReply({ content: "해당 영상을 찾을 수 없어." });
-        const { embed, url } = buildEmbedFromPiped(info);
-
-        const linkBtn = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("유튜브에서 보기").setURL(url)
-        );
-        await respondWithPlayable(interaction, { content: url, embed, components: [linkBtn] });
-      } catch (e) {
-        const msg = (e && e.message) ? e.message : "원인 불명";
-        return interaction.editReply({ content: `조회 중 오류가 발생했어. (${msg})\n직접 보기: ${ytWatchUrl(vid)}` });
+        info = await ytVideoInfo(vid, key);
+      } catch {
+        return interaction.editReply({ content: "조회 중 오류가 발생했어." });
       }
+      if (!info || !info.video) {
+        return interaction.editReply({ content: "해당 영상을 찾을 수 없어." });
+      }
+
+      const { embed, url } = buildEmbedForVideo(info.video, info.channel, info.recentComment);
+      // 조회 명령은 페이저 없음
+      await respondWithPlayable(interaction, { contentUrl: url, embed, components: [] });
       return;
     }
   },
