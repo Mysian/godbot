@@ -124,8 +124,6 @@ res.on("end", () => {
   }
 });
 
-    });
-
     req.on("timeout", () => { req.destroy(new Error("요청 타임아웃")); });
     req.on("error", (err) => reject(err));
     req.end();
