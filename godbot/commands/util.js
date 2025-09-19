@@ -89,9 +89,9 @@ function pickRandom(arr, seedStr = String(Date.now())) {
 function hasHangul(s) {
   return /[가-힣]/.test(s || "");
 }
-function detectLang(q) {
-  return hasHangul(q) ? "ko-KR" : "en-US";
-}
+ function detectLang(q) {
+   return hasHangul(q) ? "ko" : "en";
+ }
 function pruneOldImageSessions() {
   const now = Date.now();
   for (const [k, v] of imageSessions.entries()) {
@@ -355,9 +355,12 @@ function sanitizeImageUrl(u) {
   if (!/^https?:\/\//i.test(u)) return null;
   return u.replace(/^http:\/\//i, "https://");
 }
-function parseGoogleImageHtml(html) {
-  const out = [];
-  const seen = new Set();
+ function parseGoogleImageHtml(html) {
+   const out = [];
+   const seen = new Set();
+   const norm = String(html)
+     .replace(/\\u003d/g, "=").replace(/\\u0026/g, "&")
+     .replace(/\\x3d/g, "=").replace(/\\x26/g, "&");
   const push = (u) => {
     const su = sanitizeImageUrl(u);
     if (!su) return;
@@ -367,22 +370,28 @@ function parseGoogleImageHtml(html) {
     const key = su.replace(/[#?].*$/, "");
     if (!seen.has(key)) { seen.add(key); out.push(su); }
   };
-  const reOu = /"ou":"(https?:\/\/[^"]+)"/g;
-  let m;
-  while ((m = reOu.exec(html)) !== null) push(m[1]);
-  const reImgSrc = /<img[^>]+src="(https?:\/\/[^">]+)"/g;
-  while ((m = reImgSrc.exec(html)) !== null) push(m[1]);
-  const reDataSrc = /<img[^>]+data-src="(https?:\/\/[^">]+)"/g;
-  while ((m = reDataSrc.exec(html)) !== null) push(m[1]);
-  const reSrcset = /<img[^>]+srcset="([^">]+)"/g;
-  while ((m = reSrcset.exec(html)) !== null) {
+   const reOu     = /"ou":"(https?:\/\/[^"]+)"/g;
+   const reMurl   = /"murl":"(https?:\/\/[^"]+)"/g;
+   const reImgurl = /"imgurl":"(https?:\/\/[^"]+)"/g;
+   const reBimg   = /"bimgurl":"(https?:\/\/[^"]+)"/g;
+   let m;
+   while ((m = reOu.exec(norm))     !== null) push(m[1]);
+   while ((m = reMurl.exec(norm))   !== null) push(m[1]);
+   while ((m = reImgurl.exec(norm)) !== null) push(m[1]);
+   while ((m = reBimg.exec(norm))   !== null) push(m[1]);
+   const reImgSrc = /<img[^>]+src="(https?:\/\/[^">]+)"/g;
+   while ((m = reImgSrc.exec(norm)) !== null) push(m[1]);
+   const reDataSrc = /<img[^>]+data-src="(https?:\/\/[^">]+)"/g;
+   while ((m = reDataSrc.exec(norm)) !== null) push(m[1]);
+   const reSrcset = /<img[^>]+srcset="([^">]+)"/g;
+   while ((m = reSrcset.exec(norm)) !== null) {
     const first = String(m[1]).split(",")[0].trim().split(" ")[0];
     push(first);
   }
   return out;
 }
-async function searchGoogleUKImages(q, lang) {
-  const hl = lang === "ko-KR" ? "ko" : "en";
+ async function searchGoogleUKImages(q, lang) {
+   const hl = lang; 
   const pages = [0, 1];
   const results = [];
   for (const p of pages) {
@@ -391,11 +400,15 @@ async function searchGoogleUKImages(q, lang) {
     url.searchParams.set("q", q);
     url.searchParams.set("safe", "off");
     url.searchParams.set("hl", hl);
+    url.searchParams.set("gbv", "1"); 
+    url.searchParams.set("udm", "2");
     url.searchParams.set("ijn", String(p));
     const res = await fetchSafe(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        "Accept-Language": hl === "ko" ? "ko-KR,ko;q=0.9,en;q=0.8" : "en-GB,en;q=0.9,ko;q=0.6",
+         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+         "Accept-Language": hl === "ko" ? "ko-KR,ko;q=0.9,en;q=0.8" : "en-GB,en;q=0.9,ko;q=0.6",
++        "Referer": "https://www.google.co.uk/",
       }
     }).catch(() => null);
     if (!res || !res.ok) continue;
