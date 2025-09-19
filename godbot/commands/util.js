@@ -57,6 +57,13 @@ const IMG_CFG = {
   naverSecret: process.env.NAVER_CLIENT_SECRET,
 };
 
+const BLOCKED_HOSTS = [
+  "pinterest.", "pinimg.com",
+  "gettyimages.", "istockphoto.", "shutterstock.", "alamy.", "adobestock.", "depositphotos.",
+  "artstation.", "behance.", "pixiv."
+];
+const getHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+
 /* =========================
  * 유틸 함수
  * ========================= */
@@ -424,6 +431,8 @@ async function searchGoogleImages(q) {
   url.searchParams.set("q", q);
   url.searchParams.set("searchType", "image");
   url.searchParams.set("num", "10");
+  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
+  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
   const res = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) return [];
   const json = await res.json();
@@ -565,7 +574,15 @@ async function fetchBingImages(q, lang, CFG) {
   const j = await r.json().catch(() => ({}));
   const items = Array.isArray(j.value) ? j.value : [];
   // contentUrl 우선, 안되면 thumbnailUrl
-  return items.map(v => v.contentUrl || v.thumbnailUrl).filter(Boolean);
+  function pickBingUrl(v) {
+  const cu = v.contentUrl || "";
+  const tu = v.thumbnailUrl || "";
+  const h = getHost(cu);
+  // 🔒 핫링크 차단 도메인은 썸네일(Bing CDN) 우선
+  if (h && BLOCKED_HOSTS.some(b => h.includes(b))) return tu || cu;
+  return cu || tu;
+}
+return items.map(pickBingUrl).filter(Boolean);
 }
 
 async function fetchGoogleImages(q, lang, CFG) {
@@ -600,7 +617,7 @@ async function fetchNaverImages(q, lang, CFG) {
   if (!r || !r.ok) return [];
   const j = await r.json().catch(() => ({}));
   const items = Array.isArray(j.items) ? j.items : [];
-  return items.map(v => v.link || v.thumbnail).filter(Boolean);
+  return items.map(v => v.thumbnail || v.link).filter(Boolean);
 }
 
 async function fetchWikimedia(q) {
