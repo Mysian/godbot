@@ -423,16 +423,18 @@ async function searchBingImages(q, lang) {
   return urls;
 }
 
-async function searchGoogleImages(q) {
+async function searchGoogleImages(q, lang) {
   if (!IMG_CFG.googleKey || !IMG_CFG.googleCseId) return [];
   const url = new URL("https://www.googleapis.com/customsearch/v1");
   url.searchParams.set("key", IMG_CFG.googleKey);
-  url.searchParams.set("cx", IMG_CFG.googleCseId);
+  url.searchParams.set("cx", IMG_CFG.googleCseId);   // 'Search the entire web' CSE
   url.searchParams.set("q", q);
   url.searchParams.set("searchType", "image");
-  url.searchParams.set("num", "10");
-  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
-  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
+  url.searchParams.set("num", "10");                 // Google API 최대 10
+  url.searchParams.set("gl", "uk");                  // google.co.uk 지역 타게팅
+  url.searchParams.set("cr", "countryUK");           // 영국 출처 가중
+  url.searchParams.set("hl", hasHangul(q) ? "ko" : "en");
+  url.searchParams.set("safe", "active");            // 필요시 'off'로
   const res = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) return [];
   const json = await res.json();
@@ -653,17 +655,9 @@ function dedupUrls(arr) {
 }
 
 async function findImages(q, lang) {
-  const seen = new Set();
-  const out = [];
-  async function addFrom(fn) {
-    try {
-      const arr = await fn();
-      for (const u of arr) {
-        const su = sanitizeImageUrl(u);
-        if (su && !seen.has(su)) { seen.add(su); out.push(su); }
-      }
-    } catch { /* ignore */ }
-  }
+  const urls = await searchGoogleImages(q, lang);
+  return dedupUrls(urls);
+}
 
   // 0) 무키 ‘즉시 성공’ 라인 — 여기서 최소 1장은 보장
   await addFrom(() => searchUnsplashNoKey(q));
