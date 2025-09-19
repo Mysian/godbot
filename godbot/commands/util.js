@@ -121,6 +121,69 @@ function pruneOldImageSessions() {
 }
 
 /* =========================
+ * 번역기 (Google gtx → LibreTranslate → MyMemory 폴백)
+ * ========================= */
+const LANG_CHOICES = [
+  { name: "한국어", value: "ko" },
+  { name: "English", value: "en" },
+  { name: "日本語", value: "ja" },
+  { name: "中文", value: "zh-CN" },
+  { name: "Русский", value: "ru" },
+];
+
+async function translateByGoogleGtx(text, target) {
+  const url = new URL("https://translate.googleapis.com/translate_a/single");
+  url.searchParams.set("client", "gtx");
+  url.searchParams.set("sl", "auto");
+  url.searchParams.set("tl", target);
+  url.searchParams.set("dt", "t");
+  url.searchParams.set("q", text);
+
+  const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!r.ok) throw new Error("gtx fail");
+  const j = await r.json();
+
+  const parts = Array.isArray(j?.[0]) ? j[0].map(x => x?.[0] || "").join("") : "";
+  const src = j?.[2] || "auto";
+  if (!parts) throw new Error("gtx empty");
+  return { text: parts, src };
+}
+
+async function translateByLibre(text, target) {
+  const r = await fetchSafe("https://libretranslate.com/translate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q: text, source: "auto", target }),
+  });
+  if (!r.ok) throw new Error("libre fail");
+  const j = await r.json();
+  const out = j?.translatedText || "";
+  if (!out) throw new Error("libre empty");
+  return { text: out, src: "auto" };
+}
+
+async function translateByMyMemory(text, target) {
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", text);
+  url.searchParams.set("langpair", `auto|${target}`);
+  const r = await fetchSafe(url);
+  if (!r.ok) throw new Error("mymemory fail");
+  const j = await r.json();
+  const out = j?.responseData?.translatedText || "";
+  if (!out) throw new Error("mymemory empty");
+  return { text: out, src: j?.responseData?.detectedLanguage || "auto" };
+}
+
+async function translateTextAuto(text, target) {
+  // 순차 폴백
+  try { return await translateByGoogleGtx(text, target); } catch {}
+  try { return await translateByLibre(text, target); } catch {}
+  try { return await translateByMyMemory(text, target); } catch {}
+  return { text: "", src: "auto" };
+}
+
+
+/* =========================
  * 메모 파일 IO (proper-lockfile)
  * ========================= */
 function memoFile(userId) {
@@ -731,6 +794,21 @@ module.exports = {
             .setRequired(true)
         )
     ),
+      .addSubcommand(sc =>
+      sc.setName("번역")
+        .setDescription("입력한 내용을 지정한 언어로 번역합니다")
+        .addStringOption(o =>
+          o.setName("언어")
+            .setDescription("번역할 대상 언어")
+            .setRequired(true)
+            .addChoices(...LANG_CHOICES)
+        )
+        .addStringOption(o =>
+          o.setName("내용")
+            .setDescription("번역할 내용")
+            .setRequired(true)
+        )
+    ),
 
   // Slash 명령 처리
   async execute(interaction) {
@@ -776,6 +854,44 @@ module.exports = {
         ),
       ];
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    }
+
+      // ✅ 신규: 번역
+    if (sub === "번역") {
+      const target = interaction.options.getString("언어", true);
+      const raw = (interaction.options.getString("내용", true) || "").trim();
+
+      if (!raw.length) {
+        return interaction.reply({ content: "번역할 내용을 입력해줘.", ephemeral: true });
+      }
+
+      // 번역 수행
+      let result;
+      try {
+        result = await translateTextAuto(raw, target);
+      } catch (e) {
+        result = { text: "", src: "auto" };
+      }
+
+      const translated = (result.text || "").trim();
+      if (!translated) {
+        return interaction.reply({ content: "죄송해, 지금은 번역에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true });
+      }
+
+      // 닉네임 가져오기
+      const nick =
+        interaction.member?.nickname ||
+        interaction.user.globalName ||
+        interaction.user.username;
+
+      // 길이 보호 (디스코드 2000자 제한)
+      const out = clampLen(translated, 1800);
+      const orig = clampLen(raw, 400);
+
+      // 모두가 볼 수 있게 공개로 전송
+      return interaction.reply({
+        content: `${nick}: ${out} (번역을 요청한 내용: ${orig})`
+      });
     }
 
     // ✅ 신규: 이미지
@@ -1135,7 +1251,7 @@ if (customId.startsWith(IMG_PREFIX)) {
   try {
     pruneOldImageSessions();
 
-    const [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
+    let [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
     let sess = imageSessions.get(sessionId);
 
     // 🔁 세션 복구 시도 (버튼 메시지에서 질의/이미지 재구성)
