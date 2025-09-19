@@ -1352,19 +1352,20 @@ try {
       sess.shared = false;
       imageSessions.set(sessionId, sess);
 
-      const ready = await prepareForDiscord(sess.list[sess.idx]);
-const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, false);
-const rows = renderImageButtons(sessionId, false);
-return interaction.editReply({
-  embeds: [eb],
-  components: rows,
-  files: ready.file ? [ready.file] : []
-});
+  const ready = await prepareForDiscord(sess.list[sess.idx]);
+  const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, false);
+  const rows = renderImageButtons(sessionId, false);
+  return interaction.editReply({
+    embeds: [eb],
+    components: rows,
+    files: ready.file ? [ready.file] : []
+  });
+}
 
-    // 알 수 없는 action 보호
-    return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
+// 알 수 없는 action 보호
+return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
 
-   } catch (err) {
+} catch (err) {
     console.error("[IMG BTN 오류]", err);
     // 이미 update를 못했을 수 있으니 followUp로 보장
     if (!interaction.replied && !interaction.deferred) {
