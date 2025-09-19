@@ -305,23 +305,23 @@ async function ytChannelUploads(channelId, key, max = 50) {
   }
   const ids = items.map(i => i.contentDetails?.videoId).filter(Boolean);
   if (ids.length === 0) return { channel: ch, videos: [] };
-const dict = new Map();
-for (let i = 0; i < ids.length; i += 50) {
-  const slice = ids.slice(i, i + 50);
-  const v = new URL("https://www.googleapis.com/youtube/v3/videos");
-  v.searchParams.set("part", "snippet,statistics,contentDetails");
-  v.searchParams.set("id", slice.join(","));
-  v.searchParams.set("key", key);
-  const vr = await httpGet(v.toString());
-  for (const it of (vr.items || [])) dict.set(it.id, it);
-}
-const videos = [];
-for (const id of ids) {
-  const it = dict.get(id);
-  if (!it) continue;
-  theStatsGuard(it);
-  videos.push(it);
-}
+  const dict = new Map();
+  for (let i = 0; i < ids.length; i += 50) {
+    const slice = ids.slice(i, i + 50);
+    const v = new URL("https://www.googleapis.com/youtube/v3/videos");
+    v.searchParams.set("part", "snippet,statistics,contentDetails");
+    v.searchParams.set("id", slice.join(","));
+    v.searchParams.set("key", key);
+    const vr = await httpGet(v.toString());
+    for (const it of (vr.items || [])) dict.set(it.id, it);
+  }
+  const videos = [];
+  for (const id of ids) {
+    const it = dict.get(id);
+    if (!it) continue;
+    theStatsGuard(it);
+    videos.push(it);
+  }
 
   videos.sort((a,b)=> new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt));
   return { channel: ch, videos };
@@ -509,7 +509,6 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
   }
 
   const revenuePage = 1;
-  const graphPage = totalPages - 1;
   if (pageIndex === revenuePage) {
     const monthly = estimateRevenueKRW(summary.last30DaysViews, rpmKRW);
     const lastNAvg = Math.round(avg(videos.slice(0,12).map(v => Number(v.statistics?.viewCount||0))));
@@ -523,37 +522,37 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
     return { embeds: [eb], files: [] };
   }
 
-  if (pageIndex === graphPage) {
-    eb.setColor(0x4DABF7).setTitle("성장 분석 그래프");
-    if (graphAttachment) eb.setImage(`attachment://${graphAttachment.name}`);
-    return { embeds: [eb], files: graphAttachment ? [graphAttachment] : [] };
-  }
-
   const listStartPage = 2;
-const pageVideos = pageify(videos, 10)[pageIndex - listStartPage] || [];
-eb.setTitle("최근 업로드");
+  const pageVideos = pageify(videos, 10)[pageIndex - listStartPage] || [];
+  eb.setTitle("최근 업로드");
 
-if (pageVideos.length === 0) {
-  eb.addFields({ name: "영상 목록", value: "표시할 영상이 없습니다." });
-} else {
-  for (let i = 0; i < pageVideos.length; i++) {
-    const v = pageVideos[i];
-    const idx = (pageIndex - listStartPage) * 10 + i + 1;
-    const t = cut(v.snippet?.title || "제목 없음", 80); // 필드 name 한도 256자 고려
-    const vc = fmtNum(v.statistics?.viewCount || 0);
-    const lk = v.statistics?.likeCount ? fmtNum(v.statistics.likeCount) : "비공개";
-    const when = toKST(v.snippet?.publishedAt);
-    const dura = parseISO8601Duration(v.contentDetails?.duration);
-    const u = `https://www.youtube.com/watch?v=${v.id}`;
-
-    eb.addFields({
-      name: `${idx}. ${t}`,
-      value: `${when} • ${dura}\n조회 ${vc} · 좋아요 ${lk}\n${u}`,
-    });
+  if (pageVideos.length === 0) {
+    eb.addFields({ name: "영상 목록", value: "표시할 영상이 없습니다." });
+  } else {
+    for (let i = 0; i < pageVideos.length; i++) {
+      const v = pageVideos[i];
+      const idx = (pageIndex - listStartPage) * 10 + i + 1;
+      const t = cut(v.snippet?.title || "제목 없음", 80);
+      const vc = fmtNum(v.statistics?.viewCount || 0);
+      const lk = v.statistics?.likeCount ? fmtNum(v.statistics.likeCount) : "비공개";
+      const when = toKST(v.snippet?.publishedAt);
+      const dura = parseISO8601Duration(v.contentDetails?.duration);
+      const u = `https://www.youtube.com/watch?v=${v.id}`;
+      eb.addFields({
+        name: `${idx}. ${t}`,
+        value: `${when} • ${dura}\n조회 ${vc} · 좋아요 ${lk}\n${u}`,
+      });
+    }
   }
-}
-return { embeds: [eb], files: [] };
 
+  let files = [];
+  if (pageIndex === listStartPage && graphAttachment) {
+    files.push(graphAttachment);
+    eb.setImage(`attachment://${graphAttachment.name}`);
+    eb.setFooter({ text: `페이지 ${pageIndex+1}/${totalPages} • 하단: 최근 추이 그래프` });
+  }
+
+  return { embeds: [eb], files };
 }
 
 async function handleSearch(interaction, query, key) {
@@ -640,7 +639,7 @@ async function resolveChannelId(input, key) {
 
 function buildChannelPageSet(ch, summary, vids, rpmKRW, graphAttachment) {
   const videosPages = Math.ceil(Math.max(0, vids.length) / 10);
-  const totalPages = 2 + videosPages + 1;
+  const totalPages = 2 + videosPages;
   return { totalPages, rpmKRW, graphAttachment, summary, vids, ch };
 }
 
