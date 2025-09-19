@@ -45,7 +45,7 @@ const calcSessions = new Map(); // userId -> { a, b, op, input, last, updatedAt,
  * 이미지 검색 세션
  * ========================= */
 const imageSessions = new Map(); // sessionId -> { q, lang, list, idx, shared, ownerId, createdAt }
-const IMG_SESSION_TTL_MS = 15 * 60 * 1000; // 15분
+const IMG_SESSION_TTL_MS = 60 * 60 * 1000; // 60분
 
 // 이미지 제공자 키 (있으면 사용, 없으면 건너뜀)
 const IMG_CFG = {
@@ -989,84 +989,92 @@ module.exports = {
     }
 
     /* ===== 이미지: 버튼 ===== */
-    if (customId.startsWith(IMG_PREFIX)) {
-      pruneOldImageSessions();
-      let [, action, sessionId] = customId.split("|");
-      let sess = imageSessions.get(sessionId);
+if (customId.startsWith(IMG_PREFIX)) {
+  pruneOldImageSessions();
 
-     // 🔁 세션이 없으면 임베드로부터 즉석 복구 (재시작/핫리로드 대응)
-     if (!sess) {
-       try {
-         const embed = interaction.message.embeds?.[0];
-         const title = embed?.title || "";            // 예: "🖼️ 이미지: 고양이"
-         const imgUrl = embed?.image?.url || null;    // 현재 표시 중인 이미지 URL
-         // 제목에서 검색어 추출
-         const m = title.match(/이미지:\s*(.+)$/);
-         const q = (m && m[1]) ? m[1].trim() : null;
-         if (!q) throw new Error("cannot parse query from embed title");
-         const lang = detectLang(q);
-         let list = await findImages(q, lang);
-         if (!Array.isArray(list) || !list.length) {
-           return interaction.reply({ content: "이미지 소스를 다시 불러오지 못했어. 한 번만 다시 시도해줘!", ephemeral: true });
-         }
-         // 현재 임베드의 이미지가 리스트에 있으면 그 인덱스로 복구
-         let idx = 0;
-         if (imgUrl) {
-           const found = list.findIndex(u => u === imgUrl);
-           if (found >= 0) idx = found;
-         }
-         const newId = crypto.randomBytes(8).toString("hex");
-         sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
-         imageSessions.set(newId, sess);
-         // 세션ID가 바뀌었으니, 이후 로직에서 사용할 sessionId를 교체
-         // (버튼도 새 세션ID로 재그리도록 아래에서 update 처리)
-         sessionId = newId; // NOTE: const → let 으로 위 선언 바꿨다면 가능. 아니면 아래에서 재생성 시 rows에 newId 넣어줌.
-       } catch (e) {
-         return interaction.reply({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", ephemeral: true });
-       }
-     }
-      const isOwner = (sess.ownerId === user.id);
-      // 안전을 위해: 세션 소유자만 조작 가능(원하면 해제 가능)
-      if (!isOwner) {
-        return interaction.reply({ content: "이 이미지는 다른 사용자의 검색 세션이야.", ephemeral: true });
+  // ✅ 3초 타임아웃 방지: 먼저 ACK
+  if (!interaction.deferred && !interaction.replied) {
+    try { await interaction.deferUpdate(); } catch {}
+  }
+
+  let [, action, sessionId] = customId.split("|");
+  let sess = imageSessions.get(sessionId);
+
+  // 🔁 세션 복구 분기에서 'reply' 쓰지 말고 editReply 사용
+  if (!sess) {
+    try {
+      const embedNow = interaction.message.embeds?.[0];
+      const title = embedNow?.title || "";
+      const m = title.match(/이미지:\s*(.+)$/);
+      const q = (m && m[1]) ? m[1].trim() : null;
+      if (!q) throw new Error("cannot parse query");
+      const lang = detectLang(q);
+      let list = await findImages(q, lang);
+      if (!Array.isArray(list) || !list.length) {
+        return interaction.editReply({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
       }
-
-      if (action === "share") {
-        if (sess.shared) {
-          return interaction.reply({ content: "이미 채널에 공유한 이미지야.", ephemeral: true });
-        }
-        const url = sess.list[sess.idx];
-        const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
-        await interaction.channel.send({ embeds: [embedPub] });
-        sess.shared = true;
-        imageSessions.set(sessionId, sess);
-
-        const embed = renderImageEmbed(sess.q, url, sess.lang, true);
-        const rows = renderImageButtons(sessionId, true);
-        return interaction.update({ embeds: [embed], components: rows });
+      let idx = 0;
+      const currUrl = embedNow?.image?.url || null;
+      if (currUrl) {
+        const found = list.findIndex(u => u === currUrl);
+        if (found >= 0) idx = found;
       }
+      const newId = crypto.randomBytes(8).toString("hex");
+      sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
+      imageSessions.set(newId, sess);
+      sessionId = newId;
+    } catch {
+      return interaction.editReply({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+    }
+  }
 
-      if (action === "more") {
-        if (!Array.isArray(sess.list) || !sess.list.length) {
-          return interaction.reply({ content: "결과가 더 없어.", ephemeral: true });
-        }
-        // 다음 랜덤 (가급적 다른 인덱스)
-        let nextIdx = sess.idx;
-        if (sess.list.length > 1) {
-          for (let i = 0; i < 5; i++) {
-            const cand = Math.floor(Math.random() * sess.list.length);
-            if (cand !== sess.idx) { nextIdx = cand; break; }
-          }
-        }
-        sess.idx = nextIdx;
-        sess.shared = false; // 새 이미지이므로 다시 공유 가능
-        imageSessions.set(sessionId, sess);
+  const isOwner = (sess.ownerId === interaction.user.id);
+  if (!isOwner) {
+    return interaction.editReply({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
+  }
 
-        const url = sess.list[sess.idx];
-        const embed = renderImageEmbed(sess.q, url, sess.lang, false);
-        const rows = renderImageButtons(sessionId, false);
-        return interaction.update({ embeds: [embed], components: rows });
+  if (action === "share") {
+    // ✅ 권한 문제 안전 처리
+    try {
+      const url = sess.list[sess.idx];
+      const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
+      await interaction.channel.send({ embeds: [embedPub] });
+      sess.shared = true;
+      imageSessions.set(sessionId, sess);
+    } catch (e) {
+      // 채널 전송 권한/임베드 권한 없을 때
+      await interaction.followUp({
+        content: "채널에 메시지를 보낼 권한이 없어서 공유 실패했어. (메시지 전송/임베드 링크 권한 확인)",
+        ephemeral: true
+      }).catch(() => {});
+    }
+
+    const url = sess.list[sess.idx];
+    const embed = renderImageEmbed(sess.q, url, sess.lang, !!sess.shared);
+    const rows = renderImageButtons(sessionId, !!sess.shared);
+    return interaction.editReply({ embeds: [embed], components: rows });
+  }
+
+  if (action === "more") {
+    if (!Array.isArray(sess.list) || !sess.list.length) {
+      return interaction.editReply({ content: "결과가 더 없어.", embeds: [], components: [] });
+    }
+    let nextIdx = sess.idx;
+    if (sess.list.length > 1) {
+      for (let i = 0; i < 5; i++) {
+        const cand = Math.floor(Math.random() * sess.list.length);
+        if (cand !== sess.idx) { nextIdx = cand; break; }
       }
     }
+    sess.idx = nextIdx;
+    sess.shared = false;
+    imageSessions.set(sessionId, sess);
+
+    const url = sess.list[sess.idx];
+    const embed = renderImageEmbed(sess.q, url, sess.lang, false);
+    const rows = renderImageButtons(sessionId, false);
+    return interaction.editReply({ embeds: [embed], components: rows });
+    }
+   }
   },
 };
