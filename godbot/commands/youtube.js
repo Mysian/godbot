@@ -31,8 +31,14 @@ try { _canvas = require("canvas"); } catch {}
 
 async function httpGet(url) {
   const res = await _fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  let body = null;
+  try { body = await res.text(); } catch {}
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    if (body && body.length < 500) msg += ` • ${body}`;
+    throw new Error(msg);
+  }
+  try { return body ? JSON.parse(body) : {}; } catch { throw new Error("HTTP 200 but invalid JSON"); }
 }
 
 function fmtNum(n) {
@@ -79,14 +85,27 @@ function extractVideoId(input) {
   } catch {}
   return null;
 }
+function normalizeChannelQuery(s) {
+  if (!s) return "";
+  let q = s.trim();
+  q = q.replace(/^https?:\/\/(www\.)?youtube\.com\//i, "");
+  q = q.replace(/^https?:\/\/(www\.)?youtu\.be\//i, "");
+  q = q.replace(/^@+/, "");
+  q = q.replace(/^c\//i, "");
+  q = q.replace(/^user\//i, "");
+  q = q.replace(/^channel\//i, "");
+  q = q.replace(/^[\/]+/, "");
+  return q;
+}
 function extractChannelFromInput(input) {
   if (!input) return null;
   try {
     const u = new URL(input);
     if (!/youtu\.be|youtube\.com/.test(u.hostname)) return null;
-    if (u.pathname.startsWith("/channel/")) return { id: u.pathname.split("/")[2] || null, query: null };
-    if (u.pathname.startsWith("/@")) return { id: null, query: u.pathname }; // 핸들 → 검색으로 처리
-    if (u.pathname.startsWith("/c/")) return { id: null, query: u.pathname.replace(/^\/+/, "") };
+    if (u.pathname.startsWith("/channel/")) return { id: u.pathname.split("/")[2] || null, query: null, viaVideo: null };
+    if (u.pathname.startsWith("/@")) return { id: null, query: normalizeChannelQuery(u.pathname), viaVideo: null };
+    if (u.pathname.startsWith("/c/")) return { id: null, query: normalizeChannelQuery(u.pathname), viaVideo: null };
+    if (u.pathname.startsWith("/user/")) return { id: null, query: normalizeChannelQuery(u.pathname), viaVideo: null };
     if (u.pathname.startsWith("/watch") || u.pathname.startsWith("/shorts/") || u.pathname.startsWith("/live/")) return { id: null, query: null, viaVideo: extractVideoId(input) };
   } catch {}
   return null;
@@ -239,21 +258,24 @@ async function respondWithPlayable(interaction, payload) {
 }
 
 async function ytFindChannelByName(queryOrHandle, key) {
+  const q = normalizeChannelQuery(queryOrHandle);
+  if (/^UC[A-Za-z0-9_-]{22}$/.test(q)) return q;
   const s = new URL("https://www.googleapis.com/youtube/v3/search");
   s.searchParams.set("part", "snippet");
   s.searchParams.set("type", "channel");
-  s.searchParams.set("q", queryOrHandle);
+  s.searchParams.set("q", q);
   s.searchParams.set("maxResults", "5");
   s.searchParams.set("regionCode", REGION);
   s.searchParams.set("hl", HL);
   s.searchParams.set("key", key);
   const res = await httpGet(s.toString());
-  const it = (res.items || [])[0];
-  if (!it) return null;
-  return it.id?.channelId || null;
+  const items = res.items || [];
+  if (!items.length) return null;
+  return items[0]?.id?.channelId || null;
 }
 
 async function ytChannelCore(channelId, key) {
+  if (!channelId || !/^UC[A-Za-z0-9_-]{22}$/.test(channelId)) throw new Error("invalid channelId");
   const u = new URL("https://www.googleapis.com/youtube/v3/channels");
   u.searchParams.set("part", "snippet,statistics,contentDetails");
   u.searchParams.set("id", channelId);
@@ -261,13 +283,12 @@ async function ytChannelCore(channelId, key) {
   u.searchParams.set("key", key);
   const r = await httpGet(u.toString());
   const ch = (r.items || [])[0];
-  if (!ch) return null;
+  if (!ch) throw new Error("channel not found");
   return ch;
 }
 
 async function ytChannelUploads(channelId, key, max = 50) {
   const ch = await ytChannelCore(channelId, key);
-  if (!ch) return { channel: null, videos: [] };
   const uploads = ch.contentDetails?.relatedPlaylists?.uploads;
   if (!uploads) return { channel: ch, videos: [] };
   let items = [];
@@ -332,7 +353,6 @@ function summarizeChannel(ch, videos) {
   const subs = subsHidden ? null : Number(st.subscriberCount || 0);
   const totalViews = Number(st.viewCount || 0);
   const totalVideos = Number(st.videoCount || 0);
-
   const recent = videos.slice(0, 30);
   const views = recent.map(v => Number(v.statistics?.viewCount || 0));
   const ages = recent.map(v => Math.max(1, Math.floor(daysSince(v.snippet?.publishedAt))));
@@ -340,7 +360,6 @@ function summarizeChannel(ch, videos) {
   const avgViews = Math.round(avg(views));
   const medViews = Math.round(median(views));
   const avgVpd = Math.round(avg(vpd));
-
   let intervals = [];
   for (let i=0;i<Math.min(videos.length-1, 29);i++) {
     const a = new Date(videos[i].snippet.publishedAt).getTime();
@@ -350,13 +369,10 @@ function summarizeChannel(ch, videos) {
   }
   const avgInterval = intervals.length? avg(intervals): null;
   const perWeek = avgInterval ? (7/avgInterval) : 0;
-
   const last30DaysViews = videos.filter(v => daysSince(v.snippet.publishedAt) <= 30)
     .reduce((acc, v)=> acc + Number(v.statistics?.viewCount || 0), 0);
-
   const lastN = videos.slice(0, 12);
   const viewsSeries = lastN.map(v => Number(v.statistics?.viewCount || 0)).reverse();
-
   return {
     title: sn.title || "채널",
     description: sn.description || "",
@@ -447,7 +463,7 @@ function computeGrowthPotential({ subs = 0, viewsSeries = [], uploadPerWeek = 0 
     const xbar = xs.reduce((a,b)=>a+b,0)/n;
     const ybar = viewsSeries.reduce((a,b)=>a+b,0)/n;
     const num = xs.reduce((acc, x, i)=> acc + (x - xbar) * (viewsSeries[i] - ybar), 0);
-    const den = xs.reduce((acc, x)=> acc + Math.pow(x - xbar, 2), 0) || 1;
+    const den = xs.reduce((acc, x)=> acc + Math.pow((x - xbar), 2), 0) || 1;
     slope = num / den;
     const scale = (ybar || 1);
     slope = Math.max(-1, Math.min(1, slope / scale));
@@ -514,7 +530,6 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
   }
 
   const listStartPage = 2;
-  const listPages = graphPage - listStartPage;
   const pageVideos = pageify(videos, 10)[pageIndex - listStartPage] || [];
   const lines = pageVideos.map((v, i)=>{
     const idx = (pageIndex - listStartPage)*10 + i + 1;
@@ -536,7 +551,7 @@ async function handleSearch(interaction, query, key) {
   try {
     list = await ytSearch(query, key);
   } catch (e) {
-    return interaction.editReply({ content: "죄송합니다, 검색 중 오류가 발생했습니다." });
+    return interaction.editReply({ content: `죄송합니다, 검색 중 오류가 발생했습니다.\n오류: ${String(e.message || e)}` });
   }
   if (list.length === 0) return interaction.editReply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다." });
   const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
@@ -544,7 +559,8 @@ async function handleSearch(interaction, query, key) {
   const expireAt = Date.now() + SESSION_TTL_MS;
   sessions.set(sessionId, { type: "search", owner, expireAt, index: 0, list, channelId: interaction.channelId, playerMsgId: null });
   const v = list[0];
-  const more = await ytVideoInfo(v.id, key);
+  let more = null;
+  try { more = await ytVideoInfo(v.id, key); } catch (e) { return interaction.editReply({ content: `상세 조회 실패: ${String(e.message || e)}` }); }
   if (!more) return interaction.editReply({ content: "죄송합니다, 검색 결과를 표시할 수 없습니다." });
   const { embed, url } = buildEmbedForVideo(more.video, more.channel, more.recentComment, 0, list.length);
   const row = buildPagerRow(sessionId, 0, list.length);
@@ -566,8 +582,8 @@ async function handleSearch(interaction, query, key) {
       if (op === "prev") sess.index = Math.max(0, sess.index - 1);
       if (op === "next") sess.index = Math.min(sess.list.length - 1, sess.index + 1);
       const cur = sess.list[sess.index];
-      const more2 = await ytVideoInfo(cur.id, key);
-      if (!more2) return btn.deferUpdate();
+      let more2 = null;
+      try { more2 = await ytVideoInfo(cur.id, key); } catch { return btn.deferUpdate(); }
       const { embed: eb2, url: u2 } = buildEmbedForVideo(more2.video, more2.channel, more2.recentComment, sess.index, sess.list.length);
       const row2 = buildPagerRow(sid, sess.index, sess.list.length);
       if (sess.playerMsgId) {
@@ -584,41 +600,49 @@ async function handleSearch(interaction, query, key) {
     try {
       const cur = await interaction.fetchReply();
       const comps = cur.components?.[0]?.components || [];
-      const row = new ActionRowBuilder().addComponents(comps.map(c => ButtonBuilder.from(c).setDisabled(true)));
-      await interaction.editReply({ components: [row] });
+      const rowD = new ActionRowBuilder().addComponents(comps.map(c => ButtonBuilder.from(c).setDisabled(true)));
+      await interaction.editReply({ components: [rowD] });
     } catch {}
   });
 }
 
-async function handleView(interaction, input, key) {
-  await interaction.deferReply({ ephemeral: true });
-  const vid = extractVideoId(input);
-  if (!vid) return interaction.editReply({ content: "유효한 유튜브 영상 링크/ID가 아니야." });
-  let info = null;
-  try { info = await ytVideoInfo(vid, key); }
-  catch { return interaction.editReply({ content: "조회 중 오류가 발생했어." }); }
-  if (!info || !info.video) return interaction.editReply({ content: "해당 영상을 찾을 수 없어." });
-  const { embed, url } = buildEmbedForVideo(info.video, info.channel, info.recentComment);
-  await respondWithPlayable(interaction, { contentUrl: url, embed, components: [] });
+async function resolveChannelId(input, key) {
+  if (!input) return null;
+  if (/^UC[A-Za-z0-9_-]{22}$/.test(input.trim())) return input.trim();
+  const parsed = extractChannelFromInput(input);
+  if (parsed?.id) {
+    if (/^UC[A-Za-z0-9_-]{22}$/.test(parsed.id)) return parsed.id;
+  }
+  if (parsed?.viaVideo) {
+    const vi = await ytVideoInfo(parsed.viaVideo, key);
+    const cid = vi?.video?.snippet?.channelId || null;
+    if (cid) return cid;
+  }
+  if (parsed?.query) {
+    const q = normalizeChannelQuery(parsed.query);
+    const cid = await ytFindChannelByName(q, key);
+    if (cid) return cid;
+  }
+  const fallback = await ytFindChannelByName(input, key);
+  return fallback || null;
+}
+
+function buildChannelPageSet(ch, summary, vids, rpmKRW, graphAttachment) {
+  const videosPages = Math.ceil(Math.max(0, vids.length) / 10);
+  const totalPages = 2 + videosPages + 1;
+  return { totalPages, rpmKRW, graphAttachment, summary, vids, ch };
 }
 
 async function handleChannelAnalyze(interaction, input, key) {
   await interaction.deferReply({ ephemeral: true });
-
   let chId = null;
-  const parsed = extractChannelFromInput(input);
-  if (parsed?.id) chId = parsed.id;
-  if (!chId && parsed?.viaVideo) {
-    const vi = await ytVideoInfo(parsed.viaVideo, key);
-    chId = vi?.video?.snippet?.channelId || null;
-  }
-  if (!chId && parsed?.query) chId = await ytFindChannelByName(parsed.query, key);
-  if (!chId && !parsed) chId = await ytFindChannelByName(input, key);
-  if (!chId) return interaction.editReply({ content: "채널을 찾지 못했어." });
+  try { chId = await resolveChannelId(input, key); }
+  catch (e) { return interaction.editReply({ content: `채널 식별 실패: ${String(e.message || e)}` }); }
+  if (!chId) return interaction.editReply({ content: "채널을 찾지 못했어. 채널명 또는 채널/영상 링크를 확인해줘." });
 
-  let pack;
+  let pack = null;
   try { pack = await ytChannelUploads(chId, key, 60); }
-  catch { return interaction.editReply({ content: "채널 데이터 조회 중 오류가 발생했어." }); }
+  catch (e) { return interaction.editReply({ content: `채널 데이터 조회 중 오류가 발생했어.\n오류: ${String(e.message || e)}` }); }
 
   const ch = pack.channel;
   const vids = pack.videos;
@@ -626,13 +650,10 @@ async function handleChannelAnalyze(interaction, input, key) {
 
   const summary = summarizeChannel(ch, vids);
   const rpmKRW = DEFAULT_RPM_KRW_PER_1K;
-
   let graphAttachment = null;
   try { graphAttachment = await makeGrowthChart(summary.viewsSeries, "최근 업로드 뷰 추이"); } catch {}
 
-  const pagesVideo = Math.ceil(Math.max(0, vids.length) / 10);
-  const totalPages = 2 + pagesVideo + 1; // 개요(0), 수익(1), 영상 리스트(2..n-1), 그래프(마지막)
-
+  const { totalPages } = buildChannelPageSet(ch, summary, vids, rpmKRW, graphAttachment);
   const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
   sessions.set(sessionId, {
     type: "channel",
