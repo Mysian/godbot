@@ -164,6 +164,26 @@ async function ensureUsable(urls, maxKeep = 12) {
   return out;
 }
 
+async function withTimeout(promise, ms, onTimeout = null) {
+  let timer;
+  try {
+    const race = Promise.race([
+      promise,
+      new Promise((resolve, reject) => {
+        timer = setTimeout(() => resolve(Symbol.for("TIMEOUT")), ms);
+      })
+    ]);
+    const res = await race;
+    if (res === Symbol.for("TIMEOUT")) {
+      return typeof onTimeout === "function" ? onTimeout() : null;
+    }
+    return res;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+
 
 /* =========================
  * 메모 파일 IO (proper-lockfile)
