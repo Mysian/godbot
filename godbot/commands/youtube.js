@@ -1,4 +1,3 @@
-// godbot/commands/youtube.js
 "use strict";
 
 const {
@@ -12,7 +11,6 @@ const {
 const https = require("https");
 const { URL } = require("url");
 
-// ===== 설정 =====
 const REGION = "KR";
 const HL = "ko";
 const SEARCH_PAGE_SIZE = 10;
@@ -21,17 +19,6 @@ const REQ_TIMEOUT_MS = 10000;
 const SESS_PREFIX = "yt:";
 const sessions = new Map();
 
-// Invidious API 인스턴스(백업용)
-const INVIDIOUS_ENDPOINTS = [
-  "https://yewtu.be",
-  "https://invidious.projectsegfau.lt",
-  "https://invidious.slipfox.xyz",
-  "https://iv.ggtyler.dev",
-  "https://invidious.protokolla.fi",
-];
-
-
-// Piped API 인스턴스(안정적인 pipedapi.* 우선)
 const PIPED_ENDPOINTS = [
   "https://pipedapi.kavin.rocks",
   "https://pipedapi.adminforge.de",
@@ -46,7 +33,14 @@ const PIPED_ENDPOINTS = [
   "https://pipedapi-libre.kavin.rocks",
 ];
 
-// ===== 공용 유틸 =====
+const INVIDIOUS_ENDPOINTS = [
+  "https://yewtu.be",
+  "https://invidious.projectsegfau.lt",
+  "https://invidious.slipfox.xyz",
+  "https://iv.ggtyler.dev",
+  "https://invidious.protokolla.fi",
+];
+
 function fmtNum(n) {
   if (n === undefined || n === null || Number.isNaN(Number(n))) return "정보 없음";
   return Number(n).toLocaleString("ko-KR");
@@ -89,7 +83,6 @@ function extractVideoId(input) {
 const ytSearchUrl = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 const ytWatchUrl  = (id) => `https://www.youtube.com/watch?v=${id}`;
 
-// ===== HTTP (https 내장) =====
 function httpGetJsonRaw(fullUrl) {
   return new Promise((resolve, reject) => {
     const u = new URL(fullUrl);
@@ -100,28 +93,38 @@ function httpGetJsonRaw(fullUrl) {
       path: u.pathname + (u.search || ""),
       method: "GET",
       headers: {
-  "user-agent": "godbot/yt (discord.js)",
-  "accept": "application/json,text/plain,*/*",
-  "accept-language": "ko-KR,ko;q=0.9,en;q=0.5",
-  "accept-encoding": "identity",
-},
-...
-res.on("end", () => {
-  if (statusCode >= 500) {
-    return reject(new Error(`업스트림 5xx (${statusCode})`));
-  }
-  if (statusCode < 200 || statusCode >= 300) {
-    return reject(new Error(`HTTP ${statusCode}`));
-  }
-  try {
-    const j = JSON.parse(data);
-    resolve(j);
-  } catch (e) {
-    if (typeof data === "string" && data.trim().startsWith("<")) {
-      return reject(new Error("JSON 파싱 실패(HTML 응답)"));
-    }
-    reject(new Error("JSON 파싱 실패"));
-  }
+        "user-agent": "godbot/yt (discord.js)",
+        "accept": "application/json,text/plain,*/*",
+        "accept-language": "ko-KR,ko;q=0.9,en;q=0.5",
+        "accept-encoding": "identity",
+      },
+      rejectUnauthorized: true,
+      timeout: REQ_TIMEOUT_MS,
+    };
+
+    const req = https.request(opt, (res) => {
+      const { statusCode } = res;
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => data += chunk);
+      res.on("end", () => {
+        if (statusCode >= 500) {
+          return reject(new Error(`업스트림 5xx (${statusCode})`));
+        }
+        if (statusCode < 200 || statusCode >= 300) {
+          return reject(new Error(`HTTP ${statusCode}`));
+        }
+        try {
+          const j = JSON.parse(data);
+          resolve(j);
+        } catch (e) {
+          if (typeof data === "string" && data.trim().startsWith("<")) {
+            return reject(new Error("JSON 파싱 실패(HTML 응답)"));
+          }
+          reject(new Error("JSON 파싱 실패"));
+        }
+      });
+    });
 
     req.on("timeout", () => { req.destroy(new Error("요청 타임아웃")); });
     req.on("error", (err) => reject(err));
@@ -142,28 +145,6 @@ async function pipedGet(pathWithQuery) {
   throw lastErr || new Error("모든 Piped 인스턴스 실패");
 }
 
-// ===== Piped API 래퍼 =====
-async function ytSearchNoKey(query) {
-  try {
-    // 1차: Piped
-    const q = encodeURIComponent(query);
-    const { data } = await pipedGet(`/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`);
-    const list = Array.isArray(data) ? data : [];
-    if (list.length) return list.slice(0, SEARCH_PAGE_SIZE);
-    // 비어 있으면 인비디우스로 폴백
-    return await invSearchNoKey(query);
-  } catch (e) {
-    // Piped가 5xx로 죽으면 바로 인비디우스로 폴백
-    try {
-      return await invSearchNoKey(query);
-    } catch (e2) {
-      // 둘 다 실패 시 원인 합쳐서 던짐
-      throw new Error(`백엔드 불안정(Piped: ${e.message || e}, Invidious: ${e2.message || e2})`);
-    }
-  }
-}
-
-
 async function invidiousGet(pathWithQuery) {
   let lastErr;
   for (const base of INVIDIOUS_ENDPOINTS) {
@@ -179,15 +160,13 @@ async function invidiousGet(pathWithQuery) {
 
 async function invSearchNoKey(query) {
   const q = encodeURIComponent(query);
-  // /api/v1/search?type=video
   const { data } = await invidiousGet(`/api/v1/search?q=${q}&type=video&region=${REGION}`);
   const arr = Array.isArray(data) ? data : [];
-  // Piped 검색 아이템 인터페이스에 맞춰 최소 필드만 매핑
   return arr.slice(0, SEARCH_PAGE_SIZE).map(v => ({
     id: v.videoId,
     title: v.title,
     uploaderName: v.author,
-    uploadDate: v.publishedText,          // 예: "3 days ago"
+    uploadDate: v.publishedText,
     duration: Number(v.lengthSeconds || 0),
     views: Number(v.viewCount || 0),
     thumbnail: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
@@ -197,15 +176,27 @@ async function invSearchNoKey(query) {
   }));
 }
 
+async function ytSearchNoKey(query) {
+  try {
+    const q = encodeURIComponent(query);
+    const { data } = await pipedGet(`/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`);
+    const list = Array.isArray(data) ? data : [];
+    if (list.length) return list.slice(0, SEARCH_PAGE_SIZE);
+    return await invSearchNoKey(query);
+  } catch (e) {
+    try {
+      return await invSearchNoKey(query);
+    } catch (e2) {
+      throw new Error(`백엔드 불안정(Piped: ${e.message || e}, Invidious: ${e2.message || e2})`);
+    }
+  }
+}
 
 async function ytVideoInfoNoKey(videoId) {
-  // 공식 문서 기준: /streams/:videoId 를 사용
   const { data: v } = await pipedGet(`/api/v1/streams/${videoId}?region=${REGION}&hl=${HL}`);
   if (!v || !v.title) return null;
-
-  // 업로더 채널(있으면)
   let ch = null;
-  const uploaderUrl = v.uploaderUrl; // e.g. "/channel/UCxxxx"
+  const uploaderUrl = v.uploaderUrl;
   const chId = uploaderUrl && uploaderUrl.startsWith("/channel/") ? uploaderUrl.split("/")[2] : null;
   if (chId) {
     try {
@@ -213,19 +204,15 @@ async function ytVideoInfoNoKey(videoId) {
       ch = chData || null;
     } catch {}
   }
-
-  // 최근 댓글 1개(있으면)
   let recent = null;
   try {
     const { data: c } = await pipedGet(`/api/v1/comments/${videoId}?region=${REGION}&hl=${HL}&sort=new`);
     const arr = Array.isArray(c?.comments) ? c.comments : [];
     recent = arr[0] || null;
   } catch {}
-
   return { v, ch, recent };
 }
 
-// ===== Embed 빌더 =====
 function buildEmbedForSearchItem(item, indexPos, total, queryForLink) {
   const vid = item.id || (item.url && item.url.includes("v=") ? item.url.split("v=")[1] : null);
   const url = vid ? ytWatchUrl(vid) : (item.url || ytSearchUrl(queryForLink));
@@ -336,7 +323,6 @@ async function respondWithPlayable(interaction, payload) {
   }
 }
 
-// ===== Slash 구현 =====
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("유튜브")
@@ -363,9 +349,12 @@ module.exports = {
         list = await ytSearchNoKey(q);
       } catch (e) {
         const msg = (e && e.message) ? e.message : "원인 불명";
-        // 최소한 유튜브 검색 링크는 제공
         return interaction.editReply({
-          content: `죄송합니다, 검색 중 오류가 발생했습니다. (${msg})\n검색 링크: ${ytSearchUrl(q)}`
+          content: [
+            "죄송합니다, **검색 백엔드가 일시적으로 불안정**해.",
+            `오류: ${msg}`,
+            `대신 이 링크로는 바로 볼 수 있어: ${ytSearchUrl(q)}`
+          ].join("\n")
         });
       }
       if (!list.length) {
