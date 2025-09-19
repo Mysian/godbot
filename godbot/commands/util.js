@@ -636,42 +636,37 @@ function dedupUrls(arr) {
 }
 
 async function findImages(q, lang) {
-  const all = [];
-  try {
-    // 1차: Bing
-    const a = await fetchBingImages(q, lang, IMG_CFG).catch(() => []);
-    all.push(...a);
-  } catch {}
-  try {
-    // 2차: Google CSE
-    const a = await fetchGoogleImages(q, lang, IMG_CFG).catch(() => []);
-    all.push(...a);
-  } catch {}
-  try {
-    // 3차: Naver
-    const a = await fetchNaverImages(q, lang, IMG_CFG).catch(() => []);
-    all.push(...a);
-  } catch {}
-  try {
-    // 4차: Wikimedia (유명 명사/작품 폴백)
-    const a = await fetchWikimedia(q).catch(() => []);
-    all.push(...a);
-  } catch {}
-
-  // 중복 제거 + 확장자 필터(디스코드 임베드 친화)
-  let cand = dedupUrls(all).filter(u => /\.(avif|webp|png|jpe?g|gif)(\?|#|$)/i.test(u));
-
-  // 가용성(403/비이미지) 필터링
+  const seen = new Set();
   const out = [];
-  for (const u of cand) {
-    if (await testImageUrl(u)) out.push(u);
-    if (out.length >= 50) break; // 과도 방지
+  async function addFrom(fn) {
+    try {
+      const arr = await fn();
+      for (const u of arr) {
+        const su = sanitizeImageUrl(u);
+        if (su && !seen.has(su)) { seen.add(su); out.push(su); }
+      }
+    } catch { /* ignore */ }
   }
-  if (out.length === 0) {
-  out.push(unsplashDirectUrl(q));
-}
+
+  // 0) 무키 ‘즉시 성공’ 라인 — 여기서 최소 1장은 보장
+  await addFrom(() => searchUnsplashNoKey(q));
+  if (out.length < 1) await addFrom(() => searchLoremFlickrDirect(q));
+
+  // 1) 키 기반 (있으면 다양성 ↑)
+  if (out.length < 3) await addFrom(() => searchBingImages(q, lang));
+  if (out.length < 3) await addFrom(() => searchGoogleImages(q));
+  if (out.length < 3) await addFrom(() => searchNaverImages(q));
+
+  // 2) 무키 폴백
+  if (out.length < 3) await addFrom(() => searchWikimediaImages(q));
+  if (out.length < 3) await addFrom(() => searchDuckDuckGoImages(q));
+
+  // 🔒 최후 폴백: 그래도 0이면 최소 1장 보장
+  if (out.length === 0) out.push(unsplashDirectUrl(q));
+
   return out;
 }
+
 
 
 function renderImageEmbed(q, url, lang, shared = false) {
@@ -778,17 +773,14 @@ module.exports = {
       // 검색
       let urls = await findImages(q, lang);
 
-// 🔎 디버그 로그(콘솔): 실제로 뭐가 잡혔는지 확인
-try { console.log("[IMG] query:", q, "got:", urls.slice(0, 5)); } catch {}
+// 디버그 로그(콘솔에서 확인)
+try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
 
-// 디스코드가 확장자 없어도 302 따라가서 잘 띄우는 케이스가 많음(Unsplash 등)
-// 그래도 혹시 모를 필터는 완화 (실제 필터 제거)
+// (필터 완화 — 필요 없음지만 혹시 모를 null 제거)
 urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
 
-// ✅ 실행부에서도 하드 폴백 (혹시 findImages가 비어오면 한 번 더)
-if (!urls.length) {
-  urls = [ unsplashDirectUrl(q) ];
-}
+// ✅ 최후 폴백(혹시 0이면 Unsplash 1장)
+if (!urls.length) urls = [ unsplashDirectUrl(q) ];
 
 if (!urls.length) {
   return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
