@@ -246,22 +246,17 @@ function buildPagerRow(sessionId, index, total) {
   return new ActionRowBuilder().addComponents(prev, next);
 }
 
-async function respondWithPlayable(interaction, payload, mode = "single") {
+async function respondWithPlayable(interaction, payload) {
+  // 디스코드 특성상 "큰 영상 미리보기(재생 가능)"는 메시지 본문에 유튜브 URL이 있어야 자동 생성됨.
+  // 그래서 content에 URL을 넣고, 정보는 Embed로 함께 보낸다.
+  // (ephemeral로 보내면 미리보기 안 뜸 → 반드시 공개 메시지)
   const { contentUrl, embed, components } = payload;
-
-  if (mode === "split") {
-    // 1) 임베드 먼저 (공개 메시지)
-    if (interaction.deferred || interaction.replied) {
-  await interaction.editReply({ content: "", embeds: [embed], components });
-} else {
-  await interaction.reply({ content: "", embeds: [embed], components, ephemeral: false });
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ content: contentUrl, embeds: [embed], components });
+  } else {
+    await interaction.reply({ content: contentUrl, embeds: [embed], components, ephemeral: false });
+  }
 }
-
-const url = videoUrl;
-await interaction.channel.send({
-  content: url,    
-  allowedMentions: { parse: [] },
-});
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -408,7 +403,7 @@ module.exports = {
 
       const { embed, url } = buildEmbedForVideo(info.video, info.channel, info.recentComment);
       // 조회 명령은 페이저 없음
-      await respondWithPlayable(interaction, { contentUrl: url, embed, components: [] }, "split");
+      await respondWithPlayable(interaction, { contentUrl: url, embed, components: [] });
       return;
     }
   },
