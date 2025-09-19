@@ -639,17 +639,17 @@ async function findImages(q, lang) {
   const all = [];
   try {
     // 1차: Bing
-    const a = await fetchBingImages(q, lang, CFG).catch(() => []);
+    const a = await fetchBingImages(q, lang, IMG_CFG).catch(() => []);
     all.push(...a);
   } catch {}
   try {
     // 2차: Google CSE
-    const a = await fetchGoogleImages(q, lang, CFG).catch(() => []);
+    const a = await fetchGoogleImages(q, lang, IMG_CFG).catch(() => []);
     all.push(...a);
   } catch {}
   try {
     // 3차: Naver
-    const a = await fetchNaverImages(q, lang, CFG).catch(() => []);
+    const a = await fetchNaverImages(q, lang, IMG_CFG).catch(() => []);
     all.push(...a);
   } catch {}
   try {
@@ -667,6 +667,9 @@ async function findImages(q, lang) {
     if (await testImageUrl(u)) out.push(u);
     if (out.length >= 50) break; // 과도 방지
   }
+  if (out.length === 0) {
+  out.push(unsplashDirectUrl(q));
+}
   return out;
 }
 
