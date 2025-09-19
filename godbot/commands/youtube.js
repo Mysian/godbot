@@ -668,9 +668,9 @@ module.exports = {
       const pages = 1 + Math.max(0, Math.ceil(vids.length/10));
       const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
       const eb0 = buildChannelEmbeds(ch, vids, summary, 0, pages);
-      const row0 = buildChannelPagerRow(sessionId, 0, pages);
 
-      await interaction.editReply({ embeds: [eb0], components: [row0] });
+      await interaction.editReply({ embeds: [eb0] });
+      return;
 
       sessions.set(sessionId, {
         type: "channel",
