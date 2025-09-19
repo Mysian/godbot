@@ -121,9 +121,9 @@ function pruneOldImageSessions() {
 }
 function proxyUrl(u) {
   try {
-    const { hostname, pathname, search } = new URL(u);
-    // weserv는 https://images.weserv.nl/?url=host/path 형식
-    return `https://images.weserv.nl/?url=${encodeURIComponent(hostname + pathname)}${search ? "&" + search.slice(1) : ""}`;
+    const dest = new URL(u);
+    const target = (dest.hostname + dest.pathname + (dest.search || ""));
+    return `https://images.weserv.nl/?url=${encodeURIComponent(target)}&n=-1`;
   } catch { return null; }
 }
 
@@ -136,10 +136,10 @@ async function probeImage(u, timeoutMs = 6000) {
       signal: ctrl.signal,
       headers: {
         "Range": "bytes=0-1023",
-        "User-Agent": "Mozilla/5.0 (DiscordBot-ImageProbe)",
+        "User-Agent": "Discordbot/2.0",
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "ko,en;q=0.9",
-        "Referer": "https://discord.com", // 일부 사이트는 Referer 요구
+        "Referer": "https://discord.com",
       }
     }).catch(() => null);
     clearTimeout(timer);
@@ -148,6 +148,52 @@ async function probeImage(u, timeoutMs = 6000) {
     return ct.startsWith("image/");
   } catch { return false; }
 }
+
+const { AttachmentBuilder } = require("discord.js");
+
+function extFromCT(ct) {
+  if (!ct) return "jpg";
+  if (ct.includes("png")) return "png";
+  if (ct.includes("webp")) return "webp";
+  if (ct.includes("gif")) return "gif";
+  return "jpg";
+}
+
+async function prepareForDiscord(u) {
+  // 1) 직통 테스트
+  if (await probeImage(u)) return { url: u, file: null };
+
+  // 2) 프록시 재시도
+  const pu = proxyUrl(u);
+  if (pu && await probeImage(pu)) return { url: pu, file: null };
+
+  // 3) 파일 첨부 폴백 (용량 7MB 제한)
+  const tryUrl = pu || u;
+  try {
+    const r = await fetchSafe(tryUrl, {
+      headers: {
+        "User-Agent": "Discordbot/2.0",
+        "Referer": "https://discord.com",
+        "Accept": "image/*;q=0.9,*/*;q=0.1"
+      }
+    });
+    if (!r || !r.ok) return { url: u, file: null };
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    const ab = await r.arrayBuffer();
+    const buf = Buffer.from(ab);
+    if (buf.length > 7 * 1024 * 1024) {
+      // 너무 크면 프록시에 리사이즈 파라미터 추가 시도
+      const shrink = (pu ? pu : proxyUrl(u)) + "&w=1600&output=jpg";
+      return { url: shrink, file: null };
+    }
+    const name = `img.${extFromCT(ct)}`;
+    const file = new AttachmentBuilder(buf, { name });
+    return { url: `attachment://${name}`, file };
+  } catch {
+    return { url: u, file: null };
+  }
+}
+
 
 // 과하게 느려지지 않도록 순차-빠른중지 방식
 async function ensureUsable(urls, maxKeep = 12) {
@@ -880,9 +926,14 @@ module.exports = {
   const sessionId = crypto.randomBytes(8).toString("hex");
   imageSessions.set(sessionId, { q, lang, list: urls, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() });
 
-  const embed = renderImageEmbed(q, url, lang, false);
+  const ready = await prepareForDiscord(url);
+  const embed = renderImageEmbed(q, ready.url, lang, false);
   const rows = renderImageButtons(sessionId, false);
-  return interaction.editReply({ embeds: [embed], components: rows });
+  return interaction.editReply({
+    embeds: [embed],
+    components: rows,
+    files: ready.file ? [ready.file] : []
+  });
 }
 
   },
@@ -1252,10 +1303,15 @@ if (customId.startsWith(IMG_PREFIX)) {
     if (action === "share") {
       // 1) 먼저 버튼 상태를 '공유됨'으로 즉시 갱신
       {
-        const url = sess.list[sess.idx];
-        const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
-        const rows = renderImageButtons(sessionId, true);
-        await interaction.update({ embeds: [eb], components: rows });
+        const raw = sess.list[sess.idx];
+        const ready = await prepareForDiscord(raw);
+        const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, action === "share");
+        const rows = renderImageButtons(sessionId, action === "share");
+        await interaction.update({
+          embeds: [eb],
+          components: rows,
+          files: ready.file ? [ready.file] : []
+        });
       }
 
       // 2) 채널 전송(권한 없으면 에페메럴로 안내)
