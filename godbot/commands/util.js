@@ -993,7 +993,7 @@ if (customId.startsWith(IMG_PREFIX)) {
   try {
     pruneOldImageSessions();
 
-    let [, action, sessionId] = customId.split("|");
+    const [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
     let sess = imageSessions.get(sessionId);
 
     // 🔁 세션 복구 시도 (버튼 메시지에서 질의/이미지 재구성)
