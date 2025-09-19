@@ -73,6 +73,127 @@ function extractVideoId(input) {
   return null;
 }
 
+// ==== 성장 점수/그래프 유틸 ====
+const { AttachmentBuilder } = require("discord.js");
+let _canvas;
+try { _canvas = require("canvas"); } catch {} // node-canvas
+
+function computeGrowthPotential({ subs = 0, viewsSeries = [], uploadPerWeek = 0, avgCtr = 0, avgViewDurMin = 0 }) {
+  // 간단 가중치 모델 (0~100)
+  // 최근 트렌드(기울기), 업로드 빈도, CTR, 시청 지속시간, 구독자 규모 반영
+  const n = viewsSeries.length;
+  let slope = 0;
+  if (n >= 3) {
+    // 선형 회귀 기울기 근사
+    const xs = viewsSeries.map((_, i) => i + 1);
+    const xbar = xs.reduce((a,b)=>a+b,0)/n;
+    const ybar = viewsSeries.reduce((a,b)=>a+b,0)/n;
+    const num = xs.reduce((acc, x, i)=> acc + (x - xbar) * (viewsSeries[i] - ybar), 0);
+    const den = xs.reduce((acc, x)=> acc + Math.pow(x - xbar, 2), 0) || 1;
+    slope = num / den; // 1 스텝당 증가 뷰
+    // 정규화(시리즈 평균 대비)
+    const scale = (ybar || 1);
+    slope = Math.max(-1, Math.min(1, slope / scale));
+  }
+  // 각 요소 0~100 스코어로 매핑
+  const sTrend = (slope + 1) * 50;                         // -1~+1 → 0~100
+  const sFreq  = Math.min(100, uploadPerWeek * 25);        // 주 4회=100
+  const sCtr   = Math.max(0, Math.min(100, (avgCtr || 0) * 20)); // CTR 5% → 100
+  const sDur   = Math.min(100, (avgViewDurMin || 0) * 10); // 10분 → 100
+  const sSize  = Math.min(100, Math.log10((subs||1)) * 25);// 1만≈100, 소형 채널 패널티 낮춤
+
+  // 가중 평균 (초기성장 가중: 트렌드/빈도/CTR/시청지속)
+  const score = (
+    sTrend * 0.28 +
+    sFreq  * 0.24 +
+    sCtr   * 0.22 +
+    sDur   * 0.18 +
+    sSize  * 0.08
+  );
+
+  const pct = Math.round(Math.max(0, Math.min(100, score)));
+  let note;
+  if (pct >= 85) note = "🔥 폭발 직전";
+  else if (pct >= 70) note = "📈 고성장 구간";
+  else if (pct >= 55) note = "🌱 성장 가능";
+  else if (pct >= 40) note = "⚖️ 관망";
+  else note = "🧪 리빌딩 필요";
+
+  return { pct, note };
+}
+
+async function makeGrowthChart(viewsSeries = [], label = "최근 업로드 뷰 추이") {
+  if (!_canvas) return null; // node-canvas 미설치 시 건너뛰기
+  const { createCanvas } = _canvas;
+  const W = 800, H = 360, PAD = 50;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+
+  // 배경
+  ctx.fillStyle = "#0f1117";
+  ctx.fillRect(0, 0, W, H);
+
+  // 테두리
+  ctx.strokeStyle = "#2a2f3a";
+  ctx.strokeRect(0.5, 0.5, W-1, H-1);
+
+  // 제목
+  ctx.fillStyle = "#e5e7eb";
+  ctx.font = "bold 20px Sans-Serif";
+  ctx.fillText(label, PAD, PAD - 15);
+
+  if (!viewsSeries || viewsSeries.length < 2) {
+    ctx.fillStyle = "#9ca3af";
+    ctx.font = "16px Sans-Serif";
+    ctx.fillText("데이터가 부족합니다.", PAD, H/2);
+  } else {
+    // 스케일
+    const n = viewsSeries.length;
+    const minV = Math.min(...viewsSeries);
+    const maxV = Math.max(...viewsSeries);
+    const yMin = Math.floor(minV * 0.95);
+    const yMax = Math.ceil(maxV * 1.05) || 1;
+
+    // 축
+    ctx.strokeStyle = "#374151";
+    ctx.lineWidth = 1;
+    // y축 눈금 4개
+    for (let i=0;i<=4;i++){
+      const y = PAD + ((H - PAD*2) * i/4);
+      ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W-PAD, y); ctx.stroke();
+      const val = Math.round(yMax - (yMax - yMin) * (i/4));
+      ctx.fillStyle = "#9ca3af"; ctx.font = "12px Sans-Serif";
+      ctx.fillText(val.toLocaleString("ko-KR"), 8, y - 4);
+    }
+
+    // 선
+    ctx.strokeStyle = "#60a5fa";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i=0;i<n;i++){
+      const x = PAD + (W - PAD*2) * (i/(n-1));
+      const norm = (viewsSeries[i] - yMin) / Math.max(1, (yMax - yMin));
+      const y = H - PAD - (H - PAD*2) * norm;
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // 점
+    ctx.fillStyle = "#93c5fd";
+    for (let i=0;i<n;i++){
+      const x = PAD + (W - PAD*2) * (i/(n-1));
+      const norm = (viewsSeries[i] - yMin) / Math.max(1, (yMax - yMin));
+      const y = H - PAD - (H - PAD*2) * norm;
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  const buffer = canvas.toBuffer("image/png");
+  const fileName = `channel-growth-${Date.now()}.png`;
+  return new AttachmentBuilder(buffer, { name: fileName });
+}
+
+
 async function ytSearch(query, key) {
   const base = new URL("https://www.googleapis.com/youtube/v3/search");
   base.searchParams.set("part", "snippet");
@@ -667,10 +788,64 @@ module.exports = {
       const summary = summarizeChannel(ch, vids);
       const pages = 1 + Math.max(0, Math.ceil(vids.length/10));
       const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+      // ==== 채널 성장 점수/그래프 구성 ====
+const subs = channel?.subs || 0;
+
+// 최근 N개 업로드 뷰 시리즈 (최신 → 과거 순이면 reverse)
+const viewsSeries = (recentVideos || [])
+  .map(v => Number(v.views || 0))
+  .filter(n => Number.isFinite(n) && n >= 0)
+  .slice(0, 12) // 최근 12개만
+  .reverse();
+
+const uploadPerWeek = (() => {
+  // 최근 28일 업로드 수 기반 대략치
+  const now = Date.now();
+  const fourWeeksAgo = now - 28*24*3600*1000;
+  const cnt = (recentVideos || []).filter(v => {
+    const t = new Date(v.publishedAt || v.date || 0).getTime() || 0;
+    return t >= fourWeeksAgo;
+  }).length;
+  return +(cnt / 4).toFixed(2);
+})();
+
+// CTR/시청 지속시간(분) 평균
+const avgCtr = (() => {
+  const arr = (recentVideos || []).map(v => Number(v.ctr || v.CTR || 0)).filter(Number.isFinite);
+  if (!arr.length) return 0;
+  return +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2);
+})();
+const avgViewDurMin = (() => {
+  const arr = (recentVideos || []).map(v => Number(v.avgViewDurMin || v.avgMinutes || 0)).filter(Number.isFinite);
+  if (!arr.length) return 0;
+  return +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+})();
+
+const growth = computeGrowthPotential({ subs, viewsSeries, uploadPerWeek, avgCtr, avgViewDurMin });
+
+// 임베드에 '성장 가능성' 한 줄 추가
+eb0.addFields({
+  name: "채널의 성장 가능성",
+  value: `**${growth.pct}%** · ${growth.note}  · 업로드/주: **${uploadPerWeek}** · CTR: **${avgCtr}%** · 평균시청: **${avgViewDurMin}분**`,
+});
+
+// 성장 그래프 이미지(가능하면)
+let growthAttachment = null;
+try {
+  growthAttachment = await makeGrowthChart(viewsSeries, "최근 업로드 뷰 추이");
+  if (growthAttachment) {
+    eb0.setImage(`attachment://${growthAttachment.name}`);
+  }
+} catch { /* 그래프 실패 시 무시 */ }
+
       const eb0 = buildChannelEmbeds(ch, vids, summary, 0, pages);
 
-      await interaction.editReply({ embeds: [eb0] });
-      return;
+      if (growthAttachment) {
+  await interaction.editReply({ embeds: [eb0], files: [growthAttachment] });
+} else {
+  await interaction.editReply({ embeds: [eb0] });
+}
+return;
 
       sessions.set(sessionId, {
         type: "channel",
