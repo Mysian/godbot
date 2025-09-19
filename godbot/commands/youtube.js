@@ -266,7 +266,6 @@ async function ytFindChannelByName(queryOrHandle, key) {
   s.searchParams.set("q", q);
   s.searchParams.set("maxResults", "5");
   s.searchParams.set("regionCode", REGION);
-  s.searchParams.set("hl", HL);
   s.searchParams.set("key", key);
   const res = await httpGet(s.toString());
   const items = res.items || [];
@@ -279,7 +278,6 @@ async function ytChannelCore(channelId, key) {
   const u = new URL("https://www.googleapis.com/youtube/v3/channels");
   u.searchParams.set("part", "snippet,statistics,contentDetails");
   u.searchParams.set("id", channelId);
-  u.searchParams.set("hl", HL);
   u.searchParams.set("key", key);
   const r = await httpGet(u.toString());
   const ch = (r.items || [])[0];
@@ -299,7 +297,6 @@ async function ytChannelUploads(channelId, key, max = 50) {
     u.searchParams.set("playlistId", uploads);
     u.searchParams.set("maxResults", String(Math.min(50, max - items.length)));
     if (pageToken) u.searchParams.set("pageToken", pageToken);
-    u.searchParams.set("hl", HL);
     u.searchParams.set("key", key);
     const r = await httpGet(u.toString());
     items = items.concat(r.items || []);
@@ -308,21 +305,24 @@ async function ytChannelUploads(channelId, key, max = 50) {
   }
   const ids = items.map(i => i.contentDetails?.videoId).filter(Boolean);
   if (ids.length === 0) return { channel: ch, videos: [] };
+const dict = new Map();
+for (let i = 0; i < ids.length; i += 50) {
+  const slice = ids.slice(i, i + 50);
   const v = new URL("https://www.googleapis.com/youtube/v3/videos");
   v.searchParams.set("part", "snippet,statistics,contentDetails");
-  v.searchParams.set("id", ids.join(","));
-  v.searchParams.set("hl", HL);
+  v.searchParams.set("id", slice.join(","));
   v.searchParams.set("key", key);
   const vr = await httpGet(v.toString());
-  const dict = new Map();
   for (const it of (vr.items || [])) dict.set(it.id, it);
-  const videos = [];
-  for (const id of ids) {
-    const it = dict.get(id);
-    if (!it) continue;
-    theStatsGuard(it);
-    videos.push(it);
-  }
+}
+const videos = [];
+for (const id of ids) {
+  const it = dict.get(id);
+  if (!it) continue;
+  theStatsGuard(it);
+  videos.push(it);
+}
+
   videos.sort((a,b)=> new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt));
   return { channel: ch, videos };
 }
