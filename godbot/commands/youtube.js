@@ -668,41 +668,35 @@ async function handleChannelAnalyze(interaction, input, key) {
   const row = buildChannelPagerRow(sessionId, 0, totalPages);
   await interaction.editReply({ embeds: first.embeds, files: first.files, components: [row] });
 
-  const replyMsg = await interaction.fetchReply();
-const collector = interaction.channel.createMessageComponentCollector({
-  componentType: ComponentType.Button,
-  time: PAGE_TTL_MS,
-  filter: (i) =>
-    i.customId.startsWith(CH_SESS_PREFIX) &&
-    i.user.id === interaction.user.id &&
-    i.message.id === replyMsg.id
-});
-collector.on("collect", async (btn) => {
-  try {
-    const cid = btn.customId || "";
-    const [, rest] = cid.split(CH_SESS_PREFIX);
-    const [op, sid] = rest.split(":");
-    const sess = sessions.get(sid);
-    if (!sess) return btn.reply({ content: "세션이 만료되었어. 다시 시도해줘!", ephemeral: true });
-    if (Date.now() > sess.expireAt) { sessions.delete(sid); return btn.reply({ content: "세션이 만료되었어. 다시 시도해줘!", ephemeral: true }); }
-    if (op === "close") { sessions.delete(sid); try { await btn.update({ components: [], content: "분석을 종료했습니다." }); } catch {} return; }
-    if (op === "prev") sess.page = Math.max(0, sess.page - 1);
-    if (op === "next") sess.page = Math.min(sess.totalPages - 1, sess.page + 1);
-    const { ch, vids, summary, rpmKRW, graphAttachment } = sess.channelData;
-    const out = buildChannelPage(ch, summary, vids, sess.page, sess.totalPages, rpmKRW, graphAttachment);
-    const row2 = buildChannelPagerRow(sid, sess.page, sess.totalPages);
-    await btn.update({ embeds: out.embeds, files: out.files, components: [row2] });
-  } catch { try { await btn.deferUpdate(); } catch {} }
-});
-collector.on("end", async () => {
-  try {
-    const cur = await interaction.fetchReply();
-    const comps = cur.components?.[0]?.components || [];
-    const rowD = new ActionRowBuilder().addComponents(comps.map(c => ButtonBuilder.from(c).setDisabled(true)));
-    await interaction.editReply({ components: [rowD] });
-  } catch {}
-});
-
+  const msg = await interaction.fetchReply();
+  const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: PAGE_TTL_MS });
+  collector.on("collect", async (btn) => {
+    try {
+      const cid = btn.customId || "";
+      if (!cid.startsWith(CH_SESS_PREFIX)) return;
+      const [, rest] = cid.split(CH_SESS_PREFIX);
+      const [op, sid] = rest.split(":");
+      const sess = sessions.get(sid);
+      if (!sess) return btn.reply({ content: "세션이 만료되었어. 다시 시도해줘!", ephemeral: true });
+      if (btn.user.id !== sess.owner) return btn.reply({ content: "요청자만 조작할 수 있어.", ephemeral: true });
+      if (Date.now() > sess.expireAt) { sessions.delete(sid); return btn.reply({ content: "세션이 만료되었어. 다시 시도해줘!", ephemeral: true }); }
+      if (op === "close") { sessions.delete(sid); try { await btn.update({ components: [], content: "분석을 종료했습니다." }); } catch {} return; }
+      if (op === "prev") sess.page = Math.max(0, sess.page - 1);
+      if (op === "next") sess.page = Math.min(sess.totalPages - 1, sess.page + 1);
+      const { ch, vids, summary, rpmKRW, graphAttachment } = sess.channelData;
+      const out = buildChannelPage(ch, summary, vids, sess.page, sess.totalPages, rpmKRW, graphAttachment);
+      const row2 = buildChannelPagerRow(sid, sess.page, sess.totalPages);
+      await btn.update({ embeds: out.embeds, files: out.files, components: [row2] });
+    } catch { try { await btn.deferUpdate(); } catch {} }
+  });
+  collector.on("end", async () => {
+    try {
+      const cur = await interaction.fetchReply();
+      const comps = cur.components?.[0]?.components || [];
+      const rowD = new ActionRowBuilder().addComponents(comps.map(c => ButtonBuilder.from(c).setDisabled(true)));
+      await interaction.editReply({ components: [rowD] });
+    } catch {}
+  });
 }
 
 module.exports = {
