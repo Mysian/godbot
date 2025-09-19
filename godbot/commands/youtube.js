@@ -634,7 +634,7 @@ function buildChannelPageSet(ch, summary, vids, rpmKRW, graphAttachment) {
 }
 
 async function handleChannelAnalyze(interaction, input, key) {
-  await interaction.deferReply();
+  await interaction.deferReply({ ephemeral: true });
   let chId = null;
   try { chId = await resolveChannelId(input, key); }
   catch (e) { return interaction.editReply({ content: `채널 식별 실패: ${String(e.message || e)}` }); }
