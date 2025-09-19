@@ -122,7 +122,6 @@ res.on("end", () => {
     }
     reject(new Error("JSON 파싱 실패"));
   }
-});
 
     req.on("timeout", () => { req.destroy(new Error("요청 타임아웃")); });
     req.on("error", (err) => reject(err));
