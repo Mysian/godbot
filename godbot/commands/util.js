@@ -1304,29 +1304,34 @@ if (customId.startsWith(IMG_PREFIX)) {
       // 1) 먼저 버튼 상태를 '공유됨'으로 즉시 갱신
       {
         const raw = sess.list[sess.idx];
-        const ready = await prepareForDiscord(raw);
-        const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, action === "share");
-        const rows = renderImageButtons(sessionId, action === "share");
-        await interaction.update({
-          embeds: [eb],
-          components: rows,
-          files: ready.file ? [ready.file] : []
-        });
-      }
+        const ready = await prepareForDiscord(sess.list[sess.idx]);
+const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, true);
+const rows = renderImageButtons(sessionId, true);
 
-      // 2) 채널 전송(권한 없으면 에페메럴로 안내)
-      try {
-        const url = sess.list[sess.idx];
-        const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
-        await interaction.channel.send({ embeds: [embedPub] });
-        sess.shared = true;
-        imageSessions.set(sessionId, sess);
-      } catch (e) {
-        await interaction.followUp({
-          content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크 권한 확인)",
-          ephemeral: true
-        }).catch(() => {});
-      }
+// ✅ deferUpdate() 이후에는 editReply() 사용
+await interaction.editReply({
+  embeds: [eb],
+  components: rows,
+  files: ready.file ? [ready.file] : []
+});
+
+try {
+  // ✅ 공개 전송도 반드시 준비된 URL/첨부 사용
+  const pubReady = await prepareForDiscord(sess.list[sess.idx]);
+  const embedPub = renderImageEmbed(sess.q, pubReady.url, sess.lang, true);
+  await interaction.channel.send({
+    embeds: [embedPub],
+    files: pubReady.file ? [pubReady.file] : []
+  });
+  sess.shared = true;
+  imageSessions.set(sessionId, sess);
+} catch (e) {
+  await interaction.followUp({
+    content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크/파일 첨부 권한 확인)",
+    ephemeral: true
+  }).catch(() => {});
+}
+
       return;
     }
 
@@ -1347,11 +1352,14 @@ if (customId.startsWith(IMG_PREFIX)) {
       sess.shared = false;
       imageSessions.set(sessionId, sess);
 
-      const url = sess.list[sess.idx];
-      const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
-      const rows = renderImageButtons(sessionId, false);
-      return interaction.editReply({ embeds: [eb], components: rows });
-    }
+      const ready = await prepareForDiscord(sess.list[sess.idx]);
+const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, false);
+const rows = renderImageButtons(sessionId, false);
+return interaction.editReply({
+  embeds: [eb],
+  components: rows,
+  files: ready.file ? [ready.file] : []
+});
 
     // 알 수 없는 action 보호
     return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
