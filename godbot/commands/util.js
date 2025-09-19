@@ -890,7 +890,7 @@ module.exports = {
 
       // 모두가 볼 수 있게 공개로 전송
       return interaction.reply({
-        content: `${nick}: ${out} (번역을 요청한 내용: ${orig})`
+      content: `${nick}: ${out}\n-# (번역을 요청한 내용: ${orig})`
       });
     }
 
