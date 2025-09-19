@@ -121,9 +121,9 @@ function pruneOldImageSessions() {
 }
 function proxyUrl(u) {
   try {
-    const dest = new URL(u);
-    const target = (dest.hostname + dest.pathname + (dest.search || ""));
-    return `https://images.weserv.nl/?url=${encodeURIComponent(target)}&n=-1`;
+    const { hostname, pathname, search } = new URL(u);
+    // weserv는 https://images.weserv.nl/?url=host/path 형식
+    return `https://images.weserv.nl/?url=${encodeURIComponent(hostname + pathname)}${search ? "&" + search.slice(1) : ""}`;
   } catch { return null; }
 }
 
@@ -136,10 +136,10 @@ async function probeImage(u, timeoutMs = 6000) {
       signal: ctrl.signal,
       headers: {
         "Range": "bytes=0-1023",
-        "User-Agent": "Discordbot/2.0",
+        "User-Agent": "Mozilla/5.0 (DiscordBot-ImageProbe)",
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "ko,en;q=0.9",
-        "Referer": "https://discord.com",
+        "Referer": "https://discord.com", // 일부 사이트는 Referer 요구
       }
     }).catch(() => null);
     clearTimeout(timer);
@@ -148,52 +148,6 @@ async function probeImage(u, timeoutMs = 6000) {
     return ct.startsWith("image/");
   } catch { return false; }
 }
-
-const { AttachmentBuilder } = require("discord.js");
-
-function extFromCT(ct) {
-  if (!ct) return "jpg";
-  if (ct.includes("png")) return "png";
-  if (ct.includes("webp")) return "webp";
-  if (ct.includes("gif")) return "gif";
-  return "jpg";
-}
-
-async function prepareForDiscord(u) {
-  // 1) 직통 테스트
-  if (await probeImage(u)) return { url: u, file: null };
-
-  // 2) 프록시 재시도
-  const pu = proxyUrl(u);
-  if (pu && await probeImage(pu)) return { url: pu, file: null };
-
-  // 3) 파일 첨부 폴백 (용량 7MB 제한)
-  const tryUrl = pu || u;
-  try {
-    const r = await fetchSafe(tryUrl, {
-      headers: {
-        "User-Agent": "Discordbot/2.0",
-        "Referer": "https://discord.com",
-        "Accept": "image/*;q=0.9,*/*;q=0.1"
-      }
-    });
-    if (!r || !r.ok) return { url: u, file: null };
-    const ct = (r.headers.get("content-type") || "").toLowerCase();
-    const ab = await r.arrayBuffer();
-    const buf = Buffer.from(ab);
-    if (buf.length > 7 * 1024 * 1024) {
-      // 너무 크면 프록시에 리사이즈 파라미터 추가 시도
-      const shrink = (pu ? pu : proxyUrl(u)) + "&w=1600&output=jpg";
-      return { url: shrink, file: null };
-    }
-    const name = `img.${extFromCT(ct)}`;
-    const file = new AttachmentBuilder(buf, { name });
-    return { url: `attachment://${name}`, file };
-  } catch {
-    return { url: u, file: null };
-  }
-}
-
 
 // 과하게 느려지지 않도록 순차-빠른중지 방식
 async function ensureUsable(urls, maxKeep = 12) {
@@ -926,14 +880,9 @@ module.exports = {
   const sessionId = crypto.randomBytes(8).toString("hex");
   imageSessions.set(sessionId, { q, lang, list: urls, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() });
 
-  const ready = await prepareForDiscord(url);
-  const embed = renderImageEmbed(q, ready.url, lang, false);
+  const embed = renderImageEmbed(q, url, lang, false);
   const rows = renderImageButtons(sessionId, false);
-  return interaction.editReply({
-    embeds: [embed],
-    components: rows,
-    files: ready.file ? [ready.file] : []
-  });
+  return interaction.editReply({ embeds: [embed], components: rows });
 }
 
   },
@@ -1303,35 +1252,25 @@ if (customId.startsWith(IMG_PREFIX)) {
     if (action === "share") {
       // 1) 먼저 버튼 상태를 '공유됨'으로 즉시 갱신
       {
-        const raw = sess.list[sess.idx];
-        const ready = await prepareForDiscord(sess.list[sess.idx]);
-const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, true);
-const rows = renderImageButtons(sessionId, true);
+        const url = sess.list[sess.idx];
+        const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
+        const rows = renderImageButtons(sessionId, true);
+        await interaction.update({ embeds: [eb], components: rows });
+      }
 
-// ✅ deferUpdate() 이후에는 editReply() 사용
-await interaction.editReply({
-  embeds: [eb],
-  components: rows,
-  files: ready.file ? [ready.file] : []
-});
-
-try {
-  // ✅ 공개 전송도 반드시 준비된 URL/첨부 사용
-  const pubReady = await prepareForDiscord(sess.list[sess.idx]);
-  const embedPub = renderImageEmbed(sess.q, pubReady.url, sess.lang, true);
-  await interaction.channel.send({
-    embeds: [embedPub],
-    files: pubReady.file ? [pubReady.file] : []
-  });
-  sess.shared = true;
-  imageSessions.set(sessionId, sess);
-} catch (e) {
-  await interaction.followUp({
-    content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크/파일 첨부 권한 확인)",
-    ephemeral: true
-  }).catch(() => {});
-}
-
+      // 2) 채널 전송(권한 없으면 에페메럴로 안내)
+      try {
+        const url = sess.list[sess.idx];
+        const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
+        await interaction.channel.send({ embeds: [embedPub] });
+        sess.shared = true;
+        imageSessions.set(sessionId, sess);
+      } catch (e) {
+        await interaction.followUp({
+          content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크 권한 확인)",
+          ephemeral: true
+        }).catch(() => {});
+      }
       return;
     }
 
@@ -1352,18 +1291,24 @@ try {
       sess.shared = false;
       imageSessions.set(sessionId, sess);
 
-  const ready = await prepareForDiscord(sess.list[sess.idx]);
-  const eb  = renderImageEmbed(sess.q, ready.url, sess.lang, false);
-  const rows = renderImageButtons(sessionId, false);
-  return interaction.editReply({
-    embeds: [eb],
-    components: rows,
-    files: ready.file ? [ready.file] : []
-  });
-}
+      const url = sess.list[sess.idx];
+      const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
+      const rows = renderImageButtons(sessionId, false);
+      return interaction.editReply({ embeds: [eb], components: rows });
+    }
 
-// 알 수 없는 action 보호
-return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
+    // 알 수 없는 action 보호
+    return interaction.editReply({ content: "알 수 없는 동작이야.", components: [] });
+
+  } catch (err) {
+    console.error("[IMG BTN 오류]", err);
+    // 이미 update를 못했을 수 있으니 followUp로 보장
+    if (!interaction.replied && !interaction.deferred) {
+      try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+    } else {
+      try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+    }
+  }
  }
   },
 };
