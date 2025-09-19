@@ -12,12 +12,12 @@ const {
 
 const REGION = "KR";
 const HL = "ko_KR";
-const SEARCH_PAGE_SIZE = 10;     // 한 번에 받아올 검색 결과 수
-const SESSION_TTL_MS = 10 * 60 * 1000; // 10분
+const SEARCH_PAGE_SIZE = 10;
+const SESSION_TTL_MS = 10 * 60 * 1000;
 const SESS_PREFIX = "yt:";
 const sessions = new Map();
+const POST_MODE = process.env.YT_POST_MODE || "double";
 
-// ===== fetch 확보 =====
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
   try { _fetch = require("node-fetch"); } catch {}
@@ -39,7 +39,6 @@ function toKST(iso) {
   } catch { return iso || "알 수 없음"; }
 }
 function parseISO8601Duration(iso) {
-  // PT#H#M#S -> hh:mm:ss
   const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || "");
   if (!m) return "알 수 없음";
   const h = parseInt(m[1] || 0, 10);
@@ -58,21 +57,14 @@ function cut(str, n) {
 function extractVideoId(input) {
   if (!input) return null;
   try {
-    // 순수 ID로 들어오면 그대로
     if (/^[A-Za-z0-9_\-]{11}$/.test(input)) return input;
-
     const url = new URL(input);
-    // shorts
-    // https://www.youtube.com/shorts/VIDEOID
     if (url.pathname.startsWith("/shorts/")) {
       const id = url.pathname.split("/")[2];
       if (id && id.length >= 11) return id.slice(0,11);
     }
-    // watch?v=
     const v = url.searchParams.get("v");
     if (v && /^[A-Za-z0-9_\-]{11}$/.test(v)) return v;
-
-    // youtu.be/VIDEOID
     if (url.hostname.includes("youtu.be")) {
       const id = url.pathname.replace("/", "");
       if (/^[A-Za-z0-9_\-]{11}$/.test(id)) return id;
@@ -82,7 +74,6 @@ function extractVideoId(input) {
 }
 
 async function ytSearch(query, key) {
-  // 1) 검색으로 videoId 모으기
   const base = new URL("https://www.googleapis.com/youtube/v3/search");
   base.searchParams.set("part", "snippet");
   base.searchParams.set("type", "video");
@@ -97,7 +88,6 @@ async function ytSearch(query, key) {
   const ids = (s.items || []).map(i => i.id && i.id.videoId).filter(Boolean);
   if (ids.length === 0) return [];
 
-  // 2) videos.list 로 메타/통계/길이
   const vapi = new URL("https://www.googleapis.com/youtube/v3/videos");
   vapi.searchParams.set("part", "snippet,statistics,contentDetails");
   vapi.searchParams.set("hl", HL);
@@ -108,7 +98,6 @@ async function ytSearch(query, key) {
   const dict = new Map();
   for (const it of (vres.items || [])) dict.set(it.id, it);
 
-  // 검색 결과 순서 유지
   const out = [];
   for (const id of ids) {
     const it = dict.get(id);
@@ -127,7 +116,6 @@ async function ytVideoInfo(videoId, key) {
   const v = (vres.items || [])[0];
   if (!v) return null;
 
-  // 채널 정보
   const chId = v.snippet?.channelId;
   let ch = null;
   if (chId) {
@@ -140,7 +128,6 @@ async function ytVideoInfo(videoId, key) {
     ch = (cres.items || [])[0] || null;
   }
 
-  // 최신 댓글 1개
   let recentC = null;
   try {
     const cApi = new URL("https://www.googleapis.com/youtube/v3/commentThreads");
@@ -152,9 +139,7 @@ async function ytVideoInfo(videoId, key) {
     cApi.searchParams.set("key", key);
     const cres = await httpGet(cApi.toString());
     recentC = (cres.items || [])[0] || null;
-  } catch {
-    // 댓글 비활성/권한 문제 등
-  }
+  } catch {}
 
   return { video: v, channel: ch, recentComment: recentC };
 }
@@ -247,14 +232,18 @@ function buildPagerRow(sessionId, index, total) {
 }
 
 async function respondWithPlayable(interaction, payload) {
-  // 디스코드 특성상 "큰 영상 미리보기(재생 가능)"는 메시지 본문에 유튜브 URL이 있어야 자동 생성됨.
-  // 그래서 content에 URL을 넣고, 정보는 Embed로 함께 보낸다.
-  // (ephemeral로 보내면 미리보기 안 뜸 → 반드시 공개 메시지)
   const { contentUrl, embed, components } = payload;
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content: contentUrl, embeds: [embed], components });
+  const sendFirst = async (opts) => {
+    if (interaction.deferred || interaction.replied) return interaction.editReply(opts);
+    return interaction.reply(opts);
+  };
+  if (POST_MODE === "double") {
+    const infoMsg = await sendFirst({ content: "", embeds: [embed], components, ephemeral: false, allowedMentions: { parse: [] } });
+    const playerMsg = await interaction.followUp({ content: contentUrl, allowedMentions: { parse: [] } });
+    return { infoMsg, playerMsg };
   } else {
-    await interaction.reply({ content: contentUrl, embeds: [embed], components, ephemeral: false });
+    const msg = await sendFirst({ content: contentUrl, embeds: [embed], components, ephemeral: false, allowedMentions: { parse: [] } });
+    return { infoMsg: msg, playerMsg: null };
   }
 }
 
@@ -299,7 +288,6 @@ module.exports = {
         return interaction.editReply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다." });
       }
 
-      // 세션 만들고 첫 페이지 렌더
       const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
       const owner = interaction.user.id;
       const expireAt = Date.now() + SESSION_TTL_MS;
@@ -310,7 +298,9 @@ module.exports = {
         owner,
         expireAt,
         index: 0,
-        list, // videos.list 결과 배열
+        list,
+        channelId: interaction.channelId,
+        playerMsgId: null,
       });
 
       const v = list[0];
@@ -321,9 +311,14 @@ module.exports = {
 
       const { embed, url } = buildEmbedForVideo(more.video, more.channel, more.recentComment, 0, list.length);
       const row = buildPagerRow(sessionId, 0, list.length);
-      await respondWithPlayable(interaction, { contentUrl: url, embed, components: [row] });
+      const { playerMsg } = await respondWithPlayable(interaction, { contentUrl: url, embed, components: [row] });
 
-      // 버튼 콜렉터
+      const sess0 = sessions.get(sessionId);
+      if (sess0 && POST_MODE === "double") {
+        sess0.playerMsgId = playerMsg?.id || null;
+        sessions.set(sessionId, sess0);
+      }
+
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({
         componentType: ComponentType.Button,
@@ -339,13 +334,9 @@ module.exports = {
 
           const sess = sessions.get(sid);
           if (!sess) return btn.reply({ content: "세션이 만료되었어. 다시 검색해줘!", ephemeral: true });
-
-          // 요청자 제한
           if (btn.user.id !== sess.owner) {
             return btn.reply({ content: "이 검색 결과는 요청자만 조작할 수 있어.", ephemeral: true });
           }
-
-          // 만료 체크
           if (Date.now() > sess.expireAt) {
             sessions.delete(sid);
             return btn.reply({ content: "세션이 만료되었어. 다시 검색해줘!", ephemeral: true });
@@ -360,7 +351,20 @@ module.exports = {
 
           const { embed: eb2, url: u2 } = buildEmbedForVideo(more2.video, more2.channel, more2.recentComment, sess.index, sess.list.length);
           const row2 = buildPagerRow(sid, sess.index, sess.list.length);
-          await btn.update({ content: u2, embeds: [eb2], components: [row2] });
+
+          if (POST_MODE === "double" && sess.playerMsgId) {
+            try {
+              const ch = await btn.client.channels.fetch(sess.channelId);
+              const pmsg = await ch.messages.fetch(sess.playerMsgId);
+              await pmsg.edit({ content: u2, allowedMentions: { parse: [] } });
+            } catch {}
+          }
+
+          await btn.update({
+            content: (POST_MODE === "double") ? "" : u2,
+            embeds: [eb2],
+            components: [row2],
+          });
         } catch {
           try { await btn.deferUpdate(); } catch {}
         }
@@ -372,7 +376,6 @@ module.exports = {
         try {
           const cur = await interaction.fetchReply();
           const comps = cur.components?.[0]?.components || [];
-          // 버튼 비활성화 처리
           const row = new ActionRowBuilder().addComponents(
             comps.map(c => ButtonBuilder.from(c).setDisabled(true))
           );
@@ -402,7 +405,6 @@ module.exports = {
       }
 
       const { embed, url } = buildEmbedForVideo(info.video, info.channel, info.recentComment);
-      // 조회 명령은 페이저 없음
       await respondWithPlayable(interaction, { contentUrl: url, embed, components: [] });
       return;
     }
