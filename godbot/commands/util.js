@@ -32,6 +32,18 @@ const LOTTO_PREFIX  = "lotto:";
 const CONCH_PREFIX  = "conch:";
 const IMG_PREFIX    = "img:";
 
+// Google UK consent 우회용
+const GOOGLE_CONSENT_COOKIE = 'CONSENT=YES+cb.20210328-17-p0.en+GB+000';
+function googleHeaders(hl) {
+  return {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": hl === "ko" ? "ko-KR,ko;q=0.9,en;q=0.8" : "en-GB,en;q=0.9,ko;q=0.6",
+    "Referer": "https://www.google.co.uk/",
+    "Cookie": GOOGLE_CONSENT_COOKIE,
+  };
+}
+
 const MEMO_PAGE_SIZE = 10;
 
 const calcSessions = new Map();
@@ -366,7 +378,6 @@ function sanitizeImageUrl(u) {
     if (!su) return;
     if (su.startsWith("data:")) return;
     const h = getHost(su);
-    if (h && BLOCKED_HOSTS.some(b => h.includes(b))) return;
     const key = su.replace(/[#?].*$/, "");
     if (!seen.has(key)) { seen.add(key); out.push(su); }
   };
@@ -403,17 +414,16 @@ function sanitizeImageUrl(u) {
     url.searchParams.set("gbv", "1"); 
     url.searchParams.set("udm", "2");
     url.searchParams.set("ijn", String(p));
-    const res = await fetchSafe(url, {
-      headers: {
-         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-         "Accept-Language": hl === "ko" ? "ko-KR,ko;q=0.9,en;q=0.8" : "en-GB,en;q=0.9,ko;q=0.6",
-         "Referer": "https://www.google.co.uk/",
-      }
-    }).catch(() => null);
+    url.searchParams.set("gbv", "1");
+    url.searchParams.set("pws", "0");
+    url.searchParams.set("gl", "uk");
+    const res = await fetchSafe(url, { headers: googleHeaders(hl) }).catch(() => null);
     if (!res || !res.ok) continue;
     const html = await res.text().catch(() => "");
     if (!html) continue;
+    if (/consent\.google/i.test(res.url) || /consent\.google/i.test(html) || /unusual\s+traffic/i.test(html)) {
+    continue;
+    }
     const arr = parseGoogleImageHtml(html);
     for (const u of arr) results.push(u);
   }
