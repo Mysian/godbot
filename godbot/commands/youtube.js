@@ -262,13 +262,6 @@ await interaction.channel.send({
   content: url,    
   allowedMentions: { parse: [] },
 });
-    
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content: contentUrl, embeds: [embed], components });
-  } else {
-    await interaction.reply({ content: contentUrl, embeds: [embed], components, ephemeral: false });
-  }
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
