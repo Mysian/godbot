@@ -523,34 +523,153 @@ async function searchWikimediaImages(q) {
 }
 
 
-async function findImages(q, lang) {
-  const seen = new Set();
-  const out = [];
-  async function addFrom(fn) {
-    try {
-      const arr = await fn();
-      for (const u of arr) {
-        const su = sanitizeImageUrl(u);
-        if (su && !seen.has(su)) { seen.add(su); out.push(su); }
+// ===== 이미지 URL 검사(핫링크/403 차단 필터) =====
+async function testImageUrl(u, timeoutMs = 6000) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    // 일부 서버는 HEAD 차단 → 소량 GET으로 판별
+    const r = await fetchSafe(u, {
+      method: "GET",
+      signal: ctrl.signal,
+      headers: {
+        "Range": "bytes=0-1023",
+        "User-Agent": "Mozilla/5.0 (DiscordBot-ImageProbe)",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "ko,en;q=0.9",
       }
-    } catch { /* ignore */ }
+    }).catch(() => null);
+    clearTimeout(t);
+    if (!r || !r.ok) return false;
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (!ct.startsWith("image/")) return false;
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  // 0) 무키 ‘즉시 성공’ 라인 — 여기서 최소 1장은 보장
-  await addFrom(() => searchUnsplashNoKey(q));
-  if (out.length < 1) await addFrom(() => searchLoremFlickrDirect(q));
+// ===== 엔진 요청 유틸 =====
+async function fetchBingImages(q, lang, CFG) {
+  if (!CFG.bingKey) return [];
+  const url = new URL(CFG.bingImageEndpoint || "https://api.bing.microsoft.com/v7.0/images/search");
+  url.searchParams.set("q", q);
+  url.searchParams.set("mkt", lang === "ko" ? "ko-KR" : "en-US");
+  url.searchParams.set("safeSearch", "Off");     // 막히면 Moderate로 변경
+  url.searchParams.set("count", "50");
+  url.searchParams.set("imageType", "Photo");
+  const r = await fetchSafe(url, {
+    headers: { "Ocp-Apim-Subscription-Key": CFG.bingKey }
+  }).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const items = Array.isArray(j.value) ? j.value : [];
+  // contentUrl 우선, 안되면 thumbnailUrl
+  return items.map(v => v.contentUrl || v.thumbnailUrl).filter(Boolean);
+}
 
-  // 1) 키 기반 (있으면 다양성 ↑)
-  if (out.length < 3) await addFrom(() => searchBingImages(q, lang));
-  if (out.length < 3) await addFrom(() => searchGoogleImages(q));
-  if (out.length < 3) await addFrom(() => searchNaverImages(q));
+async function fetchGoogleImages(q, lang, CFG) {
+  if (!CFG.googleKey || !CFG.googleCseId) return [];
+  const url = new URL("https://www.googleapis.com/customsearch/v1");
+  url.searchParams.set("key", CFG.googleKey);
+  url.searchParams.set("cx", CFG.googleCseId);
+  url.searchParams.set("q", q);
+  url.searchParams.set("searchType", "image");
+  url.searchParams.set("num", "10");
+  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
+  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
+  const r = await fetchSafe(url).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const items = Array.isArray(j.items) ? j.items : [];
+  return items.map(v => v.link).filter(Boolean);
+}
 
-  // 2) 무키 API 폴백 (DDG는 종종 막히지만 성공할 때 많음)
-  if (out.length < 3) await addFrom(() => searchWikimediaImages(q));
-  if (out.length < 3) await addFrom(() => searchDuckDuckGoImages(q));
+async function fetchNaverImages(q, lang, CFG) {
+  if (!CFG.naverId || !CFG.naverSecret) return [];
+  const url = new URL("https://openapi.naver.com/v1/search/image");
+  url.searchParams.set("query", q);
+  url.searchParams.set("display", "30");
+  url.searchParams.set("filter", "all");
+  const r = await fetchSafe(url, {
+    headers: {
+      "X-Naver-Client-Id": CFG.naverId,
+      "X-Naver-Client-Secret": CFG.naverSecret,
+    }
+  }).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const items = Array.isArray(j.items) ? j.items : [];
+  return items.map(v => v.link || v.thumbnail).filter(Boolean);
+}
 
+async function fetchWikimedia(q) {
+  // 유명 작품/인물 폴백: 위키미디어(저작권-친화/핫링크 잘 됨)
+  const url = new URL("https://commons.wikimedia.org/w/api.php");
+  url.searchParams.set("action", "query");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("prop", "imageinfo");
+  url.searchParams.set("generator", "search");
+  url.searchParams.set("gsrsearch", q);
+  url.searchParams.set("gsrlimit", "10");
+  url.searchParams.set("iiprop", "url");
+  const r = await fetchSafe(url).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const pages = j?.query?.pages || {};
+  const out = [];
+  for (const k of Object.keys(pages)) {
+    const ii = pages[k]?.imageinfo?.[0]?.url;
+    if (ii) out.push(ii);
+  }
   return out;
 }
+
+function dedupUrls(arr) {
+  const s = new Set();
+  const out = [];
+  for (const u of arr) {
+    const key = String(u).trim().replace(/[#?].*$/, ""); // 쿼리 제거 후 중복 축소
+    if (!s.has(key)) { s.add(key); out.push(u); }
+  }
+  return out;
+}
+
+async function findImages(q, lang) {
+  const all = [];
+  try {
+    // 1차: Bing
+    const a = await fetchBingImages(q, lang, CFG).catch(() => []);
+    all.push(...a);
+  } catch {}
+  try {
+    // 2차: Google CSE
+    const a = await fetchGoogleImages(q, lang, CFG).catch(() => []);
+    all.push(...a);
+  } catch {}
+  try {
+    // 3차: Naver
+    const a = await fetchNaverImages(q, lang, CFG).catch(() => []);
+    all.push(...a);
+  } catch {}
+  try {
+    // 4차: Wikimedia (유명 명사/작품 폴백)
+    const a = await fetchWikimedia(q).catch(() => []);
+    all.push(...a);
+  } catch {}
+
+  // 중복 제거 + 확장자 필터(디스코드 임베드 친화)
+  let cand = dedupUrls(all).filter(u => /\.(avif|webp|png|jpe?g|gif)(\?|#|$)/i.test(u));
+
+  // 가용성(403/비이미지) 필터링
+  const out = [];
+  for (const u of cand) {
+    if (await testImageUrl(u)) out.push(u);
+    if (out.length >= 50) break; // 과도 방지
+  }
+  return out;
+}
+
 
 function renderImageEmbed(q, url, lang, shared = false) {
   const eb = new EmbedBuilder()
