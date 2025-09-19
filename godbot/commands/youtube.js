@@ -21,6 +21,16 @@ const REQ_TIMEOUT_MS = 10000;
 const SESS_PREFIX = "yt:";
 const sessions = new Map();
 
+// Invidious API 인스턴스(백업용)
+const INVIDIOUS_ENDPOINTS = [
+  "https://yewtu.be",
+  "https://invidious.projectsegfau.lt",
+  "https://invidious.slipfox.xyz",
+  "https://iv.ggtyler.dev",
+  "https://invidious.protokolla.fi",
+];
+
+
 // Piped API 인스턴스(안정적인 pipedapi.* 우선)
 const PIPED_ENDPOINTS = [
   "https://pipedapi.kavin.rocks",
@@ -90,34 +100,30 @@ function httpGetJsonRaw(fullUrl) {
       path: u.pathname + (u.search || ""),
       method: "GET",
       headers: {
-        "user-agent": "godbot/yt (discord.js)",
-        "accept": "application/json,text/plain,*/*",
-        "accept-language": "ko-KR,ko;q=0.9,en;q=0.5",
-      },
-      rejectUnauthorized: true,
-      timeout: REQ_TIMEOUT_MS,
-    };
+  "user-agent": "godbot/yt (discord.js)",
+  "accept": "application/json,text/plain,*/*",
+  "accept-language": "ko-KR,ko;q=0.9,en;q=0.5",
+  "accept-encoding": "identity",
+},
+...
+res.on("end", () => {
+  if (statusCode >= 500) {
+    return reject(new Error(`업스트림 5xx (${statusCode})`));
+  }
+  if (statusCode < 200 || statusCode >= 300) {
+    return reject(new Error(`HTTP ${statusCode}`));
+  }
+  try {
+    const j = JSON.parse(data);
+    resolve(j);
+  } catch (e) {
+    if (typeof data === "string" && data.trim().startsWith("<")) {
+      return reject(new Error("JSON 파싱 실패(HTML 응답)"));
+    }
+    reject(new Error("JSON 파싱 실패"));
+  }
+});
 
-    const req = https.request(opt, (res) => {
-      const { statusCode } = res;
-      let data = "";
-      res.setEncoding("utf8");
-      res.on("data", (chunk) => data += chunk);
-      res.on("end", () => {
-        if (statusCode < 200 || statusCode >= 300) {
-          return reject(new Error(`HTTP ${statusCode}`));
-        }
-        try {
-          const j = JSON.parse(data);
-          resolve(j);
-        } catch (e) {
-          // Cloudflare/프록시가 HTML을 200으로 줄 때
-          if (typeof data === "string" && data.trim().startsWith("<")) {
-            return reject(new Error("JSON 파싱 실패(HTML 응답)"));
-          }
-          reject(new Error("JSON 파싱 실패"));
-        }
-      });
     });
 
     req.on("timeout", () => { req.destroy(new Error("요청 타임아웃")); });
@@ -141,11 +147,59 @@ async function pipedGet(pathWithQuery) {
 
 // ===== Piped API 래퍼 =====
 async function ytSearchNoKey(query) {
-  const q = encodeURIComponent(query);
-  const { data } = await pipedGet(`/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`);
-  const list = Array.isArray(data) ? data : [];
-  return list.slice(0, SEARCH_PAGE_SIZE);
+  try {
+    // 1차: Piped
+    const q = encodeURIComponent(query);
+    const { data } = await pipedGet(`/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`);
+    const list = Array.isArray(data) ? data : [];
+    if (list.length) return list.slice(0, SEARCH_PAGE_SIZE);
+    // 비어 있으면 인비디우스로 폴백
+    return await invSearchNoKey(query);
+  } catch (e) {
+    // Piped가 5xx로 죽으면 바로 인비디우스로 폴백
+    try {
+      return await invSearchNoKey(query);
+    } catch (e2) {
+      // 둘 다 실패 시 원인 합쳐서 던짐
+      throw new Error(`백엔드 불안정(Piped: ${e.message || e}, Invidious: ${e2.message || e2})`);
+    }
+  }
 }
+
+
+async function invidiousGet(pathWithQuery) {
+  let lastErr;
+  for (const base of INVIDIOUS_ENDPOINTS) {
+    try {
+      const j = await httpGetJsonRaw(base + pathWithQuery);
+      return { data: j, base };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("모든 Invidious 인스턴스 실패");
+}
+
+async function invSearchNoKey(query) {
+  const q = encodeURIComponent(query);
+  // /api/v1/search?type=video
+  const { data } = await invidiousGet(`/api/v1/search?q=${q}&type=video&region=${REGION}`);
+  const arr = Array.isArray(data) ? data : [];
+  // Piped 검색 아이템 인터페이스에 맞춰 최소 필드만 매핑
+  return arr.slice(0, SEARCH_PAGE_SIZE).map(v => ({
+    id: v.videoId,
+    title: v.title,
+    uploaderName: v.author,
+    uploadDate: v.publishedText,          // 예: "3 days ago"
+    duration: Number(v.lengthSeconds || 0),
+    views: Number(v.viewCount || 0),
+    thumbnail: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
+      ? v.videoThumbnails[v.videoThumbnails.length - 1].url
+      : `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
+    shortDescription: v.description || "",
+  }));
+}
+
 
 async function ytVideoInfoNoKey(videoId) {
   // 공식 문서 기준: /streams/:videoId 를 사용
