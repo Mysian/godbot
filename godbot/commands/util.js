@@ -793,7 +793,7 @@ module.exports = {
             .setDescription("한글/영어 키워드")
             .setRequired(true)
         )
-    ),
+    )
       .addSubcommand(sc =>
       sc.setName("번역")
         .setDescription("입력한 내용을 지정한 언어로 번역합니다")
