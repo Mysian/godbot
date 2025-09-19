@@ -436,7 +436,10 @@ function sanitizeImageUrl(u) {
   return dedup;
 }
 async function findImages(q, lang) {
-  const urls = await searchGoogleUKImages(q, lang);
+  let urls = await searchGoogleUKImages(q, lang);
+  if ((!urls || !urls.length) && lang === "ko-KR") {
+    urls = await searchGoogleUKImages(q, "en-US");
+  }
   return Array.isArray(urls) ? urls.filter(Boolean) : [];
 }
 
