@@ -15,30 +15,33 @@ const REGION = "KR";
 const HL = "ko";
 const SEARCH_PAGE_SIZE = 10;
 const SESSION_TTL_MS = 10 * 60 * 1000;
-const REQ_TIMEOUT_MS = 10000;
+const REQ_TIMEOUT_MS = 6000;
 const SESS_PREFIX = "yt:";
 const sessions = new Map();
+const healthCache = {
+  piped: { base: null, expires: 0 },
+  inv: { base: null, expires: 0 },
+};
+const HEALTH_TTL_MS = 30 * 60 * 1000;
+
+async function raceGetJson(bases, pathWithQuery) {
+  const tasks = bases.map(base => httpGetJsonRaw(base + pathWithQuery).then(data => ({ base, data })));
+  return await Promise.any(tasks);
+}
 
 const PIPED_ENDPOINTS = [
   "https://pipedapi.kavin.rocks",
   "https://pipedapi.adminforge.de",
   "https://api.piped.privacydev.net",
   "https://api.piped.projectsegfau.lt",
-  "https://pipedapi.r4fo.com",
-  "https://pipedapi.colinslegacy.com",
-  "https://pipedapi.smnz.de",
-  "https://piped-api.cfe.re",
-  "https://pipedapi.palveluntarjoaja.eu",
-  "https://pipedapi.us.projectsegfau.lt",
-  "https://pipedapi-libre.kavin.rocks",
+  "https://pipedapi.us.projectsegfau.lt"
 ];
 
 const INVIDIOUS_ENDPOINTS = [
   "https://yewtu.be",
   "https://invidious.projectsegfau.lt",
   "https://invidious.slipfox.xyz",
-  "https://iv.ggtyler.dev",
-  "https://invidious.protokolla.fi",
+  "https://iv.ggtyler.dev"
 ];
 
 function fmtNum(n) {
@@ -133,30 +136,45 @@ function httpGetJsonRaw(fullUrl) {
 }
 
 async function pipedGet(pathWithQuery) {
-  let lastErr;
-  for (const base of PIPED_ENDPOINTS) {
+  const now = Date.now();
+  if (healthCache.piped.base && healthCache.piped.expires > now) {
     try {
-      const j = await httpGetJsonRaw(base + pathWithQuery);
-      return { data: j, base };
-    } catch (e) {
-      lastErr = e;
-    }
+      const data = await httpGetJsonRaw(healthCache.piped.base + pathWithQuery);
+      return { data, base: healthCache.piped.base };
+    } catch {}
   }
-  throw lastErr || new Error("모든 Piped 인스턴스 실패");
+  const prefer = healthCache.piped.base && healthCache.piped.expires > now
+    ? [healthCache.piped.base, ...PIPED_ENDPOINTS.filter(b => b !== healthCache.piped.base)]
+    : PIPED_ENDPOINTS;
+  try {
+    const { base, data } = await raceGetJson(prefer, pathWithQuery);
+    healthCache.piped = { base, expires: now + HEALTH_TTL_MS };
+    return { data, base };
+  } catch (e) {
+    throw new Error(`Piped 실패: ${e.message || e}`);
+  }
 }
 
 async function invidiousGet(pathWithQuery) {
-  let lastErr;
-  for (const base of INVIDIOUS_ENDPOINTS) {
+  const now = Date.now();
+  if (healthCache.inv.base && healthCache.inv.expires > now) {
     try {
-      const j = await httpGetJsonRaw(base + pathWithQuery);
-      return { data: j, base };
-    } catch (e) {
-      lastErr = e;
-    }
+      const data = await httpGetJsonRaw(healthCache.inv.base + pathWithQuery);
+      return { data, base: healthCache.inv.base };
+    } catch {}
   }
-  throw lastErr || new Error("모든 Invidious 인스턴스 실패");
+  const prefer = healthCache.inv.base && healthCache.inv.expires > now
+    ? [healthCache.inv.base, ...INVIDIOUS_ENDPOINTS.filter(b => b !== healthCache.inv.base)]
+    : INVIDIOUS_ENDPOINTS;
+  try {
+    const { base, data } = await raceGetJson(prefer, pathWithQuery);
+    healthCache.inv = { base, expires: now + HEALTH_TTL_MS };
+    return { data, base };
+  } catch (e) {
+    throw new Error(`Invidious 실패: ${e.message || e}`);
+  }
 }
+
 
 async function invSearchNoKey(query) {
   const q = encodeURIComponent(query);
@@ -177,20 +195,50 @@ async function invSearchNoKey(query) {
 }
 
 async function ytSearchNoKey(query) {
-  try {
-    const q = encodeURIComponent(query);
-    const { data } = await pipedGet(`/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`);
+  const q = encodeURIComponent(query);
+  const pipedPath = `/api/v1/search?q=${q}&region=${REGION}&hl=${HL}&filter=videos`;
+  const invPath = `/api/v1/search?q=${q}&type=video&region=${REGION}`;
+
+  const pipedTask = (async () => {
+    const { data } = await pipedGet(pipedPath);
     const list = Array.isArray(data) ? data : [];
-    if (list.length) return list.slice(0, SEARCH_PAGE_SIZE);
-    return await invSearchNoKey(query);
+    return list.slice(0, SEARCH_PAGE_SIZE).map(x => ({
+      id: x.id,
+      title: x.title,
+      uploaderName: x.uploaderName || x.uploader,
+      uploadDate: x.uploadDate || x.uploadedDate,
+      duration: Number(x.duration || 0),
+      views: Number(x.views || 0),
+      thumbnail: x.thumbnail || x.thumbnailUrl,
+      shortDescription: x.shortDescription || x.description || "",
+    }));
+  })();
+
+  const invTask = (async () => {
+    const { data } = await invidiousGet(invPath);
+    const arr = Array.isArray(data) ? data : [];
+    return arr.slice(0, SEARCH_PAGE_SIZE).map(v => ({
+      id: v.videoId,
+      title: v.title,
+      uploaderName: v.author,
+      uploadDate: v.publishedText,
+      duration: Number(v.lengthSeconds || 0),
+      views: Number(v.viewCount || 0),
+      thumbnail: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
+        ? v.videoThumbnails[v.videoThumbnails.length - 1].url
+        : `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
+      shortDescription: v.description || "",
+    }));
+  })();
+
+  try {
+    const result = await Promise.any([pipedTask, invTask]);
+    return result;
   } catch (e) {
-    try {
-      return await invSearchNoKey(query);
-    } catch (e2) {
-      throw new Error(`백엔드 불안정(Piped: ${e.message || e}, Invidious: ${e2.message || e2})`);
-    }
+    return [];
   }
 }
+
 
 async function ytVideoInfoNoKey(videoId) {
   const { data: v } = await pipedGet(`/api/v1/streams/${videoId}?region=${REGION}&hl=${HL}`);
