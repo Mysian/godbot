@@ -20,36 +20,42 @@ const _nodeFetch = async (...args) => {
 };
 const fetchSafe = (...args) => (global.fetch ? global.fetch(...args) : _nodeFetch(...args));
 
+/* =========================
+ * 공통 설정
+ * ========================= */
 const DATA_DIR = path.join(__dirname, "../data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const MEMO_DIR = path.join(DATA_DIR, "memos");
 if (!fs.existsSync(MEMO_DIR)) fs.mkdirSync(MEMO_DIR, { recursive: true });
 
-const CUSTOM_PREFIX = "util:";
-const CALC_PREFIX   = "calc:";
-const MEMO_PREFIX   = "memo:";
-const LOTTO_PREFIX  = "lotto:";
-const CONCH_PREFIX  = "conch:";
-const IMG_PREFIX    = "img:";
+const CUSTOM_PREFIX = "util:";     // 공통 prefix
+const CALC_PREFIX   = "calc:";     // 계산기
+const MEMO_PREFIX   = "memo:";     // 메모장
+const LOTTO_PREFIX  = "lotto:";    // 복권
+const CONCH_PREFIX  = "conch:";    // 소라고동
+const IMG_PREFIX    = "img:";      // 이미지 검색
 
-// Google UK consent 우회용
-const GOOGLE_CONSENT_COOKIE = 'CONSENT=YES+cb.20210328-17-p0.en+GB+000';
-function googleHeaders(hl) {
-  return {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": hl === "ko" ? "ko-KR,ko;q=0.9,en;q=0.8" : "en-GB,en;q=0.9,ko;q=0.6",
-    "Referer": "https://www.google.co.uk/",
-    "Cookie": GOOGLE_CONSENT_COOKIE,
-  };
-}
-
+// 메모 페이징
 const MEMO_PAGE_SIZE = 10;
 
-const calcSessions = new Map();
+// 계산기 세션 (메모리는 일시적이라 충분)
+const calcSessions = new Map(); // userId -> { a, b, op, input, last, updatedAt, hist, showHist }
 
-const imageSessions = new Map();
-const IMG_SESSION_TTL_MS = 60 * 60 * 1000;
+/* =========================
+ * 이미지 검색 세션
+ * ========================= */
+const imageSessions = new Map(); // sessionId -> { q, lang, list, idx, shared, ownerId, createdAt }
+const IMG_SESSION_TTL_MS = 60 * 60 * 1000; // 60분
+
+// 이미지 제공자 키 (있으면 사용, 없으면 건너뜀)
+const IMG_CFG = {
+  bingKey: process.env.BING_KEY || process.env.BING_IMAGE_KEY,
+  bingEndpoint: process.env.BING_IMAGE_ENDPOINT || "https://api.bing.microsoft.com/v7.0/images/search",
+  googleKey: process.env.GOOGLE_API_KEY,
+  googleCseId: process.env.GOOGLE_CSE_ID,
+  naverId: process.env.NAVER_CLIENT_ID,
+  naverSecret: process.env.NAVER_CLIENT_SECRET,
+};
 
 const BLOCKED_HOSTS = [
   "pinterest.", "pinimg.com",
@@ -58,6 +64,9 @@ const BLOCKED_HOSTS = [
 ];
 const getHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
 
+/* =========================
+ * 유틸 함수
+ * ========================= */
 function formatKST(ts) {
   if (ts == null) return "";
   const d = new Date(ts);
@@ -101,9 +110,9 @@ function pickRandom(arr, seedStr = String(Date.now())) {
 function hasHangul(s) {
   return /[가-힣]/.test(s || "");
 }
- function detectLang(q) {
-   return hasHangul(q) ? "ko" : "en";
- }
+function detectLang(q) {
+  return hasHangul(q) ? "ko-KR" : "en-US";
+}
 function pruneOldImageSessions() {
   const now = Date.now();
   for (const [k, v] of imageSessions.entries()) {
@@ -111,6 +120,9 @@ function pruneOldImageSessions() {
   }
 }
 
+/* =========================
+ * 메모 파일 IO (proper-lockfile)
+ * ========================= */
 function memoFile(userId) {
   return path.join(MEMO_DIR, `${userId}.json`);
 }
@@ -150,6 +162,9 @@ async function writeMemos(userId, list) {
   }
 }
 
+/* =========================
+ * 계산기
+ * ========================= */
 function renderCalcEmbed(userId) {
   const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
   const { a, op, input, last } = st;
@@ -163,6 +178,7 @@ function renderCalcEmbed(userId) {
       { name: "식", value: expr || "-", inline: false },
     )
     .setColor(0x5865F2);
+
   if (st.showHist && Array.isArray(st.hist) && st.hist.length) {
     const lines = st.hist.slice(0, 8).join("\n");
     eb.addFields({ name: "최근 계산 (최대 10개)", value: "```\n" + lines + "\n```", inline: false });
@@ -236,7 +252,7 @@ function pushHistory(st, a, op, b, res) {
     st.hist = Array.isArray(st.hist) ? st.hist : [];
     st.hist.unshift(line);
     if (st.hist.length > 10) st.hist.length = 10;
-  } catch {}
+  } catch { /* noop */ }
 }
 function calcEqual(st) {
   const a = st.a;
@@ -247,6 +263,7 @@ function calcEqual(st) {
   else if (st.op === "-") res = a - b;
   else if (st.op === "*") res = a * b;
   else if (st.op === "/") res = b === 0 ? NaN : a / b;
+
   st.last = res;
   pushHistory(st, a, st.op, b, res);
   st.a = res;
@@ -255,12 +272,16 @@ function calcEqual(st) {
   st.updatedAt = Date.now();
 }
 
+/* =========================
+ * 메모장
+ * ========================= */
 function renderMemoListEmbed(userId, list, page, query) {
   const total = list.length;
   const maxPage = Math.max(0, Math.ceil(total / MEMO_PAGE_SIZE) - 1);
   const p = Math.min(Math.max(0, page), maxPage);
   const start = p * MEMO_PAGE_SIZE;
   const slice = list.slice(start, start + MEMO_PAGE_SIZE);
+
   const lines = slice.map((m, i) => {
     const idx = start + i + 1;
     const title = clampLen(m.title || "(제목 없음)", 40);
@@ -268,6 +289,7 @@ function renderMemoListEmbed(userId, list, page, query) {
     return `**${idx}.** ${title} ・ ${d}`;
   });
   const desc = (query ? `🔎 검색어: **${query}**\n` : "") + (lines.length ? lines.join("\n") : "메모가 없습니다.");
+
   return new EmbedBuilder()
     .setTitle("📒 메모장")
     .setDescription(desc)
@@ -280,8 +302,10 @@ function renderMemoListButtons(list, page, query) {
   const p = Math.min(Math.max(0, page), maxPage);
   const start = p * MEMO_PAGE_SIZE;
   const slice = list.slice(start, start + MEMO_PAGE_SIZE);
+
   const rowA = new ActionRowBuilder();
   const rowB = new ActionRowBuilder();
+
   slice.forEach((m, i) => {
     const idx = start + i + 1;
     const btn = new ButtonBuilder()
@@ -290,6 +314,7 @@ function renderMemoListButtons(list, page, query) {
       .setStyle(ButtonStyle.Secondary);
     if (i < 5) rowA.addComponents(btn); else rowB.addComponents(btn);
   });
+
   const rowNav = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(MEMO_PREFIX + `prev|${p}`).setLabel("◀ 이전").setStyle(ButtonStyle.Primary).setDisabled(p <= 0),
     new ButtonBuilder().setCustomId(MEMO_PREFIX + "page").setLabel(`${p + 1}/${maxPage + 1}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
@@ -297,6 +322,7 @@ function renderMemoListButtons(list, page, query) {
     new ButtonBuilder().setCustomId(MEMO_PREFIX + `search|${query ? encodeURIComponent(query) : ""}|${p}`).setEmoji("🔎").setLabel("검색").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(MEMO_PREFIX + `add|${p}`).setEmoji("➕").setLabel("새 메모").setStyle(ButtonStyle.Success),
   );
+
   const rows = [];
   if (rowA.components.length) rows.push(rowA);
   if (rowB.components.length) rows.push(rowB);
@@ -307,6 +333,7 @@ function renderMemoDetailEmbed(m) {
   const exp = m.expiresAt ? formatKST(m.expiresAt) : "무기한";
   const body = (m.body && m.body.trim().length) ? m.body : "(내용 없음)";
   const bodyBox = "```\n" + body + "\n```";
+
   return new EmbedBuilder()
     .setTitle(`🗒 ${m.title || "(제목 없음)"}`)
     .setDescription(bodyBox)
@@ -324,6 +351,9 @@ function renderMemoDetailButtons(page) {
   ];
 }
 
+/* =========================
+ * 복권번호
+ * ========================= */
 function bestBuyDay(userId) {
   const key = weekKeyKST(nowKST());
   const seed = seedFromString(`${userId}:${key}`);
@@ -362,93 +392,306 @@ function renderLottoButtons() {
   ];
 }
 
+/* =========================
+ * 이미지 검색
+ * ========================= */
 function sanitizeImageUrl(u) {
   if (!u) return null;
+  // 디스코드에서 잘 보이는 확장자 위주 필터(엄격 X)
   if (!/^https?:\/\//i.test(u)) return null;
   return u.replace(/^http:\/\//i, "https://");
 }
- function parseGoogleImageHtml(html) {
-   const out = [];
-   const seen = new Set();
-   const norm = String(html)
-     .replace(/\\u003d/g, "=").replace(/\\u0026/g, "&")
-     .replace(/\\x3d/g, "=").replace(/\\x26/g, "&");
-  const push = (u) => {
-    const su = sanitizeImageUrl(u);
-    if (!su) return;
-    if (su.startsWith("data:")) return;
-    const h = getHost(su);
-    const key = su.replace(/[#?].*$/, "");
-    if (!seen.has(key)) { seen.add(key); out.push(su); }
-  };
-   const reOu     = /"ou":"(https?:\/\/[^"]+)"/g;
-   const reMurl   = /"murl":"(https?:\/\/[^"]+)"/g;
-   const reImgurl = /"imgurl":"(https?:\/\/[^"]+)"/g;
-   const reBimg   = /"bimgurl":"(https?:\/\/[^"]+)"/g;
-   let m;
-   while ((m = reOu.exec(norm))     !== null) push(m[1]);
-   while ((m = reMurl.exec(norm))   !== null) push(m[1]);
-   while ((m = reImgurl.exec(norm)) !== null) push(m[1]);
-   while ((m = reBimg.exec(norm))   !== null) push(m[1]);
-   const reImgSrc = /<img[^>]+src="(https?:\/\/[^">]+)"/g;
-   while ((m = reImgSrc.exec(norm)) !== null) push(m[1]);
-   const reDataSrc = /<img[^>]+data-src="(https?:\/\/[^">]+)"/g;
-   while ((m = reDataSrc.exec(norm)) !== null) push(m[1]);
-   const reSrcset = /<img[^>]+srcset="([^">]+)"/g;
-   while ((m = reSrcset.exec(norm)) !== null) {
-    const first = String(m[1]).split(",")[0].trim().split(" ")[0];
-    push(first);
+async function searchBingImages(q, lang) {
+  if (!IMG_CFG.bingKey) return [];
+  const url = new URL(IMG_CFG.bingEndpoint);
+  url.searchParams.set("q", q);
+  url.searchParams.set("count", "50");
+  url.searchParams.set("safeSearch", "Moderate");
+  url.searchParams.set("mkt", lang || "ko-KR");
+  url.searchParams.set("imageType", "Photo");
+  const res = await fetchSafe(url, {
+    headers: {
+      "Ocp-Apim-Subscription-Key": IMG_CFG.bingKey,
+      "Accept-Language": lang || "ko-KR",
+      "User-Agent": "Mozilla/5.0",
+    },
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  const items = Array.isArray(json.value) ? json.value : [];
+  const urls = items.map(v => sanitizeImageUrl(v.contentUrl || v.contentUrlHttps || v.thumbnailUrl)).filter(Boolean);
+  return urls;
+}
+
+async function searchGoogleImages(q) {
+  if (!IMG_CFG.googleKey || !IMG_CFG.googleCseId) return [];
+  const url = new URL("https://www.googleapis.com/customsearch/v1");
+  url.searchParams.set("key", IMG_CFG.googleKey);
+  url.searchParams.set("cx", IMG_CFG.googleCseId);
+  url.searchParams.set("q", q);
+  url.searchParams.set("searchType", "image");
+  url.searchParams.set("num", "10");
+  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
+  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
+  const res = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  const items = Array.isArray(json.items) ? json.items : [];
+  const urls = items.map(it => sanitizeImageUrl(it.link)).filter(Boolean);
+  return urls;
+}
+
+async function searchNaverImages(q) {
+  if (!IMG_CFG.naverId || !IMG_CFG.naverSecret) return [];
+  const url = new URL("https://openapi.naver.com/v1/search/image.json");
+  url.searchParams.set("query", q);
+  url.searchParams.set("display", "30");
+  url.searchParams.set("sort", "sim");
+  const res = await fetchSafe(url, {
+    headers: {
+      "X-Naver-Client-Id": IMG_CFG.naverId,
+      "X-Naver-Client-Secret": IMG_CFG.naverSecret,
+      "User-Agent": "Mozilla/5.0",
+    },
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  const items = Array.isArray(json.items) ? json.items : [];
+  const urls = items.map(it => sanitizeImageUrl(it.link)).filter(Boolean);
+  return urls;
+}
+// ✅ DuckDuckGo 이미지(무키). 서버에서 가끔 rate limit 있으나 성공률 높음
+async function searchDuckDuckGoImages(q) {
+  try {
+    const url = new URL("https://duckduckgo.com/i.js");
+    url.searchParams.set("q", q);
+    url.searchParams.set("o", "json");
+    url.searchParams.set("iax", "images");
+    url.searchParams.set("ia", "images");
+    const res = await fetchSafe(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const items = Array.isArray(json.results) ? json.results : [];
+    const urls = items.map(it => sanitizeImageUrl(it.image || it.thumbnail)).filter(Boolean);
+    return urls;
+  } catch (e) {
+    // console.warn("[DDG]", e);
+    return [];
+  }
+}
+
+// ✅ Unsplash(무키) — 리다이렉트지만 디스코드가 따라감, 주제 관련 랜덤 1장
+function unsplashDirectUrl(q) {
+  const qp = encodeURIComponent(q);
+  return `https://source.unsplash.com/featured/1280x720/?${qp}`;
+}
+async function searchUnsplashNoKey(q) {
+  return [unsplashDirectUrl(q)];
+}
+
+// ✅ LoremFlickr(무키) — 캐시 락으로 매번 다른 랜덤 1장
+function loremFlickrDirectUrl(q) {
+  const tag = encodeURIComponent(q.replace(/\s+/g, ','));
+  const lock = Math.floor(Math.random() * 1e9);
+  return `https://loremflickr.com/1280/720/${tag}?lock=${lock}`;
+}
+async function searchLoremFlickrDirect(q) {
+  return [loremFlickrDirectUrl(q)];
+}
+
+
+// ✅ Wikimedia Commons(무키) — "파일" 네임스페이스(6)만 검색해서 이미지 보장
+async function searchWikimediaImages(q) {
+  try {
+    const url = new URL("https://commons.wikimedia.org/w/api.php");
+    url.searchParams.set("action", "query");
+    url.searchParams.set("generator", "search");
+    url.searchParams.set("gsrsearch", q);
+    url.searchParams.set("gsrlimit", "30");
+    url.searchParams.set("gsrnamespace", "6"); // 파일 네임스페이스만
+    url.searchParams.set("prop", "imageinfo");
+    url.searchParams.set("iiprop", "url");
+    url.searchParams.set("iiurlwidth", "1600");
+    url.searchParams.set("format", "json");
+
+    const res = await fetchSafe(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const pages = json?.query?.pages || {};
+    const urls = [];
+    for (const k in pages) {
+      const info = pages[k]?.imageinfo?.[0];
+      const u = (info?.thumburl || info?.url) || null;
+      const su = sanitizeImageUrl(u);
+      if (su) urls.push(su);
+    }
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
+
+// ===== 이미지 URL 검사(핫링크/403 차단 필터) =====
+async function testImageUrl(u, timeoutMs = 6000) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    // 일부 서버는 HEAD 차단 → 소량 GET으로 판별
+    const r = await fetchSafe(u, {
+      method: "GET",
+      signal: ctrl.signal,
+      headers: {
+        "Range": "bytes=0-1023",
+        "User-Agent": "Mozilla/5.0 (DiscordBot-ImageProbe)",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "ko,en;q=0.9",
+      }
+    }).catch(() => null);
+    clearTimeout(t);
+    if (!r || !r.ok) return false;
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (!ct.startsWith("image/")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ===== 엔진 요청 유틸 =====
+async function fetchBingImages(q, lang, CFG) {
+  if (!CFG.bingKey) return [];
+  const url = new URL(CFG.bingImageEndpoint || "https://api.bing.microsoft.com/v7.0/images/search");
+  url.searchParams.set("q", q);
+  url.searchParams.set("mkt", lang === "ko" ? "ko-KR" : "en-US");
+  url.searchParams.set("safeSearch", "Off");     // 막히면 Moderate로 변경
+  url.searchParams.set("count", "50");
+  url.searchParams.set("imageType", "Photo");
+  const r = await fetchSafe(url, {
+    headers: { "Ocp-Apim-Subscription-Key": CFG.bingKey }
+  }).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const items = Array.isArray(j.value) ? j.value : [];
+  // contentUrl 우선, 안되면 thumbnailUrl
+  function pickBingUrl(v) {
+  const cu = v.contentUrl || "";
+  const tu = v.thumbnailUrl || "";
+  const h = getHost(cu);
+  // 🔒 핫링크 차단 도메인은 썸네일(Bing CDN) 우선
+  if (h && BLOCKED_HOSTS.some(b => h.includes(b))) return tu || cu;
+  return cu || tu;
+}
+return items.map(pickBingUrl).filter(Boolean);
+}
+
+async function fetchGoogleImages(q, lang, CFG) {
+  if (!CFG.googleKey || !CFG.googleCseId) return [];
+  const url = new URL("https://www.googleapis.com/customsearch/v1");
+  url.searchParams.set("key", CFG.googleKey);
+  url.searchParams.set("cx", CFG.googleCseId);
+  url.searchParams.set("q", q);
+  url.searchParams.set("searchType", "image");
+  url.searchParams.set("num", "10");
+  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
+  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
+  const r = await fetchSafe(url).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const items = Array.isArray(j.items) ? j.items : [];
+  return items.map(v => v.link).filter(Boolean);
+}
+
+async function fetchNaverImages(q, lang, CFG) {
+  if (!CFG.naverId || !CFG.naverSecret) return [];
+  const url = new URL("https://openapi.naver.com/v1/search/image");
+  url.searchParams.set("query", q);
+  url.searchParams.set("display", "30");
+  url.searchParams.set("filter", "all");
+  const r = await fetchSafe(url, {
+    headers: {
+      "X-Naver-Client-Id": CFG.naverId,
+      "X-Naver-Client-Secret": CFG.naverSecret,
+    }
+  }).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const items = Array.isArray(j.items) ? j.items : [];
+  return items.map(v => v.thumbnail || v.link).filter(Boolean);
+}
+
+async function fetchWikimedia(q) {
+  // 유명 작품/인물 폴백: 위키미디어(저작권-친화/핫링크 잘 됨)
+  const url = new URL("https://commons.wikimedia.org/w/api.php");
+  url.searchParams.set("action", "query");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("prop", "imageinfo");
+  url.searchParams.set("generator", "search");
+  url.searchParams.set("gsrsearch", q);
+  url.searchParams.set("gsrlimit", "10");
+  url.searchParams.set("iiprop", "url");
+  const r = await fetchSafe(url).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const pages = j?.query?.pages || {};
+  const out = [];
+  for (const k of Object.keys(pages)) {
+    const ii = pages[k]?.imageinfo?.[0]?.url;
+    if (ii) out.push(ii);
   }
   return out;
 }
- async function searchGoogleUKImages(q, lang) {
-   const hl = lang; 
-  const pages = [0, 1];
-  const results = [];
-  for (const p of pages) {
-    const url = new URL("https://www.google.co.uk/search");
-    url.searchParams.set("tbm", "isch");
-    url.searchParams.set("q", q);
-    url.searchParams.set("safe", "off");
-    url.searchParams.set("hl", hl);
-    url.searchParams.set("gbv", "1"); 
-    url.searchParams.set("udm", "2");
-    url.searchParams.set("ijn", String(p));
-    url.searchParams.set("gbv", "1");
-    url.searchParams.set("pws", "0");
-    url.searchParams.set("gl", "uk");
-    const res = await fetchSafe(url, { headers: googleHeaders(hl) }).catch(() => null);
-    if (!res || !res.ok) continue;
-    const html = await res.text().catch(() => "");
-    if (!html) continue;
-    if (/consent\.google/i.test(res.url) || /consent\.google/i.test(html) || /unusual\s+traffic/i.test(html)) {
-    continue;
-    }
-    const arr = parseGoogleImageHtml(html);
-    for (const u of arr) results.push(u);
+
+function dedupUrls(arr) {
+  const s = new Set();
+  const out = [];
+  for (const u of arr) {
+    const key = String(u).trim().replace(/[#?].*$/, ""); // 쿼리 제거 후 중복 축소
+    if (!s.has(key)) { s.add(key); out.push(u); }
   }
-  const seen = new Set();
-  const dedup = [];
-  for (const u of results) {
-    const key = String(u).trim().replace(/[#?].*$/, "");
-    if (!seen.has(key)) { seen.add(key); dedup.push(u); }
-  }
-  return dedup;
+  return out;
 }
+
 async function findImages(q, lang) {
-  let urls = await searchGoogleUKImages(q, lang);
-  if ((!urls || !urls.length) && lang === "ko-KR") {
-    urls = await searchGoogleUKImages(q, "en-US");
+  const seen = new Set();
+  const out = [];
+  async function addFrom(fn) {
+    try {
+      const arr = await fn();
+      for (const u of arr) {
+        const su = sanitizeImageUrl(u);
+        if (su && !seen.has(su)) { seen.add(su); out.push(su); }
+      }
+    } catch { /* ignore */ }
   }
-  return Array.isArray(urls) ? urls.filter(Boolean) : [];
+
+  // 0) 무키 ‘즉시 성공’ 라인 — 여기서 최소 1장은 보장
+  await addFrom(() => searchUnsplashNoKey(q));
+  if (out.length < 1) await addFrom(() => searchLoremFlickrDirect(q));
+
+  // 1) 키 기반 (있으면 다양성 ↑)
+  if (out.length < 3) await addFrom(() => searchBingImages(q, lang));
+  if (out.length < 3) await addFrom(() => searchGoogleImages(q));
+  if (out.length < 3) await addFrom(() => searchNaverImages(q));
+
+  // 2) 무키 폴백
+  if (out.length < 3) await addFrom(() => searchWikimediaImages(q));
+  if (out.length < 3) await addFrom(() => searchDuckDuckGoImages(q));
+
+  // 🔒 최후 폴백: 그래도 0이면 최소 1장 보장
+  if (out.length === 0) out.push(unsplashDirectUrl(q));
+
+  return out;
 }
+
+
 
 function renderImageEmbed(q, url, lang, shared = false) {
   const eb = new EmbedBuilder()
     .setTitle(`🖼️ 이미지: ${q}`)
     .setImage(url)
     .setColor(shared ? 0x00C853 : 0x00B7FF)
-    .setFooter({ text: `출처: Google UK • SafeSearch: Off` });
+    .setFooter({ text: `랜덤 이미지 • 안전검색: Moderate • 언어: ${lang}` });
   return eb;
 }
 function renderImageButtons(sessionId, shared) {
@@ -467,6 +710,9 @@ function renderImageButtons(sessionId, shared) {
   ];
 }
 
+/* =========================
+ * SlashCommand 정의
+ * ========================= */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("유틸")
@@ -475,6 +721,7 @@ module.exports = {
     .addSubcommand(sc => sc.setName("메모장").setDescription("개인 메모/검색/수정/삭제"))
     .addSubcommand(sc => sc.setName("복권번호").setDescription("1~45 중 6개, 총 5줄"))
     .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변"))
+    // ✅ 신규: 이미지
     .addSubcommand(sc =>
       sc.setName("이미지")
         .setDescription("입력한 대상의 랜덤 이미지를 보여줍니다")
@@ -484,9 +731,12 @@ module.exports = {
             .setRequired(true)
         )
     ),
+
+  // Slash 명령 처리
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const userId = interaction.user.id;
+
     if (sub === "계산기") {
       if (!calcSessions.has(userId)) {
         calcSessions.set(userId, { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false });
@@ -496,6 +746,7 @@ module.exports = {
       const rows = renderCalcButtons(st);
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
     }
+
     if (sub === "메모장") {
       const list = await readMemos(userId);
       const page = 0;
@@ -503,12 +754,14 @@ module.exports = {
       const rows = renderMemoListButtons(list, page, "");
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
     }
+
     if (sub === "복권번호") {
       const lines = genLottoLines(5, `${userId}:${Date.now()}`);
       const embed = renderLottoEmbed(userId, lines);
       const rows = renderLottoButtons();
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
     }
+
     if (sub === "마법의소라고동") {
       const embed = new EmbedBuilder()
         .setTitle("🐚 마법의 소라고동")
@@ -524,31 +777,51 @@ module.exports = {
       ];
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
     }
+
+    // ✅ 신규: 이미지
     if (sub === "이미지") {
       pruneOldImageSessions();
       const qRaw = interaction.options.getString("대상", true).trim();
       const q = qRaw.replace(/\s+/g, " ");
       if (!q.length) return interaction.reply({ content: "대상을 입력해줘.", ephemeral: true });
+
       const lang = detectLang(q);
+
+      // 검색
       let urls = await findImages(q, lang);
-      try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
-      urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
-      if (!urls.length) {
-        return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
-      }
+
+// 디버그 로그(콘솔에서 확인)
+try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
+
+// (필터 완화 — 필요 없음지만 혹시 모를 null 제거)
+urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+
+// ✅ 최후 폴백(혹시 0이면 Unsplash 1장)
+if (!urls.length) urls = [ unsplashDirectUrl(q) ];
+
+if (!urls.length) {
+  return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
+}
+
       const { item: url, idx } = pickRandom(urls, `${q}:${Date.now()}:${interaction.user.id}`);
       const sessionId = crypto.randomBytes(8).toString("hex");
       imageSessions.set(sessionId, { q, lang, list: urls, idx, shared: false, ownerId: userId, createdAt: Date.now() });
+
       const embed = renderImageEmbed(q, url, lang, false);
       const rows = renderImageButtons(sessionId, false);
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
     }
   },
+
+  // 버튼/모달 라우팅 (index.js에서 위임 호출)
   async route(interaction) {
     const { customId, user } = interaction;
+
+    /* ===== 계산기 ===== */
     if (customId.startsWith(CALC_PREFIX)) {
       const userId = user.id;
       const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
+
       if (customId === CALC_PREFIX + "neg") toggleSign(st);
       else if (customId === CALC_PREFIX + "dot") pushDot(st);
       else if (customId === CALC_PREFIX + "eq") calcEqual(st);
@@ -572,13 +845,17 @@ module.exports = {
         st.showHist = !st.showHist;
         st.updatedAt = Date.now();
       }
+
       calcSessions.set(userId, st);
       const embed = renderCalcEmbed(userId);
       const rows = renderCalcButtons(st);
       return interaction.update({ embeds: [embed], components: rows });
     }
+
+    /* ===== 메모장: 버튼 & 모달 ===== */
     if (customId.startsWith(MEMO_PREFIX)) {
       const userId = user.id;
+
       if (customId.startsWith(MEMO_PREFIX + "prev|")) {
         const currPage = Number(customId.split("|")[1]) || 0;
         const list = await readMemos(userId);
@@ -596,6 +873,7 @@ module.exports = {
         const rows = renderMemoListButtons(list, page, "");
         return interaction.update({ embeds: [embed], components: rows });
       }
+
       if (customId.startsWith(MEMO_PREFIX + "search|")) {
         const [, encQuery, pageStr] = customId.split("|");
         const modal = new ModalBuilder()
@@ -610,6 +888,7 @@ module.exports = {
         modal.addComponents(new ActionRowBuilder().addComponents(ti));
         return interaction.showModal(modal);
       }
+
       if (customId.startsWith(MEMO_PREFIX + "add|")) {
         const [, pageStr] = customId.split("|");
         const modal = new ModalBuilder()
@@ -639,6 +918,7 @@ module.exports = {
         );
         return interaction.showModal(modal);
       }
+
       if (customId.startsWith(MEMO_PREFIX + "open|")) {
         const [, id, pageStr] = customId.split("|");
         const list = await readMemos(userId);
@@ -650,6 +930,7 @@ module.exports = {
         const rows = renderMemoDetailButtons(Number(pageStr) || 0);
         return interaction.update({ embeds: [embed], components: rows });
       }
+
       if (customId.startsWith(MEMO_PREFIX + "back|")) {
         const [, pageStr] = customId.split("|");
         const page = Number(pageStr) || 0;
@@ -658,6 +939,7 @@ module.exports = {
         const rows = renderMemoListButtons(list, page, "");
         return interaction.update({ embeds: [embed], components: rows });
       }
+
       if (customId === MEMO_PREFIX + "del") {
         const embeds = interaction.message.embeds || [];
         if (!embeds.length || !embeds[0].footer?.text) {
@@ -677,6 +959,7 @@ module.exports = {
         const rows = renderMemoListButtons(next, page, "");
         return interaction.update({ content: "🗑 삭제 완료", embeds: [embed], components: rows });
       }
+
       if (customId.startsWith(MEMO_PREFIX + "edit|")) {
         const [, pageStr] = customId.split("|");
         const embeds = interaction.message.embeds || [];
@@ -689,35 +972,42 @@ module.exports = {
         if (!editId) {
           return interaction.reply({ content: "수정 대상을 찾을 수 없어.", ephemeral: true });
         }
+
         const list = await readMemos(user.id);
         const memo = list.find(m => String(m.id) === String(editId));
         if (!memo) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
+
         let ttlDays = "";
         if (memo.expiresAt) {
           const leftMs = memo.expiresAt - Date.now();
           if (leftMs > 0) ttlDays = String(Math.ceil(leftMs / (24 * 60 * 60 * 1000)));
         }
+
         const modal = new ModalBuilder()
           .setCustomId(MEMO_PREFIX + `edit_submit|${memo.id}|${pageStr || "0"}`)
           .setTitle("메모 수정");
+
         const tiTitle = new TextInputBuilder()
           .setCustomId("title")
           .setLabel("제목")
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
           .setValue(memo.title || "");
+
         const tiBody = new TextInputBuilder()
           .setCustomId("body")
           .setLabel("내용")
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(false)
           .setValue(memo.body || "");
+
         const tiTTL = new TextInputBuilder()
           .setCustomId("ttl")
           .setLabel("보관 기한(일) — 0/공백=무기한")
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
           .setValue(ttlDays);
+
         modal.addComponents(
           new ActionRowBuilder().addComponents(tiTitle),
           new ActionRowBuilder().addComponents(tiBody),
@@ -726,8 +1016,11 @@ module.exports = {
         return interaction.showModal(modal);
       }
     }
+
+    // 수정 제출 (모달)
     if (interaction.isModalSubmit()) {
       const { customId } = interaction;
+
       if (customId.startsWith(MEMO_PREFIX + "search_submit|")) {
         const [, pageStr] = customId.split("|");
         const q = (interaction.fields.getTextInputValue("q") || "").trim();
@@ -742,6 +1035,7 @@ module.exports = {
         const rows = renderMemoListButtons(list, page, q);
         return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
       }
+
       if (customId.startsWith(MEMO_PREFIX + "add_submit|")) {
         const [, pageStr] = customId.split("|");
         const userId = interaction.user.id;
@@ -760,17 +1054,21 @@ module.exports = {
         const memo = { id, title, body, createdAt: Date.now(), expiresAt };
         list.unshift(memo);
         await writeMemos(userId, list);
+
         const page = 0;
         const embed = renderMemoListEmbed(userId, list, page, "");
         const rows = renderMemoListButtons(list, page, "");
         return interaction.reply({ content: "✅ 메모 추가됨", embeds: [embed], components: rows, ephemeral: true });
       }
+
       if (customId.startsWith(MEMO_PREFIX + "edit_submit|")) {
         const [, id, pageStr] = customId.split("|");
         const userId = interaction.user.id;
+
         const title = (interaction.fields.getTextInputValue("title") || "").trim();
         const body  = (interaction.fields.getTextInputValue("body")  || "").trim();
         const ttlStr = (interaction.fields.getTextInputValue("ttl")  || "").trim();
+
         let expiresAt = null;
         if (ttlStr) {
           const days = Number(ttlStr);
@@ -778,19 +1076,25 @@ module.exports = {
             expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
           }
         }
+
         const list = await readMemos(userId);
         const idx = list.findIndex(m => String(m.id) === String(id));
         if (idx === -1) return interaction.reply({ content: "해당 메모를 찾을 수 없어.", ephemeral: true });
+
         list[idx].title = title;
         list[idx].body  = body;
         list[idx].expiresAt = expiresAt;
+
         await writeMemos(userId, list);
+
         const updated = list[idx];
         const embed = renderMemoDetailEmbed(updated);
         const rows  = renderMemoDetailButtons(Number(pageStr) || 0);
         return interaction.reply({ content: "✅ 수정 완료", embeds: [embed], components: rows, ephemeral: true });
       }
     }
+
+    /* ===== 복권: 버튼 ===== */
     if (customId === LOTTO_PREFIX + "regen") {
       const userId = user.id;
       const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
@@ -798,6 +1102,8 @@ module.exports = {
       const rows = renderLottoButtons();
       return interaction.update({ embeds: [embed], components: rows });
     }
+
+    /* ===== 소라고동 ===== */
     if (customId === CONCH_PREFIX + "ask") {
       const modal = new ModalBuilder()
         .setCustomId(CONCH_PREFIX + "ask_submit")
@@ -823,87 +1129,108 @@ module.exports = {
         .setColor(0xA66BFF);
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
-    if (customId.startsWith(IMG_PREFIX)) {
+
+    /* ===== 이미지: 버튼 ===== */
+if (customId.startsWith(IMG_PREFIX)) {
+  try {
+    pruneOldImageSessions();
+
+    const [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
+    let sess = imageSessions.get(sessionId);
+
+    // 🔁 세션 복구 시도 (버튼 메시지에서 질의/이미지 재구성)
+    if (!sess) {
+      const embedNow = interaction.message.embeds?.[0];
+      const title = embedNow?.title || "";
+      const m = title.match(/이미지:\s*(.+)$/) || title.match(/이미지\s*[:：]\s*(.+)$/);
+      const q = (m && m[1]) ? m[1].trim() : null;
+      if (!q) {
+        // 메시지 자체가 깨졌으면 안내 후 종료
+        return interaction.update({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+      }
+      const lang = detectLang(q);
+      const list = await findImages(q, lang);
+      if (!Array.isArray(list) || !list.length) {
+        return interaction.update({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+      }
+      let idx = 0;
+      const currUrl = embedNow?.image?.url || null;
+      if (currUrl) {
+        const found = list.findIndex(u => u === currUrl);
+        if (found >= 0) idx = found;
+      }
+      const newId = crypto.randomBytes(8).toString("hex");
+      sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
+      imageSessions.set(newId, sess);
+      sessionId = newId;
+    }
+
+    // 소유자만 조작 허용
+    if (sess.ownerId !== interaction.user.id) {
+      return interaction.update({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
+    }
+
+    // === 공유 ===
+    if (action === "share") {
+      // 1) 먼저 버튼 상태를 '공유됨'으로 즉시 갱신
+      {
+        const url = sess.list[sess.idx];
+        const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
+        const rows = renderImageButtons(sessionId, true);
+        await interaction.update({ embeds: [eb], components: rows });
+      }
+
+      // 2) 채널 전송(권한 없으면 에페메럴로 안내)
       try {
-        pruneOldImageSessions();
-        let [action, sessionIdVar] = customId.slice(IMG_PREFIX.length).split("|");
-        let sess = imageSessions.get(sessionIdVar);
-        if (!sess) {
-          const embedNow = interaction.message.embeds?.[0];
-          const title = embedNow?.title || "";
-          const m = title.match(/이미지:\s*(.+)$/) || title.match(/이미지\s*[:：]\s*(.+)$/);
-          const q = (m && m[1]) ? m[1].trim() : null;
-          if (!q) {
-            return interaction.update({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
-          }
-          const lang = detectLang(q);
-          const list = await findImages(q, lang);
-          if (!Array.isArray(list) || !list.length) {
-            return interaction.update({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
-          }
-          let idx = 0;
-          const currUrl = embedNow?.image?.url || null;
-          if (currUrl) {
-            const found = list.findIndex(u => u === currUrl);
-            if (found >= 0) idx = found;
-          }
-          const newId = crypto.randomBytes(8).toString("hex");
-          sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
-          imageSessions.set(newId, sess);
-          sessionIdVar = newId;
-        }
-        if (sess.ownerId !== interaction.user.id) {
-          return interaction.update({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
-        }
-        if (action === "share") {
-          {
-            const url = sess.list[sess.idx];
-            const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
-            const rows = renderImageButtons(sessionIdVar, true);
-            await interaction.update({ embeds: [eb], components: rows });
-          }
-          try {
-            const url = sess.list[sess.idx];
-            const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
-            await interaction.channel.send({ embeds: [embedPub] });
-            sess.shared = true;
-            imageSessions.set(sessionIdVar, sess);
-          } catch (e) {
-            await interaction.followUp({
-              content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크 권한 확인)",
-              ephemeral: true
-            }).catch(() => {});
-          }
-          return;
-        }
-        if (action === "more") {
-          if (!Array.isArray(sess.list) || !sess.list.length) {
-            return interaction.update({ content: "결과가 더 없어.", embeds: [], components: [] });
-          }
-          let nextIdx = sess.idx;
-          if (sess.list.length > 1) {
-            for (let i = 0; i < 5; i++) {
-              const cand = Math.floor(Math.random() * sess.list.length);
-              if (cand !== sess.idx) { nextIdx = cand; break; }
-            }
-          }
-          sess.idx = nextIdx;
-          sess.shared = false;
-          imageSessions.set(sessionIdVar, sess);
-          const url = sess.list[sess.idx];
-          const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
-          const rows = renderImageButtons(sessionIdVar, false);
-          return interaction.update({ embeds: [eb], components: rows });
-        }
-        return interaction.update({ content: "알 수 없는 동작이야.", components: [] });
-      } catch (err) {
-        console.error("[IMG BTN 오류]", err);
-        if (!interaction.replied && !interaction.deferred) {
-          try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
-        } else {
-          try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+        const url = sess.list[sess.idx];
+        const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
+        await interaction.channel.send({ embeds: [embedPub] });
+        sess.shared = true;
+        imageSessions.set(sessionId, sess);
+      } catch (e) {
+        await interaction.followUp({
+          content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크 권한 확인)",
+          ephemeral: true
+        }).catch(() => {});
+      }
+      return;
+    }
+
+    // === 다른 이미지 ===
+    if (action === "more") {
+      if (!Array.isArray(sess.list) || !sess.list.length) {
+        return interaction.update({ content: "결과가 더 없어.", embeds: [], components: [] });
+      }
+      let nextIdx = sess.idx;
+      if (sess.list.length > 1) {
+        // 현재와 다른 항목으로 5번까지 시도
+        for (let i = 0; i < 5; i++) {
+          const cand = Math.floor(Math.random() * sess.list.length);
+          if (cand !== sess.idx) { nextIdx = cand; break; }
         }
       }
+      sess.idx = nextIdx;
+      sess.shared = false;
+      imageSessions.set(sessionId, sess);
+
+      const url = sess.list[sess.idx];
+      const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
+      const rows = renderImageButtons(sessionId, false);
+      return interaction.update({ embeds: [eb], components: rows });
     }
+
+    // 알 수 없는 action 보호
+    return interaction.update({ content: "알 수 없는 동작이야.", components: [] });
+
+  } catch (err) {
+    console.error("[IMG BTN 오류]", err);
+    // 이미 update를 못했을 수 있으니 followUp로 보장
+    if (!interaction.replied && !interaction.deferred) {
+      try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+    } else {
+      try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+    }
+  }
+ }
   },
 };
