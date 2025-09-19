@@ -774,11 +774,22 @@ module.exports = {
 
       // 검색
       let urls = await findImages(q, lang);
-      // 간단한 중복/품질 필터
-      urls = urls.filter(u => /\.(jpe?g|png|gif|webp|bmp|svg)(\?|#|$)/i.test(u) || true);
-      if (!urls.length) {
-        return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
-      }
+
+// 🔎 디버그 로그(콘솔): 실제로 뭐가 잡혔는지 확인
+try { console.log("[IMG] query:", q, "got:", urls.slice(0, 5)); } catch {}
+
+// 디스코드가 확장자 없어도 302 따라가서 잘 띄우는 케이스가 많음(Unsplash 등)
+// 그래도 혹시 모를 필터는 완화 (실제 필터 제거)
+urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+
+// ✅ 실행부에서도 하드 폴백 (혹시 findImages가 비어오면 한 번 더)
+if (!urls.length) {
+  urls = [ unsplashDirectUrl(q) ];
+}
+
+if (!urls.length) {
+  return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
+}
 
       const { item: url, idx } = pickRandom(urls, `${q}:${Date.now()}:${interaction.user.id}`);
       const sessionId = crypto.randomBytes(8).toString("hex");
@@ -1119,7 +1130,7 @@ if (customId.startsWith(IMG_PREFIX)) {
     if (!sess) {
       const embedNow = interaction.message.embeds?.[0];
       const title = embedNow?.title || "";
-      const m = title.match(/이미지:\s*(.+)$/);
+      const m = title.match(/이미지:\s*(.+)$/) || title.match(/이미지\s*[:：]\s*(.+)$/);
       const q = (m && m[1]) ? m[1].trim() : null;
       if (!q) {
         // 메시지 자체가 깨졌으면 안내 후 종료
