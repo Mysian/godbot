@@ -119,6 +119,51 @@ function pruneOldImageSessions() {
     if ((now - (v.createdAt || 0)) > IMG_SESSION_TTL_MS) imageSessions.delete(k);
   }
 }
+function proxyUrl(u) {
+  try {
+    const { hostname, pathname, search } = new URL(u);
+    // weserv는 https://images.weserv.nl/?url=host/path 형식
+    return `https://images.weserv.nl/?url=${encodeURIComponent(hostname + pathname)}${search ? "&" + search.slice(1) : ""}`;
+  } catch { return null; }
+}
+
+async function probeImage(u, timeoutMs = 6000) {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetchSafe(u, {
+      method: "GET",
+      signal: ctrl.signal,
+      headers: {
+        "Range": "bytes=0-1023",
+        "User-Agent": "Mozilla/5.0 (DiscordBot-ImageProbe)",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "ko,en;q=0.9",
+        "Referer": "https://discord.com", // 일부 사이트는 Referer 요구
+      }
+    }).catch(() => null);
+    clearTimeout(timer);
+    if (!r || !r.ok) return false;
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    return ct.startsWith("image/");
+  } catch { return false; }
+}
+
+// 과하게 느려지지 않도록 순차-빠른중지 방식
+async function ensureUsable(urls, maxKeep = 12) {
+  const out = [];
+  for (const raw of urls) {
+    if (out.length >= maxKeep) break;
+    const u = sanitizeImageUrl(raw);
+    if (!u) continue;
+    if (await probeImage(u)) { out.push(u); continue; }
+    // 프록시 재시도
+    const pu = proxyUrl(u);
+    if (pu && await probeImage(pu)) out.push(pu);
+  }
+  return out;
+}
+
 
 /* =========================
  * 메모 파일 IO (proper-lockfile)
@@ -419,26 +464,33 @@ async function searchBingImages(q, lang) {
   if (!res.ok) return [];
   const json = await res.json();
   const items = Array.isArray(json.value) ? json.value : [];
-  const urls = items.map(v => sanitizeImageUrl(v.contentUrl || v.contentUrlHttps || v.thumbnailUrl)).filter(Boolean);
+  function pickBingUrl(v) {
+  const cu = v.contentUrl || v.contentUrlHttps || "";
+  const tu = v.thumbnailUrl || "";
+  const h = getHost(cu);
+  if (h && BLOCKED_HOSTS.some(b => h.includes(b))) return sanitizeImageUrl(tu || cu);
+  return sanitizeImageUrl(cu || tu);
+}
+const urls = items.map(pickBingUrl).filter(Boolean);
+
   return urls;
 }
 
-async function searchGoogleImages(q) {
+async function searchGoogleImages(q, lang = "ko-KR") {
   if (!IMG_CFG.googleKey || !IMG_CFG.googleCseId) return [];
+  const isKo = String(lang).toLowerCase().startsWith("ko");
   const url = new URL("https://www.googleapis.com/customsearch/v1");
   url.searchParams.set("key", IMG_CFG.googleKey);
   url.searchParams.set("cx", IMG_CFG.googleCseId);
   url.searchParams.set("q", q);
   url.searchParams.set("searchType", "image");
   url.searchParams.set("num", "10");
-  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
-  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
+  url.searchParams.set("gl", isKo ? "kr" : "us");
+  url.searchParams.set("lr", isKo ? "lang_ko" : "lang_en");
   const res = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) return [];
-  const json = await res.json();
-  const items = Array.isArray(json.items) ? json.items : [];
-  const urls = items.map(it => sanitizeImageUrl(it.link)).filter(Boolean);
-  return urls;
+  const j = await res.json();
+  return (Array.isArray(j.items) ? j.items : []).map(it => sanitizeImageUrl(it.link)).filter(Boolean);
 }
 
 async function searchNaverImages(q) {
@@ -671,7 +723,7 @@ async function findImages(q, lang) {
 
   // 1) 키 기반 (있으면 다양성 ↑)
   if (out.length < 3) await addFrom(() => searchBingImages(q, lang));
-  if (out.length < 3) await addFrom(() => searchGoogleImages(q));
+  if (out.length < 3) await addFrom(() => searchGoogleImages(q, lang));
   if (out.length < 3) await addFrom(() => searchNaverImages(q));
 
   // 2) 무키 폴백
@@ -681,7 +733,9 @@ async function findImages(q, lang) {
   // 🔒 최후 폴백: 그래도 0이면 최소 1장 보장
   if (out.length === 0) out.push(unsplashDirectUrl(q));
 
-  return out;
+  const deduped = dedupUrls(out);
+  const usable = await ensureUsable(deduped);
+  return usable.length ? usable : [unsplashDirectUrl(q)];
 }
 
 
@@ -1135,7 +1189,7 @@ if (customId.startsWith(IMG_PREFIX)) {
   try {
     pruneOldImageSessions();
 
-    const [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
+    let [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
     let sess = imageSessions.get(sessionId);
 
     // 🔁 세션 복구 시도 (버튼 메시지에서 질의/이미지 재구성)
