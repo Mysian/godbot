@@ -8,6 +8,8 @@ const {
   ButtonStyle,
   ComponentType,
 } = require("discord.js");
+const fs = require("fs");
+const path = require("path");
 
 const REGION = "KR";
 const HL = "ko_KR";
@@ -30,12 +32,27 @@ const RPM_SHORT_MIN = Number(process.env.YT_RPM_SHORT_MIN || 200);
 const RPM_SHORT_MAX = Number(process.env.YT_RPM_SHORT_MAX || 1800);
 const DEFAULT_RPM_SHORT = Number(process.env.YT_RPM_SHORT || 700);
 
+const ELIGIBLE_VIEW_PCT = Math.max(0, Math.min(100, Number(process.env.YT_ELIGIBLE_VIEW_PCT ?? 85)));
+const PREMIUM_TOPUP_PCT = Math.max(0, Math.min(100, Number(process.env.YT_PREMIUM_TOPUP_PCT ?? 7)));
+const SHORTS_MUSIC_DEDUCTION_PCT = Math.max(0, Math.min(100, Number(process.env.YT_SHORTS_MUSIC_DEDUCTION_PCT ?? 35)));
+
+const DATA_DIR = path.join(__dirname, "../data");
+const SNAP_PATH = path.join(DATA_DIR, "yt-stats.json");
+if (!fs.existsSync(DATA_DIR)) try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
   try { _fetch = require("node-fetch"); } catch {}
 }
 let _canvas;
 try { _canvas = require("canvas"); } catch {}
+
+function readJson(p) {
+  try { if (!fs.existsSync(p)) return {}; const raw = fs.readFileSync(p, "utf8"); return raw && raw.trim() ? JSON.parse(raw) : {}; } catch { return {}; }
+}
+function writeJson(p, obj) {
+  try { fs.writeFileSync(p, JSON.stringify(obj)); } catch {}
+}
 
 async function httpGet(url) {
   const res = await _fetch(url);
@@ -301,7 +318,7 @@ async function ytChannelCore(channelId, key) {
   return ch;
 }
 
-async function ytChannelUploads(channelId, key, max = 50) {
+async function ytChannelUploads(channelId, key, max = 60) {
   const ch = await ytChannelCore(channelId, key);
   const uploads = ch.contentDetails?.relatedPlaylists?.uploads;
   if (!uploads) return { channel: ch, videos: [] };
@@ -385,9 +402,103 @@ function isInYM_KST(iso, y, m) {
 }
 function nextPayoutWindowKST() {
   const { y, m } = kstParts();
-  const s = `${y}-${String(m).padStart(2, "0")}-21`;
+  const s = `${y}-${String(m).padStart(2, "0")}-23`;
   const e = `${y}-${String(m).padStart(2, "0")}-26`;
   return { start: s, end: e };
+}
+function startOfMonthKST(y, m) {
+  const k = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+  const tz = new Date(k.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const oy = tz.getFullYear();
+  const om = tz.getMonth();
+  const base = new Date(oy, om, 1, 0, 0, 0);
+  return base;
+}
+function endOfMonthKST(y, m) {
+  const s = startOfMonthKST(y, m);
+  const e = new Date(s);
+  e.setMonth(e.getMonth() + 1);
+  return e;
+}
+function getKSTDateStr(d = new Date()) {
+  const k = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const yy = k.getFullYear();
+  const mm = String(k.getMonth() + 1).padStart(2, "0");
+  const dd = String(k.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+function overlapDaysKST(aStart, aEnd, bStart, bEnd) {
+  const s = Math.max(aStart.getTime(), bStart.getTime());
+  const e = Math.min(aEnd.getTime(), bEnd.getTime());
+  return Math.max(0, (e - s) / 86400000);
+}
+
+function updateChannelSnapshot(ch) {
+  try {
+    const snap = readJson(SNAP_PATH);
+    const cid = ch.id;
+    const vc = Number(ch.statistics?.viewCount || 0);
+    const today = getKSTDateStr();
+    if (!snap[cid]) snap[cid] = [];
+    const arr = snap[cid];
+    const existed = arr.find(x => x.date === today);
+    if (existed) { existed.viewCount = vc; }
+    else { arr.push({ date: today, viewCount: vc }); }
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 450);
+    const cutStr = getKSTDateStr(cutoff);
+    snap[cid] = arr.filter(x => x.date >= cutStr).sort((a,b)=> a.date.localeCompare(b.date));
+    writeJson(SNAP_PATH, snap);
+  } catch {}
+}
+function findSnapshotAtOrBefore(snapArr, dateStr) {
+  if (!Array.isArray(snapArr) || snapArr.length === 0) return null;
+  const arr = snapArr.filter(x => typeof x.date === "string" && x.date <= dateStr).sort((a,b)=> a.date.localeCompare(b.date));
+  return arr.length ? arr[arr.length - 1] : null;
+}
+function computeShortLongShareByAllTime(videos) {
+  let sViews = 0, lViews = 0;
+  for (const v of videos) {
+    const vv = Number(v.statistics?.viewCount || 0);
+    if (isShortVideo(v)) sViews += vv; else lViews += vv;
+  }
+  const total = sViews + lViews;
+  if (total <= 0) return { shortRatio: 0.5, longRatio: 0.5, sViews, lViews };
+  return { shortRatio: sViews / total, longRatio: lViews / total, sViews, lViews };
+}
+function estimatePrevMonthViewsFromVideos(videos, y, m) {
+  const start = startOfMonthKST(y, m);
+  const end = endOfMonthKST(y, m);
+  let longViews = 0, shortViews = 0;
+  for (const v of videos) {
+    const pub = new Date(new Date(v.snippet?.publishedAt).toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    const ageDays = Math.max(1, (now.getTime() - pub.getTime()) / 86400000);
+    const vpd = Number(v.statistics?.viewCount || 0) / ageDays;
+    const existStart = pub;
+    const existEnd = now;
+    const daysInWindow = overlapDaysKST(existStart, existEnd, start, end);
+    const add = vpd * daysInWindow;
+    if (isShortVideo(v)) shortViews += add; else longViews += add;
+  }
+  const total = Math.max(0, Math.round(longViews + shortViews));
+  return { totalViews: total, longViews: Math.max(0, Math.round(longViews)), shortViews: Math.max(0, Math.round(shortViews)), method: "추정(영상별 일일조회 기반)" };
+}
+function computePrevMonthViewsChannelLevel(ch, videos, y, m) {
+  const snap = readJson(SNAP_PATH);
+  const arr = snap[ch.id] || [];
+  const startStr = ymStr(y, m) + "-01";
+  const endY = m === 12 ? y + 1 : y;
+  const endM = m === 12 ? 1 : m + 1;
+  const endStr = ymStr(endY, endM) + "-01";
+  const sSnap = findSnapshotAtOrBefore(arr, startStr);
+  const eSnap = findSnapshotAtOrBefore(arr, endStr);
+  if (!sSnap || !eSnap) return null;
+  const delta = Math.max(0, Number(eSnap.viewCount || 0) - Number(sSnap.viewCount || 0));
+  const share = computeShortLongShareByAllTime(videos);
+  const sViews = Math.round(delta * share.shortRatio);
+  const lViews = Math.round(delta * share.longRatio);
+  return { totalViews: Math.max(0, delta), longViews: Math.max(0, lViews), shortViews: Math.max(0, sViews), method: "정확(채널 총조회 스냅샷)" };
 }
 
 function summarizeChannel(ch, videos) {
@@ -422,8 +533,13 @@ function summarizeChannel(ch, videos) {
   const prevUploads = videos.filter(v => isInYM_KST(v.snippet?.publishedAt, py, pm));
   const shortUploads = prevUploads.filter(isShortVideo);
   const longUploads = prevUploads.filter(v => !isShortVideo(v));
-  const prevShortViews = shortUploads.reduce((a,v)=> a + Number(v.statistics?.viewCount || 0), 0);
-  const prevLongViews = longUploads.reduce((a,v)=> a + Number(v.statistics?.viewCount || 0), 0);
+  const prevShortViewsUploads = shortUploads.reduce((a,v)=> a + Number(v.statistics?.viewCount || 0), 0);
+  const prevLongViewsUploads = longUploads.reduce((a,v)=> a + Number(v.statistics?.viewCount || 0), 0);
+
+  updateChannelSnapshot(ch);
+  const snapshotBased = computePrevMonthViewsChannelLevel(ch, videos, py, pm);
+  const estimateBased = estimatePrevMonthViewsFromVideos(videos, py, pm);
+  const prevMonthViews = snapshotBased || estimateBased;
 
   return {
     title: sn.title || "채널",
@@ -444,10 +560,11 @@ function summarizeChannel(ch, videos) {
     url: `https://www.youtube.com/channel/${ch.id}`,
     prevMonth: {
       ym: prevLabel,
-      shorts: { count: shortUploads.length, views: prevShortViews, items: shortUploads },
-      longs: { count: longUploads.length, views: prevLongViews, items: longUploads },
-      totalViews: prevShortViews + prevLongViews
-    }
+      shorts: { count: shortUploads.length, views: prevShortViewsUploads, items: shortUploads },
+      longs: { count: longUploads.length, views: prevLongViewsUploads, items: longUploads },
+      totalViews: prevShortViewsUploads + prevLongViewsUploads
+    },
+    prevMonthViews
   };
 }
 
@@ -563,42 +680,76 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
     );
     const pm = summary.prevMonth;
     const win = nextPayoutWindowKST();
+    const pv = summary.prevMonthViews;
     eb.addFields(
-      { name: "전월 업로드 분류", value: [`대상 월: **${pm.ym} (KST)**`,`롱폼: **${fmtNum(pm.longs.count)}개**, 조회 **${fmtNum(pm.longs.views)}**`,`쇼츠: **${fmtNum(pm.shorts.count)}개**, 조회 **${fmtNum(pm.shorts.views)}**`,`합계 조회수: **${fmtNum(pm.totalViews)}**`].join("\n") },
-      { name: "지급 예정 안내", value: `다음 지급 예정: **${win.start} ~ ${win.end} (KST)**` }
+      { name: "전월 업로드 분류", value: [`대상 월: **${pm.ym} (KST)**`,`롱폼: **${fmtNum(pm.longs.count)}개**, 조회 **${fmtNum(pm.longs.views)}**`,`쇼츠: **${fmtNum(pm.shorts.count)}개**, 조회 **${fmtNum(pm.shorts.views)}**`,`합계 조회수(업로드 기준): **${fmtNum(pm.totalViews)}**`].join("\n") },
+      { name: "전월 채널 조회수(전체)", value: [`대상 월: **${pv ? pm.ym : pm.ym} (KST)**`,`총합: **${fmtNum(pv?.totalViews || 0)}**`,`롱폼(추정): **${fmtNum(pv?.longViews || 0)}**`,`쇼츠(추정): **${fmtNum(pv?.shortViews || 0)}**`,`근거: **${pv?.method || "정보 부족"}**`].join("\n") },
+      { name: "지급 예정 안내", value: `다음 지급 예정: **${win.start} ~ ${win.end} (KST)**` },
+      { name: "성장 잠재력", value: `지표: **${growth.pct}%** • ${growth.note}` }
     );
     return { embeds: [eb], files: [] };
   }
 
   const revenuePage = 1;
   if (pageIndex === revenuePage) {
-    const pm = summary.prevMonth;
-    const rpmLong = Math.max(RPM_LONG_MIN, Math.min(DEFAULT_RPM_LONG, RPM_LONG_MAX));
-    const rpmShort = Math.max(RPM_SHORT_MIN, Math.min(DEFAULT_RPM_SHORT, RPM_SHORT_MAX));
-    const revLong = estimateRevenueKRW(pm.longs.views, rpmLong);
-    const revShort = estimateRevenueKRW(pm.shorts.views, rpmShort);
-    const revTotal = revLong + revShort;
-    eb.setColor(0x00B894).setTitle("전월 업로드 기준 수익 추정");
+    const pmv = summary.prevMonthViews || { totalViews: 0, longViews: 0, shortViews: 0, method: "정보 부족" };
+    const rpmLongMid = Math.max(RPM_LONG_MIN, Math.min(DEFAULT_RPM_LONG, RPM_LONG_MAX));
+    const rpmShortMid = Math.max(RPM_SHORT_MIN, Math.min(DEFAULT_RPM_SHORT, RPM_SHORT_MAX));
+    const eligible = ELIGIBLE_VIEW_PCT / 100;
+    const shortMusicDeduct = 1 - (SHORTS_MUSIC_DEDUCTION_PCT / 100);
+    const premiumTop = PREMIUM_TOPUP_PCT / 100;
+
+    const longEligible = Math.round(pmv.longViews * eligible);
+    const shortEligible = Math.round(pmv.shortViews * eligible);
+
+    const revLongMid = estimateRevenueKRW(longEligible, rpmLongMid);
+    const revShortMid = Math.round(estimateRevenueKRW(shortEligible, rpmShortMid) * shortMusicDeduct);
+    const adRevMid = revLongMid + revShortMid;
+    const premiumMid = Math.round(adRevMid * premiumTop);
+    const totalMid = adRevMid + premiumMid;
+
+    const revLongMin = estimateRevenueKRW(longEligible, RPM_LONG_MIN);
+    const revShortMin = Math.round(estimateRevenueKRW(shortEligible, RPM_SHORT_MIN) * shortMusicDeduct);
+    const adRevMin = revLongMin + revShortMin;
+    const premiumMin = Math.round(adRevMin * premiumTop);
+    const totalMin = adRevMin + premiumMin;
+
+    const revLongMax = estimateRevenueKRW(longEligible, RPM_LONG_MAX);
+    const revShortMax = Math.round(estimateRevenueKRW(shortEligible, RPM_SHORT_MAX) * shortMusicDeduct);
+    const adRevMax = revLongMax + revShortMax;
+    const premiumMax = Math.round(adRevMax * premiumTop);
+    const totalMax = adRevMax + premiumMax;
+
+    eb.setColor(0x00B894).setTitle("전월 채널 전체 조회수 기준 수익 추정");
     eb.addFields(
-      { name: "대상 월(KST)", value: `**${pm.ym}**`, inline: true },
-      { name: "분류", value: "롱폼/쇼츠 분리", inline: true },
-      { name: "\u200b", value: "\u200b", inline: true }
+      { name: "대상 월(KST)", value: `**${summary.prevMonth.ym}**`, inline: true },
+      { name: "기준", value: "채널 전체 조회수", inline: true },
+      { name: "근거", value: summary.prevMonthViews?.method || "정보 부족", inline: true }
     );
     eb.addFields(
-      { name: "롱폼 조회수", value: `**${fmtNum(pm.longs.views)}**`, inline: true },
-      { name: "롱폼 RPM(₩/1000뷰)", value: `**${fmtNum(rpmLong)}**`, inline: true },
-      { name: "롱폼 예상 수익(₩)", value: `**${fmtNum(revLong)}**`, inline: true }
+      { name: "전월 채널 조회수(총)", value: `**${fmtNum(pmv.totalViews)}**`, inline: true },
+      { name: "롱폼(추정)", value: `**${fmtNum(pmv.longViews)}**`, inline: true },
+      { name: "쇼츠(추정)", value: `**${fmtNum(pmv.shortViews)}**`, inline: true }
     );
     eb.addFields(
-      { name: "쇼츠 조회수", value: `**${fmtNum(pm.shorts.views)}**`, inline: true },
-      { name: "쇼츠 RPM(₩/1000뷰)", value: `**${fmtNum(rpmShort)}**`, inline: true },
-      { name: "쇼츠 예상 수익(₩)", value: `**${fmtNum(revShort)}**`, inline: true }
+      { name: "유효 조회 반영(%)", value: `**${ELIGIBLE_VIEW_PCT}%**`, inline: true },
+      { name: "쇼츠 음악 공제(%)", value: `**${SHORTS_MUSIC_DEDUCTION_PCT}%**`, inline: true },
+      { name: "프리미엄 보정(%)", value: `**${PREMIUM_TOPUP_PCT}%**`, inline: true }
     );
     eb.addFields(
-      { name: "합계 예상 수익(₩)", value: `**${fmtNum(revTotal)}**` }
+      { name: "롱폼 RPM(₩/1000)", value: `Min **${fmtNum(RPM_LONG_MIN)}** • Mid **${fmtNum(rpmLongMid)}** • Max **${fmtNum(RPM_LONG_MAX)}**` },
+      { name: "쇼츠 RPM(₩/1000)", value: `Min **${fmtNum(RPM_SHORT_MIN)}** • Mid **${fmtNum(rpmShortMid)}** • Max **${fmtNum(RPM_SHORT_MAX)}**` }
     );
     eb.addFields(
-      { name: "가정", value: [`RPM은 환경변수로 조정 가능`,`롱폼: YT_RPM_LONG_MIN/MAX/YT_RPM_LONG`,`쇼츠: YT_RPM_SHORT_MIN/MAX/YT_RPM_SHORT`].join("\n") }
+      { name: "광고 수익(중앙값)", value: `롱폼 **${fmtNum(revLongMid)}** + 쇼츠 **${fmtNum(revShortMid)}** = **${fmtNum(adRevMid)}**` },
+      { name: "프리미엄 보정(중앙값)", value: `**${fmtNum(premiumMid)}**` },
+      { name: "합계 예상(중앙값)", value: `**${fmtNum(totalMid)}**` }
+    );
+    eb.addFields(
+      { name: "범위 추정(최소~최대)", value: `최소 **${fmtNum(totalMin)}** ~ 최대 **${fmtNum(totalMax)}**` }
+    );
+    eb.addFields(
+      { name: "환경변수", value: ["YT_RPM_LONG_MIN/MAX/YT_RPM_LONG","YT_RPM_SHORT_MIN/MAX/YT_RPM_SHORT","YT_ELIGIBLE_VIEW_PCT","YT_PREMIUM_TOPUP_PCT","YT_SHORTS_MUSIC_DEDUCTION_PCT"].join("\n") }
     );
     return { embeds: [eb], files: [] };
   }
