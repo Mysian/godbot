@@ -22,6 +22,14 @@ const RPM_KRW_PER_1K_MIN = Number(process.env.YT_RPM_KRW_MIN || 500);
 const RPM_KRW_PER_1K_MAX = Number(process.env.YT_RPM_KRW_MAX || 3000);
 const DEFAULT_RPM_KRW_PER_1K = Number(process.env.YT_RPM_KRW || 1500);
 
+const RPM_LONG_MIN = Number(process.env.YT_RPM_LONG_MIN || 800);
+const RPM_LONG_MAX = Number(process.env.YT_RPM_LONG_MAX || 6000);
+const DEFAULT_RPM_LONG = Number(process.env.YT_RPM_LONG || 2500);
+
+const RPM_SHORT_MIN = Number(process.env.YT_RPM_SHORT_MIN || 200);
+const RPM_SHORT_MAX = Number(process.env.YT_RPM_SHORT_MAX || 1800);
+const DEFAULT_RPM_SHORT = Number(process.env.YT_RPM_SHORT || 700);
+
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
   try { _fetch = require("node-fetch"); } catch {}
@@ -62,6 +70,14 @@ function parseISO8601Duration(iso) {
   parts.push(String(min).padStart(2, "0"));
   parts.push(String(s).padStart(2, "0"));
   return parts.join(":");
+}
+function isoDurToSeconds(iso) {
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || "");
+  if (!m) return 0;
+  const h = parseInt(m[1] || 0, 10);
+  const min = parseInt(m[2] || 0, 10);
+  const s = parseInt(m[3] || 0, 10);
+  return h * 3600 + min * 60 + s;
 }
 function cut(str, n) {
   if (!str) return "";
@@ -322,7 +338,6 @@ async function ytChannelUploads(channelId, key, max = 50) {
     theStatsGuard(it);
     videos.push(it);
   }
-
   videos.sort((a,b)=> new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt));
   return { channel: ch, videos };
 }
@@ -343,6 +358,36 @@ function avg(arr) {
   let s = 0;
   for (const n of arr) s += n;
   return s / arr.length;
+}
+function isShortVideo(v) {
+  const durSec = isoDurToSeconds(v.contentDetails?.duration || "");
+  const title = (v.snippet?.title || "").toLowerCase();
+  const desc = (v.snippet?.description || "").toLowerCase();
+  const tagShort = title.includes("#shorts") || desc.includes("#shorts");
+  return durSec > 0 && durSec <= 61 ? true : tagShort;
+}
+function kstParts(d = new Date()) {
+  const k = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  return { y: k.getFullYear(), m: k.getMonth() + 1, d: k.getDate() };
+}
+function prevMonthYM() {
+  const { y, m } = kstParts();
+  const pm = m === 1 ? 12 : m - 1;
+  const py = m === 1 ? y - 1 : y;
+  return { y: py, m: pm };
+}
+function ymStr(y, m) {
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+function isInYM_KST(iso, y, m) {
+  const k = new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  return k.getFullYear() === y && (k.getMonth() + 1) === m;
+}
+function nextPayoutWindowKST() {
+  const { y, m } = kstParts();
+  const s = `${y}-${String(m).padStart(2, "0")}-21`;
+  const e = `${y}-${String(m).padStart(2, "0")}-26`;
+  return { start: s, end: e };
 }
 
 function summarizeChannel(ch, videos) {
@@ -369,10 +414,17 @@ function summarizeChannel(ch, videos) {
   }
   const avgInterval = intervals.length? avg(intervals): null;
   const perWeek = avgInterval ? (7/avgInterval) : 0;
-  const last30DaysViews = videos.filter(v => daysSince(v.snippet.publishedAt) <= 30)
-    .reduce((acc, v)=> acc + Number(v.statistics?.viewCount || 0), 0);
   const lastN = videos.slice(0, 12);
   const viewsSeries = lastN.map(v => Number(v.statistics?.viewCount || 0)).reverse();
+
+  const { y: py, m: pm } = prevMonthYM();
+  const prevLabel = ymStr(py, pm);
+  const prevUploads = videos.filter(v => isInYM_KST(v.snippet?.publishedAt, py, pm));
+  const shortUploads = prevUploads.filter(isShortVideo);
+  const longUploads = prevUploads.filter(v => !isShortVideo(v));
+  const prevShortViews = shortUploads.reduce((a,v)=> a + Number(v.statistics?.viewCount || 0), 0);
+  const prevLongViews = longUploads.reduce((a,v)=> a + Number(v.statistics?.viewCount || 0), 0);
+
   return {
     title: sn.title || "채널",
     description: sn.description || "",
@@ -387,16 +439,21 @@ function summarizeChannel(ch, videos) {
     avgInterval,
     perWeek,
     uploads28: videos.filter(v => daysSince(v.snippet.publishedAt) <= 28).length,
-    last30DaysViews,
     viewsSeries,
     avatar: sn.thumbnails?.high?.url || sn.thumbnails?.default?.url,
     url: `https://www.youtube.com/channel/${ch.id}`,
+    prevMonth: {
+      ym: prevLabel,
+      shorts: { count: shortUploads.length, views: prevShortViews, items: shortUploads },
+      longs: { count: longUploads.length, views: prevLongViews, items: longUploads },
+      totalViews: prevShortViews + prevLongViews
+    }
   };
 }
 
-function estimateRevenueKRW(views, rpmPer1k = DEFAULT_RPM_KRW_PER_1K) {
+function estimateRevenueKRW(views, rpmPer1k) {
   const vv = Math.max(0, Number(views) || 0);
-  const rpm = Math.max(RPM_KRW_PER_1K_MIN, Math.min(rpmPer1k, RPM_KRW_PER_1K_MAX));
+  const rpm = Math.max(200, Math.min(Number(rpmPer1k || 0), 20000)) || 0;
   return Math.round((vv / 1000) * rpm);
 }
 
@@ -502,22 +559,46 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
     const growth = computeGrowthPotential({ subs: summary.subs || 0, viewsSeries: summary.viewsSeries, uploadPerWeek: summary.perWeek });
     eb.addFields(
       { name: "기본 지표", value: [`구독자: **${subsTxt}**`,`총 조회수: **${fmtNum(summary.totalViews)}**`,`총 영상 수: **${fmtNum(summary.totalVideos)}**`,`개설일: **${toKST(summary.created)} (KST)**`].join("\n") },
-      { name: "최근 30개 영상 요약", value: [`평균 조회수: **${fmtNum(summary.avgViews)}**`,`중앙값 조회수: **${fmtNum(summary.medViews)}**`,`평균 일일조회(영상별): **${fmtNum(summary.avgVpd)}**`,`업로드 빈도(추정): **${cadence}**`,`최근 28일 업로드 수: **${fmtNum(summary.uploads28)}**`].join("\n") },
-      { name: "채널의 성장 가능성", value: `**${growth.pct}%** · ${growth.note}` }
+      { name: "최근 30개 영상 요약", value: [`평균 조회수: **${fmtNum(summary.avgViews)}**`,`중앙값 조회수: **${fmtNum(summary.medViews)}**`,`평균 일일조회(영상별): **${fmtNum(summary.avgVpd)}**`,`업로드 빈도(추정): **${cadence}**`,`최근 28일 업로드 수: **${fmtNum(summary.uploads28)}**`].join("\n") }
+    );
+    const pm = summary.prevMonth;
+    const win = nextPayoutWindowKST();
+    eb.addFields(
+      { name: "전월 업로드 분류", value: [`대상 월: **${pm.ym} (KST)**`,`롱폼: **${fmtNum(pm.longs.count)}개**, 조회 **${fmtNum(pm.longs.views)}**`,`쇼츠: **${fmtNum(pm.shorts.count)}개**, 조회 **${fmtNum(pm.shorts.views)}**`,`합계 조회수: **${fmtNum(pm.totalViews)}**`].join("\n") },
+      { name: "지급 예정 안내", value: `다음 지급 예정: **${win.start} ~ ${win.end} (KST)**` }
     );
     return { embeds: [eb], files: [] };
   }
 
   const revenuePage = 1;
   if (pageIndex === revenuePage) {
-    const monthly = estimateRevenueKRW(summary.last30DaysViews, rpmKRW);
-    const lastNAvg = Math.round(avg(videos.slice(0,12).map(v => Number(v.statistics?.viewCount||0))));
-    const perVideo = estimateRevenueKRW(lastNAvg, rpmKRW);
-    eb.setColor(0x00B894).setTitle("수익 추정");
+    const pm = summary.prevMonth;
+    const rpmLong = Math.max(RPM_LONG_MIN, Math.min(DEFAULT_RPM_LONG, RPM_LONG_MAX));
+    const rpmShort = Math.max(RPM_SHORT_MIN, Math.min(DEFAULT_RPM_SHORT, RPM_SHORT_MAX));
+    const revLong = estimateRevenueKRW(pm.longs.views, rpmLong);
+    const revShort = estimateRevenueKRW(pm.shorts.views, rpmShort);
+    const revTotal = revLong + revShort;
+    eb.setColor(0x00B894).setTitle("전월 업로드 기준 수익 추정");
     eb.addFields(
-      { name: "한달 예상 수익(₩)", value: `**${fmtNum(monthly)}**`, inline: true },
-      { name: "영상 1개당 예상 수익(₩)", value: `**${fmtNum(perVideo)}**`, inline: true },
-      { name: "전제", value: `RPM(₩/1,000뷰): **${fmtNum(rpmKRW)}**\n최근 30일 조회수: **${fmtNum(summary.last30DaysViews)}**\n최근 12개 평균 조회: **${fmtNum(lastNAvg)}**` }
+      { name: "대상 월(KST)", value: `**${pm.ym}**`, inline: true },
+      { name: "분류", value: "롱폼/쇼츠 분리", inline: true },
+      { name: "\u200b", value: "\u200b", inline: true }
+    );
+    eb.addFields(
+      { name: "롱폼 조회수", value: `**${fmtNum(pm.longs.views)}**`, inline: true },
+      { name: "롱폼 RPM(₩/1000뷰)", value: `**${fmtNum(rpmLong)}**`, inline: true },
+      { name: "롱폼 예상 수익(₩)", value: `**${fmtNum(revLong)}**`, inline: true }
+    );
+    eb.addFields(
+      { name: "쇼츠 조회수", value: `**${fmtNum(pm.shorts.views)}**`, inline: true },
+      { name: "쇼츠 RPM(₩/1000뷰)", value: `**${fmtNum(rpmShort)}**`, inline: true },
+      { name: "쇼츠 예상 수익(₩)", value: `**${fmtNum(revShort)}**`, inline: true }
+    );
+    eb.addFields(
+      { name: "합계 예상 수익(₩)", value: `**${fmtNum(revTotal)}**` }
+    );
+    eb.addFields(
+      { name: "가정", value: [`RPM은 환경변수로 조정 가능`,`롱폼: YT_RPM_LONG_MIN/MAX/YT_RPM_LONG`,`쇼츠: YT_RPM_SHORT_MIN/MAX/YT_RPM_SHORT`].join("\n") }
     );
     return { embeds: [eb], files: [] };
   }
@@ -537,9 +618,10 @@ function buildChannelPage(ch, summary, videos, pageIndex, totalPages, rpmKRW, gr
       const lk = v.statistics?.likeCount ? fmtNum(v.statistics.likeCount) : "비공개";
       const when = toKST(v.snippet?.publishedAt);
       const dura = parseISO8601Duration(v.contentDetails?.duration);
+      const kind = isShortVideo(v) ? "쇼츠" : "롱폼";
       const u = `https://www.youtube.com/watch?v=${v.id}`;
       eb.addFields({
-        name: `${idx}. ${t}`,
+        name: `${idx}. ${t} • ${kind}`,
         value: `${when} • ${dura}\n조회 ${vc} · 좋아요 ${lk}\n${u}`,
       });
     }
@@ -616,31 +698,19 @@ async function handleSearch(interaction, query, key) {
   });
 }
 
-async function resolveChannelId(input, key) {
-  if (!input) return null;
-  if (/^UC[A-Za-z0-9_-]{22}$/.test(input.trim())) return input.trim();
-  const parsed = extractChannelFromInput(input);
-  if (parsed?.id) {
-    if (/^UC[A-Za-z0-9_-]{22}$/.test(parsed.id)) return parsed.id;
+async function handleView(interaction, input, key) {
+  await interaction.deferReply({ ephemeral: true });
+  const vid = extractVideoId(input) || input;
+  if (!vid || !/^[A-Za-z0-9_\-]{11}$/.test(vid)) {
+    return interaction.editReply({ content: "영상 링크 또는 ID를 확인해줘." });
   }
-  if (parsed?.viaVideo) {
-    const vi = await ytVideoInfo(parsed.viaVideo, key);
-    const cid = vi?.video?.snippet?.channelId || null;
-    if (cid) return cid;
-  }
-  if (parsed?.query) {
-    const q = normalizeChannelQuery(parsed.query);
-    const cid = await ytFindChannelByName(q, key);
-    if (cid) return cid;
-  }
-  const fallback = await ytFindChannelByName(input, key);
-  return fallback || null;
-}
-
-function buildChannelPageSet(ch, summary, vids, rpmKRW, graphAttachment) {
-  const videosPages = Math.ceil(Math.max(0, vids.length) / 10);
-  const totalPages = 2 + videosPages;
-  return { totalPages, rpmKRW, graphAttachment, summary, vids, ch };
+  let more = null;
+  try { more = await ytVideoInfo(vid, key); } catch (e) { return interaction.editReply({ content: `조회 중 오류가 발생했어.\n오류: ${String(e.message || e)}` }); }
+  if (!more) return interaction.editReply({ content: "영상을 찾을 수 없어." });
+  const { embed, url } = buildEmbedForVideo(more.video, more.channel, more.recentComment, null, null);
+  const { playerMsg } = await respondWithPlayable(interaction, { contentUrl: url, embed, components: [] });
+  try { await interaction.editReply({ embeds: [embed] }); } catch {}
+  return playerMsg;
 }
 
 async function handleChannelAnalyze(interaction, input, key) {
@@ -707,6 +777,33 @@ async function handleChannelAnalyze(interaction, input, key) {
       await interaction.editReply({ components: [rowD] });
     } catch {}
   });
+}
+
+function buildChannelPageSet(ch, summary, vids, rpmKRW, graphAttachment) {
+  const videosPages = Math.ceil(Math.max(0, vids.length) / 10);
+  const totalPages = 2 + videosPages;
+  return { totalPages, rpmKRW, graphAttachment, summary, vids, ch };
+}
+
+async function resolveChannelId(input, key) {
+  if (!input) return null;
+  if (/^UC[A-Za-z0-9_-]{22}$/.test(input.trim())) return input.trim();
+  const parsed = extractChannelFromInput(input);
+  if (parsed?.id) {
+    if (/^UC[A-Za-z0-9_-]{22}$/.test(parsed.id)) return parsed.id;
+  }
+  if (parsed?.viaVideo) {
+    const vi = await ytVideoInfo(parsed.viaVideo, key);
+    const cid = vi?.video?.snippet?.channelId || null;
+    if (cid) return cid;
+  }
+  if (parsed?.query) {
+    const q = normalizeChannelQuery(parsed.query);
+    const cid = await ytFindChannelByName(q, key);
+    if (cid) return cid;
+  }
+  const fallback = await ytFindChannelByName(input, key);
+  return fallback || null;
 }
 
 module.exports = {
