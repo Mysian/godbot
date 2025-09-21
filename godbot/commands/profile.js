@@ -515,7 +515,7 @@ function buildRatingFieldValue(targetId) {
     return `• ${r.label}: ${starsFromAvg(r.avg)}`;
   });
   const head = totalRaters > 0
-    ? `총 ${totalRaters}명 참여 · 종합 ${overall.toFixed(1)}점`
+    ? `종합 ${overall.toFixed(1)}점`
     : "아직 평가가 없습니다. 첫 평가를 남겨 보세요!";
   return `${head}\n${lines.join("\n")}`;
 }
