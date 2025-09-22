@@ -13,6 +13,8 @@ const {
   ComponentType,
 } = require("discord.js");
 const { getBE, addBE } = require("../commands/be-util.js");
+const fs = require("fs");
+const path = require("path");
 
 const CATEGORY_ID = "1419593419172347995";
 const STATUS_CHANNEL_ID = "1419593845548777544";
@@ -24,6 +26,10 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 const ZERO_EMPTY_GRACE_MS = 5 * 60 * 1000;
 const COST_BE = 100000;
 
+const DATA_DIR = path.join(__dirname, "../data");
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const ROOMS_PATH = path.join(DATA_DIR, "secret-rooms.json");
+
 const passwordToRoom = new Map();
 const roomDeletionTimers = new Map();
 let statusMessageId = null;
@@ -32,6 +38,45 @@ let statusUpdating = false;
 function nowKST() {
   const d = new Date();
   return new Date(d.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+}
+
+function readRoomsFromFile() {
+  try {
+    if (!fs.existsSync(ROOMS_PATH)) return {};
+    const raw = fs.readFileSync(ROOMS_PATH, "utf8");
+    if (!raw || !raw.trim()) return {};
+    const obj = JSON.parse(raw);
+    if (typeof obj !== "object" || obj === null) return {};
+    return obj;
+  } catch {
+    return {};
+  }
+}
+
+function writeRoomsToFile() {
+  try {
+    const obj = {};
+    for (const [pw, info] of passwordToRoom.entries()) obj[pw] = info;
+    fs.writeFileSync(ROOMS_PATH, JSON.stringify(obj));
+  } catch {}
+}
+
+async function restoreRooms(client) {
+  const saved = readRoomsFromFile();
+  const keys = Object.keys(saved);
+  let changed = false;
+  for (const pw of keys) {
+    const info = saved[pw];
+    if (!info || !info.channelId) { changed = true; continue; }
+    const ch = await client.channels.fetch(info.channelId).catch(() => null);
+    if (ch && ch.type === ChannelType.GuildVoice && ch.parentId === CATEGORY_ID && typeof ch.name === "string" && ch.name.startsWith(PREFIX_EMOJI)) {
+      passwordToRoom.set(pw, info);
+      try { await evaluateRoom(ch, ch.guild); } catch {}
+    } else {
+      changed = true;
+    }
+  }
+  if (changed) writeRoomsToFile();
 }
 
 async function countExistingRooms(guild) {
@@ -155,6 +200,7 @@ async function evaluateRoom(channel, guild) {
           for (const [pw, info] of passwordToRoom.entries()) {
             if (info.channelId === fresh.id) passwordToRoom.delete(pw);
           }
+          writeRoomsToFile();
           await fresh.delete("비밀 채널: 0명 상태 5분 경과 자동 삭제");
           await updateStatus(guild);
         }
@@ -179,6 +225,7 @@ async function evaluateRoom(channel, guild) {
           for (const [pw, info] of passwordToRoom.entries()) {
             if (info.channelId === fresh.id) passwordToRoom.delete(pw);
           }
+          writeRoomsToFile();
           await fresh.delete("비밀 채널: 1인 1시간 경과 자동 삭제");
           await updateStatus(guild);
         }
@@ -220,6 +267,7 @@ async function createRoom(member, name, password) {
     reason: "비밀 채널 생성",
   });
   passwordToRoom.set(password, { channelId: room.id, ownerId: member.id, createdAt: Date.now() });
+  writeRoomsToFile();
   await updateStatus(guild);
   try {
     if (member.voice.channelId) {
@@ -238,6 +286,7 @@ async function joinRoom(member, password) {
   const channel = await member.guild.channels.fetch(info.channelId).catch(() => null);
   if (!channel || channel.type !== ChannelType.GuildVoice) {
     passwordToRoom.delete(password);
+    writeRoomsToFile();
     throw new Error("방이 존재하지 않음");
   }
   try {
@@ -295,6 +344,7 @@ async function deleteOwnedRoom(member) {
     for (const [pw, info] of passwordToRoom.entries()) {
       if (info.channelId === channel.id) passwordToRoom.delete(pw);
     }
+    writeRoomsToFile();
     const t = roomDeletionTimers.get(channel.id);
     if (t) {
       clearTimeout(t);
@@ -468,6 +518,7 @@ async function onInteractionCreate(interaction) {
         }
         passwordToRoom.delete(oldPw);
         passwordToRoom.set(newPw, owned.info);
+        writeRoomsToFile();
         await interaction.reply({ content: "비밀번호를 변경했습니다.", ephemeral: true });
         return;
       }
@@ -501,6 +552,7 @@ async function bootstrapStatus(client) {
 
 function startSecretChannels(client) {
   client.on("ready", async () => {
+    await restoreRooms(client);
     await bootstrapStatus(client);
     setInterval(async () => {
       try {
@@ -520,6 +572,7 @@ function startSecretChannels(client) {
         for (const [pw, info] of passwordToRoom.entries()) {
           if (info.channelId === ch.id) passwordToRoom.delete(pw);
         }
+        writeRoomsToFile();
         const t = roomDeletionTimers.get(ch.id);
         if (t) {
           clearTimeout(t);
