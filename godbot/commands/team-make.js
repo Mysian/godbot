@@ -31,33 +31,73 @@ function preferDisplayName(m) {
   return m.displayName || m.user?.globalName || m.user?.username || "";
 }
 
+function normalize(s) {
+  return (s || "").trim().toLowerCase();
+}
+
 function resolveMemberIdsByTokensFromPool(poolMembers, raw) {
   const tokens = splitTokens(raw);
   const ids = new Set();
+  const arr = Array.isArray(poolMembers) ? poolMembers : [...poolMembers.values()];
   for (const t of tokens) {
     if (/^\d{10,20}$/.test(t)) {
-      const has = poolMembers.find(m => m.id === t);
+      const has = arr.find(m => m.id === t);
       if (has) ids.add(t);
       continue;
     }
-    const exact = poolMembers.find(m => preferDisplayName(m) === t);
-    if (exact) {
-      ids.add(exact.id);
-      continue;
-    }
+    const exact = arr.find(m => preferDisplayName(m) === t);
+    if (exact) { ids.add(exact.id); continue; }
     const lower = t.toLowerCase();
-    const ci = poolMembers.filter(m => preferDisplayName(m).toLowerCase() === lower);
-    if (ci.length === 1) {
-      ids.add(ci[0].id);
-      continue;
-    }
-    const part = poolMembers.filter(m => preferDisplayName(m).toLowerCase().includes(lower));
-    if (part.length === 1) {
-      ids.add(part[0].id);
-      continue;
-    }
+    const ci = arr.filter(m => preferDisplayName(m).toLowerCase() === lower);
+    if (ci.length === 1) { ids.add(ci[0].id); continue; }
+    const part = arr.filter(m => preferDisplayName(m).toLowerCase().includes(lower));
+    if (part.length === 1) { ids.add(part[0].id); continue; }
   }
   return Array.from(ids);
+}
+
+async function fetchAllNonBotMembers(guild) {
+  try {
+    const col = await guild.members.fetch();
+    return [...col.values()].filter(m => !m.user.bot);
+  } catch {
+    return [];
+  }
+}
+
+function pickUniqueId(list, predicate) {
+  const hits = [];
+  for (const m of list) if (predicate(m)) hits.push(m);
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+async function resolveMemberIdsByTokensFromGuild(guild, raw, preferMembers) {
+  const tokens = splitTokens(raw);
+  const out = new Set();
+  const prefer = Array.isArray(preferMembers) ? preferMembers : [...(preferMembers?.values() || [])];
+  const all = await fetchAllNonBotMembers(guild);
+
+  for (const t of tokens) {
+    if (/^\d{10,20}$/.test(t)) {
+      try {
+        const m = await guild.members.fetch(t);
+        if (m && !m.user.bot) out.add(m.id);
+      } catch {}
+      continue;
+    }
+    const n = normalize(t);
+
+    let id =
+      pickUniqueId(prefer, m => preferDisplayName(m) === t || m.user?.username === t || m.user?.globalName === t) ||
+      pickUniqueId(prefer, m => normalize(preferDisplayName(m)) === n || normalize(m.user?.username) === n || normalize(m.user?.globalName) === n) ||
+      pickUniqueId(all, m => preferDisplayName(m) === t || m.user?.username === t || m.user?.globalName === t) ||
+      pickUniqueId(all, m => normalize(preferDisplayName(m)) === n || normalize(m.user?.username) === n || normalize(m.user?.globalName) === n) ||
+      pickUniqueId(prefer, m => normalize(preferDisplayName(m)).includes(n)) ||
+      pickUniqueId(all, m => normalize(preferDisplayName(m)).includes(n));
+
+    if (id) out.add(id);
+  }
+  return [...out];
 }
 
 function shuffle(a) {
@@ -80,7 +120,7 @@ async function nameOf(guild, userId) {
 
 function assignInitial(state) {
   const n = state.teamCount;
-  const total = state.poolMembers.map(m => m.id);
+  const total = (Array.isArray(state.poolMembers) ? state.poolMembers : [...state.poolMembers.values()]).map(m => m.id);
   const leaders = state.leaderIds.map(id => (total.includes(id) ? id : null));
   const teams = Array.from({ length: n }, () => []);
   for (let i = 0; i < n; i++) if (leaders[i]) teams[i].push(leaders[i]);
@@ -96,7 +136,7 @@ function assignInitial(state) {
 
 function assignWithLocks(state) {
   const n = state.teamCount;
-  const total = state.poolMembers.map(m => m.id);
+  const total = (Array.isArray(state.poolMembers) ? state.poolMembers : [...state.poolMembers.values()]).map(m => m.id);
   const lockSet = new Set(state.lockedIds || []);
   const teams = Array.from({ length: n }, () => []);
   const current = state.teams || Array.from({ length: n }, () => []);
@@ -248,9 +288,18 @@ function ensureSession(messageId) {
 async function refreshPoolMembers(interaction, state) {
   try {
     const ch = await interaction.guild.channels.fetch(state.voiceChannelId).catch(() => null);
+    const arr = [];
     if (ch && ch.members) {
-      state.poolMembers = ch.members.filter(m => !m.user.bot);
+      for (const m of ch.members.values()) if (!m.user.bot) arr.push(m);
     }
+    const teamIds = new Set((state.teams || []).flat());
+    for (const uid of teamIds) {
+      if (!arr.find(m => m.id === uid)) {
+        const gm = await interaction.guild.members.fetch(uid).catch(() => null);
+        if (gm && !gm.user.bot) arr.push(gm);
+      }
+    }
+    state.poolMembers = arr;
   } catch {}
 }
 
@@ -406,10 +455,17 @@ module.exports = {
         const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:add-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
         const teamNo = Math.max(1, Math.min(cur.teamCount, parseInt(sub.fields.getTextInputValue("team"), 10)));
-        const ids = resolveMemberIdsByTokensFromPool(cur.poolMembers, sub.fields.getTextInputValue("members"));
+        const ids = await resolveMemberIdsByTokensFromGuild(i.guild, sub.fields.getTextInputValue("members"), cur.poolMembers);
         for (const uid of ids) {
           for (let k = 0; k < cur.teamCount; k++) cur.teams[k] = cur.teams[k].filter(id => id !== uid);
           if (!cur.teams[teamNo - 1].includes(uid)) cur.teams[teamNo - 1].push(uid);
+          if (!(Array.isArray(cur.poolMembers) ? cur.poolMembers : [...cur.poolMembers]).find(m => m.id === uid)) {
+            const gm = await i.guild.members.fetch(uid).catch(() => null);
+            if (gm && !gm.user.bot) {
+              if (Array.isArray(cur.poolMembers)) cur.poolMembers.push(gm);
+              else cur.poolMembers = [...cur.poolMembers.values(), gm];
+            }
+          }
         }
         const { embed: em, file: f } = await renderEmbed(sub, cur);
         await sub.deferUpdate();
@@ -425,7 +481,7 @@ module.exports = {
         const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:exclude-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
         const teamNo = Math.max(1, Math.min(cur.teamCount, parseInt(sub.fields.getTextInputValue("team"), 10)));
-        const ids = resolveMemberIdsByTokensFromPool(cur.poolMembers, sub.fields.getTextInputValue("members"));
+        const ids = await resolveMemberIdsByTokensFromGuild(i.guild, sub.fields.getTextInputValue("members"), cur.poolMembers);
         cur.teams[teamNo - 1] = cur.teams[teamNo - 1].filter(id => !ids.includes(id));
         for (let iTeam = 0; iTeam < cur.teamCount; iTeam++) {
           if (ids.includes(cur.leaderIds[iTeam])) cur.leaderIds[iTeam] = null;
