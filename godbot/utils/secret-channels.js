@@ -63,14 +63,14 @@ function buildEmbed(count) {
         "비밀 채널에서의 활동은 서버 내 활동 집계 및 경험치 획득에서 제외됩니다.",
         "빈 방은 5분 뒤 자동 삭제되며, 1명만 남아 있는 경우 1시간 뒤에 자동 삭제됩니다.",
       ].join("\n")
-    )
-    .setTimestamp(nowKST());
+    );
 }
 
 function buildButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("secret_create").setLabel("비밀 채널 개설").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("secret_join").setLabel("비밀 채널 입장").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("secret_pw").setLabel("비밀번호 확인/변경").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("secret_delete").setLabel("비밀 채널 삭제").setStyle(ButtonStyle.Danger)
   );
 }
@@ -317,6 +317,24 @@ async function showJoinModal(interaction) {
   await interaction.showModal(modal);
 }
 
+async function showPwModal(interaction) {
+  const owned = await findOwnedRoom(interaction.member);
+  if (!owned) {
+    await interaction.reply({ content: "본인이 개설한 비밀 채널을 찾을 수 없습니다.", ephemeral: true });
+    return;
+  }
+  const modal = new ModalBuilder().setCustomId("secret_pw_modal").setTitle("비밀번호 확인/변경");
+  const pwInput = new TextInputBuilder()
+    .setCustomId("spw_new")
+    .setLabel("현재 비밀번호(수정 가능)")
+    .setStyle(TextInputStyle.Short)
+    .setMaxLength(MAX_PW)
+    .setRequired(true)
+    .setValue(owned.pw);
+  modal.addComponents(new ActionRowBuilder().addComponents(pwInput));
+  await interaction.showModal(modal);
+}
+
 async function onInteractionCreate(interaction) {
   try {
     if (interaction.isButton()) {
@@ -333,6 +351,10 @@ async function onInteractionCreate(interaction) {
       }
       if (interaction.customId === "secret_join") {
         await showJoinModal(interaction);
+        return;
+      }
+      if (interaction.customId === "secret_pw") {
+        await showPwModal(interaction);
         return;
       }
       if (interaction.customId === "secret_delete") {
@@ -411,6 +433,32 @@ async function onInteractionCreate(interaction) {
         } catch {
           await interaction.editReply({ content: "입장 실패." });
         }
+        return;
+      }
+      if (interaction.customId === "secret_pw_modal") {
+        const newPwRaw = interaction.fields.getTextInputValue("spw_new");
+        const newPw = typeof newPwRaw === "string" ? newPwRaw.trim() : "";
+        if (!validatePassword(newPw)) {
+          await interaction.reply({ content: "비밀번호는 4~10자로 입력해주세요.", ephemeral: true });
+          return;
+        }
+        const owned = await findOwnedRoom(interaction.member);
+        if (!owned) {
+          await interaction.reply({ content: "본인이 개설한 비밀 채널을 찾을 수 없습니다.", ephemeral: true });
+          return;
+        }
+        const oldPw = owned.pw;
+        if (newPw === oldPw) {
+          await interaction.reply({ content: `변경 없음. 현재 비밀번호: ${newPw}`, ephemeral: true });
+          return;
+        }
+        if (passwordToRoom.has(newPw)) {
+          await interaction.reply({ content: "이미 사용 중인 비밀번호입니다.", ephemeral: true });
+          return;
+        }
+        passwordToRoom.delete(oldPw);
+        passwordToRoom.set(newPw, owned.info);
+        await interaction.reply({ content: "비밀번호를 변경했습니다.", ephemeral: true });
         return;
       }
     }
