@@ -50,7 +50,7 @@ async function countExistingRooms(guild) {
 
 function buildEmbed(count) {
   return new EmbedBuilder()
-    .setTitle("비밀 채널 안내")
+    .setTitle("🔒 비밀 채널 안내")
     .setDescription(
       [
         `현재 개설 수량: [${count}/${MAX_ROOMS}]`,
