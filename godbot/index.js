@@ -526,6 +526,7 @@ if (
 
   // 2. 모달 통합 처리
   if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('secret_')) return;
     if (interaction.customId.startsWith('profile:')) return;
     let handled = false;
     for (const [key, handler] of modalHandlers.entries()) {
