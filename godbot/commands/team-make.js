@@ -2,63 +2,38 @@
 
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  EmbedBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ComponentType,
 } = require("discord.js");
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const sessions = new Map();
 
-function parseIds(input) {
-  if (!input) return [];
+function parseIds(text) {
+  if (!text) return [];
   const ids = new Set();
   const mentionRe = /<@!?(\d+)>/g;
   let m;
-  while ((m = mentionRe.exec(input)) !== null) ids.add(m[1]);
-  const tokens = input.split(/[\s,;\n]+/).map(s => s.trim()).filter(Boolean);
-  for (const t of tokens) if (/^\d{10,19}$/.test(t)) ids.add(t);
+  while ((m = mentionRe.exec(text)) !== null) ids.add(m[1]);
+  for (const tok of text.split(/[\s,;\n]+/).map(s => s.trim()).filter(Boolean)) {
+    if (/^\d{10,20}$/.test(tok)) ids.add(tok);
+  }
   return Array.from(ids);
 }
 
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
+function shuffle(a) {
+  const arr = a.slice();
+  for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return a;
-}
-
-function assignTeams(state, ignoreLocks = false) {
-  const teamCount = state.teamCount;
-  const teams = Array.from({ length: teamCount }, () => []);
-  const lockedInverse = new Map();
-  if (!ignoreLocks) {
-    for (const [uid, t] of state.locked.entries()) {
-      if (!state.pool.includes(uid)) continue;
-      if (!lockedInverse.has(t)) lockedInverse.set(t, []);
-      lockedInverse.get(t).push(uid);
-    }
-    for (let i = 0; i < teamCount; i++) {
-      const ls = lockedInverse.get(i) || [];
-      teams[i].push(...ls);
-    }
-  }
-  const lockedSet = ignoreLocks ? new Set() : new Set([...state.locked.keys()]);
-  const assignables = state.pool.filter(u => !lockedSet.has(u));
-  const order = shuffle(assignables);
-  let idx = 0;
-  for (const uid of order) {
-    teams[idx % teamCount].push(uid);
-    idx++;
-  }
-  state.teams = teams;
+  return arr;
 }
 
 async function nameOf(guild, userId) {
@@ -70,42 +45,74 @@ async function nameOf(guild, userId) {
   }
 }
 
+function findMemberByName(poolMembers, name) {
+  if (!name) return null;
+  return poolMembers.find(m => m.displayName === name || m.user?.username === name) || null;
+}
+
+function assignTwoTeams(state, { lockLeaders = false } = {}) {
+  const members = state.poolMembers.slice();
+  let team1 = [], team2 = [];
+  let rest = members.slice();
+
+  if (lockLeaders) {
+    if (state.team1LeaderId) {
+      const idx = rest.findIndex(m => m.id === state.team1LeaderId);
+      if (idx !== -1) {
+        team1.push(rest[idx]);
+        rest.splice(idx, 1);
+      }
+    }
+    if (state.team2LeaderId) {
+      const idx = rest.findIndex(m => m.id === state.team2LeaderId);
+      if (idx !== -1) {
+        team2.push(rest[idx]);
+        rest.splice(idx, 1);
+      }
+    }
+  }
+
+  rest = shuffle(rest);
+  const mid = Math.ceil(rest.length / 2);
+  team1.push(...rest.slice(0, mid));
+  team2.push(...rest.slice(mid));
+
+  state.team1 = team1.map(m => m.id);
+  state.team2 = team2.map(m => m.id);
+}
+
 async function renderEmbed(interaction, state) {
   const guild = interaction.guild;
-  const fields = [];
-  for (let i = 0; i < state.teamCount; i++) {
-    const members = state.teams[i] || [];
-    const lines = [];
-    for (const uid of members) {
-      const n = await nameOf(guild, uid);
-      const lockMark = state.locked.has(uid) ? "🔒" : "";
-      lines.push(`${lockMark}<@${uid}> (${n})`);
+  const toLines = async (ids, crownId) => {
+    const arr = [];
+    for (const uid of ids) {
+      const nm = await nameOf(guild, uid);
+      if (crownId && uid === crownId) arr.push(`👑 <@${uid}> (${nm})`);
+      else arr.push(`<@${uid}> (${nm})`);
     }
-    fields.push({
-      name: `팀 ${i + 1} (${members.length}명)`,
-      value: lines.length ? lines.join("\n") : "없음",
-      inline: false,
-    });
-  }
-  const excludedNames = [];
-  for (const uid of state.excluded) excludedNames.push(await nameOf(guild, uid));
+    return arr.length ? arr.join("\n") : "(없음)";
+  };
+  const team1Lines = await toLines(state.team1, state.team1LeaderId);
+  const team2Lines = await toLines(state.team2, state.team2LeaderId);
   const embed = new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setTitle("팀 편성 결과")
-    .setDescription(`총 ${state.pool.length}명, 팀 수 ${state.teamCount}개`)
-    .addFields(fields)
-    .setFooter({ text: excludedNames.length ? `예외: ${excludedNames.join(", ")}` : "예외 없음" });
+    .setTitle("🎲 랜덤 팀 배정 결과")
+    .setColor(0x8e44ad)
+    .addFields(
+      { name: `🟦 ${state.team1Name}`, value: team1Lines, inline: true },
+      { name: `🟥 ${state.team2Name}`, value: team2Lines, inline: true },
+      { name: "📜 규칙", value: state.rule || "까리 피플, 파뤼 피플", inline: false },
+    );
   return embed;
 }
 
 function buildButtons() {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("team-make:reroll").setLabel("🎲랜덤 재편성").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("team-make:lock-reroll").setLabel("📌고정 재편성").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("team:reroll").setLabel("🎲랜덤 재편성").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("team:lockreroll").setLabel("📌고정 재편성").setStyle(ButtonStyle.Secondary),
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("team-make:add").setLabel("➕인원 추가").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("team-make:exclude").setLabel("➖인원 제외").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("team:add").setLabel("➕인원 추가").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("team:exclude").setLabel("➖인원 제외").setStyle(ButtonStyle.Danger),
   );
   return [row1, row2];
 }
@@ -120,187 +127,216 @@ function ensureSession(messageId) {
   return s;
 }
 
-function getFieldValue(fields, keys) {
-  for (const k of keys) {
-    try {
-      const v = fields.getTextInputValue(k);
-      if (typeof v === "string") return v;
-    } catch {}
-  }
-  return "";
-}
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("팀짜기")
-    .setDescription("인원을 입력해 팀을 편성합니다.")
-    .addIntegerOption(o =>
-      o.setName("팀_개수")
-        .setDescription("2~4팀 중 선택")
-        .setMinValue(2)
-        .setMaxValue(4)
-        .setRequired(true)
-    ),
+    .setDescription("2팀 랜덤 팀짜기 (예외멤버, 팀명, 조장, 규칙 모두 가능)")
+    .addUserOption(opt => opt.setName("예외멤버1").setDescription("제외할 멤버1").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버2").setDescription("제외할 멤버2").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버3").setDescription("제외할 멤버3").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버4").setDescription("제외할 멤버4").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버5").setDescription("제외할 멤버5").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버6").setDescription("제외할 멤버6").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버7").setDescription("제외할 멤버7").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버8").setDescription("제외할 멤버8").setRequired(false))
+    .addUserOption(opt => opt.setName("예외멤버9").setDescription("제외할 멤버9").setRequired(false)),
+
   async execute(interaction) {
-    const teamCount = interaction.options.getInteger("팀_개수", true);
-    const modal = new ModalBuilder().setCustomId("team-modal").setTitle("팀짜기");
-    const inputMembers = new TextInputBuilder()
-      .setCustomId("members")
-      .setLabel("참여 인원 (멘션/ID, 공백/줄바꿈/쉼표 구분)")
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true);
-    const inputExcluded = new TextInputBuilder()
-      .setCustomId("excluded")
-      .setLabel("예외 멤버 (선택)")
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(false);
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(inputMembers),
-      new ActionRowBuilder().addComponents(inputExcluded)
-    );
-    await interaction.showModal(modal);
-    const submitted = await interaction.awaitModalSubmit({
-      filter: i => i.customId === "team-modal" && i.user.id === interaction.user.id,
-      time: 60_000,
-    }).catch(() => null);
-    if (!submitted) return;
-    const membersRaw = getFieldValue(submitted.fields, ["members", "참여", "참여인원", "participants", "참여_인원"]);
-    const excludedRaw = getFieldValue(submitted.fields, ["excluded", "예외", "제외", "exclude", "예외_멤버"]);
-    const poolAll = parseIds(membersRaw);
-    const excludedIds = new Set(parseIds(excludedRaw));
-    const pool = poolAll.filter(id => !excludedIds.has(id));
-    if (pool.length === 0) {
-      return submitted.reply({ ephemeral: true, content: "편성할 인원이 없습니다." });
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    const voiceChannel = member.voice.channel;
+    if (!voiceChannel) {
+      return await interaction.reply({ content: "먼저 음성채널에 접속한 뒤 사용하세요.", ephemeral: true });
     }
+
+    let members = voiceChannel.members.filter(m => !m.user.bot);
+    for (let i = 1; i <= 9; i++) {
+      const except = interaction.options.getUser(`예외멤버${i}`);
+      if (except) members = members.filter(m => m.id !== except.id);
+    }
+    if (members.size < 2) {
+      return await interaction.reply({ content: "참여 인원이 너무 적습니다.", ephemeral: true });
+    }
+    let memberArr = [...members.values()];
+
+    const modal = new ModalBuilder()
+      .setCustomId("team-modal")
+      .setTitle("팀짜기 옵션 입력");
+
+    const team1Input = new TextInputBuilder()
+      .setCustomId("team1name")
+      .setLabel("팀1 이름(이모지/이름)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(20);
+
+    const team2Input = new TextInputBuilder()
+      .setCustomId("team2name")
+      .setLabel("팀2 이름(이모지/이름)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(20);
+
+    const leader1Input = new TextInputBuilder()
+      .setCustomId("leader1")
+      .setLabel("1팀 조장 (닉네임 또는 디코 닉, 미입력시 없음)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(32);
+
+    const leader2Input = new TextInputBuilder()
+      .setCustomId("leader2")
+      .setLabel("2팀 조장 (닉네임 또는 디코 닉, 미입력시 없음)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(32);
+
+    const ruleInput = new TextInputBuilder()
+      .setCustomId("rule")
+      .setLabel("규칙 (미입력시: 까리 피플, 파뤼 피플)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(40);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(team1Input),
+      new ActionRowBuilder().addComponents(team2Input),
+      new ActionRowBuilder().addComponents(leader1Input),
+      new ActionRowBuilder().addComponents(leader2Input),
+      new ActionRowBuilder().addComponents(ruleInput)
+    );
+
+    await interaction.showModal(modal);
+
+    const modalSubmit = await interaction.awaitModalSubmit({
+      filter: i => i.customId === "team-modal" && i.user.id === interaction.user.id,
+      time: 60_000
+    }).catch(() => null);
+    if (!modalSubmit) return;
+
+    const team1Name = modalSubmit.fields.getTextInputValue("team1name")?.trim() || "팀1";
+    const team2Name = modalSubmit.fields.getTextInputValue("team2name")?.trim() || "팀2";
+    const leader1 = modalSubmit.fields.getTextInputValue("leader1")?.trim();
+    const leader2 = modalSubmit.fields.getTextInputValue("leader2")?.trim();
+    const rule = modalSubmit.fields.getTextInputValue("rule")?.trim() || "까리 피플, 파뤼 피플";
+
+    let team1LeaderMember = leader1 ? findMemberByName(memberArr, leader1) : null;
+    let team2LeaderMember = leader2 ? findMemberByName(memberArr, leader2) : null;
+
+    if (leader1 && !team1LeaderMember)
+      return await modalSubmit.reply({ content: `팀1 조장 닉네임 [${leader1}]과 일치하는 유저가 음성채널에 없습니다.`, ephemeral: true });
+    if (leader2 && !team2LeaderMember)
+      return await modalSubmit.reply({ content: `팀2 조장 닉네임 [${leader2}]과 일치하는 유저가 음성채널에 없습니다.`, ephemeral: true });
+    if (team1LeaderMember && team2LeaderMember && team1LeaderMember.id === team2LeaderMember.id)
+      return await modalSubmit.reply({ content: "조장은 서로 다른 사람이어야 합니다.", ephemeral: true });
+
     const state = {
       messageId: null,
-      guildId: interaction.guildId,
       channelId: interaction.channelId,
+      guildId: interaction.guildId,
       authorId: interaction.user.id,
-      teamCount,
-      pool,
-      excluded: excludedIds,
-      locked: new Map(),
-      teams: [],
+      team1Name,
+      team2Name,
+      rule,
+      team1LeaderId: team1LeaderMember?.id || null,
+      team2LeaderId: team2LeaderMember?.id || null,
+      poolMembers: memberArr,
+      team1: [],
+      team2: [],
       expiresAt: Date.now() + SESSION_TTL_MS,
     };
-    assignTeams(state, true);
+
+    assignTwoTeams(state, { lockLeaders: true });
+
     const embed = await renderEmbed(interaction, state);
     const rows = buildButtons();
-    const reply = await submitted.reply({ embeds: [embed], components: rows, fetchReply: true });
-    state.messageId = reply.id;
-    sessions.set(reply.id, state);
-    const collector = reply.createMessageComponentCollector({ componentType: ComponentType.Button, time: SESSION_TTL_MS });
+    const msg = await modalSubmit.reply({ embeds: [embed], components: rows, fetchReply: true });
+    state.messageId = msg.id;
+    sessions.set(msg.id, state);
+
+    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: SESSION_TTL_MS });
+
     collector.on("collect", async i => {
-      const cur = ensureSession(reply.id);
+      const cur = ensureSession(msg.id);
       if (!cur) return i.reply({ ephemeral: true, content: "세션이 만료되었습니다. 다시 실행해주세요." });
-      if (i.user.id !== state.authorId) return i.reply({ ephemeral: true, content: "생성자만 사용할 수 있습니다." });
-      if (i.customId === "team-make:reroll") {
-        assignTeams(cur, true);
+      if (i.user.id !== cur.authorId) return i.reply({ ephemeral: true, content: "생성자만 사용할 수 있습니다." });
+
+      if (i.customId === "team:reroll") {
+        assignTwoTeams(cur, { lockLeaders: false });
         const em = await renderEmbed(i, cur);
-        await i.update({ embeds: [em], components: buildButtons() });
-        return;
+        return i.update({ embeds: [em], components: buildButtons() });
       }
-      if (i.customId === "team-make:lock-reroll") {
-        const m = new ModalBuilder().setCustomId("team-lock").setTitle("고정 재편성");
-        const tip = new TextInputBuilder()
-          .setCustomId("locks")
-          .setLabel("형식: 팀번호: 멤버들 (예: 1: @a @b, 2: 1234567890)")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false);
-        m.addComponents(new ActionRowBuilder().addComponents(tip));
+
+      if (i.customId === "team:lockreroll") {
+        assignTwoTeams(cur, { lockLeaders: true });
+        const em = await renderEmbed(i, cur);
+        return i.update({ embeds: [em], components: buildButtons() });
+      }
+
+      if (i.customId === "team:add") {
+        const m = new ModalBuilder().setCustomId("team:add-modal").setTitle("인원 추가");
+        const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1 또는 2)").setStyle(TextInputStyle.Short).setRequired(true);
+        const mems = new TextInputBuilder().setCustomId("members").setLabel("추가할 멤버 (멘션/ID/닉)").setStyle(TextInputStyle.Paragraph).setRequired(true);
+        m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
         await i.showModal(m);
-        const sub = await i.awaitModalSubmit({
-          filter: x => x.customId === "team-lock" && x.user.id === state.authorId,
-          time: 60_000,
-        }).catch(() => null);
+        const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:add-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
-        const locksRaw = getFieldValue(sub.fields, ["locks", "lock", "고정", "고정_멤버"]);
-        cur.locked.clear();
-        const lines = locksRaw.split(/\n/).map(s => s.trim()).filter(Boolean);
-        for (const line of lines) {
-          const m2 = line.match(/^(\d+)\s*:\s*(.+)$/);
-          if (!m2) continue;
-          const tnum = Math.max(1, Math.min(cur.teamCount, parseInt(m2[1], 10))) - 1;
-          const ids = parseIds(m2[2]);
-          for (const uid of ids) if (cur.pool.includes(uid)) cur.locked.set(uid, tnum);
+        const teamNo = Math.max(1, Math.min(2, parseInt(sub.fields.getTextInputValue("team"), 10)));
+        const raw = sub.fields.getTextInputValue("members");
+        const idSet = new Set(parseIds(raw));
+        for (const token of raw.split(/[\s,;\n]+/).map(s => s.trim()).filter(Boolean)) {
+          if (!idSet.size || !/^\d{10,20}$/.test(token)) {
+            const found = findMemberByName(cur.poolMembers, token);
+            if (found) idSet.add(found.id);
+          }
         }
-        assignTeams(cur, false);
+        const ids = Array.from(idSet);
+        for (const uid of ids) {
+          if (!cur.poolMembers.find(m => m.id === uid)) continue;
+          cur.team1 = cur.team1.filter(id => id !== uid);
+          cur.team2 = cur.team2.filter(id => id !== uid);
+          if (teamNo === 1 && !cur.team1.includes(uid)) cur.team1.push(uid);
+          if (teamNo === 2 && !cur.team2.includes(uid)) cur.team2.push(uid);
+        }
         const em = await renderEmbed(sub, cur);
         await sub.reply({ embeds: [em] });
         await i.message.edit({ embeds: [em], components: buildButtons() });
         return;
       }
-      if (i.customId === "team-make:add") {
-        const m = new ModalBuilder().setCustomId("team-add").setTitle("인원 추가");
-        const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1~" + cur.teamCount + ")").setStyle(TextInputStyle.Short).setRequired(true);
-        const mems = new TextInputBuilder().setCustomId("members").setLabel("추가할 멤버 (멘션/ID)").setStyle(TextInputStyle.Paragraph).setRequired(true);
+
+      if (i.customId === "team:exclude") {
+        const m = new ModalBuilder().setCustomId("team:exclude-modal").setTitle("인원 제외");
+        const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1 또는 2)").setStyle(TextInputStyle.Short).setRequired(true);
+        const mems = new TextInputBuilder().setCustomId("members").setLabel("제외할 멤버 (멘션/ID/닉)").setStyle(TextInputStyle.Paragraph).setRequired(true);
         m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
         await i.showModal(m);
-        const sub = await i.awaitModalSubmit({
-          filter: x => x.customId === "team-add" && x.user.id === state.authorId,
-          time: 60_000,
-        }).catch(() => null);
+        const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:exclude-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
-        const t = Math.max(1, Math.min(cur.teamCount, parseInt(getFieldValue(sub.fields, ["team", "팀", "팀번호"]), 10))) - 1;
-        const ids = parseIds(getFieldValue(sub.fields, ["members", "추가", "추가_멤버"]));
-        let changed = false;
-        for (const uid of ids) {
-          if (cur.excluded.has(uid)) cur.excluded.delete(uid);
-          if (!cur.pool.includes(uid)) {
-            cur.pool.push(uid);
-            changed = true;
+        const teamNo = Math.max(1, Math.min(2, parseInt(sub.fields.getTextInputValue("team"), 10)));
+        const raw = sub.fields.getTextInputValue("members");
+        const idSet = new Set(parseIds(raw));
+        for (const token of raw.split(/[\s,;\n]+/).map(s => s.trim()).filter(Boolean)) {
+          if (!idSet.size || !/^\d{10,20}$/.test(token)) {
+            const found = findMemberByName(cur.poolMembers, token);
+            if (found) idSet.add(found.id);
           }
-          for (let k = 0; k < cur.teams.length; k++) {
-            const pos = cur.teams[k].indexOf(uid);
-            if (pos !== -1) cur.teams[k].splice(pos, 1);
-          }
-          if (!cur.teams[t]) cur.teams[t] = [];
-          if (!cur.teams[t].includes(uid)) cur.teams[t].push(uid);
         }
-        if (changed) assignTeams(cur, false);
-        const em = await renderEmbed(sub, cur);
-        await sub.reply({ embeds: [em] });
-        await i.message.edit({ embeds: [em], components: buildButtons() });
-        return;
-      }
-      if (i.customId === "team-make:exclude") {
-        const m = new ModalBuilder().setCustomId("team-exclude").setTitle("인원 제외");
-        const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1~" + cur.teamCount + ")").setStyle(TextInputStyle.Short).setRequired(true);
-        const mems = new TextInputBuilder().setCustomId("members").setLabel("제외할 멤버 (멘션/ID)").setStyle(TextInputStyle.Paragraph).setRequired(true);
-        m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
-        await i.showModal(m);
-        const sub = await i.awaitModalSubmit({
-          filter: x => x.customId === "team-exclude" && x.user.id === state.authorId,
-          time: 60_000,
-        }).catch(() => null);
-        if (!sub) return;
-        const t = Math.max(1, Math.min(cur.teamCount, parseInt(getFieldValue(sub.fields, ["team", "팀", "팀번호"]), 10))) - 1;
-        const ids = parseIds(getFieldValue(sub.fields, ["members", "제외", "제외_멤버"]));
-        for (const uid of ids) {
-          if (cur.teams[t]) {
-            const pos = cur.teams[t].indexOf(uid);
-            if (pos !== -1) cur.teams[t].splice(pos, 1);
-          }
-          cur.excluded.add(uid);
-          const ppos = cur.pool.indexOf(uid);
-          if (ppos !== -1) cur.pool.splice(ppos, 1);
-          cur.locked.delete(uid);
-        }
-        assignTeams(cur, false);
+        const ids = Array.from(idSet);
+        if (teamNo === 1) cur.team1 = cur.team1.filter(id => !ids.includes(id));
+        if (teamNo === 2) cur.team2 = cur.team2.filter(id => !ids.includes(id));
+        cur.team1LeaderId = ids.includes(cur.team1LeaderId) ? null : cur.team1LeaderId;
+        cur.team2LeaderId = ids.includes(cur.team2LeaderId) ? null : cur.team2LeaderId;
         const em = await renderEmbed(sub, cur);
         await sub.reply({ embeds: [em] });
         await i.message.edit({ embeds: [em], components: buildButtons() });
         return;
       }
     });
+
     collector.on("end", async () => {
-      const cur = sessions.get(reply.id);
+      const cur = sessions.get(msg.id);
       if (!cur) return;
-      sessions.delete(reply.id);
-      try {
-        await reply.edit({ components: [] });
-      } catch {}
+      sessions.delete(msg.id);
+      try { await msg.edit({ components: [] }); } catch {}
     });
-  },
+  }
 };
