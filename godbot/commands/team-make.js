@@ -85,9 +85,9 @@ module.exports = {
 
     // 4. 모달 응답
     const modalSubmit = await interaction.awaitModalSubmit({
-      filter: i => i.user.id === interaction.user.id,
-      time: 60_000
-    }).catch(() => null);
+  filter: i => i.customId === "team-modal" && i.user.id === interaction.user.id,
+  time: 60_000
+}).catch(() => null);
     if (!modalSubmit) return;
 
     // 5. 입력값 정리
