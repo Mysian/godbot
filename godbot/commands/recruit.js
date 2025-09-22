@@ -1,18 +1,42 @@
 // commands/recruit.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 
-const DEFAULT_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1392737667514634330/----001.png?ex=68709f87&is=686f4e07&hm=1449b220ca1ebd3426465560b0ec369190f24b3c761c87cc3ba6ec6c552546ba&=&format=webp&quality=lossless";
-const CLOSED_IMG = "https://media.discordapp.net/attachments/1388728993787940914/1391814250963402832/----001_1.png?ex=686d4388&is=686bf208&hm=a4289368a5fc7aa23f57d06c66d0e9e2ff3f62dd4cb21001132f74ee0ade60ac&=&format=webp&quality=lossless";
 const 모집채널ID = "1209147973255036959";
+const CHECK_EMOJI = "✅";
 
-const CUSTOM_EMOJIS = [
-  { name: "F1_Join", id: "1361740502696726685" },
-  { name: "F2_Watching", id: "1361740471331848423" },
-  { name: "F7_Check", id: "1361740486561239161" }
-];
+function parseVoiceIdFromField(fields) {
+  const v = fields.find(f => f.name === "음성 채널")?.value || "";
+  const m = v.match(/<#(\d+)>/);
+  return m ? m[1] : null;
+}
 
-function isImageUrl(url) {
-  return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
+function getField(fields, name) {
+  return fields.find(f => f.name === name);
+}
+
+function setField(embed, name, value, inline = false) {
+  const fields = embed.data.fields || [];
+  const idx = fields.findIndex(f => f.name === name);
+  if (idx >= 0) {
+    fields[idx] = { name, value, inline };
+    embed.setFields(fields);
+  } else {
+    embed.addFields({ name, value, inline });
+  }
+}
+
+function listMentions(ids) {
+  if (!ids.size) return "없음";
+  return Array.from(ids).map(id => `<@${id}>`).join("\n");
+}
+
+function closeEmbed(embed) {
+  const prev = embed.data.description || "";
+  embed.setDescription(`[모집 종료]\n~~${prev}~~`);
+  const fields = (embed.data.fields || []).map(f => f.name === "마감까지" ? { name: "마감까지", value: "마감 종료", inline: true } : f);
+  embed.setFields(fields);
+  embed.setColor(0x8a8a8a);
+  return embed;
 }
 
 module.exports = {
@@ -53,9 +77,6 @@ module.exports = {
         .addRoleOption(o =>
           o.setName("mention_role").setDescription("알림으로 멘션할 역할 (@here/@everyone 금지)")
         )
-        .addStringOption(o =>
-          o.setName("이미지").setDescription("임베드 하단 이미지 URL (jpg/png/gif/webp/svg)")
-        )
         .addIntegerOption(o =>
           o.setName("마감시간").setDescription("유지 시간(시간 단위, 1~24)").setMinValue(1).setMaxValue(24)
         )
@@ -72,9 +93,6 @@ module.exports = {
         )
         .addIntegerOption(o =>
           o.setName("모집인원").setDescription("새 모집 인원")
-        )
-        .addStringOption(o =>
-          o.setName("이미지").setDescription("새 이미지 URL")
         )
     )
     .addSubcommand(sc =>
@@ -93,7 +111,6 @@ module.exports = {
       const count = interaction.options.getInteger("모집인원");
       const voiceId = interaction.options.getString("음성채널");
       const mentionRole = interaction.options.getRole("mention_role");
-      const imageUrl = interaction.options.getString("이미지");
       let closeHour = interaction.options.getInteger("마감시간") ?? 1;
       if (closeHour < 1) closeHour = 1;
       if (closeHour > 24) closeHour = 24;
@@ -116,30 +133,70 @@ module.exports = {
           { name: "모집 인원", value: `${count}명`, inline: true },
           ...(voiceId ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }] : []),
           { name: "모집자", value: `<@${recruiterId}>`, inline: true },
-          { name: "마감까지", value: `<t:${closeTimestamp}:R>`, inline: true }
+          { name: "마감까지", value: `<t:${closeTimestamp}:R>`, inline: true },
+          { name: "참여자", value: "없음", inline: false }
         )
         .setColor(0x57c3ff)
-        .setTimestamp()
-        .setThumbnail(interaction.user.displayAvatarURL({ size: 128, extension: "png" }))
-        .setImage(imageUrl && isImageUrl(imageUrl) ? imageUrl : DEFAULT_IMG);
+        .setTimestamp();
 
       const msgOptions = { embeds: [embed] };
       if (mentionRole) msgOptions.content = `${mentionRole}`;
       const msg = await 모집채널.send(msgOptions);
+      try { await msg.react(CHECK_EMOJI); } catch {}
 
-      for (const emoji of CUSTOM_EMOJIS) {
-        try { await msg.react(`<:${emoji.name}:${emoji.id}>`); } catch {}
-      }
+      const participants = new Set();
+      let closed = false;
+
+      const updateParticipantsField = async () => {
+        setField(embed, "참여자", listMentions(participants), false);
+        await msg.edit({ embeds: [embed] });
+      };
+
+      const closeNow = async () => {
+        if (closed) return;
+        closed = true;
+        closeEmbed(embed);
+        try { await msg.reactions.removeAll(); } catch {}
+        await msg.edit({ embeds: [embed] });
+      };
+
+      const filter = (reaction, user) => reaction.emoji.name === "✅" && !user.bot;
+      const collector = msg.createReactionCollector({ filter, time: closeMs });
+
+      collector.on("collect", async (reaction, user) => {
+        if (closed) {
+          try { await reaction.users.remove(user.id); } catch {}
+          return;
+        }
+        if (participants.has(user.id)) return;
+        if (participants.size >= count) {
+          try { await reaction.users.remove(user.id); } catch {}
+          return;
+        }
+        participants.add(user.id);
+        await updateParticipantsField();
+        const vId = voiceId || parseVoiceIdFromField(embed.data.fields || []);
+        let targetChannel = 모집채널;
+        if (vId) {
+          try {
+            const ch = await interaction.guild.channels.fetch(vId);
+            if (ch && ch.isTextBased()) targetChannel = ch;
+          } catch {}
+        }
+        try {
+          await targetChannel.send(`-# <@${user.id}> 님께서 참여 의사를 밝혔습니다.`);
+        } catch {}
+        if (participants.size >= count) {
+          closeNow();
+        }
+      });
+
+      collector.on("end", async () => {
+        await closeNow();
+      });
 
       setTimeout(async () => {
-        try {
-          embed.setDescription(`[모집 종료]\n~~${content}~~`);
-          const fields = embed.data.fields.map(f =>
-            f.name === "마감까지" ? { name: "마감까지", value: "마감 종료", inline: true } : f
-          );
-          embed.setFields(fields).setImage(CLOSED_IMG);
-          await msg.edit({ embeds: [embed] });
-        } catch {}
+        await closeNow();
       }, closeMs);
 
       return await interaction.reply({ content: "✅ 모집 글을 게시했어요!", ephemeral: true });
@@ -149,32 +206,20 @@ module.exports = {
       const msgId = interaction.options.getString("메시지id");
       const newContent = interaction.options.getString("내용");
       const newCount = interaction.options.getInteger("모집인원");
-      const newImage = interaction.options.getString("이미지");
       const 모집채널 = await interaction.guild.channels.fetch(모집채널ID);
       try {
         const msg = await 모집채널.messages.fetch(msgId);
         if (!msg) throw new Error();
         const embed = EmbedBuilder.from(msg.embeds[0]);
         if (!embed) throw new Error();
-        const recruiterId = embed.data.fields.find(f => f.name === "모집자")?.value?.replace(/[<@>]/g, "");
+        const recruiterId = getField(embed.data.fields || [], "모집자")?.value?.replace(/[<@>]/g, "");
         if (recruiterId && recruiterId !== interaction.user.id) {
           return await interaction.reply({ content: "❌ 모집글 작성자만 수정할 수 있어요.", ephemeral: true });
         }
         embed.setDescription(newContent);
-        if (newCount) {
-          embed.setFields(
-            embed.data.fields.map(f =>
-              f.name === "모집 인원" ? { name: "모집 인원", value: `${newCount}명`, inline: true } : f
-            )
-          );
+        if (typeof newCount === "number" && Number.isInteger(newCount) && newCount >= 1 && newCount <= 9) {
+          setField(embed, "모집 인원", `${newCount}명`, true);
         }
-        let imgUrl = DEFAULT_IMG;
-        if (newImage && isImageUrl(newImage)) {
-          imgUrl = newImage;
-        } else if (msg.embeds[0]?.data?.image?.url && isImageUrl(msg.embeds[0].data.image.url)) {
-          imgUrl = msg.embeds[0].data.image.url;
-        }
-        embed.setImage(imgUrl);
         await msg.edit({ embeds: [embed] });
         return await interaction.reply({ content: "✅ 모집 글을 수정했어요!", ephemeral: true });
       } catch {
@@ -190,23 +235,13 @@ module.exports = {
         if (!msg) throw new Error();
         const embed = EmbedBuilder.from(msg.embeds[0]);
         if (!embed) throw new Error();
-        const recruiterId = embed.data.fields.find(f => f.name === "모집자")?.value?.replace(/[<@>]/g, "");
+        const recruiterId = getField(embed.data.fields || [], "모집자")?.value?.replace(/[<@>]/g, "");
         if (recruiterId && recruiterId !== interaction.user.id) {
           return await interaction.reply({ content: "❌ 모집글 작성자만 종료할 수 있어요.", ephemeral: true });
         }
-        const prev = embed.data.description || "";
-        embed
-          .setDescription(`[모집 종료]\n~~${prev}~~`)
-          .setFields(
-            embed.data.fields.map(f =>
-              f.name === "마감까지" ? { name: "마감까지", value: "마감 종료", inline: true } : f
-            )
-          )
-          .setImage(CLOSED_IMG);
-        const disabledRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("disabled2").setLabel("참여 의사 밝히기").setStyle(ButtonStyle.Secondary).setDisabled(true)
-        );
-        await msg.edit({ embeds: [embed], components: [disabledRow] });
+        closeEmbed(embed);
+        try { await msg.reactions.removeAll(); } catch {}
+        await msg.edit({ embeds: [embed] });
         return await interaction.reply({ content: "✅ 모집 글을 마감했어요!", ephemeral: true });
       } catch {
         return await interaction.reply({ content: "❌ 모집글을 찾을 수 없어요. 메시지 ID를 확인해 주세요.", ephemeral: true });
