@@ -20,32 +20,38 @@ const sessions = new Map();
 function splitTokens(raw) {
   if (!raw) return [];
   return raw
-  .replace(/<@!?(\d+)>/g, (_, id) => id)
-  .split(/[\n,;]+/)
-    .map(s => s.trim())
+    .replace(/<@!?(\d+)>/g, (_, id) => id)
+    .replace(/\\n|\\r/g, "\n")
+    .split(/[\n,;]+/)
+    .map(s => s.replace(/^[•·\-–—]+\s*/g, "").replace(/^👑\s*/g, "").trim())
     .filter(Boolean);
 }
 
-function resolveMemberIdsByTokens(poolMembers, raw) {
+function preferDisplayName(m) {
+  return m.displayName || m.user?.globalName || m.user?.username || "";
+}
+
+function resolveMemberIdsByTokensFromPool(poolMembers, raw) {
   const tokens = splitTokens(raw);
   const ids = new Set();
   for (const t of tokens) {
     if (/^\d{10,20}$/.test(t)) {
-      ids.add(t);
+      const has = poolMembers.find(m => m.id === t);
+      if (has) ids.add(t);
       continue;
     }
-    const exact = poolMembers.find(m => (m.displayName || m.user?.username) === t);
+    const exact = poolMembers.find(m => preferDisplayName(m) === t);
     if (exact) {
       ids.add(exact.id);
       continue;
     }
     const lower = t.toLowerCase();
-    const ci = poolMembers.filter(m => (m.displayName || m.user?.username || "").toLowerCase() === lower);
+    const ci = poolMembers.filter(m => preferDisplayName(m).toLowerCase() === lower);
     if (ci.length === 1) {
       ids.add(ci[0].id);
       continue;
     }
-    const part = poolMembers.filter(m => (m.displayName || m.user?.username || "").toLowerCase().includes(lower));
+    const part = poolMembers.filter(m => preferDisplayName(m).toLowerCase().includes(lower));
     if (part.length === 1) {
       ids.add(part[0].id);
       continue;
@@ -66,70 +72,65 @@ function shuffle(a) {
 async function nameOf(guild, userId) {
   try {
     const m = await guild.members.fetch(userId);
-    return m.displayName || m.user.username || userId;
+    return preferDisplayName(m) || userId;
   } catch {
     return userId;
   }
 }
 
-function findMemberByName(poolMembers, name) {
-  if (!name) return null;
-  const exact = poolMembers.find(m => m.displayName === name || m.user?.username === name);
-  if (exact) return exact;
-  const lower = name.toLowerCase();
-  const ci = poolMembers.filter(m => (m.displayName || m.user?.username || "").toLowerCase() === lower);
-  if (ci.length === 1) return ci[0];
-  const part = poolMembers.filter(m => (m.displayName || m.user?.username || "").toLowerCase().includes(lower));
-  return part.length === 1 ? part[0] : null;
-}
-
-function assignTwoTeams(state) {
-  const members = state.poolMembers.map(m => m.id);
-  const rest = shuffle(members);
-  const mid = Math.ceil(rest.length / 2);
-  state.team1 = rest.slice(0, mid);
-  state.team2 = rest.slice(mid);
+function assignInitial(state) {
+  const n = state.teamCount;
+  const total = state.poolMembers.map(m => m.id);
+  const leaders = state.leaderIds.map(id => (total.includes(id) ? id : null));
+  const teams = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) if (leaders[i]) teams[i].push(leaders[i]);
+  const seeded = new Set(leaders.filter(Boolean));
+  const rest = shuffle(total.filter(id => !seeded.has(id)));
+  for (const id of rest) {
+    let minIdx = 0;
+    for (let i = 1; i < n; i++) if (teams[i].length < teams[minIdx].length) minIdx = i;
+    teams[minIdx].push(id);
+  }
+  state.teams = teams;
 }
 
 function assignWithLocks(state) {
+  const n = state.teamCount;
   const total = state.poolMembers.map(m => m.id);
   const lockSet = new Set(state.lockedIds || []);
-  const locked1 = state.team1.filter(id => lockSet.has(id));
-  const locked2 = state.team2.filter(id => lockSet.has(id));
+  const teams = Array.from({ length: n }, () => []);
+  const current = state.teams || Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) teams[i] = current[i].filter(id => lockSet.has(id));
   const others = shuffle(total.filter(id => !lockSet.has(id)));
-  const target1 = Math.ceil(total.length / 2);
-  const team1 = locked1.slice();
-  const team2 = locked2.slice();
   for (const id of others) {
-    if (team1.length < target1) team1.push(id);
-    else team2.push(id);
+    let minIdx = 0;
+    for (let i = 1; i < n; i++) if (teams[i].length < teams[minIdx].length) minIdx = i;
+    teams[minIdx].push(id);
   }
-  state.team1 = team1;
-  state.team2 = team2;
+  state.teams = teams;
 }
 
 async function renderTableImage(guild, state) {
-  const t1 = [];
-  const t2 = [];
-  for (const id of state.team1) {
-    const nm = await nameOf(guild, id);
-    const crown = id === state.team1LeaderId ? "👑 " : "• ";
-    t1.push(crown + nm);
+  const n = state.teamCount;
+  const lists = [];
+  for (let i = 0; i < n; i++) {
+    const arr = [];
+    for (const id of state.teams[i]) {
+      const nm = await nameOf(guild, id);
+      const crown = state.leaderIds[i] && id === state.leaderIds[i] ? "👑 " : "• ";
+      arr.push(crown + nm);
+    }
+    lists.push(arr);
   }
-  for (const id of state.team2) {
-    const nm = await nameOf(guild, id);
-    const crown = id === state.team2LeaderId ? "👑 " : "• ";
-    t2.push(crown + nm);
-  }
-  const rows = Math.max(t1.length, t2.length, 1);
-  const pad = 28;
-  const colW = 420;
-  const rowH = 40;
-  const headerH = 70;
-  const titleH = 64;
-  const gap = 26;
-  const w = pad * 2 + colW * 2 + gap;
-  const h = pad * 2 + titleH + headerH + rows * rowH + 24;
+  const rows = Math.max(...lists.map(a => a.length), 1);
+  const pad = 24;
+  const colW = n === 4 ? 320 : 380;
+  const rowH = 38;
+  const headerH = 64;
+  const titleH = 58;
+  const gap = 22;
+  const w = pad * 2 + colW * n + gap * (n - 1);
+  const h = pad * 2 + titleH + headerH + rows * rowH + 20;
   const canvas = createCanvas(w, h);
   const ctx = canvas.getContext("2d");
   const grd = ctx.createLinearGradient(0, 0, w, h);
@@ -138,13 +139,13 @@ async function renderTableImage(guild, state) {
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 28px sans-serif";
+  ctx.font = "bold 26px sans-serif";
   ctx.globalAlpha = 0.08;
-  ctx.fillText("KKA-RI TEAM MAKER", pad, pad + 24);
+  ctx.fillText("KKA-RI TEAM MAKER", pad, pad + 22);
   ctx.globalAlpha = 1;
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 30px sans-serif";
-  ctx.fillText("팀 배정 결과", pad, pad + 36);
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText("팀 배정 결과", pad, pad + 34);
   const yBase = pad + titleH;
   function roundRect(x, y, width, height, radius) {
     const r = Math.min(radius, width / 2, height / 2);
@@ -156,61 +157,67 @@ async function renderTableImage(guild, state) {
     ctx.arcTo(x, y, x + width, y, r);
     ctx.closePath();
   }
-  function drawColumn(x, colorTop, colorBody, title, items) {
-    roundRect(x, yBase, colW, headerH + rows * rowH + 16, 18);
+  const palettes = [
+    ["#3b82f6", "#1d4ed8"],
+    ["#ef4444", "#b91c1c"],
+    ["#22c55e", "#15803d"],
+    ["#f59e0b", "#b45309"],
+  ];
+  for (let i = 0; i < n; i++) {
+    const x = pad + i * (colW + gap);
+    roundRect(x, yBase, colW, headerH + rows * rowH + 14, 16);
     ctx.fillStyle = "rgba(255,255,255,0.06)";
     ctx.fill();
     const hdrG = ctx.createLinearGradient(x, yBase, x, yBase + headerH);
-    hdrG.addColorStop(0, colorTop);
-    hdrG.addColorStop(1, colorBody);
-    roundRect(x, yBase, colW, headerH, 18);
+    const pal = palettes[i % palettes.length];
+    hdrG.addColorStop(0, pal[0]);
+    hdrG.addColorStop(1, pal[1]);
+    roundRect(x, yBase, colW, headerH, 16);
     ctx.fillStyle = hdrG;
     ctx.fill();
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 26px sans-serif";
+    ctx.font = "bold 24px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(title, x + colW / 2, yBase + 44);
+    ctx.fillText(state.teamNames[i], x + colW / 2, yBase + 42);
     ctx.textAlign = "left";
-    let y = yBase + headerH + 12;
+    let y = yBase + headerH + 10;
     ctx.font = "20px sans-serif";
-    for (let i = 0; i < rows; i++) {
-      const text = items[i] || "";
-      const rowY = y + i * rowH;
+    for (let r = 0; r < rows; r++) {
+      const text = lists[i][r] || "";
+      const rowY = y + r * rowH;
       ctx.fillStyle = "rgba(255,255,255,0.06)";
-      roundRect(x + 12, rowY, colW - 24, rowH - 8, 10);
+      roundRect(x + 10, rowY, colW - 20, rowH - 8, 10);
       ctx.fill();
       ctx.fillStyle = "#e8e8f0";
-      ctx.fillText(text, x + 22, rowY + 26);
+      ctx.fillText(text, x + 20, rowY + 24);
     }
   }
-  drawColumn(pad, "#3b82f6", "#1d4ed8", state.team1Name, t1);
-  drawColumn(pad + colW + gap, "#ef4444", "#b91c1c", state.team2Name, t2);
   return canvas.toBuffer("image/png");
 }
 
 async function renderEmbed(interaction, state) {
   const guild = interaction.guild;
-  const toLines = async (ids, crownId) => {
+  const toLines = async (ids, leaderId) => {
     const arr = [];
     for (const uid of ids) {
       const nm = await nameOf(guild, uid);
-      if (crownId && uid === crownId) arr.push("👑 " + nm);
+      if (leaderId && uid === leaderId) arr.push("👑 " + nm);
       else arr.push("• " + nm);
     }
     return arr.length ? arr.join("\n") : "(없음)";
   };
-  const team1Lines = await toLines(state.team1, state.team1LeaderId);
-  const team2Lines = await toLines(state.team2, state.team2LeaderId);
+  const fields = [];
+  for (let i = 0; i < state.teamCount; i++) {
+    const lines = await toLines(state.teams[i] || [], state.leaderIds[i] || null);
+    const badge = ["🟦", "🟥", "🟩", "🟨"][i] || "⬜";
+    fields.push({ name: `${badge} ${state.teamNames[i]}`, value: lines, inline: true });
+  }
   const png = await renderTableImage(guild, state);
   const file = new AttachmentBuilder(png, { name: "teams.png" });
   const embed = new EmbedBuilder()
     .setTitle("🎲 팀 배정 결과")
     .setColor(0x8e44ad)
-    .addFields(
-      { name: "🟦 " + state.team1Name, value: team1Lines, inline: true },
-      { name: "🟥 " + state.team2Name, value: team2Lines, inline: true },
-      { name: "📜 규칙", value: state.rule || "까리 피플, 파뤼 피플", inline: false }
-    )
+    .addFields(...fields, { name: "📜 규칙", value: state.rule || "까리 피플, 파뤼 피플", inline: false })
     .setImage("attachment://teams.png");
   return { embed, file };
 }
@@ -234,23 +241,84 @@ function ensureSession(messageId) {
     sessions.delete(messageId);
     return null;
   }
+  s.expiresAt = Date.now() + SESSION_TTL_MS;
   return s;
+}
+
+async function refreshPoolMembers(interaction, state) {
+  try {
+    const ch = await interaction.guild.channels.fetch(state.voiceChannelId).catch(() => null);
+    if (ch && ch.members) {
+      state.poolMembers = ch.members.filter(m => !m.user.bot);
+    }
+  } catch {}
+}
+
+function parseNames(input, n) {
+  const arr = (input || "").split(/[,，]+/).map(s => s.trim()).filter(Boolean);
+  const names = [];
+  for (let i = 0; i < n; i++) names.push(arr[i] || `팀${i + 1}`);
+  return names;
+}
+
+function parseLeaders(poolMembers, input, n) {
+  const arr = (input || "").split(/[,，]+/).map(s => s.trim()).filter(Boolean);
+  const ids = [];
+  for (let i = 0; i < n; i++) {
+    const token = arr[i];
+    if (!token) { ids.push(null); continue; }
+    const matched = resolveMemberIdsByTokensFromPool(poolMembers, token);
+    ids.push(matched[0] || null);
+  }
+  return ids;
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("팀짜기")
-    .setDescription("2팀 랜덤 팀짜기 (예외멤버, 팀명, 조장, 규칙 모두 가능)")
-    .addUserOption(opt => opt.setName("예외멤버1").setDescription("제외할 멤버1").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버2").setDescription("제외할 멤버2").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버3").setDescription("제외할 멤버3").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버4").setDescription("제외할 멤버4").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버5").setDescription("제외할 멤버5").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버6").setDescription("제외할 멤버6").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버7").setDescription("제외할 멤버7").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버8").setDescription("제외할 멤버8").setRequired(false))
-    .addUserOption(opt => opt.setName("예외멤버9").setDescription("제외할 멤버9").setRequired(false)),
+    .setDescription("랜덤 팀짜기")
+    .addSubcommand(sc =>
+      sc.setName("팀2개")
+        .setDescription("2팀 랜덤 팀짜기 (예외멤버 선택 가능)")
+        .addUserOption(opt => opt.setName("예외멤버1").setDescription("제외할 멤버1").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버2").setDescription("제외할 멤버2").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버3").setDescription("제외할 멤버3").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버4").setDescription("제외할 멤버4").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버5").setDescription("제외할 멤버5").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버6").setDescription("제외할 멤버6").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버7").setDescription("제외할 멤버7").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버8").setDescription("제외할 멤버8").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버9").setDescription("제외할 멤버9").setRequired(false))
+    )
+    .addSubcommand(sc =>
+      sc.setName("팀3개")
+        .setDescription("3팀 랜덤 팀짜기 (예외멤버 선택 가능)")
+        .addUserOption(opt => opt.setName("예외멤버1").setDescription("제외할 멤버1").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버2").setDescription("제외할 멤버2").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버3").setDescription("제외할 멤버3").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버4").setDescription("제외할 멤버4").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버5").setDescription("제외할 멤버5").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버6").setDescription("제외할 멤버6").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버7").setDescription("제외할 멤버7").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버8").setDescription("제외할 멤버8").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버9").setDescription("제외할 멤버9").setRequired(false))
+    )
+    .addSubcommand(sc =>
+      sc.setName("팀4개")
+        .setDescription("4팀 랜덤 팀짜기 (예외멤버 선택 가능)")
+        .addUserOption(opt => opt.setName("예외멤버1").setDescription("제외할 멤버1").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버2").setDescription("제외할 멤버2").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버3").setDescription("제외할 멤버3").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버4").setDescription("제외할 멤버4").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버5").setDescription("제외할 멤버5").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버6").setDescription("제외할 멤버6").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버7").setDescription("제외할 멤버7").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버8").setDescription("제외할 멤버8").setRequired(false))
+        .addUserOption(opt => opt.setName("예외멤버9").setDescription("제외할 멤버9").setRequired(false))
+    ),
   async execute(interaction) {
+    const sub = interaction.options.getSubcommand();
+    const teamCount = sub === "팀4개" ? 4 : sub === "팀3개" ? 3 : 2;
     const member = await interaction.guild.members.fetch(interaction.user.id);
     const voiceChannel = member.voice.channel;
     if (!voiceChannel) {
@@ -261,21 +329,16 @@ module.exports = {
       const except = interaction.options.getUser(`예외멤버${i}`);
       if (except) members = members.filter(m => m.id !== except.id);
     }
-    if (members.size < 2) {
-      return await interaction.reply({ content: "참여 인원이 너무 적습니다.", ephemeral: true });
+    if (members.size < teamCount) {
+      return await interaction.reply({ content: "참여 인원이 팀 수보다 적습니다.", ephemeral: true });
     }
-    let memberArr = [...members.values()];
-    const modal = new ModalBuilder().setCustomId("team-modal").setTitle("팀짜기 옵션 입력");
-    const team1Input = new TextInputBuilder().setCustomId("team1name").setLabel("팀1 이름(이모지/이름)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(20);
-    const team2Input = new TextInputBuilder().setCustomId("team2name").setLabel("팀2 이름(이모지/이름)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(20);
-    const leader1Input = new TextInputBuilder().setCustomId("leader1").setLabel("1팀 조장 (닉/디코닉, 미입력시 없음)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(32);
-    const leader2Input = new TextInputBuilder().setCustomId("leader2").setLabel("2팀 조장 (닉/디코닉, 미입력시 없음)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(32);
-    const ruleInput = new TextInputBuilder().setCustomId("rule").setLabel("규칙 (미입력시: 까리 피플, 파뤼 피플)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(40);
+    const modal = new ModalBuilder().setCustomId("team-modal").setTitle(`${teamCount}팀 옵션 입력`);
+    const namesInput = new TextInputBuilder().setCustomId("names").setLabel("팀명들 (쉼표로 구분, 미입력시 자동)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(100);
+    const leadersInput = new TextInputBuilder().setCustomId("leaders").setLabel("조장들 (닉/디코닉, 쉼표로 구분, 선택)").setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(400);
+    const ruleInput = new TextInputBuilder().setCustomId("rule").setLabel("규칙 (미입력시: 까리 피플, 파뤼 피플)").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(60);
     modal.addComponents(
-      new ActionRowBuilder().addComponents(team1Input),
-      new ActionRowBuilder().addComponents(team2Input),
-      new ActionRowBuilder().addComponents(leader1Input),
-      new ActionRowBuilder().addComponents(leader2Input),
+      new ActionRowBuilder().addComponents(namesInput),
+      new ActionRowBuilder().addComponents(leadersInput),
       new ActionRowBuilder().addComponents(ruleInput)
     );
     await interaction.showModal(modal);
@@ -284,45 +347,26 @@ module.exports = {
       time: 60_000
     }).catch(() => null);
     if (!modalSubmit) return;
-    const team1Name = modalSubmit.fields.getTextInputValue("team1name")?.trim() || "팀1";
-    const team2Name = modalSubmit.fields.getTextInputValue("team2name")?.trim() || "팀2";
-    const leader1 = modalSubmit.fields.getTextInputValue("leader1")?.trim();
-    const leader2 = modalSubmit.fields.getTextInputValue("leader2")?.trim();
+    const poolMembers = [...members.values()];
+    const names = parseNames(modalSubmit.fields.getTextInputValue("names"), teamCount);
     const rule = modalSubmit.fields.getTextInputValue("rule")?.trim() || "까리 피플, 파뤼 피플";
-    let team1LeaderMember = leader1 ? findMemberByName(memberArr, leader1) : null;
-    let team2LeaderMember = leader2 ? findMemberByName(memberArr, leader2) : null;
-    if (leader1 && !team1LeaderMember) return await modalSubmit.reply({ content: `팀1 조장 닉네임 [${leader1}]과 일치하는 유저가 음성채널에 없습니다.`, ephemeral: true });
-    if (leader2 && !team2LeaderMember) return await modalSubmit.reply({ content: `팀2 조장 닉네임 [${leader2}]과 일치하는 유저가 음성채널에 없습니다.`, ephemeral: true });
-    if (team1LeaderMember && team2LeaderMember && team1LeaderMember.id === team2LeaderMember.id) return await modalSubmit.reply({ content: "조장은 서로 다른 사람이어야 합니다.", ephemeral: true });
+    const leaderIds = parseLeaders(poolMembers, modalSubmit.fields.getTextInputValue("leaders"), teamCount);
     const state = {
       messageId: null,
       channelId: interaction.channelId,
       guildId: interaction.guildId,
       authorId: interaction.user.id,
-      team1Name,
-      team2Name,
+      voiceChannelId: voiceChannel.id,
+      teamCount,
+      teamNames: names,
       rule,
-      team1LeaderId: team1LeaderMember?.id || null,
-      team2LeaderId: team2LeaderMember?.id || null,
-      poolMembers: memberArr,
-      team1: [],
-      team2: [],
+      leaderIds,
+      poolMembers,
+      teams: [],
       lockedIds: [],
       expiresAt: Date.now() + SESSION_TTL_MS
     };
-    assignTwoTeams(state);
-    if (state.team1LeaderId) {
-      if (!state.team1.includes(state.team1LeaderId)) {
-        state.team2 = state.team2.filter(id => id !== state.team1LeaderId);
-        state.team1.unshift(state.team1LeaderId);
-      }
-    }
-    if (state.team2LeaderId) {
-      if (!state.team2.includes(state.team2LeaderId)) {
-        state.team1 = state.team1.filter(id => id !== state.team2LeaderId);
-        state.team2.unshift(state.team2LeaderId);
-      }
-    }
+    assignInitial(state);
     const { embed, file } = await renderEmbed(interaction, state);
     const rows = buildButtons();
     const msg = await modalSubmit.reply({ embeds: [embed], components: rows, files: [file], fetchReply: true });
@@ -333,8 +377,9 @@ module.exports = {
       const cur = ensureSession(msg.id);
       if (!cur) return i.reply({ ephemeral: true, content: "세션이 만료되었습니다. 다시 실행해주세요." });
       if (i.user.id !== cur.authorId) return i.reply({ ephemeral: true, content: "생성자만 사용할 수 있습니다." });
+      await refreshPoolMembers(i, cur);
       if (i.customId === "team:reroll") {
-        assignTwoTeams(cur);
+        assignInitial(cur);
         const { embed: em, file: f } = await renderEmbed(i, cur);
         return i.update({ embeds: [em], components: buildButtons(), files: [f] });
       }
@@ -345,56 +390,49 @@ module.exports = {
         await i.showModal(m);
         const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:lock-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
-        const raw = sub.fields.getTextInputValue("members") || "";
-        const ids = resolveMemberIdsByTokens(cur.poolMembers, raw);
-        cur.lockedIds = ids;
+        cur.lockedIds = resolveMemberIdsByTokensFromPool(cur.poolMembers, sub.fields.getTextInputValue("members") || "");
         assignWithLocks(cur);
         const { embed: em, file: f } = await renderEmbed(sub, cur);
-        await sub.reply({ embeds: [em], files: [f] });
+        await sub.deferUpdate();
         await i.message.edit({ embeds: [em], components: buildButtons(), files: [f] });
         return;
       }
       if (i.customId === "team:add") {
         const m = new ModalBuilder().setCustomId("team:add-modal").setTitle("인원 추가");
-        const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1 또는 2)").setStyle(TextInputStyle.Short).setRequired(true);
+        const tnum = new TextInputBuilder().setCustomId("team").setLabel(`팀 번호 (1~${cur.teamCount})`).setStyle(TextInputStyle.Short).setRequired(true);
         const mems = new TextInputBuilder().setCustomId("members").setLabel("추가할 멤버 (닉/멘션/ID, 쉼표 또는 줄바꿈)").setStyle(TextInputStyle.Paragraph).setRequired(true);
         m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
         await i.showModal(m);
         const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:add-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
-        const teamNo = Math.max(1, Math.min(2, parseInt(sub.fields.getTextInputValue("team"), 10)));
-        const raw = sub.fields.getTextInputValue("members");
-        const ids = resolveMemberIdsByTokens(cur.poolMembers, raw);
+        const teamNo = Math.max(1, Math.min(cur.teamCount, parseInt(sub.fields.getTextInputValue("team"), 10)));
+        const ids = resolveMemberIdsByTokensFromPool(cur.poolMembers, sub.fields.getTextInputValue("members"));
         for (const uid of ids) {
-          if (!cur.poolMembers.find(m => m.id === uid)) continue;
-          cur.team1 = cur.team1.filter(id => id !== uid);
-          cur.team2 = cur.team2.filter(id => id !== uid);
-          if (teamNo === 1 && !cur.team1.includes(uid)) cur.team1.push(uid);
-          if (teamNo === 2 && !cur.team2.includes(uid)) cur.team2.push(uid);
+          for (let k = 0; k < cur.teamCount; k++) cur.teams[k] = cur.teams[k].filter(id => id !== uid);
+          if (!cur.teams[teamNo - 1].includes(uid)) cur.teams[teamNo - 1].push(uid);
         }
         const { embed: em, file: f } = await renderEmbed(sub, cur);
-        await sub.reply({ embeds: [em], files: [f] });
+        await sub.deferUpdate();
         await i.message.edit({ embeds: [em], components: buildButtons(), files: [f] });
         return;
       }
       if (i.customId === "team:exclude") {
         const m = new ModalBuilder().setCustomId("team:exclude-modal").setTitle("인원 제외");
-        const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1 또는 2)").setStyle(TextInputStyle.Short).setRequired(true);
+        const tnum = new TextInputBuilder().setCustomId("team").setLabel(`팀 번호 (1~${cur.teamCount})`).setStyle(TextInputStyle.Short).setRequired(true);
         const mems = new TextInputBuilder().setCustomId("members").setLabel("제외할 멤버 (닉/멘션/ID, 쉼표 또는 줄바꿈)").setStyle(TextInputStyle.Paragraph).setRequired(true);
         m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
         await i.showModal(m);
         const sub = await i.awaitModalSubmit({ filter: x => x.customId === "team:exclude-modal" && x.user.id === cur.authorId, time: 60_000 }).catch(() => null);
         if (!sub) return;
-        const teamNo = Math.max(1, Math.min(2, parseInt(sub.fields.getTextInputValue("team"), 10)));
-        const raw = sub.fields.getTextInputValue("members");
-        const ids = resolveMemberIdsByTokens(cur.poolMembers, raw);
-        if (teamNo === 1) cur.team1 = cur.team1.filter(id => !ids.includes(id));
-        if (teamNo === 2) cur.team2 = cur.team2.filter(id => !ids.includes(id));
-        if (ids.includes(cur.team1LeaderId)) cur.team1LeaderId = null;
-        if (ids.includes(cur.team2LeaderId)) cur.team2LeaderId = null;
+        const teamNo = Math.max(1, Math.min(cur.teamCount, parseInt(sub.fields.getTextInputValue("team"), 10)));
+        const ids = resolveMemberIdsByTokensFromPool(cur.poolMembers, sub.fields.getTextInputValue("members"));
+        cur.teams[teamNo - 1] = cur.teams[teamNo - 1].filter(id => !ids.includes(id));
+        for (let iTeam = 0; iTeam < cur.teamCount; iTeam++) {
+          if (ids.includes(cur.leaderIds[iTeam])) cur.leaderIds[iTeam] = null;
+        }
         cur.lockedIds = (cur.lockedIds || []).filter(id => !ids.includes(id));
         const { embed: em, file: f } = await renderEmbed(sub, cur);
-        await sub.reply({ embeds: [em], files: [f] });
+        await sub.deferUpdate();
         await i.message.edit({ embeds: [em], components: buildButtons(), files: [f] });
         return;
       }
