@@ -161,11 +161,22 @@ module.exports = {
       };
 
       const postParticipationNotice = async (userId) => {
+        let boldName = null;
+        try {
+          const mem = await interaction.guild.members.fetch(userId);
+          boldName = `**${mem?.displayName || mem?.user?.username || "이용자"}**`;
+        } catch {
+          const u = await interaction.client.users.fetch(userId).catch(() => null);
+          boldName = `**${u?.username || "이용자"}**`;
+        }
+        const recruiterMention = `<@${recruiterId}>`;
+        const line = `-# ${recruiterMention} 님, ${boldName}님이 모집 글에 참여 의사를 밝혔습니다.`;
+
         if (voiceId) {
           try {
             const ch = await interaction.guild.channels.fetch(voiceId);
             if (ch && ch.isTextBased()) {
-              await ch.send(`-# <@${userId}> 님께서 참여 의사를 밝혔습니다.`);
+              await ch.send(line);
             }
           } catch {}
           return;
@@ -177,7 +188,7 @@ module.exports = {
           if (vc.members?.size <= 0) return;
           const ch = await interaction.guild.channels.fetch(vc.id);
           if (ch && ch.isTextBased()) {
-            await ch.send(`-# <@${userId}> 님께서 참여 의사를 밝혔습니다.`);
+            await ch.send(line);
           }
         } catch {}
       };
