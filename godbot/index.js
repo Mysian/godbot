@@ -524,33 +524,39 @@ if (
 }
 
 
-  // 2. 모달 통합 처리
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId === 'team-modal') return;
-    if (interaction.customId.startsWith('secret_')) return;
-    if (interaction.customId.startsWith('profile:')) return;
-    let handled = false;
-    for (const [key, handler] of modalHandlers.entries()) {
-      if (interaction.customId.startsWith(key)) {
-        try {
-          await handler(interaction);
-        } catch (err) {
-          console.error(err);
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: "❣️ 처리 중 오류", ephemeral: true }).catch(() => {});
-          }
-        }
-        handled = true;
-        break;
-      }
-    }
-    if (!handled) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
-      }
-    }
+// 2. 모달 통합 처리
+if (interaction.isModalSubmit()) {
+  if (
+    interaction.customId === 'team-modal' ||
+    interaction.customId.startsWith('team:') || 
+    interaction.customId.startsWith('secret_') ||
+    interaction.customId.startsWith('profile:')
+  ) {
     return;
   }
+
+  let handled = false;
+  for (const [key, handler] of modalHandlers.entries()) {
+    if (interaction.customId.startsWith(key)) {
+      try {
+        await handler(interaction);
+      } catch (err) {
+        console.error(err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❣️ 처리 중 오류", ephemeral: true }).catch(() => {});
+        }
+      }
+      handled = true;
+      break;
+    }
+  }
+  if (!handled) {
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
 
   // 3. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
