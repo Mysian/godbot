@@ -20,8 +20,8 @@ const sessions = new Map();
 function splitTokens(raw) {
   if (!raw) return [];
   return raw
-    .replace(/<@!?(\\d+)>/g, (_, id) => id)
-    .split(/[\\n,;]+/)
+  .replace(/<@!?(\d+)>/g, (_, id) => id)
+  .split(/[\n,;]+/)
     .map(s => s.trim())
     .filter(Boolean);
 }
@@ -30,7 +30,7 @@ function resolveMemberIdsByTokens(poolMembers, raw) {
   const tokens = splitTokens(raw);
   const ids = new Set();
   for (const t of tokens) {
-    if (/^\\d{10,20}$/.test(t)) {
+    if (/^\d{10,20}$/.test(t)) {
       ids.add(t);
       continue;
     }
@@ -197,7 +197,7 @@ async function renderEmbed(interaction, state) {
       if (crownId && uid === crownId) arr.push("👑 " + nm);
       else arr.push("• " + nm);
     }
-    return arr.length ? arr.join("\\n") : "(없음)";
+    return arr.length ? arr.join("\n") : "(없음)";
   };
   const team1Lines = await toLines(state.team1, state.team1LeaderId);
   const team2Lines = await toLines(state.team2, state.team2LeaderId);
