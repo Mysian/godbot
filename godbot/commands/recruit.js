@@ -160,6 +160,28 @@ module.exports = {
         await msg.edit({ embeds: [embed] });
       };
 
+      const postParticipationNotice = async (userId) => {
+        if (voiceId) {
+          try {
+            const ch = await interaction.guild.channels.fetch(voiceId);
+            if (ch && ch.isTextBased()) {
+              await ch.send(`-# <@${userId}> 님께서 참여 의사를 밝혔습니다.`);
+            }
+          } catch {}
+          return;
+        }
+        try {
+          const member = await interaction.guild.members.fetch(recruiterId);
+          const vc = member?.voice?.channel;
+          if (!vc) return;
+          if (vc.members?.size <= 0) return;
+          const ch = await interaction.guild.channels.fetch(vc.id);
+          if (ch && ch.isTextBased()) {
+            await ch.send(`-# <@${userId}> 님께서 참여 의사를 밝혔습니다.`);
+          }
+        } catch {}
+      };
+
       const filter = (reaction, user) => reaction.emoji.name === "✅" && !user.bot;
       const collector = msg.createReactionCollector({ filter, time: closeMs });
 
@@ -175,17 +197,7 @@ module.exports = {
         }
         participants.add(user.id);
         await updateParticipantsField();
-        const vId = voiceId || parseVoiceIdFromField(embed.data.fields || []);
-        let targetChannel = 모집채널;
-        if (vId) {
-          try {
-            const ch = await interaction.guild.channels.fetch(vId);
-            if (ch && ch.isTextBased()) targetChannel = ch;
-          } catch {}
-        }
-        try {
-          await targetChannel.send(`-# <@${user.id}> 님께서 참여 의사를 밝혔습니다.`);
-        } catch {}
+        await postParticipationNotice(user.id);
         if (participants.size >= count) {
           closeNow();
         }
