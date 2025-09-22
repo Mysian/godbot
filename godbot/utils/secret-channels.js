@@ -248,9 +248,15 @@ async function joinRoom(member, password) {
       Stream: true,
     });
   } catch {}
-  await member.voice.setChannel(channel.id, "비밀 채널 비밀번호 입장");
+  let moved = false;
+  if (member.voice && member.voice.channelId) {
+    try {
+      await member.voice.setChannel(channel.id, "비밀 채널 비밀번호 입장");
+      moved = true;
+    } catch {}
+  }
   await evaluateRoom(channel, member.guild);
-  return channel;
+  return { channel, moved };
 }
 
 function getRoomInfoByChannelId(chId) {
@@ -427,8 +433,12 @@ async function onInteractionCreate(interaction) {
         }
         try {
           await interaction.deferReply({ ephemeral: true });
-          const ch = await joinRoom(interaction.member, pw);
-          await interaction.editReply({ content: "입장 완료." });
+          const { channel: ch, moved } = await joinRoom(interaction.member, pw);
+          if (moved) {
+            await interaction.editReply({ content: "입장 완료." });
+          } else {
+            await interaction.editReply({ content: "해당되는 비밀 채널을 찾았습니다. 비밀 채널 카테고리에서 확인하세요" });
+          }
           await evaluateRoom(ch, interaction.guild);
         } catch {
           await interaction.editReply({ content: "입장 실패." });
