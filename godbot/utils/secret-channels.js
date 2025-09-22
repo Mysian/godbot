@@ -20,6 +20,7 @@ const MAX_ROOMS = 10;
 const MIN_PW = 4;
 const MAX_PW = 10;
 const ONE_HOUR_MS = 60 * 60 * 1000;
+const ZERO_EMPTY_GRACE_MS = 5 * 60 * 1000;
 
 const passwordToRoom = new Map();
 const roomDeletionTimers = new Map();
@@ -128,30 +129,22 @@ function normalizeName(name) {
 async function evaluateRoom(channel, guild) {
   if (!channel || channel.type !== ChannelType.GuildVoice || channel.parentId !== CATEGORY_ID) return;
   if (!channel.name.startsWith(PREFIX_EMOJI)) return;
+
   const count = channel.members.size;
+
+  // 공통: 기존 타이머 정리 헬퍼
+  const clearTimer = () => {
+    const t = roomDeletionTimers.get(channel.id);
+    if (t) {
+      clearTimeout(t);
+      roomDeletionTimers.delete(channel.id);
+    }
+  };
+
   if (count === 0) {
-    try {
-      for (const [pw, info] of passwordToRoom.entries()) {
-        if (info.channelId === channel.id) passwordToRoom.delete(pw);
-      }
-    } catch {}
-    try {
-      const t = roomDeletionTimers.get(channel.id);
-      if (t) {
-        clearTimeout(t);
-        roomDeletionTimers.delete(channel.id);
-      }
-    } catch {}
-    try {
-      await channel.delete("비밀 채널: 빈 방 즉시 삭제");
-    } catch {}
-    try {
-      await updateStatus(guild);
-    } catch {}
-    return;
-  }
-  if (count === 1) {
-    if (roomDeletionTimers.has(channel.id)) return;
+    // 0명: 즉시 삭제하지 않고 5분 그레이스 타이머 설정
+    // 기존 타이머가 있으면 새로 세팅(리셋)
+    clearTimer();
     const timer = setTimeout(async () => {
       try {
         const fresh = await guild.channels.fetch(channel.id).catch(() => null);
@@ -159,9 +152,37 @@ async function evaluateRoom(channel, guild) {
           roomDeletionTimers.delete(channel.id);
           return;
         }
+        // 5분 후에도 여전히 0명이면 삭제
+        if (fresh.members.size === 0) {
+          // 비번 매핑 제거
+          for (const [pw, info] of passwordToRoom.entries()) {
+            if (info.channelId === fresh.id) passwordToRoom.delete(pw);
+          }
+          await fresh.delete("비밀 채널: 0명 상태 5분 경과 자동 삭제");
+          await updateStatus(guild);
+        }
+      } catch {} finally {
+        roomDeletionTimers.delete(channel.id);
+      }
+    }, ZERO_EMPTY_GRACE_MS);
+    roomDeletionTimers.set(channel.id, timer);
+    return;
+  }
+
+  if (count === 1) {
+    // 1명: 1시간 타이머(0명용 타이머가 있었다면 교체)
+    clearTimer();
+    const timer = setTimeout(async () => {
+      try {
+        const fresh = await guild.channels.fetch(channel.id).catch(() => null);
+        if (!fresh) {
+          roomDeletionTimers.delete(channel.id);
+          return;
+        }
+        // 1시간 후에도 1명 이하라면 삭제
         if (fresh.members.size <= 1) {
           for (const [pw, info] of passwordToRoom.entries()) {
-            if (info.channelId === channel.id) passwordToRoom.delete(pw);
+            if (info.channelId === fresh.id) passwordToRoom.delete(pw);
           }
           await fresh.delete("비밀 채널: 1인 1시간 경과 자동 삭제");
           await updateStatus(guild);
@@ -173,14 +194,11 @@ async function evaluateRoom(channel, guild) {
     roomDeletionTimers.set(channel.id, timer);
     return;
   }
-  if (count > 1) {
-    const t = roomDeletionTimers.get(channel.id);
-    if (t) {
-      clearTimeout(t);
-      roomDeletionTimers.delete(channel.id);
-    }
-  }
+
+  // 2명 이상: 삭제 타이머 모두 취소
+  clearTimer();
 }
+
 
 async function ensureCanCreate(member) {
   const vc = member.voice.channel;
