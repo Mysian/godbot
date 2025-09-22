@@ -55,10 +55,11 @@ function buildEmbed(count) {
     .setDescription(
       [
         `현재 개설 수량: [${count}/${MAX_ROOMS}]`,
+        "개설 시 🔹100,000 정수가 소모됩니다.",
         "비밀 채널은 비밀번호로만 입장할 수 있는 비공개 음성채널입니다.",
         "비밀 채널은 존재 자체가 보이지 않습니다.",
         "비밀 채널에서의 활동은 서버 내 활동 집계 및 경험치 획득에서 제외됩니다.",
-        "빈 방은 즉시 삭제되며, 1명만 남아 있는 경우 1시간 뒤에 자동 삭제됩니다.",
+        "빈 방은 5분 뒤 자동 삭제되며, 1명만 남아 있는 경우 1시간 뒤에 자동 삭제됩니다.",
       ].join("\n")
     )
     .setTimestamp(nowKST());
@@ -80,11 +81,9 @@ async function getOrCreateStatusMessage(channel, embed) {
   }
   const messages = await channel.messages.fetch({ limit: 50 });
   const existing = messages.find(
-    (m) =>
-      m.author.id === channel.client.user.id &&
-      m.embeds &&
-      m.embeds[0] &&
-      m.embeds[0].title === "비밀 채널 안내"
+  (m) =>
+    m.author.id === channel.client.user.id &&
+    m.embeds?.[0]?.title?.includes("비밀 채널 안내")
   );
   if (existing) {
     statusMessageId = existing.id;
