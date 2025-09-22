@@ -21,7 +21,7 @@ function parseIds(input) {
   const mentionRe = /<@!?(\d+)>/g;
   let m;
   while ((m = mentionRe.exec(input)) !== null) ids.add(m[1]);
-  const tokens = input.split(/[\s,;]/).map(s => s.trim()).filter(Boolean);
+  const tokens = input.split(/[\s,;\n]+/).map(s => s.trim()).filter(Boolean);
   for (const t of tokens) if (/^\d{10,19}$/.test(t)) ids.add(t);
   return Array.from(ids);
 }
@@ -88,9 +88,7 @@ async function renderEmbed(interaction, state) {
     });
   }
   const excludedNames = [];
-  for (const uid of state.excluded) {
-    excludedNames.push(await nameOf(guild, uid));
-  }
+  for (const uid of state.excluded) excludedNames.push(await nameOf(guild, uid));
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle("팀 편성 결과")
@@ -122,6 +120,16 @@ function ensureSession(messageId) {
   return s;
 }
 
+function getFieldValue(fields, keys) {
+  for (const k of keys) {
+    try {
+      const v = fields.getTextInputValue(k);
+      if (typeof v === "string") return v;
+    } catch {}
+  }
+  return "";
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("팀짜기")
@@ -135,10 +143,10 @@ module.exports = {
     ),
   async execute(interaction) {
     const teamCount = interaction.options.getInteger("팀_개수", true);
-    const modal = new ModalBuilder().setCustomId("team-make:setup").setTitle("팀짜기 설정");
+    const modal = new ModalBuilder().setCustomId("team-modal").setTitle("팀짜기");
     const inputMembers = new TextInputBuilder()
       .setCustomId("members")
-      .setLabel("참여 인원 (멘션 또는 ID, 공백/줄바꿈/쉼표 구분)")
+      .setLabel("참여 인원 (멘션/ID, 공백/줄바꿈/쉼표 구분)")
       .setStyle(TextInputStyle.Paragraph)
       .setRequired(true);
     const inputExcluded = new TextInputBuilder()
@@ -152,12 +160,12 @@ module.exports = {
     );
     await interaction.showModal(modal);
     const submitted = await interaction.awaitModalSubmit({
-      filter: i => i.customId === "team-make:setup" && i.user.id === interaction.user.id,
+      filter: i => i.customId === "team-modal" && i.user.id === interaction.user.id,
       time: 60_000,
     }).catch(() => null);
     if (!submitted) return;
-    const membersRaw = submitted.fields.getTextInputValue("members");
-    const excludedRaw = submitted.fields.getTextInputValue("excluded") || "";
+    const membersRaw = getFieldValue(submitted.fields, ["members", "참여", "참여인원", "participants", "참여_인원"]);
+    const excludedRaw = getFieldValue(submitted.fields, ["excluded", "예외", "제외", "exclude", "예외_멤버"]);
     const poolAll = parseIds(membersRaw);
     const excludedIds = new Set(parseIds(excludedRaw));
     const pool = poolAll.filter(id => !excludedIds.has(id));
@@ -194,7 +202,7 @@ module.exports = {
         return;
       }
       if (i.customId === "team-make:lock-reroll") {
-        const m = new ModalBuilder().setCustomId("team-make:lock").setTitle("고정 멤버 지정");
+        const m = new ModalBuilder().setCustomId("team-lock").setTitle("고정 재편성");
         const tip = new TextInputBuilder()
           .setCustomId("locks")
           .setLabel("형식: 팀번호: 멤버들 (예: 1: @a @b, 2: 1234567890)")
@@ -203,11 +211,11 @@ module.exports = {
         m.addComponents(new ActionRowBuilder().addComponents(tip));
         await i.showModal(m);
         const sub = await i.awaitModalSubmit({
-          filter: x => x.customId === "team-make:lock" && x.user.id === state.authorId,
+          filter: x => x.customId === "team-lock" && x.user.id === state.authorId,
           time: 60_000,
         }).catch(() => null);
         if (!sub) return;
-        const locksRaw = sub.fields.getTextInputValue("locks") || "";
+        const locksRaw = getFieldValue(sub.fields, ["locks", "lock", "고정", "고정_멤버"]);
         cur.locked.clear();
         const lines = locksRaw.split(/\n/).map(s => s.trim()).filter(Boolean);
         for (const line of lines) {
@@ -224,18 +232,18 @@ module.exports = {
         return;
       }
       if (i.customId === "team-make:add") {
-        const m = new ModalBuilder().setCustomId("team-make:add-modal").setTitle("인원 추가");
+        const m = new ModalBuilder().setCustomId("team-add").setTitle("인원 추가");
         const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1~" + cur.teamCount + ")").setStyle(TextInputStyle.Short).setRequired(true);
         const mems = new TextInputBuilder().setCustomId("members").setLabel("추가할 멤버 (멘션/ID)").setStyle(TextInputStyle.Paragraph).setRequired(true);
         m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
         await i.showModal(m);
         const sub = await i.awaitModalSubmit({
-          filter: x => x.customId === "team-make:add-modal" && x.user.id === state.authorId,
+          filter: x => x.customId === "team-add" && x.user.id === state.authorId,
           time: 60_000,
         }).catch(() => null);
         if (!sub) return;
-        const t = Math.max(1, Math.min(cur.teamCount, parseInt(sub.fields.getTextInputValue("team"), 10))) - 1;
-        const ids = parseIds(sub.fields.getTextInputValue("members"));
+        const t = Math.max(1, Math.min(cur.teamCount, parseInt(getFieldValue(sub.fields, ["team", "팀", "팀번호"]), 10))) - 1;
+        const ids = parseIds(getFieldValue(sub.fields, ["members", "추가", "추가_멤버"]));
         let changed = false;
         for (const uid of ids) {
           if (cur.excluded.has(uid)) cur.excluded.delete(uid);
@@ -257,18 +265,18 @@ module.exports = {
         return;
       }
       if (i.customId === "team-make:exclude") {
-        const m = new ModalBuilder().setCustomId("team-make:exclude-modal").setTitle("인원 제외");
+        const m = new ModalBuilder().setCustomId("team-exclude").setTitle("인원 제외");
         const tnum = new TextInputBuilder().setCustomId("team").setLabel("팀 번호 (1~" + cur.teamCount + ")").setStyle(TextInputStyle.Short).setRequired(true);
         const mems = new TextInputBuilder().setCustomId("members").setLabel("제외할 멤버 (멘션/ID)").setStyle(TextInputStyle.Paragraph).setRequired(true);
         m.addComponents(new ActionRowBuilder().addComponents(tnum), new ActionRowBuilder().addComponents(mems));
         await i.showModal(m);
         const sub = await i.awaitModalSubmit({
-          filter: x => x.customId === "team-make:exclude-modal" && x.user.id === state.authorId,
+          filter: x => x.customId === "team-exclude" && x.user.id === state.authorId,
           time: 60_000,
         }).catch(() => null);
         if (!sub) return;
-        const t = Math.max(1, Math.min(cur.teamCount, parseInt(sub.fields.getTextInputValue("team"), 10))) - 1;
-        const ids = parseIds(sub.fields.getTextInputValue("members"));
+        const t = Math.max(1, Math.min(cur.teamCount, parseInt(getFieldValue(sub.fields, ["team", "팀", "팀번호"]), 10))) - 1;
+        const ids = parseIds(getFieldValue(sub.fields, ["members", "제외", "제외_멤버"]));
         for (const uid of ids) {
           if (cur.teams[t]) {
             const pos = cur.teams[t].indexOf(uid);
