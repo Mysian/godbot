@@ -12,6 +12,7 @@ const {
   TextInputStyle,
   ComponentType,
 } = require("discord.js");
+const { getBE, addBE } = require("../commands/be-util.js");
 
 const CATEGORY_ID = "1419593419172347995";
 const STATUS_CHANNEL_ID = "1419593845548777544";
@@ -21,6 +22,7 @@ const MIN_PW = 4;
 const MAX_PW = 10;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const ZERO_EMPTY_GRACE_MS = 5 * 60 * 1000;
+const COST_BE = 100000;
 
 const passwordToRoom = new Map();
 const roomDeletionTimers = new Map();
@@ -68,7 +70,8 @@ function buildEmbed(count) {
 function buildButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("secret_create").setLabel("비밀 채널 개설").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("secret_join").setLabel("비밀 채널 입장").setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId("secret_join").setLabel("비밀 채널 입장").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("secret_delete").setLabel("비밀 채널 삭제").setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -81,9 +84,9 @@ async function getOrCreateStatusMessage(channel, embed) {
   }
   const messages = await channel.messages.fetch({ limit: 50 });
   const existing = messages.find(
-  (m) =>
-    m.author.id === channel.client.user.id &&
-    m.embeds?.[0]?.title?.includes("비밀 채널 안내")
+    (m) =>
+      m.author.id === channel.client.user.id &&
+      m.embeds?.[0]?.title?.includes("비밀 채널 안내")
   );
   if (existing) {
     statusMessageId = existing.id;
@@ -131,7 +134,6 @@ async function evaluateRoom(channel, guild) {
 
   const count = channel.members.size;
 
-  // 공통: 기존 타이머 정리 헬퍼
   const clearTimer = () => {
     const t = roomDeletionTimers.get(channel.id);
     if (t) {
@@ -141,8 +143,6 @@ async function evaluateRoom(channel, guild) {
   };
 
   if (count === 0) {
-    // 0명: 즉시 삭제하지 않고 5분 그레이스 타이머 설정
-    // 기존 타이머가 있으면 새로 세팅(리셋)
     clearTimer();
     const timer = setTimeout(async () => {
       try {
@@ -151,9 +151,7 @@ async function evaluateRoom(channel, guild) {
           roomDeletionTimers.delete(channel.id);
           return;
         }
-        // 5분 후에도 여전히 0명이면 삭제
         if (fresh.members.size === 0) {
-          // 비번 매핑 제거
           for (const [pw, info] of passwordToRoom.entries()) {
             if (info.channelId === fresh.id) passwordToRoom.delete(pw);
           }
@@ -169,7 +167,6 @@ async function evaluateRoom(channel, guild) {
   }
 
   if (count === 1) {
-    // 1명: 1시간 타이머(0명용 타이머가 있었다면 교체)
     clearTimer();
     const timer = setTimeout(async () => {
       try {
@@ -178,7 +175,6 @@ async function evaluateRoom(channel, guild) {
           roomDeletionTimers.delete(channel.id);
           return;
         }
-        // 1시간 후에도 1명 이하라면 삭제
         if (fresh.members.size <= 1) {
           for (const [pw, info] of passwordToRoom.entries()) {
             if (info.channelId === fresh.id) passwordToRoom.delete(pw);
@@ -194,16 +190,16 @@ async function evaluateRoom(channel, guild) {
     return;
   }
 
-  // 2명 이상: 삭제 타이머 모두 취소
   clearTimer();
 }
-
 
 async function ensureCanCreate(member) {
   const vc = member.voice.channel;
   if (vc && vc.parentId === CATEGORY_ID) return { ok: false, reason: "카테고리 내 음성채널 접속 중엔 개설 불가" };
   const n = await countExistingRooms(member.guild);
   if (n >= MAX_ROOMS) return { ok: false, reason: "최대 개설 수량 도달" };
+  const balance = Number(getBE(member.id) || 0);
+  if (balance < COST_BE) return { ok: false, reason: `정수 부족(필요 ${COST_BE.toLocaleString("ko-KR")}BE, 보유 ${balance.toLocaleString("ko-KR")}BE)` };
   return { ok: true };
 }
 
@@ -257,6 +253,55 @@ async function joinRoom(member, password) {
   return channel;
 }
 
+function getRoomInfoByChannelId(chId) {
+  for (const [pw, info] of passwordToRoom.entries()) {
+    if (info.channelId === chId) return { pw, info };
+  }
+  return null;
+}
+
+async function findOwnedRoom(member) {
+  const vc = member.voice.channel;
+  if (vc && vc.parentId === CATEGORY_ID && vc.type === ChannelType.GuildVoice && vc.name.startsWith(PREFIX_EMOJI)) {
+    const found = getRoomInfoByChannelId(vc.id);
+    if (found && found.info.ownerId === member.id) {
+      const ch = await member.guild.channels.fetch(vc.id).catch(() => null);
+      if (ch) return { channel: ch, pw: found.pw, info: found.info };
+    }
+  }
+  let candidate = null;
+  for (const [pw, info] of passwordToRoom.entries()) {
+    if (info.ownerId !== member.id) continue;
+    const ch = await member.guild.channels.fetch(info.channelId).catch(() => null);
+    if (!ch || ch.type !== ChannelType.GuildVoice || ch.parentId !== CATEGORY_ID) continue;
+    if (!candidate || (info.createdAt || 0) > (candidate.info.createdAt || 0)) {
+      candidate = { channel: ch, pw, info };
+    }
+  }
+  return candidate;
+}
+
+async function deleteOwnedRoom(member) {
+  const item = await findOwnedRoom(member);
+  if (!item) return { ok: false, reason: "본인이 개설한 비밀 채널을 찾을 수 없습니다." };
+  const { channel } = item;
+  try {
+    for (const [pw, info] of passwordToRoom.entries()) {
+      if (info.channelId === channel.id) passwordToRoom.delete(pw);
+    }
+    const t = roomDeletionTimers.get(channel.id);
+    if (t) {
+      clearTimeout(t);
+    }
+    roomDeletionTimers.delete(channel.id);
+    await channel.delete("비밀 채널 삭제(개설자 요청)");
+    await updateStatus(member.guild);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "삭제 중 오류가 발생했습니다." };
+  }
+}
+
 async function showCreateModal(interaction) {
   const modal = new ModalBuilder().setCustomId("secret_create_modal").setTitle("비밀 채널 개설");
   const nameInput = new TextInputBuilder().setCustomId("sc_name").setLabel("채널명").setStyle(TextInputStyle.Short).setMaxLength(80).setRequired(true);
@@ -290,6 +335,16 @@ async function onInteractionCreate(interaction) {
         await showJoinModal(interaction);
         return;
       }
+      if (interaction.customId === "secret_delete") {
+        await interaction.deferReply({ ephemeral: true });
+        const res = await deleteOwnedRoom(interaction.member);
+        if (!res.ok) {
+          await interaction.editReply({ content: `삭제 불가: ${res.reason}` });
+        } else {
+          await interaction.editReply({ content: "비밀 채널을 삭제했습니다." });
+        }
+        return;
+      }
     }
     if (interaction.isModalSubmit()) {
       if (interaction.customId === "secret_create_modal") {
@@ -320,10 +375,23 @@ async function onInteractionCreate(interaction) {
         }
         try {
           await interaction.deferReply({ ephemeral: true });
+          const balance = Number(getBE(interaction.member.id) || 0);
+          if (balance < COST_BE) {
+            await interaction.editReply({ content: `정수가 부족합니다. (필요 ${COST_BE.toLocaleString("ko-KR")}BE, 보유 ${balance.toLocaleString("ko-KR")}BE)` });
+            return;
+          }
           const room = await createRoom(interaction.member, name, pw);
-          await interaction.editReply({ content: "비밀 채널이 개설되었습니다." });
+          try {
+            await addBE(interaction.member.id, -COST_BE, "비밀 채널 개설");
+          } catch {
+            try { await room.delete("정수 차감 실패로 개설 취소"); } catch {}
+            await updateStatus(interaction.guild);
+            await interaction.editReply({ content: "정수 차감 중 오류가 발생하여 개설이 취소되었습니다." });
+            return;
+          }
+          await interaction.editReply({ content: "비밀 채널이 개설되었습니다. (100,000 정수 차감)" });
           await evaluateRoom(room, interaction.guild);
-        } catch (e) {
+        } catch {
           await interaction.editReply({ content: "개설 중 오류가 발생했습니다." });
         }
         return;
@@ -340,7 +408,7 @@ async function onInteractionCreate(interaction) {
           const ch = await joinRoom(interaction.member, pw);
           await interaction.editReply({ content: "입장 완료." });
           await evaluateRoom(ch, interaction.guild);
-        } catch (e) {
+        } catch {
           await interaction.editReply({ content: "입장 실패." });
         }
         return;
