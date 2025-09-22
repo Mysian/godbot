@@ -7,10 +7,11 @@ let cheerio;
 try { cheerio = require("cheerio"); } catch { throw new Error("cheerio 패키지를 설치하세요: npm i cheerio"); }
 
 const TARGET_CHANNEL_ID = process.env.DISASTER_WATCH_CHANNEL_ID || "1419724916055347211";
-const POLL_MS = Number(process.env.DISASTER_WATCH_POLL_MS || 120000);
+const POLL_MS = Number(process.env.DISASTER_WATCH_POLL_MS || 30000);
+const COOLDOWN_MS = Number(process.env.DISASTER_WATCH_COOLDOWN_MS || 60000);
 const LIST_URL = "https://www.safetydata.go.kr/disaster-data/disasterNotification?cntPerPage=20&currentPage=1";
 const DATA_DIR = path.join(__dirname, "../data");
-const SEEN_PATH = path.join(DATA_DIR, "disaster-seen.json");
+const STATE_PATH = path.join(DATA_DIR, "disaster-seen.json");
 
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
@@ -20,23 +21,31 @@ if (typeof _fetch !== "function") {
 
 function ensureDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(SEEN_PATH)) fs.writeFileSync(SEEN_PATH, "[]");
+  if (!fs.existsSync(STATE_PATH)) fs.writeFileSync(STATE_PATH, JSON.stringify({ lastSn: 0, lastSentAt: 0 }));
 }
-function loadSeen() {
+function loadState() {
+  ensureDir();
   try {
-    const raw = fs.readFileSync(SEEN_PATH, "utf8").trim();
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? new Set(arr) : new Set();
+    const raw = fs.readFileSync(STATE_PATH, "utf8").trim();
+    if (!raw) return { lastSn: 0, lastSentAt: 0 };
+    const data = JSON.parse(raw);
+    if (Array.isArray(data)) {
+      const maxSn = data.map(v => Number(v)).filter(n => Number.isFinite(n)).reduce((a, b) => Math.max(a, b), 0);
+      return { lastSn: maxSn || 0, lastSentAt: 0 };
+    }
+    return {
+      lastSn: Number(data.lastSn) || 0,
+      lastSentAt: Number(data.lastSentAt) || 0,
+    };
   } catch {
-    return new Set();
+    return { lastSn: 0, lastSentAt: 0 };
   }
 }
-function saveSeen(seenSet) {
-  try { fs.writeFileSync(SEEN_PATH, JSON.stringify([...seenSet])); } catch {}
+function saveState(state) {
+  try { fs.writeFileSync(STATE_PATH, JSON.stringify({ lastSn: state.lastSn, lastSentAt: state.lastSentAt })); } catch {}
 }
 function parseKST(dateStr) {
   try {
-    // 입력 예: 2025/09/22 21:18:14
     const [d, t] = dateStr.split(" ");
     const [yy, mm, dd] = d.split("/").map(Number);
     const [HH, MM, SS] = t.split(":").map(Number);
@@ -93,27 +102,29 @@ async function pollOnce(client) {
   if (running) return;
   running = true;
   try {
-    ensureDir();
-    const seen = loadSeen();
+    const state = loadState();
+    const nowMs = Date.now();
+
     const html = await fetchText(LIST_URL);
     const items = extractList(html);
     if (!items.length) return;
+
+    items.sort((a, b) => Number(b.sn) - Number(a.sn));
+    const newest = items.find(x => Number(x.sn) > state.lastSn);
+    if (!newest) return;
+
+    if (nowMs - state.lastSentAt < COOLDOWN_MS) return;
+
     const channelId = TARGET_CHANNEL_ID;
     const channel = client.channels?.cache?.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
     if (!channel) return;
 
-    // 최신 글부터 처리
-    items.sort((a, b) => Number(b.sn) - Number(a.sn));
-    const newOnes = items.filter(x => !seen.has(x.sn));
-    if (!newOnes.length) return;
+    const embed = buildEmbed(newest);
+    await channel.send({ embeds: [embed] }).catch(() => {});
 
-    // 최신 최대 10개까지만 한 번에 전송
-    for (const it of newOnes.slice(0, 10)) {
-      const embed = buildEmbed(it);
-      await channel.send({ embeds: [embed] }).catch(() => {});
-      seen.add(it.sn);
-    }
-    saveSeen(seen);
+    state.lastSn = Number(newest.sn);
+    state.lastSentAt = Date.now();
+    saveState(state);
   } catch {
   } finally {
     running = false;
