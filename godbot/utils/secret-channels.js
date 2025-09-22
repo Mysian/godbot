@@ -54,10 +54,10 @@ function buildEmbed(count) {
     .setDescription(
       [
         `현재 개설 수량: [${count}/${MAX_ROOMS}]`,
-        "비밀 채널은 비밀번호로만 입장할 수 있는 비공개 음성채널이야.",
-        "다른 사람에겐 채널이 아예 보이지 않아.",
-        "이 채널에서의 활동은 서버 내 활동 집계 및 경험치 획득이 제외돼.",
-        "빈 방은 즉시 삭제, 1명만 남으면 1시간 후 자동 삭제돼.",
+        "비밀 채널은 비밀번호로만 입장할 수 있는 비공개 음성채널입니다.",
+        "비밀 채널은 존재 자체가 보이지 않습니다.",
+        "비밀 채널에서의 활동은 서버 내 활동 집계 및 경험치 획득에서 제외됩니다.",
+        "빈 방은 즉시 삭제되며, 1명만 남아 있는 경우 1시간 뒤에 자동 삭제됩니다.",
       ].join("\n")
     )
     .setTimestamp(nowKST());
@@ -280,15 +280,15 @@ async function onInteractionCreate(interaction) {
         const pwRaw = interaction.fields.getTextInputValue("sc_pw");
         const pw = typeof pwRaw === "string" ? pwRaw.trim() : "";
         if (!name) {
-          await interaction.reply({ content: "채널명이 올바르지 않아.", ephemeral: true });
+          await interaction.reply({ content: "채널명이 올바르지 않습니다.", ephemeral: true });
           return;
         }
         if (!validatePassword(pw)) {
-          await interaction.reply({ content: "비밀번호는 4~10자로 입력해줘.", ephemeral: true });
+          await interaction.reply({ content: "비밀번호는 4~10자로 입력해주세요.", ephemeral: true });
           return;
         }
         if (passwordToRoom.has(pw)) {
-          await interaction.reply({ content: "이미 사용 중인 비밀번호야.", ephemeral: true });
+          await interaction.reply({ content: "이미 사용 중인 비밀번호입니다.", ephemeral: true });
           return;
         }
         const can = await ensureCanCreate(interaction.member);
@@ -298,16 +298,16 @@ async function onInteractionCreate(interaction) {
         }
         const currentCount = await countExistingRooms(interaction.guild);
         if (currentCount >= MAX_ROOMS) {
-          await interaction.reply({ content: "더 이상 개설할 수 없어.", ephemeral: true });
+          await interaction.reply({ content: "더 이상 개설할 수 없습니다.", ephemeral: true });
           return;
         }
         try {
           await interaction.deferReply({ ephemeral: true });
           const room = await createRoom(interaction.member, name, pw);
-          await interaction.editReply({ content: "비밀 채널이 개설됐어." });
+          await interaction.editReply({ content: "비밀 채널이 개설되었습니다." });
           await evaluateRoom(room, interaction.guild);
         } catch (e) {
-          await interaction.editReply({ content: "개설 중 오류가 발생했어." });
+          await interaction.editReply({ content: "개설 중 오류가 발생했습니다." });
         }
         return;
       }
@@ -315,7 +315,7 @@ async function onInteractionCreate(interaction) {
         const pwRaw = interaction.fields.getTextInputValue("sj_pw");
         const pw = typeof pwRaw === "string" ? pwRaw.trim() : "";
         if (!validatePassword(pw)) {
-          await interaction.reply({ content: "비밀번호가 올바르지 않아.", ephemeral: true });
+          await interaction.reply({ content: "비밀번호와 일치하는 방이 없습니다.", ephemeral: true });
           return;
         }
         try {
@@ -324,7 +324,7 @@ async function onInteractionCreate(interaction) {
           await interaction.editReply({ content: "입장 완료." });
           await evaluateRoom(ch, interaction.guild);
         } catch (e) {
-          await interaction.editReply({ content: "입장에 실패했어." });
+          await interaction.editReply({ content: "입장 실패." });
         }
         return;
       }
