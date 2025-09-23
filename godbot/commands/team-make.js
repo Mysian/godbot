@@ -355,6 +355,12 @@ function roundRectPath(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+async function tokenToDisplayName(guild, token, preferMembers) {
+  const id = await resolveOneTokenFromGuild(guild, token, preferMembers);
+  if (id) return await nameOf(guild, id);
+  return token;
+}
+
 async function renderOverwatchImage(guild, payload) {
   const pad = 28;
   const colW = 520;
@@ -550,41 +556,34 @@ module.exports = {
           time: 60_000
         }).catch(() => null);
         if (!submit) return;
-        const list1 = splitTokens(submit.fields.getTextInputValue("t1"));
-        const list2 = splitTokens(submit.fields.getTextInputValue("t2"));
-        if (list1.length < 5 || list2.length < 5) {
-          return await submit.reply({ ephemeral: true, content: "각 팀은 반드시 5명(탱1, 딜2, 힐2)을 입력해야 합니다." });
+        const raw1 = splitTokens(submit.fields.getTextInputValue("t1"));
+        const raw2 = splitTokens(submit.fields.getTextInputValue("t2"));
+        if (raw1.length < 5 || raw2.length < 5) {
+          return await submit.reply({ ephemeral: true, content: "각 팀은 최소 5개 토큰(탱1, 딜2, 힐2)을 입력해야 합니다." });
         }
         const preferMembers = await fetchAllNonBotMembers(interaction.guild);
-        async function resolveOrdered(tokens) {
-          const res = [];
-          const unresolved = [];
-          for (const tk of tokens) {
-            const id = await resolveOneTokenFromGuild(interaction.guild, tk, preferMembers);
-            if (id) res.push(id); else unresolved.push(tk);
-          }
-          return { res, unresolved };
+        async function toDisplayList(tokens) {
+          const out = [];
+          for (const tk of tokens) out.push(await tokenToDisplayName(interaction.guild, tk, preferMembers));
+          return out;
         }
-        const need1 = list1.slice(0,5);
-        const need2 = list2.slice(0,5);
-        const r1 = await resolveOrdered(need1);
-        const r2 = await resolveOrdered(need2);
-        if (r1.unresolved.length || r2.unresolved.length) {
-          const parts = [];
-          if (r1.unresolved.length) parts.push(`팀1 미매칭: ${r1.unresolved.join(", ")}`);
-          if (r2.unresolved.length) parts.push(`팀2 미매칭: ${r2.unresolved.join(", ")}`);
-          return await submit.reply({ ephemeral: true, content: parts.join(" • ") || "닉네임 매칭 실패" });
-        }
-        const t1ids = r1.res;
-        const t2ids = r2.res;
-        const t1names = [await nameOf(interaction.guild, t1ids[0]), await nameOf(interaction.guild, t1ids[1]), await nameOf(interaction.guild, t1ids[2]), await nameOf(interaction.guild, t1ids[3]), await nameOf(interaction.guild, t1ids[4])];
-        const t2names = [await nameOf(interaction.guild, t2ids[0]), await nameOf(interaction.guild, t2ids[1]), await nameOf(interaction.guild, t2ids[2]), await nameOf(interaction.guild, t2ids[3]), await nameOf(interaction.guild, t2ids[4])];
+        const t1list = await toDisplayList(raw1);
+        const t2list = await toDisplayList(raw2);
+        const t1payload = {
+          tank: [t1list[0]],
+          dps: [t1list[1], t1list[2]],
+          heal: [t1list[3], t1list[4]],
+          bench: t1list.slice(5)
+        };
+        const t2payload = {
+          tank: [t2list[0]],
+          dps: [t2list[1], t2list[2]],
+          heal: [t2list[3], t2list[4]],
+          bench: t2list.slice(5)
+        };
         const payload = {
           teamNames: [teamName1, teamName2],
-          roles: [
-            { tank: [t1names[0]], dps: [t1names[1], t1names[2]], heal: [t1names[3], t1names[4]], bench: [] },
-            { tank: [t2names[0]], dps: [t2names[1], t2names[2]], heal: [t2names[3], t2names[4]], bench: [] }
-          ]
+          roles: [t1payload, t2payload]
         };
         const { embed, file } = await renderOverwatchEmbed(submit, payload);
         return await submit.reply({ embeds: [embed], files: [file] });
