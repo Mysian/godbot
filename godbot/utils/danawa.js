@@ -3,7 +3,23 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require("discord.js");
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
-  try { _fetch = require("node-fetch"); } catch {}
+  try {
+    const { fetch: undiciFetch } = require("undici");
+    if (typeof undiciFetch === "function") _fetch = undiciFetch;
+  } catch {}
+}
+if (typeof _fetch !== "function") {
+  try {
+    const nf = require("node-fetch");
+    _fetch = (nf && (nf.default || nf));
+  } catch {}
+}
+if (typeof _fetch !== "function") {
+  _fetch = async function dynamicNodeFetch(url, init) {
+    const m = await import("node-fetch");
+    const f = m.default || m;
+    return f(url, init);
+  };
 }
 const cheerio = require("cheerio");
 
@@ -11,6 +27,7 @@ const CHANNEL_ID = "1420046318474105014";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
 const LANG = "ko-KR,ko;q=0.9";
 const SEARCH_BASE = "https://search.danawa.com/dsearch.php?query=";
+const SEARCH_BASE_M = "https://msearch.danawa.com/search.php?query=";
 const DETAIL_HOST = "https://prod.danawa.com";
 const SESS_TTL_MS = 600000;
 const MAX_ITEMS = 6;
@@ -53,11 +70,25 @@ async function safeSend(channel, payload, fallbackText){
 
 async function httpGet(url, init={}){
   const ctrl = typeof AbortController!=="undefined" ? new AbortController() : null;
-  const t = setTimeout(()=>{ try{ ctrl&&ctrl.abort(); }catch{} }, 10000);
+  const t = setTimeout(()=>{ try{ ctrl&&ctrl.abort(); }catch{} }, 12000);
   try{
-    const res = await _fetch(url, { redirect:"follow", signal: ctrl?ctrl.signal:undefined, headers:{ "user-agent": USER_AGENT, "accept-language": LANG, "referer": "https://search.danawa.com/", "cache-control": "no-cache" }, ...init });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await _fetch(url, { redirect:"follow", signal: ctrl?ctrl.signal:undefined, headers:{
+      "user-agent": USER_AGENT,
+      "accept-language": LANG,
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "cache-control": "no-cache",
+      "pragma": "no-cache",
+      "upgrade-insecure-requests": "1"
+    }, ...init });
+    if(!res.ok) {
+      const body = await res.text().catch(()=> "");
+      const msg = `HTTP ${res.status}` + (body && body.length ? ` • ${cut(body.replace(/\s+/g," "), 200)}` : "");
+      throw new Error(msg);
+    }
     const text = await res.text();
+    if (/__cf_chl_(?:t|jsl)|Cloudflare|Access Denied|Bot detection/i.test(text)) {
+      throw new Error("접근이 차단되었어(봇 차단/Cloudflare). 잠시 후 다시 시도하거나 검색어를 바꿔봐.");
+    }
     return text;
   } finally { clearTimeout(t); }
 }
@@ -87,7 +118,7 @@ function findPricesInText(text){
   return out;
 }
 
-function parseSearch(html){
+function parseSearchDesktop(html){
   const $ = cheerio.load(html);
   const anchors = $('a[href*="prod.danawa.com/info/?pcode="]');
   const seen = new Set();
@@ -104,6 +135,23 @@ function parseSearch(html){
     const listPrice = prices.length? Math.min(...prices) : NaN;
     items.push({ pcode, url: `${DETAIL_HOST}/info/?pcode=${pcode}`, title, img, listPrice });
     seen.add(pcode);
+  });
+  return items;
+}
+
+function parseSearchMobile(html){
+  const $ = cheerio.load(html);
+  const items = [];
+  $("a.prod_link, a.search_product").each((_,a)=>{
+    const href = $(a).attr("href");
+    const pcode = extractPcodelike(href);
+    if(!pcode) return;
+    const li = $(a).closest("li,div");
+    const title = cut($(a).text() || li.find(".prod_name,.name,.tit").text(), 120);
+    const img = pickImageUrl(li);
+    const prices = findPricesInText(li.text());
+    const listPrice = prices.length? Math.min(...prices) : NaN;
+    items.push({ pcode, url: `${DETAIL_HOST}/info/?pcode=${pcode}`, title, img, listPrice });
   });
   return items;
 }
@@ -135,7 +183,7 @@ async function enrichWithDetails(items, limit=3){
       const html = await httpGet(it.url);
       const d = parseDetail(html);
       out.push({ ...it, title: d.title || it.title, img: d.image || it.img, lowPrice: Number.isFinite(d.lowPrice)?d.lowPrice:it.listPrice });
-      await sleep(250);
+      await sleep(200);
     } catch(e) {
       out.push({ ...it, lowPrice: it.listPrice });
     }
@@ -192,6 +240,29 @@ function storeSession(sid, data){
   if (typeof timer.unref === "function") { try { timer.unref(); } catch {} }
 }
 
+async function parseSearchWithFallbacks(query){
+  const urlDesktop = SEARCH_BASE + encodeURIComponent(query);
+  const urlMobile = SEARCH_BASE_M + encodeURIComponent(query);
+  try{
+    const html = await httpGet(urlDesktop);
+    let items = parseSearchDesktop(html);
+    if (items.length) return { items, searchUrl: urlDesktop };
+    items = parseSearchMobile(html);
+    if (items.length) return { items, searchUrl: urlDesktop };
+  }catch(e1){
+    log("desktop search failed:", e1?.message||e1);
+  }
+  try{
+    const htmlM = await httpGet(urlMobile, { headers: { "user-agent": USER_AGENT.replace("Windows NT 10.0; Win64; x64", "iPhone; CPU iPhone OS 16_0 like Mac OS X") } });
+    const itemsM = parseSearchMobile(htmlM);
+    if (itemsM.length) return { items: itemsM, searchUrl: urlMobile };
+  }catch(e2){
+    log("mobile search failed:", e2?.message||e2);
+    throw e2;
+  }
+  return { items: [], searchUrl: urlDesktop };
+}
+
 async function handleQuery(client, channel, authorId, raw){
   const last = chanCooldown.get(channel.id)||0;
   if(now()-last<2000) return;
@@ -200,25 +271,18 @@ async function handleQuery(client, channel, authorId, raw){
   if(!query || query.length<2) return;
   await channel.sendTyping().catch(()=>{});
   const delayWarn = setTimeout(()=>{ safeSend(channel, { content: "잠깐만! 가격 데이터 가져오는 중이야…" }); }, 3000);
-  const searchUrl = SEARCH_BASE + encodeURIComponent(query);
-  let html;
+  let items, searchUrl;
   try{
-    html = await httpGet(searchUrl);
+    const res = await parseSearchWithFallbacks(query);
+    items = res.items;
+    searchUrl = res.searchUrl;
   } catch(e){
     clearTimeout(delayWarn);
-    const err = new EmbedBuilder().setColor(0xea4335).setTitle("다나와 검색 실패").setDescription("검색 페이지에 접속할 수 없었어. 잠시 후 다시 시도해줘.").setFooter({ text: String(e.message||e).slice(0,100) });
-    await safeSend(channel, { embeds:[err] }, "다나와 검색 실패. 잠시 후 다시 시도해줘.");
+    const err = new EmbedBuilder().setColor(0xea4335).setTitle("다나와 검색 실패").setDescription("검색 페이지에 접속할 수 없었어. 잠시 후 다시 시도해줘.").setFooter({ text: String(e.message||e).slice(0,150) });
+    await safeSend(channel, { embeds:[err] }, `다나와 검색 실패: ${String(e.message||e).slice(0,150)}`);
     return;
   }
-  let items = [];
-  try{
-    items = parseSearch(html);
-  }catch(e){
-    clearTimeout(delayWarn);
-    await safeSend(channel, { content: "검색 결과 파싱 중 문제가 발생했어. 잠시 후 다시 시도해줘." });
-    return;
-  }
-  if(!items.length){
+  if(!items || !items.length){
     clearTimeout(delayWarn);
     const empty = new EmbedBuilder().setColor(0xf39c12).setTitle(`결과 없음 • ${cut(query,80)}`).setURL(searchUrl).setDescription("관련 상품을 찾지 못했어. 검색어를 조금 바꿔볼래?");
     await safeSend(channel, { embeds:[empty], components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel("다나와 열기").setStyle(ButtonStyle.Link).setURL(searchUrl))] }, `결과 없음 • ${query}\n${searchUrl}`);
@@ -267,7 +331,7 @@ module.exports = function registerDanawa(client){
       if(!content.startsWith("!")) return;
       await handleQuery(client, msg.channel, msg.author.id, content);
     } catch(e) {
-      try { await safeSend(msg.channel, { content: "요청 처리 중 오류가 발생했어. 잠시 후 다시 시도해줘." }); } catch {}
+      try { await safeSend(msg.channel, { content: `요청 처리 중 오류가 발생했어: ${String(e.message||e).slice(0,150)}` }); } catch {}
       log("messageCreate error:", e?.stack||e?.message||e);
     }
   });
@@ -299,7 +363,7 @@ module.exports = function registerDanawa(client){
       storeSession(sid, sess);
     } catch(e) {
       log("interactionCreate error:", e?.stack||e?.message||e);
-      try{ if(itx.isRepliable()) await itx.reply({ content:"업데이트에 실패했어.", ephemeral:true }); }catch{}
+      try{ if(itx.isRepliable()) await itx.reply({ content:`업데이트에 실패했어: ${String(e.message||e).slice(0,120)}`, ephemeral:true }); }catch{}
     }
   });
 };
