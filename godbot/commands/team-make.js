@@ -22,7 +22,7 @@ function splitTokens(raw) {
   return raw
     .replace(/<@!?(\d+)>/g, (_, id) => id)
     .replace(/\\n|\\r/g, "\n")
-    .split(/[\n,;，、]+/)
+    .split(/[\n,;]+/)
     .map(s => s.replace(/^[•·\-–—]+\s*/g, "").replace(/^👑\s*/g, "").trim())
     .filter(Boolean);
 }
@@ -98,28 +98,6 @@ async function resolveMemberIdsByTokensFromGuild(guild, raw, preferMembers) {
     if (id) out.add(id);
   }
   return [...out];
-}
-
-async function resolveOneTokenFromGuild(guild, token, preferMembers) {
-  const prefer = Array.isArray(preferMembers) ? preferMembers : [...(preferMembers?.values() || [])];
-  const all = await fetchAllNonBotMembers(guild);
-  if (/^\d{10,20}$/.test(token)) {
-    try {
-      const m = await guild.members.fetch(token);
-      if (m && !m.user.bot) return m.id;
-    } catch {}
-    return null;
-  }
-  const t = token;
-  const n = normalize(token);
-  let id =
-    pickUniqueId(prefer, m => preferDisplayName(m) === t || m.user?.username === t || m.user?.globalName === t) ||
-    pickUniqueId(prefer, m => normalize(preferDisplayName(m)) === n || normalize(m.user?.username) === n || normalize(m.user?.globalName) === n) ||
-    pickUniqueId(all, m => preferDisplayName(m) === t || m.user?.username === t || m.user?.globalName === t) ||
-    pickUniqueId(all, m => normalize(preferDisplayName(m)) === n || normalize(m.user?.username) === n || normalize(m.user?.globalName) === n) ||
-    pickUniqueId(prefer, m => normalize(preferDisplayName(m)).includes(n)) ||
-    pickUniqueId(all, m => normalize(preferDisplayName(m)).includes(n));
-  return id || null;
 }
 
 function shuffle(a) {
@@ -344,120 +322,6 @@ function parseLeaders(poolMembers, input, n) {
   return ids;
 }
 
-function roundRectPath(ctx, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + width, y, x + width, y + height, r);
-  ctx.arcTo(x + width, y + height, x, y + height, r);
-  ctx.arcTo(x, y + height, x, y, r);
-  ctx.arcTo(x, y, x + width, y, r);
-  ctx.closePath();
-}
-
-async function tokenToDisplayName(guild, token, preferMembers) {
-  const id = await resolveOneTokenFromGuild(guild, token, preferMembers);
-  if (id) return await nameOf(guild, id);
-  return token;
-}
-
-async function renderOverwatchImage(guild, payload) {
-  const pad = 28;
-  const colW = 520;
-  const gap = 28;
-  const rows = 3;
-  const rowH = 48;
-  const headerH = 78;
-  const sectionGap = 10;
-  const teamH = headerH + rows * rowH + sectionGap * 4 + 16;
-  const w = pad * 2 + colW * 2 + gap;
-  const h = pad * 2 + teamH;
-  const canvas = createCanvas(w, h);
-  const ctx = canvas.getContext("2d");
-  const bg = ctx.createLinearGradient(0, 0, w, h);
-  bg.addColorStop(0, "#0a0f1b");
-  bg.addColorStop(1, "#121826");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 28px sans-serif";
-  ctx.fillText("KKA-RI OVERWATCH TEAM MAKER", pad, pad + 24);
-  ctx.globalAlpha = 1;
-  const teams = [0,1];
-  const palettes = [
-    ["#3b82f6", "#1e40af"],
-    ["#f59e0b", "#b45309"]
-  ];
-  const roleTitles = [["🛡️","탱커"],["⚔️","딜러"],["💉","힐러"]];
-  for (const i of teams) {
-    const x = pad + i * (colW + gap);
-    const pal = palettes[i];
-    const hdrG = ctx.createLinearGradient(x, pad, x, pad + headerH);
-    hdrG.addColorStop(0, pal[0]);
-    hdrG.addColorStop(1, pal[1]);
-    roundRectPath(ctx, x, pad, colW, teamH, 20);
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fill();
-    roundRectPath(ctx, x, pad, colW, headerH, 20);
-    ctx.fillStyle = hdrG;
-    ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 26px sans-serif";
-    ctx.fillText(payload.teamNames[i], x + colW / 2, pad + 50);
-    ctx.textAlign = "left";
-    let y = pad + headerH + sectionGap;
-    const blocks = [
-      payload.roles[i].tank.length ? payload.roles[i].tank : [],
-      payload.roles[i].dps.length ? payload.roles[i].dps : [],
-      payload.roles[i].heal.length ? payload.roles[i].heal : []
-    ];
-    for (let r = 0; r < 3; r++) {
-      const title = roleTitles[r][0] + " " + roleTitles[r][1];
-      ctx.fillStyle = "rgba(255,255,255,0.08)";
-      roundRectPath(ctx, x + 12, y, colW - 24, rowH, 12);
-      ctx.fill();
-      ctx.fillStyle = "#e7eaf3";
-      ctx.font = "bold 20px sans-serif";
-      ctx.fillText(title, x + 22, y + 32);
-      y += rowH + 8;
-      ctx.fillStyle = "rgba(255,255,255,0.06)";
-      roundRectPath(ctx, x + 12, y, colW - 24, rowH, 12);
-      ctx.fill();
-      ctx.fillStyle = "#cfd4e6";
-      ctx.font = "20px sans-serif";
-      const names = blocks[r].map(n => n).join(" • ");
-      ctx.fillText(names || "-", x + 22, y + 30);
-      y += rowH + sectionGap;
-    }
-    if ((payload.roles[i].bench || []).length) {
-      ctx.fillStyle = "rgba(255,255,255,0.06)";
-      roundRectPath(ctx, x + 12, y, colW - 24, rowH, 12);
-      ctx.fill();
-      ctx.fillStyle = "#cfd4e6";
-      ctx.font = "20px sans-serif";
-      const benchText = "교체: " + payload.roles[i].bench.map(n => n).join(" • ");
-      ctx.fillText(benchText, x + 22, y + 30);
-    }
-  }
-  return canvas.toBuffer("image/png");
-}
-
-async function renderOverwatchEmbed(interaction, payload) {
-  const png = await renderOverwatchImage(interaction.guild, payload);
-  const file = new AttachmentBuilder(png, { name: "overwatch.png" });
-  const embed = new EmbedBuilder()
-    .setTitle("🎮 오버워치 팀 편성 결과")
-    .setColor(0x2563eb)
-    .addFields(
-      { name: "🟦 " + payload.teamNames[0], value: "🛡️ " + (payload.roles[0].tank.join(" • ") || "-") + "\n⚔️ " + (payload.roles[0].dps.join(" • ") || "-") + "\n💉 " + (payload.roles[0].heal.join(" • ") || "-") + (payload.roles[0].bench.length ? "\n교체: " + payload.roles[0].bench.join(" • ") : ""), inline: true },
-      { name: "🟧 " + payload.teamNames[1], value: "🛡️ " + (payload.roles[1].tank.join(" • ") || "-") + "\n⚔️ " + (payload.roles[1].dps.join(" • ") || "-") + "\n💉 " + (payload.roles[1].heal.join(" • ") || "-") + (payload.roles[1].bench.length ? "\n교체: " + payload.roles[1].bench.join(" • ") : ""), inline: true }
-    )
-    .setImage("attachment://overwatch.png");
-  return { embed, file };
-}
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("팀짜기")
@@ -500,96 +364,9 @@ module.exports = {
         .addUserOption(opt => opt.setName("예외멤버7").setDescription("제외할 멤버7").setRequired(false))
         .addUserOption(opt => opt.setName("예외멤버8").setDescription("제외할 멤버8").setRequired(false))
         .addUserOption(opt => opt.setName("예외멤버9").setDescription("제외할 멤버9").setRequired(false))
-    )
-    .addSubcommand(sc =>
-      sc.setName("오버워치")
-        .setDescription("오버워치 2팀 편성(닉네임 입력, 탱1·딜2·힐2). 랜덤 옵션 지원")
-        .addBooleanOption(opt => opt.setName("랜덤").setDescription("현재 음성채널 인원을 랜덤으로 2팀 배치").setRequired(false))
-        .addStringOption(opt => opt.setName("팀명1").setDescription("팀1 이름(기본: 청팀)").setRequired(false))
-        .addStringOption(opt => opt.setName("팀명2").setDescription("팀2 이름(기본: 홍팀)").setRequired(false))
     ),
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
-    if (sub === "오버워치") {
-      const randomMode = interaction.options.getBoolean("랜덤") || false;
-      const teamName1 = (interaction.options.getString("팀명1") || "청팀").trim();
-      const teamName2 = (interaction.options.getString("팀명2") || "홍팀").trim();
-      if (randomMode) {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        const voiceChannel = member.voice.channel;
-        if (!voiceChannel) {
-          return await interaction.reply({ content: "먼저 음성채널에 접속한 뒤 사용하세요.", ephemeral: true });
-        }
-        const pool = [...voiceChannel.members.values()].filter(m => !m.user.bot).map(m => m.id);
-        if (pool.length < 2) {
-          return await interaction.reply({ content: "참여 인원이 부족합니다.", ephemeral: true });
-        }
-        const order = shuffle(pool);
-        const slotOrder = ["t1_tank","t2_tank","t1_dps","t2_dps","t1_dps","t2_dps","t1_heal","t2_heal","t1_heal","t2_heal"];
-        const t1 = { tank: [], dps: [], heal: [], bench: [] };
-        const t2 = { tank: [], dps: [], heal: [], bench: [] };
-        for (let i = 0; i < order.length; i++) {
-          const uid = order[i];
-          if (i < slotOrder.length) {
-            const s = slotOrder[i];
-            if (s === "t1_tank") t1.tank.push(await nameOf(interaction.guild, uid));
-            else if (s === "t2_tank") t2.tank.push(await nameOf(interaction.guild, uid));
-            else if (s === "t1_dps") t1.dps.push(await nameOf(interaction.guild, uid));
-            else if (s === "t2_dps") t2.dps.push(await nameOf(interaction.guild, uid));
-            else if (s === "t1_heal") t1.heal.push(await nameOf(interaction.guild, uid));
-            else if (s === "t2_heal") t2.heal.push(await nameOf(interaction.guild, uid));
-          } else {
-            ((i % 2) === 0 ? t1.bench : t2.bench).push(await nameOf(interaction.guild, uid));
-          }
-        }
-        const payload = { teamNames: [teamName1, teamName2], roles: [t1, t2] };
-        const { embed, file } = await renderOverwatchEmbed(interaction, payload);
-        return await interaction.reply({ embeds: [embed], files: [file] });
-      } else {
-        const modal = new ModalBuilder().setCustomId("ow-modal").setTitle("오버워치 2팀 편성");
-        const t1 = new TextInputBuilder().setCustomId("t1").setLabel("팀1: 탱1, 딜2, 힐2 (쉼표/줄바꿈 구분)").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(300);
-        const t2 = new TextInputBuilder().setCustomId("t2").setLabel("팀2: 탱1, 딜2, 힐2 (쉼표/줄바꿈 구분)").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(300);
-        modal.addComponents(new ActionRowBuilder().addComponents(t1), new ActionRowBuilder().addComponents(t2));
-        await interaction.showModal(modal);
-        const submit = await interaction.awaitModalSubmit({
-          filter: i => i.customId === "ow-modal" && i.user.id === interaction.user.id,
-          time: 60_000
-        }).catch(() => null);
-        if (!submit) return;
-        const raw1 = splitTokens(submit.fields.getTextInputValue("t1"));
-        const raw2 = splitTokens(submit.fields.getTextInputValue("t2"));
-        if (raw1.length < 5 || raw2.length < 5) {
-          return await submit.reply({ ephemeral: true, content: "각 팀은 최소 5개 토큰(탱1, 딜2, 힐2)을 입력해야 합니다." });
-        }
-        const preferMembers = await fetchAllNonBotMembers(interaction.guild);
-        async function toDisplayList(tokens) {
-          const out = [];
-          for (const tk of tokens) out.push(await tokenToDisplayName(interaction.guild, tk, preferMembers));
-          return out;
-        }
-        const t1list = await toDisplayList(raw1);
-        const t2list = await toDisplayList(raw2);
-        const t1payload = {
-          tank: [t1list[0]],
-          dps: [t1list[1], t1list[2]],
-          heal: [t1list[3], t1list[4]],
-          bench: t1list.slice(5)
-        };
-        const t2payload = {
-          tank: [t2list[0]],
-          dps: [t2list[1], t2list[2]],
-          heal: [t2list[3], t2list[4]],
-          bench: t2list.slice(5)
-        };
-        const payload = {
-          teamNames: [teamName1, teamName2],
-          roles: [t1payload, t2payload]
-        };
-        const { embed, file } = await renderOverwatchEmbed(submit, payload);
-        return await submit.reply({ embeds: [embed], files: [file] });
-      }
-    }
-
     const teamCount = sub === "팀4개" ? 4 : sub === "팀3개" ? 3 : 2;
     const member = await interaction.guild.members.fetch(interaction.user.id);
     const voiceChannel = member.voice.channel;
@@ -726,44 +503,3 @@ module.exports = {
     });
   }
 };
-
-module.exports.modalOW = async (submit) => {
-  try {
-    const { guild } = submit;
-    const teamName1 = "청팀";
-    const teamName2 = "홍팀";
-
-    const raw1 = splitTokens(submit.fields.getTextInputValue("t1"));
-    const raw2 = splitTokens(submit.fields.getTextInputValue("t2"));
-    if (raw1.length < 5 || raw2.length < 5) {
-      return await submit.reply({ ephemeral: true, content: "각 팀은 최소 5개 토큰(탱1, 딜2, 힐2)을 입력해야 합니다." });
-    }
-
-    const preferMembers = await fetchAllNonBotMembers(guild);
-    async function tokenToDisplayName(guild, token, preferMembers) {
-      const id = await resolveOneTokenFromGuild(guild, token, preferMembers);
-      if (id) return await nameOf(guild, id);
-      return token;
-    }
-    async function toDisplayList(tokens) {
-      const out = [];
-      for (const tk of tokens) out.push(await tokenToDisplayName(guild, tk, preferMembers));
-      return out;
-    }
-
-    const t1list = await toDisplayList(raw1);
-    const t2list = await toDisplayList(raw2);
-
-    const t1payload = { tank:[t1list[0]], dps:[t1list[1], t1list[2]], heal:[t1list[3], t1list[4]], bench:t1list.slice(5) };
-    const t2payload = { tank:[t2list[0]], dps:[t2list[1], t2list[2]], heal:[t2list[3], t2list[4]], bench:t2list.slice(5) };
-    const payload = { teamNames:[teamName1, teamName2], roles:[t1payload, t2payload] };
-
-    const { embed, file } = await renderOverwatchEmbed(submit, payload);
-    return await submit.reply({ embeds: [embed], files: [file] });
-  } catch (e) {
-    if (!submit.replied && !submit.deferred) {
-      await submit.reply({ ephemeral: true, content: "❌ 오버워치 모달 처리 중 오류가 발생했어요." }).catch(()=>{});
-    }
-  }
-};
-
