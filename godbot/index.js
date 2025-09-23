@@ -90,6 +90,9 @@ require('./utils/godbot-core').initGodbotCore(client);
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
 
+const registerDanawa = require('./utils/danawa.js');
+registerDanawa(client);
+
 const disasterWatcher = require("./utils/disaster-watcher.js");
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
