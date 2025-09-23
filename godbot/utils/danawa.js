@@ -1,6 +1,6 @@
 "use strict";
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ComponentType } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require("discord.js");
 let _fetch = globalThis.fetch;
 if (typeof _fetch !== "function") {
   try { _fetch = require("node-fetch"); } catch {}
@@ -12,11 +12,13 @@ const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const LANG = "ko-KR,ko;q=0.9";
 const SEARCH_BASE = "https://search.danawa.com/dsearch.php?query=";
 const DETAIL_HOST = "https://prod.danawa.com";
-const SESS_TTL_MS = 10 * 60 * 1000;
+const SESS_TTL_MS = 600000;
 const MAX_ITEMS = 6;
 const sessions = new Map();
 const chanCooldown = new Map();
+const DEBUG = false;
 
+function log(){ if(!DEBUG) return; const a = Array.from(arguments); try{ console.log("[danawa]", ...a);}catch{} }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function now(){ return Date.now(); }
 function num(v){ if(v===undefined||v===null) return NaN; const n = Number(String(v).replace(/[^\d.]/g,"")); return Number.isFinite(n)?n:NaN; }
@@ -24,11 +26,36 @@ function priceToStr(n){ if(!Number.isFinite(n)) return "가격정보 없음"; re
 function cut(s, n){ s = (s||"").trim().replace(/\s+/g," "); return s.length>n ? s.slice(0,n-1)+"…" : s; }
 function normalizeQuery(q){ return (q||"").trim().replace(/^!+/,"").replace(/\s+/g," "); }
 
+async function ensureCanTalk(channel){
+  const me = channel.guild?.members?.me;
+  if(!me) return { ok:false, canEmbed:false, reason:"no_me" };
+  const perms = channel.permissionsFor(me);
+  if(!perms) return { ok:false, canEmbed:false, reason:"no_perms" };
+  const canSend = perms.has("SendMessages");
+  const canEmbed = perms.has("EmbedLinks");
+  return { ok: canSend, canEmbed };
+}
+
+async function safeSend(channel, payload, fallbackText){
+  try{
+    return await channel.send(payload);
+  }catch(e){
+    try{
+      const text = (fallbackText && String(fallbackText).trim().length)
+        ? fallbackText
+        : "전송 오류가 발생했어. 임베드 권한을 확인해줘.";
+      return await channel.send({ content: text });
+    }catch(e2){
+      log("send failed twice:", e?.message, e2?.message);
+    }
+  }
+}
+
 async function httpGet(url, init={}){
   const ctrl = typeof AbortController!=="undefined" ? new AbortController() : null;
-  const t = setTimeout(()=>{ try{ ctrl&&ctrl.abort(); }catch{} }, 15000);
+  const t = setTimeout(()=>{ try{ ctrl&&ctrl.abort(); }catch{} }, 10000);
   try{
-    const res = await _fetch(url, {redirect:"follow", signal: ctrl?ctrl.signal:undefined, headers:{ "user-agent": USER_AGENT, "accept-language": LANG, "referer": "https://search.danawa.com/" }, ...init});
+    const res = await _fetch(url, { redirect:"follow", signal: ctrl?ctrl.signal:undefined, headers:{ "user-agent": USER_AGENT, "accept-language": LANG, "referer": "https://search.danawa.com/", "cache-control": "no-cache" }, ...init });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     return text;
@@ -109,7 +136,9 @@ async function enrichWithDetails(items, limit=3){
       const d = parseDetail(html);
       out.push({ ...it, title: d.title || it.title, img: d.image || it.img, lowPrice: Number.isFinite(d.lowPrice)?d.lowPrice:it.listPrice });
       await sleep(250);
-    } catch { out.push({ ...it, lowPrice: it.listPrice }); }
+    } catch(e) {
+      out.push({ ...it, lowPrice: it.listPrice });
+    }
   }
   return out;
 }
@@ -154,8 +183,13 @@ function buildRows(best, searchUrl, sid, options){
 }
 
 function storeSession(sid, data){
-  sessions.set(sid, { ...data, t: now() });
-  setTimeout(()=>{ const v = sessions.get(sid); if(v && v.t === data.t) sessions.delete(sid); }, SESS_TTL_MS).unref?.();
+  const obj = { ...data, t: now() };
+  sessions.set(sid, obj);
+  const timer = setTimeout(()=>{
+    const v = sessions.get(sid);
+    if(v && v.t === obj.t) sessions.delete(sid);
+  }, SESS_TTL_MS);
+  if (typeof timer.unref === "function") { try { timer.unref(); } catch {} }
 }
 
 async function handleQuery(client, channel, authorId, raw){
@@ -165,20 +199,37 @@ async function handleQuery(client, channel, authorId, raw){
   const query = normalizeQuery(raw);
   if(!query || query.length<2) return;
   await channel.sendTyping().catch(()=>{});
+  const delayWarn = setTimeout(()=>{ safeSend(channel, { content: "잠깐만! 가격 데이터 가져오는 중이야…" }); }, 3000);
   const searchUrl = SEARCH_BASE + encodeURIComponent(query);
   let html;
-  try{ html = await httpGet(searchUrl); } catch(e){
+  try{
+    html = await httpGet(searchUrl);
+  } catch(e){
+    clearTimeout(delayWarn);
     const err = new EmbedBuilder().setColor(0xea4335).setTitle("다나와 검색 실패").setDescription("검색 페이지에 접속할 수 없었어. 잠시 후 다시 시도해줘.").setFooter({ text: String(e.message||e).slice(0,100) });
-    await channel.send({ embeds:[err] }).catch(()=>{});
+    await safeSend(channel, { embeds:[err] }, "다나와 검색 실패. 잠시 후 다시 시도해줘.");
     return;
   }
-  let items = parseSearch(html);
+  let items = [];
+  try{
+    items = parseSearch(html);
+  }catch(e){
+    clearTimeout(delayWarn);
+    await safeSend(channel, { content: "검색 결과 파싱 중 문제가 발생했어. 잠시 후 다시 시도해줘." });
+    return;
+  }
   if(!items.length){
+    clearTimeout(delayWarn);
     const empty = new EmbedBuilder().setColor(0xf39c12).setTitle(`결과 없음 • ${cut(query,80)}`).setURL(searchUrl).setDescription("관련 상품을 찾지 못했어. 검색어를 조금 바꿔볼래?");
-    await channel.send({ embeds:[empty], components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel("다나와 열기").setStyle(ButtonStyle.Link).setURL(searchUrl))] }).catch(()=>{});
+    await safeSend(channel, { embeds:[empty], components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel("다나와 열기").setStyle(ButtonStyle.Link).setURL(searchUrl))] }, `결과 없음 • ${query}\n${searchUrl}`);
     return;
   }
-  const detailed = await enrichWithDetails(items, Math.min(MAX_ITEMS, items.length));
+  let detailed;
+  try{
+    detailed = await enrichWithDetails(items, Math.min(MAX_ITEMS, items.length));
+  }catch(e){
+    detailed = items.slice(0, Math.min(MAX_ITEMS, items.length));
+  }
   detailed.sort((a,b)=>{
     const aa = Number.isFinite(a.lowPrice)?a.lowPrice:Number.MAX_SAFE_INTEGER;
     const bb = Number.isFinite(b.lowPrice)?b.lowPrice:Number.MAX_SAFE_INTEGER;
@@ -189,9 +240,21 @@ async function handleQuery(client, channel, authorId, raw){
   const list = detailed.slice(0, Math.min(5, detailed.length));
   const sid = `${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
   storeSession(sid, { query, searchUrl, items: detailed });
+  const perm = await ensureCanTalk(channel);
   const embed = buildEmbed(query, best, list, searchUrl);
   const rows = buildRows(best, searchUrl, sid, detailed.slice(0, Math.min(10, detailed.length)));
-  await channel.send({ embeds:[embed], components: rows }).catch(()=>{});
+  const fallbackLines = list.map((it,i)=>`${i+1}. ${priceToStr(it.lowPrice)} · ${it.title} · ${it.url}`).join("\n");
+  const fallbackText = `다나와 최저가 • ${query}\n${best ? `최저가: ${priceToStr(best.lowPrice)}\n${best.title}\n${best.url}\n\n` : ""}${fallbackLines || "결과가 없었어."}\n${searchUrl}`;
+  clearTimeout(delayWarn);
+  if(!perm.ok){
+    await safeSend(channel, { content: "메시지를 보낼 권한이 없어서 결과를 보여줄 수 없어. 채널 권한을 확인해줘." }, fallbackText);
+    return;
+  }
+  if(perm.canEmbed){
+    await safeSend(channel, { embeds:[embed], components: rows }, fallbackText);
+  }else{
+    await safeSend(channel, { content: fallbackText });
+  }
 }
 
 module.exports = function registerDanawa(client){
@@ -203,7 +266,10 @@ module.exports = function registerDanawa(client){
       const content = String(msg.content||"").trim();
       if(!content.startsWith("!")) return;
       await handleQuery(client, msg.channel, msg.author.id, content);
-    } catch {}
+    } catch(e) {
+      try { await safeSend(msg.channel, { content: "요청 처리 중 오류가 발생했어. 잠시 후 다시 시도해줘." }); } catch {}
+      log("messageCreate error:", e?.stack||e?.message||e);
+    }
   });
   client.on("interactionCreate", async (itx)=>{
     try{
@@ -225,8 +291,15 @@ module.exports = function registerDanawa(client){
       const list = sess.items.slice(0, Math.min(5, sess.items.length));
       const embed = buildEmbed(sess.query, enriched, list, sess.searchUrl);
       const rows = buildRows(enriched, sess.searchUrl, sid, sess.items.slice(0, Math.min(10, sess.items.length)));
-      await itx.update({ embeds:[embed], components: rows }).catch(async()=>{ await itx.reply({ content:"업데이트에 실패했어.", ephemeral:true }).catch(()=>{}); });
+      await itx.update({ embeds:[embed], components: rows }).catch(async()=>{
+        const fallbackLines = list.map((it,i)=>`${i+1}. ${priceToStr(it.lowPrice)} · ${it.title} · ${it.url}`).join("\n");
+        const fallbackText = `다나와 최저가 • ${sess.query}\n${enriched ? `최저가: ${priceToStr(enriched.lowPrice)}\n${enriched.title}\n${enriched.url}\n\n` : ""}${fallbackLines || "결과가 없었어."}\n${sess.searchUrl}`;
+        try{ await itx.reply({ content: fallbackText, ephemeral:true }); }catch{}
+      });
       storeSession(sid, sess);
-    } catch {}
+    } catch(e) {
+      log("interactionCreate error:", e?.stack||e?.message||e);
+      try{ if(itx.isRepliable()) await itx.reply({ content:"업데이트에 실패했어.", ephemeral:true }); }catch{}
+    }
   });
 };
