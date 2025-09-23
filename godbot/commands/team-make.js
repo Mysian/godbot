@@ -505,15 +505,15 @@ module.exports = {
       sc.setName("오버워치")
         .setDescription("오버워치 2팀 편성(닉네임 입력, 탱1·딜2·힐2). 랜덤 옵션 지원")
         .addBooleanOption(opt => opt.setName("랜덤").setDescription("현재 음성채널 인원을 랜덤으로 2팀 배치").setRequired(false))
-        .addStringOption(opt => opt.setName("팀명1").setDescription("팀1 이름(기본: 블루팀)").setRequired(false))
-        .addStringOption(opt => opt.setName("팀명2").setDescription("팀2 이름(기본: 오렌지팀)").setRequired(false))
+        .addStringOption(opt => opt.setName("팀명1").setDescription("팀1 이름(기본: 청팀)").setRequired(false))
+        .addStringOption(opt => opt.setName("팀명2").setDescription("팀2 이름(기본: 홍팀)").setRequired(false))
     ),
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     if (sub === "오버워치") {
       const randomMode = interaction.options.getBoolean("랜덤") || false;
-      const teamName1 = (interaction.options.getString("팀명1") || "블루팀").trim();
-      const teamName2 = (interaction.options.getString("팀명2") || "오렌지팀").trim();
+      const teamName1 = (interaction.options.getString("팀명1") || "청팀").trim();
+      const teamName2 = (interaction.options.getString("팀명2") || "홍팀").trim();
       if (randomMode) {
         const member = await interaction.guild.members.fetch(interaction.user.id);
         const voiceChannel = member.voice.channel;
@@ -726,3 +726,44 @@ module.exports = {
     });
   }
 };
+
+module.exports.modalOW = async (submit) => {
+  try {
+    const { guild } = submit;
+    const teamName1 = "청팀";
+    const teamName2 = "홍팀";
+
+    const raw1 = splitTokens(submit.fields.getTextInputValue("t1"));
+    const raw2 = splitTokens(submit.fields.getTextInputValue("t2"));
+    if (raw1.length < 5 || raw2.length < 5) {
+      return await submit.reply({ ephemeral: true, content: "각 팀은 최소 5개 토큰(탱1, 딜2, 힐2)을 입력해야 합니다." });
+    }
+
+    const preferMembers = await fetchAllNonBotMembers(guild);
+    async function tokenToDisplayName(guild, token, preferMembers) {
+      const id = await resolveOneTokenFromGuild(guild, token, preferMembers);
+      if (id) return await nameOf(guild, id);
+      return token;
+    }
+    async function toDisplayList(tokens) {
+      const out = [];
+      for (const tk of tokens) out.push(await tokenToDisplayName(guild, tk, preferMembers));
+      return out;
+    }
+
+    const t1list = await toDisplayList(raw1);
+    const t2list = await toDisplayList(raw2);
+
+    const t1payload = { tank:[t1list[0]], dps:[t1list[1], t1list[2]], heal:[t1list[3], t1list[4]], bench:t1list.slice(5) };
+    const t2payload = { tank:[t2list[0]], dps:[t2list[1], t2list[2]], heal:[t2list[3], t2list[4]], bench:t2list.slice(5) };
+    const payload = { teamNames:[teamName1, teamName2], roles:[t1payload, t2payload] };
+
+    const { embed, file } = await renderOverwatchEmbed(submit, payload);
+    return await submit.reply({ embeds: [embed], files: [file] });
+  } catch (e) {
+    if (!submit.replied && !submit.deferred) {
+      await submit.reply({ ephemeral: true, content: "❌ 오버워치 모달 처리 중 오류가 발생했어요." }).catch(()=>{});
+    }
+  }
+};
+
