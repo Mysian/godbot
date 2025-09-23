@@ -17,6 +17,10 @@ const { createCanvas } = require("canvas");
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const sessions = new Map();
 
+function isDiscordId(s) {
+  return /^\d{10,20}$/.test(s || "");
+}
+
 function splitTokens(raw) {
   if (!raw) return [];
   return raw
@@ -40,7 +44,7 @@ function resolveMemberIdsByTokensFromPool(poolMembers, raw) {
   const ids = new Set();
   const arr = Array.isArray(poolMembers) ? poolMembers : [...poolMembers.values()];
   for (const t of tokens) {
-    if (/^\d{10,20}$/.test(t)) {
+    if (isDiscordId(t)) {
       const has = arr.find(m => m.id === t);
       if (has) ids.add(t);
       continue;
@@ -78,11 +82,12 @@ async function resolveMemberIdsByTokensFromGuild(guild, raw, preferMembers) {
   const all = await fetchAllNonBotMembers(guild);
 
   for (const t of tokens) {
-    if (/^\d{10,20}$/.test(t)) {
+    if (isDiscordId(t)) {
       try {
         const m = await guild.members.fetch(t);
-        if (m && !m.user.bot) out.add(m.id);
+        if (m && !m.user.bot) { out.add(m.id); continue; }
       } catch {}
+      out.add(t);
       continue;
     }
     const n = normalize(t);
@@ -96,6 +101,7 @@ async function resolveMemberIdsByTokensFromGuild(guild, raw, preferMembers) {
       pickUniqueId(all, m => normalize(preferDisplayName(m)).includes(n));
 
     if (id) out.add(id);
+    else out.add(t);
   }
   return [...out];
 }
@@ -110,11 +116,12 @@ function shuffle(a) {
 }
 
 async function nameOf(guild, userId) {
+  if (!isDiscordId(userId)) return String(userId);
   try {
     const m = await guild.members.fetch(userId);
     return preferDisplayName(m) || userId;
   } catch {
-    return userId;
+    return String(userId);
   }
 }
 
@@ -295,8 +302,13 @@ async function refreshPoolMembers(interaction, state) {
     const teamIds = new Set((state.teams || []).flat());
     for (const uid of teamIds) {
       if (!arr.find(m => m.id === uid)) {
-        const gm = await interaction.guild.members.fetch(uid).catch(() => null);
-        if (gm && !gm.user.bot) arr.push(gm);
+        if (isDiscordId(uid)) {
+          const gm = await interaction.guild.members.fetch(uid).catch(() => null);
+          if (gm && !gm.user.bot) arr.push(gm);
+          else arr.push({ id: uid, displayName: String(uid), user: { bot: false } });
+        } else {
+          arr.push({ id: uid, displayName: String(uid), user: { bot: false } });
+        }
       }
     }
     state.poolMembers = arr;
@@ -459,11 +471,20 @@ module.exports = {
         for (const uid of ids) {
           for (let k = 0; k < cur.teamCount; k++) cur.teams[k] = cur.teams[k].filter(id => id !== uid);
           if (!cur.teams[teamNo - 1].includes(uid)) cur.teams[teamNo - 1].push(uid);
-          if (!(Array.isArray(cur.poolMembers) ? cur.poolMembers : [...cur.poolMembers]).find(m => m.id === uid)) {
-            const gm = await i.guild.members.fetch(uid).catch(() => null);
-            if (gm && !gm.user.bot) {
-              if (Array.isArray(cur.poolMembers)) cur.poolMembers.push(gm);
-              else cur.poolMembers = [...cur.poolMembers.values(), gm];
+          const hasInPool = (Array.isArray(cur.poolMembers) ? cur.poolMembers : [...cur.poolMembers]).find(m => m.id === uid);
+          if (!hasInPool) {
+            if (isDiscordId(uid)) {
+              const gm = await i.guild.members.fetch(uid).catch(() => null);
+              if (gm && !gm.user.bot) {
+                if (Array.isArray(cur.poolMembers)) cur.poolMembers.push(gm);
+                else cur.poolMembers = [...cur.poolMembers.values(), gm];
+              } else {
+                if (Array.isArray(cur.poolMembers)) cur.poolMembers.push({ id: uid, displayName: String(uid), user: { bot: false } });
+                else cur.poolMembers = [...cur.poolMembers.values(), { id: uid, displayName: String(uid), user: { bot: false } }];
+              }
+            } else {
+              if (Array.isArray(cur.poolMembers)) cur.poolMembers.push({ id: uid, displayName: String(uid), user: { bot: false } });
+              else cur.poolMembers = [...cur.poolMembers.values(), { id: uid, displayName: String(uid), user: { bot: false } }];
             }
           }
         }
