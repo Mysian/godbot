@@ -343,10 +343,14 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("후원");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
-["ow-modal", async (interaction) => {
-  const cmd = client.commands.get("팀짜기");
-  if (cmd?.modalOW) return cmd.modalOW(interaction);
-  }],
+["liar_", async (interaction) => {
+  const cmd = client.commands.get("라이어");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
+["liar:", async (interaction) => {
+  const cmd = client.commands.get("라이어");
+  if (cmd?.modal) return cmd.modal(interaction);
+}],
   // 필요하면 추가로 더 여기에 등록
 ]);
 
