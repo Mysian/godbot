@@ -532,6 +532,7 @@ if (
 if (interaction.isModalSubmit()) {
   if (
     interaction.customId === 'team-modal' ||
+    interaction.customId === 'ow-modal' ||  
     interaction.customId.startsWith('team:') || 
     interaction.customId.startsWith('secret_') ||
     interaction.customId.startsWith('profile:')
