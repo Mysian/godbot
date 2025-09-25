@@ -60,7 +60,7 @@ module.exports = {
       if (textChannelId) {
         const textChannel = newState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했습니다.]`);
+          await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했어요.]`);
         }
       }
     } else if (oldChannel && !newChannel) {
@@ -68,7 +68,7 @@ module.exports = {
       if (textChannelId) {
         const textChannel = oldState.guild.channels.cache.get(textChannelId);
         if (textChannel) {
-          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 퇴장했습니다.]`);
+          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 퇴장했어요.]`);
         }
       }
     } else if (oldChannel && newChannel && oldChannel.id !== newChannel.id) {
@@ -76,14 +76,14 @@ module.exports = {
       if (textChannelIdLeave) {
         const textChannel = oldState.guild.channels.cache.get(textChannelIdLeave);
         if (textChannel) {
-          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 '${newChannel.name}'로 떠나셨습니다.]`);
+          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 '${newChannel.name}'로 떠났어요.]`);
         }
       }
       const textChannelIdJoin = voiceChannelToTextChannel[newChannel.id];
       if (textChannelIdJoin) {
         const textChannel = newState.guild.channels.cache.get(textChannelIdJoin);
         if (textChannel) {
-          await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 '${oldChannel.name}'에서 오셨습니다.]`);
+          await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 '${oldChannel.name}'에서 왔어요.]`);
         }
       }
     }
