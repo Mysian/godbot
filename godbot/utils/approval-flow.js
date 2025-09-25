@@ -13,6 +13,17 @@ const {
   ComponentType,
 } = require("discord.js");
 
+const fs = require('fs');
+const path = require('path');
+const APPROVAL_SETTINGS_PATH = path.join(__dirname, '../data/approval-settings.json');
+
+function loadApprovalOn() {
+  try {
+    const j = JSON.parse(fs.readFileSync(APPROVAL_SETTINGS_PATH, 'utf8'));
+    return j.enabled !== false; // 파일 없거나 값이 true면 ON
+  } catch { return true; } // 기본 ON
+}
+
 // 외부 게임 목록 재사용 (사용자가 올린 select-game.js)
 let ALL_GAMES = [];
 try {
@@ -732,9 +743,10 @@ async function startFlow(guild, member) {
 module.exports = (client) => {
   // 새로 들어온 유저
   client.on("guildMemberAdd", async (member) => {
-    try { await member.guild.roles.fetch(); } catch {}
-    await startFlow(member.guild, member).catch(()=>{});
-  });
+  if (!loadApprovalOn()) return;  
+  try { await member.guild.roles.fetch(); } catch {}
+  await startFlow(member.guild, member).catch(()=>{});
+});
 
   // 재입장 유저(이미 떠났다가 들어오는 경우도 guildMemberAdd로 수신됨) → 동일 처리
 
