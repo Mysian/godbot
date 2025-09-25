@@ -90,10 +90,12 @@ function rowDecision(ctxId) {
   );
 }
 
-async function disableMessageButtons(channel, messageId) {
-  if (!messageId) return;
+async function disableMessageButtonsIn(guild, channelId, messageId) {
+  if (!messageId || !channelId) return;
   try {
-    const msg = await channel.messages.fetch(messageId).catch(() => null);
+    const ch = await guild.channels.fetch(channelId).catch(() => null);
+    if (!ch) return;
+    const msg = await ch.messages.fetch(messageId).catch(() => null);
     if (!msg || !msg.editable || !msg.components?.length) return;
     const comps = msg.components.map(row => {
       const r = new ActionRowBuilder();
@@ -203,7 +205,7 @@ async function getOrCreatePrivateChannel(guild, user) {
 async function beginFlow(i) {
   const store = await loadStore();
   const rec = ensureRecord(store, i.user.id);
-  if (rec.status === "rejected") { await i.reply({ content: "이전에 승인 거절된 이력이 있어 재진행이 제한됩니다. 문의는 운영진에게 부탁해.", ephemeral: true }); return null; }
+  if (rec.status === "rejected") { await i.editReply({ content: "이전에 승인 거절된 이력이 있어 재진행이 제한됩니다. 문의는 운영진에게 부탁해.", ephemeral: true }); return null; }
   const ch = await getOrCreatePrivateChannel(i.guild, i.user);
   rec.countJoinAttempts += 1;
   await saveStore(store);
@@ -352,6 +354,22 @@ function buildDecisionCtxFromFlow(flow, member) {
   };
 }
 
+async function ensureUserChannel(i) {
+  const store = await loadStore();
+  const rec = ensureRecord(store, i.user.id);
+  let ch = null;
+  if (rec.activeChannelId) {
+    ch = await i.guild.channels.fetch(rec.activeChannelId).catch(() => null);
+  }
+  if (!ch) {
+    ch = await getOrCreatePrivateChannel(i.guild, i.user);
+  }
+  if (i.channel.id !== ch.id) {
+    try { await i.reply({ content: `진행 채널로 이동해줘: <#${ch.id}>`, ephemeral: true }); } catch {}
+  }
+  return { ch, rec };
+}
+
 async function collectFlow(client) {
   client.on("interactionCreate", async i => {
     if (!i.inCachedGuild()) return;
@@ -364,14 +382,13 @@ async function collectFlow(client) {
     }
 
     if (i.isButton() && (i.customId === "type_new" || i.customId === "type_rejoin" || i.customId === "type_alt")) {
-      const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
-      if (!rec.activeChannelId || rec.activeChannelId !== i.channel.id) { await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true }); return; }
-      await disableMessageButtons(i.channel, rec.lastStepMsgIds.type);
+      const { ch, rec } = await ensureUserChannel(i);
+      await disableMessageButtonsIn(i.guild, rec.activeChannelId, rec.lastStepMsgIds.type);
       if (i.customId === "type_alt") { await openModalAlt(i); return; }
       await upsertFlow(i.user.id, { type: i.customId === "type_new" ? "신규" : "재입장" });
       await openModalBirth(i);
-      const ask = await i.channel.send({ embeds: [embedStep("출생년도 입력", "모달에 출생년도를 입력해줘.", 0x95a5a6)] });
-      rec.lastStepMsgIds.birth = ask.id; await saveStore(store);
+      const ask = await ch.send({ embeds: [embedStep("출생년도 입력", "모달에 출생년도를 입력해줘.", 0x95a5a6)] });
+      rec.lastStepMsgIds.birth = ask.id; await saveStore(await loadStore());
       return;
     }
 
@@ -398,8 +415,10 @@ async function collectFlow(client) {
       }
       await upsertFlow(i.user.id, { birthYear: res.year });
       await i.reply({ content: `출생년도 확인 완료: ${res.year}`, ephemeral: true });
-      await disableMessageButtons(i.channel, rec.lastStepMsgIds.birth);
-      const msg = await i.channel.send({ embeds: [embedStep("성별 선택", "아래 버튼으로 성별을 선택해줘.", 0x9b59b6)], components: [rowGender()] });
+      await disableMessageButtonsIn(i.guild, rec.activeChannelId, rec.lastStepMsgIds.birth);
+      const ch = rec.activeChannelId ? await i.guild.channels.fetch(rec.activeChannelId).catch(() => null) : null;
+      const sendTarget = ch || i.channel;
+      const msg = await sendTarget.send({ embeds: [embedStep("성별 선택", "아래 버튼으로 성별을 선택해줘.", 0x9b59b6)], components: [rowGender()] });
       rec.lastStepMsgIds.gender = msg.id; await saveStore(store);
       return;
     }
@@ -410,8 +429,10 @@ async function collectFlow(client) {
       const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
       await upsertFlow(i.user.id, { gender: i.customId === "gender_m" ? "남자" : "여자" });
       await i.reply({ content: "성별 선택 완료.", ephemeral: true });
-      await disableMessageButtons(i.channel, rec.lastStepMsgIds.gender);
-      const msg = await i.channel.send({ embeds: [embedStep("입장 경로", "어디서 오셨는지 선택해줘.", 0x3498db)], components: [rowSource()] });
+      await disableMessageButtonsIn(i.guild, rec.activeChannelId, rec.lastStepMsgIds.gender);
+      const ch = rec.activeChannelId ? await i.guild.channels.fetch(rec.activeChannelId).catch(() => null) : null;
+      const sendTarget = ch || i.channel;
+      const msg = await sendTarget.send({ embeds: [embedStep("입장 경로", "어디서 오셨는지 선택해줘.", 0x3498db)], components: [rowSource()] });
       rec.lastStepMsgIds.source = msg.id; await saveStore(store);
       return;
     }
@@ -423,9 +444,11 @@ async function collectFlow(client) {
       const sourceSel = map[i.customId] || "기타";
       await upsertFlow(i.user.id, { source: sourceSel });
       const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
-      await disableMessageButtons(i.channel, rec.lastStepMsgIds.source);
+      await disableMessageButtonsIn(i.guild, rec.activeChannelId, rec.lastStepMsgIds.source);
+      const ch = rec.activeChannelId ? await i.guild.channels.fetch(rec.activeChannelId).catch(() => null) : null;
+      const sendTarget = ch || i.channel;
       if (i.customId === "src_ref") { await openModalRef(i); return; }
-      const msg = await i.channel.send({ embeds: [embedStep("태그 설정", "서버 태그와 게임 태그 설정을 완료한 뒤, 별명을 입력해줘.", 0x2ecc71)], components: [rowTags(f), rowTags2(f)] });
+      const msg = await sendTarget.send({ embeds: [embedStep("태그 설정", "서버 태그와 게임 태그 설정을 완료한 뒤, 별명을 입력해줘.", 0x2ecc71)], components: [rowTags(f), rowTags2(f)] });
       rec.lastStepMsgIds.tags = msg.id; await saveStore(store);
       return;
     }
@@ -435,7 +458,9 @@ async function collectFlow(client) {
       await upsertFlow(i.user.id, { referrer: ref });
       const f = await getFlow(i.user.id);
       const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
-      const msg = await i.channel.send({ embeds: [embedStep("태그 설정", "서버 태그와 게임 태그 설정을 완료한 뒤, 별명을 입력해줘.", 0x2ecc71)], components: [rowTags(f), rowTags2(f)] });
+      const ch = rec.activeChannelId ? await i.guild.channels.fetch(rec.activeChannelId).catch(() => null) : null;
+      const sendTarget = ch || i.channel;
+      const msg = await sendTarget.send({ embeds: [embedStep("태그 설정", "서버 태그와 게임 태그 설정을 완료한 뒤, 별명을 입력해줘.", 0x2ecc71)], components: [rowTags(f), rowTags2(f)] });
       rec.lastStepMsgIds.tags = msg.id; await saveStore(store);
       await i.reply({ content: `추천인: ${ref}`, ephemeral: true });
       return;
@@ -452,11 +477,14 @@ async function collectFlow(client) {
       await upsertFlow(i.user.id, patch);
       const updated = await getFlow(i.user.id);
       try {
-        const msg = await i.channel.messages.fetch(rec.lastStepMsgIds.tags).catch(() => null);
+        const ch = rec.activeChannelId ? await i.guild.channels.fetch(rec.activeChannelId).catch(() => null) : null;
+        const msg = ch ? await ch.messages.fetch(rec.lastStepMsgIds.tags).catch(() => null) : null;
         if (msg) await msg.edit({ components: [rowTags(updated), rowTags2(updated)] }).catch(() => {});
       } catch {}
       if (updated.settingsDone && updated.gamesDone) {
-        const nickAsk = await i.channel.send({ embeds: [embedStep("별명 입력", "아래 버튼을 눌러 서버에서 사용할 별명을 입력해줘.", 0xf39c12)], components: [rowNick()] });
+        const ch = rec.activeChannelId ? await i.guild.channels.fetch(rec.activeChannelId).catch(() => null) : null;
+        const sendTarget = ch || i.channel;
+        const nickAsk = await sendTarget.send({ embeds: [embedStep("별명 입력", "아래 버튼을 눌러 서버에서 사용할 별명을 입력해줘.", 0xf39c12)], components: [rowNick()] });
         rec.lastStepMsgIds.nick = nickAsk.id; await saveStore(store);
       }
       await i.reply({ content: "설정 완료 체크됨.", ephemeral: true });
@@ -477,7 +505,7 @@ async function collectFlow(client) {
       await upsertFlow(i.user.id, { nickname: want });
       const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
       await i.reply({ content: `별명 설정: ${want}`, ephemeral: true });
-      await disableMessageButtons(i.channel, rec.lastStepMsgIds.nick);
+      await disableMessageButtonsIn(i.guild, rec.activeChannelId, rec.lastStepMsgIds.nick);
       const flow = await getFlow(i.user.id);
       const member = await i.guild.members.fetch(i.user.id);
       const ctx = buildDecisionCtxFromFlow(flow, member);
