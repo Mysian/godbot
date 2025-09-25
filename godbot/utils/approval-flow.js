@@ -412,15 +412,12 @@ async function collectFlow(client) {
       const rec = ensureRecord(store, i.user.id);
       if (!rec.activeChannelId || rec.activeChannelId !== ch.id) { await i.reply({ content: "본인 전용 채널에서만 진행할 수 있습니다.", ephemeral: true }); return; }
       if (i.customId === "step_type_alt") {
-        await i.deferReply({ ephemeral: true });
-        await i.editReply({ content: "부계정 생성 모달을 열었습니다.", ephemeral: true });
         await openMainAltModal(i);
         return;
       } else {
         await upsertFlow(i.user.id, { type: i.customId === "step_type_new" ? "신규" : "재입장" });
-        await i.reply({ content: `${i.customId === "step_type_new" ? "신규" : "재입장"} 절차를 시작합니다.` });
-        await handleNewRejoinFlowMessage(ch, "출생년도를 입력해 주세요.");
         await openBirthModal(i);
+        await handleNewRejoinFlowMessage(ch, "출생년도를 입력해 주세요.");
         return;
       }
     }
@@ -475,7 +472,6 @@ async function collectFlow(client) {
       const sourceSel = map[i.customId] || "기타";
       await upsertFlow(i.user.id, { source: sourceSel });
       if (i.customId === "src_ref") {
-        await i.reply({ content: "추천인 닉네임을 입력해 주세요." });
         await openRefModal(i);
       } else {
         await i.reply({ content: `입장 경로: ${sourceSel}` });
@@ -500,8 +496,7 @@ async function collectFlow(client) {
     }
 
     if (i.isButton() && i.customId === "open_select_games") {
-      await runSelectGames(i);
-      await i.channel.send({ content: "설정이 끝났다면 별명을 입력해 주세요." });
+      await i.channel.send({ content: "게임 태그 설정 UI를 연 뒤, 완료되면 별명을 입력해 주세요." });
       await openNicknameModal(i);
       return;
     }
@@ -511,7 +506,7 @@ async function collectFlow(client) {
       if (!f) { await i.reply({ content: "세션 정보가 없습니다.", ephemeral: true }); return; }
       const want = i.fields.getTextInputValue("nick").trim();
       const unique = await ensureNicknameUnique(i.guild, want);
-      if (!unique) { await i.reply({ content: "이미 사용 중인 별명입니다. 다른 별명을 입력해 주세요.", ephemeral: true }); await openNicknameModal(i); return; }
+      if (!unique) { await i.reply({ content: "이미 사용 중인 별명입니다. 다른 별명을 입력해 주세요.", ephemeral: true }); return; }
       await upsertFlow(i.user.id, { nickname: want, tagsDone: true });
       await i.reply({ content: `별명 설정: ${want}` });
       const recStore = await loadStore();
