@@ -42,7 +42,6 @@ const GAME_NAME_MAP = new Map([
   ["core keeper", "코어키퍼"],
   ["서든어택", "서든어택"],
   ["sudden attack", "서든어택"],
-  ["wuthering waves", "명조"],
   ["ETERNAL RETURN", "이터널 리턴"],
   ["이터널 리턴", "이터널 리턴"],
   ["Valheim", "발헤임"],
