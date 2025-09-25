@@ -85,6 +85,15 @@ function resetVoiceAutoTimer(member, channel) {
   }
 }
 
+const APPROVAL_SETTINGS_PATH = path.join(__dirname, '../data/approval-settings.json');
+function loadApprovalToggle() {
+  if (!fs.existsSync(APPROVAL_SETTINGS_PATH)) return { enabled: true };
+  try { return JSON.parse(fs.readFileSync(APPROVAL_SETTINGS_PATH, 'utf8')); } catch { return { enabled: true }; }
+}
+function saveApprovalToggle(obj) {
+  fs.writeFileSync(APPROVAL_SETTINGS_PATH, JSON.stringify(obj, null, 2));
+}
+
 function setupVoiceAutoListener(client) {
   if (voiceAutoListenerRegistered) return;
   client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
@@ -357,6 +366,7 @@ module.exports = {
         .addChoices(
           { name: '장기 미접속 유저', value: 'long' },
           { name: '비활동 신규 유저', value: 'newbie' },
+          { name: '입장절차 토글', value: 'approval_toggle' },
           { name: '음성채널 알림 설정', value: 'voice_notify' },
           { name: '음성채널 자동이동 설정', value: 'voice_auto' },
           { name: '세금누락 강제처리', value: 'tax_force' },
@@ -417,6 +427,43 @@ module.exports = {
       });
       return;
     }
+
+    if (option === 'approval_toggle') {
+  const cur = loadApprovalToggle();
+  const isOn = !!cur.enabled;
+  const embed = new EmbedBuilder()
+    .setTitle('입장 절차 토글')
+    .setDescription(`현재 상태: **${isOn ? 'ON' : 'OFF'}**\n\n- 새로 들어오는(또는 재입장) 유저의 '서버 입장 절차' 진행 여부를 제어합니다.\n- 버튼을 눌러 ON/OFF 전환하세요.`)
+    .setColor(isOn ? 0x43b581 : 0xff5555);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('approval_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(isOn),
+    new ButtonBuilder().setCustomId('approval_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!isOn),
+  );
+
+  const msg = await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
+  const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+  const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+
+  collector.on('collect', async i => {
+    const newOn = i.customId === 'approval_on';
+    saveApprovalToggle({ enabled: newOn });
+    await i.update({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('입장 절차 토글')
+          .setDescription(`현재 상태: **${newOn ? 'ON' : 'OFF'}**\n\n- 새로 들어오는(또는 재입장) 유저의 '서버 입장 절차' 진행 여부를 제어합니다.\n- 버튼을 눌러 ON/OFF 전환하세요.`)
+          .setColor(newOn ? 0x43b581 : 0xff5555)
+      ],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('approval_on').setLabel('ON').setStyle(ButtonStyle.Success).setDisabled(newOn),
+        new ButtonBuilder().setCustomId('approval_off').setLabel('OFF').setStyle(ButtonStyle.Danger).setDisabled(!newOn),
+      )],
+      ephemeral: true
+    });
+  });
+  return;
+}
 
     if (option === 'voice_auto') {
       const embed = new EmbedBuilder()
