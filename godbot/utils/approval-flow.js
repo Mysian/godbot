@@ -71,39 +71,46 @@ async function getOrCreatePrivateChannel(guild, user) {
   return ch;
 }
 
-async function sendOrEditWizard(guild, uid) {
+function buildStageComponents(stage, flow) {
+  if (stage === "type") return [rowType()];
+  if (stage === "birth") return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_birth").setStyle(ButtonStyle.Primary).setLabel("출생년도 입력"))];
+  if (stage === "gender") return [rowGender()];
+  if (stage === "source") return [rowSource()];
+  if (stage === "tags") return [rowTags(flow), rowTags2(flow)];
+  if (stage === "nick") return [rowNick()];
+  return [];
+}
+
+async function forceRenderWizard(ch, uid) {
   const store = await loadStore();
   const rec = ensureRecord(store, uid);
-  if (!rec.activeChannelId) return null;
-  const ch = await guild.channels.fetch(rec.activeChannelId).catch(() => null);
-  if (!ch) return null;
   const flow = rec.flow || {};
   const stage = rec.wizardStage || "type";
-  let components = [];
-  if (stage === "type") components = [rowType()];
-  else if (stage === "birth") components = [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_birth").setStyle(ButtonStyle.Primary).setLabel("출생년도 입력"))];
-  else if (stage === "gender") components = [rowGender()];
-  else if (stage === "source") components = [rowSource()];
-  else if (stage === "tags") components = [rowTags(flow), rowTags2(flow)];
-  else if (stage === "nick") components = [rowNick()];
-  else components = [];
-  const payload = { embeds: [embedWizard(flow)], components };
+  const payload = { embeds: [embedWizard(flow)], components: buildStageComponents(stage, flow) };
+  let msg = null;
   if (rec.wizardMsgId) {
-    const msg = await ch.messages.fetch(rec.wizardMsgId).catch(() => null);
-    if (msg) { await msg.edit(payload).catch(() => {}); return msg.id; }
+    msg = await ch.messages.fetch(rec.wizardMsgId).catch(() => null);
+    if (msg) { await msg.edit(payload).catch(() => {}); return rec.wizardMsgId; }
   }
-  const msg = await ch.send(payload);
+  msg = await ch.send(payload).catch(async () => null);
+  if (!msg) { await ch.send("입장 절차를 표시할 수 없습니다. 운영진에게 문의해주세요."); return null; }
   rec.wizardMsgId = msg.id;
   await saveStore(store);
   return msg.id;
 }
 
-async function setStageAndRender(guild, uid, stage) { const store = await loadStore(); const rec = ensureRecord(store, uid); rec.wizardStage = stage; await saveStore(store); return sendOrEditWizard(guild, uid); }
+async function setStageAndRenderOnChannel(ch, uid, stage) {
+  const store = await loadStore();
+  const rec = ensureRecord(store, uid);
+  rec.wizardStage = stage;
+  await saveStore(store);
+  return forceRenderWizard(ch, uid);
+}
 
 async function beginFlow(i) {
   const store = await loadStore();
   const rec = ensureRecord(store, i.user.id);
-  if (rec.locked) { await i.editReply({ content: rec.activeChannelId ? `이미 진행 중이야: <#${rec.activeChannelId}>` : "이미 진행 중이야.", ephemeral: true }); return null; }
+  if (rec.locked && rec.activeChannelId) { await i.editReply({ content: `이미 진행 중이야: <#${rec.activeChannelId}>`, ephemeral: true }); return null; }
   rec.locked = true;
   await saveStore(store);
   const ch = await getOrCreatePrivateChannel(i.guild, i.user);
@@ -111,9 +118,9 @@ async function beginFlow(i) {
   rec.flow = {};
   rec.wizardStage = "type";
   await saveStore(store);
-  await i.editReply({ content: `전용 채널로 이동해 진행해줘: <#${ch.id}>`, ephemeral: true });
+  await i.editReply({ content: `전용 채널에서 진행해줘: <#${ch.id}>`, ephemeral: true });
   await ch.send({ content: `<@${i.user.id}>` }).catch(() => {});
-  await sendOrEditWizard(i.guild, i.user.id);
+  await forceRenderWizard(ch, i.user.id);
   return ch;
 }
 
@@ -212,7 +219,8 @@ async function handleAltFinalize(i, values) {
   const ctx = { type: "부계정", mainNickname, mainBirthYear, member, nickname: `${mainNickname}[부계]` };
   await sendDecisionCard(guild, ctx, rec);
   await i.reply({ content: "부계정 심사 요청이 접수되었습니다. 관리진 승인을 기다려줘.", ephemeral: true });
-  await setStageAndRender(guild, member.id, "wait");
+  const ch = await guild.channels.fetch(rec.activeChannelId).catch(() => null);
+  if (ch) await setStageAndRenderOnChannel(ch, member.id, "wait");
 }
 
 async function handleBirthValidation(yearStr) { const y = parseInt(yearStr, 10); const minY = minAllowedBirthYear(); if (!/^\d{4}$/.test(String(y))) return { ok: false, reason: "출생년도 형식이 올바르지 않습니다." }; if (y > minY) return { ok: false, reason: `출생년도 기준 미달 (최소 ${minY})` }; return { ok: true, year: y }; }
@@ -243,7 +251,8 @@ async function collectFlow(client) {
       await upsertFlow(i.user.id, { type: i.customId === "type_new" ? "신규" : i.customId === "type_rejoin" ? "재입장" : "부계정" });
       if (i.customId === "type_alt") { await openModalAlt(i); return; }
       await i.reply({ content: "선택 완료.", ephemeral: true });
-      await setStageAndRender(i.guild, i.user.id, "birth");
+      const ch = i.channel;
+      await setStageAndRenderOnChannel(ch, i.user.id, "birth");
       return;
     }
 
@@ -268,7 +277,8 @@ async function collectFlow(client) {
       }
       await upsertFlow(i.user.id, { birthYear: res.year });
       await i.reply({ content: `출생년도 확인 완료: ${res.year}`, ephemeral: true });
-      await setStageAndRender(i.guild, i.user.id, "gender");
+      const ch = i.channel;
+      await setStageAndRenderOnChannel(ch, i.user.id, "gender");
       return;
     }
 
@@ -277,7 +287,8 @@ async function collectFlow(client) {
       if (!f || !f.birthYear) { await i.reply({ content: "먼저 출생년도부터 입력해줘.", ephemeral: true }); return; }
       await upsertFlow(i.user.id, { gender: i.customId === "gender_m" ? "남자" : "여자" });
       await i.reply({ content: "성별 선택 완료.", ephemeral: true });
-      await setStageAndRender(i.guild, i.user.id, "source");
+      const ch = i.channel;
+      await setStageAndRenderOnChannel(ch, i.user.id, "source");
       return;
     }
 
@@ -289,7 +300,8 @@ async function collectFlow(client) {
       await upsertFlow(i.user.id, { source: sourceSel });
       if (i.customId === "src_ref") { await openModalRef(i); return; }
       await i.reply({ content: "경로 선택 완료.", ephemeral: true });
-      await setStageAndRender(i.guild, i.user.id, "tags");
+      const ch = i.channel;
+      await setStageAndRenderOnChannel(ch, i.user.id, "tags");
       return;
     }
 
@@ -297,7 +309,8 @@ async function collectFlow(client) {
       const ref = i.fields.getTextInputValue("ref").trim();
       await upsertFlow(i.user.id, { referrer: ref });
       await i.reply({ content: `추천인: ${ref}`, ephemeral: true });
-      await setStageAndRender(i.guild, i.user.id, "tags");
+      const ch = i.channel;
+      await setStageAndRenderOnChannel(ch, i.user.id, "tags");
       return;
     }
 
@@ -309,9 +322,11 @@ async function collectFlow(client) {
       const patch = Object.assign({}, cur || {});
       if (i.customId === "done_settings") patch.settingsDone = true; else patch.gamesDone = true;
       await upsertFlow(i.user.id, patch);
-      await sendOrEditWizard(i.guild, i.user.id);
+      const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
+      const ch = await i.guild.channels.fetch(rec.activeChannelId).catch(() => null);
+      if (ch) await forceRenderWizard(ch, i.user.id);
       const updated = await getFlow(i.user.id);
-      if (updated.settingsDone && updated.gamesDone) await setStageAndRender(i.guild, i.user.id, "nick");
+      if (updated.settingsDone && updated.gamesDone && ch) await setStageAndRenderOnChannel(ch, i.user.id, "nick");
       await i.reply({ content: "설정 완료 체크됨.", ephemeral: true });
       return;
     }
@@ -334,7 +349,8 @@ async function collectFlow(client) {
       const ctx = buildDecisionCtxFromFlow(flow, member);
       const store = await loadStore(); const rec = ensureRecord(store, i.user.id);
       await sendDecisionCard(i.guild, ctx, rec);
-      await setStageAndRender(i.guild, i.user.id, "wait");
+      const ch = await i.guild.channels.fetch(rec.activeChannelId).catch(() => null);
+      if (ch) await setStageAndRenderOnChannel(ch, i.user.id, "wait");
       return;
     }
 
@@ -370,7 +386,7 @@ function initApprovalSystem(client) {
         if (guild) {
           const ch = await guild.channels.fetch(rec.activeChannelId).catch(() => null);
           if (!ch) { rec.activeChannelId = null; rec.flow = null; rec.wizardMsgId = null; rec.wizardStage = null; rec.locked = false; await saveStore(store); }
-          else { if (rec.wizardStage) await sendOrEditWizard(guild, uid).catch(() => {}); }
+          else { await forceRenderWizard(ch, uid).catch(() => {}); }
         }
       } else { rec.locked = false; await saveStore(store); }
     }
