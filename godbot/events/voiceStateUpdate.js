@@ -76,7 +76,7 @@ module.exports = {
       if (textChannelIdLeave) {
         const textChannel = oldState.guild.channels.cache.get(textChannelIdLeave);
         if (textChannel) {
-          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 '${newChannel.name}'으로 떠나셨습니다.]`);
+          await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 '${newChannel.name}'로 떠나셨습니다.]`);
         }
       }
       const textChannelIdJoin = voiceChannelToTextChannel[newChannel.id];
