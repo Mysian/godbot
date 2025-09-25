@@ -74,8 +74,6 @@ if (fs.existsSync(eventsPath)) {
 }
 
 // [유틸 대부분의 실시간 기능 지원 파트] ----------------------------------
-// 유저 입장 절차
-require("./utils/approval-flow")(client);
 // 봇 음성채널 실시간 연결
 require('./utils/voiceWatcher')(client);
 // 🚫 특정 역할 활동 제한
@@ -365,21 +363,6 @@ const utilCmd = client.commands.get("유틸") || require("./commands/util.js");
 const scrimAnnounce =
   client.commands.get("내전공지") ||
   require("./commands/scrim-announce.js");
-
-// ✅ 승인절차 모달은 approval-flow에서만 처리 (전역 핸들러에서 손대지 말 것)
-if (
-  interaction.isModalSubmit() &&
-  (
-    interaction.customId === 'modal_SNS' ||
-    interaction.customId === 'modal_추천인' ||
-    interaction.customId === 'modal_alt' ||
-    interaction.customId === 'modal_bio' ||
-    // 혹시 커스텀아이디 바뀌어도, 입장 채널에서 온 모달이면 무시
-    (interaction.channel?.name && interaction.channel.name.startsWith('입장-'))
-  )
-) {
-  return; // 전역 핸들러에서 소비 금지
-}
 
 client.on(Events.InteractionCreate, async interaction => {
 
