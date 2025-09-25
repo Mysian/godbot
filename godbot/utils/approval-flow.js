@@ -13,8 +13,8 @@ const SERVER_NAME = "까리한 디스코드";
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_FILE = path.join(DATA_DIR, "approvals.json");
 
-const selectSettings = require("../select-settings.js");
-const selectGame = require("../select-game.js");
+const selectSettings = require("../commands/select-settings.js");
+const selectGame     = require("../commands/select-game.js");
 
 function yyyymmdd(ts = Date.now()) {
   const d = new Date(ts);
