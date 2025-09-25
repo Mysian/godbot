@@ -9,7 +9,6 @@ const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 const setupPersonalChannelUtility = require('./utils/personal-channel.js');
-const { trackJoinLeave } = require("./utils/joinLeaveTracker.js");
 
 const client = new Client({
   intents: [
