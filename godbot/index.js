@@ -73,6 +73,9 @@ if (fs.existsSync(eventsPath)) {
   }
 }
 
+// ✅ 서버 승인 절차(게이트/심사/부계) 초기화
+const approval = require('./utils/approval-flow.js');
+approval.initApprovalSystem(client);
 
 // [유틸 대부분의 실시간 기능 지원 파트] ----------------------------------
 // 봇 음성채널 실시간 연결
@@ -526,6 +529,14 @@ if (
   }
 }
 
+// ✅ 승인 플로우 전용 모달은 approval-flow가 전담 처리 (전역 모달 블록 우회)
+if (
+  interaction.isModalSubmit() &&
+  ["modal_alt", "modal_birth", "modal_ref", "modal_nick"].includes(interaction.customId)
+) {
+  // approval-flow.js 내부 listener에서 이미 처리함
+  return;
+}
 
 // 2. 모달 통합 처리
 if (interaction.isModalSubmit()) {
