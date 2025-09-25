@@ -74,6 +74,7 @@ if (fs.existsSync(eventsPath)) {
 }
 
 // [유틸 대부분의 실시간 기능 지원 파트] ----------------------------------
+require("./utils/approval-flow")(client);
 // 봇 음성채널 실시간 연결
 require('./utils/voiceWatcher')(client);
 // 🚫 특정 역할 활동 제한
