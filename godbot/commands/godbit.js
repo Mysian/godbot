@@ -116,6 +116,26 @@ async function saveJson(file, data) {
   finally { await release(); }
 }
 
+
+const UPPER_DELIST = 10_000_000; 
+const LOWER_DELIST = 0.001;  
+
+
+async function enforceAutoDelist(coins, client = global.client) {
+  let touched = false;
+  for (const [name, info] of Object.entries(coins)) {
+    if (!info || name.startsWith('_')) continue;
+    if (info.delistedAt) continue;
+    const p = Number(info.price) || 0;
+    if (p >= UPPER_DELIST || p <= LOWER_DELIST) {
+      info.delistedAt = new Date().toISOString();
+      try { await postLogMsg('delist', name, client); } catch (e) {}
+      touched = true;
+    }
+  }
+  if (touched) await saveJson(coinsPath, coins);
+}
+
 function getSampledHistory(info, chartRange, chartInterval, chartValue) {
   if (!info.history || !info.historyT) return { data: [], labels: [] };
 
@@ -290,6 +310,7 @@ let lastEventLogTime = {};
 async function autoMarketUpdate(members, client = global.client) {
   const coins = await loadJson(coinsPath, {});
   await ensureBaseCoin(coins);
+  await enforceAutoDelist(coins, client);
 
   for (const [name, info] of Object.entries(coins)) {
     if (!info || name.startsWith('_')) continue;
@@ -316,7 +337,7 @@ async function autoMarketUpdate(members, client = global.client) {
       delete info._nextSetAt;
     }
   }
-
+await enforceAutoDelist(coins, client);
   // === 까리코인 시세 ===
 const base = coins['까리코인'];
 const deltaBase = (Math.random() * 0.2) - 0.1;
@@ -334,7 +355,7 @@ base.historyT.push(new Date().toISOString());
 while (base.history.length > HISTORY_MAX) base.history.shift();
 while (base.historyT.length > HISTORY_MAX) base.historyT.shift();
 
-
+await enforceAutoDelist(coins, client);
 
   // === 폭등/폭락 감지 (최근 60분 내, 연속적 변화 필요) ===
 for (const [name, info] of Object.entries(coins)) {
@@ -611,7 +632,7 @@ for (const [name, info] of Object.entries(coins)) {
       while (coins[b].historyT.length > HISTORY_MAX) coins[b].historyT.shift();
     }
   }
-
+  await enforceAutoDelist(coins, client);
   await saveJson(coinsPath, coins);
 }
 
