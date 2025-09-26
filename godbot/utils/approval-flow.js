@@ -151,14 +151,14 @@ function chunk(arr, size) {
 function navRow(ids, disabledMap = {}) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(ids[0]).setLabel("이전").setStyle(ButtonStyle.Secondary).setDisabled(!!disabledMap.prev),
-    new ButtonBuilder().setCustomId(ids[1]).setLabel("다음").setStyle(ButtonStyle.Primary).setDisabled(!!disabledMap.next)
+    new ButtonBuilder().setCustomId(ids[1]).setLabel("➡️다음").setStyle(ButtonStyle.Primary).setDisabled(!!disabledMap.next)
   );
 }
 function step1Embed(user) {
   return new EmbedBuilder()
     .setColor(0x7b2ff2)
     .setTitle(`🖐️ 환영합니다! ${user.username}님`)
-    .setDescription(["종합게임서버 🌟**까리한 디스코드**🌟입니다.","","🗺️ 다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
+    .setDescription(["종합게임서버 🌟**까리한 디스코드**🌟입니다.","","🗺️ 어떤 경로로 서버에 오셨나요?"].join("\n"));
 }
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
@@ -242,7 +242,7 @@ function genderRow(selected) {
     new ButtonBuilder().setCustomId("gender_f").setLabel(selected === "F" ? "✓ 여자" : "여자").setStyle(selected === "F" ? ButtonStyle.Success : ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("to_step3a").setLabel("다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
+    new ButtonBuilder().setCustomId("to_step3a").setLabel("➡️다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
   );
   return [row1, row2];
 }
@@ -263,7 +263,7 @@ function playStyleRow(selected) {
     )
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("to_step3b").setLabel("다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
+    new ButtonBuilder().setCustomId("to_step3b").setLabel("➡️다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
   );
   return [row1, row2];
 }
