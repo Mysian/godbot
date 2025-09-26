@@ -107,194 +107,82 @@ function chunk(arr, size) {
   return out;
 }
 
-/* ====== 컴포넌트/임베드 ====== */
-function navRow(ids, disabledMap = {}) {
+/* ====== UI 파츠 ====== */
+function navRow(ids = ["noop_prev", "noop_next"], opt = {}) {
+  const prev = ids[0];
+  const next = ids[1];
+  const hasPrev = opt.prev ?? false;
+  const disabledNext = opt.next ?? false;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(ids[0])
+      .setCustomId(prev)
       .setLabel("이전")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(!!disabledMap.prev),
+      .setDisabled(!hasPrev),
     new ButtonBuilder()
-      .setCustomId(ids[1])
+      .setCustomId(next)
       .setLabel("다음")
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(!!disabledMap.next)
+      .setDisabled(disabledNext)
   );
 }
-function step1Embed(user) {
+function step1Embed(progress) {
   return new EmbedBuilder()
-    .setColor(0x7b2ff2)
-    .setTitle(`환영합니다! ${user.username}님`)
+    .setColor(0x00a8ff)
+    .setTitle("입장 절차 1단계")
     .setDescription(
       [
-        "종합게임서버 **'까리한 디스코드'**입니다.",
-        "지금부터 서버 **입장 절차**를 진행하겠습니다.",
+        "주로 어떻게 들어오셨나요?",
         "",
-        "다음 중, 어떤 경로로 서버에 오셨나요?",
+        "선택지:",
+        "• SNS를 통해서 들어왔습니다.",
+        "• 추천을 통해서 들어왔습니다.",
+        "• 부계정입니다.",
       ].join("\n")
-    );
-}
-function step1Buttons() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("src_disboard")
-      .setLabel("디스보드")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("src_dicoall")
-      .setLabel("디코올")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("src_sns")
-      .setLabel("SNS")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("src_ref")
-      .setLabel("추천인(지인)")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("src_rejoin")
-      .setLabel("재입장")
-      .setStyle(ButtonStyle.Success)
-  );
-}
-function step1ButtonsAlt() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("src_alt")
-      .setLabel("부계정 생성")
-      .setStyle(ButtonStyle.Danger)
-  );
-}
-function snsOrRefModal(kind = "SNS") {
-  return new ModalBuilder()
-    .setCustomId(`modal_${kind}`)
-    .setTitle(`${kind} 정보 입력`)
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("detail")
-          .setLabel(
-            kind === "SNS"
-              ? "SNS 종류를 입력하세요 (예: 유튜브/틱톡/인스타)"
-              : "추천인 닉네임을 입력하세요"
-          )
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-      )
-    );
-}
-function altModal() {
-  return new ModalBuilder()
-    .setCustomId("modal_alt")
-    .setTitle("부계정 본계 닉네임 확인")
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("mainNick")
-          .setLabel("본계정의 서버 닉네임을 입력하세요")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-      )
     );
 }
 function step2aEmbed(progress) {
-  const nowY = currentKRYear();
-  const exYear = nowY - 20;
   return new EmbedBuilder()
-    .setColor(0x2095ff)
+    .setColor(0xf39c12)
     .setTitle("입장 절차 2-1단계")
     .setDescription(
       [
-        "아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**",
-        "",
-        `• 출생년도 (예: ${exYear}년생)`,
-        "• 서버에서 사용할 닉네임",
-        "",
-        "※ 만 20세 미만이거나 100세 초과로 계산되는 출생년도는 **승인거절** 됩니다.",
+        "출생년도(만 20세 이상)와 서버에서 사용할 닉네임을 입력해주세요.",
+        "부적절한 닉네임은 제재될 수 있습니다.",
       ].join("\n")
     )
     .addFields(
-      { name: "유입 경로", value: progress.sourceText || "미입력", inline: true },
-      { name: "부계정 여부", value: progress.isAlt ? "부계정" : "일반", inline: true },
-      { name: "계정 생성일 경과", value: `${progress.accountAge}일`, inline: true }
+      { name: "출생년도", value: progress.birthYear ? String(progress.birthYear) : "미입력", inline: true },
+      { name: "닉네임", value: progress.nickname || "미입력", inline: true }
     );
 }
 function step2bEmbed(progress) {
+  const selected = progress.gender && PLAY_STYLES.includes(progress.playStyle);
   return new EmbedBuilder()
-    .setColor(0x1f8b4c)
+    .setColor(0x27ae60)
     .setTitle("입장 절차 2-2단계")
-    .setDescription("성별을 선택해주세요. **절대 공개되지 않습니다.**")
+    .setDescription(["성별과 플레이 스타일을 선택해주세요."].join("\n"))
     .addFields(
-      { name: "출생년도", value: String(progress.birthYear || "-"), inline: true },
-      { name: "닉네임", value: String(progress.nickname || "-"), inline: true }
-    );
-}
-function birthNickModal() {
-  return new ModalBuilder()
-    .setCustomId("modal_bio")
-    .setTitle("출생년도 & 닉네임 입력")
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("birth")
-          .setLabel("출생년도 (4자리 숫자, 예: 2005)")
-          .setPlaceholder("예: 2005")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("nickname")
-          .setLabel("서버에서 사용할 닉네임 (1~10글자, 특수문자 불가)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-      )
-    );
-}
-function genderRow(selected) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("gender_m")
-      .setLabel(selected === "M" ? "✓ 남자" : "남자")
-      .setStyle(selected === "M" ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("gender_f")
-      .setLabel(selected === "F" ? "✓ 여자" : "여자")
-      .setStyle(selected === "F" ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("to_step3a")
-      .setLabel("다음")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(!selected)
-  );
+      { name: "성별", value: progress.gender === "M" ? "남자" : progress.gender === "F" ? "여자" : "미선택", inline: true },
+      { name: "플레이 스타일", value: progress.playStyle || "미선택", inline: true }
+    )
+    .setFooter({ text: "선택 후 다음 버튼이 활성화됩니다." });
 }
 function step3aEmbed(progress) {
+  const selected = (progress.gameTags || []).length > 0;
   return new EmbedBuilder()
-    .setColor(0xf2b619)
+    .setColor(0x8e44ad)
     .setTitle("입장 절차 3-1단계")
-    .setDescription("**게임 스타일(플레이스타일)** 을 선택해주세요 (1개). 선택 후 다음을 눌러주세요.")
-    .addFields({
-      name: "플레이스타일",
-      value: progress.playStyle || "미선택",
-      inline: true,
-    });
-}
-function playStyleRow(selected) {
-  return new ActionRowBuilder().addComponents(
-    ...PLAY_STYLES.map((ps) =>
-      new ButtonBuilder()
-        .setCustomId(`ps_${ps}`)
-        .setLabel(selected === ps ? `✓ ${ps}` : ps)
-        .setStyle(selected === ps ? ButtonStyle.Success : ButtonStyle.Secondary)
-    ),
-    new ButtonBuilder()
-      .setCustomId("to_step3b")
-      .setLabel("다음")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(!selected)
-  );
+    .setDescription(
+      [
+        "주로 하시는 게임 태그를 선택해주세요.",
+        "다음 단계에서 게임을 여러 개 선택할 수도 있어요.",
+      ].join("\n")
+    )
+    .addFields(
+      { name: "선택한 게임", value: progress.gameTags?.length ? progress.gameTags.join(", ") : "0개 선택", inline: false }
+    )
+    .setFooter({ text: "선택 후 다음 버튼이 활성화됩니다." });
 }
 function step3bEmbed(progress, totalPages) {
   return new EmbedBuilder()
@@ -354,11 +242,9 @@ function buildQueueEmbed(guild, member, progress) {
       { name: "출생년도", value: String(progress.birthYear), inline: true },
       { name: "성별", value: progress.gender === "M" ? "남자" : "여자", inline: true },
       { name: "유입 경로", value: progress.sourceText || "미입력", inline: true },
-      { name: "부계정 여부", value: progress.isAlt ? "부계정" : "일반", inline: true },
-      { name: "거절 이력", value: hasRejectHistory, inline: true },
-      { name: "계정 생성일", value: `${createdStr} (경과 ${progress.accountAge}일)`, inline: true },
-      { name: "플레이스타일", value: progress.playStyle || "미선택", inline: true },
-      { name: "주 게임", value: progress.gameTags?.length ? progress.gameTags.join(", ") : "미선택", inline: false }
+      { name: "부계정 여부", value: progress.isAlt ? "예" : "아니오", inline: true },
+      { name: "계정 생성일", value: createdStr, inline: true },
+      { name: "게임 태그", value: progress.gameTags?.length ? progress.gameTags.join(", ") : "미선택", inline: false }
     );
 }
 function queueButtons(progress) {
@@ -446,205 +332,169 @@ async function createPrivateChannel(guild, member) {
 async function startFlow(guild, member) {
   const userId = member.id;
 
-  const ageDays = accountAgeDays(member.user);
-  if (ageDays < 30) {
-    try {
-      const role = guild.roles.cache.get(ROLE_REJECTED);
-      if (role) await member.roles.add(role, "계정 생성 30일 미만 자동 거절");
-    } catch {}
-    await sendRejectNotice(guild, userId, "디스코드 계정 생성 30일 미만");
-    return;
-  }
-
   const ch = await createPrivateChannel(guild, member);
 
-  state.set(userId, {
+  const progress = {
     userId,
-    step: 1,
-    accountAge: ageDays,
-    isAlt: false,
+    step: 10,
     sourceText: null,
+    isAlt: false,
     birthYear: null,
     nickname: null,
     gender: null,
     playStyle: null,
     gameTags: [],
     messageId: null,
-    notifyRoleIds: [],
     queueMsgId: null,
-  });
+    notifyRoleIds: [],
+  };
 
-  const msg = await ch.send({
-    content: `<@${userId}>`,
-    embeds: [step1Embed(member.user)],
-    components: [step1Buttons(), step1ButtonsAlt()],
-    allowedMentions: { users: [userId] },
-  });
+  state.set(userId, progress);
 
-  const prog0 = state.get(userId);
-  prog0.messageId = msg.id;
-  state.set(userId, prog0);
+  const embed = step1Embed(progress);
+  const components = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("choose_SNS").setLabel("SNS 유입").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("choose_reco").setLabel("추천 유입").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("choose_alt").setLabel("부계정").setStyle(ButtonStyle.Danger)
+  );
 
-  const collector = msg.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 900000,
-  });
+  const msg = await ch.send({ embeds: [embed], components: [components] });
+  progress.messageId = msg.id;
+  state.set(userId, progress);
 
-  collector.on("collect", async (i) => {
-    if (i.user.id !== userId) {
-      await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true });
-      return;
-    }
+  member.client.on("interactionCreate", async (i) => {
+    if (!state.has(userId)) return;
+    if (!i.isButton()) return;
+    if (i.user.id !== userId) return;
+
     const prog = state.get(userId);
-    if (!prog) return;
+    const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
+    if (!chNow || i.channelId !== chNow.id) return;
 
-    if (i.customId.startsWith("src_")) {
-      const id = i.customId.slice(4);
-      if (id === "sns") {
-        await i.showModal(snsOrRefModal("SNS"));
-        return;
-      }
-      if (id === "ref") {
-        await i.showModal(snsOrRefModal("추천인"));
-        return;
-      }
-      if (id === "alt") {
-        await i.showModal(altModal());
-        return;
-      }
-
-      prog.sourceText =
-        id === "disboard" ? "디스보드" :
-        id === "dicoall"  ? "디코올"   :
-        id === "rejoin"   ? "재입장"   : "기타";
-      prog.isAlt = false;
-      prog.step = 21;
-
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
-      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      if (targetMsg) {
-        await targetMsg.edit({
-          embeds: [step2aEmbed(prog)],
-          components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId("open_bio")
-                .setLabel("출생년도·닉네임 입력")
-                .setStyle(ButtonStyle.Primary)
-            ),
-            navRow(["noop_prev", "to_step2b"], {
-              prev: true,
-              next: !(prog.birthYear && prog.nickname),
-            }),
-          ],
-        });
-      }
+    if (i.customId === "choose_SNS") {
       await i.deferUpdate().catch(() => {});
+      const modal = new ModalBuilder()
+        .setCustomId("modal_SNS")
+        .setTitle("SNS 유입")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("detail")
+              .setLabel("어떤 SNS에서 보셨나요?")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          )
+        );
+      await i.showModal(modal);
       return;
     }
 
-    if (i.customId === "open_bio") {
-      await i.showModal(birthNickModal());
+    if (i.customId === "choose_reco") {
+      await i.deferUpdate().catch(() => {});
+      const modal = new ModalBuilder()
+        .setCustomId("modal_추천인")
+        .setTitle("추천 유입")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("detail")
+              .setLabel("누가 추천했나요? (닉네임)")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          )
+        );
+      await i.showModal(modal);
+      return;
+    }
+
+    if (i.customId === "choose_alt") {
+      await i.deferUpdate().catch(() => {});
+      const modal = new ModalBuilder()
+        .setCustomId("modal_alt")
+        .setTitle("부계정 확인")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("mainNick")
+              .setLabel("본계정 닉네임")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          )
+        );
+      await i.showModal(modal);
       return;
     }
 
     if (i.customId === "to_step2b") {
-      if (!(prog.birthYear && prog.nickname)) {
-        await i.reply({
-          content: "출생년도·닉네임을 먼저 입력해주세요.",
-          ephemeral: true,
-        });
-        return;
-      }
+      await i.deferUpdate().catch(() => {});
       prog.step = 22;
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2bEmbed(prog)],
-          components: [genderRow(prog.gender)],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId("gender_M")
+                .setLabel("남자")
+                .setStyle(prog.gender === "M" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("gender_F")
+                .setLabel("여자")
+                .setStyle(prog.gender === "F" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("style_빡겜러")
+                .setLabel("빡겜러")
+                .setStyle(prog.playStyle === "빡겜러" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("style_즐빡겜러")
+                .setLabel("즐빡겜러")
+                .setStyle(prog.playStyle === "즐빡겜러" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("style_즐겜러")
+                .setLabel("즐겜러")
+                .setStyle(prog.playStyle === "즐겜러" ? ButtonStyle.Success : ButtonStyle.Secondary)
+            ),
+            navRow(["back_step2a", "to_step3a"], {
+              prev: true,
+              next: !(prog.gender && prog.playStyle),
+            }),
+          ],
         });
       }
-      await i.deferUpdate().catch(() => {});
-      return;
-    }
-
-    if (i.customId === "gender_m" || i.customId === "gender_f") {
-      prog.gender = i.customId.endsWith("_m") ? "M" : "F";
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
-      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      if (targetMsg) {
-        await targetMsg.edit({
-          embeds: [step2bEmbed(prog)],
-          components: [genderRow(prog.gender)],
-        });
-      }
-      await i.deferUpdate().catch(() => {});
       return;
     }
 
     if (i.customId === "to_step3a") {
-      if (!prog.gender) {
-        await i.reply({ content: "성별을 선택해주세요.", ephemeral: true });
-        return;
-      }
+      await i.deferUpdate().catch(() => {});
       prog.step = 31;
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step3aEmbed(prog)],
-          components: [playStyleRow(prog.playStyle)],
+          components: [navRow(["back_step2b", "to_step3b"], { prev: true, next: !(prog.gameTags && prog.gameTags.length) })],
         });
       }
-      await i.deferUpdate().catch(() => {});
       return;
     }
 
     if (i.customId === "to_step3b") {
-      if (!prog.playStyle) {
-        await i.reply({ content: "플레이스타일을 먼저 선택해주세요.", ephemeral: true });
-        return;
-      }
+      await i.deferUpdate().catch(() => {});
       prog.step = 32;
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
       const { rows, pages } = gamesSelectRows(prog.gameTags);
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step3bEmbed(prog, pages)],
-          components: [
-            ...rows,
-            navRow(["back_step3a", "go_queue"], {
-              next: !(prog.gameTags && prog.gameTags.length),
-            }),
-          ],
+          components: [rows, navRow(["back_step3a", "go_queue"], { prev: true, next: !(prog.gameTags && prog.gameTags.length) })],
         });
       }
-      await i.deferUpdate().catch(() => {});
-      return;
-    }
-
-    if (i.customId === "back_step3a") {
-      prog.step = 31;
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
-      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      if (targetMsg) {
-        await targetMsg.edit({
-          embeds: [step3aEmbed(prog)],
-          components: [playStyleRow(prog.playStyle)],
-        });
-      }
-      await i.deferUpdate().catch(() => {});
       return;
     }
 
     if (i.customId === "go_queue") {
-      if (!(prog.gameTags && prog.gameTags.length)) {
-        await i.reply({
-          content: "주 게임 태그를 최소 1개 이상 선택해주세요.",
-          ephemeral: true,
-        });
+      if (!prog.gameTags || prog.gameTags.length === 0) {
+        await i.reply({ content: "최소 1개 이상의 게임 태그를 선택해주세요.", ephemeral: true });
         return;
       }
       const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
@@ -655,8 +505,8 @@ async function startFlow(guild, member) {
         });
         prog.queueMsgId = qmsg.id;
       }
-      const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
-      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      const chNow2 = guild.channels.cache.find((c) => c.name === chanName(userId));
+      const targetMsg = await chNow2.messages.fetch(prog.messageId).catch(() => null);
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [
@@ -677,9 +527,108 @@ async function startFlow(guild, member) {
       await i.deferUpdate().catch(() => {});
       return;
     }
+
+    if (i.customId === "open_bio") {
+      const modal = new ModalBuilder()
+        .setCustomId("modal_bio")
+        .setTitle("출생년도·닉네임 입력")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("birthYear")
+              .setLabel("출생년도 (예: 2005)")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("nickname")
+              .setLabel("닉네임 (1~10글자, 특수문자 불가)")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          )
+        );
+      await i.showModal(modal);
+      return;
+    }
+
+    if (i.customId === "noop_prev" || i.customId === "noop_next") {
+      await i.deferUpdate().catch(() => {});
+      return;
+    }
+
+    if (i.customId === "back_step2a") {
+      await i.deferUpdate().catch(() => {});
+      prog.step = 21;
+      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      if (targetMsg) {
+        await targetMsg.edit({
+          embeds: [step2aEmbed(prog)],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId("open_bio")
+                .setLabel("출생년도·닉네임 재입력")
+                .setStyle(ButtonStyle.Secondary)
+            ),
+            navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
+          ],
+        });
+      }
+      return;
+    }
+
+    if (i.customId === "back_step2b") {
+      await i.deferUpdate().catch(() => {});
+      prog.step = 22;
+      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      if (targetMsg) {
+        await targetMsg.edit({
+          embeds: [step2bEmbed(prog)],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId("gender_M")
+                .setLabel("남자")
+                .setStyle(prog.gender === "M" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("gender_F")
+                .setLabel("여자")
+                .setStyle(prog.gender === "F" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("style_빡겜러")
+                .setLabel("빡겜러")
+                .setStyle(prog.playStyle === "빡겜러" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("style_즐빡겜러")
+                .setLabel("즐빡겜러")
+                .setStyle(prog.playStyle === "즐빡겜러" ? ButtonStyle.Success : ButtonStyle.Secondary),
+              new ButtonBuilder()
+                .setCustomId("style_즐겜러")
+                .setLabel("즐겜러")
+                .setStyle(prog.playStyle === "즐겜러" ? ButtonStyle.Success : ButtonStyle.Secondary)
+            ),
+            navRow(["noop_prev", "to_step3a"], { prev: true, next: !(prog.gender && prog.playStyle) }),
+          ],
+        });
+      }
+      return;
+    }
+
+    if (i.customId === "back_step3a") {
+      await i.deferUpdate().catch(() => {});
+      prog.step = 31;
+      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      if (targetMsg) {
+        await targetMsg.edit({
+          embeds: [step3aEmbed(prog)],
+          components: [navRow(["back_step2b", "to_step3b"], { prev: true, next: !(prog.gameTags && prog.gameTags.length) })],
+        });
+      }
+      return;
+    }
   });
 
-  /* 모달 핸들러 */
   member.client.on("interactionCreate", async (mi) => {
     if (!state.has(userId)) return;
     if (!mi.isModalSubmit()) return;
@@ -706,10 +655,7 @@ async function startFlow(guild, member) {
                 .setLabel("출생년도·닉네임 입력")
                 .setStyle(ButtonStyle.Primary)
             ),
-            navRow(["noop_prev", "to_step2b"], {
-              prev: true,
-              next: !(prog.birthYear && prog.nickname),
-            }),
+            navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
           ],
         });
       }
@@ -729,7 +675,7 @@ async function startFlow(guild, member) {
         return;
       }
       await mi.deferUpdate().catch(() => {});
-      prog.sourceText = `부계정(본계: ${mainNick})`;
+      prog.sourceText = `부계정(본계정: ${mainNick})`;
       prog.isAlt = true;
       prog.step = 21;
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
@@ -743,10 +689,7 @@ async function startFlow(guild, member) {
                 .setLabel("출생년도·닉네임 입력")
                 .setStyle(ButtonStyle.Primary)
             ),
-            navRow(["noop_prev", "to_step2b"], {
-              prev: true,
-              next: !(prog.birthYear && prog.nickname),
-            }),
+            navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
           ],
         });
       }
@@ -754,7 +697,7 @@ async function startFlow(guild, member) {
     }
 
     if (mi.customId === "modal_bio") {
-      const birth = mi.fields.getTextInputValue("birth")?.trim();
+      const birth = mi.fields.getTextInputValue("birthYear")?.trim();
       const nick = mi.fields.getTextInputValue("nickname")?.trim();
 
       const byErr = validateBirthYear(birth);
@@ -825,7 +768,6 @@ async function startFlow(guild, member) {
     }
   });
 
-  /* 버튼/셀렉트 핸들러 */
   member.client.on("interactionCreate", async (i) => {
     if (!(i.isButton() || i.isStringSelectMenu())) return;
 
@@ -871,7 +813,7 @@ async function startFlow(guild, member) {
         await targetMsg.edit({
           embeds: [step3bEmbed(prog, pages)],
           components: [
-            ...rows,
+            rows,
             navRow(["back_step3a", "go_queue"], {
               next: !(prog.gameTags && prog.gameTags.length),
             }),
@@ -893,32 +835,9 @@ async function startFlow(guild, member) {
       return;
     }
 
-    if (i.isButton() && i.customId.startsWith("ps_")) {
-      if (i.user.id !== uid) {
-        await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true });
-        return;
-      }
-      const ps = i.customId.slice(3);
-      if (!PLAY_STYLES.includes(ps)) return;
-      prog.playStyle = ps;
-      state.set(uid, prog);
-      const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-      const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      if (targetMsg) {
-        await targetMsg.edit({
-          embeds: [step3aEmbed(prog)],
-          components: [playStyleRow(prog.playStyle)],
-        });
-      }
-      await i.deferUpdate().catch(() => {});
-      return;
-    }
-
     if (
       i.isButton() &&
-      ["approve_", "approve_silent_", "reject_", "ban_"].some((p) =>
-        i.customId.startsWith(p)
-      )
+      ["approve_", "approve_silent_", "reject_", "ban_"].some((p) => i.customId.startsWith(p))
     ) {
       if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
         await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true });
@@ -944,9 +863,7 @@ async function startFlow(guild, member) {
         await target.ban({ reason: "입장 절차 중 차단 처리" }).catch(() => {});
         await i.update({ content: `차단 처리 완료: <@${targetId}>`, components: [], embeds: [] });
         const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
-        if (pch2) {
-          try { await pch2.delete("승인 절차 종료(차단)"); } catch {}
-        }
+        if (pch2) { try { await pch2.delete("승인 절차 종료(차단)"); } catch {} }
         if (progT.queueMsgId) {
           const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
           if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
@@ -963,9 +880,7 @@ async function startFlow(guild, member) {
         await sendRejectNotice(i.guild, targetId, "관리자 거절");
         await i.update({ content: `거절 처리 완료: <@${targetId}>`, components: [], embeds: [] });
         const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
-        if (pch2) {
-          try { await pch2.delete("승인 절차 종료(거절)"); } catch {}
-        }
+        if (pch2) { try { await pch2.delete("승인 절차 종료(거절)"); } catch {} }
         if (progT.queueMsgId) {
           const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
           if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
@@ -986,54 +901,43 @@ async function startFlow(guild, member) {
         if (role) await target.roles.add(role, "입장 승인");
       } catch {}
 
+      if (Array.isArray(progT.gameTags) && progT.gameTags.length) {
+        for (const gameName of progT.gameTags) {
+          const role = i.guild.roles.cache.find(r => r.name === gameName);
+          if (role) { try { await target.roles.add(role, "입장 승인: 게임 태그 자동 부여"); } catch {} }
+        }
+      }
+
       if (Array.isArray(progT.notifyRoleIds) && progT.notifyRoleIds.length) {
         for (const roleId of progT.notifyRoleIds) {
           const r = i.guild.roles.cache.get(roleId);
-          if (r) {
-            try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {}
-          }
+          if (r) { try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {} }
         }
       }
 
       const logCh = i.guild.channels.cache.get(CH_WELCOME_LOG);
       if (logCh) {
-        const notifyNames = (progT.notifyRoleIds || [])
-          .map((rid) => i.guild.roles.cache.get(rid)?.name)
-          .filter(Boolean);
-        await logCh.send({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x3498db)
-              .setTitle("입장 로그")
-              .setThumbnail(target.user.displayAvatarURL({ size: 256 }))
-              .addFields(
-                { name: "유저", value: `<@${targetId}> (${target.user.tag})` },
-                {
-                  name: "닉네임",
-                  value: progT.nickname || (target.displayName || target.user.username),
-                  inline: true,
-                },
-                { name: "출생년도", value: String(progT.birthYear || "-"), inline: true },
-                {
-                  name: "성별",
-                  value: progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-",
-                  inline: true,
-                },
-                { name: "유입 경로", value: progT.sourceText || "-", inline: true },
-                { name: "플레이스타일", value: progT.playStyle || "-", inline: true },
-                {
-                  name: "주 게임",
-                  value: progT.gameTags?.length ? progT.gameTags.join(", ") : "-",
-                  inline: false,
-                },
-                {
-                  name: "알림 태그",
-                  value: notifyNames.length ? notifyNames.join(", ") : "선택 안 함",
-                  inline: false,
-                }
-              ),
-          ],
-        });
+        const now = new Date();
+        const pad = (n)=> String(n).padStart(2,"0");
+        const kst = new Date(now.getTime() + (9 - now.getTimezoneOffset()/60)*3600000);
+        const ts  = `${kst.getFullYear()}-${pad(kst.getMonth()+1)}-${pad(kst.getDate())} ${pad(kst.getHours())}:${pad(kst.getMinutes())}:${pad(kst.getSeconds())}`;
+        const notifyNames = (progT.notifyRoleIds || []).map((rid)=>i.guild.roles.cache.get(rid)?.name).filter(Boolean);
+        const lines = [
+          "━━━━━━━━━━━━━━━ ✅ 입장 승인 ━━━━━━━━━━━━━━━",
+          `• 유저        : <@${targetId}> (${target.user.tag})`,
+          `• 닉네임      : ${progT.nickname || (target.displayName || target.user.username)}`,
+          `• 출생년도    : ${progT.birthYear ?? "-"}`,
+          `• 성별        : ${progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-"}`,
+          `• 유입 경로   : ${progT.sourceText || "-"}`,
+          `• 플레이스타일: ${progT.playStyle || "-"}`,
+          `• 주 게임     : ${progT.gameTags?.length ? progT.gameTags.join(", ") : "-"}`,
+          `• 알림 태그   : ${notifyNames.length ? notifyNames.join(", ") : "선택 안 함"}`,
+          `• 처리자      : ${i.user.tag} (${i.user.id})`,
+          `• 처리유형    : 승인${silent ? " (조용히 승인)" : ""}`,
+          `• 시각(KST)   : ${ts}`,
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        ].join("\n");
+        await logCh.send({ content: lines });
       }
 
       if (!silent && !progT.isAlt) {
@@ -1047,9 +951,7 @@ async function startFlow(guild, member) {
       });
 
       const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
-      if (pch2) {
-        try { await pch2.delete("승인 절차 종료(승인)"); } catch {}
-      }
+      if (pch2) { try { await pch2.delete("승인 절차 종료(승인)"); } catch {} }
       if (progT.queueMsgId) {
         const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
         if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
