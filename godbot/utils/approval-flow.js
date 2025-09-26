@@ -95,7 +95,7 @@ function validateBirthYear(y) {
   if (!/^\d{4}$/.test(String(y || ""))) return "출생년도는 4자리 숫자로 입력해주세요. 예) 2005년생";
   const { minY, maxY } = getAgeRange();
   const year = Number(y);
-  if (year < minY || year > maxY) return `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`;
+  if (year < minY || year > maxY) return `20세 이상만 입장 가능합니다.`;
   return null;
 }
 function chunk(arr, size) {
@@ -644,7 +644,7 @@ module.exports = (client) => {
             }
             if (!isBirthYearEligible(prog.birthYear)) {
               const { minY, maxY } = getAgeRange();
-              await forceAutoReject(i.guild, uid, `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`);
+              await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
               try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
               return;
             }
@@ -721,7 +721,7 @@ module.exports = (client) => {
             }
             if (!isBirthYearEligible(prog.birthYear)) {
               const { minY, maxY } = getAgeRange();
-              await forceAutoReject(i.guild, uid, `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`);
+              await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
               try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
               return;
             }
