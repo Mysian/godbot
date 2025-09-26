@@ -368,6 +368,21 @@ const scrimAnnounce =
 
 client.on(Events.InteractionCreate, async interaction => {
 
+  if (
+    interaction.isModalSubmit() &&
+    (
+      interaction.customId === 'modal_SNS' ||
+      interaction.customId === 'modal_추천인' ||
+      interaction.customId === 'modal_alt' ||
+      interaction.customId === 'modal_bio' ||
+      // 혹시 커스텀ID가 바뀌어도, 입장- 채널에서 온 모달이면 전역 처리 금지
+      (interaction.channel?.name && interaction.channel.name.startsWith('입장-'))
+    )
+  ) {
+    return; // approval-flow.js가 처리하게 놔둠
+  }
+
+
 // 0. 게임 검색 모달 제출 처리 → 즉시 태그 토글
 if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   const keyword = interaction.fields.getTextInputValue("searchKeyword");
@@ -555,7 +570,9 @@ if (interaction.isModalSubmit()) {
   }
   if (!handled) {
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
+      if (!interaction.channel?.name?.startsWith('입장-')) {
+        await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
+      }
     }
   }
   return;
