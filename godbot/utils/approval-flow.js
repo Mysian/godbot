@@ -146,7 +146,7 @@ function validateBirthYear(input) {
 }
 function chunk(arr, size) {
   const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice( i, i + size));
   return out;
 }
 function navRow(ids, disabledMap = {}) {
@@ -317,6 +317,7 @@ function queueButtons(progress) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`approve_${progress.userId}`).setLabel("승인").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`approve_silent_${progress.userId}`).setLabel("조용히 승인").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`nickreq_${progress.userId}`).setLabel("닉네임 변경 요청").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`reject_${progress.userId}`).setLabel("거절").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`ban_${progress.userId}`).setLabel("차단").setStyle(ButtonStyle.Danger)
   );
@@ -378,6 +379,44 @@ async function forceAutoReject(guild, userId, reason) {
   }
   state.delete(userId);
   deleteState(userId);
+}
+function nicknameRequestEmbed(reasonText) {
+  return new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle("닉네임 변경 요청")
+    .setDescription(["입장 절차를 계속 진행하기 위해 닉네임 변경이 필요합니다.","아래 버튼을 눌러 새 닉네임을 입력해주세요."].join("\n"))
+    .addFields({ name: "요청 사유", value: reasonText || "닉네임이 서버 규칙에 부적합하여 변경이 필요합니다." });
+}
+function nicknameRequestRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("open_nick_change").setLabel("닉네임 재입력").setStyle(ButtonStyle.Primary)
+  );
+}
+function rejectReasonModalCustomId(targetId) {
+  return `modal_reject_${targetId}`;
+}
+function nickreqReasonModalCustomId(targetId) {
+  return `modal_nickreq_${targetId}`;
+}
+function reasonModal(title, customId) {
+  return new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle(title)
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("reason").setLabel("사유를 입력하세요 (선택)").setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder("미입력 시 기본 사유가 전송됩니다.")
+      )
+    );
+}
+function nickChangeModal() {
+  return new ModalBuilder()
+    .setCustomId("modal_nickchange")
+    .setTitle("새 닉네임 입력")
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("nickname_new").setLabel("새 닉네임 (1~10글자, 특수문자 불가)").setStyle(TextInputStyle.Short).setRequired(true)
+      )
+    );
 }
 async function startFlow(guild, member) {
   const userId = member.id;
@@ -460,11 +499,53 @@ module.exports = (client) => {
   client.on("interactionCreate", async (i) => {
     try {
       if (i.isModalSubmit()) {
+        if (i.customId.startsWith("modal_reject_")) {
+          const targetId = i.customId.split("_").pop();
+          const reasonIn = i.fields.getTextInputValue("reason")?.trim();
+          const finalReason = reasonIn && reasonIn.replace(/\s+/g, "") !== "" ? reasonIn : "관리자 판단에 따른 입장 거절";
+          if (!i.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
+          const target = await i.guild.members.fetch(targetId).catch(() => null);
+          if (!target) { await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true }); return; }
+          const progT = getProg(targetId) || { userId: targetId };
+          try {
+            const role = i.guild.roles.cache.get(ROLE_REJECTED);
+            if (role) await target.roles.add(role, "관리자 거절");
+          } catch {}
+          await sendRejectNotice(i.guild, targetId, finalReason);
+          const pch2 = i.guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(targetId));
+          if (pch2) { try { await pch2.delete("승인 절차 종료(거절)"); } catch {} }
+          if (progT.queueMsgId) {
+            const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+            if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
+          }
+          state.delete(targetId);
+          deleteState(targetId);
+          await i.reply({ content: `거절 처리 완료: <@${targetId}>\n사유: ${finalReason}`, ephemeral: true });
+          return;
+        }
+
+        if (i.customId.startsWith("modal_nickreq_")) {
+          const targetId = i.customId.split("_").pop();
+          const reasonIn = i.fields.getTextInputValue("reason")?.trim();
+          const finalReason = reasonIn && reasonIn.replace(/\s+/g, "") !== "" ? reasonIn : "닉네임이 서버 규칙에 부적합하여 변경을 요청드립니다.";
+          if (!i.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
+          const member = await i.guild.members.fetch(targetId).catch(() => null);
+          if (!member) { await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true }); return; }
+          const pch = i.guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(targetId));
+          if (!pch) { await i.reply({ content: "대상 유저의 개인 입장 채널을 찾지 못했습니다.", ephemeral: true }); return; }
+          await pch.send({ content: `<@${targetId}>`, embeds: [nicknameRequestEmbed(finalReason)], components: [nicknameRequestRow()], allowedMentions: { users: [targetId] } });
+          await i.reply({ content: `닉네임 변경 요청 전송 완료: <@${targetId}>\n사유: ${finalReason}`, ephemeral: true });
+          return;
+        }
+
         const uid = i.user.id;
         const prog = getProg(uid);
         if (!prog) return;
         const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-        if (!chNow || i.channelId !== chNow.id) return;
+        if (!chNow || i.channelId !== chNow.id) {
+          if (i.customId === "modal_bio" || i.customId === "modal_nickchange") { await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true }); }
+          return;
+        }
 
         if (i.customId === "modal_SNS" || i.customId === "modal_추천인") {
           await i.deferUpdate().catch(() => {});
@@ -505,43 +586,65 @@ module.exports = (client) => {
         }
 
         if (i.customId === "modal_bio") {
-  const birth = i.fields.getTextInputValue("birth")?.trim();
-  const nick = i.fields.getTextInputValue("nickname")?.trim();
+          const birth = i.fields.getTextInputValue("birth")?.trim();
+          const nick = i.fields.getTextInputValue("nickname")?.trim();
 
-  const vr = validateBirthYear(birth);
-  if (!vr.ok) {
-    if (vr.reject) {
-      await forceAutoReject(i.guild, uid, vr.msg);
-      try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
-    } else {
-      await i.reply({ content: vr.msg, ephemeral: true }); 
-    }
-    return;
-  }
+          const vr = validateBirthYear(birth);
+          if (!vr.ok) {
+            if (vr.reject) {
+              await forceAutoReject(i.guild, uid, vr.msg);
+              try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
+            } else {
+              await i.reply({ content: vr.msg, ephemeral: true });
+            }
+            return;
+          }
 
-  const nErr = validateNickname(nick);
-  if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
+          const nErr = validateNickname(nick);
+          if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
 
-  const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
-  if (dup) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
+          const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
+          if (dup) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
 
-  await i.deferUpdate().catch(() => {});
-  setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
+          await i.deferUpdate().catch(() => {});
+          setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
 
-  const chNow2 = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-  const targetMsg = i.message ?? (await chNow2.messages.fetch(getProg(uid).messageId).catch(() => null));
-  if (targetMsg) {
-    const cur = getProg(uid);
-    await targetMsg.edit({
-      embeds: [step2aEmbed(cur)],
-      components: [
-        new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
-        navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
-      ],
-    });
-  }
-  return;
-}
+          const chNow2 = i.guild.channels.cache.find((c) => c.name === chanName(uid));
+          const targetMsg = i.message ?? (await chNow2.messages.fetch(getProg(uid).messageId).catch(() => null));
+          if (targetMsg) {
+            const cur = getProg(uid);
+            await targetMsg.edit({
+              embeds: [step2aEmbed(cur)],
+              components: [
+                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+              ],
+            });
+          }
+          return;
+        }
+
+        if (i.customId === "modal_nickchange") {
+          const newNick = i.fields.getTextInputValue("nickname_new")?.trim();
+          const err = validateNickname(newNick);
+          if (err) { await i.reply({ content: err, ephemeral: true }); return; }
+          const dup2 = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === newNick && m.id !== uid);
+          if (dup2) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
+          setProg(uid, { nickname: newNick });
+          const progNow = getProg(uid);
+          const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+          if (qch && progNow.queueMsgId) {
+            try {
+              const qmsg = await qch.messages.fetch(progNow.queueMsgId);
+              const member = await i.guild.members.fetch(uid).catch(() => null);
+              if (member) {
+                await qmsg.edit({ embeds: [buildQueueEmbed(i.guild, member, progNow)], components: [queueButtons(progNow)] });
+              }
+            } catch {}
+          }
+          await i.reply({ content: `닉네임이 '${newNick}' 으로 업데이트되었습니다.`, ephemeral: true });
+          return;
+        }
 
         return;
       }
@@ -556,7 +659,7 @@ module.exports = (client) => {
       if (!isUserPrivate && !(
         isQueueChannel &&
         i.isButton() &&
-        ["approve_", "approve_silent_", "reject_", "ban_"].some((p) => i.customId.startsWith(p))
+        ["approve_", "approve_silent_", "reject_", "ban_", "nickreq_"].some((p) => i.customId.startsWith(p))
       )) {
         return;
       }
@@ -610,7 +713,7 @@ module.exports = (client) => {
 
       if (i.isButton()) {
         const prog = getProg(uid);
-        if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
+        if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue", "open_nick_change"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
           if (!prog) return;
 
           if (i.customId.startsWith("src_")) {
@@ -639,16 +742,16 @@ module.exports = (client) => {
           if (i.customId === "open_bio") { await i.showModal(birthNickModal()); return; }
 
           if (i.customId === "to_step2b") {
-  const cur = getProg(uid);
-  if (!(cur.birthYear && cur.nickname)) {
-    await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true }); 
-    return; 
-  }
-  if (!isBirthYearEligible(Number(cur.birthYear))) {
-    await forceAutoReject(i.guild, uid, "20세 이상만 입장 가능합니다.");
-    try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
-    return;
-  }
+            const cur = getProg(uid);
+            if (!(cur.birthYear && cur.nickname)) {
+              await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true });
+              return;
+            }
+            if (!isBirthYearEligible(Number(cur.birthYear))) {
+              await forceAutoReject(i.guild, uid, "20세 이상만 입장 가능합니다.");
+              try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
+              return;
+            }
             setProg(uid, { step: 22 });
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
@@ -728,9 +831,14 @@ module.exports = (client) => {
             await i.deferUpdate().catch(() => {});
             return;
           }
+
+          if (i.customId === "open_nick_change") {
+            await i.showModal(nickChangeModal());
+            return;
+          }
         }
 
-        if (["approve_", "approve_silent_", "reject_", "ban_"].some((p) => i.customId.startsWith(p))) {
+        if (["approve_", "approve_silent_", "reject_", "ban_", "nickreq_"].some((p) => i.customId.startsWith(p))) {
           if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
           const targetId = i.customId.split("_").pop();
           const target = await i.guild.members.fetch(targetId).catch(() => null);
@@ -740,7 +848,7 @@ module.exports = (client) => {
           if (i.customId.startsWith("ban_")) {
             await target.ban({ reason: "입장 절차 중 차단 처리" }).catch(() => {});
             await i.update({ content: `차단 처리 완료: <@${targetId}>`, components: [], embeds: [] });
-            const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
+            const pch2 = i.guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(targetId));
             if (pch2) { try { await pch2.delete("승인 절차 종료(차단)"); } catch {} }
             if (progT.queueMsgId) {
               const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
@@ -752,20 +860,12 @@ module.exports = (client) => {
           }
 
           if (i.customId.startsWith("reject_")) {
-            try {
-              const role = i.guild.roles.cache.get(ROLE_REJECTED);
-              if (role) await target.roles.add(role, "관리자 거절");
-            } catch {}
-            await sendRejectNotice(i.guild, targetId, "관리자 거절");
-            await i.update({ content: `거절 처리 완료: <@${targetId}>`, components: [], embeds: [] });
-            const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
-            if (pch2) { try { await pch2.delete("승인 절차 종료(거절)"); } catch {} }
-            if (progT.queueMsgId) {
-              const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-              if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
-            }
-            state.delete(targetId);
-            deleteState(targetId);
+            await i.showModal(reasonModal("거절 사유 입력(선택)", rejectReasonModalCustomId(targetId)));
+            return;
+          }
+
+          if (i.customId.startsWith("nickreq_")) {
+            await i.showModal(reasonModal("닉네임 변경 요청 사유(선택)", nickreqReasonModalCustomId(targetId)));
             return;
           }
 
@@ -831,7 +931,7 @@ module.exports = (client) => {
 
           await i.update({ content: `승인 처리 완료: <@${targetId}> ${silent ? "(조용히 승인)" : ""}`, components: [], embeds: [] });
 
-          const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
+          const pch2 = i.guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(targetId));
           if (pch2) { try { await pch2.delete("승인 절차 종료(승인)"); } catch {} }
           if (progT.queueMsgId) {
             const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
