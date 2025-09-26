@@ -194,11 +194,9 @@ function step2aEmbed(progress) {
   return new EmbedBuilder()
     .setColor(0x2095ff)
     .setTitle("입장 절차 2-1단계")
-    .setDescription(["아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**","","• 출생년도 (예: "+maxY+"년생)","• 서버에서 사용할 닉네임","","※ 만 20세 미만이거나 100세 초과로 계산되는 출생년도는 **승인거절** 됩니다."].join("\n"))
+    .setDescription(["아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**","","• 출생년도 (예: 2000년생)","• 서버에서 사용할 닉네임","","※ 생성된지 30일 미만 계정은 입장이 거절됩니다."].join("\n"))
     .addFields(
-      { name: "유입 경로", value: progress.sourceText || "미입력", inline: true },
-      { name: "부계정 여부", value: progress.isAlt ? "부계정" : "일반", inline: true },
-      { name: "계정 생성일 경과", value: `${progress.accountAge}일`, inline: true }
+      { name: "귀하의 계정이 생성된지", value: `${progress.accountAge}일`, inline: true }
     );
 }
 function step2bEmbed(progress) {
@@ -207,8 +205,8 @@ function step2bEmbed(progress) {
     .setTitle("입장 절차 2-2단계")
     .setDescription("성별을 선택해주세요. **절대 공개되지 않습니다.**")
     .addFields(
-      { name: "출생년도", value: String(progress.birthYear || "-"), inline: true },
-      { name: "닉네임", value: String(progress.nickname || "-"), inline: true }
+      { name: "입력하신 출생년도", value: String(progress.birthYear || "-"), inline: true },
+      { name: "희망하는 닉네임", value: String(progress.nickname || "-"), inline: true }
     );
 }
 function birthNickModal() {
