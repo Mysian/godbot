@@ -14,6 +14,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 
+/* ====== 게임 목록 ====== */
 let ALL_GAMES = [];
 try {
   ({ ALL_GAMES } = require("../select-game.js"));
@@ -30,6 +31,7 @@ try {
   ];
 }
 
+/* ====== 알림 태그(고정 매핑) ====== */
 const NOTIFY_CHOICES = [
   { label: "내전 알림", roleId: "1255580383559422033" },
   { label: "이벤트 알림", roleId: "1255580760371626086" },
@@ -38,6 +40,7 @@ const NOTIFY_CHOICES = [
   { label: "퀴즈/문제 알림", roleId: "1255580906199191644" },
 ];
 
+/* ====== 토글 파일 ====== */
 const APPROVAL_SETTINGS_PATH = path.join(
   __dirname,
   "../data/approval-settings.json"
@@ -51,6 +54,7 @@ function loadApprovalOn() {
   }
 }
 
+/* ====== 길드 리소스 ====== */
 const CH_APPROVAL_QUEUE = "1276751288117235755";
 const CH_WELCOME_LOG = "1240936843122573312";
 const CH_SERVER_GREETING = "1202425624061415464";
@@ -62,9 +66,11 @@ const ROLE_REJECTED = "1205052922296016906";
 
 const PLAY_STYLES = ["빡겜러", "즐빡겜러", "즐겜러"];
 
+/* ====== 상태 ====== */
 const state = new Map();
 const chanName = (uid) => `입장-${uid}`;
 
+/* ====== 유틸 ====== */
 function currentKRYear() {
   return Number(
     new Intl.DateTimeFormat("ko-KR", {
@@ -95,19 +101,13 @@ function validateBirthYear(y) {
     return `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`;
   return null;
 }
-function isBirthValidNumeric(yearNum) {
-  if (!yearNum) return false;
-  const nowY = currentKRYear();
-  const minY = nowY - 100;
-  const maxY = nowY - 20;
-  return yearNum >= minY && yearNum <= maxY;
-}
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
+/* ====== 컴포넌트/임베드 ====== */
 function navRow(ids, disabledMap = {}) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -396,6 +396,7 @@ function settingsSelectRow(selectedIds = []) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
+/* ====== 메시지/알림 ====== */
 async function sendWelcome(guild, userId, gameTags = []) {
   const ch = guild.channels.cache.get(CH_SERVER_GREETING);
   if (!ch) return;
@@ -417,38 +418,8 @@ async function sendRejectNotice(guild, userId, reasonText) {
     allowedMentions: { users: [userId] },
   });
 }
-async function autoReject(guild, userId, reasonText, replyInteraction) {
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (member) {
-    try {
-      const role = guild.roles.cache.get(ROLE_REJECTED);
-      if (role) await member.roles.add(role, "자동 거절");
-    } catch {}
-  }
-  await sendRejectNotice(guild, userId, reasonText);
-  const pch = guild.channels.cache.find((c) => c.name === chanName(userId));
-  if (pch) {
-    try { await pch.delete("입장 절차 자동 거절"); } catch {}
-  }
-  const prog = state.get(userId);
-  if (prog && prog.queueMsgId) {
-    const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
-    if (qch) {
-      try { const m = await qch.messages.fetch(prog.queueMsgId); await m.delete(); } catch {}
-    }
-  }
-  state.delete(userId);
-  if (replyInteraction) {
-    try {
-      if (replyInteraction.deferred || replyInteraction.replied) {
-        await replyInteraction.followUp({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
-      } else {
-        await replyInteraction.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
-      }
-    } catch {}
-  }
-}
 
+/* ====== 채널/플로우 ====== */
 async function createPrivateChannel(guild, member) {
   const existing = guild.channels.cache.find(
     (c) => c.type === ChannelType.GuildText && c.name === chanName(member.id)
@@ -551,7 +522,6 @@ async function startFlow(guild, member) {
 
       const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -564,7 +534,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: nextDisabled,
+              next: !(prog.birthYear && prog.nickname),
             }),
           ],
         });
@@ -584,10 +554,6 @@ async function startFlow(guild, member) {
           content: "출생년도·닉네임을 먼저 입력해주세요.",
           ephemeral: true,
         });
-        return;
-      }
-      if (!isBirthValidNumeric(prog.birthYear)) {
-        await autoReject(guild, userId, `만 20세 미만(출생년도 ${prog.birthYear})`, i);
         return;
       }
       prog.step = 22;
@@ -713,6 +679,7 @@ async function startFlow(guild, member) {
     }
   });
 
+  /* 모달 핸들러 */
   member.client.on("interactionCreate", async (mi) => {
     if (!state.has(userId)) return;
     if (!mi.isModalSubmit()) return;
@@ -720,7 +687,7 @@ async function startFlow(guild, member) {
 
     const prog = state.get(userId);
     const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
-    if (!chNow) return;
+    if (!chNow || mi.channelId !== chNow.id) return;
 
     if (mi.customId === "modal_SNS" || mi.customId === "modal_추천인") {
       await mi.deferUpdate().catch(() => {});
@@ -729,7 +696,6 @@ async function startFlow(guild, member) {
       prog.isAlt = false;
       prog.step = 21;
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -742,7 +708,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: nextDisabled,
+              next: !(prog.birthYear && prog.nickname),
             }),
           ],
         });
@@ -767,7 +733,6 @@ async function startFlow(guild, member) {
       prog.isAlt = true;
       prog.step = 21;
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -780,7 +745,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: nextDisabled,
+              next: !(prog.birthYear && prog.nickname),
             }),
           ],
         });
@@ -794,7 +759,24 @@ async function startFlow(guild, member) {
 
       const byErr = validateBirthYear(birth);
       if (byErr) {
-        await autoReject(guild, userId, byErr, mi);
+        try {
+          const role = guild.roles.cache.get(ROLE_REJECTED);
+          if (role) await member.roles.add(role, "연령 기준 미충족 자동 거절");
+        } catch {}
+        await sendRejectNotice(guild, userId, byErr);
+        const pch = guild.channels.cache.find((c) => c.name === chanName(userId));
+        if (pch) {
+          try {
+            await pch.delete("입장 절차 자동 거절");
+          } catch {}
+        }
+        state.delete(userId);
+        try {
+          await mi.reply({
+            content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.",
+            ephemeral: true,
+          });
+        } catch {}
         return;
       }
 
@@ -822,7 +804,6 @@ async function startFlow(guild, member) {
       prog.step = 21;
 
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -835,7 +816,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: nextDisabled,
+              next: !(prog.birthYear && prog.nickname),
             }),
           ],
         });
@@ -844,6 +825,7 @@ async function startFlow(guild, member) {
     }
   });
 
+  /* 버튼/셀렉트 핸들러 */
   member.client.on("interactionCreate", async (i) => {
     if (!(i.isButton() || i.isStringSelectMenu())) return;
 
@@ -1078,6 +1060,7 @@ async function startFlow(guild, member) {
   });
 }
 
+/* ====== 익스포트 ====== */
 module.exports = (client) => {
   client.on("guildMemberAdd", async (member) => {
     if (!loadApprovalOn()) return;
