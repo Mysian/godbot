@@ -381,14 +381,34 @@ function buildQueueEmbed(guild, member, progress) {
     );
 }
 function queueButtons(progress) {
+  const disableNormalApprove =
+    progress?.isAlt === true || progress?.sourceText === "재입장";
+
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`approve_${progress.userId}`).setLabel("승인").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`approve_silent_${progress.userId}`).setLabel("조용히 승인").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`nickreq_${progress.userId}`).setLabel("닉네임 변경 요청").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`reject_${progress.userId}`).setLabel("거절").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`ban_${progress.userId}`).setLabel("차단").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder()
+      .setCustomId(`approve_${progress.userId}`)
+      .setLabel("승인")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!!disableNormalApprove),
+    new ButtonBuilder()
+      .setCustomId(`approve_silent_${progress.userId}`)
+      .setLabel("조용히 승인")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`nickreq_${progress.userId}`)
+      .setLabel("닉네임 변경 요청")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`reject_${progress.userId}`)
+      .setLabel("거절")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`ban_${progress.userId}`)
+      .setLabel("차단")
+      .setStyle(ButtonStyle.Danger)
   );
 }
+
 function settingsSelectRow(selectedIds = []) {
   const opts = NOTIFY_CHOICES.map((o) => ({ label: o.label, value: o.roleId, default: selectedIds.includes(o.roleId) }));
   const menu = new StringSelectMenuBuilder()
