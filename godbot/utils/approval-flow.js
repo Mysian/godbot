@@ -684,21 +684,46 @@ module.exports = (client) => {
           return;
         }
 
-        if (i.customId === "modal_alt") {
+                if (i.customId === "modal_alt") {
           const mainNick = i.fields.getTextInputValue("mainNick")?.trim();
           const matched = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === mainNick);
           if (!matched) { await i.reply({ content: "본계정 닉네임을 찾지 못했습니다. 다시 확인해주세요.", ephemeral: true }); return; }
+
           await i.deferUpdate().catch(() => {});
-          setProg(uid, p => ({ ...p, sourceText: `부계정(본계: ${mainNick})`, isAlt: true, step: 21 }));
-          const targetMsg = i.message ?? (await chNow.messages.fetch(prog.messageId).catch(() => null));
+          const updated = setProg(uid, p => ({
+            ...p,
+            sourceText: `부계정(본계: ${mainNick})`,
+            isAlt: true,
+            step: 99
+          }));
+
+          const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+          if (qch) {
+            const member = await i.guild.members.fetch(uid).catch(() => null);
+            if (member) {
+              const qmsg = await qch.send({
+                embeds: [buildQueueEmbed(i.guild, member, updated)],
+                components: [queueButtons(updated)]
+              });
+              setProg(uid, { queueMsgId: qmsg.id });
+            }
+          }
+          const chNow2 = getUserPrivateChannel(i.guild, uid);
+          const targetMsg = i.message ?? (chNow2 ? await chNow2.messages.fetch(getProg(uid).messageId).catch(() => null) : null);
           if (targetMsg) {
-            const cur = getProg(uid);
             await targetMsg.edit({
-              embeds: [step2aEmbed(cur)],
-              components: [
-                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(0x95a5a6)
+                  .setTitle("🪑승인 대기 중 (부계)")
+                  .setDescription([
+                    "관리진 검토 후 처리됩니다. 감사합니다!🙇",
+                    "",
+                    "※ 부계 입장은 추가 정보 입력 없이 승인/거절만 진행돼요."
+                  ].join("\n"))
+                  .setImage(IMG_PENDING)
               ],
+              components: []
             });
           }
           return;
