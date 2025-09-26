@@ -105,7 +105,13 @@ function getProg(uid) {
 }
 
 function currentKRYear() {
-  return Number(new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date()));
+  const nowSeoul = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  return nowSeoul.getFullYear();
+}
+function parseBirthYear(input) {
+  if (input == null) return NaN;
+  const m = String(input).match(/\d{4}/);
+  return m ? Number(m[0]) : NaN;
 }
 function accountAgeDays(user) {
   const ms = Date.now() - user.createdTimestamp;
@@ -122,17 +128,21 @@ function getAgeRange() {
   return { minY: nowY - 100, maxY: nowY - 20 };
 }
 function isBirthYearEligible(y) {
-  if (!/^\d{4}$/.test(String(y || ""))) return false;
-  const { minY, maxY } = getAgeRange();
   const year = Number(y);
+  if (!Number.isInteger(year)) return false;
+  const { minY, maxY } = getAgeRange();
   return year >= minY && year <= maxY;
 }
-function validateBirthYear(y) {
-  if (!/^\d{4}$/.test(String(y || ""))) return "출생년도는 4자리 숫자로 입력해주세요. 예) 2005년생";
+function validateBirthYear(input) {
+  const year = parseBirthYear(input);
+  if (!Number.isInteger(year)) {
+    return { ok: false, reject: false, msg: "출생년도는 4자리 숫자로 입력해주세요. 예) 2005", year: null };
+  }
   const { minY, maxY } = getAgeRange();
-  const year = Number(y);
-  if (year < minY || year > maxY) return `20세 이상만 입장 가능합니다.`;
-  return null;
+  if (year < minY || year > maxY) {
+    return { ok: false, reject: true, msg: "20세 이상만 입장 가능합니다.", year };
+  }
+  return { ok: true, reject: false, msg: null, year };
 }
 function chunk(arr, size) {
   const out = [];
@@ -194,10 +204,15 @@ function step2aEmbed(progress) {
   return new EmbedBuilder()
     .setColor(0x2095ff)
     .setTitle("입장 절차 2-1단계")
-    .setDescription(["아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**","","• 출생년도 (예: 2000년생)","• 서버에서 사용할 닉네임","","※ 생성된지 30일 미만 계정은 입장이 거절됩니다."].join("\n"))
-    .addFields(
-      { name: "귀하의 계정이 생성된지", value: `${progress.accountAge}일`, inline: true }
-    );
+    .setDescription([
+      "아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**",
+      "",
+      "• 출생년도 (예: 2005)",
+      "• 서버에서 사용할 닉네임",
+      "",
+      "※ 생성된지 30일 미만 계정은 입장이 거절됩니다."
+    ].join("\n"))
+    .addFields({ name: "귀하의 계정이 생성된지", value: `${progress.accountAge}일`, inline: true });
 }
 function step2bEmbed(progress) {
   return new EmbedBuilder()
@@ -490,38 +505,44 @@ module.exports = (client) => {
         }
 
         if (i.customId === "modal_bio") {
-          const birth = i.fields.getTextInputValue("birth")?.trim();
-          const nick = i.fields.getTextInputValue("nickname")?.trim();
+  const birth = i.fields.getTextInputValue("birth")?.trim();
+  const nick = i.fields.getTextInputValue("nickname")?.trim();
 
-          const byErr = validateBirthYear(birth);
-          if (byErr) {
-            await forceAutoReject(i.guild, uid, byErr);
-            try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
-            return;
-          }
+  const vr = validateBirthYear(birth);
+  if (!vr.ok) {
+    if (vr.reject) {
+      await forceAutoReject(i.guild, uid, vr.msg);
+      try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
+    } else {
+      await i.reply({ content: vr.msg, ephemeral: true }); 
+    }
+    return;
+  }
 
-          const nErr = validateNickname(nick);
-          if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
+  const nErr = validateNickname(nick);
+  if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
 
-          const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
-          if (dup) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
+  const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
+  if (dup) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
 
-          await i.deferUpdate().catch(() => {});
-          setProg(uid, p => ({ ...p, birthYear: Number(birth), nickname: nick, step: 21 }));
-          const chNow2 = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-          const targetMsg = i.message ?? (await chNow2.messages.fetch(getProg(uid).messageId).catch(() => null));
-          if (targetMsg) {
-            const cur = getProg(uid);
-            await targetMsg.edit({
-              embeds: [step2aEmbed(cur)],
-              components: [
-                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
-              ],
-            });
-          }
-          return;
-        }
+  await i.deferUpdate().catch(() => {});
+  setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
+
+  const chNow2 = i.guild.channels.cache.find((c) => c.name === chanName(uid));
+  const targetMsg = i.message ?? (await chNow2.messages.fetch(getProg(uid).messageId).catch(() => null));
+  if (targetMsg) {
+    const cur = getProg(uid);
+    await targetMsg.edit({
+      embeds: [step2aEmbed(cur)],
+      components: [
+        new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
+        navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+      ],
+    });
+  }
+  return;
+}
+
         return;
       }
 
@@ -618,14 +639,16 @@ module.exports = (client) => {
           if (i.customId === "open_bio") { await i.showModal(birthNickModal()); return; }
 
           if (i.customId === "to_step2b") {
-            const cur = getProg(uid);
-            if (!(cur.birthYear && cur.nickname)) { await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true }); return; }
-            if (!isBirthYearEligible(cur.birthYear)) {
-              const { minY, maxY } = getAgeRange();
-              await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
-              try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
-              return;
-            }
+  const cur = getProg(uid);
+  if (!(cur.birthYear && cur.nickname)) {
+    await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true }); 
+    return; 
+  }
+  if (!isBirthYearEligible(Number(cur.birthYear))) {
+    await forceAutoReject(i.guild, uid, "20세 이상만 입장 가능합니다.");
+    try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
+    return;
+  }
             setProg(uid, { step: 22 });
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
