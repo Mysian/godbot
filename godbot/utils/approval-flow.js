@@ -87,6 +87,10 @@ function validateBirthYear(y) {
   if (year < minY || year > maxY) return `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`;
   return null;
 }
+function isBioReady(prog) {
+  if (!(prog.birthYear && prog.nickname)) return false;
+  return !validateBirthYear(String(prog.birthYear));
+}
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -154,6 +158,15 @@ function step2aEmbed(progress) {
       { name: "부계정 여부", value: progress.isAlt ? "부계정" : "일반", inline: true },
       { name: "계정 생성일 경과", value: `${progress.accountAge}일`, inline: true }
     );
+}
+function step2aComponents(prog) {
+  const nextDisabled = !isBioReady(prog);
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+    ),
+    navRow(["noop_prev", "to_step2b"], { prev: true, next: nextDisabled }),
+  ];
 }
 function step2bEmbed(progress) {
   return new EmbedBuilder()
@@ -425,12 +438,7 @@ module.exports = (client) => {
           if (targetMsg) {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
-                ),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
-              ],
+              components: step2aComponents(prog),
             });
           }
           return;
@@ -451,12 +459,7 @@ module.exports = (client) => {
           if (targetMsg) {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
-                ),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
-              ],
+              components: step2aComponents(prog),
             });
           }
           return;
@@ -494,12 +497,7 @@ module.exports = (client) => {
           if (targetMsg) {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
-              components: [
-                new ActionRowBuilder().addComponents(
-                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)
-                ),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
-              ],
+              components: step2aComponents(prog),
             });
           }
           return;
@@ -609,12 +607,7 @@ module.exports = (client) => {
             if (targetMsg) {
               await targetMsg.edit({
                 embeds: [step2aEmbed(prog)],
-                components: [
-                  new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
-                  ),
-                  navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
-                ],
+                components: step2aComponents(prog),
               });
             }
             await i.deferUpdate().catch(() => {});
