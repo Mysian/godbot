@@ -64,7 +64,9 @@ const chanName = (uid) => `입장-${uid}`;
 let listenersBound = false;
 
 function currentKRYear() {
-  return Number(new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date()));
+  return Number(
+    new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date())
+  );
 }
 function accountAgeDays(user) {
   const ms = Date.now() - user.createdTimestamp;
@@ -77,7 +79,7 @@ function validateNickname(name) {
   return null;
 }
 function validateBirthYear(y) {
-  if (!/^\d{4}$/.test(String(y))) return "출생년도는 4자리 숫자로 입력해주세요. 예) 2005년생";
+  if (!/^\d{4}$/.test(y)) return "출생년도는 4자리 숫자로 입력해주세요. 예) 2005년생";
   const year = Number(y);
   const nowY = currentKRYear();
   const minY = nowY - 100;
@@ -97,7 +99,10 @@ function navRow(ids, disabledMap = {}) {
   );
 }
 function step1Embed(user) {
-  return new EmbedBuilder().setColor(0x7b2ff2).setTitle(`환영합니다! ${user.username}님`).setDescription(["종합게임서버 **'까리한 디스코드'**입니다.","지금부터 서버 **입장 절차**를 진행하겠습니다.","","다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
+  return new EmbedBuilder()
+    .setColor(0x7b2ff2)
+    .setTitle(`환영합니다! ${user.username}님`)
+    .setDescription(["종합게임서버 **'까리한 디스코드'**입니다.","지금부터 서버 **입장 절차**를 진행하겠습니다.","","다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
 }
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
@@ -109,17 +114,33 @@ function step1Buttons() {
   );
 }
 function step1ButtonsAlt() {
-  return new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("src_alt").setLabel("부계정 생성").setStyle(ButtonStyle.Danger));
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("src_alt").setLabel("부계정 생성").setStyle(ButtonStyle.Danger)
+  );
 }
 function snsOrRefModal(kind = "SNS") {
-  return new ModalBuilder().setCustomId(`modal_${kind}`).setTitle(`${kind} 정보 입력`).addComponents(
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("detail").setLabel(kind === "SNS" ? "SNS 종류를 입력하세요 (예: 유튜브/틱톡/인스타)" : "추천인 닉네임을 입력하세요").setStyle(TextInputStyle.Short).setRequired(true))
-  );
+  return new ModalBuilder()
+    .setCustomId(`modal_${kind}`)
+    .setTitle(`${kind} 정보 입력`)
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("detail")
+          .setLabel(kind === "SNS" ? "SNS 종류를 입력하세요 (예: 유튜브/틱톡/인스타)" : "추천인 닉네임을 입력하세요")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      )
+    );
 }
 function altModal() {
-  return new ModalBuilder().setCustomId("modal_alt").setTitle("부계정 본계 닉네임 확인").addComponents(
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("mainNick").setLabel("본계정의 서버 닉네임을 입력하세요").setStyle(TextInputStyle.Short).setRequired(true))
-  );
+  return new ModalBuilder()
+    .setCustomId("modal_alt")
+    .setTitle("부계정 본계 닉네임 확인")
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("mainNick").setLabel("본계정의 서버 닉네임을 입력하세요").setStyle(TextInputStyle.Short).setRequired(true)
+      )
+    );
 }
 function step2aEmbed(progress) {
   const nowY = currentKRYear();
@@ -135,16 +156,27 @@ function step2aEmbed(progress) {
     );
 }
 function step2bEmbed(progress) {
-  return new EmbedBuilder().setColor(0x1f8b4c).setTitle("입장 절차 2-2단계").setDescription("성별을 선택해주세요. **절대 공개되지 않습니다.**").addFields(
-    { name: "출생년도", value: String(progress.birthYear || "-"), inline: true },
-    { name: "닉네임", value: String(progress.nickname || "-"), inline: true }
-  );
+  return new EmbedBuilder()
+    .setColor(0x1f8b4c)
+    .setTitle("입장 절차 2-2단계")
+    .setDescription("성별을 선택해주세요. **절대 공개되지 않습니다.**")
+    .addFields(
+      { name: "출생년도", value: String(progress.birthYear || "-"), inline: true },
+      { name: "닉네임", value: String(progress.nickname || "-"), inline: true }
+    );
 }
 function birthNickModal() {
-  return new ModalBuilder().setCustomId("modal_bio").setTitle("출생년도 & 닉네임 입력").addComponents(
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("birth").setLabel("출생년도 (4자리 숫자, 예: 2005)").setPlaceholder("예: 2005").setStyle(TextInputStyle.Short).setRequired(true)),
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("nickname").setLabel("서버에서 사용할 닉네임 (1~10글자, 특수문자 불가)").setStyle(TextInputStyle.Short).setRequired(true))
-  );
+  return new ModalBuilder()
+    .setCustomId("modal_bio")
+    .setTitle("출생년도 & 닉네임 입력")
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("birth").setLabel("출생년도 (4자리 숫자, 예: 2005)").setPlaceholder("예: 2005").setStyle(TextInputStyle.Short).setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("nickname").setLabel("서버에서 사용할 닉네임 (1~10글자, 특수문자 불가)").setStyle(TextInputStyle.Short).setRequired(true)
+      )
+    );
 }
 function genderRow(selected) {
   return new ActionRowBuilder().addComponents(
@@ -154,11 +186,20 @@ function genderRow(selected) {
   );
 }
 function step3aEmbed(progress) {
-  return new EmbedBuilder().setColor(0xf2b619).setTitle("입장 절차 3-1단계").setDescription("**게임 스타일(플레이스타일)** 을 선택해주세요 (1개). 선택 후 다음을 눌러주세요.").addFields({ name: "플레이스타일", value: progress.playStyle || "미선택", inline: true });
+  return new EmbedBuilder()
+    .setColor(0xf2b619)
+    .setTitle("입장 절차 3-1단계")
+    .setDescription("**게임 스타일(플레이스타일)** 을 선택해주세요 (1개). 선택 후 다음을 눌러주세요.")
+    .addFields({ name: "플레이스타일", value: progress.playStyle || "미선택", inline: true });
 }
 function playStyleRow(selected) {
   return new ActionRowBuilder().addComponents(
-    ...PLAY_STYLES.map((ps) => new ButtonBuilder().setCustomId(`ps_${ps}`).setLabel(selected === ps ? `✓ ${ps}` : ps).setStyle(selected === ps ? ButtonStyle.Success : ButtonStyle.Secondary)),
+    ...PLAY_STYLES.map((ps) =>
+      new ButtonBuilder()
+        .setCustomId(`ps_${ps}`)
+        .setLabel(selected === ps ? `✓ ${ps}` : ps)
+        .setStyle(selected === ps ? ButtonStyle.Success : ButtonStyle.Secondary)
+    ),
     new ButtonBuilder().setCustomId("to_step3b").setLabel("다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
   );
 }
@@ -176,9 +217,18 @@ function gamesSelectRows(chosen = []) {
   const chunks = chunk(ALL_GAMES, 25);
   const rows = [];
   chunks.forEach((names, idx) => {
-    const menu = new StringSelectMenuBuilder().setCustomId(`games_select_${idx}`).setPlaceholder(`주 게임 선택 (페이지 ${idx + 1}/${chunks.length})`).setMinValues(0).setMaxValues(Math.min(25, names.length)).addOptions(
-      names.map((name) => ({ label: name.length > 100 ? name.slice(0, 97) + "…" : name, value: name, default: chosen.includes(name) }))
-    );
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId(`games_select_${idx}`)
+      .setPlaceholder(`주 게임 선택 (페이지 ${idx + 1}/${chunks.length})`)
+      .setMinValues(0)
+      .setMaxValues(Math.min(25, names.length))
+      .addOptions(
+        names.map((name) => ({
+          label: name.length > 100 ? name.slice(0, 97) + "…" : name,
+          value: name,
+          default: chosen.includes(name),
+        }))
+      );
     rows.push(new ActionRowBuilder().addComponents(menu));
   });
   return { rows: rows.slice(0, 5), pages: chunks.length };
@@ -214,19 +264,30 @@ function queueButtons(progress) {
 }
 function settingsSelectRow(selectedIds = []) {
   const opts = NOTIFY_CHOICES.map((o) => ({ label: o.label, value: o.roleId, default: selectedIds.includes(o.roleId) }));
-  const menu = new StringSelectMenuBuilder().setCustomId("settings_select").setPlaceholder("서버 알림 태그를 선택하세요 (선택 사항)").setMinValues(0).setMaxValues(Math.max(1, opts.length)).addOptions(opts);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("settings_select")
+    .setPlaceholder("서버 알림 태그를 선택하세요 (선택 사항)")
+    .setMinValues(0)
+    .setMaxValues(Math.max(1, opts.length))
+    .addOptions(opts);
   return new ActionRowBuilder().addComponents(menu);
 }
 async function sendWelcome(guild, userId, gameTags = []) {
   const ch = guild.channels.cache.get(CH_SERVER_GREETING);
   if (!ch) return;
   const tagText = gameTags.length ? gameTags.join(",") : "게임태그 미등록";
-  await ch.send({ content: `<@${userId}> 님이 서버에 입장하셨습니다! 까리하게 맞이해주세요!! @here\n> "저는 주로 '${tagText}'을 합니다!"`, allowedMentions: { parse: ["roles", "everyone", "users"] } });
+  await ch.send({
+    content: `<@${userId}> 님이 서버에 입장하셨습니다! 까리하게 맞이해주세요!! @here\n> "저는 주로 '${tagText}'을 합니다!"`,
+    allowedMentions: { parse: ["roles", "everyone", "users"] },
+  });
 }
 async function sendRejectNotice(guild, userId, reasonText) {
   const ch = guild.channels.cache.get(CH_REJECT_NOTICE);
   if (!ch) return;
-  await ch.send({ content: `<@${userId}> 님, 죄송합니다. 내부 규정에 의거하여 서버 입장이 제한되었습니다.\n사유: ${reasonText || "규정 미충족"}`, allowedMentions: { users: [userId] } });
+  await ch.send({
+    content: `<@${userId}> 님, 죄송합니다. 내부 규정에 의거하여 서버 입장이 제한되었습니다.\n사유: ${reasonText || "규정 미충족"}`,
+    allowedMentions: { users: [userId] },
+  });
 }
 async function createPrivateChannel(guild, member) {
   const existing = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(member.id));
@@ -253,16 +314,30 @@ async function startFlow(guild, member) {
     return;
   }
   const ch = await createPrivateChannel(guild, member);
-  state.set(userId, { userId, step: 1, accountAge: ageDays, isAlt: false, sourceText: null, birthYear: null, nickname: null, gender: null, playStyle: null, gameTags: [], messageId: null, notifyRoleIds: [], queueMsgId: null });
-  const msg = await ch.send({ content: `<@${userId}>`, embeds: [step1Embed(member.user)], components: [step1Buttons(), step1ButtonsAlt()], allowedMentions: { users: [userId] } });
+  state.set(userId, {
+    userId,
+    step: 1,
+    accountAge: ageDays,
+    isAlt: false,
+    sourceText: null,
+    birthYear: null,
+    nickname: null,
+    gender: null,
+    playStyle: null,
+    gameTags: [],
+    messageId: null,
+    notifyRoleIds: [],
+    queueMsgId: null,
+  });
+  const msg = await ch.send({
+    content: `<@${userId}>`,
+    embeds: [step1Embed(member.user)],
+    components: [step1Buttons(), step1ButtonsAlt()],
+    allowedMentions: { users: [userId] },
+  });
   const prog0 = state.get(userId);
   prog0.messageId = msg.id;
   state.set(userId, prog0);
-}
-function nextDisabledByBio(prog) {
-  const e1 = validateBirthYear(prog.birthYear);
-  const e2 = validateNickname(prog.nickname);
-  return !!(e1 || e2);
 }
 module.exports = (client) => {
   if (listenersBound) return;
@@ -270,18 +345,29 @@ module.exports = (client) => {
 
   client.on("guildMemberAdd", async (member) => {
     if (!loadApprovalOn()) return;
-    try { await member.guild.roles.fetch(); } catch {}
+    try {
+      await member.guild.roles.fetch();
+    } catch {}
     await startFlow(member.guild, member).catch(() => {});
   });
 
   client.on("guildMemberRemove", async (member) => {
     const guild = member.guild;
     const ch = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(member.id));
-    if (ch) { try { await ch.delete("유저 퇴장으로 인한 입장 절차 채널 정리"); } catch {} }
+    if (ch) {
+      try {
+        await ch.delete("유저 퇴장으로 인한 입장 절차 채널 정리");
+      } catch {}
+    }
     const prog = state.get(member.id);
     if (prog && prog.queueMsgId) {
       const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
-      if (qch) { try { const m = await qch.messages.fetch(prog.queueMsgId); await m.delete(); } catch {} }
+      if (qch) {
+        try {
+          const m = await qch.messages.fetch(prog.queueMsgId);
+          await m.delete();
+        } catch {}
+      }
     }
     state.delete(member.id);
   });
@@ -294,7 +380,11 @@ module.exports = (client) => {
         for (const ch of dangling.values()) {
           const uid = ch.name.split("-")[1];
           const stillHere = g.members.cache.has(uid);
-          if (!stillHere) { try { await ch.delete("고아 입장 절차 채널 정리"); } catch {} }
+          if (!stillHere) {
+            try {
+              await ch.delete("고아 입장 절차 채널 정리");
+            } catch {}
+          }
         }
       }
     } catch {}
@@ -320,8 +410,10 @@ module.exports = (client) => {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
               components: [
-                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: nextDisabledByBio(prog) }),
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+                ),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
               ],
             });
           }
@@ -331,7 +423,10 @@ module.exports = (client) => {
         if (i.customId === "modal_alt") {
           const mainNick = i.fields.getTextInputValue("mainNick")?.trim();
           const matched = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === mainNick);
-          if (!matched) { await i.reply({ content: "본계정 닉네임을 찾지 못했습니다. 다시 확인해주세요.", ephemeral: true }); return; }
+          if (!matched) {
+            await i.reply({ content: "본계정 닉네임을 찾지 못했습니다. 다시 확인해주세요.", ephemeral: true });
+            return;
+          }
           await i.deferUpdate().catch(() => {});
           prog.sourceText = `부계정(본계: ${mainNick})`;
           prog.isAlt = true;
@@ -341,8 +436,10 @@ module.exports = (client) => {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
               components: [
-                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: nextDisabledByBio(prog) }),
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+                ),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
               ],
             });
           }
@@ -355,20 +452,35 @@ module.exports = (client) => {
 
           const byErr = validateBirthYear(birth);
           if (byErr) {
-            try { const role = i.guild.roles.cache.get(ROLE_REJECTED); if (role) await i.guild.members.resolve(uid)?.roles.add(role, "연령 기준 미충족 자동 거절"); } catch {}
+            try {
+              const role = i.guild.roles.cache.get(ROLE_REJECTED);
+              if (role) await i.guild.members.resolve(uid)?.roles.add(role, "연령 기준 미충족 자동 거절");
+            } catch {}
             await sendRejectNotice(i.guild, uid, byErr);
             const pch = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-            if (pch) { try { await pch.delete("입장 절차 자동 거절"); } catch {} }
+            if (pch) {
+              try {
+                await pch.delete("입장 절차 자동 거절");
+              } catch {}
+            }
             state.delete(uid);
-            try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
+            try {
+              await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
+            } catch {}
             return;
           }
 
           const nErr = validateNickname(nick);
-          if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
+          if (nErr) {
+            await i.reply({ content: nErr, ephemeral: true });
+            return;
+          }
 
           const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
-          if (dup) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
+          if (dup) {
+            await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true });
+            return;
+          }
 
           await i.deferUpdate().catch(() => {});
           prog.birthYear = Number(birth);
@@ -380,8 +492,10 @@ module.exports = (client) => {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
               components: [
-                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: nextDisabledByBio(prog) }),
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)
+                ),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
               ],
             });
           }
@@ -398,13 +512,20 @@ module.exports = (client) => {
       const isUserPrivate = !!privateCh && i.channelId === privateCh.id;
 
       if (!isUserPrivate && !(
-        isQueueChannel && i.isButton() && ["approve_", "approve_silent_", "reject_", "ban_"].some((p) => i.customId.startsWith(p))
-      )) return;
+        isQueueChannel &&
+        i.isButton() &&
+        ["approve_", "approve_silent_", "reject_", "ban_"].some((p) => i.customId.startsWith(p))
+      )) {
+        return;
+      }
 
       if (i.isStringSelectMenu() && i.customId.startsWith("games_select_")) {
         const prog = state.get(uid);
         if (!prog) return;
-        if (i.user.id !== uid) { await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true }); return; }
+        if (i.user.id !== uid) {
+          await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true });
+          return;
+        }
         const idx = Number(i.customId.split("_").pop());
         const chunks = chunk(ALL_GAMES, 25);
         const names = chunks[idx] || [];
@@ -417,7 +538,10 @@ module.exports = (client) => {
         const { rows, pages } = gamesSelectRows(prog.gameTags);
         const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
         if (targetMsg) {
-          await targetMsg.edit({ embeds: [step3bEmbed(prog, pages)], components: [...rows, navRow(["back_step3a", "go_queue"], { next: !(prog.gameTags && prog.gameTags.length) })] });
+          await targetMsg.edit({
+            embeds: [step3bEmbed(prog, pages)],
+            components: [...rows, navRow(["back_step3a", "go_queue"], { next: !(prog.gameTags && prog.gameTags.length) })],
+          });
         }
         await i.deferUpdate().catch(() => {});
         return;
@@ -426,7 +550,10 @@ module.exports = (client) => {
       if (i.isStringSelectMenu() && i.customId === "settings_select") {
         const prog = state.get(uid);
         if (!prog) return;
-        if (i.user.id !== uid) { await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true }); return; }
+        if (i.user.id !== uid) {
+          await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true });
+          return;
+        }
         prog.notifyRoleIds = i.values || [];
         state.set(uid, prog);
         await i.deferUpdate().catch(() => {});
@@ -436,14 +563,19 @@ module.exports = (client) => {
       if (i.isButton() && i.customId.startsWith("ps_")) {
         const prog = state.get(uid);
         if (!prog) return;
-        if (i.user.id !== uid) { await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true }); return; }
+        if (i.user.id !== uid) {
+          await i.reply({ content: "본인 전용 채널에서만 진행 가능해.", ephemeral: true });
+          return;
+        }
         const ps = i.customId.slice(3);
         if (!PLAY_STYLES.includes(ps)) return;
         prog.playStyle = ps;
         state.set(uid, prog);
         const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
         const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-        if (targetMsg) { await targetMsg.edit({ embeds: [step3aEmbed(prog)], components: [playStyleRow(prog.playStyle)] }); }
+        if (targetMsg) {
+          await targetMsg.edit({ embeds: [step3aEmbed(prog)], components: [playStyleRow(prog.playStyle)] });
+        }
         await i.deferUpdate().catch(() => {});
         return;
       }
@@ -452,22 +584,20 @@ module.exports = (client) => {
         const prog = state.get(uid);
         if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
           if (!prog) return;
-
-          if (validateBirthYear(prog.birthYear) && ["open_bio","src_"].every(k=>!i.customId.startsWith(k))) {
-            try { const role = i.guild.roles.cache.get(ROLE_REJECTED); if (role) await i.guild.members.resolve(uid)?.roles.add(role, "연령 기준 미충족 자동 거절"); } catch {}
-            await sendRejectNotice(i.guild, uid, validateBirthYear(prog.birthYear));
-            const pchx = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-            if (pchx) { try { await pchx.delete("입장 절차 자동 거절"); } catch {} }
-            state.delete(uid);
-            try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
-            return;
-          }
-
           if (i.customId.startsWith("src_")) {
             const id = i.customId.slice(4);
-            if (id === "sns") { await i.showModal(snsOrRefModal("SNS")); return; }
-            if (id === "ref") { await i.showModal(snsOrRefModal("추천인")); return; }
-            if (id === "alt") { await i.showModal(altModal()); return; }
+            if (id === "sns") {
+              await i.showModal(snsOrRefModal("SNS"));
+              return;
+            }
+            if (id === "ref") {
+              await i.showModal(snsOrRefModal("추천인"));
+              return;
+            }
+            if (id === "alt") {
+              await i.showModal(altModal());
+              return;
+            }
             prog.sourceText = id === "disboard" ? "디스보드" : id === "dicoall" ? "디코올" : id === "rejoin" ? "재입장" : "기타";
             prog.isAlt = false;
             prog.step = 21;
@@ -477,8 +607,10 @@ module.exports = (client) => {
               await targetMsg.edit({
                 embeds: [step2aEmbed(prog)],
                 components: [
-                  new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)),
-                  navRow(["noop_prev", "to_step2b"], { prev: true, next: nextDisabledByBio(prog) }),
+                  new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+                  ),
+                  navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
                 ],
               });
             }
@@ -486,24 +618,22 @@ module.exports = (client) => {
             return;
           }
 
-          if (i.customId === "open_bio") { await i.showModal(birthNickModal()); return; }
+          if (i.customId === "open_bio") {
+            await i.showModal(birthNickModal());
+            return;
+          }
 
           if (i.customId === "to_step2b") {
-            if (!(prog.birthYear && prog.nickname)) { await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true }); return; }
-            const byErr = validateBirthYear(prog.birthYear);
-            if (byErr) {
-              try { const role = i.guild.roles.cache.get(ROLE_REJECTED); if (role) await i.guild.members.resolve(uid)?.roles.add(role, "연령 기준 미충족 자동 거절"); } catch {}
-              await sendRejectNotice(i.guild, uid, byErr);
-              const pch = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-              if (pch) { try { await pch.delete("입장 절차 자동 거절"); } catch {} }
-              state.delete(uid);
-              await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
+            if (!(prog.birthYear && prog.nickname)) {
+              await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true });
               return;
             }
             prog.step = 22;
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-            if (targetMsg) { await targetMsg.edit({ embeds: [step2bEmbed(prog)], components: [genderRow(prog.gender)] }); }
+            if (targetMsg) {
+              await targetMsg.edit({ embeds: [step2bEmbed(prog)], components: [genderRow(prog.gender)] });
+            }
             await i.deferUpdate().catch(() => {});
             return;
           }
@@ -512,29 +642,42 @@ module.exports = (client) => {
             prog.gender = i.customId.endsWith("_m") ? "M" : "F";
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-            if (targetMsg) { await targetMsg.edit({ embeds: [step2bEmbed(prog)], components: [genderRow(prog.gender)] }); }
+            if (targetMsg) {
+              await targetMsg.edit({ embeds: [step2bEmbed(prog)], components: [genderRow(prog.gender)] });
+            }
             await i.deferUpdate().catch(() => {});
             return;
           }
 
           if (i.customId === "to_step3a") {
-            if (!prog.gender) { await i.reply({ content: "성별을 선택해주세요.", ephemeral: true }); return; }
+            if (!prog.gender) {
+              await i.reply({ content: "성별을 선택해주세요.", ephemeral: true });
+              return;
+            }
             prog.step = 31;
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-            if (targetMsg) { await targetMsg.edit({ embeds: [step3aEmbed(prog)], components: [playStyleRow(prog.playStyle)] }); }
+            if (targetMsg) {
+              await targetMsg.edit({ embeds: [step3aEmbed(prog)], components: [playStyleRow(prog.playStyle)] });
+            }
             await i.deferUpdate().catch(() => {});
             return;
           }
 
           if (i.customId === "to_step3b") {
-            if (!prog.playStyle) { await i.reply({ content: "플레이스타일을 먼저 선택해주세요.", ephemeral: true }); return; }
+            if (!prog.playStyle) {
+              await i.reply({ content: "플레이스타일을 먼저 선택해주세요.", ephemeral: true });
+              return;
+            }
             prog.step = 32;
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const { rows, pages } = gamesSelectRows(prog.gameTags);
             const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
             if (targetMsg) {
-              await targetMsg.edit({ embeds: [step3bEmbed(prog, pages)], components: [...rows, navRow(["back_step3a", "go_queue"], { next: !(prog.gameTags && prog.gameTags.length) })] });
+              await targetMsg.edit({
+                embeds: [step3bEmbed(prog, pages)],
+                components: [...rows, navRow(["back_step3a", "go_queue"], { next: !(prog.gameTags && prog.gameTags.length) })],
+              });
             }
             await i.deferUpdate().catch(() => {});
             return;
@@ -544,13 +687,18 @@ module.exports = (client) => {
             prog.step = 31;
             const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
             const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-            if (targetMsg) { await targetMsg.edit({ embeds: [step3aEmbed(prog)], components: [playStyleRow(prog.playStyle)] }); }
+            if (targetMsg) {
+              await targetMsg.edit({ embeds: [step3aEmbed(prog)], components: [playStyleRow(prog.playStyle)] });
+            }
             await i.deferUpdate().catch(() => {});
             return;
           }
 
           if (i.customId === "go_queue") {
-            if (!(prog.gameTags && prog.gameTags.length)) { await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true }); return; }
+            if (!(prog.gameTags && prog.gameTags.length)) {
+              await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true });
+              return;
+            }
             const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
             if (qch) {
               const member = await i.guild.members.fetch(uid).catch(() => null);
@@ -572,10 +720,16 @@ module.exports = (client) => {
         }
 
         if (["approve_", "approve_silent_", "reject_", "ban_"].some((p) => i.customId.startsWith(p))) {
-          if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
+          if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
+            await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true });
+            return;
+          }
           const targetId = i.customId.split("_").pop();
           const target = await i.guild.members.fetch(targetId).catch(() => null);
-          if (!target) { await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true }); return; }
+          if (!target) {
+            await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true });
+            return;
+          }
           const progT = state.get(targetId) || { userId: targetId, isAlt: false, gameTags: [], notifyRoleIds: [] };
 
           if (i.customId.startsWith("ban_")) {
@@ -583,38 +737,70 @@ module.exports = (client) => {
             await i.update({ content: `차단 처리 완료: <@${targetId}>`, components: [], embeds: [] });
             const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
             if (pch2) { try { await pch2.delete("승인 절차 종료(차단)"); } catch {} }
-            if (progT.queueMsgId) { const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE); if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} } }
+            if (progT.queueMsgId) {
+              const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+              if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
+            }
             state.delete(targetId);
             return;
           }
 
           if (i.customId.startsWith("reject_")) {
-            try { const role = i.guild.roles.cache.get(ROLE_REJECTED); if (role) await target.roles.add(role, "관리자 거절"); } catch {}
+            try {
+              const role = i.guild.roles.cache.get(ROLE_REJECTED);
+              if (role) await target.roles.add(role, "관리자 거절");
+            } catch {}
             await sendRejectNotice(i.guild, targetId, "관리자 거절");
             await i.update({ content: `거절 처리 완료: <@${targetId}>`, components: [], embeds: [] });
             const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
             if (pch2) { try { await pch2.delete("승인 절차 종료(거절)"); } catch {} }
-            if (progT.queueMsgId) { const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE); if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} } }
+            if (progT.queueMsgId) {
+              const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+              if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
+            }
             state.delete(targetId);
             return;
           }
 
           const silent = i.customId.startsWith("approve_silent_");
+
           if (progT.nickname) { try { await target.setNickname(progT.nickname, "입장 절차 승인 닉네임 반영"); } catch {} }
-          try { const roleId = progT.isAlt ? ROLE_MEMBER_ALT : ROLE_MEMBER_NORMAL; const role = i.guild.roles.cache.get(roleId); if (role) await target.roles.add(role, "입장 승인"); } catch {}
+          try {
+            const roleId = progT.isAlt ? ROLE_MEMBER_ALT : ROLE_MEMBER_NORMAL;
+            const role = i.guild.roles.cache.get(roleId);
+            if (role) await target.roles.add(role, "입장 승인");
+          } catch {}
+
           if (Array.isArray(progT.notifyRoleIds) && progT.notifyRoleIds.length) {
-            for (const roleId of progT.notifyRoleIds) { const r = i.guild.roles.cache.get(roleId); if (r) { try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {} } }
+            for (const roleId of progT.notifyRoleIds) {
+              const r = i.guild.roles.cache.get(roleId);
+              if (r) { try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {} }
+            }
           }
+
           let gameRolesAssigned = [];
           if (Array.isArray(progT.gameTags) && progT.gameTags.length) {
             const toAssign = progT.gameTags.map((name) => i.guild.roles.cache.find((r) => r.name === name)).filter(Boolean);
-            if (toAssign.length) { try { await target.roles.add(toAssign, "입장 승인 - 선택한 게임 태그 부여"); } catch {} gameRolesAssigned = toAssign.map((r) => r.name); }
+            if (toAssign.length) {
+              try { await target.roles.add(toAssign, "입장 승인 - 선택한 게임 태그 부여"); } catch {}
+              gameRolesAssigned = toAssign.map((r) => r.name);
+            }
           }
+
           const logCh = i.guild.channels.cache.get(CH_WELCOME_LOG);
           if (logCh) {
             const notifyNames = (progT.notifyRoleIds || []).map((rid) => i.guild.roles.cache.get(rid)?.name).filter(Boolean);
             const genderText = progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-";
-            const ts = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
+            const ts = new Intl.DateTimeFormat("ko-KR", {
+              timeZone: "Asia/Seoul",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+            }).format(new Date());
             const contentLines = [
               "```ini",
               "[입장 승인 로그]",
@@ -642,11 +828,19 @@ module.exports = (client) => {
             ];
             await logCh.send({ content: contentLines.join("\n") });
           }
-          if (!silent && !progT.isAlt) { await sendWelcome(i.guild, targetId, progT.gameTags || []); }
+
+          if (!silent && !progT.isAlt) {
+            await sendWelcome(i.guild, targetId, progT.gameTags || []);
+          }
+
           await i.update({ content: `승인 처리 완료: <@${targetId}> ${silent ? "(조용히 승인)" : ""}`, components: [], embeds: [] });
+
           const pch2 = i.guild.channels.cache.find((c) => c.name === chanName(targetId));
           if (pch2) { try { await pch2.delete("승인 절차 종료(승인)"); } catch {} }
-          if (progT.queueMsgId) { const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE); if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} } }
+          if (progT.queueMsgId) {
+            const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+            if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
+          }
           state.delete(targetId);
           return;
         }
