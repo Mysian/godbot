@@ -103,6 +103,54 @@ function getProg(uid) {
   return state.get(uid) || null;
 }
 
+const HISTORY_PATH = path.join(__dirname, "../data/member-history.json");
+function readHistoryAll() {
+  try {
+    const txt = fs.readFileSync(HISTORY_PATH, "utf8");
+    const j = JSON.parse(txt);
+    if (j && typeof j === "object") return j;
+    return {};
+  } catch {
+    return {};
+  }
+}
+function writeHistoryAll(all) {
+  try {
+    fs.mkdirSync(path.dirname(HISTORY_PATH), { recursive: true });
+    fs.writeFileSync(HISTORY_PATH, JSON.stringify(all), "utf8");
+  } catch {}
+}
+function getHistory(uid) {
+  const all = readHistoryAll();
+  return all[uid] || { userId: uid, joins: 0, leaves: 0, rejects: 0, firstJoinAt: null, lastJoinAt: null, lastLeaveAt: null, lastRejectAt: null };
+}
+function setHistory(uid, updater) {
+  const all = readHistoryAll();
+  const cur = all[uid] || { userId: uid, joins: 0, leaves: 0, rejects: 0, firstJoinAt: null, lastJoinAt: null, lastLeaveAt: null, lastRejectAt: null };
+  const next = typeof updater === "function" ? updater(cur) : { ...cur, ...updater };
+  all[uid] = next;
+  writeHistoryAll(all);
+  return next;
+}
+function incHistory(uid, key) {
+  return setHistory(uid, h => {
+    const now = Date.now();
+    if (key === "joins") {
+      const nj = (h.joins || 0) + 1;
+      return { ...h, joins: nj, firstJoinAt: h.firstJoinAt ?? now, lastJoinAt: now };
+    }
+    if (key === "leaves") {
+      const nl = (h.leaves || 0) + 1;
+      return { ...h, leaves: nl, lastLeaveAt: now };
+    }
+    if (key === "rejects") {
+      const nr = (h.rejects || 0) + 1;
+      return { ...h, rejects: nr, lastRejectAt: now };
+    }
+    return h;
+  });
+}
+
 function currentKRYear() {
   const nowSeoul = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
   return nowSeoul.getFullYear();
@@ -300,20 +348,25 @@ function gamesSelectRows(chosen = []) {
 function buildQueueEmbed(guild, member, progress) {
   const createdAt = new Date(member.user.createdTimestamp);
   const createdStr = createdAt.toISOString().slice(0, 10);
-  const hasRejectHistory = progress.rejectHistory ? "있음" : "없음";
+  const hist = getHistory(member.id);
+  const rejectCount = hist.rejects || 0;
+  const hasPastJoin = (hist.joins || 0) > 1 || (hist.leaves || 0) > 0;
+  const rejoinCount = Math.max(0, (hist.joins || 0) - 1);
   return new EmbedBuilder()
     .setColor(0x2ecc71)
     .setTitle("신규 입장 승인 대기")
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
     .addFields(
       { name: "디스코드 계정", value: `<@${member.id}> (${member.user.tag})`, inline: false },
-      { name: "변경 닉네임", value: progress.nickname, inline: true },
-      { name: "출생년도", value: String(progress.birthYear), inline: true },
-      { name: "성별", value: progress.gender === "M" ? "남자" : "여자", inline: true },
+      { name: "변경 닉네임", value: progress.nickname || "-", inline: true },
+      { name: "출생년도", value: String(progress.birthYear || "-"), inline: true },
+      { name: "성별", value: progress.gender === "M" ? "남자" : progress.gender === "F" ? "여자" : "-", inline: true },
       { name: "유입 경로", value: progress.sourceText || "미입력", inline: true },
       { name: "부계정 여부", value: progress.isAlt ? "부계정" : "일반", inline: true },
-      { name: "거절 이력", value: hasRejectHistory, inline: true },
+      { name: "거절 이력", value: `${rejectCount}회`, inline: true },
       { name: "계정 생성일", value: `${createdStr} (경과 ${progress.accountAge}일)`, inline: true },
+      { name: "과거 입장 이력", value: hasPastJoin ? "있음" : "없음", inline: true },
+      { name: "들락(재입장) 횟수", value: `${rejoinCount}회`, inline: true },
       { name: "플레이스타일", value: progress.playStyle || "미선택", inline: true },
       { name: "주 게임", value: progress.gameTags?.length ? progress.gameTags.join(", ") : "미선택", inline: false }
     );
@@ -390,6 +443,7 @@ async function forceAutoReject(guild, userId, reason) {
     const role = guild.roles.cache.get(ROLE_REJECTED);
     if (role) await guild.members.resolve(userId)?.roles.add(role, "자동 거절");
   } catch {}
+  incHistory(userId, "rejects");
   await sendRejectNotice(guild, userId, reason || "연령 기준 미충족");
   const pch = getUserPrivateChannel(guild, userId);
   if (pch) {
@@ -442,6 +496,7 @@ function nickChangeModal() {
     );
 }
 async function startFlow(guild, member) {
+  incHistory(member.id, "joins");
   const userId = member.id;
   const ageDays = accountAgeDays(member.user);
   if (ageDays < 30) {
@@ -449,6 +504,7 @@ async function startFlow(guild, member) {
       const role = guild.roles.cache.get(ROLE_REJECTED);
       if (role) await member.roles.add(role, "계정 생성 30일 미만 자동 거절");
     } catch {}
+    incHistory(userId, "rejects");
     await sendRejectNotice(guild, userId, "디스코드 계정 생성 30일 미만");
     return;
   }
@@ -484,10 +540,12 @@ module.exports = (client) => {
   client.on("guildMemberAdd", async (member) => {
     if (!loadApprovalOn()) return;
     try { await member.guild.roles.fetch(); } catch {}
+    incHistory(member.id, "joins");
     await startFlow(member.guild, member).catch(() => {});
   });
 
   client.on("guildMemberRemove", async (member) => {
+    incHistory(member.id, "leaves");
     const guild = member.guild;
     const ch = getUserPrivateChannel(guild, member.id);
     if (ch) { try { await ch.delete("유저 퇴장으로 인한 입장 절차 채널 정리"); } catch {} }
@@ -536,6 +594,7 @@ module.exports = (client) => {
             const role = i.guild.roles.cache.get(ROLE_REJECTED);
             if (role) await target.roles.add(role, "관리자 거절");
           } catch {}
+          incHistory(targetId, "rejects");
           await sendRejectNotice(i.guild, targetId, finalReason);
           const pch2 = getUserPrivateChannel(i.guild, targetId);
           if (pch2) { try { await pch2.delete("승인 절차 종료(거절)"); } catch {} }
@@ -922,6 +981,7 @@ module.exports = (client) => {
             const notifyNames = (progT.notifyRoleIds || []).map((rid) => i.guild.roles.cache.get(rid)?.name).filter(Boolean);
             const genderText = progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-";
             const ts = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
+            const hist = getHistory(targetId);
             const contentLines = [
               "```ini",
               "[입장 승인 로그]",
@@ -945,6 +1005,12 @@ module.exports = (client) => {
               "",
               `[알림 태그]`,
               `설정 = ${notifyNames.length ? notifyNames.join(", ") : "선택 안 함"}`,
+              "",
+              `[이력 요약]`,
+              `거절 = ${hist.rejects || 0}회`,
+              `총입장 = ${hist.joins || 0}회`,
+              `총퇴장 = ${hist.leaves || 0}회`,
+              `들락(재입장) = ${Math.max(0, (hist.joins || 0) - 1)}회`,
               "```",
             ];
             await logCh.send({ content: contentLines.join("\n") });
