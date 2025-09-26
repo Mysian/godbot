@@ -1141,6 +1141,9 @@ const removeStatus = require('./commands/removestatus.js');
 
 client.on(Events.InteractionCreate, async interaction => {
 
+if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) 
+    && interaction.channel?.name?.startsWith('입장-')) return;
+  
   if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId?.startsWith("usercleanup_")) {
   const cmd = client.commands.get("유저청소");
   if (cmd?.component) {
