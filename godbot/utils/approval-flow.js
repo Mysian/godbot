@@ -217,8 +217,8 @@ function chunk(arr, size) {
 }
 function navRow(ids, disabledMap = {}) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(ids[0]).setLabel("이전").setStyle(ButtonStyle.Secondary).setDisabled(!!disabledMap.prev),
-    new ButtonBuilder().setCustomId(ids[1]).setLabel("➡️다음").setStyle(ButtonStyle.Primary).setDisabled(!!disabledMap.next)
+    new ButtonBuilder().setCustomId(ids[0]).setLabel("⬅️이전").setStyle(ButtonStyle.Secondary).setDisabled(!!disabledMap.prev),
+    new ButtonBuilder().setCustomId(ids[1]).setLabel("✅결정").setStyle(ButtonStyle.Primary).setDisabled(!!disabledMap.next)
   );
 }
 function step1Embed(user) {
@@ -277,7 +277,7 @@ function step2aEmbed(progress) {
     .setColor(0x2095ff)
     .setTitle("입장 절차 2-1단계")
     .setDescription([
-      "아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**",
+      "아래 정보를 입력해주세요. \n**모든 정보는 절대 공개되지 않습니다.**",
       "",
       "• 👶 출생년도",
       "• 📛 서버에서 사용할 닉네임",
@@ -290,7 +290,7 @@ function step2bEmbed(progress) {
   return new EmbedBuilder()
     .setColor(0x1f8b4c)
     .setTitle("입장 절차 2-2단계")
-    .setDescription("성별을 선택해주세요.♂️♀️ **절대 공개되지 않습니다.**")
+    .setDescription("성별을 선택해주세요.♂️♀️ \n**절대 공개되지 않습니다.**")
     .addFields(
       { name: "입력하신 출생년도", value: String(progress.birthYear || "-"), inline: true },
       { name: "희망하는 닉네임", value: String(progress.nickname || "-"), inline: true }
@@ -315,7 +315,7 @@ function genderRow(selected) {
     new ButtonBuilder().setCustomId("gender_f").setLabel(selected === "F" ? "✓ 여자" : "여자").setStyle(selected === "F" ? ButtonStyle.Success : ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("to_step3a").setLabel("➡️다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
+    new ButtonBuilder().setCustomId("to_step3a").setLabel("✅결정").setStyle(ButtonStyle.Primary).setDisabled(!selected)
   );
   return [row1, row2];
 }
@@ -347,7 +347,7 @@ function playStyleRow(selected) {
     )
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("to_step3b").setLabel("➡️다음").setStyle(ButtonStyle.Primary).setDisabled(!selected)
+    new ButtonBuilder().setCustomId("to_step3b").setLabel("✅결정").setStyle(ButtonStyle.Primary).setDisabled(!selected)
   );
   return [row1, row2];
 }
@@ -877,7 +877,7 @@ module.exports = (client) => {
     } catch {}
   }
   await i.reply({
-    content: `닉네임이 '${newNick}' 으로 업데이트되었습니다.`,
+    content: `닉네임이 '${newNick}' 으로 예정됩니다.`,
     ephemeral: true
   });
   return;
@@ -1074,7 +1074,7 @@ module.exports = (client) => {
       .setDescription([
         "관리진 검토 후 처리됩니다. 감사합니다!🙇",
         "",
-        "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."
+        "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. \n원치 않으면 건너뛰어도 됩니다."
       ].join("\n"))
       .setImage(IMG_PENDING)
   ],
