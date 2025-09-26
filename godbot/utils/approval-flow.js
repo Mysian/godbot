@@ -820,27 +820,71 @@ module.exports = (client) => {
 }
 
         if (i.customId === "modal_nickchange") {
-          const newNick = i.fields.getTextInputValue("nickname_new")?.trim();
-          const err = validateNickname(newNick);
-          if (err) { await i.reply({ content: err, ephemeral: true }); return; }
-          const dup2 = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === newNick && m.id !== uid);
-          if (dup2) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
-          setProg(uid, { nickname: newNick });
-          const progNow = getProg(uid);
-          const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-          if (qch && progNow.queueMsgId) {
-            try {
-              const qmsg = await qch.messages.fetch(progNow.queueMsgId);
-              const member = await i.guild.members.fetch(uid).catch(() => null);
-              if (member) {
-                await qmsg.edit({ embeds: [buildQueueEmbed(i.guild, member, progNow)], components: [queueButtons(progNow)] });
-              }
-            } catch {}
-          }
-          await i.reply({ content: `닉네임이 '${newNick}' 으로 업데이트되었습니다.`, ephemeral: true });
-          return;
-        }
-        
+  const newNick = i.fields.getTextInputValue("nickname_new")?.trim();
+  const err = validateNickname(newNick);
+  if (err) { await i.reply({ content: err, ephemeral: true }); return; }
+  const dup2 = i.guild.members.cache.find(
+    (m) => (m.displayName || m.user.username) === newNick && m.id !== uid
+  );
+  if (dup2) {
+    await i.reply({
+      content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.",
+      ephemeral: true
+    });
+    return;
+  }
+  setProg(uid, { nickname: newNick });
+  const progNow = getProg(uid);
+  const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+  if (qch && progNow.queueMsgId) {
+    try {
+      const qmsg = await qch.messages.fetch(progNow.queueMsgId);
+      const member = await i.guild.members.fetch(uid).catch(() => null);
+      if (member) {
+        await qmsg.edit({
+          embeds: [buildQueueEmbed(i.guild, member, progNow)],
+          components: [queueButtons(progNow)]
+        });
+      }
+    } catch {}
+  }
+  const chNow = getUserPrivateChannel(i.guild, uid);
+  if (chNow) {
+    try {
+      const baseMsg =
+        i.message ??
+        (progNow.messageId
+          ? await chNow.messages.fetch(progNow.messageId).catch(() => null)
+          : null);
+
+      if (baseMsg) {
+        const cur = getProg(uid);
+        const canNext = !!(cur.birthYear && cur.nickname);
+
+        await baseMsg.edit({
+          embeds: [step2aEmbed(cur)],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId("open_bio")
+                .setLabel("출생년도·닉네임 재입력")
+                .setStyle(ButtonStyle.Secondary)
+            ),
+            navRow(["noop_prev", "to_step2b"], { prev: true, next: !canNext })
+          ],
+        });
+      }
+    } catch {}
+  }
+  await i.reply({
+    content: `닉네임이 '${newNick}' 으로 업데이트되었습니다.`,
+    ephemeral: true
+  });
+  return;
+}
+        return;
+      }
+
       if (!(i.isButton() || i.isStringSelectMenu())) return;
 
       const uid = i.user?.id;
