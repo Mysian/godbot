@@ -339,6 +339,22 @@ async function startFlow(guild, member) {
   prog0.messageId = msg.id;
   state.set(userId, prog0);
 }
+async function autoRejectFlow(guild, uid, reason) {
+  try {
+    const role = guild.roles.cache.get(ROLE_REJECTED);
+    if (role) {
+      const m = await guild.members.fetch(uid).catch(() => null);
+      if (m) await m.roles.add(role, "자동 거절");
+    }
+  } catch {}
+  await sendRejectNotice(guild, uid, reason);
+  const pch = guild.channels.cache.find((c) => c.name === chanName(uid));
+  if (pch) {
+    try { await pch.delete("입장 절차 자동 거절"); } catch {}
+  }
+  state.delete(uid);
+}
+
 module.exports = (client) => {
   if (listenersBound) return;
   listenersBound = true;
@@ -452,21 +468,8 @@ module.exports = (client) => {
 
           const byErr = validateBirthYear(birth);
           if (byErr) {
-            try {
-              const role = i.guild.roles.cache.get(ROLE_REJECTED);
-              if (role) await i.guild.members.resolve(uid)?.roles.add(role, "연령 기준 미충족 자동 거절");
-            } catch {}
-            await sendRejectNotice(i.guild, uid, byErr);
-            const pch = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-            if (pch) {
-              try {
-                await pch.delete("입장 절차 자동 거절");
-              } catch {}
-            }
-            state.delete(uid);
-            try {
-              await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
-            } catch {}
+            await autoRejectFlow(i.guild, uid, byErr);
+            try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
             return;
           }
 
@@ -626,6 +629,12 @@ module.exports = (client) => {
           if (i.customId === "to_step2b") {
             if (!(prog.birthYear && prog.nickname)) {
               await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true });
+              return;
+            }
+            const byErr2 = validateBirthYear(String(prog.birthYear));
+            if (byErr2) {
+              await autoRejectFlow(i.guild, uid, byErr2);
+              try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
               return;
             }
             prog.step = 22;
