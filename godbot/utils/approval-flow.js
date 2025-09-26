@@ -1023,7 +1023,20 @@ module.exports = (client) => {
 
           const silent = i.customId.startsWith("approve_silent_");
 
-          if (progT.nickname) { try { await target.setNickname(progT.nickname, "입장 절차 승인 닉네임 반영"); } catch {} }
+          let desiredNick = null;
+          if (progT.isAlt) {
+            // sourceText 예: "부계정(본계: 영갓)"
+            const m = String(progT.sourceText || "").match(/본계:\s*([^)]+)\)/);
+            const baseMainNick = (m && m[1]) ? m[1].trim() : (target.displayName || target.user.username);
+            desiredNick = `${baseMainNick}[부계정]`;
+          } else if (progT.nickname) {
+            desiredNick = progT.nickname;
+          }
+
+          if (desiredNick) {
+            try { await target.setNickname(desiredNick, "입장 절차 승인 닉네임 반영"); } catch {}
+          }
+
           try {
             const roleId = progT.isAlt ? ROLE_MEMBER_ALT : ROLE_MEMBER_NORMAL;
             const role = i.guild.roles.cache.get(roleId);
