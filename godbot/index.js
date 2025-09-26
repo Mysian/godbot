@@ -375,6 +375,18 @@ client.on(Events.InteractionCreate, async interaction => {
   return; // approval-flow.js가 전담 처리
 }
 
+if (interaction.isModalSubmit() && (
+  interaction.customId.startsWith("modal_nickreq_") ||
+  interaction.customId.startsWith("modal_reject_") ||
+  interaction.customId === "modal_bio" ||
+  interaction.customId === "modal_SNS" ||
+  interaction.customId === "modal_추천인" ||
+  interaction.customId === "modal_alt" ||
+  interaction.customId === "modal_nickchange"
+)) {
+  return;
+}
+
 
 // 0. 게임 검색 모달 제출 처리 → 즉시 태그 토글
 if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
@@ -561,13 +573,23 @@ if (interaction.isModalSubmit()) {
       break;
     }
   }
-  if (!handled) {
-    if (!interaction.replied && !interaction.deferred) {
-      if (!interaction.channel?.name?.startsWith('입장-')) {
-        await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
-      }
+if (!handled) {
+  const id = interaction.customId || "";
+  const isApprovalFlowModal =
+    id.startsWith("modal_nickreq_") ||
+    id.startsWith("modal_reject_") ||
+    id === "modal_bio" ||
+    id === "modal_SNS" ||
+    id === "modal_추천인" ||
+    id === "modal_alt" ||
+    id === "modal_nickchange";
+
+  if (!interaction.replied && !interaction.deferred && !isApprovalFlowModal) {
+    if (!interaction.channel?.name?.startsWith('입장-')) {
+      await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
     }
   }
+}
   return;
 }
 
