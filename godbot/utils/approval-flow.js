@@ -624,19 +624,39 @@ module.exports = (client) => {
           }
 
           if (i.customId === "to_step2b") {
-            if (!(prog.birthYear && prog.nickname)) {
-              await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true });
-              return;
-            }
-            prog.step = 22;
-            const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
-            const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
-            if (targetMsg) {
-              await targetMsg.edit({ embeds: [step2bEmbed(prog)], components: [genderRow(prog.gender)] });
-            }
-            await i.deferUpdate().catch(() => {});
-            return;
-          }
+  if (!(prog.birthYear && prog.nickname)) {
+    await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true });
+    return;
+  }
+
+  // 🚨 여기 추가
+  const byErr = validateBirthYear(prog.birthYear);
+  if (byErr) {
+    try {
+      const role = i.guild.roles.cache.get(ROLE_REJECTED);
+      if (role) await i.guild.members.resolve(uid)?.roles.add(role, "연령 기준 미충족 자동 거절");
+    } catch {}
+    await sendRejectNotice(i.guild, uid, byErr);
+    const pch = i.guild.channels.cache.find((c) => c.name === chanName(uid));
+    if (pch) {
+      try { await pch.delete("입장 절차 자동 거절"); } catch {}
+    }
+    state.delete(uid);
+    await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
+    return;
+  }
+  // 🚨 여기까지
+
+  prog.step = 22;
+  const chNow = i.guild.channels.cache.find((c) => c.name === chanName(uid));
+  const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+  if (targetMsg) {
+    await targetMsg.edit({ embeds: [step2bEmbed(prog)], components: [genderRow(prog.gender)] });
+  }
+  await i.deferUpdate().catch(() => {});
+  return;
+}
+
 
           if (i.customId === "gender_m" || i.customId === "gender_f") {
             prog.gender = i.customId.endsWith("_m") ? "M" : "F";
