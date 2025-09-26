@@ -71,6 +71,13 @@ const ROLE_REJECTED = "1205052922296016906";
 
 const PLAY_STYLES = ["빡겜러", "즐빡겜러", "즐겜러"];
 
+const PLAY_STYLE_DESC = {
+  "빡겜러": "승부욕이 강하고, 이기는 전략과 효율을 최우선으로 두는 스타일.",
+  "즐빡겜러": "즐기는 편이지만 승부에도 꽤 진심인 균형형 스타일.",
+  "즐겜러": "승패와 상관없이 게임 그 자체를 즐기는 유저 (그래도 지는건 싫어!)"
+};
+
+
 const state = new Map();
 let listenersBound = false;
 
@@ -313,11 +320,22 @@ function genderRow(selected) {
   return [row1, row2];
 }
 function step3aEmbed(progress) {
+  const fields = [
+    { name: "플레이스타일", value: progress.playStyle || "미선택", inline: true },
+  ];
+
+  if (progress.playStyle) {
+    const desc = PLAY_STYLE_DESC[progress.playStyle] || "선택한 스타일 설명을 불러오지 못했습니다.";
+    fields.push({ name: "스타일 설명", value: desc, inline: false });
+  } else {
+    fields.push({ name: "도움말", value: "스타일을 누르시면 설명이 나옵니다.", inline: false });
+  }
+
   return new EmbedBuilder()
     .setColor(0xf2b619)
     .setTitle("입장 절차 3-1단계")
-    .setDescription("**😎 게임 스타일(플레이스타일)** 을 선택해주세요 (1개). 선택 후 다음을 눌러주세요.")
-    .addFields({ name: "플레이스타일", value: progress.playStyle || "미선택", inline: true });
+    .setDescription("**😎 자신의 게임 스타일(플레이스타일)** 을 선택해주세요")
+    .addFields(fields);
 }
 function playStyleRow(selected) {
   const row1 = new ActionRowBuilder().addComponents(
@@ -337,7 +355,7 @@ function step3bEmbed(progress, totalPages) {
   return new EmbedBuilder()
     .setColor(0xf29f05)
     .setTitle("입장 절차 3-2단계")
-    .setDescription(["🎮 **주로 하시는 게임**을 모두 선택하세요.","최소 **1개 이상** 선택하면 됩니다.","게임 태그로 서버에서 소통이 가능합니다."].join("\n"))
+    .setDescription(["🎮 **주로 하시는 게임**을 모두 선택하세요.","(게임 태그로 소통 가능)"].join("\n"))
     .addFields(
       { name: "선택한 게임", value: progress.gameTags?.length ? progress.gameTags.join(", ") : "0개 선택", inline: false },
       { name: "선택 팁", value: `총 ${totalPages}페이지 셀렉트에서 고를 수 있어요.`, inline: false }
@@ -537,6 +555,18 @@ function nickChangeModal() {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder().setCustomId("nickname_new").setLabel("새 닉네임 (1~10글자, 특수문자 불가)").setStyle(TextInputStyle.Short).setRequired(true)
       )
+    );
+}
+function nickDupEmbed(progress) {
+  return new EmbedBuilder()
+    .setColor(0xff6961)
+    .setTitle("이미 사용중인 닉네임입니다.")
+    .setDescription([
+      "다른 닉네임을 입력해주세요."
+    ].join("\n"))
+    .addFields(
+      { name: "출생년도", value: String(progress.birthYear || "-"), inline: true },
+      { name: "현재 닉네임", value: progress.nickname ? String(progress.nickname) : "입력 필요", inline: true }
     );
 }
 async function startFlow(guild, member) {
@@ -739,42 +769,55 @@ module.exports = (client) => {
         }
 
         if (i.customId === "modal_bio") {
-          const birth = i.fields.getTextInputValue("birth")?.trim();
-          const nick = i.fields.getTextInputValue("nickname")?.trim();
+  const birth = i.fields.getTextInputValue("birth")?.trim();
+  const nick = i.fields.getTextInputValue("nickname")?.trim();
 
-          const vr = validateBirthYear(birth);
-          if (!vr.ok) {
-            if (vr.reject) {
-              await forceAutoReject(i.guild, uid, vr.msg);
-              try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
-            } else {
-              await i.reply({ content: vr.msg, ephemeral: true });
-            }
-            return;
-          }
+  const vr = validateBirthYear(birth);
+  if (!vr.ok) {
+    if (vr.reject) {
+      await forceAutoReject(i.guild, uid, vr.msg);
+      try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
+    } else {
+      await i.reply({ content: vr.msg, ephemeral: true });
+    }
+    return;
+  }
 
-          const nErr = validateNickname(nick);
-          if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
-
-          const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
-          if (dup) { await i.reply({ content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", ephemeral: true }); return; }
-
-          await i.deferUpdate().catch(() => {});
-          setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
-
-          const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
-          if (targetMsg) {
-            const cur = getProg(uid);
-            await targetMsg.edit({
-              embeds: [step2aEmbed(cur)],
-              components: [
-                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
-                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
-              ],
-            });
-          }
-          return;
-        }
+  const nErr = validateNickname(nick);
+  if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
+  const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
+  if (dup) {
+    await i.deferUpdate().catch(() => {});
+    setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: null, step: 21 }));
+    const chNow = getUserPrivateChannel(i.guild, uid);
+    const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
+    if (targetMsg) {
+      const cur = getProg(uid);
+      await targetMsg.edit({
+        embeds: [nickDupEmbed(cur)],
+        components: [
+          nicknameRequestRow(),
+          navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+        ],
+      });
+    }
+    return;
+  }
+  await i.deferUpdate().catch(() => {});
+  setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
+  const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
+  if (targetMsg) {
+    const cur = getProg(uid);
+    await targetMsg.edit({
+      embeds: [step2aEmbed(cur)],
+      components: [
+        new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
+        navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+      ],
+    });
+  }
+  return;
+}
 
         if (i.customId === "modal_nickchange") {
           const newNick = i.fields.getTextInputValue("nickname_new")?.trim();
