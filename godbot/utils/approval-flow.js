@@ -112,8 +112,8 @@ function navRow(ids, disabledMap = {}) {
 function step1Embed(user) {
   return new EmbedBuilder()
     .setColor(0x7b2ff2)
-    .setTitle(`환영합니다! ${user.username}님`)
-    .setDescription(["종합게임서버 **'까리한 디스코드'**입니다.","지금부터 서버 **입장 절차**를 진행하겠습니다.","","다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
+    .setTitle(`환영합니다!`)
+    .setDescription(["종합게임서버 **까리한 디스코드**입니다.","","다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
 }
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
