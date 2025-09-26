@@ -403,9 +403,15 @@ async function sendWelcome(guild, userId, gameTags = []) {
   const ch = guild.channels.cache.get(CH_SERVER_GREETING);
   if (!ch) return;
   const tagText = gameTags.length ? gameTags.join(",") : "게임태그 미등록";
+
   await ch.send({
-    content: `<@${userId}> 님이 서버에 입장하셨습니다! 까리하게 맞이해주세요!! @here\n> "저는 주로 '${tagText}'을 합니다!"`,
-    allowedMentions: { parse: ["roles", "everyone", "users"] },
+    content: `<@${userId}> 님이 서버에 입장하셨습니다! 까리하게 맞이해주세요!! ||@here||\n> "주로 '${tagText}'을(를) 합니다!"`,
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setImage("https://media.discordapp.net/attachments/1388728993787940914/1421072678105907210/-__-_6_-001.png?ex=68d7b490&is=68d66310&hm=bce2955766d0b42845b32e76773eafedffdb498f1f153de763281eb1e08d6d92&=&format=webp&quality=lossless")
+    ],
+    allowedMentions: { parse: ["roles", "everyone", "users"] }
   });
 }
 async function sendRejectNotice(guild, userId, reasonText) {
