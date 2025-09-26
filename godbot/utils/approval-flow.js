@@ -64,9 +64,7 @@ const chanName = (uid) => `입장-${uid}`;
 let listenersBound = false;
 
 function currentKRYear() {
-  return Number(
-    new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date())
-  );
+  return Number(new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date()));
 }
 function accountAgeDays(user) {
   const ms = Date.now() - user.createdTimestamp;
@@ -78,18 +76,22 @@ function validateNickname(name) {
   if (!/^[\p{L}\p{N}\s]+$/u.test(name)) return "특수문자 없이 한글/영문/숫자만 사용해주세요.";
   return null;
 }
-function validateBirthYear(y) {
-  if (!/^\d{4}$/.test(y)) return "출생년도는 4자리 숫자로 입력해주세요. 예) 2005년생";
-  const year = Number(y);
+function getAgeRange() {
   const nowY = currentKRYear();
-  const minY = nowY - 100;
-  const maxY = nowY - 20;
+  return { minY: nowY - 100, maxY: nowY - 20 };
+}
+function isBirthYearEligible(y) {
+  if (!/^\d{4}$/.test(String(y || ""))) return false;
+  const { minY, maxY } = getAgeRange();
+  const year = Number(y);
+  return year >= minY && year <= maxY;
+}
+function validateBirthYear(y) {
+  if (!/^\d{4}$/.test(String(y || ""))) return "출생년도는 4자리 숫자로 입력해주세요. 예) 2005년생";
+  const { minY, maxY } = getAgeRange();
+  const year = Number(y);
   if (year < minY || year > maxY) return `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`;
   return null;
-}
-function isBioReady(prog) {
-  if (!(prog.birthYear && prog.nickname)) return false;
-  return !validateBirthYear(String(prog.birthYear));
 }
 function chunk(arr, size) {
   const out = [];
@@ -147,26 +149,16 @@ function altModal() {
     );
 }
 function step2aEmbed(progress) {
-  const nowY = currentKRYear();
-  const exYear = nowY - 20;
+  const { maxY } = getAgeRange();
   return new EmbedBuilder()
     .setColor(0x2095ff)
     .setTitle("입장 절차 2-1단계")
-    .setDescription(["아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**","","• 출생년도 (예: "+exYear+"년생)","• 서버에서 사용할 닉네임","","※ 만 20세 미만이거나 100세 초과로 계산되는 출생년도는 **승인거절** 됩니다."].join("\n"))
+    .setDescription(["아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**","","• 출생년도 (예: "+maxY+"년생)","• 서버에서 사용할 닉네임","","※ 만 20세 미만이거나 100세 초과로 계산되는 출생년도는 **승인거절** 됩니다."].join("\n"))
     .addFields(
       { name: "유입 경로", value: progress.sourceText || "미입력", inline: true },
       { name: "부계정 여부", value: progress.isAlt ? "부계정" : "일반", inline: true },
       { name: "계정 생성일 경과", value: `${progress.accountAge}일`, inline: true }
     );
-}
-function step2aComponents(prog) {
-  const nextDisabled = !isBioReady(prog);
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
-    ),
-    navRow(["noop_prev", "to_step2b"], { prev: true, next: nextDisabled }),
-  ];
 }
 function step2bEmbed(progress) {
   return new EmbedBuilder()
@@ -315,6 +307,23 @@ async function createPrivateChannel(guild, member) {
   });
   return ch;
 }
+async function forceAutoReject(guild, userId, reason) {
+  try {
+    const role = guild.roles.cache.get(ROLE_REJECTED);
+    if (role) await guild.members.resolve(userId)?.roles.add(role, "자동 거절");
+  } catch {}
+  await sendRejectNotice(guild, userId, reason || "연령 기준 미충족");
+  const pch = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === chanName(userId));
+  if (pch) {
+    try { await pch.delete("입장 절차 자동 거절"); } catch {}
+  }
+  const prog = state.get(userId);
+  if (prog && prog.queueMsgId) {
+    const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
+    if (qch) { try { const m = await qch.messages.fetch(prog.queueMsgId); await m.delete(); } catch {} }
+  }
+  state.delete(userId);
+}
 async function startFlow(guild, member) {
   const userId = member.id;
   const ageDays = accountAgeDays(member.user);
@@ -352,22 +361,6 @@ async function startFlow(guild, member) {
   prog0.messageId = msg.id;
   state.set(userId, prog0);
 }
-async function autoRejectFlow(guild, uid, reason) {
-  try {
-    const role = guild.roles.cache.get(ROLE_REJECTED);
-    if (role) {
-      const m = await guild.members.fetch(uid).catch(() => null);
-      if (m) await m.roles.add(role, "자동 거절");
-    }
-  } catch {}
-  await sendRejectNotice(guild, uid, reason);
-  const pch = guild.channels.cache.find((c) => c.name === chanName(uid));
-  if (pch) {
-    try { await pch.delete("입장 절차 자동 거절"); } catch {}
-  }
-  state.delete(uid);
-}
-
 module.exports = (client) => {
   if (listenersBound) return;
   listenersBound = true;
@@ -438,7 +431,12 @@ module.exports = (client) => {
           if (targetMsg) {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
-              components: step2aComponents(prog),
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+                ),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
+              ],
             });
           }
           return;
@@ -459,7 +457,12 @@ module.exports = (client) => {
           if (targetMsg) {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
-              components: step2aComponents(prog),
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+                ),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
+              ],
             });
           }
           return;
@@ -471,7 +474,7 @@ module.exports = (client) => {
 
           const byErr = validateBirthYear(birth);
           if (byErr) {
-            await autoRejectFlow(i.guild, uid, byErr);
+            await forceAutoReject(i.guild, uid, byErr);
             try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
             return;
           }
@@ -497,7 +500,12 @@ module.exports = (client) => {
           if (targetMsg) {
             await targetMsg.edit({
               embeds: [step2aEmbed(prog)],
-              components: step2aComponents(prog),
+              components: [
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)
+                ),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
+              ],
             });
           }
           return;
@@ -607,7 +615,12 @@ module.exports = (client) => {
             if (targetMsg) {
               await targetMsg.edit({
                 embeds: [step2aEmbed(prog)],
-                components: step2aComponents(prog),
+                components: [
+                  new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 입력").setStyle(ButtonStyle.Primary)
+                  ),
+                  navRow(["noop_prev", "to_step2b"], { prev: true, next: !(prog.birthYear && prog.nickname) }),
+                ],
               });
             }
             await i.deferUpdate().catch(() => {});
@@ -624,10 +637,10 @@ module.exports = (client) => {
               await i.reply({ content: "출생년도·닉네임을 먼저 입력해주세요.", ephemeral: true });
               return;
             }
-            const byErr2 = validateBirthYear(String(prog.birthYear));
-            if (byErr2) {
-              await autoRejectFlow(i.guild, uid, byErr2);
-              try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
+            if (!isBirthYearEligible(prog.birthYear)) {
+              const { minY, maxY } = getAgeRange();
+              await forceAutoReject(i.guild, uid, `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`);
+              try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
               return;
             }
             prog.step = 22;
@@ -701,20 +714,12 @@ module.exports = (client) => {
               await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true });
               return;
             }
-
-            const byErr3 = validateBirthYear(String(prog.birthYear));
-            if (byErr3) {
-              await autoRejectFlow(i.guild, uid, byErr3);
-              try { await i.reply({ content: "연령 기준 미충족으로 승인 대기 없이 자동 거절되었습니다.", ephemeral: true }); } catch {}
+            if (!isBirthYearEligible(prog.birthYear)) {
+              const { minY, maxY } = getAgeRange();
+              await forceAutoReject(i.guild, uid, `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`);
+              try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
               return;
             }
-
-            if (prog.accountAge < 30) {
-              await autoRejectFlow(i.guild, uid, "디스코드 계정 생성 30일 미만");
-              try { await i.reply({ content: "계정 생성 30일 미만으로 승인 대기 없이 자동 거절되었습니다.", ephemeral: true }); } catch {}
-              return;
-            }
-
             const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
             if (qch) {
               const member = await i.guild.members.fetch(uid).catch(() => null);
