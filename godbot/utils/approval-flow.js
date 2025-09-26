@@ -14,7 +14,6 @@ const {
 const fs = require("fs");
 const path = require("path");
 
-/* ====== 게임 목록 ====== */
 let ALL_GAMES = [];
 try {
   ({ ALL_GAMES } = require("../select-game.js"));
@@ -31,7 +30,6 @@ try {
   ];
 }
 
-/* ====== 알림 태그(고정 매핑) ====== */
 const NOTIFY_CHOICES = [
   { label: "내전 알림", roleId: "1255580383559422033" },
   { label: "이벤트 알림", roleId: "1255580760371626086" },
@@ -40,11 +38,11 @@ const NOTIFY_CHOICES = [
   { label: "퀴즈/문제 알림", roleId: "1255580906199191644" },
 ];
 
-/* ====== 토글 파일 ====== */
 const APPROVAL_SETTINGS_PATH = path.join(
   __dirname,
   "../data/approval-settings.json"
 );
+
 function loadApprovalOn() {
   try {
     const j = JSON.parse(fs.readFileSync(APPROVAL_SETTINGS_PATH, "utf8"));
@@ -54,7 +52,6 @@ function loadApprovalOn() {
   }
 }
 
-/* ====== 길드 리소스 ====== */
 const CH_APPROVAL_QUEUE = "1276751288117235755";
 const CH_WELCOME_LOG = "1240936843122573312";
 const CH_SERVER_GREETING = "1202425624061415464";
@@ -66,11 +63,9 @@ const ROLE_REJECTED = "1205052922296016906";
 
 const PLAY_STYLES = ["빡겜러", "즐빡겜러", "즐겜러"];
 
-/* ====== 상태 ====== */
 const state = new Map();
 const chanName = (uid) => `입장-${uid}`;
 
-/* ====== 유틸 ====== */
 function currentKRYear() {
   return Number(
     new Intl.DateTimeFormat("ko-KR", {
@@ -107,7 +102,6 @@ function chunk(arr, size) {
   return out;
 }
 
-/* ====== 컴포넌트/임베드 ====== */
 function navRow(ids, disabledMap = {}) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -396,7 +390,6 @@ function settingsSelectRow(selectedIds = []) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-/* ====== 메시지/알림 ====== */
 async function sendWelcome(guild, userId, gameTags = []) {
   const ch = guild.channels.cache.get(CH_SERVER_GREETING);
   if (!ch) return;
@@ -419,7 +412,6 @@ async function sendRejectNotice(guild, userId, reasonText) {
   });
 }
 
-/* ====== 채널/플로우 ====== */
 async function createPrivateChannel(guild, member) {
   const existing = guild.channels.cache.find(
     (c) => c.type === ChannelType.GuildText && c.name === chanName(member.id)
@@ -445,7 +437,6 @@ async function createPrivateChannel(guild, member) {
 
 async function startFlow(guild, member) {
   const userId = member.id;
-
   const ageDays = accountAgeDays(member.user);
   if (ageDays < 30) {
     try {
@@ -679,7 +670,6 @@ async function startFlow(guild, member) {
     }
   });
 
-  /* 모달 핸들러 */
   member.client.on("interactionCreate", async (mi) => {
     if (!state.has(userId)) return;
     if (!mi.isModalSubmit()) return;
@@ -763,11 +753,11 @@ async function startFlow(guild, member) {
           const role = guild.roles.cache.get(ROLE_REJECTED);
           if (role) await member.roles.add(role, "연령 기준 미충족 자동 거절");
         } catch {}
-        await sendRejectNotice(guild, userId, byErr);
+        await sendRejectNotice(guild, userId, "연령 제한으로 인함");
         const pch = guild.channels.cache.find((c) => c.name === chanName(userId));
         if (pch) {
           try {
-            await pch.delete("입장 절차 자동 거절");
+            await pch.delete("입장 절차 자동 거절(연령)");
           } catch {}
         }
         state.delete(userId);
@@ -798,7 +788,6 @@ async function startFlow(guild, member) {
       }
 
       await mi.deferUpdate().catch(() => {});
-
       prog.birthYear = Number(birth);
       prog.nickname = nick;
       prog.step = 21;
@@ -825,7 +814,6 @@ async function startFlow(guild, member) {
     }
   });
 
-  /* 버튼/셀렉트 핸들러 */
   member.client.on("interactionCreate", async (i) => {
     if (!(i.isButton() || i.isStringSelectMenu())) return;
 
@@ -1060,7 +1048,6 @@ async function startFlow(guild, member) {
   });
 }
 
-/* ====== 익스포트 ====== */
 module.exports = (client) => {
   client.on("guildMemberAdd", async (member) => {
     if (!loadApprovalOn()) return;
@@ -1072,6 +1059,7 @@ module.exports = (client) => {
 
   client.on("guildMemberRemove", async (member) => {
     const guild = member.guild;
+
     const ch = guild.channels.cache.find(
       (c) => c.type === ChannelType.GuildText && c.name === chanName(member.id)
     );
