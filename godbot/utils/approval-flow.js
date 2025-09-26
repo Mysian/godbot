@@ -233,6 +233,119 @@ function step1Embed(user) {
     .setImage(IMG_FIRST_STEP);
 }
 
+// === [HELP VIEWER - approval-flow 내부 전용] ===
+function buildHelpEmbeds() {
+  const embeds = [];
+
+  // 1/4
+  embeds.push(
+    new EmbedBuilder()
+      .setTitle("📚 도움말 (1/4)")
+      .setDescription("서버 이용 안내 및 핵심 생활 명령어")
+      .addFields(
+        { name: "🚪 /입장절차", value: "서버 입장 절차 시작(개인 채널 생성)", inline: true },
+        { name: "📜 /서버규칙", value: "서버 규칙 보기", inline: true },
+        { name: "🆘 /신고 [유저] [사유]", value: "신고/민원 접수", inline: true },
+        { name: "🔊 /이용현황", value: "기간별 음성/채팅 이용 현황", inline: true },
+        { name: "💞 /우정 [유저]", value: "대상과의 관계/호감도", inline: true },
+        { name: "🚫 /경고확인", value: "본인 경고 이력 조회", inline: true },
+      )
+      .setFooter({ text: "서버: 까리한 디스코드" })
+      .setColor(0x00bfff)
+      .setTimestamp()
+  );
+
+  // 2/4
+  embeds.push(
+    new EmbedBuilder()
+      .setTitle("📚 도움말 (2/4)")
+      .setDescription("유틸/프로필/정수 관련")
+      .addFields(
+        { name: "📝 /프로필등록", value: "프로필 등록", inline: true },
+        { name: "👤 /프로필 [유저]", value: "프로필 조회", inline: true },
+        { name: "💼 /인벤토리", value: "정수 아이템 확인", inline: true },
+        { name: "🛒 /상점", value: "BE 상점", inline: true },
+        { name: "💸 /정수송금 [유저] [금액]", value: "정수 송금(수수료 10%)", inline: true },
+        { name: "🔝 /정수순위", value: "정수 보유 랭킹", inline: true },
+      )
+      .setFooter({ text: "서버: 까리한 디스코드" })
+      .setColor(0x00bfff)
+      .setTimestamp()
+  );
+
+  // 3/4
+  embeds.push(
+    new EmbedBuilder()
+      .setTitle("📚 도움말 (3/4)")
+      .setDescription("게임/미니게임/챔피언 시스템")
+      .addFields(
+        { name: "🎮 /게임검색", value: "스팀 게임 키워드 검색", inline: true },
+        { name: "🔨 /유틸", value: "메모장/계산기/복권 등", inline: true },
+        { name: "🐟 /낚시", value: "낚시 미니게임", inline: true },
+        { name: "👥 /내챔피언", value: "보유 챔피언 목록", inline: true },
+        { name: "🎁 /챔피언획득", value: "챔피언 랜덤 획득", inline: true },
+        { name: "⚔️ /챔피언배틀 [유저]", value: "챔피언 1:1 배틀", inline: true },
+        { name: "🌌 /모험", value: "무한 모험", inline: true },
+      )
+      .setFooter({ text: "서버: 까리한 디스코드" })
+      .setColor(0x00bfff)
+      .setTimestamp()
+  );
+
+  // 4/4
+  embeds.push(
+    new EmbedBuilder()
+      .setTitle("📚 도움말 (4/4)")
+      .setDescription("후원/구독/부스터 관련")
+      .addFields(
+        { name: "💝 후원 안내", value: "후원자 전용 혜택/배지/색상 역할", inline: false },
+        { name: "⚡ 서버 부스트", value: "부스터 전용 혜택", inline: false },
+        { name: "ℹ️", value: "자세한 전체 목록은 슬래시 명령어 `/도움말` 로도 볼 수 있습니다.", inline: false },
+      )
+      .setFooter({ text: "서버: 까리한 디스코드" })
+      .setColor(0x00bfff)
+      .setTimestamp()
+  );
+
+  return embeds;
+}
+
+function helpNavRow(page, max) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("help_prev").setLabel("◀️").setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId("help_next").setLabel("▶️").setStyle(ButtonStyle.Secondary).setDisabled(page === max)
+  );
+}
+
+async function showHelpEphemeral(interaction) {
+  const embeds = buildHelpEmbeds();
+  let cur = 0;
+
+  const msg = await interaction.reply({
+    embeds: [embeds[cur]],
+    components: [helpNavRow(cur, embeds.length - 1)],
+    ephemeral: true,
+    fetchReply: true, // ★ 메시지 객체 필수
+  });
+
+  const filter = (i) => i.user.id === interaction.user.id && ["help_prev", "help_next"].includes(i.customId);
+  const collector = msg.createMessageComponentCollector({ filter, time: 5 * 60 * 1000 });
+
+  collector.on("collect", async (btn) => {
+    try {
+      if (btn.customId === "help_prev" && cur > 0) cur--;
+      if (btn.customId === "help_next" && cur < embeds.length - 1) cur++;
+      await btn.update({ embeds: [embeds[cur]], components: [helpNavRow(cur, embeds.length - 1)] });
+    } catch {}
+  });
+
+  collector.on("end", async () => {
+    try { await msg.edit({ components: [] }); } catch {}
+  });
+}
+// === [END HELP VIEWER] ===
+
+
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("src_disboard").setLabel("디스보드").setStyle(ButtonStyle.Primary),
@@ -952,12 +1065,15 @@ module.exports = (client) => {
         if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue", "open_nick_change", "show_rules", "show_help"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
           if (!prog) return;
 
-          if (i.customId === "show_rules") {
-            await rulesModule.execute(i);
-            return;
-          }
+          if (["to_step3b", "back_step3a", "go_queue", "open_nick_change", "show_rules", "show_help"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
+          if (!prog) return;
+
+            if (i.customId === "show_rules") {
+              await rulesModule.execute(i);
+              return;
+              }
           if (i.customId === "show_help") {
-            await helpModule.execute(i);
+            await showHelpEphemeral(i);
             return;
           }
           if (i.customId.startsWith("src_")) {
