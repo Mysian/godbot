@@ -208,7 +208,7 @@ function navRow(ids, disabledMap = {}) {
 function step1Embed(user) {
   return new EmbedBuilder()
     .setColor(0x7b2ff2)
-    .setTitle(`${base}님 환영합니다! 🖐️`)
+    .setTitle(`🖐️ 환영합니다! ${(user.globalName || user.username)}님`)
     .setDescription([
       "종합게임서버 🌟**까리한 디스코드**🌟입니다.",
       "",
