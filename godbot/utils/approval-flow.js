@@ -701,6 +701,20 @@ module.exports = (client) => {
               await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true });
               return;
             }
+
+            const byErr3 = validateBirthYear(String(prog.birthYear));
+            if (byErr3) {
+              await autoRejectFlow(i.guild, uid, byErr3);
+              try { await i.reply({ content: "연령 기준 미충족으로 승인 대기 없이 자동 거절되었습니다.", ephemeral: true }); } catch {}
+              return;
+            }
+
+            if (prog.accountAge < 30) {
+              await autoRejectFlow(i.guild, uid, "디스코드 계정 생성 30일 미만");
+              try { await i.reply({ content: "계정 생성 30일 미만으로 승인 대기 없이 자동 거절되었습니다.", ephemeral: true }); } catch {}
+              return;
+            }
+
             const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
             if (qch) {
               const member = await i.guild.members.fetch(uid).catch(() => null);
