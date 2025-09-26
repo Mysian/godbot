@@ -840,10 +840,7 @@ module.exports = (client) => {
           await i.reply({ content: `닉네임이 '${newNick}' 으로 업데이트되었습니다.`, ephemeral: true });
           return;
         }
-
-        return;
-      }
-
+        
       if (!(i.isButton() || i.isStringSelectMenu())) return;
 
       const uid = i.user?.id;
