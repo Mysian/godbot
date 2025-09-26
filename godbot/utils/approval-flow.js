@@ -720,7 +720,7 @@ async function startFlow(guild, member) {
 
     const prog = state.get(userId);
     const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
-    if (!chNow || mi.channelId !== chNow.id) return;
+    if (!chNow) return;
 
     if (mi.customId === "modal_SNS" || mi.customId === "modal_추천인") {
       await mi.deferUpdate().catch(() => {});
