@@ -64,8 +64,13 @@ const chanName = (uid) => `입장-${uid}`;
 let listenersBound = false;
 
 function currentKRYear() {
-  return Number(new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric" }).format(new Date()));
+  const y = new Intl.DateTimeFormat("en", { timeZone: "Asia/Seoul", year: "numeric" })
+    .format(new Date());
+  const num = parseInt(String(y).trim().replace(/[^\d]/g, ""), 10);
+  if (Number.isNaN(num)) return new Date().getFullYear();
+  return num;
 }
+
 function accountAgeDays(user) {
   const ms = Date.now() - user.createdTimestamp;
   return Math.floor(ms / 86400000);
@@ -77,8 +82,8 @@ function validateNickname(name) {
   return null;
 }
 function getAgeRange() {
-  const nowY = currentKRYear();
-  return { minY: nowY - 100, maxY: nowY - 20 };
+  const baseY = currentKRYear();
+  return { minY: baseY - 100, maxY: baseY - 20 };
 }
 function isBirthYearEligible(y) {
   if (!/^\d{4}$/.test(String(y || ""))) return false;
