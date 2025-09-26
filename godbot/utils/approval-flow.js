@@ -157,15 +157,15 @@ function navRow(ids, disabledMap = {}) {
 function step1Embed(user) {
   return new EmbedBuilder()
     .setColor(0x7b2ff2)
-    .setTitle(`환영합니다! ${user.username}님`)
-    .setDescription(["종합게임서버 **'까리한 디스코드'**입니다.","지금부터 서버 **입장 절차**를 진행하겠습니다.","","다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
+    .setTitle(`🖐️ 환영합니다! ${user.username}님`)
+    .setDescription(["종합게임서버 🌟**까리한 디스코드**🌟입니다.","","🗺️ 다음 중, 어떤 경로로 서버에 오셨나요?"].join("\n"));
 }
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("src_disboard").setLabel("디스보드").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("src_dicoall").setLabel("디코올").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("src_sns").setLabel("SNS").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("src_ref").setLabel("추천인(지인)").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("src_sns").setLabel("🛜SNS").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("src_ref").setLabel("🧑추천인(지인)").setStyle(ButtonStyle.Secondary)
   );
 }
 function step1ButtonsAlt() {
@@ -206,8 +206,8 @@ function step2aEmbed(progress) {
     .setDescription([
       "아래 정보를 입력해주세요. **모든 정보는 절대 공개되지 않습니다.**",
       "",
-      "• 출생년도 (예: 2005)",
-      "• 서버에서 사용할 닉네임",
+      "• 👶 출생년도",
+      "• 📛 서버에서 사용할 닉네임",
       "",
       "※ 생성된지 30일 미만 계정은 입장이 거절됩니다."
     ].join("\n"))
@@ -217,7 +217,7 @@ function step2bEmbed(progress) {
   return new EmbedBuilder()
     .setColor(0x1f8b4c)
     .setTitle("입장 절차 2-2단계")
-    .setDescription("성별을 선택해주세요. **절대 공개되지 않습니다.**")
+    .setDescription("성별을 선택해주세요.♂️♀️ **절대 공개되지 않습니다.**")
     .addFields(
       { name: "입력하신 출생년도", value: String(progress.birthYear || "-"), inline: true },
       { name: "희망하는 닉네임", value: String(progress.nickname || "-"), inline: true }
@@ -226,7 +226,7 @@ function step2bEmbed(progress) {
 function birthNickModal() {
   return new ModalBuilder()
     .setCustomId("modal_bio")
-    .setTitle("출생년도 & 닉네임 입력")
+    .setTitle("✏️ 출생년도 & 닉네임 입력")
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder().setCustomId("birth").setLabel("출생년도 (4자리 숫자, 예: 2005)").setPlaceholder("예: 2005").setStyle(TextInputStyle.Short).setRequired(true)
@@ -250,7 +250,7 @@ function step3aEmbed(progress) {
   return new EmbedBuilder()
     .setColor(0xf2b619)
     .setTitle("입장 절차 3-1단계")
-    .setDescription("**게임 스타일(플레이스타일)** 을 선택해주세요 (1개). 선택 후 다음을 눌러주세요.")
+    .setDescription("**😎 게임 스타일(플레이스타일)** 을 선택해주세요 (1개). 선택 후 다음을 눌러주세요.")
     .addFields({ name: "플레이스타일", value: progress.playStyle || "미선택", inline: true });
 }
 function playStyleRow(selected) {
@@ -271,7 +271,7 @@ function step3bEmbed(progress, totalPages) {
   return new EmbedBuilder()
     .setColor(0xf29f05)
     .setTitle("입장 절차 3-2단계")
-    .setDescription(["**주로 하시는 게임 태그**를 선택해주세요.","최소 **1개 이상** 선택하면 됩니다.","필요하면 여러 페이지에서 선택할 수 있습니다."].join("\n"))
+    .setDescription(["🎮 **주로 하시는 게임**을 모두 선택하세요.","최소 **1개 이상** 선택하면 됩니다.","게임 태그로 서버에서 소통이 가능합니다."].join("\n"))
     .addFields(
       { name: "선택한 게임", value: progress.gameTags?.length ? progress.gameTags.join(", ") : "0개 선택", inline: false },
       { name: "선택 팁", value: `총 ${totalPages}페이지 셀렉트에서 고를 수 있어요.`, inline: false }
@@ -847,7 +847,7 @@ module.exports = (client) => {
             const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
             if (targetMsg) {
               await targetMsg.edit({
-                embeds: [new EmbedBuilder().setColor(0x95a5a6).setTitle("승인 대기 중").setDescription(["관리진 검토 후 처리됩니다. 감사합니다!","","선택 사항: **서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."].join("\n"))],
+                embeds: [new EmbedBuilder().setColor(0x95a5a6).setTitle("🪑승인 대기 중").setDescription(["관리진 검토 후 처리됩니다. 감사합니다!🙇","","선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."].join("\n"))],
                 components: [settingsSelectRow(getProg(uid).notifyRoleIds || [])],
               });
             }
