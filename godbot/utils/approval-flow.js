@@ -13,6 +13,15 @@ const {
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
+const rulesModule = require("../commands/server-rules.js");
+const helpModule  = require("../commands/help.js");
+
+function infoButtonsRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("show_rules").setLabel("서버 규칙").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("show_help").setLabel("봇 명령어 확인하기").setStyle(ButtonStyle.Primary)
+  );
+}
 
 let ALL_GAMES = [];
 try {
@@ -856,9 +865,17 @@ module.exports = (client) => {
 
       if (i.isButton()) {
         const prog = getProg(uid);
-        if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue", "open_nick_change"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
+        if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue", "open_nick_change", "show_rules", "show_help"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
           if (!prog) return;
 
+          if (i.customId === "show_rules") {
+            await rulesModule.execute(i);
+            return;
+          }
+          if (i.customId === "show_help") {
+            await helpModule.execute(i);
+            return;
+          }
           if (i.customId.startsWith("src_")) {
             const id = i.customId.slice(4);
             if (id === "sns") { await i.showModal(snsOrRefModal("SNS")); return; }
@@ -966,19 +983,22 @@ module.exports = (client) => {
   const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
   if (targetMsg) {
     await targetMsg.edit({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x95a5a6)
-          .setTitle("🪑승인 대기 중")
-          .setDescription([
-            "관리진 검토 후 처리됩니다. 감사합니다!🙇",
-            "",
-            "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."
-          ].join("\n"))
-          .setImage(IMG_PENDING)
-      ],
-      components: [settingsSelectRow(getProg(uid).notifyRoleIds || [])],
-    });
+  embeds: [
+    new EmbedBuilder()
+      .setColor(0x95a5a6)
+      .setTitle("🪑승인 대기 중")
+      .setDescription([
+        "관리진 검토 후 처리됩니다. 감사합니다!🙇",
+        "",
+        "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."
+      ].join("\n"))
+      .setImage(IMG_PENDING)
+  ],
+  components: [
+    settingsSelectRow(getProg(uid).notifyRoleIds || []),
+    infoButtonsRow()
+  ],
+});
   }
   await i.deferUpdate().catch(() => {});
   return;
