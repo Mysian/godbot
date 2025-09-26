@@ -42,7 +42,6 @@ const APPROVAL_SETTINGS_PATH = path.join(
   __dirname,
   "../data/approval-settings.json"
 );
-
 function loadApprovalOn() {
   try {
     const j = JSON.parse(fs.readFileSync(APPROVAL_SETTINGS_PATH, "utf8"));
@@ -95,6 +94,13 @@ function validateBirthYear(y) {
   if (year < minY || year > maxY)
     return `만 20세 이상(출생년도 ${minY}~${maxY})만 입장 가능합니다.`;
   return null;
+}
+function isBirthValidNumeric(yearNum) {
+  if (!yearNum) return false;
+  const nowY = currentKRYear();
+  const minY = nowY - 100;
+  const maxY = nowY - 20;
+  return yearNum >= minY && yearNum <= maxY;
 }
 function chunk(arr, size) {
   const out = [];
@@ -411,6 +417,37 @@ async function sendRejectNotice(guild, userId, reasonText) {
     allowedMentions: { users: [userId] },
   });
 }
+async function autoReject(guild, userId, reasonText, replyInteraction) {
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (member) {
+    try {
+      const role = guild.roles.cache.get(ROLE_REJECTED);
+      if (role) await member.roles.add(role, "자동 거절");
+    } catch {}
+  }
+  await sendRejectNotice(guild, userId, reasonText);
+  const pch = guild.channels.cache.find((c) => c.name === chanName(userId));
+  if (pch) {
+    try { await pch.delete("입장 절차 자동 거절"); } catch {}
+  }
+  const prog = state.get(userId);
+  if (prog && prog.queueMsgId) {
+    const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
+    if (qch) {
+      try { const m = await qch.messages.fetch(prog.queueMsgId); await m.delete(); } catch {}
+    }
+  }
+  state.delete(userId);
+  if (replyInteraction) {
+    try {
+      if (replyInteraction.deferred || replyInteraction.replied) {
+        await replyInteraction.followUp({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
+      } else {
+        await replyInteraction.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true });
+      }
+    } catch {}
+  }
+}
 
 async function createPrivateChannel(guild, member) {
   const existing = guild.channels.cache.find(
@@ -437,6 +474,7 @@ async function createPrivateChannel(guild, member) {
 
 async function startFlow(guild, member) {
   const userId = member.id;
+
   const ageDays = accountAgeDays(member.user);
   if (ageDays < 30) {
     try {
@@ -513,6 +551,7 @@ async function startFlow(guild, member) {
 
       const chNow = guild.channels.cache.find((c) => c.name === chanName(userId));
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -525,7 +564,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: !(prog.birthYear && prog.nickname),
+              next: nextDisabled,
             }),
           ],
         });
@@ -545,6 +584,10 @@ async function startFlow(guild, member) {
           content: "출생년도·닉네임을 먼저 입력해주세요.",
           ephemeral: true,
         });
+        return;
+      }
+      if (!isBirthValidNumeric(prog.birthYear)) {
+        await autoReject(guild, userId, `만 20세 미만(출생년도 ${prog.birthYear})`, i);
         return;
       }
       prog.step = 22;
@@ -686,6 +729,7 @@ async function startFlow(guild, member) {
       prog.isAlt = false;
       prog.step = 21;
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -698,7 +742,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: !(prog.birthYear && prog.nickname),
+              next: nextDisabled,
             }),
           ],
         });
@@ -723,6 +767,7 @@ async function startFlow(guild, member) {
       prog.isAlt = true;
       prog.step = 21;
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -735,7 +780,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: !(prog.birthYear && prog.nickname),
+              next: nextDisabled,
             }),
           ],
         });
@@ -749,24 +794,7 @@ async function startFlow(guild, member) {
 
       const byErr = validateBirthYear(birth);
       if (byErr) {
-        try {
-          const role = guild.roles.cache.get(ROLE_REJECTED);
-          if (role) await member.roles.add(role, "연령 기준 미충족 자동 거절");
-        } catch {}
-        await sendRejectNotice(guild, userId, "연령 제한으로 인함");
-        const pch = guild.channels.cache.find((c) => c.name === chanName(userId));
-        if (pch) {
-          try {
-            await pch.delete("입장 절차 자동 거절(연령)");
-          } catch {}
-        }
-        state.delete(userId);
-        try {
-          await mi.reply({
-            content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.",
-            ephemeral: true,
-          });
-        } catch {}
+        await autoReject(guild, userId, byErr, mi);
         return;
       }
 
@@ -788,11 +816,13 @@ async function startFlow(guild, member) {
       }
 
       await mi.deferUpdate().catch(() => {});
+
       prog.birthYear = Number(birth);
       prog.nickname = nick;
       prog.step = 21;
 
       const targetMsg = await chNow.messages.fetch(prog.messageId).catch(() => null);
+      const nextDisabled = !(prog.birthYear && prog.nickname && isBirthValidNumeric(prog.birthYear));
       if (targetMsg) {
         await targetMsg.edit({
           embeds: [step2aEmbed(prog)],
@@ -805,7 +835,7 @@ async function startFlow(guild, member) {
             ),
             navRow(["noop_prev", "to_step2b"], {
               prev: true,
-              next: !(prog.birthYear && prog.nickname),
+              next: nextDisabled,
             }),
           ],
         });
@@ -1059,7 +1089,6 @@ module.exports = (client) => {
 
   client.on("guildMemberRemove", async (member) => {
     const guild = member.guild;
-
     const ch = guild.channels.cache.find(
       (c) => c.type === ChannelType.GuildText && c.name === chanName(member.id)
     );
