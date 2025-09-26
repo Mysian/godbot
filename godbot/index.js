@@ -369,18 +369,11 @@ const scrimAnnounce =
 client.on(Events.InteractionCreate, async interaction => {
 
   if (
-    interaction.isModalSubmit() &&
-    (
-      interaction.customId === 'modal_SNS' ||
-      interaction.customId === 'modal_추천인' ||
-      interaction.customId === 'modal_alt' ||
-      interaction.customId === 'modal_bio' ||
-      // 혹시 커스텀ID가 바뀌어도, 입장- 채널에서 온 모달이면 전역 처리 금지
-      (interaction.channel?.name && interaction.channel.name.startsWith('입장-'))
-    )
-  ) {
-    return; // approval-flow.js가 처리하게 놔둠
-  }
+  (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
+  interaction.channel?.name?.startsWith('입장-')
+) {
+  return; // approval-flow.js가 전담 처리
+}
 
 
 // 0. 게임 검색 모달 제출 처리 → 즉시 태그 토글
