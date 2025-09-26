@@ -38,6 +38,9 @@ const NOTIFY_CHOICES = [
   { label: "퀴즈/문제 알림", roleId: "1255580906199191644" },
 ];
 
+const IMG_FIRST_STEP = "https://media.discordapp.net/attachments/1388728993787940914/1420695657571946536/--3-001.webp?ex=68d7a6f0&is=68d65570&hm=acae03538f3f4a31a5b01458c18b45ae3afe262bc9fa136589eab9e73f17875a&=&format=webp";
+const IMG_PENDING = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=68d714a8&is=68d5c328&hm=ec5291379e3f76739383dfe11ca7257df03054337ad7dc9432614b041b086922&=&format=webp&quality=lossless";
+
 const APPROVAL_SETTINGS_PATH = path.join(__dirname, "../data/approval-settings.json");
 function loadApprovalOn() {
   try {
@@ -206,8 +209,14 @@ function step1Embed(user) {
   return new EmbedBuilder()
     .setColor(0x7b2ff2)
     .setTitle(`🖐️ 환영합니다! ${user.username}님`)
-    .setDescription(["종합게임서버 🌟**까리한 디스코드**🌟입니다.","","🗺️ 어떤 경로로 서버에 오셨나요?"].join("\n"));
+    .setDescription([
+      "종합게임서버 🌟**까리한 디스코드**🌟입니다.",
+      "",
+      "🗺️ 어떤 경로로 서버에 오셨나요?"
+    ].join("\n"))
+    .setImage(IMG_FIRST_STEP);
 }
+
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("src_disboard").setLabel("디스보드").setStyle(ButtonStyle.Primary),
@@ -888,31 +897,41 @@ module.exports = (client) => {
           }
 
           if (i.customId === "go_queue") {
-            const cur = getProg(uid);
-            if (!(cur.gameTags && cur.gameTags.length)) { await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true }); return; }
-            if (!isBirthYearEligible(cur.birthYear)) {
-              await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
-              try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
-              return;
-            }
-            const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-            if (qch) {
-              const member = await i.guild.members.fetch(uid).catch(() => null);
-              if (!member) return;
-              const qmsg = await qch.send({ embeds: [buildQueueEmbed(i.guild, member, cur)], components: [queueButtons(cur)] });
-              setProg(uid, { queueMsgId: qmsg.id });
-            }
-            const chNow = getUserPrivateChannel(i.guild, uid);
-            const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
-            if (targetMsg) {
-              await targetMsg.edit({
-                embeds: [new EmbedBuilder().setColor(0x95a5a6).setTitle("🪑승인 대기 중").setDescription(["관리진 검토 후 처리됩니다. 감사합니다!🙇","","선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."].join("\n"))],
-                components: [settingsSelectRow(getProg(uid).notifyRoleIds || [])],
-              });
-            }
-            await i.deferUpdate().catch(() => {});
-            return;
-          }
+  const cur = getProg(uid);
+  if (!(cur.gameTags && cur.gameTags.length)) { await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true }); return; }
+  if (!isBirthYearEligible(cur.birthYear)) {
+    await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
+    try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
+    return;
+  }
+  const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+  if (qch) {
+    const member = await i.guild.members.fetch(uid).catch(() => null);
+    if (!member) return;
+    const qmsg = await qch.send({ embeds: [buildQueueEmbed(i.guild, member, cur)], components: [queueButtons(cur)] });
+    setProg(uid, { queueMsgId: qmsg.id });
+  }
+  const chNow = getUserPrivateChannel(i.guild, uid);
+  const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
+  if (targetMsg) {
+    await targetMsg.edit({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x95a5a6)
+          .setTitle("🪑승인 대기 중")
+          .setDescription([
+            "관리진 검토 후 처리됩니다. 감사합니다!🙇",
+            "",
+            "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. 원치 않으면 건너뛰어도 됩니다."
+          ].join("\n"))
+          .setImage(IMG_PENDING)
+      ],
+      components: [settingsSelectRow(getProg(uid).notifyRoleIds || [])],
+    });
+  }
+  await i.deferUpdate().catch(() => {});
+  return;
+}
 
           if (i.customId === "open_nick_change") {
             await i.showModal(nickChangeModal());
