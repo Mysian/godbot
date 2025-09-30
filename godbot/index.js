@@ -167,7 +167,7 @@ client.once(Events.ClientReady, async () => {
     try {
         const lobby = await client.channels.fetch(APPROVAL_LOBBY_CHANNEL_ID).catch(() => null);
         if (lobby && lobby.isTextBased()) {
-            const marker = "approval_lobby_marker_v1";
+            const marker = "> 입장 승인 절차가 이뤄지지 않는 경우 아래 버튼을 클릭하세요.";
             const recent = await lobby.messages.fetch({ limit: 20 }).catch(() => null);
             const exist = recent?.find(m => m.author.id === client.user.id && m.content?.includes(marker));
 
@@ -182,12 +182,12 @@ client.once(Events.ClientReady, async () => {
                 .setColor(0x7b2ff2)
                 .setTitle("🧭 까리한 디스코드 • 수동 입장 절차")
                 .setDescription([
-                    "다른 봇이 꺼져 있어도, 여기서 직접 **입장 절차**를 시작할 수 있어!",
+                    "기본 채널이 생성되지 않았다면, 직접 **입장 절차**를 시작할 수 있습니다!",
                     "",
-                    "▶️ **버튼을 누르면 본인 전용 채널(입장-닉네임…)**이 생성되고, 그 채널에서 모든 단계가 진행돼.",
-                    "⚠️ 이미 본인 전용 채널이 있다면 **그 채널로 안내**만 해줄게.",
+                    "▶️ **버튼을 누르시면 입장 절차를 진행할 수 있는 개인 채널이 생성됩니다.",
+                    "⚠️ 이미 인증 절차를 진행하는 채널이 있다면 **그 채널로 안내**해드립니다.",
                 ].join("\n"))
-                .setFooter({ text: "토글(ON/OFF)과 무관하게 동작하도록 구성됨" });
+                .setFooter({ text: "까리한 디스코드 공식 봇, '갓봇' 입니다." });
 
             if (exist) {
                 await exist.edit({ content: marker, embeds: [embed], components: [row] }).catch(() => { });
