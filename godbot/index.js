@@ -198,12 +198,6 @@ client.once(Events.ClientReady, async () => {
     } catch (e) {
         console.error("[로비 안내 임베드 업서트 실패]", e);
     }
-
-
-  const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-  if (logChannel && logChannel.isTextBased()) {
-    logChannel.send(`-# 🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`);
-  }
 });
 
 // ✅ 명령어 사용 로그 전송 함수
