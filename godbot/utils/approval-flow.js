@@ -1334,3 +1334,19 @@ module.exports = (client) => {
     } catch {}
   });
 };
+
+module.exports.manualStart = async (guild, memberOrId) => {
+    try {
+        const member = typeof memberOrId === "string"
+            ? await guild.members.fetch(memberOrId).catch(() => null)
+            : memberOrId;
+        if (!member) return null;
+
+        // ⚠️ 토글 여부와 무관하게 강제 시작
+        // - 계정 생성 30일 미만은 기존 로직대로 자동 거절 처리됨
+        await startFlow(guild, member);
+        return getUserPrivateChannel(guild, member.id) || null;
+    } catch { return null; }
+};
+
+module.exports.findUserPrivateChannel = (guild, uid) => getUserPrivateChannel(guild, uid);
