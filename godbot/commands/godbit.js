@@ -605,8 +605,13 @@ for (const [name, info] of Object.entries(coins)) {
       delta *= getTimePower();
       delta *= volumePower;
       for (const [a, b] of CORR_PAIRS) {
-        if (name === a || name === b) corrQueue.push([a, b, delta]);
-      }
+  if (name === a || name === b) {
+    const A = coins[a], B = coins[b];
+    if (A && B && !A.delistedAt && !B.delistedAt) {
+      corrQueue.push([a, b, delta]);
+    }
+  }
+}
       delta = Math.max(-0.5, Math.min(delta, 0.5));
       delta = applyWallEffect(info.price, delta, lastVolume[name] || 0);
       const p = Math.max(0.001, Number((info.price * (1 + delta)).toFixed(3)));
@@ -622,16 +627,20 @@ for (const [name, info] of Object.entries(coins)) {
 
   // 코인 상관관계(같은 방향 적용)
   for (const [a, b, lastDelta] of corrQueue) {
-    if (coins[a] && coins[b]) {
-      coins[b].price = Math.max(0.001, Number((coins[b].price * (1 + (lastDelta || 0))).toFixed(3)));
-      coins[b].history = coins[b].history || [];
-      coins[b].historyT = coins[b].historyT || [];
-      coins[b].history.push(coins[b].price);
-      coins[b].historyT.push(new Date().toISOString());
-      while (coins[b].history.length > HISTORY_MAX) coins[b].history.shift();
-      while (coins[b].historyT.length > HISTORY_MAX) coins[b].historyT.shift();
-    }
-  }
+  const A = coins[a], B = coins[b];
+  if (!A || !B) continue;
+  if (A.delistedAt || B.delistedAt) continue;
+
+  const newPrice = Math.max(0.001, Number((B.price * (1 + (lastDelta || 0))).toFixed(3)));
+  B.price = newPrice;
+
+  B.history = B.history || [];
+  B.historyT = B.historyT || [];
+  B.history.push(newPrice);
+  B.historyT.push(new Date().toISOString());
+  while (B.history.length > HISTORY_MAX) B.history.shift();
+  while (B.historyT.length > HISTORY_MAX) B.historyT.shift();
+}
   await enforceAutoDelist(coins, client);
   await saveJson(coinsPath, coins);
 }
