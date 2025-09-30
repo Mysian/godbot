@@ -416,47 +416,66 @@ client.on(Events.InteractionCreate, async interaction => {
   return; // approval-flow.js가 전담 처리
 }
 
-    // === [추가] 로비 채널 '입장 절차 진행하기' 버튼 처리 ===
-    if (interaction.isButton() && interaction.customId === "approval_start_from_lobby") {
-        // 로비 채널 외 클릭 방지(혹시 퍼가거나 복사된 버튼 대비)
-        if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
-            return interaction.reply({ content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.", ephemeral: true }).catch(() => { });
-        }
+    // === 로비 채널 '입장 절차 진행하기' 버튼 처리(이름 기반 중복 검사 강화) ===
+if (interaction.isButton() && interaction.customId === "approval_start_from_lobby") {
+  if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
+    return interaction.reply({ content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.", ephemeral: true }).catch(() => {});
+  }
 
-        const guild = interaction.guild;
-        const uid = interaction.user.id;
+  const guild = interaction.guild;
+  const uid = interaction.user.id;
 
-        // 이미 개인 입장 채널이 있는지(토픽=유저ID or state 기반) 확인
-        let pch = null;
-        try {
-            pch = findUserPrivateChannel?.(guild, uid) || guild.channels.cache.find(
-                c => c.type === 0 && c.topic === uid // ChannelType.GuildText === 0
-            ) || null;
-        } catch { }
+  const display = interaction.member?.nickname?.trim()
+    || interaction.member?.displayName?.trim()
+    || interaction.user.globalName?.trim()
+    || interaction.user.username?.trim();
 
-        if (pch) {
-            return interaction.reply({
-                content: `이미 진행 중인 전용 채널이 있어.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해줘!`,
-                ephemeral: true
-            }).catch(() => { });
-        }
+  const toKebab = (s) => s
+    .normalize("NFKC")
+    .replace(/\s+/g, "-")
+    .replace(/_{2,}/g, "_")
+    .replace(/-+/g, "-")
+    .replace(/[^\p{L}\p{N}\-_]/gu, "")
+    .toLowerCase();
 
-        // 수동 시작(토글 무시) → 개인 채널 생성 + 1단계 임베드
-        try {
-            const started = await manualStartApproval?.(guild, uid);
-            // started == 생성된 개인 채널 (또는 null)
-            if (started && started.id) {
-                return interaction.reply({
-                    content: `개인 채널을 만들었어! 여기서 시작하자 👉 <#${started.id}>`,
-                    ephemeral: true
-                }).catch(() => { });
-            }
-            return interaction.reply({ content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true }).catch(() => { });
-        } catch (e) {
-            console.error("[수동 입장 시작 오류]", e);
-            return interaction.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }).catch(() => { });
-        }
+  const base = toKebab(display || "user");
+  const nameCandidates = [
+    `입장-${base}`,
+    `입장-${base}님_환영합니다`,
+    `입장-${base}_환영합니다`,
+  ];
+
+  let pch = null;
+  try {
+    pch = (typeof findUserPrivateChannel === "function" ? findUserPrivateChannel(guild, uid) : null)
+      || guild.channels.cache.find(c => c.type === 0 && c.topic === uid)
+      || guild.channels.cache.find(c => c.type === 0 && nameCandidates.includes(c.name))
+      || guild.channels.cache.find(c => c.type === 0 && c.name.startsWith(`입장-${base}`))
+      || null;
+  } catch {}
+
+  if (pch) {
+    return interaction.reply({
+      content: `이미 진행 중인 전용 채널이 있어.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해줘!`,
+      ephemeral: true
+    }).catch(() => {});
+  }
+
+  try {
+    const started = await (typeof manualStartApproval === "function" ? manualStartApproval(guild, uid) : null);
+    if (started && started.id) {
+      return interaction.reply({
+        content: `개인 채널을 만들었어! 여기서 시작하자 👉 <#${started.id}>`,
+        ephemeral: true
+      }).catch(() => {});
     }
+    return interaction.reply({ content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true }).catch(() => {});
+  } catch (e) {
+    console.error("[수동 입장 시작 오류]", e);
+    return interaction.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }).catch(() => {});
+  }
+}
+
 
 
 if (interaction.isModalSubmit() && (
