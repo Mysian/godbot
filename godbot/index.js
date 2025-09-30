@@ -30,6 +30,11 @@ global.client = client;
 const LOG_CHANNEL_ID = "1382168527015776287";
 module.exports.client = client;
 
+const APPROVAL_LOBBY_CHANNEL_ID = "1277610812977971334";
+const approvalFlow = require("./utils/approval-flow");
+const manualStartApproval = approvalFlow.manualStart;
+const findUserPrivateChannel = approvalFlow.findUserPrivateChannel;
+
 client.commands = new Collection();
 
 setupPersonalChannelUtility(client);
@@ -152,6 +157,48 @@ client.once(Events.ClientReady, async () => {
     });
     activityIndex = (activityIndex + 1) % activityMessages.length;
   }, 20000);
+
+    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    if (logChannel && logChannel.isTextBased()) {
+        logChannel.send(`-# 🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`);
+    }
+
+    // === [추가] 로비 채널 안내 임베드 업서트 ===
+    try {
+        const lobby = await client.channels.fetch(APPROVAL_LOBBY_CHANNEL_ID).catch(() => null);
+        if (lobby && lobby.isTextBased()) {
+            const marker = "approval_lobby_marker_v1";
+            const recent = await lobby.messages.fetch({ limit: 20 }).catch(() => null);
+            const exist = recent?.find(m => m.author.id === client.user.id && m.content?.includes(marker));
+
+            const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId("approval_start_from_lobby")
+                    .setLabel("입장 절차 진행하기")
+                    .setStyle(ButtonStyle.Success)
+            );
+            const embed = new EmbedBuilder()
+                .setColor(0x7b2ff2)
+                .setTitle("🧭 까리한 디스코드 • 수동 입장 절차")
+                .setDescription([
+                    "다른 봇이 꺼져 있어도, 여기서 직접 **입장 절차**를 시작할 수 있어!",
+                    "",
+                    "▶️ **버튼을 누르면 본인 전용 채널(입장-닉네임…)**이 생성되고, 그 채널에서 모든 단계가 진행돼.",
+                    "⚠️ 이미 본인 전용 채널이 있다면 **그 채널로 안내**만 해줄게.",
+                ].join("\n"))
+                .setFooter({ text: "토글(ON/OFF)과 무관하게 동작하도록 구성됨" });
+
+            if (exist) {
+                await exist.edit({ content: marker, embeds: [embed], components: [row] }).catch(() => { });
+            } else {
+                await lobby.send({ content: marker, embeds: [embed], components: [row] }).catch(() => { });
+            }
+        }
+    } catch (e) {
+        console.error("[로비 안내 임베드 업서트 실패]", e);
+    }
+
 
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (logChannel && logChannel.isTextBased()) {
@@ -374,6 +421,49 @@ client.on(Events.InteractionCreate, async interaction => {
 ) {
   return; // approval-flow.js가 전담 처리
 }
+
+    // === [추가] 로비 채널 '입장 절차 진행하기' 버튼 처리 ===
+    if (interaction.isButton() && interaction.customId === "approval_start_from_lobby") {
+        // 로비 채널 외 클릭 방지(혹시 퍼가거나 복사된 버튼 대비)
+        if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
+            return interaction.reply({ content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.", ephemeral: true }).catch(() => { });
+        }
+
+        const guild = interaction.guild;
+        const uid = interaction.user.id;
+
+        // 이미 개인 입장 채널이 있는지(토픽=유저ID or state 기반) 확인
+        let pch = null;
+        try {
+            pch = findUserPrivateChannel?.(guild, uid) || guild.channels.cache.find(
+                c => c.type === 0 && c.topic === uid // ChannelType.GuildText === 0
+            ) || null;
+        } catch { }
+
+        if (pch) {
+            return interaction.reply({
+                content: `이미 진행 중인 전용 채널이 있어.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해줘!`,
+                ephemeral: true
+            }).catch(() => { });
+        }
+
+        // 수동 시작(토글 무시) → 개인 채널 생성 + 1단계 임베드
+        try {
+            const started = await manualStartApproval?.(guild, uid);
+            // started == 생성된 개인 채널 (또는 null)
+            if (started && started.id) {
+                return interaction.reply({
+                    content: `개인 채널을 만들었어! 여기서 시작하자 👉 <#${started.id}>`,
+                    ephemeral: true
+                }).catch(() => { });
+            }
+            return interaction.reply({ content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true }).catch(() => { });
+        } catch (e) {
+            console.error("[수동 입장 시작 오류]", e);
+            return interaction.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }).catch(() => { });
+        }
+    }
+
 
 if (interaction.isModalSubmit() && (
   interaction.customId.startsWith("modal_nickreq_") ||
