@@ -456,7 +456,7 @@ if (interaction.isButton() && interaction.customId === "approval_start_from_lobb
 
   if (pch) {
     return interaction.reply({
-      content: `이미 진행 중인 전용 채널이 있어.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해줘!`,
+      content: `진행 중인 입장 인증 채널이 있습니다.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해주세요.`,
       ephemeral: true
     }).catch(() => {});
   }
@@ -465,14 +465,14 @@ if (interaction.isButton() && interaction.customId === "approval_start_from_lobb
     const started = await (typeof manualStartApproval === "function" ? manualStartApproval(guild, uid) : null);
     if (started && started.id) {
       return interaction.reply({
-        content: `개인 채널을 만들었어! 여기서 시작하자 👉 <#${started.id}>`,
+        content: `입장 절차를 이곳에서 진행해주세요. 👉 <#${started.id}>`,
         ephemeral: true
       }).catch(() => {});
     }
-    return interaction.reply({ content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true }).catch(() => {});
+    return interaction.reply({ content: "채널 생성에 실패했어요. 잠시 후 다시 시도해주세요.", ephemeral: true }).catch(() => {});
   } catch (e) {
     console.error("[수동 입장 시작 오류]", e);
-    return interaction.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }).catch(() => {});
+    return interaction.reply({ content: "처리 중 오류가 발생했습니다.", ephemeral: true }).catch(() => {});
   }
 }
 
