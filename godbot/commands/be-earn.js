@@ -10,8 +10,8 @@ const activityTracker = require('../utils/activity-tracker');
 const attendancePath = path.join(__dirname, '../data/attendance-data.json');
 const couponsPath = path.join(__dirname, '../data/coupons.json');
 const koreaTZ = 9 * 60 * 60 * 1000;
-
 const DONOR_ROLE = '1397076919127900171';
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function loadJson(p) {
   if (!fs.existsSync(p)) fs.writeFileSync(p, "{}");
@@ -35,16 +35,16 @@ function getCooldown(userId, type) {
   const data = loadJson(earnCooldownPath);
   return data[userId]?.[type] || 0;
 }
+function nextMidnightKSTEpoch() {
+  const now = Date.now();
+  const msIntoKstDay = (now + koreaTZ) % DAY_MS;
+  return now - msIntoKstDay + DAY_MS;
+}
 function setCooldown(userId, type, ms, midnight = false) {
   const data = loadJson(earnCooldownPath);
   data[userId] = data[userId] || {};
-  data[userId][type] = midnight ? nextMidnightKR() : Date.now() + ms;
+  data[userId][type] = midnight ? nextMidnightKSTEpoch() : Date.now() + ms;
   saveJson(earnCooldownPath, data);
-}
-function nextMidnightKR() {
-  const now = new Date(Date.now() + koreaTZ);
-  now.setHours(0, 0, 0, 0);
-  return now.getTime() - koreaTZ + 24 * 60 * 60 * 1000;
 }
 function lock(userId) {
   const data = loadJson(lockPath);
@@ -75,6 +75,16 @@ function normalizeCode(raw) {
   const s = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (s.length !== 16) return null;
   return s.match(/.{1,4}/g).join('-');
+}
+function kstDateStr(ts = Date.now()) {
+  const k = new Date(ts + koreaTZ);
+  const y = k.getUTCFullYear();
+  const m = String(k.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(k.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function kstYesterdayStr(ts = Date.now()) {
+  return kstDateStr(ts - DAY_MS);
 }
 
 const GO_FAIL_RATE = [0.50, 0.55, 0.60, 0.70, 0.80];
@@ -119,7 +129,7 @@ function deckInit() {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('정수획득')
-    .setDescription('파랑 정수(BE) 획득: 출석, 알바, 도박, 가위바위보, 블랙잭, 쿠폰코드 입력')
+    .setDescription('파랑 정수(BE) 획득: 출석, 알바, 도박, 가위바위보, 블랙잭, 짝짓기, 쿠폰코드 입력')
     .addStringOption(option =>
       option
         .setName('종류')
@@ -157,12 +167,9 @@ module.exports = {
 
     if (kind === 'attendance') {
   const now = Date.now();
-  const todayKST = new Date(Date.now() + koreaTZ).toISOString().slice(0,10);
+  const todayKST = kstDateStr();
   function getYesterdayKST() {
-    const now = new Date(Date.now() + koreaTZ);
-    now.setDate(now.getDate() - 1);
-    now.setHours(0, 0, 0, 0);
-    return now.toISOString().slice(0, 10);
+    return kstYesterdayStr();
   }
   function getUserActivity(userId, date) {
     try {
@@ -175,9 +182,8 @@ module.exports = {
     if (!info) return 1;
     const lastDate = info.lastDate || null;
     const lastStreak = info.streak || 1;
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yyyymmdd = yesterday.toISOString().slice(0, 10);
+    if (lastDate === today) return lastStreak;
+    const yyyymmdd = kstYesterdayStr();
     if (lastDate === yyyymmdd) return Math.min(lastStreak + 1, 1000);
     return 1;
   }
@@ -190,8 +196,15 @@ module.exports = {
   }
   const next = getCooldown(userId, 'attendance');
   if (next > now) {
-    const remain = Math.ceil((next - now) / 1000 / 60);
-    await interaction.reply({ content: `⏰ 이미 출석했어! 다음 출석 가능까지 약 ${remain}분 남음.`, ephemeral: true });
+    const remainSec = Math.ceil((next - now) / 1000);
+    const h = Math.floor(remainSec / 3600);
+    const m = Math.floor((remainSec % 3600) / 60);
+    const s = remainSec % 60;
+    const remain = [h ? `${h}시간` : null, m ? `${m}분` : null, `${s}초`].filter(Boolean).join(' ');
+    const att = loadJson(attendancePath);
+    const info = att[userId];
+    const streak = info?.streak || 1;
+    await interaction.reply({ content: `⏰ 이미 출석했어! 연속 ${streak}일 유지 중\n다음 출석 가능까지: **${remain}**`, ephemeral: true });
     return;
   }
   const yesterdayKST = getYesterdayKST();
@@ -207,31 +220,32 @@ module.exports = {
   let streak = getConsecutiveDays(userId, attendanceData, todayKST);
   let bonus = Math.min(streak * 50, 50000);
   reward += bonus;
-      const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
-      let rewardFinal = reward;
-      let donorMsg = '';
-      if (isDonor) {
-        rewardFinal = Math.floor(reward * 1.5);
-        donorMsg = '\n💜 𝕯𝖔𝖓𝖔𝖗 : 최종 출석 보상의 **1.5배** 보정 지급!';
-      }
+  const isDonor = interaction.member.roles.cache.has(DONOR_ROLE);
+  let rewardFinal = reward;
+  let donorMsg = '';
+  if (isDonor) {
+    rewardFinal = Math.floor(reward * 1.5);
+    donorMsg = '\n💜 𝕯𝖔𝖓𝖔𝖗 : 최종 출석 보상의 **1.5배** 보정 지급!';
+  }
   attendanceData[userId] = {
     lastDate: todayKST,
     streak: streak
   };
   saveAttendance(attendanceData);
-  setUserBe(userId, reward, `출석 보상 (음성:${voiceBE} + 채팅:${chatBE} ×랜덤 ${randRate.toFixed(2)}, 연속${streak}일 보너스${bonus})`);
+  setUserBe(userId, rewardFinal, `출석 보상 (음성:${voiceBE} + 채팅:${chatBE} ×랜덤 ${randRate.toFixed(2)}, 연속${streak}일 보너스${bonus}${isDonor ? ', Donor x1.5' : ''})`);
   setCooldown(userId, 'attendance', 0, true);
   let effectMsg = `음성 ${comma(voiceBE)} + 채팅 ${comma(chatBE)} ×(${randRate.toFixed(2)}) + 연속출석(${streak}일, ${comma(bonus)} BE)`;
   await interaction.reply({
   embeds: [new EmbedBuilder()
     .setTitle(`📅 출석 완료! | 🔥 **연속 ${streak}일** 출석 중!`)
     .setDescription(
-      `오늘의 출석 보상: **${comma(reward)} BE**\n` +
+      `오늘의 출석 보상: **${comma(rewardFinal)} BE**\n` +
       `\n` +
       `▶️ **연속 출석 ${streak}일째!**\n` +
       `${effectMsg}\n` +
       `\n` +
       `\`연속 출석 보너스:\` **${comma(bonus)} BE**` + 
+      `${donorMsg}` +
       `\n\n(내일 자정 이후 다시 출석 가능!)`
     )
     .setColor(0x00aaff)
