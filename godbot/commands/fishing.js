@@ -846,7 +846,7 @@ const addSection = (title, list) => {
       new ActionRowBuilder().addComponents(goPondBtn) 
     ]
   };
-
+}
 
 
 function readDB() {
