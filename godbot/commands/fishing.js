@@ -848,6 +848,7 @@ const addSection = (title, list) => {
   };
 
 
+
 function readDB() {
   if (!fs.existsSync(FISH_DB)) return { users:{} };
   try { return JSON.parse(fs.readFileSync(FISH_DB, "utf8")); } catch { return { users:{} }; }
