@@ -1,18 +1,7 @@
-// ==== commands/godbit-admin.js ====
-// 관리자 통합: 타입/시장/로그 멘트 완전체
-// ✅ 떡상/떡락: "다음 갱신 주기"에 1회에 한해 지정 금액으로 즉시 적용되도록 예약만 설정함
-//    - coins[coin]._nextSetPrice = <목표가>
-//    - coins[coin]._nextSetMode  = 'surge' | 'plunge'
-//    - coins[coin]._nextSetAt    = ISO 타임스탬프 (요청 시각)
-//    ※ autoMarketUpdate에서 이 필드를 감지해 1번만 적용 후 필드 제거하도록 처리 필요
-
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-
 const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
-
-// ==== 15종 코인 타입(변동성/설명/트렌드) ====
 const COIN_TYPES = [
   { coinType: 'verystable', volatility: { min: -0.00015, max: 0.00015 }, trend: 0.00003, desc: '국가채권급 초안정' },
   { coinType: 'chaotic',    volatility: { min: -0.004,   max: 0.004   }, trend: 0.00012, desc: '초미친 도박, 하루에 2배' },
@@ -31,12 +20,9 @@ const COIN_TYPES = [
   { coinType: 'fear',       volatility: { min: -0.0022,  max: 0.0007  }, trend: -0.00011,desc: '악재 민감, 하락' },
   { coinType: 'downonly', volatility: { min: -0.2, max: 0.01 }, trend: -0.0005, desc: '계속 떨어지는 전형적인 하락형 코인'},
 ];
-
 const coinsPath   = path.join(__dirname, '../data/godbit-coins.json');
 const walletsPath = path.join(__dirname, '../data/godbit-wallets.json');
 const NOTICE_CHANNEL_ID = '1389821392618262631';
-
-// ==== 이벤트 상폐/부활/상장 멘트 ====
 const DELIST_MSGS = [
   '😱 [상폐] 이런! {coin}은(는) 스캠 코인으로 판명되었습니다!',
   '😱 [상폐] {coin}은(는) 사기였습니다! 사기!',
@@ -68,7 +54,6 @@ async function postLogMsg(type, coinName, client) {
     if (ch) ch.send(msg);
   } catch (e) {}
 }
-
 async function loadJson(file, def) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(def, null, 2));
   const release = await lockfile.lock(file, { retries: 5, minTimeout: 50 });
@@ -90,7 +75,6 @@ function toKSTString(utcOrDate) {
     return '-';
   }
 }
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('갓비트관리')
@@ -227,12 +211,9 @@ module.exports = {
         .setDescription('갓비트 코인 시스템 전체 현황/세팅 상태를 확인')
     )
   ,
-
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const coins = await loadJson(coinsPath, {});
-
-    // ========== 1. 타입 목록 확인 ==========
     if (sub === '타입목록') {
       const embed = new EmbedBuilder()
         .setTitle('💠 [갓비트] 코인 타입 리스트 (총 15종)')
@@ -247,8 +228,6 @@ module.exports = {
       await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
-
-    // ========== 2. 타입 변경 ==========
     if (sub === '타입변경') {
   const coin = interaction.options.getString('코인명');
   const type = interaction.options.getString('타입');
@@ -262,9 +241,6 @@ module.exports = {
   await saveJson(coinsPath, coins);
   return interaction.reply({ content: `✅ [${coin}] 타입을 **${prevType} → ${type}**(으)로 변경 완료!`, ephemeral: true });
 }
-
-
-    // ========== 3. 타입 랜덤 재배정 ==========
     if (sub === '타입랜덤') {
       const coin = interaction.options.getString('코인명');
       if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
@@ -275,8 +251,6 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `🔀 [${coin}] 타입이 랜덤하게 **${pick.coinType}**(으)로 변경됨!`, ephemeral: true });
     }
-
-    // ========== 4. 시장 전체 조정 ==========
     if (sub === '조정') {
       const flow = interaction.options.getString('흐름');
       const targetCoin = interaction.options.getString('코인명');
@@ -294,8 +268,6 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `⚡️ ${changeCount}개 코인에 [${flow}] 옵션 적용됨.`, ephemeral: true });
     }
-
-    // ========== 5. 코인 지급 ==========
     if (sub === '지급') {
       const user = interaction.options.getUser('유저');
       const coin = interaction.options.getString('코인');
@@ -307,8 +279,6 @@ module.exports = {
       await saveJson(walletsPath, wallets);
       return interaction.reply({ content: `✅ [${user.username}]님께 [${coin}] ${qty}개 지급 완료!`, ephemeral: true });
     }
-
-    // ========== 6. 시장 초기화 ==========
     if (sub === '초기화') {
       const now = new Date().toISOString();
       const coinsNew = {
@@ -320,8 +290,6 @@ module.exports = {
       await saveJson(coinsPath, coinsNew);
       return interaction.reply({ content: '🗑️ 시장 전체가 초기화되었습니다 (까리코인만 남음)', ephemeral: true });
     }
-
-    // ========== 7. 상장(신규/부활 자동 감지) ==========
     if (sub === '상장') {
       const coin = interaction.options.getString('코인명');
       const type = interaction.options.getString('타입');
@@ -329,8 +297,6 @@ module.exports = {
       let pick;
       if (type) pick = COIN_TYPES.find(t => t.coinType === type);
       else pick = COIN_TYPES[Math.floor(Math.random()*COIN_TYPES.length)];
-
-      // "부활상장"인지 감지
       let revive = false;
       if (coins[coin] && coins[coin].delistedAt) revive = true;
       if (!coins[coin] || revive) {
@@ -354,8 +320,6 @@ module.exports = {
         return interaction.reply({ content: `❌ 이미 상장된 코인입니다.`, ephemeral: true });
       }
     }
-
-    // ========== 8. 상장폐지 ==========
     if (sub === '상장폐지') {
       const coin = interaction.options.getString('코인명');
       if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
@@ -365,8 +329,6 @@ module.exports = {
       await postLogMsg('delist', coin, interaction.client);
       return interaction.reply({ content: `⛔️ [${coin}]이(가) 상장폐지됨.`, ephemeral: true });
     }
-
-    // ========== 9. 상장폐지 옵션 ==========
     if (sub === '옵션') {
       const opt = interaction.options.getString('폐지기준');
       const prob = interaction.options.getInteger('확률');
@@ -374,8 +336,6 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `✅ 상장폐지 옵션: ${opt} ${prob ? `(${prob}%)` : ''}`, ephemeral: true });
     }
-
-    // ========== 10. 우상향/우상향삭제 ==========
     if (sub === '우상향') {
       const coin = interaction.options.getString('코인명');
       coins._uptrend = coins._uptrend || [];
@@ -390,8 +350,6 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `🗑️ [${coin}] 우상향 목록에서 제거됨.`, ephemeral: true });
     }
-
-    // ========== 11. 우하향/우하향삭제 ==========
     if (sub === '우하향') {
       const coin = interaction.options.getString('코인명');
       coins._downtrend = coins._downtrend || [];
@@ -406,44 +364,33 @@ module.exports = {
       await saveJson(coinsPath, coins);
       return interaction.reply({ content: `🗑️ [${coin}] 우하향 목록에서 제거됨.`, ephemeral: true });
     }
-
-    // ========== 12. 떡상/떡락 (다음 갱신 주기에 1회 즉시 적용 예약) ==========
     if (sub === '떡상' || sub === '떡락') {
       const coin = interaction.options.getString('코인명');
       const priceTarget = interaction.options.getNumber('금액');
       if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
-
-      // ✅ 즉시 히스토리 누적/단계적 반영 안 함
-      // ✅ 다음 autoMarketUpdate 틱에서 1회에 한해 바로 priceTarget으로 세팅하도록 예약만 기록
       coins[coin]._nextSetPrice = priceTarget;
       coins[coin]._nextSetMode  = (sub === '떡상') ? 'surge' : 'plunge';
       coins[coin]._nextSetAt    = new Date().toISOString();
-
       await saveJson(coinsPath, coins);
-
       const now = coins[coin].price ?? 0;
       return interaction.reply({
         content: `🗓️ [${coin}] ${sub === '떡상' ? '떡상' : '떡락'} 예약 완료!\n• 현재가: ${now.toLocaleString()} BE → 목표가: ${priceTarget.toLocaleString()} BE\n• 다음 갱신 주기에 **한 번에** 적용됨.`,
         ephemeral: true
       });
     }
-
-    // ========== 13. 이벤트 ==========
     if (sub === '이벤트') {
   const coin = interaction.options.getString('코인명');
   const kind = interaction.options.getString('종류');
   if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
-
   let oldPrice = coins[coin].price;
   let newPrice = oldPrice;
   if (kind === 'pump') {
-    const pct = 0.2 + Math.random() * 0.8; // 20~100% 상승
+    const pct = 0.2 + Math.random() * 0.8;
     newPrice = Math.round(oldPrice * (1 + pct));
   } else if (kind === 'dump') {
-    const pct = 0.2 + Math.random() * 0.7; // 20~90% 하락
+    const pct = 0.2 + Math.random() * 0.7;
     newPrice = Math.max(1, Math.round(oldPrice * (1 - pct)));
   } else if (kind === 'normalize') {
-    // 시장 평균으로 보정
     let total = 0, count = 0;
     for (const [n, info] of Object.entries(coins)) {
       if (n.startsWith('_') || info.delistedAt) continue;
@@ -460,9 +407,6 @@ module.exports = {
   await saveJson(coinsPath, coins);
   return interaction.reply({ content: `🌊 [${coin}] ${kind === 'pump' ? '펌핑' : kind === 'dump' ? '덤핑' : '평균화'} 이벤트 적용됨! (${oldPrice} → ${newPrice} BE)`, ephemeral: true });
 }
-
-
-    // ========== 14. 상태 ==========
     if (sub === '상태') {
   let live = 0, delisted = 0;
   let types = {};
@@ -488,17 +432,12 @@ module.exports = {
   await interaction.reply({ embeds: [embed], ephemeral: true });
   return;
 }
-
-    // ========== 15. 유저현황 (페이징) ==========
     if (sub === '유저현황') {
       const user = interaction.options.getUser('유저');
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
-
       const userW = wallets[user.id] || {};
       const userBuys = wallets[user.id + "_buys"] || {};
-
-      // 코인 분리
       let live = [];
       let delisted = [];
       let totalEval = 0, totalBuy = 0, totalProfit = 0;
@@ -517,21 +456,17 @@ module.exports = {
           live.push({ name: c, q, nowPrice, buyCost, evalPrice, profit });
         }
       }
-
       let page = 0;
       let showDelisted = false;
       const PAGE_SIZE = 10;
-
       function renderEmbed(page, showDelisted) {
         const arr = showDelisted ? delisted : live;
         const totalPages = Math.max(1, Math.ceil(arr.length / PAGE_SIZE));
         const slice = arr.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
         const embed = new EmbedBuilder()
           .setTitle(showDelisted ? `🚫 [${user.username}] 폐지된 코인 목록` : `💼 [${user.username}] 보유 코인 목록`)
           .setColor(showDelisted ? '#888888' : '#2ecc71')
           .setTimestamp();
-
         if (!slice.length) {
           embed.setDescription('보유 내역 없음');
         } else {
@@ -545,11 +480,9 @@ module.exports = {
           });
           embed.setDescription(lines.join('\n'));
         }
-
         if (embed.data.description?.length > 4090) {
     embed.setDescription(embed.data.description.slice(0, 4090) + "\n...이하 생략...");
   }
-        
         embed.addFields(
           { name: '총 매수금', value: totalBuy.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
           { name: showDelisted ? '폐지 시 평가' : '총 평가금', value: totalEval.toLocaleString(undefined,{maximumFractionDigits:3}) + ' BE', inline: true },
@@ -558,7 +491,6 @@ module.exports = {
         embed.setFooter({ text: `페이지 ${page+1}/${Math.max(1, Math.ceil((showDelisted ? delisted : live).length / PAGE_SIZE))} • ${showDelisted ? "폐지된 코인" : "보유 코인"} 모드` });
         return embed;
       }
-
       function makeNavRow(page, showDelisted) {
         const arr = showDelisted ? delisted : live;
         const totalPages = Math.max(1, Math.ceil(arr.length / PAGE_SIZE));
@@ -579,20 +511,17 @@ module.exports = {
             .setStyle(ButtonStyle.Secondary)
         );
       }
-
       await interaction.reply({
         embeds: [renderEmbed(page, showDelisted)],
         components: [makeNavRow(page, showDelisted)],
         ephemeral: true
       });
-
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({
-        componentType: 2, // Button
+        componentType: 2,
         time: 600_000,
         filter: btn => btn.user.id === interaction.user.id
       });
-
       collector.on('collect', async btn => {
         await btn.deferUpdate();
         if (btn.customId === 'prev') page = Math.max(0, page - 1);
@@ -606,25 +535,19 @@ module.exports = {
           components: [makeNavRow(page, showDelisted)]
         });
       });
-
       collector.on('end', async () => {
         try { await interaction.editReply({ components: [] }); } catch {}
       });
-
       return;
     }
-
-    // ========== 16. 코인현황 (페이징) ==========
     if (sub === '코인현황') {
       const coin = interaction.options.getString('코인');
       const coins = await loadJson(coinsPath, {});
       const wallets = await loadJson(walletsPath, {});
-
       if (!coins[coin]) {
         await interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
         return;
       }
-
       let userStats = [];
       for (const [uid, wallet] of Object.entries(wallets)) {
         if (uid.endsWith('_buys') || uid.endsWith('_realized')) continue;
@@ -643,14 +566,10 @@ module.exports = {
           });
         }
       }
-
-      // 수익 많은 순 정렬
       userStats.sort((a, b) => b.profit - a.profit);
-
       let page = 0;
       const PAGE_SIZE = 10;
       const totalPages = Math.max(1, Math.ceil(userStats.length / PAGE_SIZE));
-
       function renderEmbed(page) {
         const slice = userStats.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
         const lines = slice.map((u, i) =>
@@ -666,33 +585,28 @@ module.exports = {
           )
           .setFooter({ text: `페이지 ${page+1}/${totalPages}` })
           .setTimestamp();
-
         if (embed.data.description?.length > 4090) {
     embed.setDescription(embed.data.description.slice(0, 4090) + "\n...이하 생략...");
   }
         return embed;
       }
-
       function makeNavRow(page) {
         return new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
           new ButtonBuilder().setCustomId('next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
         );
       }
-
       await interaction.reply({
         embeds: [renderEmbed(page)],
         components: [makeNavRow(page)],
         ephemeral: true
       });
-
       const msg = await interaction.fetchReply();
       const collector = msg.createMessageComponentCollector({
-        componentType: 2, // Button
+        componentType: 2,
         time: 600_000,
         filter: btn => btn.user.id === interaction.user.id
       });
-
       collector.on('collect', async btn => {
         await btn.deferUpdate();
         if (btn.customId === 'prev') page = Math.max(0, page - 1);
@@ -702,11 +616,9 @@ module.exports = {
           components: [makeNavRow(page)]
         });
       });
-
       collector.on('end', async () => {
         try { await interaction.editReply({ components: [] }); } catch {}
       });
-
       return;
     }
   }
