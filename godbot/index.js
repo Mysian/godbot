@@ -119,6 +119,15 @@ setInterval(async () => {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
+  try {
+    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    if (logChannel?.isTextBased?.()) {
+      await logChannel.send(`-# 🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`);
+    }
+  } catch (e) {
+    console.error("재시작 로그 전송 실패:", e);
+  }
+
   const guild = client.guilds.cache.get(GUILD_ID);
 
   // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
@@ -157,12 +166,6 @@ client.once(Events.ClientReady, async () => {
     });
     activityIndex = (activityIndex + 1) % activityMessages.length;
   }, 20000);
-
-    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-    if (logChannel && logChannel.isTextBased()) {
-        logChannel.send(`-# 🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`);
-    }
-
     // === [추가] 로비 채널 안내 임베드 업서트 ===
     try {
         const lobby = await client.channels.fetch(APPROVAL_LOBBY_CHANNEL_ID).catch(() => null);
