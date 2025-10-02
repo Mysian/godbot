@@ -834,11 +834,18 @@ const addSection = (title, list) => {
     .setLabel("🔄 새로고침")
     .setStyle(ButtonStyle.Secondary);
 
+  const goPondBtn = new ButtonBuilder()
+    .setCustomId("nav:pond")
+    .setLabel("🏞️ 낚시터 입장")
+    .setStyle(ButtonStyle.Secondary);
+
   return {
     embeds: [eb],
-    components: [ new ActionRowBuilder().addComponents(claimBtn, refreshBtn) ]
+    components: [
+      new ActionRowBuilder().addComponents(claimBtn, refreshBtn),
+      new ActionRowBuilder().addComponents(goPondBtn) 
+    ]
   };
-}
 
 
 function readDB() {
