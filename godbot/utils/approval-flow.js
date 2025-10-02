@@ -304,7 +304,7 @@ function validateNickname(name) {
 }
 function getAgeRange() {
   const nowY = currentKRYear();
-  return { minY: nowY - 100, maxY: nowY - 20 };
+  return { minY: nowY - 100, maxY: nowY - 19 };
 }
 function isBirthYearEligible(y) {
   const year = Number(y);
