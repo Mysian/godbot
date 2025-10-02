@@ -30,7 +30,7 @@ global.client = client;
 const LOG_CHANNEL_ID = "1382168527015776287";
 module.exports.client = client;
 
-const APPROVAL_LOBBY_CHANNEL_ID = "1277610812977971334";
+const APPROVAL_LOBBY_CHANNEL_ID = "1423239866359218320";
 const approvalFlow = require("./utils/approval-flow");
 const manualStartApproval = approvalFlow.manualStart;
 const findUserPrivateChannel = approvalFlow.findUserPrivateChannel;
