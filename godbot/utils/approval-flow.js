@@ -182,6 +182,12 @@ const ROLE_MEMBER_NORMAL = "816619403205804042";
 const ROLE_MEMBER_ALT = "1208987442234007582";
 const ROLE_REJECTED = "1205052922296016906";
 
+const ROLE_PLAYSTYLE = {
+  "빡겜러":    "1210762363704311838",
+  "즐빡겜러":  "1210762298172383273",
+  "즐겜러":    "1210762420151394354",
+};
+
 const PLAY_STYLES = ["빡겜러", "즐빡겜러", "즐겜러"];
 
 const PLAY_STYLE_DESC = {
@@ -1260,6 +1266,17 @@ module.exports = (client) => {
             if (role) await target.roles.add(role, "입장 승인");
           } catch {}
 
+          try {
+  const psId = ROLE_PLAYSTYLE?.[progT.playStyle];
+  if (psId) {
+    const removeIds = Object.values(ROLE_PLAYSTYLE).filter(id => id !== psId);
+    if (removeIds.length) { try { await target.roles.remove(removeIds, "입장 승인 - 기존 플레이스타일 정리"); } catch {} }
+
+    const psRole = i.guild.roles.cache.get(psId);
+    if (psRole) await target.roles.add(psRole, "입장 승인 - 플레이스타일 역할 부여");
+  }
+} catch {}
+
           if (Array.isArray(progT.notifyRoleIds) && progT.notifyRoleIds.length) {
             for (const roleId of progT.notifyRoleIds) {
               const r = i.guild.roles.cache.get(roleId);
@@ -1283,6 +1300,9 @@ module.exports = (client) => {
             const ts = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
             const hist = getHistory(targetId);
             const contentLines = [
+                `> 입장 대상자 : <@${targetId}>`,
+                "",
+              
               "```ini",
               "[입장 승인 로그]",
               `시간 = ${ts}`,
