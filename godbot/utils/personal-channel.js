@@ -22,7 +22,9 @@ function textOverwrites(guild, userId) {
   return [
     {
       id: guild.roles.everyone.id,
-      deny: [PermissionFlagsBits.ViewChannel],
+      deny: [
+        PermissionFlagsBits.ViewChannel,
+      ],
     },
     {
       id: userId,
@@ -31,8 +33,54 @@ function textOverwrites(guild, userId) {
         PermissionFlagsBits.ManageChannels,
         PermissionFlagsBits.ManageRoles,
         PermissionFlagsBits.ManageMessages,
+        PermissionFlagsBits.ManageThreads,
+        PermissionFlagsBits.ManageWebhooks,
         PermissionFlagsBits.ReadMessageHistory,
         PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.SendTTSMessages,
+        PermissionFlagsBits.AttachFiles,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.AddReactions,
+        PermissionFlagsBits.UseExternalEmojis,
+        PermissionFlagsBits.UseExternalStickers,
+        PermissionFlagsBits.MentionEveryone,
+        PermissionFlagsBits.CreatePublicThreads,
+        PermissionFlagsBits.CreatePrivateThreads,
+        PermissionFlagsBits.SendMessagesInThreads,
+        PermissionFlagsBits.UseApplicationCommands,
+        PermissionFlagsBits.SendPolls,
+        PermissionFlagsBits.CreateInstantInvite,
+      ],
+    },
+  ];
+}
+
+function voiceOverwrites(guild, userId) {
+  return [
+    {
+      id: guild.roles.everyone.id,
+      deny: [
+        PermissionFlagsBits.ViewChannel,
+      ],
+    },
+    {
+      id: userId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ManageRoles,
+        PermissionFlagsBits.Connect,
+        PermissionFlagsBits.Speak,
+        PermissionFlagsBits.Stream,
+        PermissionFlagsBits.PrioritySpeaker,
+        PermissionFlagsBits.UseVAD,
+        PermissionFlagsBits.MuteMembers,
+        PermissionFlagsBits.DeafenMembers,
+        PermissionFlagsBits.MoveMembers,
+        PermissionFlagsBits.ManageWebhooks,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.SendTTSMessages,
         PermissionFlagsBits.AttachFiles,
         PermissionFlagsBits.EmbedLinks,
         PermissionFlagsBits.AddReactions,
@@ -43,30 +91,12 @@ function textOverwrites(guild, userId) {
         PermissionFlagsBits.CreatePrivateThreads,
         PermissionFlagsBits.SendMessagesInThreads,
         PermissionFlagsBits.ManageThreads,
-      ],
-    },
-  ];
-}
-
-function voiceOverwrites(guild, userId) {
-  return [
-    {
-      id: guild.roles.everyone.id,
-      deny: [PermissionFlagsBits.ViewChannel],
-    },
-    {
-      id: userId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.ManageChannels,
-        PermissionFlagsBits.Connect,
-        PermissionFlagsBits.Speak,
-        PermissionFlagsBits.Stream,
-        PermissionFlagsBits.PrioritySpeaker,
-        PermissionFlagsBits.UseVAD,
-        PermissionFlagsBits.MuteMembers,
-        PermissionFlagsBits.DeafenMembers,
-        PermissionFlagsBits.MoveMembers,
+        PermissionFlagsBits.UseApplicationCommands,
+        PermissionFlagsBits.SendPolls,
+        PermissionFlagsBits.CreateInstantInvite,
+        PermissionFlagsBits.ManageEvents,
+        PermissionFlagsBits.UseEmbeddedActivities,
+        PermissionFlagsBits.SendVoiceMessages,
       ],
     },
   ];
@@ -75,25 +105,31 @@ function voiceOverwrites(guild, userId) {
 async function createTextChannel(guild, member) {
   const name = `${displayNameOf(member)}님의 개인채팅채널`;
   const parent = guild.channels.cache.get(CHAT_CATEGORY_ID) || CHAT_CATEGORY_ID;
-  return guild.channels.create({
+  const ch = await guild.channels.create({
     name,
     type: ChannelType.GuildText,
     parent,
     permissionOverwrites: textOverwrites(guild, member.id),
     reason: "개인채팅채널 자동 개설",
   });
+  const nick = displayNameOf(member);
+  await ch.send({ content: `@${nick} (<@${member.id}>) 님의 채널 생성이 완료되었습니다.` }).catch(() => null);
+  return ch;
 }
 
 async function createVoiceChannel(guild, member) {
   const name = `${displayNameOf(member)}님의 개인음성채널`;
   const parent = guild.channels.cache.get(VOICE_CATEGORY_ID) || VOICE_CATEGORY_ID;
-  return guild.channels.create({
+  const ch = await guild.channels.create({
     name,
     type: ChannelType.GuildVoice,
     parent,
     permissionOverwrites: voiceOverwrites(guild, member.id),
     reason: "개인음성채널 자동 개설",
   });
+  const nick = displayNameOf(member);
+  await ch.send({ content: `@${nick} (<@${member.id}>) 님의 채널 생성이 완료되었습니다.` }).catch(() => null);
+  return ch;
 }
 
 async function hasAllRequiredRoles(member) {
