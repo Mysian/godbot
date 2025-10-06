@@ -226,7 +226,7 @@ async function renderRent(guild, userId, expireAt) {
   const embed = new EmbedBuilder()
     .setTitle('📄 월세 납부하기')
     .setDescription(
-      `납부 금액: ${numFmt(RENT_PRICE)} BE\n역할 지급: 월세 납부 증명서\n현재 보유 BE: ${numFmt(curBe)} BE\n${owned ? '> 이미 역할을 보유 중입니다.' : '> ⚠️ 개인 음성채널을 소지한 경우에만 구매하세요.'}`
+      `납부 금액: ${numFmt(RENT_PRICE)} BE\n역할 지급: 월세 납부 증명서\n현재 보유 BE: ${numFmt(curBe)} BE\n${owned ? '> 이미 이번달 월세를 납부했습니다.' : '> ⚠️ 개인 음성채널을 소지한 경우에만 구매하세요.'}`
     );
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('rent_pay').setLabel(owned ? '이미 보유중' : '월세 납부').setStyle(owned ? ButtonStyle.Secondary : ButtonStyle.Primary).setDisabled(owned),
