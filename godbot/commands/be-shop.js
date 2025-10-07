@@ -9,12 +9,21 @@ const skillsPath = path.join(__dirname, '../data/skills.json');
 const stockPath = path.join(__dirname, '../data/upgrade-stock.json');
 const nicknameRolesPath = path.join(__dirname, '../data/nickname-roles.json');
 const titlesPath = path.join(__dirname, '../data/limited-titles.json');
+const nickColorStatePath = path.join(__dirname, '../data/nickname-color-states.json');
 
 const NICKNAME_ROLE_PER_USER = 1;
 const CHANNEL_ROLE_ID = '1352582997400092755';
 const CHANNEL_ROLE_PRICE = 3000000;
 const RENT_ROLE_ID = '1352583279102001212';
 const RENT_PRICE = 1000000;
+
+const DURATION_OPTIONS = [
+  { key: '3d', label: '3일', seconds: 3 * 24 * 3600, price: 229000 },
+  { key: '7d', label: '7일', seconds: 7 * 24 * 3600, price: 499000 },
+  { key: '30d', label: '30일', seconds: 30 * 24 * 3600, price: 1998000 },
+  { key: '100d', label: '100일', seconds: 100 * 24 * 3600, price: 6251592 },
+  { key: '365d', label: '1년', seconds: 365 * 24 * 3600, price: 19980413 }
+];
 
 function numFmt(num) { return num.toLocaleString(); }
 
@@ -125,6 +134,151 @@ async function cleanupSession(userId) {
 
 function hexToImgUrl(hex) { return `https://singlecolorimage.com/get/${hex.replace('#', '')}/100x100`; }
 function getRemainSec(expireAt) { return Math.max(0, Math.floor((expireAt - Date.now()) / 1000)); }
+function fmtRemain(sec) {
+  if (sec === null) return '영구';
+  if (sec <= 0) return '만료';
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const parts = [];
+  if (d) parts.push(`${d}일`);
+  if (h) parts.push(`${h}시간`);
+  if (m) parts.push(`${m}분`);
+  if (!d && !h && !m) parts.push(`${s}초`);
+  return parts.join(' ');
+}
+
+async function loadNickColorStates() {
+  const data = await loadJson(nickColorStatePath);
+  return data;
+}
+async function saveNickColorStates(data) {
+  await saveJson(nickColorStatePath, data);
+}
+
+async function ensureUserNickColorState(guild, userId) {
+  const states = await loadNickColorStates();
+  if (!states[userId]) {
+    const ROLES = await loadJson(nicknameRolesPath);
+    const roleIds = Object.values(ROLES).map(r => r.roleId);
+    const member = await guild.members.fetch(userId).catch(() => null);
+    const now = Date.now();
+    states[userId] = { activeRoleId: null, roles: {} };
+    if (member) {
+      const owned = roleIds.filter(rid => member.roles.cache.has(rid));
+      if (owned.length > 0) {
+        for (const rid of owned) {
+          states[userId].roles[rid] = { remainingSec: 7 * 24 * 3600, isPerm: false };
+        }
+        const active = owned[0];
+        states[userId].activeRoleId = active;
+        states[userId].roles[active] = { expireAt: now + 7 * 24 * 3600 * 1000, isPerm: false };
+      }
+    }
+    await saveNickColorStates(states);
+  }
+  return states[userId];
+}
+
+async function reconcileExpired(guild, userId) {
+  const states = await loadNickColorStates();
+  const st = states[userId];
+  if (!st) return;
+  const now = Date.now();
+  if (st.activeRoleId) {
+    const rec = st.roles[st.activeRoleId];
+    if (rec && !rec.isPerm && rec.expireAt && rec.expireAt <= now) {
+      const member = await guild.members.fetch(userId).catch(() => null);
+      if (member) {
+        try { await member.roles.remove(st.activeRoleId, '닉네임 색상 기간 만료'); } catch {}
+      }
+      const remain = 0;
+      st.roles[st.activeRoleId] = { remainingSec: remain, isPerm: false };
+      st.activeRoleId = null;
+      await saveNickColorStates(states);
+    }
+  }
+}
+
+async function activateNickColor(guild, userId, roleId) {
+  const states = await loadNickColorStates();
+  const ROLES = await loadJson(nicknameRolesPath);
+  const roleIds = Object.values(ROLES).map(r => r.roleId);
+  const st = states[userId] || { activeRoleId: null, roles: {} };
+  states[userId] = st;
+  st.roles[roleId] = st.roles[roleId] || { remainingSec: 0, isPerm: false };
+  await reconcileExpired(guild, userId);
+  const now = Date.now();
+  const member = await guild.members.fetch(userId);
+  if (st.activeRoleId && st.activeRoleId !== roleId) {
+    const prev = st.roles[st.activeRoleId];
+    if (prev && !prev.isPerm) {
+      const left = Math.max(0, Math.floor((prev.expireAt || now) - now) / 1000);
+      st.roles[st.activeRoleId] = { remainingSec: Math.floor(left), isPerm: false };
+    }
+  }
+  const tgt = st.roles[roleId];
+  if (!tgt.isPerm) {
+    if (tgt.remainingSec === undefined && tgt.expireAt) {
+      const left = Math.max(0, Math.floor((tgt.expireAt - now) / 1000));
+      st.roles[roleId] = { expireAt: now + left * 1000, isPerm: false };
+    } else {
+      const left = Math.max(0, tgt.remainingSec || 0);
+      st.roles[roleId] = { expireAt: now + left * 1000, isPerm: false };
+    }
+  }
+  st.activeRoleId = roleId;
+  if (NICKNAME_ROLE_PER_USER > 0) {
+    for (const rId of roleIds) {
+      if (rId !== roleId && member.roles.cache.has(rId)) {
+        try { await member.roles.remove(rId, '색상 중복 방지'); } catch {}
+      }
+    }
+  }
+  try { await member.roles.add(roleId, '닉네임 색상 활성화'); } catch {}
+  await saveNickColorStates(states);
+}
+
+async function addNickColorTime(userId, roleId, addSeconds) {
+  const states = await loadNickColorStates();
+  const st = states[userId] || { activeRoleId: null, roles: {} };
+  states[userId] = st;
+  st.roles[roleId] = st.roles[roleId] || { remainingSec: 0, isPerm: false };
+  const now = Date.now();
+  if (st.activeRoleId === roleId && !st.roles[roleId].isPerm) {
+    const cur = st.roles[roleId].expireAt ? Math.max(0, st.roles[roleId].expireAt - now) : 0;
+    st.roles[roleId].expireAt = now + cur + addSeconds * 1000;
+  } else {
+    if (!st.roles[roleId].isPerm) {
+      const cur = Math.max(0, st.roles[roleId].remainingSec || 0);
+      st.roles[roleId].remainingSec = cur + addSeconds;
+    }
+  }
+  await saveNickColorStates(states);
+}
+
+async function setNickColorPermanent(userId, roleId) {
+  const states = await loadNickColorStates();
+  const st = states[userId] || { activeRoleId: null, roles: {} };
+  states[userId] = st;
+  st.roles[roleId] = { isPerm: true };
+  await saveNickColorStates(states);
+}
+
+async function getRoleRemainInfo(guild, userId, roleId) {
+  const states = await ensureUserNickColorState(guild, userId);
+  const stRec = states.roles[roleId];
+  if (!stRec) return { owned: false, active: false, remainText: '미보유', remainSec: 0, isPerm: false };
+  if (stRec.isPerm) return { owned: true, active: states.activeRoleId === roleId, remainText: '영구', remainSec: null, isPerm: true };
+  if (states.activeRoleId === roleId) {
+    const sec = getRemainSec(stRec.expireAt || Date.now());
+    return { owned: true, active: true, remainText: fmtRemain(sec), remainSec: sec, isPerm: false };
+  } else {
+    const sec = Math.max(0, stRec.remainingSec || 0);
+    return { owned: true, active: false, remainText: `정지 ${fmtRemain(sec)}`, remainSec: sec, isPerm: false };
+  }
+}
 
 async function renderHome(i, expireAt) {
   const be = await loadJson(bePath);
@@ -164,38 +318,98 @@ async function renderNicknameShop(guild, userId, page, expireAt) {
   const maxPage = Math.max(1, Math.ceil(roleList.length / ROLES_PER_PAGE));
   if (page < 0) page = 0;
   if (page >= maxPage) page = maxPage - 1;
+  await ensureUserNickColorState(guild, userId);
+  await reconcileExpired(guild, userId);
   const member = await guild.members.fetch(userId);
   const showRoles = roleList.slice(page * ROLES_PER_PAGE, (page + 1) * ROLES_PER_PAGE);
-  const embed = new EmbedBuilder().setTitle('🎨 닉네임 색상 상점').setDescription(`🔷 내 파랑 정수: ${numFmt(curBe)} BE`).setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${page + 1}/${maxPage}` });
+  const embed = new EmbedBuilder().setTitle('🎨 닉네임 색상 상점 (기간제/영구제)').setDescription(`🔷 내 파랑 정수: ${numFmt(curBe)} BE`).setFooter({ text: `총 색상 역할: ${roleList.length} | 페이지 ${page + 1}/${maxPage}` });
+
   if (showRoles[0]?.color) embed.setImage(hexToImgUrl(showRoles[0].color));
-  showRoles.forEach((role) => {
+  for (const role of showRoles) {
+    const info = await getRoleRemainInfo(guild, userId, role.roleId);
+    const activeTag = info.active ? ' | 활성화됨' : '';
     embed.addFields({
-      name: `${role.emoji || ''} ${role.name} (${numFmt(role.price)} BE)`,
-      value: `${role.desc}\n${role.color ? `\`색상코드:\` ${role.color}\n[컬러 박스 미리보기](${hexToImgUrl(role.color)})` : ''}${member.roles.cache.has(role.roleId) ? '\n**[보유중]**' : ''}`,
+      name: `${role.emoji || ''} ${role.name}`,
+      value:
+        `${role.desc}\n` +
+        `${role.color ? `\`색상코드:\` ${role.color}\n[컬러 박스 미리보기](${hexToImgUrl(role.color)})\n` : ''}` +
+        `보유상태: ${info.owned ? (info.isPerm ? '영구' : info.remainText) + activeTag : '미보유'}\n` +
+        `기간제 가격: ${DURATION_OPTIONS.map(o => `${o.label} ${numFmt(o.price)} BE`).join(' | ')}` +
+        `${role.permPrice ? `\n영구제 가격: ${numFmt(role.permPrice)} BE` : ''}`,
       inline: false
     });
-  });
-  const row = new ActionRowBuilder();
-  showRoles.forEach(role => {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`nickname_buy_${role.roleId}`)
-        .setLabel(member.roles.cache.has(role.roleId) ? `${role.name} 보유중` : `${role.name} 구매`)
-        .setStyle(member.roles.cache.has(role.roleId) ? ButtonStyle.Secondary : ButtonStyle.Primary)
-        .setDisabled(member.roles.cache.has(role.roleId))
+  }
+
+  const rowBuy1 = new ActionRowBuilder();
+  const r = showRoles[0];
+  if (r) {
+    for (const opt of DURATION_OPTIONS) {
+      rowBuy1.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`nickname_buy_${r.roleId}_${opt.key}`)
+          .setLabel(`${opt.label} 구매`)
+          .setStyle(ButtonStyle.Primary)
+      );
+    }
+  }
+  const rowBuy2 = new ActionRowBuilder();
+  if (r) {
+    const hasPerm = !!r.permPrice;
+    rowBuy2.addComponents(
+      new ButtonBuilder().setCustomId(`nickname_activate_${r.roleId}`).setLabel('이 색상 활성화').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('nick_my').setLabel('내 보유 현황').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
     );
-  });
+    if (hasPerm) {
+      rowBuy2.components.unshift(
+        new ButtonBuilder().setCustomId(`nickname_buy_${r.roleId}_perm`).setLabel('영구제 구매').setStyle(ButtonStyle.Primary)
+      );
+    }
+  }
   const rowPage = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('nick_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-    new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= maxPage),
+    new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= maxPage)
+  );
+
+  return {
+    content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec(expireAt)}초)`,
+    embeds: [embed],
+    components: [rowBuy1, rowBuy2, rowPage],
+    page
+  };
+}
+
+async function renderMyNickStatus(guild, userId, expireAt) {
+  const ROLES = await loadJson(nicknameRolesPath);
+  const states = await ensureUserNickColorState(guild, userId);
+  await reconcileExpired(guild, userId);
+  const embed = new EmbedBuilder().setTitle('🎨 내 닉네임 색상 현황');
+  const entries = Object.values(ROLES)
+    .filter(r => states.roles[r.roleId])
+    .map(r => ({ r, info: states.roles[r.roleId] }));
+  if (entries.length === 0) {
+    embed.setDescription('보유한 닉네임 색상이 없습니다.');
+  } else {
+    for (const { r, info } of entries) {
+      const isActive = states.activeRoleId === r.roleId;
+      const isPerm = !!info.isPerm;
+      let remainTxt = '미보유';
+      if (isPerm) remainTxt = '영구';
+      else if (isActive) remainTxt = fmtRemain(getRemainSec(info.expireAt || Date.now()));
+      else remainTxt = `정지 ${fmtRemain(Math.max(0, info.remainingSec || 0))}`;
+      embed.addFields({ name: `${r.emoji || ''} ${r.name}${isActive ? ' (활성화)' : ''}`, value: remainTxt, inline: false });
+    }
+  }
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('nav_nickname').setLabel('색상 상점으로').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
   );
   return {
     content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec(expireAt)}초)`,
     embeds: [embed],
-    components: [row, rowPage],
-    page
+    components: [row]
   };
 }
 
@@ -447,11 +661,15 @@ module.exports = {
       let state = { view: 'home', page: 0 };
       await interaction.deferReply({ ephemeral: true });
 
+      await ensureUserNickColorState(interaction.guild, interaction.user.id);
+      await reconcileExpired(interaction.guild, interaction.user.id);
+
       const home = await renderHome(interaction, sessionExpireAt);
       const shopMsg = await interaction.editReply(home);
 
       const interval = setInterval(async () => {
         try {
+          await reconcileExpired(interaction.guild, interaction.user.id);
           let payload;
           if (state.view === 'home') payload = await renderHome(interaction, sessionExpireAt);
           if (state.view === 'nickname') payload = await renderNicknameShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
@@ -473,6 +691,7 @@ module.exports = {
       sessions.set(interaction.user.id, { interaction, collector, interval });
 
       collector.on('collect', async i => {
+        try { await reconcileExpired(interaction.guild, i.user.id); } catch {}
         if (i.customId === 'shop_close') {
           collector.stop('user');
           try { await i.update({ content: '상점이 닫혔습니다.', embeds: [], components: [] }); } catch {}
@@ -540,32 +759,73 @@ module.exports = {
             await i.update(payload);
             return;
           }
+          if (i.customId === 'nick_my') {
+            const payload = await renderMyNickStatus(interaction.guild, interaction.user.id, sessionExpireAt);
+            await i.update(payload);
+            return;
+          }
+          if (i.customId.startsWith('nickname_activate_')) {
+            const roleId = i.customId.replace('nickname_activate_', '');
+            const states = await loadNickColorStates();
+            const st = states[i.user.id] || {};
+            if (!st.roles || !st.roles[roleId]) { await i.reply({ content: '해당 색상을 보유하고 있지 않습니다.', ephemeral: true }); return; }
+            try {
+              await activateNickColor(i.guild, i.user.id, roleId);
+              await i.reply({ content: '선택한 닉네임 색상이 활성화되었습니다.', ephemeral: true });
+            } catch (e) {
+              await i.reply({ content: `오류: ${e.message}`, ephemeral: true });
+            }
+            return;
+          }
           if (i.customId.startsWith('nickname_buy_')) {
-            const roleId = i.customId.replace('nickname_buy_', '');
+            const parts = i.customId.split('_');
+            const roleId = parts[2];
+            const plan = parts[3];
             const ROLES = await loadJson(nicknameRolesPath);
             const roleList = Object.values(ROLES);
             const roleData = roleList.find(x => x.roleId === roleId);
             const member = await i.guild.members.fetch(i.user.id);
             if (!roleData) { await i.reply({ content: "해당 역할을 찾을 수 없습니다.", ephemeral: true }); return; }
-            if (member.roles.cache.has(roleId)) { await i.reply({ content: `이미 [${roleData.name}] 색상 역할을 보유 중입니다!`, ephemeral: true }); return; }
             if (userBuying[i.user.id]) { await i.reply({ content: '이미 구매 처리 중입니다.', ephemeral: true }); return; }
             userBuying[i.user.id] = true;
             try {
               const be = await loadJson(bePath);
               const userBeNow = be[i.user.id]?.amount || 0;
-              if (userBeNow < roleData.price) { await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBeNow)} BE)`, ephemeral: true }); return; }
-              if (NICKNAME_ROLE_PER_USER > 0) {
-                const allRoleIds = roleList.map(x => x.roleId);
-                for (const rId of allRoleIds) {
-                  if (member.roles.cache.has(rId)) await member.roles.remove(rId, '색상 중복 방지');
-                }
+              let cost = 0;
+              let isPerm = false;
+              if (plan === 'perm') {
+                if (!roleData.permPrice) { await i.reply({ content: '영구제 가격이 설정되지 않았습니다. 관리자에게 문의하세요.', ephemeral: true }); return; }
+                cost = roleData.permPrice;
+                isPerm = true;
+              } else {
+                const opt = DURATION_OPTIONS.find(o => o.key === plan);
+                if (!opt) { await i.reply({ content: '잘못된 플랜입니다.', ephemeral: true }); return; }
+                cost = opt.price;
               }
-              await member.roles.add(roleId, '닉네임 색상 구매');
+              if (userBeNow < cost) { await i.reply({ content: `파랑 정수 부족! (보유: ${numFmt(userBeNow)} BE)`, ephemeral: true }); return; }
+
               be[i.user.id] = be[i.user.id] || { amount: 0, history: [] };
-              be[i.user.id].amount -= roleData.price;
-              be[i.user.id].history.push({ type: "spend", amount: roleData.price, reason: `${roleData.name} 색상 역할 구매`, timestamp: Date.now() });
+              const beBackup = JSON.stringify(be);
+              be[i.user.id].amount -= cost;
+              be[i.user.id].history.push({ type: "spend", amount: cost, reason: `${roleData.name} 닉네임 색상 ${isPerm ? '영구제' : '기간제'} 구매`, timestamp: Date.now() });
               await saveJson(bePath, be);
-              await i.reply({ content: `✅ [${roleData.name}] 색상 역할을 ${numFmt(roleData.price)} BE에 구매 완료!`, ephemeral: true });
+
+              const states = await loadNickColorStates();
+              states[i.user.id] = states[i.user.id] || { activeRoleId: null, roles: {} };
+              states[i.user.id].roles[roleId] = states[i.user.id].roles[roleId] || { remainingSec: 0, isPerm: false };
+
+              if (isPerm) {
+                await setNickColorPermanent(i.user.id, roleId);
+              } else {
+                const opt = DURATION_OPTIONS.find(o => o.key === plan);
+                await addNickColorTime(i.user.id, roleId, opt.seconds);
+              }
+
+              if (!member.roles.cache.has(roleId) && (states[i.user.id].activeRoleId === roleId || states[i.user.id].activeRoleId === null)) {
+                try { await activateNickColor(i.guild, i.user.id, roleId); } catch {}
+              }
+
+              await i.reply({ content: `✅ [${roleData.name}] ${isPerm ? '영구제' : '기간제'} 구매 완료!`, ephemeral: true });
             } catch (e) {
               await i.reply({ content: `❌ 오류: ${e.message}`, ephemeral: true });
             } finally { userBuying[i.user.id] = false; }
