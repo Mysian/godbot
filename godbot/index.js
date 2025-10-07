@@ -91,6 +91,8 @@ require('./utils/donor-role-expirer')(client);
 require('./utils/category-channel-watcher').initChannelWatcher(client);
 // 갓봇 ai 1
 require('./utils/godbot-core').initGodbotCore(client);
+// 범프 리워드, 범프 보상
+require('./utils/bump-reward')(client);
 
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
