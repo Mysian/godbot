@@ -380,20 +380,26 @@ async function renderNicknameShop(guild, userId, page, expireAt) {
     }
   }
   const rowBuy2 = new ActionRowBuilder();
-  if (r) {
-    const hasPerm = !!r.permPrice;
-    rowBuy2.addComponents(
-      new ButtonBuilder().setCustomId(`nickname_activate_${r.roleId}`).setLabel('이 색상 활성화').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('nick_my').setLabel('내 보유 현황').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+if (r) {
+  const hasPerm = !!r.permPrice;
+  const infoR = await getRoleRemainInfo(guild, userId, r.roleId);
+  
+  rowBuy2.addComponents(
+    infoR.active
+      ? new ButtonBuilder().setCustomId(`nickname_deactivate_${r.roleId}`).setLabel('이 색상 비활성화').setStyle(ButtonStyle.Danger)
+      : new ButtonBuilder().setCustomId(`nickname_activate_${r.roleId}`).setLabel('이 색상 활성화').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('nick_my').setLabel('내 보유 현황').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+  );
+
+  if (hasPerm) {
+    rowBuy2.components.unshift(
+      new ButtonBuilder().setCustomId(`nickname_buy_${r.roleId}_perm`).setLabel('영구제 구매').setStyle(ButtonStyle.Primary)
     );
-    if (hasPerm) {
-      rowBuy2.components.unshift(
-        new ButtonBuilder().setCustomId(`nickname_buy_${r.roleId}_perm`).setLabel('영구제 구매').setStyle(ButtonStyle.Primary)
-      );
-    }
   }
+}
+
   const rowPage = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('nick_prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
     new ButtonBuilder().setCustomId('nick_next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page + 1 >= maxPage)
@@ -774,7 +780,6 @@ module.exports = {
           await i.update(payload);
           return;
         }
-
         if (state.view === 'nickname') {
           if (i.customId === 'nick_prev') {
             state.page = Math.max(0, state.page - 1);
@@ -794,7 +799,7 @@ module.exports = {
     return;
   }
 }
-          if (i.customId === 'nick_next') {
+         if (i.customId === 'nick_next') {
             state.page = state.page + 1;
             const payload = await renderNicknameShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
             await i.update(payload);
@@ -819,6 +824,21 @@ module.exports = {
             }
             return;
           }
+          if (i.customId.startsWith('nickname_deactivate_')) {
+  const roleId = i.customId.replace('nickname_deactivate_', '');
+  const states = await loadNickColorStates();
+  const st = states[i.user.id] || {};
+  // 보유 검증(선택적): st.roles?.[roleId] 존재 여부
+  const ok = await deactivateNickColor(i.guild, i.user.id);
+  if (ok) {
+    // 현재 페이지 다시 그림 (버튼이 ‘활성화’로 되돌아가야 하니까)
+    const payload = await renderNicknameShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
+    await i.update(payload);
+  } else {
+    await i.reply({ content: '현재 활성화된 닉네임 색상이 없습니다.', ephemeral: true });
+  }
+  return;
+}
           if (i.customId.startsWith('nickname_buy_')) {
             const parts = i.customId.split('_');
             const roleId = parts[2];
