@@ -240,6 +240,33 @@ async function activateNickColor(guild, userId, roleId) {
   await saveNickColorStates(states);
 }
 
+async function deactivateNickColor(guild, userId) {
+  const states = await loadNickColorStates();
+  const st = states[userId];
+  if (!st || !st.activeRoleId) return false;
+
+  const activeRoleId = st.activeRoleId;
+  const rec = st.roles[activeRoleId];
+  const now = Date.now();
+
+  // 남은 시간 환산(기간제만)
+  if (rec && !rec.isPerm) {
+    const leftSec = rec.expireAt ? Math.max(0, Math.floor((rec.expireAt - now) / 1000)) : Math.max(0, rec.remainingSec || 0);
+    st.roles[activeRoleId] = { remainingSec: leftSec, isPerm: false };
+  }
+
+  // 실제 역할 제거
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (member && member.roles.cache.has(activeRoleId)) {
+    try { await member.roles.remove(activeRoleId, '닉네임 색상 수동 비활성화'); } catch {}
+  }
+
+  // 활성 플래그 제거
+  st.activeRoleId = null;
+  await saveNickColorStates(states);
+  return true;
+}
+
 async function addNickColorTime(userId, roleId, addSeconds) {
   const states = await loadNickColorStates();
   const st = states[userId] || { activeRoleId: null, roles: {} };
@@ -402,10 +429,11 @@ async function renderMyNickStatus(guild, userId, expireAt) {
     }
   }
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('nav_nickname').setLabel('색상 상점으로').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
-  );
+  new ButtonBuilder().setCustomId('nick_deactivate').setLabel('현재 색상 비활성화').setStyle(ButtonStyle.Danger).setDisabled(!states.activeRoleId),
+  new ButtonBuilder().setCustomId('nav_nickname').setLabel('색상 상점으로').setStyle(ButtonStyle.Secondary),
+  new ButtonBuilder().setCustomId('nav_home').setLabel('홈').setStyle(ButtonStyle.Secondary),
+  new ButtonBuilder().setCustomId('shop_close').setLabel('상점 닫기').setStyle(ButtonStyle.Danger)
+);
   return {
     content: `⏳ 상점 유효 시간: 3분 (남은 시간: ${getRemainSec(expireAt)}초)`,
     embeds: [embed],
@@ -668,20 +696,21 @@ module.exports = {
       const shopMsg = await interaction.editReply(home);
 
       const interval = setInterval(async () => {
-        try {
-          await reconcileExpired(interaction.guild, interaction.user.id);
-          let payload;
-          if (state.view === 'home') payload = await renderHome(interaction, sessionExpireAt);
-          if (state.view === 'nickname') payload = await renderNicknameShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
-          if (state.view === 'channel') payload = await renderChannelShop(interaction.guild, interaction.user.id, sessionExpireAt);
-          if (state.view === 'rent') payload = await renderRent(interaction.guild, interaction.user.id, sessionExpireAt);
-          if (state.view === 'title') payload = await renderTitleShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
-          if (state.view === 'upgrade') payload = await renderUpgradeShop(interaction.user.id, sessionExpireAt);
-          if (state.view === 'item') payload = await renderItemShop(interaction.user.id, state.page, sessionExpireAt);
-          if (state.view === 'skill') payload = await renderSkillShop(interaction.user.id, state.page, sessionExpireAt);
-          await interaction.editReply(payload);
-        } catch {}
-      }, 1000);
+  try {
+    await reconcileExpired(interaction.guild, interaction.user.id);
+    let payload;
+    if (state.view === 'home') payload = await renderHome(interaction, sessionExpireAt);
+    if (state.view === 'nickname') payload = await renderNicknameShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
+    if (state.view === 'nick_my') payload = await renderMyNickStatus(interaction.guild, interaction.user.id, sessionExpireAt);
+    if (state.view === 'channel') payload = await renderChannelShop(interaction.guild, interaction.user.id, sessionExpireAt);
+    if (state.view === 'rent') payload = await renderRent(interaction.guild, interaction.user.id, sessionExpireAt);
+    if (state.view === 'title') payload = await renderTitleShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
+    if (state.view === 'upgrade') payload = await renderUpgradeShop(interaction.user.id, sessionExpireAt);
+    if (state.view === 'item') payload = await renderItemShop(interaction.user.id, state.page, sessionExpireAt);
+    if (state.view === 'skill') payload = await renderSkillShop(interaction.user.id, state.page, sessionExpireAt);
+    await interaction.editReply(payload);
+  } catch {}
+}, 1000);
 
       const collector = interaction.channel.createMessageComponentCollector({
         filter: i => i.user.id === interaction.user.id && i.message.id === shopMsg.id,
@@ -753,6 +782,18 @@ module.exports = {
             await i.update(payload);
             return;
           }
+          if (state.view === 'nick_my') {
+  if (i.customId === 'nick_deactivate') {
+    const ok = await deactivateNickColor(i.guild, i.user.id);
+    if (ok) {
+      const payload = await renderMyNickStatus(interaction.guild, interaction.user.id, sessionExpireAt);
+      await i.update(payload);
+    } else {
+      await i.reply({ content: '현재 활성화된 닉네임 색상이 없습니다.', ephemeral: true });
+    }
+    return;
+  }
+}
           if (i.customId === 'nick_next') {
             state.page = state.page + 1;
             const payload = await renderNicknameShop(interaction.guild, interaction.user.id, state.page, sessionExpireAt);
@@ -760,10 +801,11 @@ module.exports = {
             return;
           }
           if (i.customId === 'nick_my') {
-            const payload = await renderMyNickStatus(interaction.guild, interaction.user.id, sessionExpireAt);
-            await i.update(payload);
-            return;
-          }
+  state.view = 'nick_my';
+  const payload = await renderMyNickStatus(interaction.guild, interaction.user.id, sessionExpireAt);
+  await i.update(payload);
+  return;
+}
           if (i.customId.startsWith('nickname_activate_')) {
             const roleId = i.customId.replace('nickname_activate_', '');
             const states = await loadNickColorStates();
