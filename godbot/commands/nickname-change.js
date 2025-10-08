@@ -60,29 +60,33 @@ async function createApprovalEmbed(guild, payload) {
   return msg;
 }
 
-async function loadPending() { return await readJSONSafe(pendingPath); }
-async function savePending(map) { await writeJSONSafe(pendingPath, map || {}); }
+async function loadPending() {
+  const data = await readJSONSafe(pendingPath);
+  if (!data || typeof data !== 'object') return {};
+  return data;
+}
+async function savePending(map) {
+  await writeJSONSafe(pendingPath, map || {});
+}
 
 async function handleApprove(i, requestId) {
-  // 즉시 응답(3초 타임아웃 방지)
-  const alreadyDeferred = i.deferred || i.replied;
-  if (!alreadyDeferred) { try { await i.deferReply({ ephemeral: true }); } catch {} }
-
   const pending = await loadPending();
   const item = pending[requestId];
-  if (!item) { if (i.editReply) await i.editReply('요청을 찾을 수 없어. 이미 처리됐을 수도 있어.'); return; }
-  if (item.status !== 'pending') { if (i.editReply) await i.editReply(`이미 처리된 요청이야. 상태: ${item.status}`); return; }
-
+  if (!item) { await i.reply({ content: '요청을 찾을 수 없습니다. 이미 처리되었을 수 있습니다.', ephemeral: true }); return; }
+  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청입니다. 상태: ${item.status}`, ephemeral: true }); return; }
   const hasPerm = i.member.permissions.has(PermissionsBitField.Flags.ManageNicknames) || i.member.permissions.has(PermissionsBitField.Flags.Administrator);
-  if (!hasPerm) { if (i.editReply) await i.editReply('닉네임 변경을 승인할 권한이 없어.'); return; }
+  if (!hasPerm) { await i.reply({ content: '닉네임 변경을 승인할 권한이 없습니다.', ephemeral: true }); return; }
 
   const guild = i.guild;
   let member = null;
   try { member = await guild.members.fetch(item.userId); } catch {}
-  if (!member) { if (i.editReply) await i.editReply('길드에서 해당 유저를 찾을 수 없어.'); return; }
+  if (!member) { await i.reply({ content: '길드에서 해당 유저를 찾을 수 없습니다.', ephemeral: true }); return; }
 
   const exists = guild.members.cache.some(m => (m.nickname === item.newNick) || (m.user && m.user.username === item.newNick));
-  if (exists) { if (i.editReply) await i.editReply('이미 사용 중인 닉네임이야. 거절 사유로 안내해줘.'); return; }
+  if (exists) {
+    await i.reply({ content: '해당 닉네임은 이미 사용 중입니다. 거절 사유로 안내해주세요.', ephemeral: true });
+    return;
+  }
 
   let changed = false;
   try { await member.setNickname(item.newNick, `승인자: ${i.user.tag}`); changed = true; } catch { changed = false; }
@@ -96,26 +100,27 @@ async function handleApprove(i, requestId) {
   if (msg) {
     const updated = EmbedBuilder.from(msg.embeds[0] || new EmbedBuilder());
     updated.setColor(changed ? 0x2ECC71 : 0xE67E22);
-    updated.addFields({ name: '처리 결과', value: changed ? `승인됨 • <@${i.user.id}>` : '실패(봇 권한/위계 문제로 닉변 불가)', inline: false });
+    updated.addFields({ name: '처리 결과', value: changed ? `승인됨 • <@${i.user.id}>` : '실패(권한 또는 위계 문제로 닉네임 변경 불가)', inline: false });
     await msg.edit({ embeds: [updated], components: [] }).catch(() => {});
   }
 
   if (changed) {
-    try { await (await member.createDM()).send(`닉네임 변경 요청이 승인되어 \`${item.newNick}\`(으)로 변경됐어.`); } catch {}
-    if (i.editReply) await i.editReply('요청 승인 완료. 닉네임도 변경했어.');
+    const dmText = `닉네임 변경 요청이 승인되어 닉네임이 \`${item.newNick}\`(으)로 변경되었습니다.`;
+    await i.deferReply({ ephemeral: true }).catch(() => {});
+    try { await (await member.createDM()).send(dmText); } catch {}
+    await i.editReply({ content: '요청을 승인하고 닉네임을 변경했습니다.' }).catch(() => {});
   } else {
-    if (i.editReply) await i.editReply('승인은 했는데 닉네임 변경에 실패했어. 봇 권한/역할 위치 확인 필요.');
+    await i.reply({ content: '승인 처리 중 닉네임 변경에 실패했습니다. 봇 권한/위치 확인이 필요합니다.', ephemeral: true });
   }
 }
 
 async function handleReject(i, requestId) {
-  // 버튼 누르면 바로 모달(3초 내 처리)
   const pending = await loadPending();
   const item = pending[requestId];
-  if (!item) { await i.reply({ content: '요청을 찾을 수 없어. 이미 처리됐을 수도 있어.', ephemeral: true }); return; }
-  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청이야. 상태: ${item.status}`, ephemeral: true }); return; }
+  if (!item) { await i.reply({ content: '요청을 찾을 수 없습니다. 이미 처리되었을 수 있습니다.', ephemeral: true }); return; }
+  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청입니다. 상태: ${item.status}`, ephemeral: true }); return; }
   const hasPerm = i.member.permissions.has(PermissionsBitField.Flags.ManageNicknames) || i.member.permissions.has(PermissionsBitField.Flags.Administrator);
-  if (!hasPerm) { await i.reply({ content: '거절 권한이 없어.', ephemeral: true }); return; }
+  if (!hasPerm) { await i.reply({ content: '거절할 권한이 없습니다.', ephemeral: true }); return; }
 
   const modal = new ModalBuilder()
     .setCustomId(`nc_reject_modal_${requestId}`)
@@ -131,11 +136,10 @@ async function handleReject(i, requestId) {
 }
 
 async function handleRejectModal(i, requestId) {
-  // 모달 제출은 자동으로 응답 타임아웃 관리됨 → 제출 후 답변
   const pending = await loadPending();
   const item = pending[requestId];
-  if (!item) { await i.reply({ content: '요청을 찾을 수 없어. 이미 처리됐을 수도 있어.', ephemeral: true }); return; }
-  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청이야. 상태: ${item.status}`, ephemeral: true }); return; }
+  if (!item) { await i.reply({ content: '요청을 찾을 수 없습니다. 이미 처리되었을 수 있습니다.', ephemeral: true }); return; }
+  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청입니다. 상태: ${item.status}`, ephemeral: true }); return; }
 
   const rejectReason = (i.fields.getTextInputValue('nc_reject_reason') || '').trim() || '사유 미입력';
   item.status = 'rejected';
@@ -155,11 +159,11 @@ async function handleRejectModal(i, requestId) {
   let dmSent = false;
   try {
     const user = await i.client.users.fetch(item.userId);
-    await user.send(`닉네임 변경 요청이 거절되었어.\n사유: ${rejectReason}\n요청 닉네임: \`${item.newNick}\``);
+    await user.send(`닉네임 변경 요청이 거절되었습니다.\n사유: ${rejectReason}\n요청 닉네임: \`${item.newNick}\``);
     dmSent = true;
   } catch { dmSent = false; }
 
-  await i.reply({ content: dmSent ? '거절 완료 + 유저 DM 발송.' : '거절 완료. (유저 DM 실패)', ephemeral: true });
+  await i.reply({ content: dmSent ? '거절 처리 및 유저 DM 발송 완료.' : '거절 처리 완료. DM 발송 실패(유저 DM 차단/오류).', ephemeral: true });
 }
 
 module.exports = {
@@ -169,23 +173,20 @@ module.exports = {
     .addStringOption(o => o.setName('닉네임').setDescription('변경할 닉네임').setRequired(true))
     .addStringOption(o => o.setName('변경_사유').setDescription('변경 사유를 입력하세요').setRequired(true)),
   async execute(interaction) {
-    // 슬래시 입력 즉시 응답 예약
-    await interaction.deferReply({ ephemeral: true });
-
     const newNick = (interaction.options.getString('닉네임') || '').trim();
     const userReason = (interaction.options.getString('변경_사유') || '').trim();
     const member = interaction.member;
     const oldNick = member.nickname || member.user.username;
 
     if (!isValidNickname(newNick)) {
-      await interaction.editReply('닉네임에는 한글/영문/숫자만 허용, 초성/모음만의 조합·특수문자 불가.');
+      await interaction.reply({ content: '닉네임에는 한글/영문/숫자만 허용되며, 초성/모음만의 조합이나 특수문자는 불가합니다.', ephemeral: true });
       return;
     }
 
-    await interaction.guild.members.fetch().catch(() => {});
+    await interaction.guild.members.fetch();
     const exists = interaction.guild.members.cache.some(m => (m.nickname === newNick) || (m.user && m.user.username === newNick));
     if (exists) {
-      await interaction.editReply('이미 해당 닉네임을 사용하는 유저가 있어. 다른 닉네임으로 해줘.');
+      await interaction.reply({ content: '이미 해당 닉네임을 사용하는 유저가 있습니다. 다른 닉네임을 입력해주세요.', ephemeral: true });
       return;
     }
 
@@ -205,41 +206,43 @@ module.exports = {
 
     let sent = null;
     try { sent = await createApprovalEmbed(interaction.guild, payload); }
-    catch (e) { await interaction.editReply('승인 채널을 찾지 못했어. 관리자에게 문의해줘.'); return; }
+    catch (e) {
+      await interaction.reply({ content: '승인 채널을 찾지 못했습니다. 관리자에게 문의하세요.', ephemeral: true });
+      return;
+    }
 
     payload.messageId = sent.id;
     const pending = await loadPending();
     pending[requestId] = payload;
     await savePending(pending);
 
-    await interaction.editReply([
-      '닉네임 변경 요청 접수 완료.',
-      `요청 닉네임: \`${newNick}\``,
-      '관리자 승인 후 적용돼. 거절돼도 정수 차감은 없어.'
-    ].join('\n'));
+    await interaction.reply({
+      content: [
+        '닉네임 변경 요청이 접수되었습니다.',
+        `요청 닉네임: \`${newNick}\``,
+        '관리자 승인 후 적용되며, 거절되는 경우 정수 차감은 없습니다.'
+      ].join('\n'),
+      ephemeral: true
+    });
   },
   register(client) {
     client.on('interactionCreate', async (i) => {
       try {
         if (i.isButton()) {
           if (i.customId.startsWith('nc_approve_')) {
-            const requestId = i.customId.slice('nc_approve_'.length);
+            const requestId = i.customId.replace('nc_approve_', '');
             await handleApprove(i, requestId);
           } else if (i.customId.startsWith('nc_reject_')) {
-            const requestId = i.customId.slice('nc_reject_'.length);
+            const requestId = i.customId.replace('nc_reject_', '');
             await handleReject(i, requestId);
           }
         } else if (i.isModalSubmit()) {
           if (i.customId.startsWith('nc_reject_modal_')) {
-            const requestId = i.customId.slice('nc_reject_modal_'.length);
+            const requestId = i.customId.replace('nc_reject_modal_', '');
             await handleRejectModal(i, requestId);
           }
         }
-      } catch (e) {
-        try {
-          if (!i.deferred && !i.replied) await i.reply({ content: '처리 중 오류가 발생했어.', ephemeral: true });
-        } catch {}
-      }
+      } catch {}
     });
   },
 };
