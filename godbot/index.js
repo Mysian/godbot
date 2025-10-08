@@ -98,12 +98,14 @@ const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
 
 const disasterWatcher = require("./utils/disaster-watcher.js");
+const gameNews = require("./utils/game-news-watcher.js");
 
 // === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
 const GUILD_ID = process.env.GUILD_ID || '785841387396005948';
 
 disasterWatcher.start(client);
+gameNews.start(client);
 
 setInterval(async () => {
   try {
