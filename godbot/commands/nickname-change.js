@@ -30,6 +30,14 @@ function isValidNickname(n) {
   return true;
 }
 
+function isValidReason(r) {
+  if (typeof r !== 'string') return false;
+  const t = r.trim();
+  if (t.length < 1) return false;
+  if (t.length > 500) return false;
+  return true;
+}
+
 async function postApprovalEmbed(guild, requester, requestId) {
   const store = loadStore();
   const item = store.items[requestId];
@@ -91,13 +99,19 @@ function setRequestStatus(id, status) {
   saveStore(store);
 }
 
-async function disableApprovalComponents(guild, item) {
+async function deleteApprovalMessage(guild, item) {
   if (!item.channelId || !item.messageId) return;
   const ch = await guild.channels.fetch(item.channelId).catch(() => null);
   if (!ch) return;
   const msg = await ch.messages.fetch(item.messageId).catch(() => null);
   if (!msg) return;
-  try { await msg.delete(); } catch { try { await msg.edit({ components: [] }); } catch {} }
+  await msg.delete().catch(() => {});
+  const store = loadStore();
+  if (store.items[item.id]) {
+    store.items[item.id].channelId = null;
+    store.items[item.id].messageId = null;
+    saveStore(store);
+  }
 }
 
 async function postResultLog(guild, item, statusText, processorUserId, usedReason) {
@@ -128,6 +142,8 @@ module.exports.data = new SlashCommandBuilder()
      .setDescription('변경할 닉네임')
      .setDescriptionLocalizations({ ko: '변경할 닉네임' })
      .setRequired(true)
+     .setMinLength(2)
+     .setMaxLength(32)
   )
   .addStringOption(o =>
     o.setName('reason')
@@ -135,6 +151,8 @@ module.exports.data = new SlashCommandBuilder()
      .setDescription('변경 사유')
      .setDescriptionLocalizations({ ko: '변경 사유' })
      .setRequired(true)
+     .setMinLength(1)
+     .setMaxLength(500)
   );
 
 module.exports.execute = async (interaction) => {
@@ -146,8 +164,8 @@ module.exports.execute = async (interaction) => {
     await interaction.editReply('닉네임에는 한글/영문/숫자 및 공백, . _ - 만 허용되며 2~32자여야 합니다.');
     return;
   }
-  if (!reason.length) {
-    await interaction.editReply('변경 사유는 필수입니다. 공백이 아닌 내용을 입력해주세요.');
+  if (!isValidReason(reason)) {
+    await interaction.editReply('사유는 1~500자 사이여야 합니다.');
     return;
   }
   const dup = interaction.guild.members.cache.find(m => (m.displayName || m.user.username) === newNick && m.id !== interaction.user.id);
@@ -175,7 +193,7 @@ async function handleApprove(i, requestId) {
   try {
     await member.setNickname(item.newNick);
     setRequestStatus(requestId, 'approved');
-    await disableApprovalComponents(guild, item);
+    await deleteApprovalMessage(guild, item);
     try { await member.send(['닉네임 변경 요청이 승인되었습니다.', `적용 닉네임: \`${item.newNick}\``].join('\n')); } catch {}
     await postResultLog(guild, item, '승인 완료', i.user?.id || null, '');
     try { await i.followUp({ content: '요청을 승인하고 닉네임을 변경했습니다.', ephemeral: true }); } catch {}
@@ -202,7 +220,7 @@ async function handleRejectModal(i, requestId) {
   const modalReasonRaw = i.fields.getTextInputValue('reason');
   const modalReason = typeof modalReasonRaw === 'string' ? modalReasonRaw.trim() : '';
   setRequestStatus(requestId, 'rejected');
-  await disableApprovalComponents(i.guild, item);
+  await deleteApprovalMessage(i.guild, item);
   let dmSent = false;
   try {
     const m = await i.guild.members.fetch(item.userId).catch(() => null);
