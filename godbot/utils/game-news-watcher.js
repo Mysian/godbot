@@ -13,6 +13,7 @@ const COOLDOWN_MS = Number(process.env.GAME_NEWS_COOLDOWN_MS || 60000);
 const RIOT_URL = "https://www.riotgames.com/ko/news";
 const BLIZZ_URL = "https://news.blizzard.com/ko-kr/";
 const APEX_URL = "https://www.ea.com/ko/games/apex-legends/apex-legends/news?page=1&type=latest";
+const GAMEMECA_URL = "https://www.gamemeca.com/news.php";
 
 const DATA_DIR = path.join(__dirname, "../data");
 const STATE_PATH = path.join(DATA_DIR, "game-news-seen.json");
@@ -30,7 +31,8 @@ function ensureState() {
       lastSentAt: 0,
       riot: null,
       blizzard: null,
-      apex: null
+      apex: null,
+      gamemeca: null
     }));
   }
 }
@@ -43,10 +45,11 @@ function loadState() {
       lastSentAt: Number(j.lastSentAt) || 0,
       riot: j.riot || null,
       blizzard: j.blizzard || null,
-      apex: j.apex || null
+      apex: j.apex || null,
+      gamemeca: j.gamemeca || null
     };
   } catch {
-    return { lastSentAt: 0, riot: null, blizzard: null, apex: null };
+    return { lastSentAt: 0, riot: null, blizzard: null, apex: null, gamemeca: null };
   }
 }
 function saveState(s) {
@@ -55,7 +58,8 @@ function saveState(s) {
       lastSentAt: Number(s.lastSentAt) || 0,
       riot: s.riot || null,
       blizzard: s.blizzard || null,
-      apex: s.apex || null
+      apex: s.apex || null,
+      gamemeca: s.gamemeca || null
     }));
   } catch {}
 }
@@ -65,7 +69,6 @@ async function fetchText(url) {
   if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
   return res.text();
 }
-
 function absUrl(href, base) {
   try { return new URL(href, base).toString(); } catch { return null; }
 }
@@ -80,8 +83,7 @@ async function getRiot() {
     const href = $(a).attr("href") || "";
     if (!/\/ko\/news/i.test(href)) return;
     const url = absUrl(href, "https://www.riotgames.com");
-    if (!url) return;
-    if (seen.has(url)) return;
+    if (!url || seen.has(url)) return;
     seen.add(url);
     const art = $(a).closest("article");
     const title = clean(art.find("h3, h2, .title, .copy, .ArticleTitle, .news-title").first().text()) || clean($(a).text());
@@ -100,8 +102,7 @@ async function getBlizzard() {
     const href = $(a).attr("href") || "";
     if (!/news\.blizzard\.com\/?\/?ko-kr\//i.test(href) && !/^\/ko-kr\//i.test(href)) return;
     const url = absUrl(href, "https://news.blizzard.com");
-    if (!url) return;
-    if (seen.has(url)) return;
+    if (!url || seen.has(url)) return;
     seen.add(url);
     const item = $(a).closest("article, li, .ArticleListItem, .NewsListItem").first();
     const title = clean(item.find("h3, h2, .Heading, .ArticleListItem-title, .NewsListItem-title").first().text()) || clean($(a).text());
@@ -120,8 +121,7 @@ async function getApex() {
     const href = $(a).attr("href") || "";
     if (!/\/ko\/games\/apex-legends\/apex-legends\/news\//i.test(href)) return;
     const url = absUrl(href, "https://www.ea.com");
-    if (!url) return;
-    if (seen.has(url)) return;
+    if (!url || seen.has(url)) return;
     seen.add(url);
     const card = $(a).closest("article, .m-article-card, li").first();
     const title = clean(card.find("h3, h2, .m-article-card__title, .title").first().text()) || clean($(a).text());
@@ -131,9 +131,37 @@ async function getApex() {
   return pick;
 }
 
+async function getGameMeca() {
+  const html = await fetchText(GAMEMECA_URL);
+  const $ = cheerio.load(html);
+  let pick = null;
+  const seen = new Set();
+  $('a[href]').each((_, a) => {
+    const href = ($(a).attr("href") || "").trim();
+    const isView = /\/news\/view\.php\?gid=/i.test(href) || /\/news\/\w+\/\d+/.test(href);
+    if (!isView) return;
+    const url = absUrl(href, "https://www.gamemeca.com");
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    const box = $(a).closest("li, article, .news-list, .list, .box, .wrap").first();
+    const title = clean(box.find("h3, h2, .tit, .title, .subject").first().text()) || clean($(a).text());
+    const tDate = clean(box.find("time").first().text()) || clean(box.find(".date, .regdate, .time").first().text());
+    if (!pick) pick = { id: url, title: title || "게임메카 뉴스", date: tDate || "", url };
+  });
+  if (!pick) {
+    const firstA = $('a[href*="/news/"], a[href*="news/view.php?gid="]').first();
+    if (firstA.length) {
+      const url = absUrl(firstA.attr("href"), "https://www.gamemeca.com");
+      const title = clean(firstA.text());
+      pick = { id: url, title: title || "게임메카 뉴스", date: "", url };
+    }
+  }
+  return pick;
+}
+
 function embedFor(source, item) {
-  const color = source === "riot" ? 0xD13639 : source === "blizzard" ? 0x00AEEF : 0xF05023;
-  const title = source === "riot" ? "라이엇 게임즈 소식" : source === "blizzard" ? "블리자드 게임 소식" : "에이펙스 레전드 소식";
+  const color = source === "riot" ? 0xD13639 : source === "blizzard" ? 0x00AEEF : source === "apex" ? 0xF05023 : 0x222222;
+  const title = source === "riot" ? "라이엇 게임즈 소식" : source === "blizzard" ? "블리자드 게임 소식" : source === "apex" ? "에이펙스 레전드 소식" : "게임메카 뉴스";
   const e = new EmbedBuilder()
     .setColor(color)
     .setTitle(title)
@@ -155,42 +183,39 @@ async function pollOnce(client, forceSend = false) {
     const now = Date.now();
     if (!forceSend && now - state.lastSentAt < COOLDOWN_MS) return;
 
-    const [riot, bliz, apex] = await Promise.allSettled([getRiot(), getBlizzard(), getApex()]);
+    const results = await Promise.allSettled([getRiot(), getBlizzard(), getApex(), getGameMeca()]);
+    const [riot, bliz, apex, gm] = results;
 
     const updates = [];
-    if (riot.status === "fulfilled" && riot.value && riot.value.id && riot.value.id !== state.riot) {
-      updates.push(["riot", riot.value]);
-    }
-    if (bliz.status === "fulfilled" && bliz.value && bliz.value.id && bliz.value.id !== state.blizzard) {
-      updates.push(["blizzard", bliz.value]);
-    }
-    if (apex.status === "fulfilled" && apex.value && apex.value.id && apex.value.id !== state.apex) {
-      updates.push(["apex", apex.value]);
-    }
+    if (riot.status === "fulfilled" && riot.value && riot.value.id && riot.value.id !== state.riot) updates.push(["riot", riot.value]);
+    if (bliz.status === "fulfilled" && bliz.value && bliz.value.id && bliz.value.id !== state.blizzard) updates.push(["blizzard", bliz.value]);
+    if (apex.status === "fulfilled" && apex.value && apex.value.id && apex.value.id !== state.apex) updates.push(["apex", apex.value]);
+    if (gm.status === "fulfilled" && gm.value && gm.value.id && gm.value.id !== state.gamemeca) updates.push(["gamemeca", gm.value]);
 
     if (!updates.length && !forceSend) return;
 
-    const channelId = TARGET_CHANNEL_ID;
-    const ch = client.channels?.cache?.get(channelId) || await client.channels.fetch(channelId).catch(() => null);
+    const ch = client.channels?.cache?.get(TARGET_CHANNEL_ID) || await client.channels.fetch(TARGET_CHANNEL_ID).catch(() => null);
     if (!ch) return;
 
     const embeds = updates.length
-      ? updates.map(([k, v]) => embedFor(k, v)).slice(0, 3)
+      ? updates.map(([k, v]) => embedFor(k, v)).slice(0, 4)
       : (() => {
           const ersatz = [];
           if (riot.status === "fulfilled" && riot.value) ersatz.push(embedFor("riot", riot.value));
           if (bliz.status === "fulfilled" && bliz.value) ersatz.push(embedFor("blizzard", bliz.value));
           if (apex.status === "fulfilled" && apex.value) ersatz.push(embedFor("apex", apex.value));
-          return ersatz.slice(0, 3);
+          if (gm.status === "fulfilled" && gm.value) ersatz.push(embedFor("gamemeca", gm.value));
+          return ersatz.slice(0, 4);
         })();
 
     if (embeds.length) {
-      await ch.send({ content: "-# 최신 게임 소식 3종", embeds }).catch(() => {});
+      await ch.send({ content: "-# 최신 게임 소식 4종", embeds }).catch(() => {});
       state.lastSentAt = Date.now();
       for (const [k, v] of updates) {
         if (k === "riot") state.riot = v.id;
         if (k === "blizzard") state.blizzard = v.id;
         if (k === "apex") state.apex = v.id;
+        if (k === "gamemeca") state.gamemeca = v.id;
       }
       saveState(state);
     }
