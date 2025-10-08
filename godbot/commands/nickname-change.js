@@ -70,7 +70,7 @@ async function postApprovalEmbed(guild, requester, requestId) {
   return { messageId: msg.id, channelId: msg.channel.id };
 }
 
-function createRequest(guildId, userId, newNick, reason) {
+function createRequest(guildId, userId, newNick, reason, oldNick) {
   const store = loadStore();
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   store.items[id] = {
@@ -79,6 +79,7 @@ function createRequest(guildId, userId, newNick, reason) {
     userId,
     newNick,
     reason: typeof reason === 'string' ? reason : '',
+    oldNick: typeof oldNick === 'string' ? oldNick : '',
     status: 'pending',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -117,23 +118,28 @@ async function deleteApprovalMessage(guild, item) {
   }
 }
 
-async function postResultLog(guild, item, statusText, processorUserId, usedReason, beUsed) {
+async function postResultLog(guild, item, statusText, processorUserId, usedReason, beUsed, processedAt) {
   const ch = await guild.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (!ch) return;
+  const ts = typeof processedAt === 'number' ? processedAt : Date.now();
+  const oldNickResolved = (item.oldNickNow && item.oldNickNow.trim().length ? item.oldNickNow : (item.oldNick || '')) || '-';
   const embed = new EmbedBuilder()
     .setTitle('닉네임 변경 처리 결과')
     .setColor(statusText === '승인 완료' ? 0x57F287 : 0xED4245)
     .addFields(
       { name: '요청 유저', value: `<@${item.userId}>`, inline: true },
-      { name: '요청 닉네임', value: item.newNick, inline: true },
-      { name: '사유', value: usedReason && usedReason.trim().length ? usedReason : (item.reason && item.reason.trim().length ? item.reason : '-'), inline: false },
       { name: '처리 상태', value: statusText, inline: true },
       { name: '처리자', value: processorUserId ? `<@${processorUserId}>` : '-', inline: true },
+      { name: '변경 전', value: oldNickResolved, inline: true },
+      { name: '변경 후', value: item.newNick, inline: true },
+      { name: '변경 일시', value: `<t:${Math.floor(ts / 1000)}:f>`, inline: true },
+      { name: '사유', value: usedReason && usedReason.trim().length ? usedReason : (item.reason && item.reason.trim().length ? item.reason : '-'), inline: false },
       { name: 'BE', value: beUsed ? `-${COST_BE.toLocaleString()} BE` : '차감 없음', inline: true }
     )
-    .setTimestamp(new Date());
+    .setTimestamp(new Date(ts));
   await ch.send({ embeds: [embed] }).catch(() => {});
 }
+
 
 module.exports.data = new SlashCommandBuilder()
   .setName('nickname')
@@ -182,7 +188,13 @@ module.exports.execute = async (interaction) => {
     await interaction.editReply(`정수가 부족합니다. 필요한 정수: ${COST_BE.toLocaleString()} BE, 보유 정수: ${balance.toLocaleString()} BE`);
     return;
   }
-  const reqId = createRequest(interaction.guild.id, interaction.user.id, newNick, reason);
+  const reqId = createRequest(
+  interaction.guild.id,
+  interaction.user.id,
+  newNick,
+  reason,
+  (interaction.member?.displayName || interaction.user.username || '')
+);
   const posted = await postApprovalEmbed(interaction.guild, interaction.member, reqId);
   if (!posted) {
     await interaction.editReply('승인 채널을 찾지 못했습니다. 관리자에게 문의하세요.');
@@ -211,15 +223,17 @@ async function handleApprove(i, requestId) {
     return;
   }
   try {
-    await member.setNickname(item.newNick);
-    await addBE(item.userId, -COST_BE, '닉네임 변경 수수료');
-    setRequestStatus(requestId, 'approved');
-    await deleteApprovalMessage(guild, item);
-    try { await member.send(['닉네임 변경 요청이 승인되었습니다.', `적용 닉네임: \`${item.newNick}\``, `차감: ${COST_BE.toLocaleString()} BE`].join('\n')); } catch {}
-    await postResultLog(guild, item, '승인 완료', i.user?.id || null, '', true);
-    try { await i.followUp({ content: '요청을 승인하고 닉네임을 변경했으며 정수를 차감했습니다.', ephemeral: true }); } catch {}
-  } catch {
-    try { await i.followUp({ content: '승인 처리 중 닉네임 변경에 실패했습니다. 봇 권한/역할 위치를 확인하세요.', ephemeral: true }); } catch {}
+  const beforeNick = member.displayName || member.user.username || '';
+  await member.setNickname(item.newNick);
+  await addBE(item.userId, -COST_BE, '닉네임 변경 수수료');
+  setRequestStatus(requestId, 'approved');
+  await deleteApprovalMessage(guild, item);
+  try { await member.send(['닉네임 변경 요청이 승인되었습니다.', `적용 닉네임: \`${item.newNick}\``, `차감: ${COST_BE.toLocaleString()} BE`].join('\n')); } catch {}
+  const processedAt = Date.now();
+  await postResultLog(guild, { ...item, oldNickNow: beforeNick }, '승인 완료', i.user?.id || null, '', true, processedAt);
+  try { await i.followUp({ content: '요청을 승인하고 닉네임을 변경했으며 정수를 차감했습니다.', ephemeral: true }); } catch {}
+} catch {
+  try { await i.followUp({ content: '승인 처리 중 닉네임 변경에 실패했습니다. 봇 권한/역할 위치를 확인하세요.', ephemeral: true }); } catch {}
   }
 }
 
@@ -250,7 +264,7 @@ async function handleRejectModal(i, requestId) {
       dmSent = true;
     }
   } catch {}
-  await postResultLog(i.guild, item, '거절 완료', i.user?.id || null, modalReason, false);
+  await postResultLog(i.guild, item, '거절 완료', i.user?.id || null, modalReason, false, Date.now());
   await i.editReply(dmSent ? '거절 처리 및 유저 DM 발송 완료.' : '거절 처리 완료. DM 발송 실패(유저 DM 차단/오류).');
 }
 
