@@ -73,6 +73,31 @@ function absUrl(href, base) {
   try { return new URL(href, base).toString(); } catch { return null; }
 }
 function clean(t) { return (t || "").replace(/\s+/g, " ").trim(); }
+function trimLen(t, n) { if (!t) return ""; if (t.length <= n) return t; return t.slice(0, n - 1) + "…"; }
+
+async function extractSummaryBySelectors(html, selectors) {
+  const $ = cheerio.load(html);
+  for (const sel of selectors) {
+    const area = $(sel);
+    if (area.length) {
+      const parts = [];
+      area.find("p, li").each((_, el) => {
+        const txt = clean($(el).text());
+        if (txt) parts.push(txt);
+      });
+      const text = clean(parts.join(" "));
+      if (text) return text;
+    }
+  }
+  const fallback = clean($("article").text()) || clean($("main").text());
+  return fallback;
+}
+
+async function fetchArticleWithSummary(url, selectors) {
+  const html = await fetchText(url);
+  const summary = await extractSummaryBySelectors(html, selectors);
+  return trimLen(summary, 900);
+}
 
 async function getRiot() {
   const html = await fetchText(RIOT_URL);
@@ -90,6 +115,11 @@ async function getRiot() {
     const tDate = clean(art.find("time").first().text()) || clean(art.find(".date, .published, .MetaTime").first().text());
     if (!pick) pick = { id: url, title: title || "라이엇 게임즈 소식", date: tDate || "", url };
   });
+  if (pick) {
+    pick.summary = await fetchArticleWithSummary(pick.url, [
+      "article .ArticleContent", "article .content", "article", "main"
+    ]);
+  }
   return pick;
 }
 
@@ -109,6 +139,11 @@ async function getBlizzard() {
     const tDate = clean(item.find("time").first().text()) || clean(item.find(".ArticleListItem-date, .MetaTime").first().text());
     if (!pick) pick = { id: url, title: title || "블리자드 게임 소식", date: tDate || "", url };
   });
+  if (pick) {
+    pick.summary = await fetchArticleWithSummary(pick.url, [
+      "article .ArticleBody", "article .bodyCopy", "article .body", "article", "main"
+    ]);
+  }
   return pick;
 }
 
@@ -128,6 +163,11 @@ async function getApex() {
     const tDate = clean(card.find("time").first().text()) || clean(card.find(".m-article-card__date, .date").first().text());
     if (!pick) pick = { id: url, title: title || "에이펙스 레전드 소식", date: tDate || "", url };
   });
+  if (pick) {
+    pick.summary = await fetchArticleWithSummary(pick.url, [
+      "article .l-article__body", "article .m-article__body", "article .content", "article", "main"
+    ]);
+  }
   return pick;
 }
 
@@ -156,19 +196,36 @@ async function getGameMeca() {
       pick = { id: url, title: title || "게임메카 뉴스", date: "", url };
     }
   }
+  if (pick) {
+    pick.summary = await fetchArticleWithSummary(pick.url, [
+      "#news_content", ".news_cont", ".view_cont", "article .content", "article", "main"
+    ]);
+  }
   return pick;
 }
 
 function embedFor(source, item) {
-  const color = source === "riot" ? 0xD13639 : source === "blizzard" ? 0x00AEEF : source === "apex" ? 0xF05023 : 0x222222;
-  const title = source === "riot" ? "라이엇 게임즈 소식" : source === "blizzard" ? "블리자드 게임 소식" : source === "apex" ? "에이펙스 레전드 소식" : "게임메카 뉴스";
+  const color =
+    source === "riot" ? 0xD13639 :
+    source === "blizzard" ? 0x00AEEF :
+    source === "apex" ? 0xF05023 :
+    0x222222;
+
+  const siteName =
+    source === "riot" ? "라이엇 게임즈 소식" :
+    source === "blizzard" ? "블리자드 게임 소식" :
+    source === "apex" ? "에이펙스 레전드 소식" :
+    "게임메카 뉴스";
+
   const e = new EmbedBuilder()
     .setColor(color)
-    .setTitle(title)
+    .setAuthor({ name: siteName })
+    .setTitle(item.title || siteName)
     .setURL(item.url)
-    .setDescription(item.title || "")
-    .addFields(item.date ? [{ name: "게시일", value: item.date, inline: true }] : [])
+    .setDescription(item.summary || "")
     .setTimestamp(new Date());
+
+  if (item.date) e.addFields({ name: "게시일", value: item.date, inline: true });
   return e;
 }
 
@@ -209,7 +266,7 @@ async function pollOnce(client, forceSend = false) {
         })();
 
     if (embeds.length) {
-      await ch.send({ content: "-# 최신 게임 소식 4종", embeds }).catch(() => {});
+      await ch.send({ embeds }).catch(() => {});
       state.lastSentAt = Date.now();
       for (const [k, v] of updates) {
         if (k === "riot") state.riot = v.id;
