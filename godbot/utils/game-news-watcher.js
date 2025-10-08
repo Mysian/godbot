@@ -255,8 +255,13 @@ async function pollOnce(client, forceSend = false) {
     if (apex.status === "fulfilled" && apex.value && apex.value.id && apex.value.id !== state.apex) updates.push(["apex", apex.value]);
     if (gm.status === "fulfilled" && gm.value && gm.value.id && gm.value.id !== state.gamemeca) updates.push(["gamemeca", gm.value]);
 
-    const baseItems = updates.length ? updates.map((x) => x[1]) : [riot, bliz, apex, gm].filter(x => x.status === "fulfilled" && x.value).map(x => x.value);
-    if (!baseItems.length && !forceSend) return;
+    if (!updates.length && !forceSend) return;
+
+const baseItems = (forceSend && !updates.length)
+  ? [riot, bliz, apex, gm]
+      .filter(x => x.status === "fulfilled" && x.value)
+      .map(x => x.value)
+  : updates.map(x => x[1]);
 
     const enriched = await Promise.all(baseItems.map(async (it) => {
       const meta = await extractArticle(it.url, it.site);
