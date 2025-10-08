@@ -13,7 +13,7 @@ const COOLDOWN_MS = Number(process.env.GAME_NEWS_COOLDOWN_MS || 60000);
 const RIOT_URL = "https://www.riotgames.com/ko/news";
 const BLIZZ_URL = "https://news.blizzard.com/ko-kr/";
 const APEX_URL = "https://www.ea.com/ko/games/apex-legends/apex-legends/news?page=1&type=latest";
-const GAMEMECA_URL = "https://www.gamemeca.com/";
+const GAMEMECA_URL = "https://www.gamemeca.com/news.php";
 
 const DATA_DIR = path.join(__dirname, "../data");
 const STATE_PATH = path.join(DATA_DIR, "game-news-seen.json");
