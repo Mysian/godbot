@@ -97,7 +97,7 @@ async function disableApprovalComponents(guild, item) {
   if (!ch) return;
   const msg = await ch.messages.fetch(item.messageId).catch(() => null);
   if (!msg) return;
-  await msg.edit({ components: [] }).catch(() => {});
+  try { await msg.delete(); } catch { try { await msg.edit({ components: [] }); } catch {} }
 }
 
 async function postResultLog(guild, item, statusText, processorUserId, usedReason) {
@@ -134,7 +134,7 @@ module.exports.data = new SlashCommandBuilder()
      .setNameLocalizations({ ko: '사유' })
      .setDescription('변경 사유')
      .setDescriptionLocalizations({ ko: '변경 사유' })
-     .setRequired(false)
+     .setRequired(true)
   );
 
 module.exports.execute = async (interaction) => {
@@ -144,6 +144,10 @@ module.exports.execute = async (interaction) => {
   const reason = typeof reasonRaw === 'string' ? reasonRaw.trim() : '';
   if (!isValidNickname(newNick)) {
     await interaction.editReply('닉네임에는 한글/영문/숫자 및 공백, . _ - 만 허용되며 2~32자여야 합니다.');
+    return;
+  }
+  if (!reason.length) {
+    await interaction.editReply('변경 사유는 필수입니다. 공백이 아닌 내용을 입력해주세요.');
     return;
   }
   const dup = interaction.guild.members.cache.find(m => (m.displayName || m.user.username) === newNick && m.id !== interaction.user.id);
@@ -157,7 +161,7 @@ module.exports.execute = async (interaction) => {
     await interaction.editReply('승인 채널을 찾지 못했습니다. 관리자에게 문의하세요.');
     return;
   }
-  await interaction.editReply(['닉네임 변경 요청이 접수되었습니다.', `요청 닉네임: \`${newNick}\``, reason && reason.length ? `사유: ${reason}` : '사유: -', '관리자 승인 후 적용되며, 거절되는 경우 정수 차감은 없습니다.'].join('\n'));
+  await interaction.editReply(['닉네임 변경 요청이 접수되었습니다.', `요청 닉네임: \`${newNick}\``, `사유: ${reason}`, '관리자 승인 후 적용되며, 거절되는 경우 정수 차감은 없습니다.'].join('\n'));
 };
 
 async function handleApprove(i, requestId) {
