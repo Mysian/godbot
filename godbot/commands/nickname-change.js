@@ -47,17 +47,18 @@ async function postApprovalEmbed(guild, requester, requestId) {
   const ch = await guild.channels.fetch(APPROVAL_CHANNEL_ID).catch(() => null);
   if (!ch) return null;
   const embed = new EmbedBuilder()
-    .setTitle('닉네임 변경 요청')
-    .setDescription([
-      '요청자가 닉네임 변경을 요청했습니다.',
-      `유저: <@${item.userId}> (${requester.user.tag})`,
-      `현재 닉네임: ${requester.displayName}`,
-      `요청 닉네임: ${item.newNick}`,
-      `사유: ${item.reason && item.reason.trim().length ? item.reason : '-'}`,
-      `처리 시 차감: ${COST_BE.toLocaleString()} BE`
-    ].join('\n'))
-    .setColor(0x5865F2)
-    .setTimestamp(new Date());
+  .setTitle('닉네임 변경 요청')
+  .setDescription([
+    '요청자가 닉네임 변경을 요청했습니다.',
+    `유저: <@${item.userId}> (${requester.user.tag})`,
+    `현재 닉네임: ${requester.displayName}`,
+    `요청 닉네임: ${item.newNick}`,
+    `사유: ${item.reason && item.reason.trim().length ? item.reason : '-'}`,
+    `처리 시 차감: ${COST_BE.toLocaleString()} BE`
+  ].join('\n'))
+  .setColor(0x5865F2)
+  .setTimestamp(new Date())
+  .setThumbnail(requester.user.displayAvatarURL({ size: 128 }));
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`nc_approve_${requestId}`).setLabel('승인').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`nc_reject_${requestId}`).setLabel('거절').setStyle(ButtonStyle.Danger)
@@ -136,10 +137,10 @@ async function postResultLog(guild, item, statusText, processorUserId, usedReaso
       { name: '사유', value: usedReason && usedReason.trim().length ? usedReason : (item.reason && item.reason.trim().length ? item.reason : '-'), inline: false },
       { name: 'BE', value: beUsed ? `-${COST_BE.toLocaleString()} BE` : '차감 없음', inline: true }
     )
-    .setTimestamp(new Date(ts));
+    .setTimestamp(new Date(ts))
+    .setThumbnail((await guild.members.fetch(item.userId).catch(() => null))?.user?.displayAvatarURL({ size: 128 }) || null);
   await ch.send({ embeds: [embed] }).catch(() => {});
 }
-
 
 module.exports.data = new SlashCommandBuilder()
   .setName('nickname')
