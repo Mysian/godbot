@@ -73,30 +73,43 @@ function absUrl(href, base) {
   try { return new URL(href, base).toString(); } catch { return null; }
 }
 function clean(t) { return (t || "").replace(/\s+/g, " ").trim(); }
-function trimLen(t, n) { if (!t) return ""; if (t.length <= n) return t; return t.slice(0, n - 1) + "…"; }
+function clip(t, n) { if (!t) return ""; if (t.length <= n) return t; return t.slice(0, n - 1) + "…"; }
 
-async function extractSummaryBySelectors(html, selectors) {
-  const $ = cheerio.load(html);
-  for (const sel of selectors) {
-    const area = $(sel);
-    if (area.length) {
-      const parts = [];
-      area.find("p, li").each((_, el) => {
-        const txt = clean($(el).text());
-        if (txt) parts.push(txt);
-      });
-      const text = clean(parts.join(" "));
-      if (text) return text;
+async function extractPreview(url, site = "") {
+  try {
+    const html = await fetchText(url);
+    const $ = cheerio.load(html);
+    const ogImg = $('meta[property="og:image"]').attr("content") || $('meta[name="og:image"]').attr("content") || "";
+    const ogTitle = $('meta[property="og:title"]').attr("content") || "";
+    let body = "";
+    if (site === "riot") {
+      body = [
+        $("article p").slice(0, 4).text(),
+        $(".article, .Article-body, .copy").find("p").slice(0, 4).text()
+      ].map(clean).find(Boolean) || "";
+    } else if (site === "blizzard") {
+      body = [
+        $(".ArticleBody p").slice(0, 6).text(),
+        $("article p").slice(0, 6).text(),
+        $(".BodyContent p").slice(0, 6).text()
+      ].map(clean).find(Boolean) || "";
+    } else if (site === "apex") {
+      body = [
+        $(".article-body p").slice(0, 6).text(),
+        $("article p").slice(0, 6).text(),
+        $(".l-article__content p").slice(0, 6).text()
+      ].map(clean).find(Boolean) || "";
+    } else if (site === "gamemeca") {
+      const container = $("#news-body, .article-body, .view_cont, .vcon, article");
+      body = clean(container.find("p, div").not(":has(img), .ad, .sns, .tag").slice(0, 6).text()) || clean($("article p").slice(0, 6).text());
+    } else {
+      body = clean($("article p").slice(0, 6).text()) || clean($("p").slice(0, 6).text());
     }
+    body = clip(body, 1400);
+    return { preview: body, image: ogImg || null, title: ogTitle || null };
+  } catch {
+    return { preview: "", image: null, title: null };
   }
-  const fallback = clean($("article").text()) || clean($("main").text());
-  return fallback;
-}
-
-async function fetchArticleWithSummary(url, selectors) {
-  const html = await fetchText(url);
-  const summary = await extractSummaryBySelectors(html, selectors);
-  return trimLen(summary, 900);
 }
 
 async function getRiot() {
@@ -113,13 +126,8 @@ async function getRiot() {
     const art = $(a).closest("article");
     const title = clean(art.find("h3, h2, .title, .copy, .ArticleTitle, .news-title").first().text()) || clean($(a).text());
     const tDate = clean(art.find("time").first().text()) || clean(art.find(".date, .published, .MetaTime").first().text());
-    if (!pick) pick = { id: url, title: title || "라이엇 게임즈 소식", date: tDate || "", url };
+    if (!pick) pick = { id: url, title: title || "라이엇 게임즈 소식", date: tDate || "", url, site: "riot" };
   });
-  if (pick) {
-    pick.summary = await fetchArticleWithSummary(pick.url, [
-      "article .ArticleContent", "article .content", "article", "main"
-    ]);
-  }
   return pick;
 }
 
@@ -137,13 +145,8 @@ async function getBlizzard() {
     const item = $(a).closest("article, li, .ArticleListItem, .NewsListItem").first();
     const title = clean(item.find("h3, h2, .Heading, .ArticleListItem-title, .NewsListItem-title").first().text()) || clean($(a).text());
     const tDate = clean(item.find("time").first().text()) || clean(item.find(".ArticleListItem-date, .MetaTime").first().text());
-    if (!pick) pick = { id: url, title: title || "블리자드 게임 소식", date: tDate || "", url };
+    if (!pick) pick = { id: url, title: title || "블리자드 게임 소식", date: tDate || "", url, site: "blizzard" };
   });
-  if (pick) {
-    pick.summary = await fetchArticleWithSummary(pick.url, [
-      "article .ArticleBody", "article .bodyCopy", "article .body", "article", "main"
-    ]);
-  }
   return pick;
 }
 
@@ -161,13 +164,8 @@ async function getApex() {
     const card = $(a).closest("article, .m-article-card, li").first();
     const title = clean(card.find("h3, h2, .m-article-card__title, .title").first().text()) || clean($(a).text());
     const tDate = clean(card.find("time").first().text()) || clean(card.find(".m-article-card__date, .date").first().text());
-    if (!pick) pick = { id: url, title: title || "에이펙스 레전드 소식", date: tDate || "", url };
+    if (!pick) pick = { id: url, title: title || "에이펙스 레전드 소식", date: tDate || "", url, site: "apex" };
   });
-  if (pick) {
-    pick.summary = await fetchArticleWithSummary(pick.url, [
-      "article .l-article__body", "article .m-article__body", "article .content", "article", "main"
-    ]);
-  }
   return pick;
 }
 
@@ -186,46 +184,30 @@ async function getGameMeca() {
     const box = $(a).closest("li, article, .news-list, .list, .box, .wrap").first();
     const title = clean(box.find("h3, h2, .tit, .title, .subject").first().text()) || clean($(a).text());
     const tDate = clean(box.find("time").first().text()) || clean(box.find(".date, .regdate, .time").first().text());
-    if (!pick) pick = { id: url, title: title || "게임메카 뉴스", date: tDate || "", url };
+    if (!pick) pick = { id: url, title: title || "게임메카 뉴스", date: tDate || "", url, site: "gamemeca" };
   });
   if (!pick) {
     const firstA = $('a[href*="/news/"], a[href*="news/view.php?gid="]').first();
     if (firstA.length) {
       const url = absUrl(firstA.attr("href"), "https://www.gamemeca.com");
       const title = clean(firstA.text());
-      pick = { id: url, title: title || "게임메카 뉴스", date: "", url };
+      pick = { id: url, title: title || "게임메카 뉴스", date: "", url, site: "gamemeca" };
     }
-  }
-  if (pick) {
-    pick.summary = await fetchArticleWithSummary(pick.url, [
-      "#news_content", ".news_cont", ".view_cont", "article .content", "article", "main"
-    ]);
   }
   return pick;
 }
 
-function embedFor(source, item) {
-  const color =
-    source === "riot" ? 0xD13639 :
-    source === "blizzard" ? 0x00AEEF :
-    source === "apex" ? 0xF05023 :
-    0x222222;
-
-  const siteName =
-    source === "riot" ? "라이엇 게임즈 소식" :
-    source === "blizzard" ? "블리자드 게임 소식" :
-    source === "apex" ? "에이펙스 레전드 소식" :
-    "게임메카 뉴스";
-
+function embedFor(source, item, preview, imageUrl) {
+  const color = source === "riot" ? 0xD13639 : source === "blizzard" ? 0x00AEEF : source === "apex" ? 0xF05023 : 0x222222;
+  const title = source === "riot" ? "라이엇 게임즈 소식" : source === "blizzard" ? "블리자드 게임 소식" : source === "apex" ? "에이펙스 레전드 소식" : "게임메카 뉴스";
   const e = new EmbedBuilder()
     .setColor(color)
-    .setAuthor({ name: siteName })
-    .setTitle(item.title || siteName)
+    .setTitle(title)
     .setURL(item.url)
-    .setDescription(item.summary || "")
+    .setDescription((item.title ? `**${item.title}**\n\n` : "") + (preview || "") + (item.url ? `\n\n[전체 글 보기](${item.url})` : ""))
+    .addFields(item.date ? [{ name: "게시일", value: item.date, inline: true }] : [])
     .setTimestamp(new Date());
-
-  if (item.date) e.addFields({ name: "게시일", value: item.date, inline: true });
+  if (imageUrl) e.setThumbnail(imageUrl);
   return e;
 }
 
@@ -249,21 +231,18 @@ async function pollOnce(client, forceSend = false) {
     if (apex.status === "fulfilled" && apex.value && apex.value.id && apex.value.id !== state.apex) updates.push(["apex", apex.value]);
     if (gm.status === "fulfilled" && gm.value && gm.value.id && gm.value.id !== state.gamemeca) updates.push(["gamemeca", gm.value]);
 
-    if (!updates.length && !forceSend) return;
+    const baseItems = updates.length ? updates.map((x) => x[1]) : [riot, bliz, apex, gm].filter(x => x.status === "fulfilled" && x.value).map(x => x.value);
+    if (!baseItems.length && !forceSend) return;
+
+    const enriched = await Promise.all(baseItems.map(async (it) => {
+      const meta = await extractPreview(it.url, it.site);
+      return { it, meta };
+    }));
 
     const ch = client.channels?.cache?.get(TARGET_CHANNEL_ID) || await client.channels.fetch(TARGET_CHANNEL_ID).catch(() => null);
     if (!ch) return;
 
-    const embeds = updates.length
-      ? updates.map(([k, v]) => embedFor(k, v)).slice(0, 4)
-      : (() => {
-          const ersatz = [];
-          if (riot.status === "fulfilled" && riot.value) ersatz.push(embedFor("riot", riot.value));
-          if (bliz.status === "fulfilled" && bliz.value) ersatz.push(embedFor("blizzard", bliz.value));
-          if (apex.status === "fulfilled" && apex.value) ersatz.push(embedFor("apex", apex.value));
-          if (gm.status === "fulfilled" && gm.value) ersatz.push(embedFor("gamemeca", gm.value));
-          return ersatz.slice(0, 4);
-        })();
+    const embeds = enriched.map(({ it, meta }) => embedFor(it.site, it, meta.preview, meta.image)).slice(0, 4);
 
     if (embeds.length) {
       await ch.send({ embeds }).catch(() => {});
