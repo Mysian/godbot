@@ -93,6 +93,8 @@ require('./utils/category-channel-watcher').initChannelWatcher(client);
 require('./utils/godbot-core').initGodbotCore(client);
 // 범프 리워드, 범프 보상
 require('./utils/bump-reward')(client);
+// 닉네임 변경
+require('./commands/nickname-change').register(client);
 
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
