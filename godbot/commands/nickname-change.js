@@ -1,248 +1,235 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionsBitField } = require('discord.js');
+const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const lockfile = require('proper-lockfile');
 
 const APPROVAL_CHANNEL_ID = '1276751288117235755';
-const dataDir = path.join(__dirname, '../data');
-const pendingPath = path.join(dataDir, 'pending-nickname-changes.json');
+const STORE_PATH = path.join(__dirname, '..', 'data', 'nickname-requests.json');
 
-async function ensureDir() { if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true }); }
-async function readJSONSafe(file) {
-  await ensureDir();
-  if (!fs.existsSync(file)) return {};
-  const release = await lockfile.lock(file, { retries: 3 });
-  let parsed = {};
-  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8') || '{}'); } finally { await release(); }
-  return parsed;
+function ensureStore() {
+  const dir = path.dirname(STORE_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(STORE_PATH)) fs.writeFileSync(STORE_PATH, JSON.stringify({ seq: 1, items: {} }, null, 2));
 }
-async function writeJSONSafe(file, obj) {
-  await ensureDir();
-  const release = await lockfile.lock(file, { retries: 3 });
-  try { fs.writeFileSync(file, JSON.stringify(obj, null, 2), 'utf8'); } finally { await release(); }
+
+function loadStore() {
+  ensureStore();
+  try { return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')); } catch { return { seq: 1, items: {} }; }
 }
-function isValidNickname(nickname) {
-  const cho = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
-  const jung = 'ㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ';
-  if (!nickname) return false;
-  if (!/^[\w가-힣]+$/.test(nickname)) return false;
-  if ([...nickname].every(ch => cho.includes(ch) || jung.includes(ch))) return false;
-  if ([...nickname].some(ch => cho.includes(ch) || jung.includes(ch))) {
-    for (let i = 0; i < nickname.length; i++) {
-      const ch = nickname[i];
-      if (!(/[가-힣]/.test(ch) || /[a-zA-Z0-9]/.test(ch))) return false;
-    }
-  }
+
+function saveStore(data) {
+  ensureStore();
+  fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2));
+}
+
+function isValidNickname(n) {
+  if (!n) return false;
+  if (n.length < 2 || n.length > 32) return false;
+  if (!/^[\p{L}\p{N}\s._-]+$/u.test(n)) return false;
+  if (/^[\u3131-\u318E]+$/u.test(n)) return false;
+  if (/^[._\-\s]+$/.test(n)) return false;
   return true;
 }
-function rid() { return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`; }
 
-async function createApprovalEmbed(guild, payload) {
+async function postApprovalEmbed(guild, requester, newNick, reason) {
   const ch = await guild.channels.fetch(APPROVAL_CHANNEL_ID).catch(() => null);
-  if (!ch) throw new Error('APPROVAL_CHANNEL_NOT_FOUND');
+  if (!ch) return null;
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const embed = new EmbedBuilder()
-    .setColor(0x5865F2)
     .setTitle('닉네임 변경 요청')
-    .setDescription('아래 요청을 승인하거나 거절하세요.')
-    .addFields(
-      { name: '요청자', value: `<@${payload.userId}> (\`${payload.userId}\`)`, inline: false },
-      { name: '현재 닉네임', value: `\`${payload.oldNick}\``, inline: true },
-      { name: '변경 요청 닉네임', value: `\`${payload.newNick}\``, inline: true },
-      { name: '사용자 사유', value: payload.userReason || '-', inline: false },
-      { name: '요청 ID', value: payload.requestId, inline: false },
-    )
-    .setFooter({ text: `요청 시각 • ${new Date(payload.createdAt).toLocaleString('ko-KR')}` });
+    .setDescription(['요청자가 닉네임 변경을 요청했습니다.', `유저: <@${requester.id}> (${requester.user.tag})`, `현재 닉네임: ${requester.displayName}`, `요청 닉네임: ${newNick}`, `사유: ${reason || '-'}`].join('\n'))
+    .setColor(0x5865F2)
+    .setTimestamp(new Date());
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`nc_approve_${payload.requestId}`).setLabel('승인').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`nc_reject_${payload.requestId}`).setLabel('거절').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`nc_approve_${id}`).setLabel('승인').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`nc_reject_${id}`).setLabel('거절').setStyle(ButtonStyle.Danger)
   );
-  const msg = await ch.send({ embeds: [embed], components: [row] });
-  return msg;
+  const msg = await ch.send({ embeds: [embed], components: [row] }).catch(() => null);
+  if (!msg) return null;
+  return { requestId: id, messageId: msg.id, channelId: msg.channel.id };
 }
 
-async function loadPending() {
-  const data = await readJSONSafe(pendingPath);
-  if (!data || typeof data !== 'object') return {};
-  return data;
-}
-async function savePending(map) {
-  await writeJSONSafe(pendingPath, map || {});
+async function applyNickname(member, newNick) {
+  if (!member.manageable) throw new Error('not_manageable');
+  await member.setNickname(newNick).catch(e => { throw e; });
 }
 
-async function handleApprove(i, requestId) {
-  const pending = await loadPending();
-  const item = pending[requestId];
-  if (!item) { await i.reply({ content: '요청을 찾을 수 없습니다. 이미 처리되었을 수 있습니다.', ephemeral: true }); return; }
-  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청입니다. 상태: ${item.status}`, ephemeral: true }); return; }
-  const hasPerm = i.member.permissions.has(PermissionsBitField.Flags.ManageNicknames) || i.member.permissions.has(PermissionsBitField.Flags.Administrator);
-  if (!hasPerm) { await i.reply({ content: '닉네임 변경을 승인할 권한이 없습니다.', ephemeral: true }); return; }
+function upsertRequest(guildId, userId, payload) {
+  const store = loadStore();
+  const id = payload.requestId;
+  store.items[id] = {
+    id,
+    guildId,
+    userId,
+    newNick: payload.newNick,
+    reason: payload.reason || '',
+    messageId: payload.messageId,
+    channelId: payload.channelId,
+    status: 'pending',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  saveStore(store);
+  return id;
+}
 
-  const guild = i.guild;
-  let member = null;
-  try { member = await guild.members.fetch(item.userId); } catch {}
-  if (!member) { await i.reply({ content: '길드에서 해당 유저를 찾을 수 없습니다.', ephemeral: true }); return; }
+function getRequest(id) {
+  const store = loadStore();
+  return store.items[id] || null;
+}
 
-  const exists = guild.members.cache.some(m => (m.nickname === item.newNick) || (m.user && m.user.username === item.newNick));
-  if (exists) {
-    await i.reply({ content: '해당 닉네임은 이미 사용 중입니다. 거절 사유로 안내해주세요.', ephemeral: true });
+function setRequestStatus(id, status) {
+  const store = loadStore();
+  if (!store.items[id]) return;
+  store.items[id].status = status;
+  store.items[id].updatedAt = Date.now();
+  saveStore(store);
+}
+
+async function editApprovalMessage(guild, item, statusText) {
+  const ch = await guild.channels.fetch(item.channelId).catch(() => null);
+  if (!ch) return;
+  const msg = await ch.messages.fetch(item.messageId).catch(() => null);
+  if (!msg) return;
+  const old = msg.embeds?.[0];
+  const base = new EmbedBuilder(old ? EmbedBuilder.from(old).data : {}).setColor(statusText === '승인 완료' ? 0x57F287 : 0xED4245);
+  const fields = [
+    { name: '요청 유저', value: `<@${item.userId}>`, inline: true },
+    { name: '요청 닉네임', value: item.newNick, inline: true },
+    { name: '사유', value: item.reason || '-', inline: false },
+    { name: '처리 상태', value: statusText, inline: true }
+  ];
+  base.setFields(fields).setTimestamp(new Date());
+  await msg.edit({ embeds: [base], components: [] }).catch(() => {});
+}
+
+module.exports.data = new SlashCommandBuilder()
+  .setName('닉네임변경')
+  .setDescription('닉네임 변경 요청을 등록합니다.')
+  .addStringOption(o => o.setName('닉네임').setDescription('변경할 닉네임').setRequired(true))
+  .addStringOption(o => o.setName('사유').setDescription('변경 사유').setRequired(false));
+
+module.exports.execute = async (interaction) => {
+  await interaction.deferReply({ ephemeral: true });
+  const newNick = (interaction.options.getString('닉네임') || '').trim();
+  const reason = (interaction.options.getString('사유') || '').trim();
+  if (!isValidNickname(newNick)) {
+    await interaction.editReply('닉네임에는 한글/영문/숫자 및 공백, . _ - 만 허용되며 2~32자여야 합니다.');
     return;
   }
-
-  let changed = false;
-  try { await member.setNickname(item.newNick, `승인자: ${i.user.tag}`); changed = true; } catch { changed = false; }
-
-  item.status = changed ? 'approved' : 'failed';
-  item.processedAt = Date.now();
-  item.processorId = i.user.id;
-  await savePending(pending);
-
-  const msg = await i.channel.messages.fetch(item.messageId).catch(() => null);
-  if (msg) {
-    const updated = EmbedBuilder.from(msg.embeds[0] || new EmbedBuilder());
-    updated.setColor(changed ? 0x2ECC71 : 0xE67E22);
-    updated.addFields({ name: '처리 결과', value: changed ? `승인됨 • <@${i.user.id}>` : '실패(권한 또는 위계 문제로 닉네임 변경 불가)', inline: false });
-    await msg.edit({ embeds: [updated], components: [] }).catch(() => {});
+  const dup = interaction.guild.members.cache.find(m => (m.displayName || m.user.username) === newNick && m.id !== interaction.user.id);
+  if (dup) {
+    await interaction.editReply('이미 해당 닉네임을 사용하는 유저가 있습니다. 다른 닉네임을 입력해주세요.');
+    return;
   }
+  const posted = await postApprovalEmbed(interaction.guild, interaction.member, newNick, reason);
+  if (!posted) {
+    await interaction.editReply('승인 채널을 찾지 못했습니다. 관리자에게 문의하세요.');
+    return;
+  }
+  upsertRequest(interaction.guild.id, interaction.user.id, { requestId: posted.requestId, newNick, reason, messageId: posted.messageId, channelId: posted.channelId });
+  await interaction.editReply(['닉네임 변경 요청이 접수되었습니다.', `요청 닉네임: \`${newNick}\``, '관리자 승인 후 적용되며, 거절되는 경우 정수 차감은 없습니다.'].join('\n'));
+};
 
-  if (changed) {
-    const dmText = `닉네임 변경 요청이 승인되어 닉네임이 \`${item.newNick}\`(으)로 변경되었습니다.`;
-    await i.deferReply({ ephemeral: true }).catch(() => {});
-    try { await (await member.createDM()).send(dmText); } catch {}
-    await i.editReply({ content: '요청을 승인하고 닉네임을 변경했습니다.' }).catch(() => {});
-  } else {
-    await i.reply({ content: '승인 처리 중 닉네임 변경에 실패했습니다. 봇 권한/위치 확인이 필요합니다.', ephemeral: true });
+async function handleApprove(i, requestId) {
+  try { await i.deferUpdate(); } catch {}
+  const item = getRequest(requestId);
+  if (!item) {
+    try { await i.followUp({ content: '요청을 찾을 수 없습니다.', ephemeral: true }); } catch {}
+    return;
+  }
+  if (item.status === 'approved') {
+    try { await i.followUp({ content: '이미 승인 처리된 요청입니다.', ephemeral: true }); } catch {}
+    return;
+  }
+  if (item.status === 'rejected') {
+    try { await i.followUp({ content: '이미 거절 처리된 요청입니다.', ephemeral: true }); } catch {}
+    return;
+  }
+  const guild = i.guild;
+  const member = await guild.members.fetch(item.userId).catch(() => null);
+  if (!member) {
+    try { await i.followUp({ content: '대상 유저를 찾을 수 없습니다.', ephemeral: true }); } catch {}
+    return;
+  }
+  try {
+    await applyNickname(member, item.newNick);
+    setRequestStatus(requestId, 'approved');
+    await editApprovalMessage(guild, item, '승인 완료');
+    try { await member.send(['닉네임 변경 요청이 승인되었습니다.', `적용 닉네임: \`${item.newNick}\``].join('\n')); } catch {}
+    try { await i.followUp({ content: '요청을 승인하고 닉네임을 변경했습니다.', ephemeral: true }); } catch {}
+  } catch {
+    try { await i.followUp({ content: '승인 처리 중 닉네임 변경에 실패했습니다. 봇 권한/역할 위치를 확인하세요.', ephemeral: true }); } catch {}
   }
 }
 
 async function handleReject(i, requestId) {
-  const pending = await loadPending();
-  const item = pending[requestId];
-  if (!item) { await i.reply({ content: '요청을 찾을 수 없습니다. 이미 처리되었을 수 있습니다.', ephemeral: true }); return; }
-  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청입니다. 상태: ${item.status}`, ephemeral: true }); return; }
-  const hasPerm = i.member.permissions.has(PermissionsBitField.Flags.ManageNicknames) || i.member.permissions.has(PermissionsBitField.Flags.Administrator);
-  if (!hasPerm) { await i.reply({ content: '거절할 권한이 없습니다.', ephemeral: true }); return; }
-
+  const item = getRequest(requestId);
+  if (!item) {
+    try { await i.reply({ content: '요청을 찾을 수 없습니다.', ephemeral: true }); } catch {}
+    return;
+  }
+  if (item.status !== 'pending') {
+    try { await i.reply({ content: '이미 처리된 요청입니다.', ephemeral: true }); } catch {}
+    return;
+  }
   const modal = new ModalBuilder()
     .setCustomId(`nc_reject_modal_${requestId}`)
-    .setTitle('닉네임 변경 거절 사유 입력');
-  const reason = new TextInputBuilder()
-    .setCustomId('nc_reject_reason')
-    .setLabel('거절 사유 (유저 DM으로 전송)')
+    .setTitle('거절 사유 입력');
+  const inp = new TextInputBuilder()
+    .setCustomId('reason')
+    .setLabel('거절 사유')
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false)
-    .setMaxLength(1000);
-  modal.addComponents(new ActionRowBuilder().addComponents(reason));
-  await i.showModal(modal);
+    .setPlaceholder('사유를 입력하지 않으면 기본 안내만 전송됩니다.');
+  modal.addComponents(new ActionRowBuilder().addComponents(inp));
+  await i.showModal(modal).catch(() => {});
 }
 
 async function handleRejectModal(i, requestId) {
-  const pending = await loadPending();
-  const item = pending[requestId];
-  if (!item) { await i.reply({ content: '요청을 찾을 수 없습니다. 이미 처리되었을 수 있습니다.', ephemeral: true }); return; }
-  if (item.status !== 'pending') { await i.reply({ content: `이미 처리된 요청입니다. 상태: ${item.status}`, ephemeral: true }); return; }
-
-  const rejectReason = (i.fields.getTextInputValue('nc_reject_reason') || '').trim() || '사유 미입력';
-  item.status = 'rejected';
-  item.processedAt = Date.now();
-  item.processorId = i.user.id;
-  item.rejectReason = rejectReason;
-  await savePending(pending);
-
-  const msg = await i.guild.channels.fetch(APPROVAL_CHANNEL_ID).then(c => c.messages.fetch(item.messageId)).catch(() => null);
-  if (msg) {
-    const updated = EmbedBuilder.from(msg.embeds[0] || new EmbedBuilder());
-    updated.setColor(0xE74C3C);
-    updated.addFields({ name: '처리 결과', value: `거절됨 • <@${i.user.id}>`, inline: false }, { name: '거절 사유', value: rejectReason, inline: false });
-    await msg.edit({ embeds: [updated], components: [] }).catch(() => {});
+  try { await i.deferReply({ ephemeral: true }); } catch {}
+  const item = getRequest(requestId);
+  if (!item) {
+    await i.editReply('요청을 찾을 수 없습니다.');
+    return;
   }
-
+  if (item.status !== 'pending') {
+    await i.editReply('이미 처리된 요청입니다.');
+    return;
+  }
+  const reason = i.fields.getTextInputValue('reason')?.trim() || '';
+  setRequestStatus(requestId, 'rejected');
+  await editApprovalMessage(i.guild, { ...item, reason: item.reason || reason }, '거절 완료');
   let dmSent = false;
   try {
-    const user = await i.client.users.fetch(item.userId);
-    await user.send(`닉네임 변경 요청이 거절되었습니다.\n사유: ${rejectReason}\n요청 닉네임: \`${item.newNick}\``);
-    dmSent = true;
-  } catch { dmSent = false; }
-
-  await i.reply({ content: dmSent ? '거절 처리 및 유저 DM 발송 완료.' : '거절 처리 완료. DM 발송 실패(유저 DM 차단/오류).', ephemeral: true });
+    const m = await i.guild.members.fetch(item.userId).catch(() => null);
+    if (m) {
+      await m.send(['닉네임 변경 요청이 거절되었습니다.', reason ? `사유: ${reason}` : '사유: -'].join('\n'));
+      dmSent = true;
+    }
+  } catch {}
+  await i.editReply(dmSent ? '거절 처리 및 유저 DM 발송 완료.' : '거절 처리 완료. DM 발송 실패(유저 DM 차단/오류).');
 }
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('닉네임변경')
-    .setDescription('닉네임 변경을 요청합니다. 관리자의 승인 후 적용됩니다.')
-    .addStringOption(o => o.setName('닉네임').setDescription('변경할 닉네임').setRequired(true))
-    .addStringOption(o => o.setName('변경_사유').setDescription('변경 사유를 입력하세요').setRequired(true)),
-  async execute(interaction) {
-    const newNick = (interaction.options.getString('닉네임') || '').trim();
-    const userReason = (interaction.options.getString('변경_사유') || '').trim();
-    const member = interaction.member;
-    const oldNick = member.nickname || member.user.username;
-
-    if (!isValidNickname(newNick)) {
-      await interaction.reply({ content: '닉네임에는 한글/영문/숫자만 허용되며, 초성/모음만의 조합이나 특수문자는 불가합니다.', ephemeral: true });
-      return;
+module.exports.register = (client) => {
+  client.on('interactionCreate', async (i) => {
+    if (i.isButton()) {
+      if (i.customId.startsWith('nc_approve_')) {
+        const id = i.customId.replace('nc_approve_', '');
+        await handleApprove(i, id);
+        return;
+      }
+      if (i.customId.startsWith('nc_reject_')) {
+        const id = i.customId.replace('nc_reject_', '');
+        await handleReject(i, id);
+        return;
+      }
     }
-
-    await interaction.guild.members.fetch();
-    const exists = interaction.guild.members.cache.some(m => (m.nickname === newNick) || (m.user && m.user.username === newNick));
-    if (exists) {
-      await interaction.reply({ content: '이미 해당 닉네임을 사용하는 유저가 있습니다. 다른 닉네임을 입력해주세요.', ephemeral: true });
-      return;
+    if (i.isModalSubmit()) {
+      if (i.customId.startsWith('nc_reject_modal_')) {
+        const id = i.customId.replace('nc_reject_modal_', '');
+        await handleRejectModal(i, id);
+        return;
+      }
     }
-
-    const requestId = rid();
-    const payload = {
-      requestId,
-      guildId: interaction.guildId,
-      channelId: APPROVAL_CHANNEL_ID,
-      messageId: null,
-      userId: interaction.user.id,
-      oldNick,
-      newNick,
-      userReason,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
-
-    let sent = null;
-    try { sent = await createApprovalEmbed(interaction.guild, payload); }
-    catch (e) {
-      await interaction.reply({ content: '승인 채널을 찾지 못했습니다. 관리자에게 문의하세요.', ephemeral: true });
-      return;
-    }
-
-    payload.messageId = sent.id;
-    const pending = await loadPending();
-    pending[requestId] = payload;
-    await savePending(pending);
-
-    await interaction.reply({
-      content: [
-        '닉네임 변경 요청이 접수되었습니다.',
-        `요청 닉네임: \`${newNick}\``,
-        '관리자 승인 후 적용되며, 거절되는 경우 정수 차감은 없습니다.'
-      ].join('\n'),
-      ephemeral: true
-    });
-  },
-  register(client) {
-    client.on('interactionCreate', async (i) => {
-      try {
-        if (i.isButton()) {
-          if (i.customId.startsWith('nc_approve_')) {
-            const requestId = i.customId.replace('nc_approve_', '');
-            await handleApprove(i, requestId);
-          } else if (i.customId.startsWith('nc_reject_')) {
-            const requestId = i.customId.replace('nc_reject_', '');
-            await handleReject(i, requestId);
-          }
-        } else if (i.isModalSubmit()) {
-          if (i.customId.startsWith('nc_reject_modal_')) {
-            const requestId = i.customId.replace('nc_reject_modal_', '');
-            await handleRejectModal(i, requestId);
-          }
-        }
-      } catch {}
-    });
-  },
+  });
 };
