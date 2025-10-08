@@ -1,10 +1,12 @@
 const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { getBE, addBE } = require('./be-util');
 
 const APPROVAL_CHANNEL_ID = '1276751288117235755';
 const LOG_CHANNEL_ID = '1380874052855529605';
 const STORE_PATH = path.join(__dirname, '..', 'data', 'nickname-requests.json');
+const COST_BE = 500000;
 
 function ensureStore() {
   const dir = path.dirname(STORE_PATH);
@@ -51,7 +53,8 @@ async function postApprovalEmbed(guild, requester, requestId) {
       `유저: <@${item.userId}> (${requester.user.tag})`,
       `현재 닉네임: ${requester.displayName}`,
       `요청 닉네임: ${item.newNick}`,
-      `사유: ${item.reason && item.reason.trim().length ? item.reason : '-'}`
+      `사유: ${item.reason && item.reason.trim().length ? item.reason : '-'}`,
+      `처리 시 차감: ${COST_BE.toLocaleString()} BE`
     ].join('\n'))
     .setColor(0x5865F2)
     .setTimestamp(new Date());
@@ -114,7 +117,7 @@ async function deleteApprovalMessage(guild, item) {
   }
 }
 
-async function postResultLog(guild, item, statusText, processorUserId, usedReason) {
+async function postResultLog(guild, item, statusText, processorUserId, usedReason, beUsed) {
   const ch = await guild.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (!ch) return;
   const embed = new EmbedBuilder()
@@ -125,7 +128,8 @@ async function postResultLog(guild, item, statusText, processorUserId, usedReaso
       { name: '요청 닉네임', value: item.newNick, inline: true },
       { name: '사유', value: usedReason && usedReason.trim().length ? usedReason : (item.reason && item.reason.trim().length ? item.reason : '-'), inline: false },
       { name: '처리 상태', value: statusText, inline: true },
-      { name: '처리자', value: processorUserId ? `<@${processorUserId}>` : '-', inline: true }
+      { name: '처리자', value: processorUserId ? `<@${processorUserId}>` : '-', inline: true },
+      { name: 'BE', value: beUsed ? `-${COST_BE.toLocaleString()} BE` : '차감 없음', inline: true }
     )
     .setTimestamp(new Date());
   await ch.send({ embeds: [embed] }).catch(() => {});
@@ -173,13 +177,24 @@ module.exports.execute = async (interaction) => {
     await interaction.editReply('이미 해당 닉네임을 사용하는 유저가 있습니다. 다른 닉네임을 입력해주세요.');
     return;
   }
+  const balance = getBE(interaction.user.id);
+  if (balance < COST_BE) {
+    await interaction.editReply(`정수가 부족합니다. 필요한 정수: ${COST_BE.toLocaleString()} BE, 보유 정수: ${balance.toLocaleString()} BE`);
+    return;
+  }
   const reqId = createRequest(interaction.guild.id, interaction.user.id, newNick, reason);
   const posted = await postApprovalEmbed(interaction.guild, interaction.member, reqId);
   if (!posted) {
     await interaction.editReply('승인 채널을 찾지 못했습니다. 관리자에게 문의하세요.');
     return;
   }
-  await interaction.editReply(['닉네임 변경 요청이 접수되었습니다.', `요청 닉네임: \`${newNick}\``, `사유: ${reason}`, '관리자 승인 후 적용되며, 거절되는 경우 정수 차감은 없습니다.'].join('\n'));
+  await interaction.editReply([
+    '닉네임 변경 요청이 접수되었습니다.',
+    `요청 닉네임: \`${newNick}\``,
+    `사유: ${reason}`,
+    `관리자 승인 시 ${COST_BE.toLocaleString()} BE가 차감됩니다.`,
+    '거절 또는 변경 실패 시 정수 차감은 없습니다.'
+  ].join('\n'));
 };
 
 async function handleApprove(i, requestId) {
@@ -190,13 +205,19 @@ async function handleApprove(i, requestId) {
   const guild = i.guild;
   const member = await guild.members.fetch(item.userId).catch(() => null);
   if (!member) { try { await i.followUp({ content: '대상 유저를 찾을 수 없습니다.', ephemeral: true }); } catch {} return; }
+  const balance = getBE(item.userId);
+  if (balance < COST_BE) {
+    try { await i.followUp({ content: `유저 정수 부족으로 승인할 수 없습니다. 필요: ${COST_BE.toLocaleString()} BE, 보유: ${balance.toLocaleString()} BE`, ephemeral: true }); } catch {}
+    return;
+  }
   try {
     await member.setNickname(item.newNick);
+    await addBE(item.userId, -COST_BE, '닉네임 변경 수수료');
     setRequestStatus(requestId, 'approved');
     await deleteApprovalMessage(guild, item);
-    try { await member.send(['닉네임 변경 요청이 승인되었습니다.', `적용 닉네임: \`${item.newNick}\``].join('\n')); } catch {}
-    await postResultLog(guild, item, '승인 완료', i.user?.id || null, '');
-    try { await i.followUp({ content: '요청을 승인하고 닉네임을 변경했습니다.', ephemeral: true }); } catch {}
+    try { await member.send(['닉네임 변경 요청이 승인되었습니다.', `적용 닉네임: \`${item.newNick}\``, `차감: ${COST_BE.toLocaleString()} BE`].join('\n')); } catch {}
+    await postResultLog(guild, item, '승인 완료', i.user?.id || null, '', true);
+    try { await i.followUp({ content: '요청을 승인하고 닉네임을 변경했으며 정수를 차감했습니다.', ephemeral: true }); } catch {}
   } catch {
     try { await i.followUp({ content: '승인 처리 중 닉네임 변경에 실패했습니다. 봇 권한/역할 위치를 확인하세요.', ephemeral: true }); } catch {}
   }
@@ -225,11 +246,11 @@ async function handleRejectModal(i, requestId) {
   try {
     const m = await i.guild.members.fetch(item.userId).catch(() => null);
     if (m) {
-      await m.send(['닉네임 변경 요청이 거절되었습니다.', modalReason && modalReason.length ? `사유: ${modalReason}` : (item.reason && item.reason.length ? `사유: ${item.reason}` : '사유: -')].join('\n'));
+      await m.send(['닉네임 변경 요청이 거절되었습니다.', modalReason && modalReason.length ? `사유: ${modalReason}` : (item.reason && item.reason.length ? `사유: ${item.reason}` : '사유: -'), '정수 차감은 없습니다.'].join('\n'));
       dmSent = true;
     }
   } catch {}
-  await postResultLog(i.guild, item, '거절 완료', i.user?.id || null, modalReason);
+  await postResultLog(i.guild, item, '거절 완료', i.user?.id || null, modalReason, false);
   await i.editReply(dmSent ? '거절 처리 및 유저 DM 발송 완료.' : '거절 처리 완료. DM 발송 실패(유저 DM 차단/오류).');
 }
 
