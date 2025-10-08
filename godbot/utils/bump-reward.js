@@ -39,7 +39,7 @@ module.exports = (client) => {
     await addBE(user.id, amount, reason);
 
     const name = member.displayName || member.username || user.username || "유저";
-    const txt = `-# 🔹 ${name} 님의 bump에 감사를 표하며 정수가 ${amount.toLocaleString()} 만큼 지급됩니다.`;
+    const txt = `-# 🔹 ${name} 님의 bump에 감사를 표하며 정수가 ${amount.toLocaleString()} 만큼 지급됩니다. [연속 진행시 최대 20만 정수까지 지급]`;
     await msg.channel.send({ content: txt });
   });
 };
