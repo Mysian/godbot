@@ -228,7 +228,7 @@ async function handleReject(i, requestId) {
   if (!item) { try { await i.reply({ content: '요청을 찾을 수 없습니다.', ephemeral: true }); } catch {} return; }
   if (item.status !== 'pending') { try { await i.reply({ content: '이미 처리된 요청입니다.', ephemeral: true }); } catch {} return; }
   const modal = new ModalBuilder().setCustomId(`nc_reject_modal_${requestId}`).setTitle('거절 사유 입력');
-  const inp = new TextInputBuilder().setCustomId('reason').setLabel('거절 사유').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('사유를 입력하지 않으면 기본 안내만 전송됩니다.');
+  const inp = new TextInputBuilder().setCustomId('reason').setLabel('거절 사유').setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder('사유를 입력하지 않으면 해당 유저가 작성한 변경 희망 사유가 그대로 전송됩니다.');
   modal.addComponents(new ActionRowBuilder().addComponents(inp));
   await i.showModal(modal).catch(() => {});
 }
