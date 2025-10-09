@@ -2,7 +2,7 @@ const { PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, Button
 const fs = require("fs");
 const path = require("path");
 
-const CONTROL_CHANNEL_ID = "1425958641197912105";
+const CONTROL_CHANNEL_ID = "1425966714604224566";
 const ROLE_ID_A = "1205052922296016906";
 const ROLE_ID_B = "1403748042666151936";
 const DATA_PATH = path.join(__dirname, "../data/approval-blocked.json");
