@@ -22,6 +22,8 @@ const DONOR_ROLE_ID = '1397076919127900171';
 const SERVER_LOCK_ROLE_ID = '1403748042666151936';
 const XP_LOCK_ROLE_ID = '1286237811959140363';
 
+const ADMIN_ROLE_IDS = ['786128824365482025','1201856430580432906'];
+
 const DIGEST_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function readJsonSafe(p, fallback) {
@@ -36,18 +38,7 @@ function writeJsonSafe(p, obj) {
     fs.writeFileSync(p, JSON.stringify(obj, null, 2));
   } catch {}
 }
-
-function getMostRecentDateKeyed(obj) {
-  if (!obj) return null;
-  let latest = null;
-  Object.keys(obj).forEach(k => {
-    const d = new Date(k);
-    if (!Number.isNaN(d)) latest = latest && latest > d ? latest : d;
-  });
-  return latest;
-}
 function daysBetween(a, b) { return Math.floor((a.getTime() - b.getTime())/86400000); }
-
 function coerceWarnTsList(entry) {
   if (!entry) return [];
   if (Array.isArray(entry)) return entry.filter(x => typeof x === 'number');
@@ -56,7 +47,6 @@ function coerceWarnTsList(entry) {
   if (Array.isArray(entry.events)) return entry.events.filter(x => typeof x === 'number');
   return [];
 }
-
 function recencyFactor(days) {
   if (!Number.isFinite(days)) return 0.0;
   if (days <= 3) return 1.0;
@@ -86,7 +76,6 @@ function posCapByRecency(p, days) {
   if (days > 14) return Math.min(p, 45);
   return p;
 }
-
 function loadState() {
   return readJsonSafe(STATE_PATH, { lastMessageId: null, lastRun: 0 });
 }
@@ -94,24 +83,48 @@ function saveState(s) {
   writeJsonSafe(STATE_PATH, s);
 }
 
+function hoursFmt(sec) {
+  const h = (sec/3600);
+  return h >= 10 ? h.toFixed(1) : h.toFixed(2);
+}
+
+function pickTopVoiceChannelDurations(activityLogger, sinceTs) {
+  try {
+    if (typeof activityLogger.getVoiceChannelDurations === 'function') {
+      return activityLogger.getVoiceChannelDurations({ since: sinceTs });
+    }
+  } catch {}
+  try {
+    const map = {};
+    const all = activityLogger.getAll ? activityLogger.getAll() : [];
+    for (const e of all || []) {
+      if (!e) continue;
+      const ts = e.time || e.ts || 0;
+      if (sinceTs && ts < sinceTs) continue;
+      if ((e.type === 'voice' || e.activityType === 'voice') && e.channelId && Number.isFinite(e.dur)) {
+        map[e.channelId] = (map[e.channelId] || 0) + e.dur;
+      }
+    }
+    return map;
+  } catch { return {}; }
+}
+
 async function computeDigest(client, guild) {
   const now = new Date();
-  const activityData = readJsonSafe(ACTIVITY_DATA_PATH, {});
   const warnHistory = readJsonSafe(WARN_HISTORY_PATH, {});
   const warningsDb = readJsonSafe(WARNINGS_PATH, {});
   const sehamDb = readJsonSafe(SEHAM_PATH, {});
   const approvalToggle = readJsonSafe(APPROVAL_SETTINGS_PATH, { enabled: true });
   const voiceNotify = readJsonSafe(VOICE_NOTIFY_PATH, {});
-
-  const activityTracker = require('../utils/activity-tracker.js');
-  const activityLogger = require('../utils/activity-logger.js');
-  const relationship = require('../utils/relationship.js');
-
   const members = await guild.members.fetch();
   const users = [...members.values()].filter(m => !m.user.bot);
 
   const dayMs = 86400000;
   const tsNow = Date.now();
+
+  const activityTracker = require('../utils/activity-tracker.js');
+  const activityLogger = require('../utils/activity-logger.js');
+  const relationship = require('../utils/relationship.js');
 
   const stats = require('../utils/activity-tracker.js').getStats({});
 
@@ -133,9 +146,6 @@ async function computeDigest(client, guild) {
 
     const acts = (activityLogger.getUserActivities(userId) || []).sort((a,b)=>b.time-a.time);
     const activitiesCount = acts.length;
-    const gameNames = acts.filter(a => a.activityType === 'game' && a.details && a.details.name).map(a => a.details.name);
-    const uniqueGames = new Set(gameNames).size;
-    const musicCount = acts.filter(a => a.activityType === 'music').length;
 
     const hasServerLock = m.roles.cache.has(SERVER_LOCK_ROLE_ID);
     const hasXpLock = m.roles.cache.has(XP_LOCK_ROLE_ID);
@@ -186,7 +196,7 @@ async function computeDigest(client, guild) {
       (activitiesCount >= 50 ? 45 : activitiesCount >= 25 ? 30 : 10) +
       (voiceHours < 0.1 ? 40 : voiceHours < 0.5 ? 25 : 0) +
       (msgCount >= 150 ? 10 : 0) +
-      (uniqueGames >= 3 ? 5 : 0) -
+      (dominance2 >= 0.6 || dominance3 >= 0.6 ? 5 : 0) -
       (voiceHours >= 1 ? 15 : 0);
     const offsiteRaw = Math.max(0, Math.min(95, offsiteBase));
 
@@ -267,9 +277,12 @@ async function computeDigest(client, guild) {
     let lastActiveStr = '-';
     if (lastActiveDate) lastActiveStr = `<t:${Math.floor(lastActiveDate.getTime()/1000)}:R>`;
 
+    const isAdmin = ADMIN_ROLE_IDS.some(r=>m.roles.cache.has(r));
+
     return {
       id: userId,
       tag: m.user.tag,
+      display: m.displayName || m.user.username,
       joinedAt,
       lastActiveDays,
       lastActiveStr,
@@ -277,10 +290,10 @@ async function computeDigest(client, guild) {
       booster: m.roles.cache.has(BOOSTER_ROLE_ID),
       donor: m.roles.cache.has(DONOR_ROLE_ID),
       exempt: EXEMPT_ROLE_IDS.some(r=>m.roles.cache.has(r)),
+      admin: isAdmin,
       P,
       msgCount,
-      voiceSec,
-      musicCount
+      voiceSec
     };
   };
 
@@ -291,26 +304,71 @@ async function computeDigest(client, guild) {
   const total = prof.length;
   const new7 = prof.filter(p => p.joinedAt && daysBetween(now, p.joinedAt) <= 7).length;
 
-  const longInactiveTargets = prof.filter(p => !p.exempt && !p.booster && !p.donor && p.lastActiveDays >= 90);
-  const longInactiveBooster = prof.filter(p => p.booster && p.lastActiveDays >= 60);
-  const longInactiveDonor = prof.filter(p => p.donor && p.lastActiveDays >= 90);
-  const newbieInactive = prof.filter(p => p.newbie && p.joinedAt && daysBetween(now, p.joinedAt) >= 7 && p.lastActiveDays >= 7);
+  const longInactiveTargets = prof.filter(p => !p.exempt && !p.booster && !p.donor && p.lastActiveDays >= 90).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
+  const newbieInactive = prof.filter(p => p.newbie && p.joinedAt && daysBetween(now, p.joinedAt) >= 7 && p.lastActiveDays >= 7).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
 
-  const warnsAllTs = [];
-  Object.values(warnHistory).forEach(v => warnsAllTs.push(...coerceWarnTsList(v)));
-  Object.values(warningsDb).forEach(arr => {
-    if (Array.isArray(arr)) arr.forEach(e => {
-      const t = Date.parse(e?.date); if (Number.isFinite(t)) warnsAllTs.push(t);
-    });
-  });
-  const countInDaysAll = (d) => warnsAllTs.filter(ts => tsNow - ts <= d*dayMs).length;
-  const warn7All = countInDaysAll(7);
-  const warn30All = countInDaysAll(30);
-  const warn90All = countInDaysAll(90);
+  const adminMembers = prof.filter(p => p.admin);
+  const adminActive7 = adminMembers.filter(p => p.lastActiveDays <= 7).length;
+  const adminInactive14 = adminMembers.filter(p => p.lastActiveDays > 14).length;
 
-  const sehamAll = Object.values(sehamDb).map(x => Array.isArray(x?.logs) ? x.logs : []).flat();
-  const sehamCount7 = sehamAll.filter(l => tsNow - (l?.ts||0) <= 7*dayMs).length;
-  const sehamCount30 = sehamAll.filter(l => tsNow - (l?.ts||0) <= 30*dayMs).length;
+  const premiumCount = guild.premiumSubscriptionCount || 0;
+
+  const since30d = tsNow - 30*dayMs;
+  const vcDurByChannel = pickTopVoiceChannelDurations(activityLogger, since30d) || {};
+  const vcTopChannel = Object.entries(vcDurByChannel).sort((a,b)=>b[1]-a[1])[0] || null;
+  let vcTopChannelName = '데이터 부족';
+  let vcTopChannelHours = '-';
+  if (vcTopChannel) {
+    const ch = guild.channels.cache.get(vcTopChannel[0]);
+    vcTopChannelName = ch ? `#${ch.name}` : `#${vcTopChannel[0]}`;
+    vcTopChannelHours = `${hoursFmt(vcTopChannel[1])}h`;
+  }
+  const topVoiceUser = prof.slice().sort((a,b)=>b.voiceSec-a.voiceSec)[0];
+
+  const fmtServerStatus = [
+    `총원: ${total}명`,
+    `활성 7/30일: ${active7}/${active30}명`,
+    `7일 신규: ${new7}명`,
+    `부스트: ${premiumCount}회`,
+    `관리진: ${adminMembers.length}명 (7일 내 활동 ${adminActive7}명, 14일↑ 비활동 ${adminInactive14}명)`
+  ].join('\n');
+
+  const embed1 = new EmbedBuilder()
+    .setTitle('📊 관리 대시보드')
+    .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
+    .setColor(0x5865F2)
+    .addFields(
+      { name: '서버 현황', value: fmtServerStatus, inline: true },
+      { name: '음성채널 사용 TOP', value: [
+        `채널: ${vcTopChannelName}`,
+        `지난 30일 누적: ${vcTopChannelHours}`
+      ].join('\n'), inline: true },
+      { name: '음성 사용량 최상위 유저', value: topVoiceUser ? `<@${topVoiceUser.id}> — ${hoursFmt(topVoiceUser.voiceSec)}h` : '데이터 부족', inline: true }
+    );
+
+  const fmtList = (arr, take = 10, mapper = (x)=>x) => {
+    const cut = arr.slice(0, take);
+    if (!cut.length) return '해당 없음';
+    return cut.map(mapper).join('\n');
+  };
+  const embed2 = new EmbedBuilder()
+    .setTitle('🧹 관리 큐')
+    .setColor(0xFFAB00)
+    .addFields(
+      {
+        name: `장기 미접속 (>=90일) — ${longInactiveTargets.length}명`,
+        value: fmtList(longInactiveTargets, 10, (p, i) => `${String(i+1).padStart(2,'0')}. <@${p.id}> — ${p.lastActiveDays}일 미접속`),
+        inline: false
+      },
+      {
+        name: `신규 비활동 (가입 7일↑, 활동 7일↑) — ${newbieInactive.length}명`,
+        value: fmtList(newbieInactive, 10, (p, i) => {
+          const joined = p.joinedAt ? `${daysBetween(now, p.joinedAt)}일 경과` : '-';
+          return `${String(i+1).padStart(2,'0')}. <@${p.id}> — 최근 활동 ${p.lastActiveDays}일 전, 가입 후 ${joined}`;
+        }),
+        inline: false
+      }
+    );
 
   const rank = (key, top=5, desc=true) => {
     const arr = prof
@@ -319,58 +377,12 @@ async function computeDigest(client, guild) {
       .slice(0, top);
     return arr;
   };
+  const fmtTop = (list) => list.length ? list.map((x,i)=>`${String(i+1).padStart(2,'0')}. <@${x.id}> — **${x.v}%**`).join('\n') : '데이터 부족';
 
   const topToxic = rank('toxic', 5, true);
   const topOffsite = rank('offsite', 5, true);
   const topChurn = rank('churn', 5, true);
-  const topFriendly = rank('friendly', 5, true);
-  const topInfluence = rank('influence', 5, true);
-  const topSteady = rank('steady', 5, true);
 
-  const mem = process.memoryUsage();
-  const rssMB = (mem.rss/1024/1024).toFixed(1);
-  const heapMB = (mem.heapUsed/1024/1024).toFixed(1);
-  const load1 = os.loadavg()[0]?.toFixed(2) || '0.00';
-  const cpuCount = os.cpus().length;
-
-  const approvalOn = !!approvalToggle.enabled;
-  const voiceNotifyOn = !!voiceNotify[guild.id];
-
-  const embed1 = new EmbedBuilder()
-    .setTitle('📊 관리 대시보드')
-    .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
-    .setColor(0x5865F2)
-    .addFields(
-      { name: '서버 현황', value: [
-        `총원: ${total}명`,
-        `활성 7일: ${active7}명`,
-        `활성 30일: ${active30}명`,
-        `7일 신규: ${new7}명`
-      ].join('\n'), inline: true },
-      { name: '시스템', value: [
-        `입장절차: ${approvalOn ? 'ON' : 'OFF'}`,
-        `음성 알림: ${voiceNotifyOn ? 'ON' : 'OFF'}`,
-        `메모리 RSS: ${rssMB}MB`,
-        `HeapUsed: ${heapMB}MB`,
-        `Load1m: ${load1} / ${cpuCount}코어`
-      ].join('\n'), inline: true },
-      { name: '경고/쎄함 최근', value: [
-        `경고 7/30/90일: ${warn7All}/${warn30All}/${warn90All}`,
-        `쎄함 7/30일: ${sehamCount7}/${sehamCount30}`
-      ].join('\n'), inline: true }
-    );
-
-  const embed2 = new EmbedBuilder()
-    .setTitle('🧹 관리 큐')
-    .setColor(0xFFAB00)
-    .addFields(
-      { name: '장기 미접속(>=90일)', value: `${longInactiveTargets.length}명`, inline: true },
-      { name: '부스터 60일↑', value: `${longInactiveBooster.length}명`, inline: true },
-      { name: '도너 90일↑', value: `${longInactiveDonor.length}명`, inline: true },
-      { name: '신규 비활동(가입 7일↑, 활동 7일↑)', value: `${newbieInactive.length}명`, inline: true }
-    );
-
-  const fmtTop = (list) => list.length ? list.map((x,i)=>`${String(i+1).padStart(2,'0')}. <@${x.id}> — **${x.v}%**`).join('\n') : '데이터 부족';
   const embed3 = new EmbedBuilder()
     .setTitle('⚠️ 위험/관리 지표 TOP5')
     .setColor(0xE67E22)
@@ -379,6 +391,10 @@ async function computeDigest(client, guild) {
       { name: '‘뒷서버’ 의심 정황', value: fmtTop(topOffsite), inline: false },
       { name: '이탈 위험', value: fmtTop(topChurn), inline: false }
     );
+
+  const topFriendly = rank('friendly', 5, true);
+  const topInfluence = rank('influence', 5, true);
+  const topSteady = rank('steady', 5, true);
 
   const embed4 = new EmbedBuilder()
     .setTitle('💙 우호/영향 TOP5')
