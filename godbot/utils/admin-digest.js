@@ -287,35 +287,21 @@ async function computeDigest(client, guild) {
   const adminActive7 = adminMembers.filter(p => p.lastActiveDays <= 7).length;
   const adminInactive14 = adminMembers.filter(p => p.lastActiveDays > 14).length;
   const premiumCount = guild.premiumSubscriptionCount || 0;
-  const since30d = Date.now() - 30*86400000;
-  const vcDurByChannel = pickTopVoiceChannelDurations(require('../utils/activity-logger.js'), since30d) || {};
-  const vcTopChannel = Object.entries(vcDurByChannel).sort((a,b)=>b[1]-a[1])[0] || null;
-  let vcTopChannelName = '데이터 부족';
-  let vcTopChannelHours = '-';
-  if (vcTopChannel) {
-    const ch = guild.channels.cache.get(vcTopChannel[0]);
-    vcTopChannelName = ch ? `#${ch.name}` : `#${vcTopChannel[0]}`;
-    vcTopChannelHours = `${hoursFmt(vcTopChannel[1])}h`;
-  }
   const topVoiceUser = prof.slice().sort((a,b)=>b.voiceSec-a.voiceSec)[0];
   const fmtServerStatus = [
     `총원: ${total}명`,
-    `활성 7/30일: ${active7}/${active30}명`,
-    `7일 신규: ${new7}명`,
-    `부스트: ${premiumCount}회`,
-    `관리진: ${adminMembers.length}명 (7일 내 활동 ${adminActive7}명, 14일↑ 비활동 ${adminInactive14}명)`
+    `서버 이용량 7일간/30일간: ${active7}/${active30}명`,
+    `7일간 신규 입장 유저: ${new7}명`,
+    `서버 총 부스트: ${premiumCount}회`,
+    `관리진: ${adminMembers.length}명 (7일 내 활동 ${adminActive7}명, 14일 이상 비활동 ${adminInactive14}명)`
   ].join('\n');
   const embed1 = new EmbedBuilder()
     .setTitle('📊 관리 대시보드')
     .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
     .setColor(0x5865F2)
     .addFields(
-      { name: '서버 현황', value: fmtServerStatus, inline: true },
-      { name: '음성채널 사용 TOP', value: [
-        `채널: ${vcTopChannelName}`,
-        `지난 30일 누적: ${vcTopChannelHours}`
-      ].join('\n'), inline: true },
-      { name: '음성 사용량 최상위 유저', value: topVoiceUser ? `<@${topVoiceUser.id}> — ${hoursFmt(topVoiceUser.voiceSec)}h` : '데이터 부족', inline: true }
+      { name: '🔍 서버 현황', value: fmtServerStatus, inline: true },
+      { name: '👑 음성채팅 1위', value: topVoiceUser ? `<@${topVoiceUser.id}> — ${hoursFmt(topVoiceUser.voiceSec)}h` : '데이터 부족', inline: true }
     );
   const fmtList = (arr, take = 10, mapper = (x)=>x) => {
     const cut = arr.slice(0, take);
