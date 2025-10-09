@@ -296,7 +296,7 @@ async function computeDigest(client, guild) {
     `관리진: ${adminMembers.length}명 (7일 내 활동 ${adminActive7}명, 14일 이상 비활동 ${adminInactive14}명)`
   ].join('\n');
   const embed1 = new EmbedBuilder()
-    .setTitle('📊 관리 대시보드')
+    .setTitle('📊 서버 정보')
     .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
     .setColor(0x5865F2)
     .addFields(
@@ -309,7 +309,7 @@ async function computeDigest(client, guild) {
     return cut.map(mapper).join('\n');
   };
   const embed2 = new EmbedBuilder()
-    .setTitle('🧹 관리 큐')
+    .setTitle('🧹 비활동 인원')
     .setColor(0xFFAB00)
     .addFields(
       {
@@ -344,7 +344,7 @@ async function computeDigest(client, guild) {
   const topOffsite = rank('offsite', 5, true);
   const topChurn = rank('churn', 5, true);
   const embed3 = new EmbedBuilder()
-    .setTitle('⚠️ 위험/관리 지표 TOP5')
+    .setTitle('⚠️ 부정적 지표 유저 TOP5')
     .setColor(0xE67E22)
     .addFields(
       { name: '분쟁/배척 성향', value: fmtTop(topToxic), inline: false },
@@ -355,7 +355,7 @@ async function computeDigest(client, guild) {
   const topInfluence = rank('influence', 5, true);
   const topSteady = rank('steady', 5, true);
   const embed4 = new EmbedBuilder()
-    .setTitle('💙 우호/영향 TOP5')
+    .setTitle('💙 긍정적 지표 유저 TOP5')
     .setColor(0x43B581)
     .addFields(
       { name: '서버에 우호적', value: fmtTop(topFriendly), inline: false },
