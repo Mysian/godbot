@@ -95,6 +95,8 @@ require('./utils/godbot-core').initGodbotCore(client);
 require('./utils/bump-reward')(client);
 // 닉네임 변경
 require('./commands/nickname-change').register(client);
+// 관리자 전용 자동 임베드 생성
+require('./utils/admin-digest').start(client);
 
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
