@@ -158,6 +158,8 @@ module.exports = (client) => {
     try {
       if (msg.channelId !== CONTROL_CHANNEL_ID) return;
       if (!msg.guild) return;
+      if (msg.author?.bot) return;
+      if (msg.webhookId) return;
       const hasManage = msg.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
       if (!hasManage) return;
       const targets = parseTargetsFromMessage(msg).slice(0, 10);
@@ -166,7 +168,7 @@ module.exports = (client) => {
         const blocked = isBlocked(uid);
         const embed = makeConfirmEmbed(msg.guild, uid, blocked, msg.author.id);
         const components = makeButtons(uid, blocked);
-        await msg.reply({ embeds: [embed], components });
+        await msg.reply({ embeds: [embed], components, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
       }
     } catch {}
   });
@@ -175,12 +177,13 @@ module.exports = (client) => {
       if (!i.isButton()) return;
       if (i.channelId !== CONTROL_CHANNEL_ID) return;
       if (!i.guild) return;
+      if (i.user?.bot) { try { await i.deferUpdate().catch(() => {}); } catch {} return; }
       const hasManage = i.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
       if (!hasManage) { try { await i.reply({ content: "권한이 없습니다.", ephemeral: true }); } catch {} return; }
       const [ns, action, uid] = String(i.customId).split(":");
       if (ns !== "blk" || !/^\d{17,20}$/.test(uid)) return;
       if (action === "cancel") {
-        try { await i.update({ components: [], content: "취소되었습니다." }); } catch {}
+        try { await i.update({ components: [], content: "취소되었습니다.", allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
         return;
       }
       if (action === "apply") {
@@ -191,7 +194,7 @@ module.exports = (client) => {
           .setDescription("해당 유저의 승인 절차가 차단되었으며 지정 역할이 부여되었습니다.")
           .addFields({ name: "대상", value: `<@${uid}> (${uid})` })
           .setTimestamp(new Date());
-        try { await i.update({ embeds: [embed], components: [] }); } catch {}
+        try { await i.update({ embeds: [embed], components: [], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
         return;
       }
       if (action === "remove") {
@@ -202,7 +205,7 @@ module.exports = (client) => {
           .setDescription("해당 유저의 승인 절차 제한이 해제되었습니다.")
           .addFields({ name: "대상", value: `<@${uid}> (${uid})` })
           .setTimestamp(new Date());
-        try { await i.update({ embeds: [embed], components: [] }); } catch {}
+        try { await i.update({ embeds: [embed], components: [], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
         return;
       }
     } catch {}
