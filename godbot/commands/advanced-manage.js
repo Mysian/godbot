@@ -26,6 +26,10 @@ const EXEMPT_ROLE_IDS = [
 const LOG_CHANNEL_ID = '1380874052855529605';
 const BOOSTER_ROLE_ID = '1207437971037356142';
 const DONOR_ROLE_ID = '1397076919127900171';
+const THREAD_PARENT_WHITELIST = [
+  '1202425624061415464',
+  '1209147973255036959'
+];
 
 const COLOR_ROLE_IDS = [
   '1294259058102239305', '1374740411662209085', '1296493619359780925',
@@ -298,34 +302,39 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
   return arr;
 }
 
-async function collectAllThreads(guild) {
-  const channels = guild.channels.cache;
-  let threads = [];
+async function collectAllThreads(guild, allowedParentIds = THREAD_PARENT_WHITELIST, includePrivateArchived = false) {
+  // allowedParentIds가 지정되어 있으면 해당 부모 채널만 스캔
+  const channels = guild.channels.cache.filter(ch =>
+    ch &&
+    [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum].includes(ch.type) &&
+    allowedParentIds.includes(ch.id) // ★ 핵심: 두 채널만
+  );
 
-  // 부모 채널이 스레드를 가질 수 있는 타입만 순회
+  const threads = [];
+  const withTimeout = (p, ms = 8000) => Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
+  ]);
   for (const ch of channels.values()) {
-    if (!ch || !ch.isTextBased?.()) continue;
-    // Text/Announcement/Forum 등 스레드 부모 채널만 선별
-    if (![ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum].includes(ch.type)) continue;
-    if (!ch.threads?.fetchActive) continue;
-
-    // 활성 스레드
-    const active = await ch.threads.fetchActive().catch(() => null);
-    if (active?.threads?.size) threads.push(...active.threads.values());
-
-    // 보관(아카이브) 스레드 - public
-    const archivedPub = await ch.threads.fetchArchived({ type: 'public' }).catch(() => null);
-    if (archivedPub?.threads?.size) threads.push(...archivedPub.threads.values());
-
-    // 보관(아카이브) 스레드 - private (권한 없으면 실패할 수 있음)
-    const archivedPriv = await ch.threads.fetchArchived({ type: 'private' }).catch(() => null);
-    if (archivedPriv?.threads?.size) threads.push(...archivedPriv.threads.values());
+    if (!ch?.threads?.fetchActive) continue;
+    try {
+      const active = await withTimeout(ch.threads.fetchActive().catch(() => null));
+      if (active?.threads?.size) threads.push(...active.threads.values());
+    } catch (_) {}
+    try {
+      const archivedPub = await withTimeout(ch.threads.fetchArchived({ type: 'public', limit: 100 }).catch(() => null));
+      if (archivedPub?.threads?.size) threads.push(...archivedPub.threads.values());
+    } catch (_) {}
+    if (includePrivateArchived) {
+      try {
+        const archivedPriv = await withTimeout(ch.threads.fetchArchived({ type: 'private', limit: 100 }).catch(() => null));
+        if (archivedPriv?.threads?.size) threads.push(...archivedPriv.threads.values());
+      } catch (_) {}
+    }
   }
-
-  // 중복 제거 (혹시 모를 중복 대비)
-  const map = new Map();
-  for (const t of threads) map.set(t.id, t);
-  return Array.from(map.values());
+  const uniq = new Map();
+  for (const t of threads) uniq.set(t.id, t);
+  return Array.from(uniq.values());
 }
 
 function calcThreadLastActivity(thread) {
@@ -340,7 +349,7 @@ function calcThreadLastActivity(thread) {
 }
 async function fetchInactiveThreads(guild, days = INACTIVE_THREAD_DAYS) {
   const now = Date.now();
-  const all = await collectAllThreads(guild);
+  const all = await collectAllThreads(guild, THREAD_PARENT_WHITELIST, false);
   const result = [];
   for (const th of all) {
     const lastTs = calcThreadLastActivity(th);
@@ -663,8 +672,9 @@ module.exports = {
 
         // ★ 비활동 스레드 제거
     if (option === 'thread_cleanup') {
-      let threads = await fetchInactiveThreads(guild, INACTIVE_THREAD_DAYS);
-      let page = 0;
+  await interaction.editReply({ content: '🔎 비활동 스레드를 검색 중입니다…', ephemeral: true });
+  let threads = await fetchInactiveThreads(guild, INACTIVE_THREAD_DAYS);
+  let page = 0;
 
       const totalPages = () => Math.max(1, Math.ceil(threads.length / THREAD_PAGE_SIZE));
       const pageSlice = () => {
