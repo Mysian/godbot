@@ -5,6 +5,7 @@ const { addBE } = require("../commands/be-util.js");
 const TARGET_CHANNEL_ID = "1215630657393528842";
 const DISBOARD_BOT_ID = "302050872383242240";
 const STREAK_PATH = path.join(__dirname, "../data/bump-streak.json");
+const DICOALL_BOT_ID = process.env.DICOALL_BOT_ID || null;
 
 function loadStreak() {
   if (!fs.existsSync(STREAK_PATH)) fs.writeFileSync(STREAK_PATH, "{}");
@@ -18,9 +19,18 @@ module.exports = (client) => {
   client.on("messageCreate", async (msg) => {
     if (msg.author?.bot !== true) return;
     if (msg.channelId !== TARGET_CHANNEL_ID) return;
-    if (msg.author.id !== DISBOARD_BOT_ID) return;
+
+    const isDisboard = msg.author.id === DISBOARD_BOT_ID && msg.interaction?.commandName === "bump";
+    const isDicoall = (DICOALL_BOT_ID ? msg.author.id === DICOALL_BOT_ID : true) && msg.interaction?.commandName === "up";
+
+    if (isDicoall) {
+      setTimeout(() => { if (msg.deletable) msg.delete().catch(() => {}); }, 10000);
+    }
+
+    if (!isDisboard) return;
+
     const inter = msg.interaction;
-    if (!inter || inter.commandName !== "bump") return;
+    if (!inter) return;
 
     const user = inter.user;
     const guild = msg.guild;
