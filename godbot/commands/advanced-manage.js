@@ -747,55 +747,121 @@ module.exports = {
             if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
             await i.update({ embeds: [buildEmbed()], components: buildComponents(), ephemeral: true });
           } else if (i.customId === 'th-bulk') {
-            await i.deferUpdate();
-            const cur = pageSlice();
-            let success = 0, failed = 0;
+  await i.deferUpdate();
 
-            for (const t of cur) {
-              try {
-                const th = await guild.channels.fetch(t.id).catch(() => null);
-                if (!th) { failed++; continue; }
-                await th.delete(`고급관리 - 비활동 스레드 제거(일괄)`);
-                success++;
-              } catch {
-                failed++;
-              }
-            }
+  const cur = pageSlice();
+  // 로딩바(진행률 바) 시작
+  const loading = await interaction.followUp({
+    embeds: [progressEmbed('비활동 스레드 일괄 삭제 진행중', cur.length, 0, 0)],
+    ephemeral: true,
+    fetchReply: true
+  });
+  const editLoading = async (embed) => {
+    try {
+      await interaction.webhook.editMessage(loading.id, { embeds: [embed] });
+    } catch (_) {}
+  };
 
-            const deletedIds = new Set(cur.map(t => t.id));
-            threads = threads.filter(t => !deletedIds.has(t.id));
-            if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
+  let success = 0, failed = 0;
+  const deletedList = [];
 
-            await interaction.followUp({
-              content: `🧹 일괄 삭제 완료: 성공 ${success} / 실패 ${failed}`,
-              ephemeral: true
-            });
-            await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
-          } else if (i.customId.startsWith('thdel-')) {
-            const threadId = i.customId.slice('thdel-'.length);
-            await i.deferUpdate();
-            let ok = false;
-            try {
-              const th = await guild.channels.fetch(threadId).catch(() => null);
-              if (th) {
-                await th.delete(`고급관리 - 비활동 스레드 제거(개별)`);
-                ok = true;
-              }
-            } catch { /* noop */ }
+  for (const t of cur) {
+    try {
+      const th = await guild.channels.fetch(t.id).catch(() => null);
+      if (!th) { failed++; await editLoading(progressEmbed('비활동 스레드 일괄 삭제 진행중', cur.length, success, failed)); continue; }
+      await th.delete(`고급관리 - 비활동 스레드 제거(일괄)`);
+      deletedList.push(t);
+      success++;
+    } catch {
+      failed++;
+    }
+    await editLoading(progressEmbed('비활동 스레드 일괄 삭제 진행중', cur.length, success, failed));
+  }
+  const deletedIds = new Set(cur.map(t => t.id));
+  threads = threads.filter(t => !deletedIds.has(t.id));
+  if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
+  const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (logChannel) {
+    const logEmbed = new EmbedBuilder()
+      .setTitle('비활동 스레드 일괄 삭제')
+      .setDescription(
+        `관리자: <@${interaction.user.id}>\n` +
+        `대상 스레드: ${cur.length}개\n` +
+        `삭제 성공: ${success}개 / 실패: ${failed}개`
+      )
+      .setColor('#c0392b')
+      .setTimestamp();
 
-            if (ok) {
-              threads = threads.filter(t => t.id !== threadId);
-              if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
-              await interaction.followUp({ content: `🗑️ 스레드 \`${threadId}\` 삭제됨`, ephemeral: true });
-            } else {
-              await interaction.followUp({ content: `❌ 스레드 \`${threadId}\` 삭제 실패 (권한/존재 여부 확인)`, ephemeral: true });
-            }
-            await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
-          }
+    if (deletedList.length) {
+      const lines = deletedList
+        .slice(0, 30)
+        .map(t => `#${t.parentName} • ${t.name} (\`${t.id}\`) • 마지막 활동 ${t.diffDays}일 전`)
+        .join('\n');
+      logEmbed.addFields({ name: `삭제된 스레드 [${deletedList.length}개]`, value: lines + (deletedList.length > 30 ? `\n...외 ${deletedList.length - 30}개` : '') });
+    }
+    logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+  }
+  await editLoading(
+    new EmbedBuilder()
+      .setTitle('비활동 스레드 일괄 삭제 완료')
+      .setDescription(`성공 ${success} | 실패 ${failed} | 총 ${cur.length}`)
+      .setColor('#2ecc71')
+      .setTimestamp()
+  );
+  await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
+} else if (i.customId.startsWith('thdel-')) {
+  const threadId = i.customId.slice('thdel-'.length);
+  await i.deferUpdate();
+
+  // 현재 페이지 목록에서 메타 찾기(로그용)
+  const meta = pageSlice().find(t => t.id === threadId) || threads.find(t => t.id === threadId);
+
+  // 로딩바 시작 (총 1건)
+  const loading = await interaction.followUp({
+    embeds: [progressEmbed('스레드 삭제 진행중', 1, 0, 0)],
+    ephemeral: true,
+    fetchReply: true
+  });
+  const editLoading = async (embed) => {
+    try {
+      await interaction.webhook.editMessage(loading.id, { embeds: [embed] });
+    } catch (_) {}
+  };
+  let ok = false;
+  try {
+    const th = await guild.channels.fetch(threadId).catch(() => null);
+    if (th) {
+      await th.delete(`고급관리 - 비활동 스레드 제거(개별)`);
+      ok = true;
+    }
+  } catch { /* noop */ }
+  if (ok) {
+    await editLoading(progressEmbed('스레드 삭제 진행중', 1, 1, 0));
+    threads = threads.filter(t => t.id !== threadId);
+    if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
+    const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (logChannel) {
+      const logEmbed = new EmbedBuilder()
+        .setTitle('비활동 스레드 개별 삭제')
+        .setDescription(
+          `관리자: <@${interaction.user.id}>\n` +
+          `스레드: ${meta ? `${meta.name} (\`${threadId}\`)` : `\`${threadId}\``}\n` +
+          (meta ? `부모채널: #${meta.parentName}\n마지막 활동: ${meta.diffDays}일 전` : ``)
+        )
+        .setColor('#c0392b')
+        .setTimestamp();
+      logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+    }
+    await interaction.followUp({ content: `🗑️ 스레드 \`${threadId}\` 삭제됨`, ephemeral: true });
+  } else {
+    await editLoading(progressEmbed('스레드 삭제 진행중', 1, 0, 1));
+    await interaction.followUp({ content: `❌ 스레드 \`${threadId}\` 삭제 실패 (권한/존재 여부 확인)`, ephemeral: true });
+  }
+  await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
+}
           collector.resetTimer();
         } catch { /* ignore */ }
       });
-
       collector.on('end', async () => {
         try {
           await msg.edit({
@@ -808,7 +874,6 @@ module.exports = {
       });
       return;
     }
-
     const getEmbeds = (list, page, title, days) => {
       const embeds = [];
       const totalPages = Math.ceil(list.length / PAGE_SIZE) || 1;
