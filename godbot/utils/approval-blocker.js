@@ -190,7 +190,7 @@ module.exports = (client) => {
         addBlocked(uid);
         await applyBlockNow(i.guild, uid);
         const embed = new EmbedBuilder()
-          .setTitle("제한 적용 완료")
+          .setTitle("🚫 제한 적용 완료")
           .setDescription("해당 유저의 승인 절차가 차단되었으며 지정 역할이 부여되었습니다.")
           .addFields({ name: "대상", value: `<@${uid}> (${uid})` })
           .setTimestamp(new Date());
@@ -201,7 +201,7 @@ module.exports = (client) => {
         removeBlocked(uid);
         await removeBypassRoles(i.guild, uid);
         const embed = new EmbedBuilder()
-          .setTitle("제한 해제 완료")
+          .setTitle("✅ 제한 해제 완료")
           .setDescription("해당 유저의 승인 절차 제한이 해제되었습니다.")
           .addFields({ name: "대상", value: `<@${uid}> (${uid})` })
           .setTimestamp(new Date());
