@@ -14,6 +14,8 @@ const LONG_INACTIVE_DAYS = 90;
 const NEWBIE_ROLE_ID = '1295701019430227988';
 const NEWBIE_DAYS = 7;
 const PAGE_SIZE = 30;
+const INACTIVE_THREAD_DAYS = 30;
+const THREAD_PAGE_SIZE = 5;
 const EXEMPT_ROLE_IDS = [
   '1371476512024559756',
   '1208987442234007582',
@@ -295,29 +297,68 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
   return arr;
 }
 
-async function fetchInactiveColorRoleUsers(guild, days) {
-  const activityData = fs.existsSync(__dirname + '/../activity-data.json')
-    ? JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
-  const now = new Date();
-  const allMembers = await guild.members.fetch();
-  let arr = [];
-  for (const member of allMembers.values()) {
-    if (member.user.bot) continue;
-    if (!COLOR_ROLE_IDS.some(rid => member.roles.cache.has(rid))) continue;
-    const userData = activityData[member.id];
-    const lastDate = userData ? getMostRecentDate(userData) : null;
-    const diffDays = lastDate ? (now - lastDate) / (1000 * 60 * 60 * 24) : Infinity;
+async function collectAllThreads(guild) {
+  const channels = guild.channels.cache;
+  let threads = [];
+
+  // 부모 채널이 스레드를 가질 수 있는 타입만 순회
+  for (const ch of channels.values()) {
+    if (!ch || !ch.isTextBased?.()) continue;
+    // Text/Announcement/Forum 등 스레드 부모 채널만 선별
+    if (![ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum].includes(ch.type)) continue;
+    if (!ch.threads?.fetchActive) continue;
+
+    // 활성 스레드
+    const active = await ch.threads.fetchActive().catch(() => null);
+    if (active?.threads?.size) threads.push(...active.threads.values());
+
+    // 보관(아카이브) 스레드 - public
+    const archivedPub = await ch.threads.fetchArchived({ type: 'public' }).catch(() => null);
+    if (archivedPub?.threads?.size) threads.push(...archivedPub.threads.values());
+
+    // 보관(아카이브) 스레드 - private (권한 없으면 실패할 수 있음)
+    const archivedPriv = await ch.threads.fetchArchived({ type: 'private' }).catch(() => null);
+    if (archivedPriv?.threads?.size) threads.push(...archivedPriv.threads.values());
+  }
+
+  // 중복 제거 (혹시 모를 중복 대비)
+  const map = new Map();
+  for (const t of threads) map.set(t.id, t);
+  return Array.from(map.values());
+}
+
+function calcThreadLastActivity(thread) {
+  const candidates = [
+    thread.lastMessage?.createdTimestamp || null,
+    thread.archiveTimestamp || (thread.archivedAt ? +thread.archivedAt : null) || null,
+    thread.lastPinTimestamp || null,
+    thread.createdTimestamp || null,
+  ].filter(Boolean);
+  if (!candidates.length) return 0;
+  return Math.max(...candidates);
+}
+async function fetchInactiveThreads(guild, days = INACTIVE_THREAD_DAYS) {
+  const now = Date.now();
+  const all = await collectAllThreads(guild);
+  const result = [];
+  for (const th of all) {
+    const lastTs = calcThreadLastActivity(th);
+    const diffDays = lastTs ? (now - lastTs) / (1000 * 60 * 60 * 24) : Infinity;
     if (diffDays >= days) {
-      arr.push({
-        id: member.id,
-        tag: `<@${member.id}>`,
-        user: member.user,
-        nickname: member.displayName,
-        lastActive: lastDate
+      const parentName = th.parent?.name || '-';
+      result.push({
+        id: th.id,
+        name: th.name || '(제목 없음)',
+        url: th.url,
+        parentId: th.parentId || '',
+        parentName,
+        lastTs,
+        diffDays: Math.floor(diffDays),
       });
     }
   }
-  return arr;
+  result.sort((a, b) => a.lastTs - b.lastTs);
+  return result;
 }
 
 function progressEmbed(title, total, success, failed) {
@@ -370,7 +411,8 @@ module.exports = {
           { name: '음성채널 알림 설정', value: 'voice_notify' },
           { name: '음성채널 자동이동 설정', value: 'voice_auto' },
           { name: '세금누락 강제처리', value: 'tax_force' },
-          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' }
+          { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' },
+          { name: '비활동 스레드 제거', value: 'thread_cleanup' }
         )
     ),
   async execute(interaction) {
@@ -616,6 +658,144 @@ module.exports = {
         return await fetchInactiveNewbies(guild, selectedDays, warnedObj);
       };
       userList = await getUserList();
+    }
+
+        // ★ 비활동 스레드 제거
+    if (option === 'thread_cleanup') {
+      let threads = await fetchInactiveThreads(guild, INACTIVE_THREAD_DAYS);
+      let page = 0;
+
+      const totalPages = () => Math.max(1, Math.ceil(threads.length / THREAD_PAGE_SIZE));
+      const pageSlice = () => {
+        const start = page * THREAD_PAGE_SIZE;
+        return threads.slice(start, start + THREAD_PAGE_SIZE);
+      };
+
+      const buildEmbed = () => {
+        const cur = pageSlice();
+        const desc = cur.length
+          ? cur.map((t, idx) =>
+              `${page * THREAD_PAGE_SIZE + idx + 1}. [${t.name}](${t.url}) | \`${t.id}\` | #${t.parentName} | 마지막 활동 ${t.diffDays}일 전`
+            ).join('\n')
+          : '해당되는 스레드가 없습니다.';
+
+        return new EmbedBuilder()
+          .setTitle(`비활동 스레드 제거 (기준 ${INACTIVE_THREAD_DAYS}일)`)
+          .setDescription(desc)
+          .setFooter({ text: `${page + 1} / ${totalPages()} • 이 페이지에서 개별 삭제 또는 일괄 삭제가 가능합니다.` })
+          .setColor(0x7289da);
+      };
+
+      const buildComponents = () => {
+        const cur = pageSlice();
+        // 개별 삭제 버튼 (최대 5개)
+        const row1 = new ActionRowBuilder();
+        cur.forEach(t => {
+          row1.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`thdel-${t.id}`)
+              .setLabel(t.name?.slice(0, 20) || '삭제')
+              .setStyle(ButtonStyle.Danger)
+          );
+        });
+
+        // 네비/일괄 버튼
+        const row2 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('th-prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('th-refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('th-next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages() - 1),
+          new ButtonBuilder().setCustomId('th-bulk').setLabel('이 페이지 5개 일괄 삭제').setStyle(ButtonStyle.Danger).setDisabled(cur.length === 0)
+        );
+
+        // row1에 버튼이 1개도 없을 수 있으니, 최소 row2는 항상 붙여줌
+        const rows = [];
+        if (row1.components.length) rows.push(row1);
+        rows.push(row2);
+        return rows;
+      };
+
+      const msg = await interaction.editReply({
+        embeds: [buildEmbed()],
+        components: buildComponents(),
+        ephemeral: true
+      });
+
+      const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 120000 });
+
+      collector.on('collect', async i => {
+        try {
+          if (i.customId === 'th-prev') {
+            page = Math.max(0, page - 1);
+            await i.update({ embeds: [buildEmbed()], components: buildComponents(), ephemeral: true });
+          } else if (i.customId === 'th-next') {
+            page = Math.min(totalPages() - 1, page + 1);
+            await i.update({ embeds: [buildEmbed()], components: buildComponents(), ephemeral: true });
+          } else if (i.customId === 'th-refresh') {
+            threads = await fetchInactiveThreads(guild, INACTIVE_THREAD_DAYS);
+            if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
+            await i.update({ embeds: [buildEmbed()], components: buildComponents(), ephemeral: true });
+          } else if (i.customId === 'th-bulk') {
+            await i.deferUpdate();
+            const cur = pageSlice();
+            let success = 0, failed = 0;
+
+            for (const t of cur) {
+              try {
+                const th = await guild.channels.fetch(t.id).catch(() => null);
+                if (!th) { failed++; continue; }
+                await th.delete(`고급관리 - 비활동 스레드 제거(일괄)`);
+                success++;
+              } catch {
+                failed++;
+              }
+            }
+
+            const deletedIds = new Set(cur.map(t => t.id));
+            threads = threads.filter(t => !deletedIds.has(t.id));
+            if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
+
+            await interaction.followUp({
+              content: `🧹 일괄 삭제 완료: 성공 ${success} / 실패 ${failed}`,
+              ephemeral: true
+            });
+            await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
+          } else if (i.customId.startsWith('thdel-')) {
+            const threadId = i.customId.slice('thdel-'.length);
+            await i.deferUpdate();
+            let ok = false;
+            try {
+              const th = await guild.channels.fetch(threadId).catch(() => null);
+              if (th) {
+                await th.delete(`고급관리 - 비활동 스레드 제거(개별)`);
+                ok = true;
+              }
+            } catch { /* noop */ }
+
+            if (ok) {
+              threads = threads.filter(t => t.id !== threadId);
+              if (page >= totalPages()) page = Math.max(0, totalPages() - 1);
+              await interaction.followUp({ content: `🗑️ 스레드 \`${threadId}\` 삭제됨`, ephemeral: true });
+            } else {
+              await interaction.followUp({ content: `❌ 스레드 \`${threadId}\` 삭제 실패 (권한/존재 여부 확인)`, ephemeral: true });
+            }
+            await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
+          }
+          collector.resetTimer();
+        } catch { /* ignore */ }
+      });
+
+      collector.on('end', async () => {
+        try {
+          await msg.edit({
+            components: buildComponents().map(row => {
+              row.components.forEach(btn => btn.setDisabled(true));
+              return row;
+            })
+          });
+        } catch { /* ignore */ }
+      });
+      return;
     }
 
     const getEmbeds = (list, page, title, days) => {
