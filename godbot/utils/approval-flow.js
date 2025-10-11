@@ -605,6 +605,32 @@ function getUserPrivateChannel(guild, uid){
   if (byTopic) { setProg(uid, { channelId: byTopic.id }); return byTopic; }
   return null;
 }
+
+/* ⬇️ 여기부터 추가 */
+function isOtherJoinChannelName(name) {
+  if (!name) return false;
+  // 다른 입장봇이 만드는 형태: "입장-유저명" (우리 봇의 "_환영합니다" 미포함)
+  return /^입장-[^_]+$/u.test(name) && !name.includes("_환영합니다");
+}
+function channelAllowsUserView(ch, userId) {
+  try {
+    const ow = ch.permissionOverwrites?.cache?.get?.(userId);
+    return !!(ow && ow.allow && ow.allow.has(PermissionFlagsBits.ViewChannel));
+  } catch { return false; }
+}
+async function purgeOtherJoinChannels(guild, userId) {
+  try {
+    await guild.channels.fetch().catch(() => {});
+    const targets = guild.channels.cache.filter(c =>
+      c.type === ChannelType.GuildText &&
+      isOtherJoinChannelName(c.name) &&
+      channelAllowsUserView(c, userId)
+    );
+    for (const ch of targets.values()) {
+      try { await ch.delete("중복 입장 채널 정리(본 플로우 활성 상태)"); } catch {}
+    }
+  } catch {}
+}
 async function createPrivateChannel(guild, member) {
   const existing = getUserPrivateChannel(guild, member.id);
   if (existing) return existing;
@@ -691,6 +717,7 @@ function nickDupEmbed(progress) {
 async function startFlow(guild, member) {
   incHistory(member.id, "joins");
   const userId = member.id;
+  await purgeOtherJoinChannels(guild, userId);
   const ageDays = accountAgeDays(member.user);
   if (ageDays < 30) {
     try {
@@ -702,6 +729,7 @@ async function startFlow(guild, member) {
     return;
   }
   const ch = await createPrivateChannel(guild, member);
+  await purgeOtherJoinChannels(guild, userId);
   const msg = await ch.send({
     content: `<@${userId}>`,
     embeds: [step1Embed(member.user)],
@@ -1361,9 +1389,7 @@ module.exports.manualStart = async (guild, memberOrId) => {
             ? await guild.members.fetch(memberOrId).catch(() => null)
             : memberOrId;
         if (!member) return null;
-
-        // ⚠️ 토글 여부와 무관하게 강제 시작
-        // - 계정 생성 30일 미만은 기존 로직대로 자동 거절 처리됨
+        await purgeOtherJoinChannels(guild, member.id);
         await startFlow(guild, member);
         return getUserPrivateChannel(guild, member.id) || null;
     } catch { return null; }
