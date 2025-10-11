@@ -100,6 +100,9 @@ require('./commands/nickname-change').register(client);
 // 관리자 전용 자동 임베드 생성
 require('./utils/admin-digest').start(client);
 
+const controlPanel = require('./utils/control-panel');
+controlPanel.register(client);
+
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
 
@@ -134,6 +137,7 @@ client.once(Events.ClientReady, async () => {
     if (logChannel?.isTextBased?.()) {
       await logChannel.send(`-# 🔁 봇이 재시작되었습니다! (${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })})`);
     }
+    await controlPanel.publish(client);
   } catch (e) {
     console.error("재시작 로그 전송 실패:", e);
   }
