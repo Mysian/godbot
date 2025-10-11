@@ -156,7 +156,10 @@ async function ensurePanel(client) {
 
 async function handlePress(i) {
   if (!i.inGuild()) return;
-  if (!i.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) return i.reply({ content: '권한이 없습니다.', ephemeral: true });
+  const ALLOWED_ROLE_IDS = ['786128824365482025','1201856430580432906'];
+const canUse = i.member.permissions.has(PermissionsBitField.Flags.ManageGuild)
+  || i.member.roles.cache.some(r => ALLOWED_ROLE_IDS.includes(r.id));
+if (!canUse) return i.reply({ content: '권한이 없습니다.', ephemeral: true });
   if (!['ctrl_approval_on','ctrl_approval_off','ctrl_vn_on','ctrl_vn_off','ctrl_va_on','ctrl_va_off','ctrl_refresh'].includes(i.customId)) return;
   const gid = i.guildId;
   if (i.customId === 'ctrl_approval_on' || i.customId === 'ctrl_approval_off') {
