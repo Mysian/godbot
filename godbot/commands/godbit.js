@@ -1145,31 +1145,45 @@ if (sub === '매도') {
   });
 
   collector.on('collect', async btn => {
-    if (btn.customId === 'yes_sell') {
-      wallets[interaction.user.id][coin] -= amount;
-      if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
-      await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
-      wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
-      wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
-      await saveJson(walletsPath, wallets);
+  if (btn.customId === 'yes_sell') {
+    wallets[interaction.user.id][coin] -= amount;
+    if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
+    wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
+    const userBuysMap = wallets[interaction.user.id + "_buys"];
+    const currentHaveBeforeSell = have;
+    const avgBuyPriceForSell = (userBuysMap[coin] && currentHaveBeforeSell)
+      ? Number((userBuysMap[coin] / currentHaveBeforeSell).toFixed(6))
+      : price;
+    
+    const reduceCost = Number((avgBuyPriceForSell * amount).toFixed(3));
+    userBuysMap[coin] = Number(((userBuysMap[coin] || 0) - reduceCost).toFixed(3));
+    if (userBuysMap[coin] <= 0.0005) delete userBuysMap[coin];
+    
+    await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
+    wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
+    wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
+    wallets[interaction.user.id + "_realized_profit"] = wallets[interaction.user.id + "_realized_profit"] || {};
+    wallets[interaction.user.id + "_realized_profit"][coin] = Number(((wallets[interaction.user.id + "_realized_profit"][coin] || 0) + (net - reduceCost)).toFixed(3));
 
-      await addHistory(coins[coin], coins[coin].price);
-      await saveJson(coinsPath, coins);
+    await saveJson(walletsPath, wallets);
+    await addHistory(coins[coin], coins[coin].price);
+    await saveJson(coinsPath, coins);
+    recordVolume(coin, amount);
 
-      recordVolume(coin, amount);
-
-      await btn.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(`✅ 매도 완료!`)
-            .setDescription(
-              `${coin} **${amount}개** 매도 (개당 ${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)\n총 ${gross.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 수수료 ${fee.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE, 실수령 ${net.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE\n잔액: ${afterBal.toLocaleString()} BE`
-            )
-            .setColor('#f2a96a')
-        ],
-        components: []
-      });
-    } else {
+    await btn.update({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`✅ 매도 완료!`)
+          .setDescription(
+            `${coin} **${amount}개** 매도 (개당 ${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)
+실수령: ${net.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
+잔액: ${afterBal.toLocaleString()} BE`
+          )
+          .setColor('#f2a96a')
+      ],
+      components: []
+    });
+  } else {
       await btn.update({
         embeds: [
           new EmbedBuilder().setDescription(`❌ 매도를 취소했습니다.`).setColor('#f24a4a')
@@ -1520,14 +1534,21 @@ ${showDelisted
       const wallets = await loadJson(walletsPath, {});
 
       let realized = {};
+      let profitMap = {};
+      let revenueMap = {};
       for (const uid in wallets) {
-        if (!uid.endsWith("_realized")) continue;
-        const sum = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
-        realized[uid.replace("_realized", "")] = sum;
-      }
-      const realizedRank = Object.entries(realized)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 20);
+      if (uid.endsWith("_realized_profit")) {
+      profitMap[uid.replace("_realized_profit", "")] = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
+      } else if (uid.endsWith("_realized")) {
+      revenueMap[uid.replace("_realized", "")] = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
+    }
+  }
+realized = Object.keys(profitMap).length ? profitMap : revenueMap;
+
+const realizedRank = Object.entries(realized)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 20);
+
 
       let userHoldings = {};
       for (const uid in wallets) {
@@ -1545,7 +1566,7 @@ ${showDelisted
         .slice(0, 20);
 
       const realizedEmbed = new EmbedBuilder()
-        .setTitle('💰 실현 수익(매도 차익) TOP 20')
+        .setTitle(Object.keys(profitMap).length ? '💰 실현 수익(매도 차익) TOP 20' : '💰 실현 매출(입금액) TOP 20')
         .setColor('#ffcc00')
         .setDescription(
           realizedRank.length
