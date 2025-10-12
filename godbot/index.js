@@ -439,6 +439,54 @@ if (interaction.isButton() && interaction.customId === "approval_start_from_lobb
     return interaction.reply({ content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.", ephemeral: true }).catch(() => {});
   }
 
+  // === 로비 대안 버튼: "다른 인증절차 시도하기" ===
+if (interaction.isButton() && interaction.customId === "approval_force_new") {
+  if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
+    return interaction.reply({
+      content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.",
+      ephemeral: true
+    }).catch(() => {});
+  }
+
+  const guild = interaction.guild;
+  const uid = interaction.user.id;
+
+  try {
+    // 기존 다른 봇이 만든 입장 채널이 있어도, 우리 플로우로 새로 시작
+    const started = await (typeof manualStartApproval === "function" ? manualStartApproval(guild, uid) : null);
+    if (started && started.id) {
+      // ephemeral 메시지 갱신
+      return interaction.update({
+        embeds: [],
+        components: [],
+        content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
+      }).catch(async () => {
+        // 혹시 update 실패 시 reply fallback
+        await interaction.reply({
+          content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
+          ephemeral: true
+        }).catch(() => {});
+      });
+    }
+    return interaction.update({
+      embeds: [],
+      components: [],
+      content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘."
+    }).catch(async () => {
+      await interaction.reply({ content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true }).catch(() => {});
+    });
+  } catch (e) {
+    console.error("[수동 입장 강제 시작 오류]", e);
+    return interaction.update({
+      embeds: [],
+      components: [],
+      content: "처리 중 오류가 발생했어."
+    }).catch(async () => {
+      await interaction.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }).catch(() => {});
+    });
+  }
+}
+
   const guild = interaction.guild;
   const uid = interaction.user.id;
 
@@ -471,9 +519,29 @@ if (interaction.isButton() && interaction.customId === "approval_start_from_lobb
       || null;
   } catch {}
 
-  if (pch) {
+    if (pch) {
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
+    const embed = new EmbedBuilder()
+      .setColor(0xffa200)
+      .setTitle("진행 중인 입장 인증 채널 안내")
+      .setDescription([
+        `이미 진행 중인 인증 채널이 있습니다.`,
+        `➡️ <#${pch.id}> 로 이동해서 계속 진행해주세요.`,
+        "",
+        "혹시 해당 채널에서 문제가 발생하셨나요?",
+        "아래 버튼을 눌러 **다른 인증절차**를 새로 시작할 수 있습니다."
+      ].join("\n"));
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("approval_force_new")
+        .setLabel("다른 인증절차 시도하기")
+        .setStyle(ButtonStyle.Danger)
+    );
+
     return interaction.reply({
-      content: `진행 중인 입장 인증 채널이 있습니다.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해주세요.`,
+      embeds: [embed],
+      components: [row],
       ephemeral: true
     }).catch(() => {});
   }
