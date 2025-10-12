@@ -124,12 +124,22 @@ module.exports = {
         )
     )
     .addSubcommand(sub =>
-      sub.setName('지급')
-        .setDescription('특정 유저에게 특정 코인 지급')
-        .addUserOption(opt => opt.setName('유저').setDescription('지급 대상').setRequired(true))
-        .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
-        .addIntegerOption(opt => opt.setName('수량').setDescription('수량').setMinValue(1).setRequired(true))
+  sub.setName('지급')
+    .setDescription('특정 유저에게 특정 코인 지급')
+    .addUserOption(opt => opt.setName('유저').setDescription('지급 대상').setRequired(true))
+    .addStringOption(opt => opt.setName('코인').setDescription('코인명').setRequired(true))
+    .addIntegerOption(opt => opt.setName('수량').setDescription('수량').setMinValue(1).setRequired(true))
+    .addStringOption(opt =>
+      opt.setName('방식').setDescription('지급 방식').setRequired(false)
+        .addChoices(
+          { name: '에어드랍(원가 없음)', value: 'airdrop' },
+          { name: '매수 대행(원가 반영)', value: 'buy' }
+        )
     )
+    .addNumberOption(opt =>
+      opt.setName('단가').setDescription('매수 대행일 때 적용할 단가(BE)').setMinValue(0.001).setRequired(false)
+    )
+)
     .addSubcommand(sub =>
       sub.setName('초기화')
         .setDescription('코인 시장 전체 초기화(까리코인만 남음)')
@@ -216,7 +226,7 @@ module.exports = {
     const coins = await loadJson(coinsPath, {});
     if (sub === '타입목록') {
       const embed = new EmbedBuilder()
-        .setTitle('💠 [갓비트] 코인 타입 리스트 (총 15종)')
+        .setTitle(`💠 [갓비트] 코인 타입 리스트 (총 ${COIN_TYPES.length}종)`)
         .setColor('#1188ee');
       COIN_TYPES.forEach(t => {
         embed.addFields({
@@ -269,16 +279,36 @@ module.exports = {
       return interaction.reply({ content: `⚡️ ${changeCount}개 코인에 [${flow}] 옵션 적용됨.`, ephemeral: true });
     }
     if (sub === '지급') {
-      const user = interaction.options.getUser('유저');
-      const coin = interaction.options.getString('코인');
-      const qty = interaction.options.getInteger('수량');
-      if (!coins[coin]) return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
-      let wallets = await loadJson(walletsPath, {});
-      wallets[user.id] = wallets[user.id] || {};
-      wallets[user.id][coin] = (wallets[user.id][coin] || 0) + qty;
-      await saveJson(walletsPath, wallets);
-      return interaction.reply({ content: `✅ [${user.username}]님께 [${coin}] ${qty}개 지급 완료!`, ephemeral: true });
-    }
+  const user = interaction.options.getUser('유저');
+  const coin = interaction.options.getString('코인');
+  const qty = interaction.options.getInteger('수량');
+  const mode = interaction.options.getString('방식') || 'airdrop';
+  const unit = interaction.options.getNumber('단가') || 0;
+  if (!coins[coin]) {
+    return interaction.reply({ content: `❌ [${coin}] 존재하지 않는 코인입니다.`, ephemeral: true });
+  }
+  if (mode === 'buy' && unit <= 0) {
+    return interaction.reply({ content: `❌ 매수 대행은 '단가' 입력이 필요합니다.`, ephemeral: true });
+  }
+  let wallets = await loadJson(walletsPath, {});
+  wallets[user.id] = wallets[user.id] || {};
+  wallets[user.id][coin] = (wallets[user.id][coin] || 0) + qty;
+
+  if (mode === 'buy') {
+    const buysKey = user.id + "_buys";
+    wallets[buysKey] = wallets[buysKey] || {};
+    const addCost = Number((unit * qty).toFixed(3));
+    wallets[buysKey][coin] = Number(((wallets[buysKey][coin] || 0) + addCost).toFixed(3));
+  }
+  await saveJson(walletsPath, wallets);
+  return interaction.reply({
+    content: mode === 'buy'
+      ? `✅ [${user.username}]님께 [${coin}] ${qty}개 **매수 대행** 지급 완료!\n- 단가: ${unit.toLocaleString(undefined,{maximumFractionDigits:3})} BE\n- 매수 원가 반영: ${(unit*qty).toLocaleString(undefined,{maximumFractionDigits:3})} BE`
+      : `✅ [${user.username}]님께 [${coin}] ${qty}개 **에어드랍** 지급 완료!`,
+    ephemeral: true
+  });
+}
+
     if (sub === '초기화') {
       const now = new Date().toISOString();
       const coinsNew = {
@@ -550,8 +580,8 @@ module.exports = {
       }
       let userStats = [];
       for (const [uid, wallet] of Object.entries(wallets)) {
-        if (uid.endsWith('_buys') || uid.endsWith('_realized')) continue;
-        const qty = wallet[coin] || 0;
+      if (uid.endsWith('_buys') || uid.endsWith('_realized') || uid.endsWith('_realized_profit')) continue;
+      const qty = wallet[coin] || 0;
         if (qty > 0) {
           const userBuys = wallets[uid + "_buys"] || {};
           const buyCost = userBuys[coin] || 0;
@@ -623,3 +653,19 @@ module.exports = {
     }
   }
 };
+
+module.exports.autocomplete = async (interaction) => {
+  const focused = interaction.options.getFocused(true);
+  if (!focused || focused.name !== '코인명') return;
+  const coins = await loadJson(coinsPath, {});
+  const query = String(focused.value || '').toLowerCase();
+
+  const names = Object.keys(coins).filter(n => !n.startsWith('_'));
+  const filtered = names
+    .filter(n => n.toLowerCase().includes(query))
+    .slice(0, 25)
+    .map(n => ({ name: n, value: n }));
+
+  await interaction.respond(filtered);
+};
+
