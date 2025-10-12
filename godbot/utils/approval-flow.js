@@ -832,7 +832,7 @@ async function finalizeAdmission(guild, moderatorUser, targetId) {
     if (qch) {
       try {
         const m = await qch.messages.fetch(progT.queueMsgId);
-        await m.edit({ components: [] }).catch(() => {});
+        await m.delete().catch(() => {});
       } catch {}
     }
   }
@@ -1014,8 +1014,10 @@ module.exports = (client) => {
             const member = await i.guild.members.fetch(uid).catch(() => null);
             if (member) {
               const qmsg = await qch.send({
+                content: `<@${uid}>`,
                 embeds: [buildQueueEmbed(i.guild, member, updated)],
-                components: [queueButtons(updated)]
+                components: [queueButtons(updated)],
+                allowedMentions: { users: [uid] }
               });
               setProg(uid, { queueMsgId: qmsg.id });
             }
@@ -1334,7 +1336,12 @@ module.exports = (client) => {
             if (qch) {
               const member = await i.guild.members.fetch(uid).catch(() => null);
               if (!member) return;
-              const qmsg = await qch.send({ embeds: [buildQueueEmbed(i.guild, member, cur)], components: [queueButtons(cur)] });
+              const qmsg = await qch.send({
+                content: `<@${uid}>`,
+                embeds: [buildQueueEmbed(i.guild, member, cur)],
+                components: [queueButtons(cur)],
+                allowedMentions: { users: [uid] }
+              });
               setProg(uid, { queueMsgId: qmsg.id });
             }
             const chNow = getUserPrivateChannel(i.guild, uid);
