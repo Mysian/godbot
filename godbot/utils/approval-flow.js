@@ -1477,18 +1477,32 @@ module.exports = (client) => {
           }
 
           const silent = i.customId.startsWith("approve_silent_");
-          const pch = getUserPrivateChannel(i.guild, targetId) || await createPrivateChannel(i.guild, target);
-          let baseMsg = null;
-          if (progT.messageId) {
-            baseMsg = await pch.messages.fetch(progT.messageId).catch(() => null);
-          }
-          if (!baseMsg) {
-            baseMsg = await pch.send({ content: `<@${targetId}>`, embeds: [finalConsentEmbed(target)], components: consentRows({ greet: false, rules: false, inactive: false }), allowedMentions: { users: [targetId] } });
-            setProg(targetId, { messageId: baseMsg.id });
-          } else {
-            await baseMsg.edit({ content: `<@${targetId}>`, embeds: [finalConsentEmbed(target)], components: consentRows({ greet: false, rules: false, inactive: false }), allowedMentions: { users: [targetId] } });
-          }
-          setProg(targetId, { finalConsentFlags: { greet: false, rules: false, inactive: false }, finalConsentMsgId: baseMsg.id, silentApproved: silent });
+const pch = getUserPrivateChannel(i.guild, targetId) || await createPrivateChannel(i.guild, target);
+if (progT.finalConsentMsgId) {
+  try {
+    const old = await pch.messages.fetch(progT.finalConsentMsgId);
+    await old.delete().catch(() => {});
+  } catch {}
+}
+if (progT.messageId && progT.messageId !== progT.finalConsentMsgId) {
+  try {
+    const old2 = await pch.messages.fetch(progT.messageId);
+    await old2.delete().catch(() => {});
+  } catch {}
+}
+const newMsg = await pch.send({
+  content: `<@${targetId}>`,
+  embeds: [finalConsentEmbed(target)],
+  components: consentRows({ greet: false, rules: false, inactive: false }),
+  allowedMentions: { users: [targetId] }
+});
+setProg(targetId, {
+  messageId: newMsg.id,
+  finalConsentMsgId: newMsg.id,
+  finalConsentFlags: { greet: false, rules: false, inactive: false },
+  silentApproved: silent
+});
+
           if (progT.queueMsgId) {
             try {
               const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
