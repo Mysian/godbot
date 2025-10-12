@@ -100,22 +100,6 @@ require('./commands/nickname-change').register(client);
 // 관리자 전용 자동 임베드 생성
 require('./utils/admin-digest').start(client);
 
-const approvalOverridePath = path.join(__dirname, "data/approval-override.json");
-function loadApprovalOverride() {
-  try {
-    if (!fs.existsSync(approvalOverridePath)) fs.writeFileSync(approvalOverridePath, "{}");
-    return JSON.parse(fs.readFileSync(approvalOverridePath, "utf8"));
-  } catch {
-    try { fs.writeFileSync(approvalOverridePath, "{}"); } catch {}
-    return {};
-  }
-}
-function saveApprovalOverride(data) {
-  try {
-    fs.writeFileSync(approvalOverridePath, JSON.stringify(data, null, 2));
-  } catch {}
-}
-
 const controlPanel = require('./utils/control-panel');
 controlPanel.register(client);
 
@@ -449,7 +433,7 @@ client.on(Events.InteractionCreate, async interaction => {
   return; // approval-flow.js가 전담 처리
 }
 
-// === 로비 채널 '입장 절차 진행하기' 버튼 처리(이름 기반 중복 검사 강화) ===
+    // === 로비 채널 '입장 절차 진행하기' 버튼 처리(이름 기반 중복 검사 강화) ===
 if (interaction.isButton() && interaction.customId === "approval_start_from_lobby") {
   if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
     return interaction.reply({ content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.", ephemeral: true }).catch(() => {});
@@ -488,201 +472,8 @@ if (interaction.isButton() && interaction.customId === "approval_start_from_lobb
   } catch {}
 
   if (pch) {
-    const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
-    const embed = new EmbedBuilder()
-      .setColor(0xffa200)
-      .setTitle("진행 중인 입장 인증 채널 안내")
-      .setDescription([
-        `이미 진행 중인 인증 채널이 있습니다.`,
-        `➡️ <#${pch.id}> 로 이동해서 계속 진행해주세요.`,
-        "",
-        "혹시 해당 채널에서 문제가 발생하셨나요?",
-        "아래 버튼을 눌러 **다른 인증절차**를 새로 시작할 수 있습니다."
-      ].join("\n"));
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("approval_force_new")
-        .setLabel("다른 인증절차 시도하기")
-        .setStyle(ButtonStyle.Danger)
-    );
-
     return interaction.reply({
-      embeds: [embed],
-      components: [row],
-      ephemeral: true
-    }).catch(() => {});
-  }
-
-  try {
-    const started = await (typeof manualStartApproval === "function" ? manualStartApproval(guild, uid) : null);
-    if (started && started.id) {
-      return interaction.reply({
-        content: `입장 절차를 이곳에서 진행해주세요. 👉 <#${started.id}>`,
-        ephemeral: true
-      }).catch(() => {});
-    }
-    return interaction.reply({ content: "채널 생성에 실패했어요. 잠시 후 다시 시도해주세요.", ephemeral: true }).catch(() => {});
-  } catch (e) {
-    console.error("[수동 입장 시작 오류]", e);
-    return interaction.reply({ content: "처리 중 오류가 발생했습니다.", ephemeral: true }).catch(() => {});
-  }
-}
-
-// === 로비 대안 버튼: "다른 인증절차 시도하기" (유저당 1회 제한) ===
-if (interaction.isButton() && interaction.customId === "approval_force_new") {
-  if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
-    return interaction.reply({
-      content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.",
-      ephemeral: true
-    }).catch(() => {});
-  }
-
-  const guild = interaction.guild;
-  const uid = interaction.user.id;
-
-  // 1회 사용 여부 체크
-  const usedMap = loadApprovalOverride();
-  if (usedMap[uid]) {
-    return interaction.reply({
-      content: "이미 한 번 다른 인증절차를 시도했어. 서버를 **퇴장 후 재입장**하면 다시 한 번 시도할 수 있어.",
-      ephemeral: true
-    }).catch(() => {});
-  }
-
-  try {
-    const started = await (typeof manualStartApproval === "function" ? manualStartApproval(guild, uid) : null);
-    if (started && started.id) {
-      // 사용 기록 저장
-      usedMap[uid] = { usedAt: Date.now() };
-      saveApprovalOverride(usedMap);
-
-      // 원 메시지 깔끔히 갱신
-      if (interaction.message && typeof interaction.update === "function") {
-        return interaction.update({
-          embeds: [],
-          components: [],
-          content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
-        }).catch(async () => {
-          await interaction.reply({
-            content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
-            ephemeral: true
-          }).catch(() => {});
-        });
-      }
-      return interaction.reply({
-        content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
-        ephemeral: true
-      }).catch(() => {});
-    }
-
-    return interaction.reply({
-      content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.",
-      ephemeral: true
-    }).catch(() => {});
-  } catch (e) {
-    console.error("[수동 입장 강제 시작 오류]", e);
-    return interaction.reply({
-      content: "처리 중 오류가 발생했어.",
-      ephemeral: true
-    }).catch(() => {});
-  }
-}
-
-  const guild = interaction.guild;
-  const uid = interaction.user.id;
-
-  try {
-    // 기존 다른 봇이 만든 입장 채널이 있어도, 우리 플로우로 새로 시작
-    const started = await (typeof manualStartApproval === "function" ? manualStartApproval(guild, uid) : null);
-    if (started && started.id) {
-      // ephemeral 메시지 갱신
-      return interaction.update({
-        embeds: [],
-        components: [],
-        content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
-      }).catch(async () => {
-        // 혹시 update 실패 시 reply fallback
-        await interaction.reply({
-          content: `새로운 인증 절차를 시작했어. 👉 <#${started.id}> 에서 계속 진행해줘.`,
-          ephemeral: true
-        }).catch(() => {});
-      });
-    }
-    return interaction.update({
-      embeds: [],
-      components: [],
-      content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘."
-    }).catch(async () => {
-      await interaction.reply({ content: "채널 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true }).catch(() => {});
-    });
-  } catch (e) {
-    console.error("[수동 입장 강제 시작 오류]", e);
-    return interaction.update({
-      embeds: [],
-      components: [],
-      content: "처리 중 오류가 발생했어."
-    }).catch(async () => {
-      await interaction.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }).catch(() => {});
-    });
-  }
-}
-
-  const guild = interaction.guild;
-  const uid = interaction.user.id;
-
-  const display = interaction.member?.nickname?.trim()
-    || interaction.member?.displayName?.trim()
-    || interaction.user.globalName?.trim()
-    || interaction.user.username?.trim();
-
-  const toKebab = (s) => s
-    .normalize("NFKC")
-    .replace(/\s+/g, "-")
-    .replace(/_{2,}/g, "_")
-    .replace(/-+/g, "-")
-    .replace(/[^\p{L}\p{N}\-_]/gu, "")
-    .toLowerCase();
-
-  const base = toKebab(display || "user");
-  const nameCandidates = [
-    `입장-${base}`,
-    `입장-${base}님_환영합니다`,
-    `입장-${base}_환영합니다`,
-  ];
-
-  let pch = null;
-  try {
-    pch = (typeof findUserPrivateChannel === "function" ? findUserPrivateChannel(guild, uid) : null)
-      || guild.channels.cache.find(c => c.type === 0 && c.topic === uid)
-      || guild.channels.cache.find(c => c.type === 0 && nameCandidates.includes(c.name))
-      || guild.channels.cache.find(c => c.type === 0 && c.name.startsWith(`입장-${base}`))
-      || null;
-  } catch {}
-
-    if (pch) {
-    const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
-    const embed = new EmbedBuilder()
-      .setColor(0xffa200)
-      .setTitle("진행 중인 입장 인증 채널 안내")
-      .setDescription([
-        `이미 진행 중인 인증 채널이 있습니다.`,
-        `➡️ <#${pch.id}> 로 이동해서 계속 진행해주세요.`,
-        "",
-        "혹시 해당 채널에서 문제가 발생하셨나요?",
-        "아래 버튼을 눌러 **다른 인증절차**를 새로 시작할 수 있습니다."
-      ].join("\n"));
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("approval_force_new")
-        .setLabel("다른 인증절차 시도하기")
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    return interaction.reply({
-      embeds: [embed],
-      components: [row],
+      content: `진행 중인 입장 인증 채널이 있습니다.\n➡️ <#${pch.id}> 로 이동해서 계속 진행해주세요.`,
       ephemeral: true
     }).catch(() => {});
   }
@@ -1754,13 +1545,6 @@ client.on(Events.GuildMemberAdd, async member => {
   } catch (err) {
     console.error('[환영 역할 부여 실패]', err);
   }
-    try {
-    const usedMap = loadApprovalOverride();
-    if (usedMap[member.id]) {
-      delete usedMap[member.id];
-      saveApprovalOverride(usedMap);
-    }
-  } catch {}
 });
 
 client.on(Events.MessageCreate, async message => {
@@ -1790,13 +1574,6 @@ client.on(Events.GuildMemberRemove, async member => {
   } catch (err) {
     console.error("[퇴장 추적 오류]", err);
   }
-  try {
-  const usedMap = loadApprovalOverride();
-  if (usedMap[member.id]) {
-    delete usedMap[member.id];
-    saveApprovalOverride(usedMap);
-  }
-} catch {}
 });
 
 const dmRelay = require('./commands/dm.js');
