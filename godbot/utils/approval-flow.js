@@ -165,6 +165,14 @@ const CH_REJECT_NOTICE = "1240916343788797983";
 const ROLE_MEMBER_NORMAL = "816619403205804042";
 const ROLE_MEMBER_ALT = "1208987442234007582";
 const ROLE_REJECTED = "1205052922296016906";
+const MOD_ROLES = ["786128824365482025","1201856430580432906"];
+function isStaff(member){
+  try {
+    if (!member) return false;
+    if (member.permissions?.has(PermissionFlagsBits.ManageGuild)) return true;
+    return MOD_ROLES.some(id => member.roles?.cache?.has(id));
+  } catch { return false; }
+}
 
 const ROLE_PLAYSTYLE = {
   "빡겜러": "1210762363704311838",
@@ -337,16 +345,15 @@ function step1Embed(user) {
 
 function step1Buttons() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("src_disboard").setLabel("디스보드").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("src_dicoall").setLabel("디코올").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("src_dd").setLabel("디스보드ㆍ디코올").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("src_sns").setLabel("🛜SNS").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("src_ref").setLabel("🧑추천인(지인)").setStyle(ButtonStyle.Secondary)
   );
 }
 function step1ButtonsAlt() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("src_rejoin").setLabel("재입장").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("src_alt").setLabel("부계정 생성").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId("src_alt").setLabel("부계정 생성").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("src_rejoin").setLabel("재입장").setStyle(ButtonStyle.Success)
   );
 }
 function snsOrRefModal(kind = "SNS") {
@@ -933,7 +940,7 @@ module.exports = (client) => {
           const targetId = i.customId.split("_").pop();
           const reasonIn = i.fields.getTextInputValue("reason")?.trim();
           const finalReason = reasonIn && reasonIn.replace(/\s+/g, "") !== "" ? reasonIn : "관리자 판단에 따른 입장 거절";
-          if (!i.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
+          if (!isStaff(i.member)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
           const target = await i.guild.members.fetch(targetId).catch(() => null);
           if (!target) { await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true }); return; }
           const progT = getProg(targetId) || { userId: targetId };
@@ -959,7 +966,7 @@ module.exports = (client) => {
           const targetId = i.customId.split("_").pop();
           const reasonIn = i.fields.getTextInputValue("reason")?.trim();
           const finalReason = reasonIn && reasonIn.replace(/\s+/g, "") !== "" ? reasonIn : "닉네임이 서버 규칙에 부적합하여 변경을 요청드립니다.";
-          if (!i.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
+          if (!isStaff(i.member)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
           const member = await i.guild.members.fetch(targetId).catch(() => null);
           if (!member) { await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true }); return; }
           const pch = getUserPrivateChannel(i.guild, targetId);
@@ -1234,11 +1241,14 @@ module.exports = (client) => {
           }
           if (i.customId.startsWith("src_")) {
             const id = i.customId.slice(4);
-            if (id === "sns") { await i.showModal(snsOrRefModal("SNS")); return; }
-            if (id === "ref") { await i.showModal(snsOrRefModal("추천인")); return; }
-            if (id === "alt") { await i.showModal(altModal()); return; }
-            const sourceText = id === "disboard" ? "디스보드" : id === "dicoall" ? "디코올" : id === "rejoin" ? "재입장" : "기타";
-            setProg(uid, { sourceText, isAlt: false, step: 21 });
+          if (id === "sns") { await i.showModal(snsOrRefModal("SNS")); return; }
+          if (id === "ref") { await i.showModal(snsOrRefModal("추천인")); return; }
+          if (id === "alt") { await i.showModal(altModal()); return; }
+          const sourceText =
+          id === "dd" ? "디스보드ㆍ디코올" :
+          id === "rejoin" ? "재입장" : "기타";
+          setProg(uid, { sourceText, isAlt: false, step: 21 });
+
             const chNow = getUserPrivateChannel(i.guild, uid);
             const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
             if (targetMsg) {
@@ -1404,7 +1414,7 @@ module.exports = (client) => {
         }
 
         if (["approve_", "approve_silent_", "reject_", "ban_", "nickreq_"].some((p) => i.customId.startsWith(p))) {
-          if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
+          if (!isStaff(i.member)) { await i.reply({ content: "관리 권한이 필요합니다.", ephemeral: true }); return; }
           const targetId = i.customId.split("_").pop();
           const target = await i.guild.members.fetch(targetId).catch(() => null);
           if (!target) { await i.reply({ content: "대상 유저를 찾을 수 없습니다.", ephemeral: true }); return; }
