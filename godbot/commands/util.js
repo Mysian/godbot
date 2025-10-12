@@ -9,6 +9,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  AttachmentBuilder
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -456,8 +457,16 @@ function renderLottoButtons() {
 }
 
 /* =========================
- * 이미지 검색
+ * 이미지 & QR 검색
  * ========================= */
+function isValidHttpUrl(u) {
+  try {
+    const x = new URL(u);
+    return x.protocol === "http:" || x.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 function sanitizeImageUrl(u) {
   if (!u) return null;
   // 디스코드에서 잘 보이는 확장자 위주 필터(엄격 X)
@@ -808,8 +817,17 @@ module.exports = {
             .setDescription("번역할 내용")
             .setRequired(true)
         )
-    ),
-
+    )
+      .addSubcommand(sc =>
+    sc.setName("qr")
+      .setDescription("입력한 링크로 접속되는 QR 코드를 생성합니다")
+      .addStringOption(o =>
+        o.setName("링크")
+          .setDescription("http(s)로 시작하는 주소")
+          .setRequired(true)
+      )
+  ),
+  
   // Slash 명령 처리
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -854,6 +872,34 @@ module.exports = {
         ),
       ];
       return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    }
+
+    if (sub === "qr") {
+      const link = (interaction.options.getString("링크", true) || "").trim();
+      if (!isValidHttpUrl(link)) {
+        return interaction.reply({ content: "http(s)로 시작하는 유효한 링크만 입력해줘.", ephemeral: true });
+      }
+
+      const api = new URL("https://api.qrserver.com/v1/create-qr-code/");
+      api.searchParams.set("size", "512x512"); 
+      api.searchParams.set("data", link);  
+      api.searchParams.set("ecc", "M");  
+
+      const r = await fetchSafe(api, { headers: { "User-Agent": "Mozilla/5.0" } });
+      if (!r || !r.ok) {
+        return interaction.reply({ content: "QR 생성에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true });
+      }
+
+      const buf = Buffer.from(await r.arrayBuffer());
+      const file = new AttachmentBuilder(buf, { name: "qrcode.png" });
+
+      const eb = new EmbedBuilder()
+        .setTitle("🔗 링크 QR 코드")
+        .setDescription(link)
+        .setImage("attachment://qrcode.png")
+        .setColor(0x00BFA5);
+
+      return interaction.reply({ embeds: [eb], files: [file], ephemeral: true });
     }
 
       // ✅ 신규: 번역
