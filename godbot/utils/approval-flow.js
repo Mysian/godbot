@@ -717,7 +717,6 @@ function consentRows(flags) {
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("enter_finalize").setLabel("승인하고 입장하기").setStyle(ButtonStyle.Primary).setDisabled(!ready)
   );
-  const row3 = infoButtonsRow();
   return [row1, row2, row3];
 }
 async function sendPostJoinDM(member) {
