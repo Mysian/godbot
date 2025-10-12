@@ -749,106 +749,90 @@ async function sendPostJoinDM(member) {
 async function finalizeAdmission(guild, moderatorUser, targetId) {
   const target = await guild.members.fetch(targetId).catch(() => null);
   if (!target) return;
-  const progT = getProg(targetId) || { userId: targetId, isAlt: false, gameTags: [], notifyRoleIds: [], silentApproved: false };
-  let desiredNick = null;
-  if (progT.isAlt) {
-    const m = String(progT.sourceText || "").match(/본계:\s*([^)]+)\)/);
-    const baseMainNick = (m && m[1]) ? m[1].trim() : (target.displayName || target.user.username);
-    desiredNick = `${baseMainNick}[부계정]`;
-  } else if (progT.nickname) {
-    desiredNick = progT.nickname;
-  }
-  if (desiredNick) {
-    try { await target.setNickname(desiredNick, "입장 절차 승인 닉네임 반영"); } catch {}
-  }
+
+  const st0 = getProg(targetId) || { userId: targetId };
+  if (st0.finalized) return;
+  if (st0.finalizing) return;
+  setProg(targetId, { finalizing: true });
+
   try {
-    const roleId = progT.isAlt ? ROLE_MEMBER_ALT : ROLE_MEMBER_NORMAL;
-    const role = guild.roles.cache.get(roleId);
-    if (role) await target.roles.add(role, "입장 승인");
-  } catch {}
-  try {
-    const psId = ROLE_PLAYSTYLE?.[progT.playStyle];
-    if (psId) {
-      const removeIds = Object.values(ROLE_PLAYSTYLE).filter(id => id !== psId);
-      if (removeIds.length) { try { await target.roles.remove(removeIds, "입장 승인 - 기존 플레이스타일 정리"); } catch {} }
-      const psRole = guild.roles.cache.get(psId);
-      if (psRole) await target.roles.add(psRole, "입장 승인 - 플레이스타일 역할 부여");
+    const progT = getProg(targetId) || { userId: targetId, isAlt: false, gameTags: [], notifyRoleIds: [], silentApproved: false };
+    let desiredNick = null;
+    if (progT.isAlt) {
+      const m = String(progT.sourceText || "").match(/본계:\s*([^)]+)\)/);
+      const baseMainNick = (m && m[1]) ? m[1].trim() : (target.displayName || target.user.username);
+      desiredNick = `${baseMainNick}[부계정]`;
+    } else if (progT.nickname) {
+      desiredNick = progT.nickname;
     }
-  } catch {}
-  if (Array.isArray(progT.notifyRoleIds) && progT.notifyRoleIds.length) {
-    for (const roleId of progT.notifyRoleIds) {
-      const r = guild.roles.cache.get(roleId);
-      if (r) { try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {} }
+    if (desiredNick) {
+      try { await target.setNickname(desiredNick, "입장 절차 승인 닉네임 반영"); } catch {}
     }
-  }
-  let gameRolesAssigned = [];
-  if (Array.isArray(progT.gameTags) && progT.gameTags.length) {
-    const toAssign = progT.gameTags.map((name) => guild.roles.cache.find((r) => r.name === name)).filter(Boolean);
-    if (toAssign.length) {
-      try { await target.roles.add(toAssign, "입장 승인 - 선택한 게임 태그 부여"); } catch {}
-      gameRolesAssigned = toAssign.map((r) => r.name);
+    try {
+      if (Array.isArray(progT.grantRoleIds) && progT.grantRoleIds.length) {
+        const toAdd = progT.grantRoleIds.filter(Boolean);
+        if (toAdd.length) { try { await target.roles.add(toAdd); } catch {} }
+      }
+    } catch {}
+    try {
+      if (Array.isArray(progT.removeRoleIds) && progT.removeRoleIds.length) {
+        const toRm = progT.removeRoleIds.filter(Boolean);
+        if (toRm.length) { try { await target.roles.remove(toRm); } catch {} }
+      }
+    } catch {}
+    try {
+      if (progT.personalChannelId) {
+        const pch = guild.channels.cache.get(progT.personalChannelId);
+        if (pch && pch.isTextBased()) {
+          try { await pch.send({ content: `<@${target.id}> 입장이 완료되었습니다.` }); } catch {}
+        }
+      }
+    } catch {}
+    try {
+      if (progT.welcomeChannelId) {
+        const wch = guild.channels.cache.get(progT.welcomeChannelId);
+        if (wch && wch.isTextBased()) {
+          try { await wch.send({ content: `<@${target.id}> 어서 와! 인사 한마디 남겨줘!` }); } catch {}
+        }
+      }
+    } catch {}
+    try {
+      if (progT.approvalLogChannelId) {
+        const lch = guild.channels.cache.get(progT.approvalLogChannelId);
+        if (lch && lch.isTextBased()) {
+          try {
+            await lch.send({
+              content: `<@${target.id}>`,
+              embeds: [buildApprovedLogEmbed(guild, moderatorUser, target, progT)]
+            });
+          } catch {}
+        }
+      }
+    } catch {}
+    try { await onMemberApproved(guild, targetId, progT.gameTags || []); } catch {}
+    try { await sendPostJoinDM(target); } catch {}
+    try {
+      const pch2 = getUserPrivateChannel(guild, targetId);
+      if (pch2) { try { await pch2.delete("최종 입장 완료로 개인 채널 정리"); } catch {} }
+    } catch {}
+    if (progT.queueMsgId) {
+      const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
+      if (qch) {
+        try {
+          const m = await qch.messages.fetch(progT.queueMsgId);
+          await m.delete().catch(() => {});
+        } catch {}
+      }
     }
+    state.delete(targetId);
+    deleteState(targetId);
+  } finally {
+    setProg(targetId, { finalized: true, finalizing: false });
   }
-  const logCh = guild.channels.cache.get(CH_WELCOME_LOG);
-  if (logCh) {
-    const notifyNames = (progT.notifyRoleIds || []).map((rid) => guild.roles.cache.get(rid)?.name).filter(Boolean);
-    const genderText = progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-";
-    const ts = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
-    const hist = getHistory(targetId);
-    const contentLines = [
-      `> 입장 대상자 : <@${targetId}>`,
-      "",
-      "```ini",
-      "[입장 승인 로그]",
-      `시간 = ${ts}`,
-      `처리자 = ${moderatorUser?.tag || "-"} (${moderatorUser?.id || "-"})`,
-      `대상유저 = ${target.user.tag} (${targetId})`,
-      `멘션 = <@${targetId}>`,
-      `부계정여부 = ${progT.isAlt ? "부계정" : "일반"}`,
-      `조용히승인 = ${progT.silentApproved ? "예" : "아니오"}`,
-      "",
-      `[프로필]`,
-      `닉네임 = ${progT.nickname || (target.displayName || target.user.username)}`,
-      `출생년도 = ${progT.birthYear || "-"}`,
-      `성별 = ${genderText}`,
-      `유입경로 = ${progT.sourceText || "-"}`,
-      `플레이스타일 = ${progT.playStyle || "-"}`,
-      "",
-      `[게임 태그]`,
-      `선택 = ${progT.gameTags?.length ? progT.gameTags.join(", ") : "-"}`,
-      `부여된역할 = ${gameRolesAssigned.length ? gameRolesAssigned.join(", ") : "-"}`,
-      "",
-      `[알림 태그]`,
-      `설정 = ${notifyNames.length ? notifyNames.join(", ") : "선택 안 함"}`,
-      "",
-      `[이력 요약]`,
-      `거절 = ${hist.rejects || 0}회`,
-      `총입장 = ${hist.joins || 0}회`,
-      `총퇴장 = ${hist.leaves || 0}회`,
-      `들락(재입장) = ${Math.max(0, (hist.joins || 0) - 1)}회`,
-      "```"
-    ];
-    await logCh.send({ content: contentLines.join("\n") });
-  }
-  if (!progT.silentApproved && !progT.isAlt) { await sendWelcome(guild, targetId, progT.gameTags || []); }
-  await sendPostJoinDM(target);
-  const pch2 = getUserPrivateChannel(guild, targetId);
-  if (pch2) { try { await pch2.delete("최종 입장 완료로 개인 채널 정리"); } catch {} }
-  if (progT.queueMsgId) {
-    const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
-    if (qch) {
-      try {
-        const m = await qch.messages.fetch(progT.queueMsgId);
-        await m.delete().catch(() => {});
-      } catch {}
-    }
-  }
-  state.delete(targetId);
-  deleteState(targetId);
 }
 
+
 async function startFlow(guild, member) {
-  incHistory(member.id, "joins");
   const userId = member.id;
   await purgeOtherJoinChannels(guild, userId);
   const ageDays = accountAgeDays(member.user);
@@ -1342,18 +1326,27 @@ module.exports = (client) => {
               try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
               return;
             }
-            const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-            if (qch) {
-              const member = await i.guild.members.fetch(uid).catch(() => null);
-              if (!member) return;
-              const qmsg = await qch.send({
-                content: `<@${uid}>`,
-                embeds: [buildQueueEmbed(i.guild, member, cur)],
-                components: [queueButtons(cur)],
-                allowedMentions: { users: [uid] }
-              });
-              setProg(uid, { queueMsgId: qmsg.id });
-            }
+              const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+  if (qch) {
+    const member = await i.guild.members.fetch(uid).catch(() => null);
+    if (!member) return;
+
+    const existing = cur.queueMsgId ? await qch.messages.fetch(cur.queueMsgId).catch(() => null) : null;
+    if (existing) {
+      await existing.edit({
+        embeds: [buildQueueEmbed(i.guild, member, cur)],
+        components: [queueButtons(cur)]
+      }).catch(() => {});
+    } else {
+      const qmsg = await qch.send({
+        content: `<@${uid}>`,
+        embeds: [buildQueueEmbed(i.guild, member, cur)],
+        components: [queueButtons(cur)],
+        allowedMentions: { users: [uid] }
+      });
+      setProg(uid, { queueMsgId: qmsg.id });
+    }
+  }
             const chNow = getUserPrivateChannel(i.guild, uid);
             const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
             if (targetMsg) {
@@ -1403,14 +1396,17 @@ module.exports = (client) => {
           }
 
           if (i.customId === "enter_finalize") {
-            const now = getProg(uid) || {};
-            const flags = now.finalConsentFlags || {};
-            const ok = flags.greet && flags.rules && flags.inactive;
-            if (!ok) { await i.reply({ content: "3가지 항목 모두 동의해야 입장할 수 있어요.", ephemeral: true }); return; }
-            await i.deferUpdate().catch(() => {});
-            await finalizeAdmission(i.guild, i.user, uid);
-            return;
-          }
+  const now = getProg(uid) || {};
+  const flags = now.finalConsentFlags || {};
+  const ok = flags.greet && flags.rules && flags.inactive;
+  if (!ok) { await i.reply({ content: "3가지 항목 모두 동의해야 입장할 수 있어요.", ephemeral: true }); return; }
+
+  try { await i.message.edit({ components: [] }); } catch {}
+  await i.deferUpdate().catch(() => {});
+  await finalizeAdmission(i.guild, i.user, uid);
+  return;
+}
+
         }
 
         if (["approve_", "approve_silent_", "reject_", "ban_", "nickreq_"].some((p) => i.customId.startsWith(p))) {
