@@ -699,9 +699,9 @@ function finalConsentEmbed(member) {
     .setDescription([
       "아래 3가지를 모두 동의하면 **승인하고 입장하기** 버튼이 활성화됩니다.",
       "",
-      "• 입장 후 반드시 채팅방에서 **인사**하겠습니다.",
+      "• 입장 후 반드시 🌟채팅방에서 **인사**하겠습니다.",
       "• **서버 규칙**을 준수하겠습니다.",
-      "• **장시간 비활동 시 서버 퇴장** 처리에 동의합니다."
+      "• **장기간 비활동 시 서버에서 퇴장 처리** 되는 것을 이해했습니다."
     ].join("\n"));
 }
 function consentRows(flags) {
@@ -709,31 +709,33 @@ function consentRows(flags) {
   const b = !!flags?.rules;
   const c = !!flags?.inactive;
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("consent_greet").setLabel(a ? "✓ 인사하겠습니다" : "인사하겠습니다").setStyle(a ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("consent_rules").setLabel(b ? "✓ 규칙 준수" : "규칙 준수").setStyle(b ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("consent_inactive").setLabel(c ? "✓ 비활동 시 퇴장 동의" : "비활동 시 퇴장 동의").setStyle(c ? ButtonStyle.Success : ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId("consent_greet").setLabel(a ? "✓ 🖐️인사할게요!" : "🖐️인사할게요!").setStyle(a ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("consent_rules").setLabel(b ? "✓ 😎규칙을 지킬게요!" : "😎규칙을 지킬게요!").setStyle(b ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("consent_inactive").setLabel(c ? "✓ ⚠️장기 비활동시 조치를 확인했어요" : "⚠️장기 비활동시 조치를 확인했어요").setStyle(c ? ButtonStyle.Success : ButtonStyle.Secondary)
   );
   const ready = a && b && c;
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("enter_finalize").setLabel("승인하고 입장하기").setStyle(ButtonStyle.Primary).setDisabled(!ready)
+    new ButtonBuilder().setCustomId("enter_finalize").setLabel("🌟서버 입장하기🌟").setStyle(ButtonStyle.Primary).setDisabled(!ready)
   );
-  return [row1, row2, row3];
+  return [row1, row2];
 }
+
 async function sendPostJoinDM(member) {
   const dm = await member.createDM().catch(() => null);
   if (!dm) return;
   const lines = [
-    "환영합니다! 까리한 디스코드에 합류하셨어요.",
+    "🌟환영합니다! 까리한 디스코드에 합류하셨어요.🌟",
     "",
     "• `/서버안내` 로 서버 핵심 정보를 볼 수 있어요.",
     "• `/서버규칙` 로 전체 규칙을 확인하세요.",
     "• `/도움말` 로 주요 명령어를 빠르게 확인하세요.",
     "",
     "유의사항:",
-    "• 레벨 0 상태로 7일 이상 경과 시 추방",
-    "• 30일 이상 미접속 시 추방",
+    "• 레벨 0 상태로 7일 이상 경과 시 추방됩니다.",
+    "• 일반 채팅방에서 인사를 진행하지 않은 경우 경험치 획득이 제한됩니다.",
+    "• 30일 이상 미접속 시에는 추방됩니다.",
     "",
-    "자세한 내용은 위 명령어로 확인해주세요. 즐거운 시간 되세요!"
+    "자세한 내용은 서버 내에서 상단의 명령어들로 확인해주세요! 까리한 시간 되세요! 😎"
   ].join("\n");
   await dm.send({ content: lines }).catch(() => {});
 }
