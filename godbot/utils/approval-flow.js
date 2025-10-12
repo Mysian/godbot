@@ -23,11 +23,8 @@ function infoButtonsRow() {
   );
 }
 
-// === [HELP VIEWER - approval-flow 내부 전용] ===
 function buildHelpEmbeds() {
   const embeds = [];
-
-  // 1/4
   embeds.push(
     new EmbedBuilder()
       .setTitle("📚 도움말 (1/4)")
@@ -44,8 +41,6 @@ function buildHelpEmbeds() {
       .setColor(0x00bfff)
       .setTimestamp()
   );
-
-  // 2/4
   embeds.push(
     new EmbedBuilder()
       .setTitle("📚 도움말 (2/4)")
@@ -62,8 +57,6 @@ function buildHelpEmbeds() {
       .setColor(0x00bfff)
       .setTimestamp()
   );
-
-  // 3/4
   embeds.push(
     new EmbedBuilder()
       .setTitle("📚 도움말 (3/4)")
@@ -81,8 +74,6 @@ function buildHelpEmbeds() {
       .setColor(0x00bfff)
       .setTimestamp()
   );
-
-  // 4/4
   embeds.push(
     new EmbedBuilder()
       .setTitle("📚 도움말 (4/4)")
@@ -96,7 +87,6 @@ function buildHelpEmbeds() {
       .setColor(0x00bfff)
       .setTimestamp()
   );
-
   return embeds;
 }
 
@@ -110,17 +100,14 @@ function helpNavRow(page, max) {
 async function showHelpEphemeral(interaction) {
   const embeds = buildHelpEmbeds();
   let cur = 0;
-
   const msg = await interaction.reply({
     embeds: [embeds[cur]],
     components: [helpNavRow(cur, embeds.length - 1)],
     ephemeral: true,
-    fetchReply: true, // ★ 메시지 객체 필수
+    fetchReply: true,
   });
-
   const filter = (i) => i.user.id === interaction.user.id && ["help_prev", "help_next"].includes(i.customId);
   const collector = msg.createMessageComponentCollector({ filter, time: 5 * 60 * 1000 });
-
   collector.on("collect", async (btn) => {
     try {
       if (btn.customId === "help_prev" && cur > 0) cur--;
@@ -128,13 +115,10 @@ async function showHelpEphemeral(interaction) {
       await btn.update({ embeds: [embeds[cur]], components: [helpNavRow(cur, embeds.length - 1)] });
     } catch {}
   });
-
   collector.on("end", async () => {
     try { await msg.edit({ components: [] }); } catch {}
   });
 }
-// === [END HELP VIEWER] ===
-
 
 let ALL_GAMES = [];
 try {
@@ -195,7 +179,6 @@ const PLAY_STYLE_DESC = {
   "즐빡겜러": "즐기는 편이지만 승부에도 꽤 진심인 균형형 스타일.",
   "즐겜러": "승패와 상관없이 게임 그 자체를 즐기는 유저 (그래도 지는건 싫어!)"
 };
-
 
 const state = new Map();
 let listenersBound = false;
@@ -442,14 +425,12 @@ function step3aEmbed(progress) {
   const fields = [
     { name: "플레이스타일", value: progress.playStyle || "미선택", inline: true },
   ];
-
   if (progress.playStyle) {
     const desc = PLAY_STYLE_DESC[progress.playStyle] || "선택한 스타일 설명을 불러오지 못했습니다.";
     fields.push({ name: "스타일 설명", value: desc, inline: false });
   } else {
     fields.push({ name: "도움말", value: "스타일을 누르시면 설명이 나옵니다.", inline: false });
   }
-
   return new EmbedBuilder()
     .setColor(0xf2b619)
     .setTitle("입장 절차 3-1단계")
@@ -529,7 +510,6 @@ function buildQueueEmbed(guild, member, progress) {
 function queueButtons(progress) {
   const disableNormalApprove =
     progress?.isAlt === true || progress?.sourceText === "재입장";
-
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`approve_${progress.userId}`)
@@ -569,7 +549,6 @@ async function sendWelcome(guild, userId, gameTags = []) {
   const ch = guild.channels.cache.get(CH_SERVER_GREETING);
   if (!ch) return;
   const tagText = gameTags.length ? gameTags.join(",") : "게임태그 미등록";
-
   await ch.send({
     content: `<@${userId}> 님이 서버에 입장하셨습니다! 까리하게 맞이해주세요!! ||@here||\n> "주로 '${tagText}'을(를) 합니다!"`,
     embeds: [
@@ -606,10 +585,8 @@ function getUserPrivateChannel(guild, uid){
   return null;
 }
 
-/* ⬇️ 여기부터 추가 */
 function isOtherJoinChannelName(name) {
   if (!name) return false;
-  // 다른 입장봇이 만드는 형태: "입장-유저명" (우리 봇의 "_환영합니다" 미포함)
   return /^입장-[^_]+$/u.test(name) && !name.includes("_환영합니다");
 }
 function channelAllowsUserView(ch, userId) {
@@ -714,6 +691,154 @@ function nickDupEmbed(progress) {
       { name: "현재 닉네임", value: progress.nickname ? String(progress.nickname) : "입력 필요", inline: true }
     );
 }
+function finalConsentEmbed(member) {
+  return new EmbedBuilder()
+    .setColor(0x2b90ff)
+    .setTitle("✅ 최종 입장 절차")
+    .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+    .setDescription([
+      "아래 3가지를 모두 동의하면 **승인하고 입장하기** 버튼이 활성화됩니다.",
+      "",
+      "• 입장 후 반드시 채팅방에서 **인사**하겠습니다.",
+      "• **서버 규칙**을 준수하겠습니다.",
+      "• **장시간 비활동 시 서버 퇴장** 처리에 동의합니다."
+    ].join("\n"));
+}
+function consentRows(flags) {
+  const a = !!flags?.greet;
+  const b = !!flags?.rules;
+  const c = !!flags?.inactive;
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("consent_greet").setLabel(a ? "✓ 인사하겠습니다" : "인사하겠습니다").setStyle(a ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("consent_rules").setLabel(b ? "✓ 규칙 준수" : "규칙 준수").setStyle(b ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("consent_inactive").setLabel(c ? "✓ 비활동 시 퇴장 동의" : "비활동 시 퇴장 동의").setStyle(c ? ButtonStyle.Success : ButtonStyle.Secondary)
+  );
+  const ready = a && b && c;
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("enter_finalize").setLabel("승인하고 입장하기").setStyle(ButtonStyle.Primary).setDisabled(!ready)
+  );
+  const row3 = infoButtonsRow();
+  return [row1, row2, row3];
+}
+async function sendPostJoinDM(member) {
+  const dm = await member.createDM().catch(() => null);
+  if (!dm) return;
+  const lines = [
+    "환영합니다! 까리한 디스코드에 합류하셨어요.",
+    "",
+    "• `/서버안내` 로 서버 핵심 정보를 볼 수 있어요.",
+    "• `/서버규칙` 로 전체 규칙을 확인하세요.",
+    "• `/도움말` 로 주요 명령어를 빠르게 확인하세요.",
+    "",
+    "유의사항:",
+    "• 레벨 0 상태로 7일 이상 경과 시 추방",
+    "• 30일 이상 미접속 시 추방",
+    "",
+    "자세한 내용은 위 명령어로 확인해주세요. 즐거운 시간 되세요!"
+  ].join("\n");
+  await dm.send({ content: lines }).catch(() => {});
+}
+async function finalizeAdmission(guild, moderatorUser, targetId) {
+  const target = await guild.members.fetch(targetId).catch(() => null);
+  if (!target) return;
+  const progT = getProg(targetId) || { userId: targetId, isAlt: false, gameTags: [], notifyRoleIds: [], silentApproved: false };
+  let desiredNick = null;
+  if (progT.isAlt) {
+    const m = String(progT.sourceText || "").match(/본계:\s*([^)]+)\)/);
+    const baseMainNick = (m && m[1]) ? m[1].trim() : (target.displayName || target.user.username);
+    desiredNick = `${baseMainNick}[부계정]`;
+  } else if (progT.nickname) {
+    desiredNick = progT.nickname;
+  }
+  if (desiredNick) {
+    try { await target.setNickname(desiredNick, "입장 절차 승인 닉네임 반영"); } catch {}
+  }
+  try {
+    const roleId = progT.isAlt ? ROLE_MEMBER_ALT : ROLE_MEMBER_NORMAL;
+    const role = guild.roles.cache.get(roleId);
+    if (role) await target.roles.add(role, "입장 승인");
+  } catch {}
+  try {
+    const psId = ROLE_PLAYSTYLE?.[progT.playStyle];
+    if (psId) {
+      const removeIds = Object.values(ROLE_PLAYSTYLE).filter(id => id !== psId);
+      if (removeIds.length) { try { await target.roles.remove(removeIds, "입장 승인 - 기존 플레이스타일 정리"); } catch {} }
+      const psRole = guild.roles.cache.get(psId);
+      if (psRole) await target.roles.add(psRole, "입장 승인 - 플레이스타일 역할 부여");
+    }
+  } catch {}
+  if (Array.isArray(progT.notifyRoleIds) && progT.notifyRoleIds.length) {
+    for (const roleId of progT.notifyRoleIds) {
+      const r = guild.roles.cache.get(roleId);
+      if (r) { try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {} }
+    }
+  }
+  let gameRolesAssigned = [];
+  if (Array.isArray(progT.gameTags) && progT.gameTags.length) {
+    const toAssign = progT.gameTags.map((name) => guild.roles.cache.find((r) => r.name === name)).filter(Boolean);
+    if (toAssign.length) {
+      try { await target.roles.add(toAssign, "입장 승인 - 선택한 게임 태그 부여"); } catch {}
+      gameRolesAssigned = toAssign.map((r) => r.name);
+    }
+  }
+  const logCh = guild.channels.cache.get(CH_WELCOME_LOG);
+  if (logCh) {
+    const notifyNames = (progT.notifyRoleIds || []).map((rid) => guild.roles.cache.get(rid)?.name).filter(Boolean);
+    const genderText = progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-";
+    const ts = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
+    const hist = getHistory(targetId);
+    const contentLines = [
+      `> 입장 대상자 : <@${targetId}>`,
+      "",
+      "```ini",
+      "[입장 승인 로그]",
+      `시간 = ${ts}`,
+      `처리자 = ${moderatorUser?.tag || "-"} (${moderatorUser?.id || "-"})`,
+      `대상유저 = ${target.user.tag} (${targetId})`,
+      `멘션 = <@${targetId}>`,
+      `부계정여부 = ${progT.isAlt ? "부계정" : "일반"}`,
+      `조용히승인 = ${progT.silentApproved ? "예" : "아니오"}`,
+      "",
+      `[프로필]`,
+      `닉네임 = ${progT.nickname || (target.displayName || target.user.username)}`,
+      `출생년도 = ${progT.birthYear || "-"}`,
+      `성별 = ${genderText}`,
+      `유입경로 = ${progT.sourceText || "-"}`,
+      `플레이스타일 = ${progT.playStyle || "-"}`,
+      "",
+      `[게임 태그]`,
+      `선택 = ${progT.gameTags?.length ? progT.gameTags.join(", ") : "-"}`,
+      `부여된역할 = ${gameRolesAssigned.length ? gameRolesAssigned.join(", ") : "-"}`,
+      "",
+      `[알림 태그]`,
+      `설정 = ${notifyNames.length ? notifyNames.join(", ") : "선택 안 함"}`,
+      "",
+      `[이력 요약]`,
+      `거절 = ${hist.rejects || 0}회`,
+      `총입장 = ${hist.joins || 0}회`,
+      `총퇴장 = ${hist.leaves || 0}회`,
+      `들락(재입장) = ${Math.max(0, (hist.joins || 0) - 1)}회`,
+      "```",
+    ];
+    await logCh.send({ content: contentLines.join("\n") });
+  }
+  if (!progT.silentApproved && !progT.isAlt) { await sendWelcome(guild, targetId, progT.gameTags || []); }
+  await sendPostJoinDM(target);
+  const pch2 = getUserPrivateChannel(guild, targetId);
+  if (pch2) { try { await pch2.delete("최종 입장 완료로 개인 채널 정리"); } catch {} }
+  if (progT.queueMsgId) {
+    const qch = guild.channels.cache.get(CH_APPROVAL_QUEUE);
+    if (qch) {
+      try {
+        const m = await qch.messages.fetch(progT.queueMsgId);
+        await m.edit({ components: [] }).catch(() => {});
+      } catch {}
+    }
+  }
+  state.delete(targetId);
+  deleteState(targetId);
+}
+
 async function startFlow(guild, member) {
   incHistory(member.id, "joins");
   const userId = member.id;
@@ -870,11 +995,10 @@ module.exports = (client) => {
           return;
         }
 
-                if (i.customId === "modal_alt") {
+        if (i.customId === "modal_alt") {
           const mainNick = i.fields.getTextInputValue("mainNick")?.trim();
           const matched = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === mainNick);
           if (!matched) { await i.reply({ content: "본계정 닉네임을 찾지 못했습니다. 다시 확인해주세요.", ephemeral: true }); return; }
-
           await i.deferUpdate().catch(() => {});
           const updated = setProg(uid, p => ({
             ...p,
@@ -882,7 +1006,6 @@ module.exports = (client) => {
             isAlt: true,
             step: 99
           }));
-
           const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
           if (qch) {
             const member = await i.guild.members.fetch(uid).catch(() => null);
@@ -916,119 +1039,115 @@ module.exports = (client) => {
         }
 
         if (i.customId === "modal_bio") {
-  const birth = i.fields.getTextInputValue("birth")?.trim();
-  const nick = i.fields.getTextInputValue("nickname")?.trim();
-
-  const vr = validateBirthYear(birth);
-  if (!vr.ok) {
-    if (vr.reject) {
-      await forceAutoReject(i.guild, uid, vr.msg);
-      try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
-    } else {
-      await i.reply({ content: vr.msg, ephemeral: true });
-    }
-    return;
-  }
-
-  const nErr = validateNickname(nick);
-  if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
-  const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
-  if (dup) {
-    await i.deferUpdate().catch(() => {});
-    setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: null, step: 21 }));
-    const chNow = getUserPrivateChannel(i.guild, uid);
-    const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
-    if (targetMsg) {
-      const cur = getProg(uid);
-      await targetMsg.edit({
-        embeds: [nickDupEmbed(cur)],
-        components: [
-          nicknameRequestRow(),
-          navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
-        ],
-      });
-    }
-    return;
-  }
-  await i.deferUpdate().catch(() => {});
-  setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
-  const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
-  if (targetMsg) {
-    const cur = getProg(uid);
-    await targetMsg.edit({
-      embeds: [step2aEmbed(cur)],
-      components: [
-        new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
-        navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
-      ],
-    });
-  }
-  return;
-}
+          const birth = i.fields.getTextInputValue("birth")?.trim();
+          const nick = i.fields.getTextInputValue("nickname")?.trim();
+          const vr = validateBirthYear(birth);
+          if (!vr.ok) {
+            if (vr.reject) {
+              await forceAutoReject(i.guild, uid, vr.msg);
+              try { await i.reply({ content: "죄송합니다. 연령 기준 미충족으로 입장이 거절되었습니다.", ephemeral: true }); } catch {}
+            } else {
+              await i.reply({ content: vr.msg, ephemeral: true });
+            }
+            return;
+          }
+          const nErr = validateNickname(nick);
+          if (nErr) { await i.reply({ content: nErr, ephemeral: true }); return; }
+          const dup = i.guild.members.cache.find((m) => (m.displayName || m.user.username) === nick && m.id !== uid);
+          if (dup) {
+            await i.deferUpdate().catch(() => {});
+            setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: null, step: 21 }));
+            const chNow = getUserPrivateChannel(i.guild, uid);
+            const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
+            if (targetMsg) {
+              const cur = getProg(uid);
+              await targetMsg.edit({
+                embeds: [nickDupEmbed(cur)],
+                components: [
+                  nicknameRequestRow(),
+                  navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+                ],
+              });
+            }
+            return;
+          }
+          await i.deferUpdate().catch(() => {});
+          setProg(uid, p => ({ ...p, birthYear: vr.year, nickname: nick, step: 21 }));
+          const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
+          if (targetMsg) {
+            const cur = getProg(uid);
+            await targetMsg.edit({
+              embeds: [step2aEmbed(cur)],
+              components: [
+                new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("open_bio").setLabel("출생년도·닉네임 재입력").setStyle(ButtonStyle.Secondary)),
+                navRow(["noop_prev", "to_step2b"], { prev: true, next: !(cur.birthYear && cur.nickname) }),
+              ],
+            });
+          }
+          return;
+        }
 
         if (i.customId === "modal_nickchange") {
-  const newNick = i.fields.getTextInputValue("nickname_new")?.trim();
-  const err = validateNickname(newNick);
-  if (err) { await i.reply({ content: err, ephemeral: true }); return; }
-  const dup2 = i.guild.members.cache.find(
-    (m) => (m.displayName || m.user.username) === newNick && m.id !== uid
-  );
-  if (dup2) {
-    await i.reply({
-      content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.",
-      ephemeral: true
-    });
-    return;
-  }
-  setProg(uid, { nickname: newNick });
-  const progNow = getProg(uid);
-  const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-  if (qch && progNow.queueMsgId) {
-    try {
-      const qmsg = await qch.messages.fetch(progNow.queueMsgId);
-      const member = await i.guild.members.fetch(uid).catch(() => null);
-      if (member) {
-        await qmsg.edit({
-          embeds: [buildQueueEmbed(i.guild, member, progNow)],
-          components: [queueButtons(progNow)]
-        });
-      }
-    } catch {}
-  }
-  const chNow = getUserPrivateChannel(i.guild, uid);
-  if (chNow) {
-    try {
-      const baseMsg =
-        i.message ??
-        (progNow.messageId
-          ? await chNow.messages.fetch(progNow.messageId).catch(() => null)
-          : null);
-
-      if (baseMsg) {
-        const cur = getProg(uid);
-        const canNext = !!(cur.birthYear && cur.nickname);
-
-        await baseMsg.edit({
-          embeds: [step2aEmbed(cur)],
-          components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId("open_bio")
-                .setLabel("출생년도·닉네임 재입력")
-                .setStyle(ButtonStyle.Secondary)
-            ),
-            navRow(["noop_prev", "to_step2b"], { prev: true, next: !canNext })
-          ],
-        });
-      }
-    } catch {}
-  }
-  await i.reply({
-    content: `닉네임이 '${newNick}' 으로 예정됩니다.`,
-    ephemeral: true
-  });
-  return;
-}
+          const newNick = i.fields.getTextInputValue("nickname_new")?.trim();
+          const err = validateNickname(newNick);
+          if (err) { await i.reply({ content: err, ephemeral: true }); return; }
+          const dup2 = i.guild.members.cache.find(
+            (m) => (m.displayName || m.user.username) === newNick && m.id !== uid
+          );
+          if (dup2) {
+            await i.reply({
+              content: "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.",
+              ephemeral: true
+            });
+            return;
+          }
+          setProg(uid, { nickname: newNick });
+          const progNow = getProg(uid);
+          const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+          if (qch && progNow.queueMsgId) {
+            try {
+              const qmsg = await qch.messages.fetch(progNow.queueMsgId);
+              const member = await i.guild.members.fetch(uid).catch(() => null);
+              if (member) {
+                await qmsg.edit({
+                  embeds: [buildQueueEmbed(i.guild, member, progNow)],
+                  components: [queueButtons(progNow)]
+                });
+              }
+            } catch {}
+          }
+          const chNow = getUserPrivateChannel(i.guild, uid);
+          if (chNow) {
+            try {
+              const baseMsg =
+                i.message ??
+                (progNow.messageId
+                  ? await chNow.messages.fetch(progNow.messageId).catch(() => null)
+                  : null);
+              if (baseMsg) {
+                const cur = getProg(uid);
+                const canNext = !!(cur.birthYear && cur.nickname);
+                await baseMsg.edit({
+                  embeds: [step2aEmbed(cur)],
+                  components: [
+                    new ActionRowBuilder().addComponents(
+                      new ButtonBuilder()
+                        .setCustomId("open_bio")
+                        .setLabel("출생년도·닉네임 재입력")
+                        .setStyle(ButtonStyle.Secondary)
+                    ),
+                    navRow(["noop_prev", "to_step2b"], { prev: true, next: !canNext })
+                  ],
+                });
+              }
+            } catch {}
+          }
+          await i.reply({
+            content: `닉네임이 '${newNick}' 으로 예정됩니다.`,
+            ephemeral: true
+          });
+          return;
+        }
         return;
       }
 
@@ -1096,8 +1215,8 @@ module.exports = (client) => {
 
       if (i.isButton()) {
         const prog = getProg(uid);
-        if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue", "open_nick_change", "show_rules", "show_help"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
-          if (!prog) return;
+        if (isUserPrivate && ["src_", "open_bio", "to_step2b", "gender_m", "gender_f", "to_step3a", "to_step3b", "back_step3a", "go_queue", "open_nick_change", "show_rules", "show_help", "consent_greet", "consent_rules", "consent_inactive", "enter_finalize"].some((p) => i.customId.startsWith(p) || i.customId === p)) {
+          if (!prog && !["consent_greet", "consent_rules", "consent_inactive", "enter_finalize"].includes(i.customId)) return;
 
           if (i.customId === "show_rules") {
             await rulesModule.execute(i);
@@ -1196,47 +1315,73 @@ module.exports = (client) => {
           }
 
           if (i.customId === "go_queue") {
-  const cur = getProg(uid);
-  if (!(cur.gameTags && cur.gameTags.length)) { await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true }); return; }
-  if (!isBirthYearEligible(cur.birthYear)) {
-    await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
-    try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
-    return;
-  }
-  const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-  if (qch) {
-    const member = await i.guild.members.fetch(uid).catch(() => null);
-    if (!member) return;
-    const qmsg = await qch.send({ embeds: [buildQueueEmbed(i.guild, member, cur)], components: [queueButtons(cur)] });
-    setProg(uid, { queueMsgId: qmsg.id });
-  }
-  const chNow = getUserPrivateChannel(i.guild, uid);
-  const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
-  if (targetMsg) {
-    await targetMsg.edit({
-  embeds: [
-    new EmbedBuilder()
-      .setColor(0x95a5a6)
-      .setTitle("🪑승인 대기 중")
-      .setDescription([
-        "관리진 검토 후 처리됩니다. 감사합니다!🙇",
-        "",
-        "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. \n원치 않으면 건너뛰어도 됩니다."
-      ].join("\n"))
-      .setImage(IMG_PENDING)
-  ],
-  components: [
-    settingsSelectRow(getProg(uid).notifyRoleIds || []),
-    infoButtonsRow()
-  ],
-});
-  }
-  await i.deferUpdate().catch(() => {});
-  return;
-}
+            const cur = getProg(uid);
+            if (!(cur.gameTags && cur.gameTags.length)) { await i.reply({ content: "주 게임 태그를 최소 1개 이상 선택해주세요.", ephemeral: true }); return; }
+            if (!isBirthYearEligible(cur.birthYear)) {
+              await forceAutoReject(i.guild, uid, `20세 이상만 입장 가능합니다.`);
+              try { await i.reply({ content: "연령 기준 미충족으로 자동 거절되었습니다.", ephemeral: true }); } catch {}
+              return;
+            }
+            const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+            if (qch) {
+              const member = await i.guild.members.fetch(uid).catch(() => null);
+              if (!member) return;
+              const qmsg = await qch.send({ embeds: [buildQueueEmbed(i.guild, member, cur)], components: [queueButtons(cur)] });
+              setProg(uid, { queueMsgId: qmsg.id });
+            }
+            const chNow = getUserPrivateChannel(i.guild, uid);
+            const targetMsg = i.message ?? (await chNow.messages.fetch(getProg(uid).messageId).catch(() => null));
+            if (targetMsg) {
+              await targetMsg.edit({
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(0x95a5a6)
+                    .setTitle("🪑승인 대기 중")
+                    .setDescription([
+                      "관리진 검토 후 처리됩니다. 감사합니다!🙇",
+                      "",
+                      "선택 사항: 🔔**서버 알림 태그**를 설정할 수 있어요. \n원치 않으면 건너뛰어도 됩니다."
+                    ].join("\n"))
+                    .setImage(IMG_PENDING)
+                ],
+                components: [
+                  settingsSelectRow(getProg(uid).notifyRoleIds || []),
+                  infoButtonsRow()
+                ],
+              });
+            }
+            await i.deferUpdate().catch(() => {});
+            return;
+          }
 
           if (i.customId === "open_nick_change") {
             await i.showModal(nickChangeModal());
+            return;
+          }
+
+          if (i.customId === "consent_greet" || i.customId === "consent_rules" || i.customId === "consent_inactive") {
+            const now = getProg(uid) || {};
+            const flags = now.finalConsentFlags || { greet: false, rules: false, inactive: false };
+            if (i.customId === "consent_greet") flags.greet = !flags.greet;
+            if (i.customId === "consent_rules") flags.rules = !flags.rules;
+            if (i.customId === "consent_inactive") flags.inactive = !flags.inactive;
+            setProg(uid, { finalConsentFlags: flags });
+            const chNow = getUserPrivateChannel(i.guild, uid);
+            const baseMsg = i.message ?? (now.finalConsentMsgId ? await chNow.messages.fetch(now.finalConsentMsgId).catch(() => null) : null);
+            if (baseMsg) {
+              await baseMsg.edit({ components: consentRows(flags) }).catch(() => {});
+            }
+            await i.deferUpdate().catch(() => {});
+            return;
+          }
+
+          if (i.customId === "enter_finalize") {
+            const now = getProg(uid) || {};
+            const flags = now.finalConsentFlags || {};
+            const ok = flags.greet && flags.rules && flags.inactive;
+            if (!ok) { await i.reply({ content: "3가지 항목 모두 동의해야 입장할 수 있어요.", ephemeral: true }); return; }
+            await i.deferUpdate().catch(() => {});
+            await finalizeAdmission(i.guild, i.user, uid);
             return;
           }
         }
@@ -1273,109 +1418,28 @@ module.exports = (client) => {
           }
 
           const silent = i.customId.startsWith("approve_silent_");
-
-          let desiredNick = null;
-          if (progT.isAlt) {
-            // sourceText 예: "부계정(본계: 영갓)"
-            const m = String(progT.sourceText || "").match(/본계:\s*([^)]+)\)/);
-            const baseMainNick = (m && m[1]) ? m[1].trim() : (target.displayName || target.user.username);
-            desiredNick = `${baseMainNick}[부계정]`;
-          } else if (progT.nickname) {
-            desiredNick = progT.nickname;
-          }
-
-          if (desiredNick) {
-            try { await target.setNickname(desiredNick, "입장 절차 승인 닉네임 반영"); } catch {}
-          }
-
-          try {
-            const roleId = progT.isAlt ? ROLE_MEMBER_ALT : ROLE_MEMBER_NORMAL;
-            const role = i.guild.roles.cache.get(roleId);
-            if (role) await target.roles.add(role, "입장 승인");
-          } catch {}
-
-          try {
-  const psId = ROLE_PLAYSTYLE?.[progT.playStyle];
-  if (psId) {
-    const removeIds = Object.values(ROLE_PLAYSTYLE).filter(id => id !== psId);
-    if (removeIds.length) { try { await target.roles.remove(removeIds, "입장 승인 - 기존 플레이스타일 정리"); } catch {} }
-
-    const psRole = i.guild.roles.cache.get(psId);
-    if (psRole) await target.roles.add(psRole, "입장 승인 - 플레이스타일 역할 부여");
-  }
-} catch {}
-
-          if (Array.isArray(progT.notifyRoleIds) && progT.notifyRoleIds.length) {
-            for (const roleId of progT.notifyRoleIds) {
-              const r = i.guild.roles.cache.get(roleId);
-              if (r) { try { await target.roles.add(r, "서버 알림 태그 선택"); } catch {} }
-            }
-          }
-
-          let gameRolesAssigned = [];
-          if (Array.isArray(progT.gameTags) && progT.gameTags.length) {
-            const toAssign = progT.gameTags.map((name) => i.guild.roles.cache.find((r) => r.name === name)).filter(Boolean);
-            if (toAssign.length) {
-              try { await target.roles.add(toAssign, "입장 승인 - 선택한 게임 태그 부여"); } catch {}
-              gameRolesAssigned = toAssign.map((r) => r.name);
-            }
-          }
-
-          const logCh = i.guild.channels.cache.get(CH_WELCOME_LOG);
-          if (logCh) {
-            const notifyNames = (progT.notifyRoleIds || []).map((rid) => i.guild.roles.cache.get(rid)?.name).filter(Boolean);
-            const genderText = progT.gender === "M" ? "남자" : progT.gender === "F" ? "여자" : "-";
-            const ts = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date());
-            const hist = getHistory(targetId);
-            const contentLines = [
-                `> 입장 대상자 : <@${targetId}>`,
-                "",
-              
-              "```ini",
-              "[입장 승인 로그]",
-              `시간 = ${ts}`,
-              `처리자 = ${i.user.tag} (${i.user.id})`,
-              `대상유저 = ${target.user.tag} (${targetId})`,
-              `멘션 = <@${targetId}>`,
-              `부계정여부 = ${progT.isAlt ? "부계정" : "일반"}`,
-              `조용히승인 = ${silent ? "예" : "아니오"}`,
-              "",
-              `[프로필]`,
-              `닉네임 = ${progT.nickname || (target.displayName || target.user.username)}`,
-              `출생년도 = ${progT.birthYear || "-"}`,
-              `성별 = ${genderText}`,
-              `유입경로 = ${progT.sourceText || "-"}`,
-              `플레이스타일 = ${progT.playStyle || "-"}`,
-              "",
-              `[게임 태그]`,
-              `선택 = ${progT.gameTags?.length ? progT.gameTags.join(", ") : "-"}`,
-              `부여된역할 = ${gameRolesAssigned.length ? gameRolesAssigned.join(", ") : "-"}`,
-              "",
-              `[알림 태그]`,
-              `설정 = ${notifyNames.length ? notifyNames.join(", ") : "선택 안 함"}`,
-              "",
-              `[이력 요약]`,
-              `거절 = ${hist.rejects || 0}회`,
-              `총입장 = ${hist.joins || 0}회`,
-              `총퇴장 = ${hist.leaves || 0}회`,
-              `들락(재입장) = ${Math.max(0, (hist.joins || 0) - 1)}회`,
-              "```",
-            ];
-            await logCh.send({ content: contentLines.join("\n") });
-          }
-
-          if (!silent && !progT.isAlt) { await sendWelcome(i.guild, targetId, progT.gameTags || []); }
-
-          await i.update({ content: `승인 처리 완료: <@${targetId}> ${silent ? "(조용히 승인)" : ""}`, components: [], embeds: [] });
-
-          const pch2 = getUserPrivateChannel(i.guild, targetId);
-          if (pch2) { try { await pch2.delete("승인 절차 종료(승인)"); } catch {} }
+          const pch = getUserPrivateChannel(i.guild, targetId) || await createPrivateChannel(i.guild, target);
+          const flags = { greet: false, rules: false, inactive: false };
+          const consentMsg = await pch.send({
+            content: `<@${targetId}>`,
+            embeds: [finalConsentEmbed(target).setFooter({ text: "버튼을 눌러 동의해 주세요." })],
+            components: consentRows(flags),
+            allowedMentions: { users: [targetId] }
+          });
+          setProg(targetId, { finalConsentFlags: flags, finalConsentMsgId: consentMsg.id, silentApproved: silent });
           if (progT.queueMsgId) {
-            const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
-            if (qch) { try { const m = await qch.messages.fetch(progT.queueMsgId); await m.delete(); } catch {} }
+            try {
+              const qch = i.guild.channels.cache.get(CH_APPROVAL_QUEUE);
+              if (qch) {
+                const m = await qch.messages.fetch(progT.queueMsgId);
+                await m.edit({
+                  embeds: [buildQueueEmbed(i.guild, target, { ...progT, status: "최종 입장 대기" }).setTitle("신규 입장 승인 대기 (최종 절차 진행 중)")],
+                  components: []
+                }).catch(() => {});
+              }
+            } catch {}
           }
-          state.delete(targetId);
-          deleteState(targetId);
+          await i.update({ content: `최종 입장 절차를 전송했습니다: <@${targetId}>`, components: [], embeds: [] });
           return;
         }
       }
@@ -1384,15 +1448,15 @@ module.exports = (client) => {
 };
 
 module.exports.manualStart = async (guild, memberOrId) => {
-    try {
-        const member = typeof memberOrId === "string"
-            ? await guild.members.fetch(memberOrId).catch(() => null)
-            : memberOrId;
-        if (!member) return null;
-        await purgeOtherJoinChannels(guild, member.id);
-        await startFlow(guild, member);
-        return getUserPrivateChannel(guild, member.id) || null;
-    } catch { return null; }
+  try {
+    const member = typeof memberOrId === "string"
+      ? await guild.members.fetch(memberOrId).catch(() => null)
+      : memberOrId;
+    if (!member) return null;
+    await purgeOtherJoinChannels(guild, member.id);
+    await startFlow(guild, member);
+    return getUserPrivateChannel(guild, member.id) || null;
+  } catch { return null; }
 };
 
 module.exports.findUserPrivateChannel = (guild, uid) => getUserPrivateChannel(guild, uid);
