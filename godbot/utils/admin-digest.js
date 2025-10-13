@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ChannelType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -303,35 +303,7 @@ async function computeDigest(client, guild) {
       { name: '🔍 서버 현황', value: fmtServerStatus, inline: true },
       { name: '👑 음성채팅 1위', value: topVoiceUser ? `<@${topVoiceUser.id}> — ${hoursFmt(topVoiceUser.voiceSec)}h` : '데이터 부족', inline: true }
     );
-  const fmtList = (arr, take = 10, mapper = (x)=>x) => {
-    const cut = arr.slice(0, take);
-    if (!cut.length) return '해당 없음';
-    return cut.map(mapper).join('\n');
-  };
-  const embed2 = new EmbedBuilder()
-    .setTitle('🧹 비활동 인원')
-    .setColor(0xFFAB00)
-    .addFields(
-      {
-        name: `장기 미접속 (>=90일) — ${longInactiveTargets.length}명`,
-        value: fmtList(longInactiveTargets, 10, (p, i) => {
-          const label = p.lastActiveDays >= 90 ? '90일 이상 미접속' : `${p.lastActiveDays}일 미접속`;
-          return `${String(i+1).padStart(2,'0')}. <@${p.id}> — ${label}`;
-        }),
-        inline: false
-      },
-      {
-        name: `신규 비활동 (가입 7일↑, 활동 7일↑) — ${newbieInactive.length}명`,
-        value: fmtList(newbieInactive, 10, (p, i) => {
-          const joinedDays = p.joinDays || (p.joinedAt ? daysBetween(now, p.joinedAt) : 0);
-          const lastDisplay = p.lastActiveDays >= joinedDays
-            ? `가입 후 ${joinedDays}일 전보다 뒤`
-            : `${p.lastActiveDays}일 전`;
-          return `${String(i+1).padStart(2,'0')}. <@${p.id}> — 가입 후 ${joinedDays}일 경과, 최근 활동 ${lastDisplay}`;
-        }),
-        inline: false
-      }
-    );
+
   const rank = (key, top=5, desc=true) => {
     const arr = prof
       .map(p => ({ id: p.id, tag: p.tag, v: p.P[key]||0 }))
@@ -351,18 +323,21 @@ async function computeDigest(client, guild) {
       { name: '‘뒷서버’ 의심 정황', value: fmtTop(topOffsite), inline: false },
       { name: '이탈 위험', value: fmtTop(topChurn), inline: false }
     );
-  const topFriendly = rank('friendly', 5, true);
-  const topInfluence = rank('influence', 5, true);
-  const topSteady = rank('steady', 5, true);
-  const embed4 = new EmbedBuilder()
-    .setTitle('💙 긍정적 지표 유저 TOP5')
-    .setColor(0x43B581)
-    .addFields(
-      { name: '서버에 우호적', value: fmtTop(topFriendly), inline: false },
-      { name: '영향력 있는 핵심 인물', value: fmtTop(topInfluence), inline: false },
-      { name: '꾸준한 스테디셀러', value: fmtTop(topSteady), inline: false }
-    );
-  return [embed1, embed2, embed3, embed4];
+
+  const joinChannels = guild.channels.cache
+    .filter(c => c.type === ChannelType.GuildText && typeof c.name === 'string' && c.name.startsWith('입장-'));
+  const joinList = [...joinChannels.values()]
+    .sort((a,b) => a.createdTimestamp - b.createdTimestamp)
+    .slice(0, 20)
+    .map((c, i) => `${String(i+1).padStart(2,'0')}. <#${c.id}> — 생성 <t:${Math.floor((c.createdTimestamp||Date.now())/1000)}:R>`)
+    .join('\n') || '진행 중인 채널 없음';
+  const embedJoin = new EmbedBuilder()
+    .setTitle('🚪 서버 입장 절차 진행중인 유저 현황')
+    .setColor(0x2ECC71)
+    .setDescription(`진행 중 채널 수: ${joinChannels.size}개`)
+    .addFields({ name: '목록', value: joinList, inline: false });
+
+  return [embed1, embedJoin, embed3];
 }
 async function runOnce(client) {
   const guild = client.guilds.cache.first();
