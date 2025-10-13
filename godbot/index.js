@@ -29,6 +29,13 @@ global.client = client;
 
 const LOG_CHANNEL_ID = "1382168527015776287";
 module.exports.client = client;
+const OWNER_ID = process.env.OWNER_ID || "285645561582059520";
+const ALLOWED_GUILD_IDS = new Set([
+  "785841387396005948"
+]);
+function isAllowedGuild(id) {
+  return id && ALLOWED_GUILD_IDS.has(String(id));
+}
 
 const APPROVAL_LOBBY_CHANNEL_ID = "1423239866359218320";
 const approvalFlow = require("./utils/approval-flow");
@@ -64,7 +71,6 @@ for (const file of commandFiles) {
   }
 }
 
-// ✅ 이벤트 핸들링
 const eventsPath = path.join(__dirname, "events");
 if (fs.existsSync(eventsPath)) {
   const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith(".js"));
@@ -78,26 +84,15 @@ if (fs.existsSync(eventsPath)) {
   }
 }
 
-// [유틸 대부분의 실시간 기능 지원 파트] ----------------------------------
-// 유저 입장 절차
 require("./utils/approval-flow")(client);
-// 유저 입장 및 이용 거절
 require("./utils/approval-blocker")(client);
-// 봇 음성채널 실시간 연결
 require('./utils/voiceWatcher')(client);
-// 🚫 특정 역할 활동 제한
 require('./utils/restricted-role-guard')(client);
-// 후원 역할 자동 만료 제거
 require('./utils/donor-role-expirer')(client);
-// 카테고리 채널 감시 + 현황 보고 + 30일 미사용시 비공개 처리
 require('./utils/category-channel-watcher').initChannelWatcher(client);
-// 갓봇 ai 1
 require('./utils/godbot-core').initGodbotCore(client);
-// 범프 리워드, 범프 보상
 require('./utils/bump-reward')(client);
-// 닉네임 변경
 require('./commands/nickname-change').register(client);
-// 관리자 전용 자동 임베드 생성
 require('./utils/admin-digest').start(client);
 
 const controlPanel = require('./utils/control-panel');
@@ -106,10 +101,15 @@ controlPanel.register(client);
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
 
+client.on(Events.GuildCreate, async guild => {
+  if (!isAllowedGuild(guild.id)) {
+    try { await guild.leave(); } catch {}
+  }
+});
+
 const disasterWatcher = require("./utils/disaster-watcher.js");
 const gameNews = require("./utils/game-news-watcher.js");
 
-// === 갓비트 신규상장 자동갱신: 10분마다 ===
 const { autoMarketUpdate } = require('./commands/godbit.js');
 const GUILD_ID = process.env.GUILD_ID || '785841387396005948';
 
@@ -126,9 +126,8 @@ setInterval(async () => {
   } catch (e) {
     console.error('갓비트 자동상장 오류:', e);
   }
-}, 600_000); // 필요하면 60_000(1분)로 낮춰도 OK
+}, 600_000);
 
-// ✅ 봇 준비 완료 시 로그 전송 + 활동 상태 번갈아 표시
 client.once(Events.ClientReady, async () => {
   console.log(`✅ 로그인됨! ${client.user.tag}`);
 
@@ -142,15 +141,19 @@ client.once(Events.ClientReady, async () => {
     console.error("재시작 로그 전송 실패:", e);
   }
 
+  for (const [gid, guild] of client.guilds.cache) {
+    if (!isAllowedGuild(gid)) {
+      try { await guild.leave(); } catch {}
+    }
+  }
+
   const guild = client.guilds.cache.get(GUILD_ID);
 
-  // 🔥 재시작 시 서버 나간 유저 관계/교류 정리
   if (guild) {
     await relationship.cleanupLeftMembers(guild);
     console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
   }
 
-  // 🔥 재시작 시 서버 나간 유저의 BE(파랑 정수) 데이터 전부 제거
   try {
     if (guild) {
       const { cleanupBELeftMembers } = require('./commands/be-util.js');
@@ -180,7 +183,6 @@ client.once(Events.ClientReady, async () => {
     });
     activityIndex = (activityIndex + 1) % activityMessages.length;
   }, 20000);
-    // === [추가] 로비 채널 안내 임베드 업서트 ===
     try {
         const lobby = await client.channels.fetch(APPROVAL_LOBBY_CHANNEL_ID).catch(() => null);
         if (lobby && lobby.isTextBased()) {
@@ -199,10 +201,10 @@ client.once(Events.ClientReady, async () => {
                 .setColor(0x7b2ff2)
                 .setTitle("🧭 까리한 디스코드 • 수동 입장")
                 .setDescription([
-                    "기본 채널이 생성되지 않았다면, 직접 **입장 절차**를 시작할 수 있습니다!",
+                    "기본 채널이 생성되지 않았다면, 직접 입장 절차를 시작할 수 있습니다!",
                     "",
-                    "▶️ 버튼을 누르시면 **입장 절차를 진행할 수 있는 개인 채널**이 생성됩니다.",
-                    "⚠️ 이미 인증 절차를 진행하는 채널이 있다면 **그 채널로 안내**해드립니다.",
+                    "▶️ 버튼을 누르시면 입장 절차를 진행할 수 있는 개인 채널이 생성됩니다.",
+                    "⚠️ 이미 인증 절차를 진행하는 채널이 있다면 그 채널로 안내해드립니다.",
                 ].join("\n"))
                 .setFooter({ text: "까리한 디스코드 공식 봇, '갓봇' 입니다." });
 
@@ -217,7 +219,6 @@ client.once(Events.ClientReady, async () => {
     }
 });
 
-// ✅ 명령어 사용 로그 전송 함수
 async function sendCommandLog(interaction) {
   try {
     const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
@@ -226,7 +227,6 @@ async function sendCommandLog(interaction) {
     const cmdName = interaction.commandName;
     const time = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 
-    // 👉 채널 정보 뽑기
     const channel = interaction.channel;
     const channelInfo = channel
       ? (channel.isDMBased()
@@ -239,7 +239,7 @@ if (interaction.options) {
   const root = interaction.options.data ?? [];
   const flat = [];
   for (const opt of root) {
-    if (opt.type === 1 /* SUB_COMMAND */ || opt.type === 2 /* SUB_COMMAND_GROUP */) {
+    if (opt.type === 1 || opt.type === 2) {
       flat.push(`sub:${opt.name}`);
       (opt.options ?? []).forEach(o => flat.push(`${o.name}=${o.value}`));
     } else {
@@ -259,11 +259,9 @@ ${extra ? `**옵션:** ${extra}\n` : ""}
       color: 0x009688
     };
     await logChannel.send({ embeds: [embed] });
-  } catch (e) { /* 무시 */ }
+  } catch (e) { }
 }
 
-
-// === 모달 커스텀ID 핸들러 등록 (한 곳에서)
 const modalHandlers = new Map([
   ["rps_bet_modal", async (interaction) => {
   const cmd = client.commands.get("정수획득");
@@ -409,7 +407,6 @@ const modalHandlers = new Map([
   const cmd = client.commands.get("라이어");
   if (cmd?.modal) return cmd.modal(interaction);
 }],
-  // 필요하면 추가로 더 여기에 등록
 ]);
 
 const warnCmd = client.commands.get("경고");
@@ -425,15 +422,22 @@ const scrimAnnounce =
   require("./commands/scrim-announce.js");
 
 client.on(Events.InteractionCreate, async interaction => {
+  if (interaction.guildId && !isAllowedGuild(interaction.guildId)) {
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "이 봇은 이 서버에서 사용할 수 없어.", ephemeral: true });
+      }
+    } catch {}
+    return;
+  }
 
   if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
   interaction.channel?.name?.startsWith('입장-')
 ) {
-  return; // approval-flow.js가 전담 처리
+  return;
 }
 
-    // === 로비 채널 '입장 절차 진행하기' 버튼 처리(이름 기반 중복 검사 강화) ===
 if (interaction.isButton() && interaction.customId === "approval_start_from_lobby") {
   if (interaction.channelId !== APPROVAL_LOBBY_CHANNEL_ID) {
     return interaction.reply({ content: "이 버튼은 지정된 로비 채널에서만 사용할 수 있어.", ephemeral: true }).catch(() => {});
@@ -507,19 +511,14 @@ if (interaction.isModalSubmit() && (
   return;
 }
 
-
-// 0. 게임 검색 모달 제출 처리 → 즉시 태그 토글
 if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   const keyword = interaction.fields.getTextInputValue("searchKeyword");
-  // 2) 각 글자를 순서대로 포함하는 fuzzy regex 생성
   const pattern = keyword
     .toLowerCase()
     .split("")
     .map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join(".*");
   const regex = new RegExp(pattern);
-
-  // 3) fuzzy 매칭
   const matches = ALL_GAMES.filter(g => regex.test(g.toLowerCase()));
   if (matches.length === 0) {
     return interaction.reply({ content: "🔍 검색 결과가 없습니다.", ephemeral: true });
@@ -530,8 +529,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
       ephemeral: true
     });
   }
-
-  // 4) 태그 토글
   const gameName = matches[0];
   const role = interaction.guild.roles.cache.find(r => r.name === gameName);
   if (!role) {
@@ -543,8 +540,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   } else {
     await member.roles.add(role, "게임 태그 추가");
   }
-
-  // 5) 현재 등록된 태그 임베드로 보여주기
   const chosenRoles = member.roles.cache
     .filter(r => ALL_GAMES.includes(r.name))
     .map(r => r.name);
@@ -559,7 +554,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   return interaction.reply({ embeds: [embed], ephemeral: true });
 }
 
-   // === 내기 셀렉트/모달 통합 처리 ===
   const betCmd = client.commands.get("내기");
   if (
     (interaction.isStringSelectMenu() && interaction.customId.startsWith("bet_")) ||
@@ -578,7 +572,6 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     return;
   }
 
-  // 1. 경고 카테고리/세부사유 SelectMenu warn
   if (
   interaction.isStringSelectMenu() &&
   (
@@ -602,14 +595,11 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
   return;
 }
 
-
-  // 리모콘 음성채널 상태 변경 및 빠른 이동 관련
   if (interaction.isButton() && remoteCmd && interaction.customId.startsWith("remote_move_")) {
     await remoteCmd.handleButton(interaction);
     return;
   }
 
-  // 💖 후원 안내 버튼(공지 등)
   if (
     interaction.isButton() &&
     (interaction.customId === 'donate_money' || interaction.customId === 'donate_item')
@@ -625,12 +615,10 @@ if (interaction.isModalSubmit() && interaction.customId === "gameSearchModal") {
     }
   }
 
-  // "오늘의 운세" 최근 기록 버튼 처리
   if (interaction.isButton() && interaction.customId === "fortune_record_view") {
     return fortuneCmd.handleButton(interaction);
   }
 
-  // 🌐 웹 검색 페이지네이션(wsearch:)
 if (interaction.isButton() && interaction.customId?.startsWith("wsearch:")) {
   const cmd = client.commands.get("검색") || require("./commands/search.js");
   try {
@@ -644,7 +632,6 @@ if (interaction.isButton() && interaction.customId?.startsWith("wsearch:")) {
   return;
 }
 
-  // === 유틸: 계산기/메모장/복권 상호작용 ===
 if (
   (interaction.isButton() || interaction.isModalSubmit()) &&
   (
@@ -667,7 +654,6 @@ if (
   }
 }
 
-// 2. 모달 통합 처리
 if (interaction.isModalSubmit()) {
   if (
     interaction.customId === 'team-modal' ||
@@ -713,7 +699,6 @@ if (!handled) {
   return;
 }
 
-  // 3. 챔피언배틀 명령어
   if (interaction.isChatInputCommand() && interaction.commandName === "챔피언배틀") {
     await sendCommandLog(interaction);
     try {
@@ -735,7 +720,6 @@ if (!handled) {
     return;
   }
 
-  // 4. 챔피언배틀 버튼
   if (
     interaction.isButton() && interaction.customId && (
       interaction.customId.startsWith('accept_battle_') ||
@@ -766,7 +750,6 @@ if (!handled) {
     return;
   }
 
-  // 5. 그 외 명령어/버튼(로그 및 명령어 실행)
   if (interaction.isChatInputCommand()) {
     await sendCommandLog(interaction);
     const command = client.commands.get(interaction.commandName);
@@ -790,7 +773,162 @@ if (!handled) {
   }
 });
 
-// === 메시지 누적 ===
+client.on(Events.InteractionCreate, async interaction => {
+  if (interaction.guildId && !isAllowedGuild(interaction.guildId)) {
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "이 봇은 이 서버에서 사용할 수 없어.", ephemeral: true });
+      }
+    } catch {}
+    return;
+  }
+
+if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) 
+    && interaction.channel?.name?.startsWith('입장-')) return;
+  
+  if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId?.startsWith("usercleanup_")) {
+  const cmd = client.commands.get("유저청소");
+  if (cmd?.component) {
+    try {
+      await cmd.component(interaction);
+    } catch (err) {
+      console.error("[유저청소 component 오류]", err);
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.reply({ content: "❌ 처리 중 오류가 발생했어.", ephemeral: true }).catch(() => {});
+      }
+    }
+  } else {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({ content: "❌ 유저청소 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
+
+if (
+  (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
+  interaction.customId?.startsWith("scrim:")
+) {
+  try {
+    const cmd = client.commands.get("내전공지") || scrimAnnounce;
+    if (cmd?.onComponent) {
+      await cmd.onComponent(interaction);
+    } else {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ 내전 공지 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error("[scrim component 오류]", err);
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({ content: "❌ 내전 공지 버튼 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return; 
+}
+
+const fishingCmd = client.commands.get("낚시") || require("./commands/fishing.js");
+
+if (
+  (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
+  (
+    interaction.customId?.startsWith("quest:") ||
+    interaction.customId?.startsWith("fish:") ||
+    interaction.customId?.startsWith("shop:") ||
+    interaction.customId?.startsWith("inv:")  ||
+    interaction.customId?.startsWith("sell:") ||
+    interaction.customId?.startsWith("sell-") ||
+    interaction.customId?.startsWith("nav:")  ||
+    interaction.customId?.startsWith("dex:")  ||
+    interaction.customId?.startsWith("rank:") ||
+    interaction.customId?.startsWith("open:") || 
+    interaction.customId?.startsWith("info:") ||
+    interaction.customId?.startsWith("auto:") ||
+    interaction.customId?.startsWith("aqua:") ||
+    interaction.customId?.startsWith("relic:") ||
+    interaction.customId?.startsWith("relic-") ||
+    interaction.customId?.startsWith("relic")  ||
+    interaction.customId === "relic-equip-choose" ||
+    interaction.customId?.startsWith("my:")
+  )
+) {
+  try {
+    await fishingCmd.component(interaction);
+  } catch (err) {
+    console.error("[낚시 component 오류]", err);
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
+
+if (
+  (interaction.isButton() || interaction.isStringSelectMenu()) &&
+  (
+    (interaction.customId || "").startsWith("liar:") ||
+    (interaction.customId || "").startsWith("liar-")
+  )
+) {
+  const cmd = client.commands.get("라이어");
+  if (!cmd || typeof cmd.component !== "function") {
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 라이어 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+  try {
+    await cmd.component(interaction);
+  } catch (err) {
+    console.error("[라이어 component 오류]", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 라이어 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
+    }
+  }
+  return;
+}
+
+  if (interaction.isButton() && interaction.customId.startsWith("bet_share_join_")) {
+  const betCmd = client.commands.get("내기");
+  if (betCmd?.modal) return betCmd.modal(interaction);
+  return;
+}
+
+  if (!interaction.isButton()) return;
+
+if (interaction.customId.startsWith('profile:')) return;
+
+  if (interaction.customId.endsWith('_open')) {
+    try {
+      if (interaction.customId === 'complaint_open') return await complaint.execute(interaction);
+      if (interaction.customId === 'report_open') return await report.execute(interaction);
+      if (interaction.customId === 'punish_guide_open') return await punishGuide.execute(interaction);
+      if (interaction.customId === 'warn_check_open') return await warnCheck.execute(interaction);
+      if (interaction.customId === 'game_tag_open') return await gameTag.execute(interaction);
+      if (interaction.customId === 'server_tag_open') return await serverTag.execute(interaction);
+      if (interaction.customId === 'serverinfo_open') return await serverInfo.execute(interaction);
+      if (interaction.customId === 'serverrules_open') return await serverRules.execute(interaction);
+      if (interaction.customId === 'levelguide_open') return await levelGuide.execute(interaction);
+      if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
+      if (interaction.customId === 'profile_edit_open') return await profileEdit.execute(interaction);
+      if (interaction.customId === 'genji_open') return await genji.execute(interaction);
+      if (interaction.customId === 'adventure_open') return await adventure.execute(interaction);
+      if (interaction.customId === 'genji_rank_open') return await genjiRank.execute(interaction);
+      if (interaction.customId === 'adventure_rank_open') return await adventureRank.execute(interaction);
+      if (interaction.customId === 'bot_pull_open') return await botPull.execute(interaction);
+      if (interaction.customId === 'bot_deploy_commands_open') return await botDeployCommands.execute(interaction);
+      if (interaction.customId === 'bot_restart_open') return await botRestart.execute(interaction);
+      if (interaction.customId === 'set_status_open') return await setStatus.execute(interaction);
+      if (interaction.customId === 'remove_status_open') return await removeStatus.execute(interaction);
+      if (interaction.customId === 'prev' || interaction.customId === 'next') return;
+    } catch (err) {
+      if (err?.code === 10062) return;
+      console.error('버튼 핸들러 오류:', err);
+    }
+    return;
+  }
+});
+
 client.on("messageCreate", async msg => {
   if (msg.partial) {
     try { msg = await msg.fetch(); } catch { return; }
@@ -800,21 +938,17 @@ client.on("messageCreate", async msg => {
   }
 });
 
-// 3시간마다 랜덤 포인트
 const { setup: setupFastGive } = require('./utils/be-fastgive.js');
 setupFastGive(client);
 
-
-// === 음성 누적 + 1시간 알림 ===
 const voiceStartMap = new Map();
 
-// 1. 봇 부팅 시, 이미 음성채널에 있는 유저들도 모두 트래킹 시작 (단, 그 시점부터만)
 client.once('ready', async () => {
   for (const [guildId, guild] of client.guilds.cache) {
     for (const [memberId, voiceState] of guild.voiceStates.cache) {
       if (!voiceState.channel || voiceState.member.user.bot) continue;
-      if (!activity.isTracked(voiceState.channel, "voice")) continue; // 집계 필터
-      if (voiceState.selfMute || voiceState.selfDeaf) continue; // 음소거/헤드셋 닫기 상태면 제외
+      if (!activity.isTracked(voiceState.channel, "voice")) continue;
+      if (voiceState.selfMute || voiceState.selfDeaf) continue;
       voiceStartMap.set(voiceState.id, {
         channel: voiceState.channel,
         time: Date.now(),
@@ -824,9 +958,7 @@ client.once('ready', async () => {
   }
 });
 
-// 2. 음성상태 변경 감지
 client.on("voiceStateUpdate", (oldState, newState) => {
-  // === 입장/이동 ===
   if (!oldState.channel && newState.channel && !newState.member.user.bot) {
     if (
       activity.isTracked(newState.channel, "voice") &&
@@ -839,21 +971,18 @@ client.on("voiceStateUpdate", (oldState, newState) => {
       });
     }
   }
-  // === 퇴장/이동 ===
   if (oldState.channel && (!newState.channel || oldState.channel.id !== newState.channel.id)) {
     const info = voiceStartMap.get(oldState.id);
     if (
       info &&
       activity.isTracked(oldState.channel, "voice")
     ) {
-      // (음소거 중이었더라도 실제로 트래킹 중인 시간만 누적됨)
       const sec = Math.floor((Date.now() - info.lastSaved) / 1000);
       if (sec > 0) {
         activity.addVoice(oldState.id, sec, oldState.channel);
       }
       voiceStartMap.delete(oldState.id);
     }
-    // 이동 or 재입장 시 새로 등록
     if (newState.channel && !newState.member.user.bot) {
       if (
         activity.isTracked(newState.channel, "voice") &&
@@ -867,18 +996,15 @@ client.on("voiceStateUpdate", (oldState, newState) => {
       }
     }
   }
-  // === 음소거/헤드셋 닫기 on/off ===
   if (
     newState.channel && !newState.member.user.bot &&
     activity.isTracked(newState.channel, "voice")
   ) {
     const wasTracking = voiceStartMap.has(newState.id);
-    // 음소거/헤드셋 켜면(집계 시작)
     if (
       (!oldState.selfMute && newState.selfMute) ||
       (!oldState.selfDeaf && newState.selfDeaf)
     ) {
-      // 이제 음소거/헤드셋이 켜짐 → 트래킹 중이었다면 남은 시간 저장 후 map에서 제거
       if (wasTracking) {
         const info = voiceStartMap.get(newState.id);
         const sec = Math.floor((Date.now() - info.lastSaved) / 1000);
@@ -886,12 +1012,10 @@ client.on("voiceStateUpdate", (oldState, newState) => {
         voiceStartMap.delete(newState.id);
       }
     }
-    // 음소거/헤드셋 해제(집계 재시작)
     if (
       (oldState.selfMute && !newState.selfMute) ||
       (oldState.selfDeaf && !newState.selfDeaf)
     ) {
-      // 기존에 없던 사람이 집계 조건 맞추면 트래킹 시작
       if (!wasTracking && !newState.selfMute && !newState.selfDeaf) {
         voiceStartMap.set(newState.id, {
           channel: newState.channel,
@@ -903,11 +1027,9 @@ client.on("voiceStateUpdate", (oldState, newState) => {
   }
 });
 
-// 3. 1분마다 실시간 누적
 setInterval(() => {
   const now = Date.now();
   for (const [userId, info] of voiceStartMap.entries()) {
-    // **현재 유저의 voiceState(실시간 체크)**
     let voiceState = null;
     for (const [guildId, guild] of client.guilds.cache) {
       if (guild.voiceStates.cache.has(userId)) {
@@ -915,7 +1037,6 @@ setInterval(() => {
         break;
       }
     }
-    // 유저가 이미 나갔거나(voiceState 없음), 음소거/헤드셋 닫기 중이면 패스
     if (
       !voiceState ||
       voiceState.selfMute || voiceState.selfDeaf ||
@@ -923,14 +1044,13 @@ setInterval(() => {
     ) continue;
 
     const sec = Math.floor((now - info.lastSaved) / 1000);
-    if (sec >= 60) { // 1분 이상일 때만 저장
+    if (sec >= 60) {
       activity.addVoice(userId, sec, info.channel);
       voiceStartMap.set(userId, { ...info, lastSaved: now });
     }
   }
 }, 60 * 1000);
 
-// ✅ 음성채널 동접 관계도 자동상승
 setInterval(() => {
   for (const [guildId, guild] of client.guilds.cache) {
     const voiceStates = guild.voiceStates.cache;
@@ -953,10 +1073,9 @@ setInterval(() => {
 }, 10 * 60 * 300);
 
 setInterval(() => {
-  relationship.decayRelationships(0.5); // 3일 이상 교류 없으면 자동 차감
+  relationship.decayRelationships(0.5);
 }, 1000 * 60 * 60 * 24);
 
-// ✅ 답글 상호작용 시 관계도 상승
 client.on("messageCreate", async msg => {
   if (msg.partial) {
     try { msg = await msg.fetch(); } catch { return; }
@@ -973,7 +1092,6 @@ client.on("messageCreate", async msg => {
   }
 });
 
-// ✅ 멘션 시 관계도 상승
 client.on("messageCreate", async msg => {
   if (msg.partial) {
     try { msg = await msg.fetch(); } catch { return; }
@@ -989,7 +1107,6 @@ client.on("messageCreate", async msg => {
   }
 });
 
-// ✅ 이모지 리액션 시 관계도 상승
 client.on("messageReactionAdd", async (reaction, user) => {
   if (reaction.partial) {
     try { reaction = await reaction.fetch(); } catch { return; }
@@ -1002,7 +1119,6 @@ client.on("messageReactionAdd", async (reaction, user) => {
   }
 });
 
-// 유저 활동기록 체크 코드
 const activityPath = path.join(__dirname, "activity.json");
 
 client.on("messageCreate", async message => {
@@ -1021,14 +1137,14 @@ client.on("messageCreate", async message => {
 client.on('presenceUpdate', (oldPresence, newPresence) => {
   const userId = newPresence.userId;
   const user = newPresence.user || client.users.cache.get(userId);
-  if (!user || user.bot) return; // 봇은 무시!
+  if (!user || user.bot) return;
 
   if (!newPresence.activities) return;
   newPresence.activities.forEach(activity => {
-    if (activity.type === 0) { // 게임
+    if (activity.type === 0) {
       activityLogger.addActivity(userId, 'game', { name: activity.name });
     }
-    if (activity.type === 2 && activity.name === 'Spotify') { // 음악
+    if (activity.type === 2 && activity.name === 'Spotify') {
       activityLogger.addActivity(userId, 'music', {
         song: activity.details,
         artist: activity.state,
@@ -1038,7 +1154,6 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
   });
 });
 
-// ✅ 게임 메시지 핸들링 (러시안룰렛 등)
 const { rouletteGames, activeChannels, logRouletteResult } = require("./commands/game");
 
 const TIMEOUT_OPTIONS = [
@@ -1093,7 +1208,6 @@ client.on("messageCreate", async message => {
     }, 20000);
   };
 
-  // !장전, !격발 → 장전, 발사로도 인식
   if (["!장전", "장전"].includes(message.content)) {
     if (!isTurn) return message.reply("❌ 지금은 당신 차례가 아닙니다!");
     if (game.isLoaded) return message.reply("❗ 이미 장전되었습니다. `발사`를 입력하세요!");
@@ -1110,7 +1224,6 @@ client.on("messageCreate", async message => {
 
     const deathChance = Math.random();
     if (deathChance < 0.39) {
-      // 타임아웃 벌칙 뽑기
       const timeoutOption = getRandomTimeout();
       const timeoutMs = timeoutOption.duration * 1000;
       const reason = "러시안룰렛 패배!";
@@ -1123,7 +1236,6 @@ client.on("messageCreate", async message => {
       rouletteGames.delete(channelId);
       activeChannels.delete(channelId);
 
-      // 멤버 타임아웃 적용 (권한/관리자 예외 처리)
       let timeoutApplied = false;
       try {
         const guildMember = await message.guild.members.fetch(user.id);
@@ -1171,8 +1283,6 @@ client.on("messageCreate", async message => {
   }
 });
 
-
-// 파랑 정수(보상) 기능 등 기존 로직은 유지
 const bePath = path.join(__dirname, "data/BE.json");
 function loadBE() {
   if (!fs.existsSync(bePath)) fs.writeFileSync(bePath, "{}");
@@ -1206,7 +1316,6 @@ client.on("messageCreate", async msg => {
     msg.channel.topic.includes("파랑 정수")
   ) {
     if (Math.random() < 0.01) {
-      // 기존 확률별 메시지, 이모지
       const r = Math.random();
       let reward = 0;
       let msgText = "";
@@ -1230,7 +1339,6 @@ client.on("messageCreate", async msg => {
         msgText = `-# 🔷 <@${msg.author.id}>님에게 레전드 상황 발생! 파랑 정수 ${reward.toLocaleString()} BE가 쏟아집니다!`;
       }
 
-      // 배율/최종보상 처리
       const member = await msg.guild.members.fetch(msg.author.id).catch(() => null);
       let finalReward = reward;
       let tag = "";
@@ -1252,7 +1360,6 @@ client.on("messageCreate", async msg => {
   }
 });
 
-// 상시 클릭 가능 버튼형 공지 모달
 const report = require('./commands/report.js');
 const complaint = require('./commands/complaint.js');
 const punishGuide = require('./commands/punishment-guide.js');
@@ -1283,7 +1390,7 @@ if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.i
   const cmd = client.commands.get("유저청소");
   if (cmd?.component) {
     try {
-      await cmd.component(interaction); // 내부에서 deferUpdate/update/editReply 처리함
+      await cmd.component(interaction);
     } catch (err) {
       console.error("[유저청소 component 오류]", err);
       if (!interaction.deferred && !interaction.replied) {
@@ -1295,10 +1402,9 @@ if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.i
       await interaction.reply({ content: "❌ 유저청소 핸들러를 찾지 못했어.", ephemeral: true }).catch(() => {});
     }
   }
-  return; // 다른 핸들러가 중복 처리하지 않도록 종료
+  return;
 }
 
-// === 내전 공지(스크림) 상호작용 라우팅 ===
 if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
   interaction.customId?.startsWith("scrim:")
@@ -1321,7 +1427,6 @@ if (
   return; 
 }
 
-// === 낚시 통합 상호작용 라우팅 ===
 const fishingCmd = client.commands.get("낚시") || require("./commands/fishing.js");
 
 if (
@@ -1355,15 +1460,14 @@ if (
       await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
     }
   }
-  return; // 다른 핸들러가 또 건드리지 않게 여기서 종료
+  return;
 }
 
-  // 라이어 게임 버튼/셀렉트 처리
 if (
   (interaction.isButton() || interaction.isStringSelectMenu()) &&
   (
-    (interaction.customId || "").startsWith("liar:") ||   // 예: liar:join, liar:leave, liar:start, liar:vote ...
-    (interaction.customId || "").startsWith("liar-")      // 예: liar-topic, liar-next 등
+    (interaction.customId || "").startsWith("liar:") ||
+    (interaction.customId || "").startsWith("liar-")
   )
 ) {
   const cmd = client.commands.get("라이어");
@@ -1384,69 +1488,47 @@ if (
   return;
 }
 
-  // 공유된 내기에 참여하기
   if (interaction.isButton() && interaction.customId.startsWith("bet_share_join_")) {
   const betCmd = client.commands.get("내기");
   if (betCmd?.modal) return betCmd.modal(interaction);
   return;
 }
 
-  // 버튼만 처리, 나머지는 무시
   if (!interaction.isButton()) return;
 
-// ✅ 프로필 전용 버튼은 개별 collector가 처리 → 전역 우회
 if (interaction.customId.startsWith('profile:')) return;
 
-  // "_open"으로 끝나는 버튼만 index.js에서 직접 처리!
   if (interaction.customId.endsWith('_open')) {
     try {
-      // 1. 신고/민원 세트
       if (interaction.customId === 'complaint_open') return await complaint.execute(interaction);
       if (interaction.customId === 'report_open') return await report.execute(interaction);
       if (interaction.customId === 'punish_guide_open') return await punishGuide.execute(interaction);
       if (interaction.customId === 'warn_check_open') return await warnCheck.execute(interaction);
-
-      // 2. 태그 세트
       if (interaction.customId === 'game_tag_open') return await gameTag.execute(interaction);
       if (interaction.customId === 'server_tag_open') return await serverTag.execute(interaction);
-
-      // 3. 안내 세트
       if (interaction.customId === 'serverinfo_open') return await serverInfo.execute(interaction);
       if (interaction.customId === 'serverrules_open') return await serverRules.execute(interaction);
       if (interaction.customId === 'levelguide_open') return await levelGuide.execute(interaction);
-
-      // 4. 프로필 관리 세트
       if (interaction.customId === 'profile_register_open') return await profileRegister.execute(interaction);
       if (interaction.customId === 'profile_edit_open') return await profileEdit.execute(interaction);
-
-      // 5. 겐지/모험/랭킹 세트
       if (interaction.customId === 'genji_open') return await genji.execute(interaction);
       if (interaction.customId === 'adventure_open') return await adventure.execute(interaction);
       if (interaction.customId === 'genji_rank_open') return await genjiRank.execute(interaction);
       if (interaction.customId === 'adventure_rank_open') return await adventureRank.execute(interaction);
-
-      // 6. 봇 관리 버튼 세트
       if (interaction.customId === 'bot_pull_open') return await botPull.execute(interaction);
       if (interaction.customId === 'bot_deploy_commands_open') return await botDeployCommands.execute(interaction);
       if (interaction.customId === 'bot_restart_open') return await botRestart.execute(interaction);
-
-      // 7. 상태 설정 afk
       if (interaction.customId === 'set_status_open') return await setStatus.execute(interaction);
       if (interaction.customId === 'remove_status_open') return await removeStatus.execute(interaction);
-
       if (interaction.customId === 'prev' || interaction.customId === 'next') return;
-      // ================================
     } catch (err) {
       if (err?.code === 10062) return;
       console.error('버튼 핸들러 오류:', err);
     }
     return;
   }
-
-  // "_open" 아닌 버튼은 무시(페이지네이션 등은 각 collector가 처리)
 });
 
-// 중복 처리 방지
 require("./utils/activity-stats");
 
 process.on("uncaughtException", async (err) => {
@@ -1473,19 +1555,16 @@ process.on("unhandledRejection", async (reason) => {
 const { saveTaxSnapshot, collectTaxFromSnapshot } = require('./utils/tax-collect.js');
 const cron = require('node-cron');
 
-// 1. 17:55 스냅샷 저장
 cron.schedule('55 17 * * *', () => {
   saveTaxSnapshot();
   console.log('정수세 스냅샷 저장 완료');
 }, { timezone: 'Asia/Seoul' });
 
-// 2. 18:00 스냅샷 기준 세금 부과
 cron.schedule('0 18 * * *', async () => {
   await collectTaxFromSnapshot(global.client);
   console.log('정수세 납부 완료');
 }, { timezone: 'Asia/Seoul' });
 
-// === 간단 코인 시세 조회 (!영갓코인 등) ===
 const lockfile = require('proper-lockfile');
 const coinsPath = path.join(__dirname, './data/godbit-coins.json');
 const SIMPLE_COIN_CHANNEL = '1381193562330370048';
@@ -1518,7 +1597,6 @@ client.on('messageCreate', async (msg) => {
   msg.channel.send(`-# [${coinName}] ${price} BE`);
 });
 
-
 setInterval(async () => {
   if (!client || !client.user || !client.ws || client.ws.status !== 0) {
     console.warn("🛑 클라이언트 연결이 끊겼습니다. 재로그인 시도 중...");
@@ -1531,9 +1609,17 @@ setInterval(async () => {
   }
 }, 1000 * 60 * 1800);
 
+client.on("messageCreate", async msg => {
+  if (!msg.guild || msg.author.bot) return;
+  if (msg.content === "!봇퇴장" && msg.author.id === OWNER_ID) {
+    try { await msg.reply("-# 이 길드에서 떠날게."); } catch {}
+    try { await msg.guild.leave(); } catch {}
+    return;
+  }
+});
+
 client.login(process.env.DISCORD_TOKEN);
 
-// 신규 첫 입장시 채팅방 인사 안하면 경험치 제한 룰
 const WELCOME_ROLE_ID = '1286237811959140363';
 const WELCOME_CHANNEL_ID = '1202425624061415464';
 
@@ -1564,7 +1650,6 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
-// ✅ 퇴장 추적 (2회 이상이면 채널 안내)
 client.on(Events.GuildMemberAdd, async member => {
 });
 
@@ -1586,13 +1671,11 @@ function loadStatus() {
   return JSON.parse(fs.readFileSync(statusPath, 'utf8'));
 }
 
-
-// ✅ 멘션 상태 메시지 안내 (허용 리스트 방식)
 const ALLOWED_CHANNEL_IDS = [
-  "1202425624061415464", // ✅ 상태 안내 허용 채널
+  "1202425624061415464",
 ];
 const ALLOWED_CATEGORY_IDS = [
-  "1207980297854124032", // ✅ 상태 안내 허용 카테고리
+  "1207980297854124032",
 ];
 
 client.on("messageCreate", async msg => {
@@ -1612,18 +1695,12 @@ client.on("messageCreate", async msg => {
   try { await msg.channel.send(lines.join("\n")); } catch {}
 });
 
-
 client.on('guildMemberRemove', member => {
   activityLogger.removeUser(member.id);
 });
 
-// 120분 혼자 있는 경우 잠수방 이전
 require("./utils/auto-afk-move")(client);
-
-// 봇 자동 재시작 화, 목, 토
 require('./utils/pm2-autorestart')();
-
-
 
 const app = express();
 const PORT = process.env.PORT || 3000;
