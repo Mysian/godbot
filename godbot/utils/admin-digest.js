@@ -23,6 +23,7 @@ const SERVER_LOCK_ROLE_ID = '1403748042666151936';
 const XP_LOCK_ROLE_ID = '1286237811959140363';
 
 const ADMIN_ROLE_IDS = ['786128824365482025','1201856430580432906'];
+const EXCLUDED_ADMIN_USER_IDS = ['638742607861645372'];
 const MEMBER_ROLE_ID = '816619403205804042';
 
 const DIGEST_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -286,7 +287,7 @@ async function computeDigest(client, guild) {
   const new7 = prof.filter(p => p.joinedAt && daysBetween(now, p.joinedAt) <= 7).length;
   const longInactiveTargets = prof.filter(p => !p.exempt && !p.booster && !p.donor && p.lastActiveDays >= 90).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
   const newbieInactive = prof.filter(p => p.newbie && p.joinedAt && daysBetween(now, p.joinedAt) >= 7 && p.lastActiveDays >= 7).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
-  const adminMembers = prof.filter(p => p.admin);
+  const adminMembers = prof.filter(p => p.admin && !EXCLUDED_ADMIN_USER_IDS.includes(p.id));
   const adminActive7 = adminMembers.filter(p => p.lastActiveDays <= 7).length;
   const adminInactive14 = adminMembers.filter(p => p.lastActiveDays > 14).length;
   const premiumCount = guild.premiumSubscriptionCount || 0;
