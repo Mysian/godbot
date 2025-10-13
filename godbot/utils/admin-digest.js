@@ -282,9 +282,17 @@ async function computeDigest(client, guild) {
   const prof = await Promise.all(users.map(calc));
   const nowTs = now.getTime();
   const active7 = prof.filter(p => p.lastActiveDays <= 7).length;
-  const active30 = prof.filter(p => p.lastActiveDays <= 30).length;
-  const total = prof.filter(p => p.member).length;
-  const new7 = prof.filter(p => p.joinedAt && daysBetween(now, p.joinedAt) <= 7).length;
+const active30 = prof.filter(p => p.lastActiveDays <= 30).length;
+const total = prof.filter(p => p.member).length;
+const new7 = prof.filter(p => p.joinedAt && daysBetween(now, p.joinedAt) <= 7).length;
+
+// 막대 유틸(윗쪽으로 이동)
+const barLen = 16;
+const bar = (percent) => {
+  const filled = Math.max(0, Math.min(barLen, Math.round((percent / 100) * barLen)));
+  return '▰'.repeat(filled) + '▱'.repeat(barLen - filled);
+};
+
   const longInactiveTargets = prof.filter(p => !p.exempt && !p.booster && !p.donor && p.lastActiveDays >= 90).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
   const newbieInactive = prof.filter(p => p.newbie && p.joinedAt && daysBetween(now, p.joinedAt) >= 7 && p.lastActiveDays >= 7).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
   const adminMembers = prof.filter(p => p.admin && !EXCLUDED_ADMIN_USER_IDS.includes(p.id));
@@ -300,13 +308,21 @@ async function computeDigest(client, guild) {
     `관리진: ${adminMembers.length}명 (7일 내 활동 ${adminActive7}명, 14일 이상 비활동 ${adminInactive14}명)`
   ].join('\n');
 
-  const embed1 = new EmbedBuilder()
-    .setTitle('📊 서버 정보')
-    .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
-    .setColor(0x5865F2)
-    .addFields(
-      { name: '🔍 서버 현황', value: fmtServerStatus, inline: false }
-    );
+  const util7Pct = Math.round((active7 / (total || 1)) * 100);
+const util30Pct = Math.round((active30 / (total || 1)) * 100);
+const utilLines = [
+  `7일 이용률  ${String(util7Pct).padStart(2,'0')}%  ${bar(util7Pct)}`,
+  `30일 이용률 ${String(util30Pct).padStart(2,'0')}%  ${bar(util30Pct)}`
+].join('\n');
+
+const embed1 = new EmbedBuilder()
+  .setTitle('📊 서버 정보')
+  .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
+  .setColor(0x5865F2)
+  .addFields(
+    { name: '🔍 서버 현황', value: fmtServerStatus, inline: false },
+    { name: '📈 서버 이용률', value: utilLines, inline: false }
+  );
 
   const rank = (key, top=5, desc=true) => {
     const arr = prof
@@ -348,11 +364,6 @@ async function computeDigest(client, guild) {
   };
   const adminsSorted = adminMembers.slice().sort((a,b)=>adminScore(b)-adminScore(a));
   const totalAdminScore = adminsSorted.reduce((s,p)=>s+adminScore(p),0) || 1;
-  const barLen = 16;
-  const bar = (percent) => {
-    const filled = Math.max(0, Math.min(barLen, Math.round((percent/100)*barLen)));
-    return '▰'.repeat(filled) + '▱'.repeat(barLen - filled);
-  };
   const adminLines = adminsSorted.map(p => {
     const pct = Math.round((adminScore(p)/totalAdminScore)*100);
     return `<@${p.id}>  ${String(pct).padStart(2,'0')}%  ${bar(pct)}`;
