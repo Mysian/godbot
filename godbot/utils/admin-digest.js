@@ -23,6 +23,7 @@ const SERVER_LOCK_ROLE_ID = '1403748042666151936';
 const XP_LOCK_ROLE_ID = '1286237811959140363';
 
 const ADMIN_ROLE_IDS = ['786128824365482025','1201856430580432906'];
+const MEMBER_ROLE_ID = '816619403205804042';
 
 const DIGEST_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
@@ -257,6 +258,7 @@ async function computeDigest(client, guild) {
     let lastActiveStr = '-';
     if (lastActiveDate) lastActiveStr = `<t:${Math.floor(lastActiveDate.getTime()/1000)}:R>`;
     const isAdmin = ADMIN_ROLE_IDS.some(r=>m.roles.cache.has(r));
+    const isMember = m.roles.cache.has(MEMBER_ROLE_ID);
     return {
       id: userId,
       tag: m.user.tag,
@@ -270,6 +272,7 @@ async function computeDigest(client, guild) {
       donor: m.roles.cache.has(DONOR_ROLE_ID),
       exempt: EXEMPT_ROLE_IDS.some(r=>m.roles.cache.has(r)),
       admin: isAdmin,
+      member: isMember,
       P,
       msgCount,
       voiceSec
@@ -279,7 +282,7 @@ async function computeDigest(client, guild) {
   const nowTs = now.getTime();
   const active7 = prof.filter(p => p.lastActiveDays <= 7).length;
   const active30 = prof.filter(p => p.lastActiveDays <= 30).length;
-  const total = prof.length;
+  const total = prof.filter(p => p.member).length;
   const new7 = prof.filter(p => p.joinedAt && daysBetween(now, p.joinedAt) <= 7).length;
   const longInactiveTargets = prof.filter(p => !p.exempt && !p.booster && !p.donor && p.lastActiveDays >= 90).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
   const newbieInactive = prof.filter(p => p.newbie && p.joinedAt && daysBetween(now, p.joinedAt) >= 7 && p.lastActiveDays >= 7).sort((a,b)=>b.lastActiveDays-a.lastActiveDays);
@@ -287,7 +290,7 @@ async function computeDigest(client, guild) {
   const adminActive7 = adminMembers.filter(p => p.lastActiveDays <= 7).length;
   const adminInactive14 = adminMembers.filter(p => p.lastActiveDays > 14).length;
   const premiumCount = guild.premiumSubscriptionCount || 0;
-  const topVoiceUser = prof.slice().sort((a,b)=>b.voiceSec-a.voiceSec)[0];
+
   const fmtServerStatus = [
     `총원: ${total}명`,
     `서버 이용량 7일간/30일간: ${active7}/${active30}명`,
@@ -295,13 +298,13 @@ async function computeDigest(client, guild) {
     `서버 총 부스트: ${premiumCount}회`,
     `관리진: ${adminMembers.length}명 (7일 내 활동 ${adminActive7}명, 14일 이상 비활동 ${adminInactive14}명)`
   ].join('\n');
+
   const embed1 = new EmbedBuilder()
     .setTitle('📊 서버 정보')
     .setDescription(`갱신: <t:${Math.floor(now.getTime()/1000)}:R>`)
     .setColor(0x5865F2)
     .addFields(
-      { name: '🔍 서버 현황', value: fmtServerStatus, inline: true },
-      { name: '👑 음성채팅 1위', value: topVoiceUser ? `<@${topVoiceUser.id}> — ${hoursFmt(topVoiceUser.voiceSec)}h` : '데이터 부족', inline: true }
+      { name: '🔍 서버 현황', value: fmtServerStatus, inline: false }
     );
 
   const rank = (key, top=5, desc=true) => {
@@ -337,7 +340,28 @@ async function computeDigest(client, guild) {
     .setDescription(`진행 중 채널 수: ${joinChannels.size}개`)
     .addFields({ name: '목록', value: joinList, inline: false });
 
-  return [embed1, embedJoin, embed3];
+  const adminScore = (p) => {
+    const msg = p.msgCount || 0;
+    const vmin = (p.voiceSec || 0) / 60;
+    return msg + vmin;
+  };
+  const adminsSorted = adminMembers.slice().sort((a,b)=>adminScore(b)-adminScore(a));
+  const totalAdminScore = adminsSorted.reduce((s,p)=>s+adminScore(p),0) || 1;
+  const barLen = 16;
+  const bar = (percent) => {
+    const filled = Math.max(0, Math.min(barLen, Math.round((percent/100)*barLen)));
+    return '▰'.repeat(filled) + '▱'.repeat(barLen - filled);
+  };
+  const adminLines = adminsSorted.map(p => {
+    const pct = Math.round((adminScore(p)/totalAdminScore)*100);
+    return `<@${p.id}>  ${String(pct).padStart(2,'0')}%  ${bar(pct)}`;
+  });
+  const embedAdmin = new EmbedBuilder()
+    .setTitle('🛠 관리진 활동량')
+    .setColor(0x3498DB)
+    .setDescription(adminLines.length ? adminLines.join('\n') : '관리진 데이터 없음');
+
+  return [embed1, embedAdmin, embedJoin, embed3];
 }
 async function runOnce(client) {
   const guild = client.guilds.cache.first();
@@ -367,5 +391,29 @@ async function runOnce(client) {
 function start(client) {
   setTimeout(() => { runOnce(client); }, 5000);
   setInterval(() => { runOnce(client); }, DIGEST_INTERVAL_MS);
+  client.on('channelCreate', (ch) => {
+    try {
+      if (!ch || !ch.guild) return;
+      if (ch.type !== ChannelType.GuildText) return;
+      if (typeof ch.name !== 'string') return;
+      if (ch.name.startsWith('입장-')) runOnce(client);
+    } catch {}
+  });
+  client.on('channelDelete', (ch) => {
+    try {
+      if (!ch || !ch.guild) return;
+      if (ch.type !== ChannelType.GuildText) return;
+      if (typeof ch.name !== 'string') return;
+      if (ch.name.startsWith('입장-')) runOnce(client);
+    } catch {}
+  });
+  client.on('channelUpdate', (_oldCh, newCh) => {
+    try {
+      if (!newCh || !newCh.guild) return;
+      if (newCh.type !== ChannelType.GuildText) return;
+      if (typeof newCh.name !== 'string') return;
+      if (newCh.name.startsWith('입장-')) runOnce(client);
+    } catch {}
+  });
 }
 module.exports = { start, runOnce };
