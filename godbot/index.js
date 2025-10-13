@@ -102,8 +102,25 @@ const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
 
 client.on(Events.GuildCreate, async guild => {
+  const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+  const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  let inviterText = "";
+  try {
+    const { AuditLogEvent } = require("discord.js");
+    const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.BotAdd, limit: 5 }).catch(() => null);
+    const entry = logs?.entries?.find(e => e.target?.id === client.user.id);
+    if (entry?.executor) inviterText = `\n**시도자:** <@${entry.executor.id}> (\`${entry.executor.tag}\`)`;
+  } catch {}
+  const base = `**서버:** ${guild.name} (\`${guild.id}\`)\n**인원:** ${guild.memberCount ?? "?"}명\n**시간:** ${ts}${inviterText}`;
   if (!isAllowedGuild(guild.id)) {
+    if (logChannel?.isTextBased?.()) {
+      await logChannel.send(`-# 🚫 **허용 외 서버 초대 시도 감지**\n${base}\n➡️ 초대 거부 및 즉시 퇴장 처리됨.`);
+    }
     try { await guild.leave(); } catch {}
+    return;
+  }
+  if (logChannel?.isTextBased?.()) {
+    await logChannel.send(`-# ✅ **허용 서버에 봇이 초대됨**\n${base}`);
   }
 });
 
@@ -141,11 +158,18 @@ client.once(Events.ClientReady, async () => {
     console.error("재시작 로그 전송 실패:", e);
   }
 
-  for (const [gid, guild] of client.guilds.cache) {
-    if (!isAllowedGuild(gid)) {
-      try { await guild.leave(); } catch {}
-    }
+for (const [gid, guild] of client.guilds.cache) {
+  if (!isAllowedGuild(gid)) {
+    try {
+      const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+      const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+      if (logChannel?.isTextBased?.()) {
+        await logChannel.send(`-# 🚪 **허용 외 서버 자동 퇴장**\n**서버:** ${guild.name} (\`${guild.id}\`)\n**인원:** ${guild.memberCount ?? "?"}명\n**시간:** ${ts}`);
+      }
+    } catch {}
+    try { await guild.leave(); } catch {}
   }
+}
 
   const guild = client.guilds.cache.get(GUILD_ID);
 
@@ -423,13 +447,30 @@ const scrimAnnounce =
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.guildId && !isAllowedGuild(interaction.guildId)) {
-    try {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "이 봇은 이 서버에서 사용할 수 없어.", ephemeral: true });
-      }
-    } catch {}
-    return;
-  }
+  try {
+    const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    const g = interaction.guild;
+    const who = `<@${interaction.user.id}> (\`${interaction.user.tag}\`)`;
+    const what = interaction.isChatInputCommand()
+      ? `명령어 /${interaction.commandName}`
+      : interaction.isButton()
+        ? `버튼 ${interaction.customId}`
+        : interaction.isStringSelectMenu()
+          ? `셀렉트 ${interaction.customId}`
+          : interaction.isModalSubmit()
+            ? `모달 ${interaction.customId}`
+            : `상호작용`;
+    if (logChannel?.isTextBased?.()) {
+      await logChannel.send(`-# 🔒 **허용 외 서버 조작 시도 차단**\n**서버:** ${g?.name ?? "알 수 없음"} (\`${interaction.guildId}\`)\n**유저:** ${who}\n**행위:** ${what}\n**시간:** ${ts}`);
+    }
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "이 봇은 이 서버에서 사용할 수 없어.", ephemeral: true });
+    }
+  } catch {}
+  return;
+}
+
 
   if (
   (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
@@ -1612,10 +1653,17 @@ setInterval(async () => {
 client.on("messageCreate", async msg => {
   if (!msg.guild || msg.author.bot) return;
   if (msg.content === "!봇퇴장" && msg.author.id === OWNER_ID) {
-    try { await msg.reply("-# 이 길드에서 떠날게."); } catch {}
-    try { await msg.guild.leave(); } catch {}
-    return;
-  }
+  try { await msg.reply("-# 이 길드에서 떠날게."); } catch {}
+  try {
+    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    if (logChannel?.isTextBased?.()) {
+      await logChannel.send(`-# 🚶 **소유자 명령으로 서버 퇴장**\n**서버:** ${msg.guild?.name ?? "알 수 없음"} (\`${msg.guild?.id ?? "?"}\`)\n**요청자:** <@${msg.author.id}> (\`${msg.author.tag}\`)\n**시간:** ${ts}`);
+    }
+  } catch {}
+  try { await msg.guild.leave(); } catch {}
+  return;
+}
 });
 
 client.login(process.env.DISCORD_TOKEN);
@@ -1659,6 +1707,16 @@ client.on(Events.GuildMemberRemove, async member => {
   } catch (err) {
     console.error("[퇴장 추적 오류]", err);
   }
+});
+
+client.on(Events.GuildDelete, async guild => {
+  try {
+    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    if (logChannel?.isTextBased?.()) {
+      await logChannel.send(`-# ❌ **봇이 서버에서 제거됨/퇴장됨**\n**서버:** ${guild?.name ?? "알 수 없음"} (\`${guild?.id ?? "?"}\`)\n**시간:** ${ts}`);
+    }
+  } catch {}
 });
 
 const dmRelay = require('./commands/dm.js');
