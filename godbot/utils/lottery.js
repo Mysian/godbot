@@ -453,9 +453,21 @@ async function createLotterySystem(client, channelId) {
   });
 
   client.on('interactionCreate', onInteraction);
-  client.once('ready', async () => {
-    await scheduleAll(client);
-  });
+  const start = async () => {
+    try {
+      console.log('[lottery] start → panel/schedule');
+      await scheduleAll(client);
+    } catch (e) {
+      console.error('[lottery] scheduleAll failed:', e);
+    }
+  };
+
+  if (typeof client.isReady === 'function' && client.isReady()) {
+    start();
+  } else {
+    client.once('ready', start);
+  }
 }
 
 module.exports = { createLotterySystem };
+
