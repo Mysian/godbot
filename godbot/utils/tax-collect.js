@@ -32,6 +32,7 @@ function saveTaxSnapshot() {
   const be = loadBE();
   const snapshot = {};
   for (const [userId, data] of Object.entries(be)) {
+    if (userId === GODBOT_ID) continue;
     snapshot[userId] = data.amount;
   }
   const today = new Date();
@@ -72,6 +73,7 @@ async function collectTaxFromSnapshot(client, date = null) {
   let now = Date.now();
 
   for (const [userId, amount] of Object.entries(amounts)) {
+    if (userId === GODBOT_ID) continue;
     const taxRate = getTaxRate(amount);
     if (taxRate === 0) continue;
     const tax = Math.floor(amount * taxRate);
