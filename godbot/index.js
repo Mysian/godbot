@@ -9,7 +9,6 @@ const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 const setupPersonalChannelUtility = require('./utils/personal-channel.js');
-const { createLotterySystem } = require('./utils/lottery.js');
 
 const client = new Client({
   intents: [
@@ -101,8 +100,6 @@ controlPanel.register(client);
 
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
-
-createLotterySystem(client, '1427667597901566024');
 
 client.on(Events.GuildCreate, async guild => {
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
