@@ -11,6 +11,10 @@ const TICKET_PRICE = 10000;
 const MAX_NUMBER = 45;
 const PICK_COUNT = 5;
 
+function toUnixTs(x) {
+  const ms = x instanceof Date ? x.getTime() : Number(x);
+  return Math.floor(ms / 1000);
+}
 function loadState() {
   if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ round: 1, controlMessageId: null, rounds: {}, lastDrawAt: 0 }, null, 2));
   return JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
@@ -110,7 +114,7 @@ function buildControlEmbed(livePot, state, nextDrawTs, closed) {
       { name: '예정 당첨금(현재 포트)', value: `**${formatAmount(livePot)} BE**`, inline: true },
       { name: '판매 상태', value: `**${status}**`, inline: true },
       { name: '응모 장수', value: `**${formatAmount(count)} 장**`, inline: true },
-      { name: nextText, value: `<t:${toUnix(nextDrawTs.getTime())}:R> (<t:${toUnix(nextDrawTs.getTime())}:F>)`, inline: false }
+      { name: nextText, value: `<t:${toUnixTs(nextDrawTs)}:R> (<t:${toUnixTs(nextDrawTs)}:F>)`, inline: false }
     )
     .setFooter({ text: closed ? '토 19:30~월 08:59에는 판매가 중지됩니다.' : '판매는 월 09:00~토 19:29까지 가능합니다.' });
   return embed;
@@ -199,7 +203,7 @@ function buildRecordsEmbed(state, page) {
     const w4 = res ? res.winners4 : 0;
     const w3 = res ? res.winners3 : 0;
     const pool = res ? res.pool : 0;
-    return `• ${r}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(rr.drawnAt)}:f>`;
+    return `• ${r}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnixTs(rr.drawnAt)}:f>`;
   }).join('\n');
   if (!desc) desc = '아직 공개된 기록이 없습니다.';
   const embed = new EmbedBuilder()
@@ -233,7 +237,7 @@ function buildMineEmbed(state, userId) {
     for (const t of state.rounds[rr].tickets || []) {
       if (t.userId !== userId) continue;
       const res = t.result ? `당첨(${t.result.rank}) ${formatAmount(t.prize)} BE` : (state.rounds[rr].result ? `낙첨` : `추첨 대기`);
-      list.push(`${tag} ${rr}회차 | [${t.numbers.join(', ')}] | ${res} | 구매 <t:${toUnix(t.ts)}:R>`);
+      list.push(`${tag} ${rr}회차 | [${t.numbers.join(', ')}] | ${res} | 구매 <t:${toUnixTs(t.ts)}:R>`);
     }
   };
   pushTickets(rNow, '•');
@@ -276,7 +280,7 @@ async function runDraw(client) {
       t.paid = false;
     }
     state.rounds[r].result = { winning, winners5, winners4, winners3, pool, used: dist.used, remain: dist.remain };
-    state.rounds[r].drawnAt = Math.floor(Date.now() / 1000);
+    state.rounds[r].drawnAt = Date.now();
     saveState(state);
     for (const t of tickets) {
       if (t.prize > 0 && !t.paid) {
