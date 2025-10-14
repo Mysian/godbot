@@ -114,8 +114,9 @@ function ensureRound(state, r) {
   if (!state.rounds[r]) state.rounds[r] = { tickets: [], result: null, drawnAt: 0 };
 }
 async function computePoolBE() {
-  const be = await loadBE(BOT_BANK_ID);
-  return be.balance || 0;
+  const all = await loadBE(); 
+  const rec = all[BOT_BANK_ID]; 
+  return rec && typeof rec.amount === 'number' ? rec.amount : 0;
 }
 function controlRows(closed) {
   const row1 = new ActionRowBuilder().addComponents(
