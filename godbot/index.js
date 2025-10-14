@@ -706,6 +706,10 @@ if (interaction.isModalSubmit()) {
     return;
   }
 
+  if (interaction.customId.startsWith('lottery_')) {
+    return;
+  }
+
   let handled = false;
   for (const [key, handler] of modalHandlers.entries()) {
     if (interaction.customId.startsWith(key)) {
