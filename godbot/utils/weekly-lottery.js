@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
 const { loadBE, saveBE, getBE, addBE } = require('../commands/be-util');
+
 const CHANNEL_ID = '1427667597901566024';
 const BOT_BANK_ID = '1380841362752274504';
 const DATA_PATH = path.join(__dirname, '../data/lottery.json');
@@ -11,10 +12,6 @@ const TICKET_PRICE = 10000;
 const MAX_NUMBER = 45;
 const PICK_COUNT = 5;
 
-function toUnixTs(x) {
-  const ms = x instanceof Date ? x.getTime() : Number(x);
-  return Math.floor(ms / 1000);
-}
 function loadState() {
   if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ round: 1, controlMessageId: null, rounds: {}, lastDrawAt: 0 }, null, 2));
   return JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
@@ -22,34 +19,49 @@ function loadState() {
 function saveState(s) {
   fs.writeFileSync(DATA_PATH, JSON.stringify(s, null, 2));
 }
-function nowUTC() {
-  return new Date();
+function nowKST() {
+  const d = new Date();
+  return new Date(d.getTime() + 9 * 3600 * 1000);
 }
-function getNextDrawTimeUTC() {
-  const now = nowUTC();
-  const dow = now.getUTCDay();   
-  const hour = now.getUTCHours();
-  const min = now.getUTCMinutes();
-  const sec = now.getUTCSeconds();
-  const daysUntilSat = (6 - dow + 7) % 7;
-  const candidate = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + daysUntilSat,
-    11, 0, 0
-  ));
-  if (now >= candidate) {
-    candidate.setUTCDate(candidate.getUTCDate() + 7);
+function toUnix(ts) {
+  return Math.floor(ts / 1000);
+}
+function kstYMD(d) {
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
+}
+function getNextSaturday20() {
+  const n = nowKST();
+  const k = kstYMD(n);
+  const tmp = new Date(Date.UTC(k.y, k.m - 1, k.day, 20, 0, 0));
+  let dow = tmp.getUTCDay();
+  while (dow !== 6 || tmp <= new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss))) {
+    tmp.setUTCDate(tmp.getUTCDate() + 1);
+    dow = tmp.getUTCDay();
   }
-  return candidate;
+  return tmp;
+}
+function getThisSaturday20OrNext() {
+  const n = nowKST();
+  const k = kstYMD(n);
+  const sat20 = new Date(Date.UTC(k.y, k.m - 1, k.day, 20, 0, 0));
+  let d = sat20;
+  while (d.getUTCDay() !== 6) d = new Date(d.getTime() + 24 * 3600 * 1000);
+  if (d <= new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss))) {
+    const nd = new Date(d.getTime());
+    nd.setUTCDate(nd.getUTCDate() + 7);
+    return nd;
+  }
+  return d;
 }
 function isClosedForSales() {
-  const n = nowUTC();
-  const dow = n.getUTCDay();  
-  const mins = n.getUTCHours() * 60 + n.getUTCMinutes();
-  if (dow === 6 && mins >= 10 * 60 + 30) return true;
+  const n = nowKST();
+  const k = kstYMD(n);
+  const dow = new Date(Date.UTC(k.y, k.m - 1, k.day, 0, 0, 0)).getUTCDay();
+  const mins = k.hh * 60 + k.mm;
+  if (dow === 6 && mins >= 19 * 60 + 30) return true;
   if (dow === 0) return true;
-  return false; 
+  if (dow === 1 && mins <= 8 * 60 + 59) return true;
+  return false;
 }
 function salesStatusText() {
   if (isClosedForSales()) return '판매 중지';
@@ -114,7 +126,7 @@ function buildControlEmbed(livePot, state, nextDrawTs, closed) {
       { name: '예정 당첨금(현재 포트)', value: `**${formatAmount(livePot)} BE**`, inline: true },
       { name: '판매 상태', value: `**${status}**`, inline: true },
       { name: '응모 장수', value: `**${formatAmount(count)} 장**`, inline: true },
-      { name: nextText, value: `<t:${toUnixTs(nextDrawTs)}:R> (<t:${toUnixTs(nextDrawTs)}:F>)`, inline: false }
+      { name: nextText, value: `<t:${toUnix(nextDrawTs.getTime())}:R> (<t:${toUnix(nextDrawTs.getTime())}:F>)`, inline: false }
     )
     .setFooter({ text: closed ? '토 19:30~월 08:59에는 판매가 중지됩니다.' : '판매는 월 09:00~토 19:29까지 가능합니다.' });
   return embed;
@@ -131,7 +143,7 @@ async function publishOrUpdate(client) {
   const channel = await client.channels.fetch(CHANNEL_ID);
   const state = loadState();
   ensureRound(state, state.round);
-  const nextDraw = getNextDrawTimeUTC();
+  const nextDraw = getThisSaturday20OrNext();
   const closed = isClosedForSales();
   const pot = await computePoolBE();
   const embed = buildControlEmbed(pot, state, nextDraw, closed);
@@ -203,7 +215,7 @@ function buildRecordsEmbed(state, page) {
     const w4 = res ? res.winners4 : 0;
     const w3 = res ? res.winners3 : 0;
     const pool = res ? res.pool : 0;
-    return `• ${r}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnixTs(rr.drawnAt)}:f>`;
+    return `• ${r}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(rr.drawnAt)}:f>`;
   }).join('\n');
   if (!desc) desc = '아직 공개된 기록이 없습니다.';
   const embed = new EmbedBuilder()
@@ -237,7 +249,7 @@ function buildMineEmbed(state, userId) {
     for (const t of state.rounds[rr].tickets || []) {
       if (t.userId !== userId) continue;
       const res = t.result ? `당첨(${t.result.rank}) ${formatAmount(t.prize)} BE` : (state.rounds[rr].result ? `낙첨` : `추첨 대기`);
-      list.push(`${tag} ${rr}회차 | [${t.numbers.join(', ')}] | ${res} | 구매 <t:${toUnixTs(t.ts)}:R>`);
+      list.push(`${tag} ${rr}회차 | [${t.numbers.join(', ')}] | ${res} | 구매 <t:${toUnix(t.ts)}:R>`);
     }
   };
   pushTickets(rNow, '•');
@@ -259,9 +271,10 @@ async function runDraw(client) {
     const r = state.round;
     ensureRound(state, r);
     if (state.rounds[r].result) return;
-    const now = nowUTC();
-    const drawTime = getNextDrawTimeUTC();
-    if (now < drawTime) return;
+    const now = nowKST();
+    const nextSat20 = getThisSaturday20OrNext();
+    const diff = nextSat20.getTime() - (now.getTime() - 9 * 3600 * 1000);
+    if (diff > 0) return;
     const winning = drawWinningNumbers();
     const tickets = state.rounds[r].tickets || [];
     const pool = await computePoolBE();
@@ -280,7 +293,7 @@ async function runDraw(client) {
       t.paid = false;
     }
     state.rounds[r].result = { winning, winners5, winners4, winners3, pool, used: dist.used, remain: dist.remain };
-    state.rounds[r].drawnAt = Date.now();
+    state.rounds[r].drawnAt = Math.floor(Date.now() / 1000);
     saveState(state);
     for (const t of tickets) {
       if (t.prize > 0 && !t.paid) {
