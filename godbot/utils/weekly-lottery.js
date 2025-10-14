@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
 const { loadBE, saveBE, getBE, addBE } = require('../commands/be-util');
-
 const CHANNEL_ID = '1427667597901566024';
 const BOT_BANK_ID = '1380841362752274504';
 const DATA_PATH = path.join(__dirname, '../data/lottery.json');
@@ -19,49 +18,34 @@ function loadState() {
 function saveState(s) {
   fs.writeFileSync(DATA_PATH, JSON.stringify(s, null, 2));
 }
-function nowKST() {
-  const d = new Date();
-  return new Date(d.getTime() + 9 * 3600 * 1000);
+function nowUTC() {
+  return new Date();
 }
-function toUnix(ts) {
-  return Math.floor(ts / 1000);
-}
-function kstYMD(d) {
-  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
-}
-function getNextSaturday20() {
-  const n = nowKST();
-  const k = kstYMD(n);
-  const tmp = new Date(Date.UTC(k.y, k.m - 1, k.day, 20, 0, 0));
-  let dow = tmp.getUTCDay();
-  while (dow !== 6 || tmp <= new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss))) {
-    tmp.setUTCDate(tmp.getUTCDate() + 1);
-    dow = tmp.getUTCDay();
+function getNextDrawTimeUTC() {
+  const now = nowUTC();
+  const dow = now.getUTCDay();   
+  const hour = now.getUTCHours();
+  const min = now.getUTCMinutes();
+  const sec = now.getUTCSeconds();
+  const daysUntilSat = (6 - dow + 7) % 7;
+  const candidate = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + daysUntilSat,
+    11, 0, 0
+  ));
+  if (now >= candidate) {
+    candidate.setUTCDate(candidate.getUTCDate() + 7);
   }
-  return tmp;
-}
-function getThisSaturday20OrNext() {
-  const n = nowKST();
-  const k = kstYMD(n);
-  const sat20 = new Date(Date.UTC(k.y, k.m - 1, k.day, 20, 0, 0));
-  let d = sat20;
-  while (d.getUTCDay() !== 6) d = new Date(d.getTime() + 24 * 3600 * 1000);
-  if (d <= new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss))) {
-    const nd = new Date(d.getTime());
-    nd.setUTCDate(nd.getUTCDate() + 7);
-    return nd;
-  }
-  return d;
+  return candidate;
 }
 function isClosedForSales() {
-  const n = nowKST();
-  const k = kstYMD(n);
-  const dow = new Date(Date.UTC(k.y, k.m - 1, k.day, 0, 0, 0)).getUTCDay();
-  const mins = k.hh * 60 + k.mm;
-  if (dow === 6 && mins >= 19 * 60 + 30) return true;
+  const n = nowUTC();
+  const dow = n.getUTCDay();  
+  const mins = n.getUTCHours() * 60 + n.getUTCMinutes();
+  if (dow === 6 && mins >= 10 * 60 + 30) return true;
   if (dow === 0) return true;
-  if (dow === 1 && mins <= 8 * 60 + 59) return true;
-  return false;
+  return false; 
 }
 function salesStatusText() {
   if (isClosedForSales()) return '판매 중지';
