@@ -94,6 +94,7 @@ require('./utils/godbot-core').initGodbotCore(client);
 require('./utils/bump-reward')(client);
 require('./commands/nickname-change').register(client);
 require('./utils/admin-digest').start(client);
+require('./utils/sensitivity').register(client);
 
 const controlPanel = require('./utils/control-panel');
 controlPanel.register(client);
