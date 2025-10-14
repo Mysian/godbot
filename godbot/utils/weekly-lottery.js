@@ -127,7 +127,7 @@ async function publishOrUpdate(client) {
   const channel = await client.channels.fetch(CHANNEL_ID);
   const state = loadState();
   ensureRound(state, state.round);
-  const nextDraw = getThisSaturday20OrNext();
+  const nextDraw = getNextDrawTimeUTC();
   const closed = isClosedForSales();
   const pot = await computePoolBE();
   const embed = buildControlEmbed(pot, state, nextDraw, closed);
@@ -255,10 +255,9 @@ async function runDraw(client) {
     const r = state.round;
     ensureRound(state, r);
     if (state.rounds[r].result) return;
-    const now = nowKST();
-    const nextSat20 = getThisSaturday20OrNext();
-    const diff = nextSat20.getTime() - (now.getTime() - 9 * 3600 * 1000);
-    if (diff > 0) return;
+    const now = nowUTC();
+    const drawTime = getNextDrawTimeUTC();
+    if (now < drawTime) return;
     const winning = drawWinningNumbers();
     const tickets = state.rounds[r].tickets || [];
     const pool = await computePoolBE();
