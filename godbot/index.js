@@ -101,6 +101,9 @@ controlPanel.register(client);
 const { startSecretChannels } = require('./utils/secret-channels.js');
 startSecretChannels(client);
 
+const { createLotterySystem } = require('./utils/lottery');
+createLotterySystem(client, '1427667597901566024');
+
 client.on(Events.GuildCreate, async guild => {
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
