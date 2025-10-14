@@ -1469,41 +1469,6 @@ if (
   return; 
 }
 
-const fishingCmd = client.commands.get("낚시") || require("./commands/fishing.js");
-
-if (
-  (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
-  (
-    interaction.customId?.startsWith("quest:") ||
-    interaction.customId?.startsWith("fish:") ||
-    interaction.customId?.startsWith("shop:") ||
-    interaction.customId?.startsWith("inv:")  ||
-    interaction.customId?.startsWith("sell:") ||
-    interaction.customId?.startsWith("sell-") ||
-    interaction.customId?.startsWith("nav:")  ||
-    interaction.customId?.startsWith("dex:")  ||
-    interaction.customId?.startsWith("rank:") ||
-    interaction.customId?.startsWith("open:") || 
-    interaction.customId?.startsWith("info:") ||
-    interaction.customId?.startsWith("auto:") ||
-    interaction.customId?.startsWith("aqua:") ||
-    interaction.customId?.startsWith("relic:") ||
-    interaction.customId?.startsWith("relic-") ||
-    interaction.customId?.startsWith("relic")  ||
-    interaction.customId === "relic-equip-choose" ||
-    interaction.customId?.startsWith("my:")
-  )
-) {
-  try {
-    await fishingCmd.component(interaction);
-  } catch (err) {
-    console.error("[낚시 component 오류]", err);
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.reply({ content: "❌ 낚시 상호작용 처리 중 오류", ephemeral: true }).catch(() => {});
-    }
-  }
-  return;
-}
 
 if (
   (interaction.isButton() || interaction.isStringSelectMenu()) &&
