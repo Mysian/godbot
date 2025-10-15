@@ -1527,12 +1527,13 @@ ${showDelisted
 
 
     // 6. 순위
-    if (sub === '순위') {
+if (sub === '순위') {
   await interaction.deferReply({ ephemeral: true });
 
   const coins = await loadJson(coinsPath, {});
   const wallets = await loadJson(walletsPath, {});
 
+  // ===== A) 실현 수익/매출 TOP =====
   let profitMap = {};
   let revenueMap = {};
   for (const uid in wallets) {
@@ -1565,6 +1566,18 @@ ${showDelisted
     .sort((a, b) => b[1] - a[1])
     .slice(0, 20);
 
+  const realizedEmbed = new EmbedBuilder()
+    .setTitle(Object.keys(profitMap).length ? '💰 실현 수익(매도 차익) TOP 20' : '💰 실현 매출(입금액) TOP 20')
+    .setColor('#ffcc00')
+    .setDescription(
+      realizedRank.length
+        ? realizedRank.map(([uid, val], i) =>
+            `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
+        : '데이터 없음'
+    )
+    .setFooter({ text: '상폐/없는 코인은 합산에서 제외됨' });
+
+  // ===== B) 평가자산 TOP =====
   let userHoldings = {};
   for (const uid in wallets) {
     if (uid.endsWith("_buys") || uid.endsWith("_realized") || uid.endsWith("_realized_profit")) continue;
@@ -1581,17 +1594,6 @@ ${showDelisted
     .sort((a, b) => b[1] - a[1])
     .slice(0, 20);
 
-  const realizedEmbed = new EmbedBuilder()
-    .setTitle(Object.keys(profitMap).length ? '💰 실현 수익(매도 차익) TOP 20' : '💰 실현 매출(입금액) TOP 20')
-    .setColor('#ffcc00')
-    .setDescription(
-      realizedRank.length
-        ? realizedRank.map(([uid, val], i) =>
-            `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
-        : '데이터 없음'
-    )
-    .setFooter({ text: '상폐/없는 코인은 합산에서 제외됨' });
-
   const holdingsEmbed = new EmbedBuilder()
     .setTitle('🏦 코인 평가자산 TOP 20')
     .setColor('#33ccff')
@@ -1603,8 +1605,74 @@ ${showDelisted
     )
     .setFooter({ text: '상폐/없는 코인은 평가자산에서 제외됨' });
 
+  // ===== C) 수익률(%) TOP — 음수는 자동으로 뒤로 =====
+  // 총 누적매수(원가)와 현재 평가액으로 산출: (평가-누적매수)/누적매수 * 100
+  // 상폐/없는 코인은 양쪽 합산에서 제외 (왜곡 방지)
+  let totalBuyMap = {};
+  let totalEvalMap = {};
+
+  // 누적매수 합
+  for (const uid in wallets) {
+    if (!uid.endsWith("_buys")) continue;
+    const base = uid.slice(0, -"_buys".length);
+    const buys = wallets[uid] || {};
+    let buySum = 0;
+    for (const [coin, cost] of Object.entries(buys)) {
+      if (!Number.isFinite(cost)) continue;
+      if (!coins[coin] || coins[coin].delistedAt) continue;
+      buySum += Number(cost) || 0;
+    }
+    totalBuyMap[base] = buySum;
+  }
+
+  // 평가액 합
+  for (const uid in wallets) {
+    if (uid.endsWith("_buys") || uid.endsWith("_realized") || uid.endsWith("_realized_profit")) continue;
+    const userW = wallets[uid] || {};
+    let evalSum = 0;
+    for (const [coin, q] of Object.entries(userW)) {
+      if (!coins[coin] || coins[coin].delistedAt) continue;
+      const nowPrice = Number(coins[coin]?.price) || 0;
+      evalSum += nowPrice * (Number(q) || 0);
+    }
+    totalEvalMap[uid] = evalSum;
+  }
+
+  // 수익률 표본 만들기
+  let yieldEntries = [];
+  for (const uid of new Set([...Object.keys(totalBuyMap), ...Object.keys(totalEvalMap)])) {
+    const buy = Number(totalBuyMap[uid] || 0);
+    const evalV = Number(totalEvalMap[uid] || 0);
+    if (buy <= 0) continue; // 수익률 정의 불가
+    const profit = evalV - buy;
+    const yieldPct = (profit / buy) * 100;
+    yieldEntries.push([uid, yieldPct]);
+  }
+
+  // 정렬: [양수 → 0 → 음수] 그룹 우선, 같은 그룹이면 값 내림차순
+  const yieldRank = yieldEntries
+    .sort((a, b) => {
+      const g = (v) => (v > 0 ? 2 : v === 0 ? 1 : 0);
+      const ga = g(a[1]), gb = g(b[1]);
+      if (ga !== gb) return gb - ga;
+      return b[1] - a[1];
+    })
+    .slice(0, 20);
+
+  const yieldEmbed = new EmbedBuilder()
+    .setTitle('📊 수익률(%) TOP 20')
+    .setColor('#66dd88')
+    .setDescription(
+      yieldRank.length
+        ? yieldRank.map(([uid, pct], i) =>
+            `**${i+1}. <@${uid}>**  \`${(pct>=0?'+':'')}${pct.toFixed(2)}%\``).join('\n')
+        : '데이터 없음'
+    )
+    .setFooter({ text: '수익률 = (평가액-누적매수)/누적매수 × 100 · 상폐/없는 코인 제외' });
+
+  // ===== 페이지 네비게이션 (3장) =====
   let page = 0;
-  const pages = [realizedEmbed, holdingsEmbed];
+  const pages = [realizedEmbed, holdingsEmbed, yieldEmbed];
 
   const navRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('rank_prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
@@ -1627,13 +1695,11 @@ ${showDelisted
     navRow.components[1].setDisabled(page === pages.length-1);
     await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
   });
-
   collector.on('end', async () => {
     try { await interaction.editReply({ components: [] }); } catch {}
   });
   return;
     }
   },
-
   autoMarketUpdate
 };
