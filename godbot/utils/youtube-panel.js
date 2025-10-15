@@ -54,14 +54,14 @@ async function buildPanel(key, source){
   const subsHidden=!!st.hiddenSubscriberCount;
   const subs=subsHidden?null:Number(st.subscriberCount||0);
   const totalViews=Number(st.viewCount||0);
-  const totalVideos=Number(st.videoCount||0);
 
   let latestLong=null;
   for(const v of vids){ if(!isShort(v)){ latestLong=v; break; } }
   const lastUrl=latestLong?`https://www.youtube.com/watch?v=${latestLong.id}`:null;
 
-  const popularTop3=[...vids].sort((a,b)=>Number(b.statistics?.viewCount||0)-Number(a.statistics?.viewCount||0)).slice(0,3);
-  const recentShorts=vids.filter(v=>isShort(v)).slice(0,3);
+  const longVideos = vids.filter(v=>!isShort(v));
+  const popularTop3 = [...longVideos].sort((a,b)=>Number(b.statistics?.viewCount||0)-Number(a.statistics?.viewCount||0)).slice(0,3);
+  const recentShorts = vids.filter(v=>isShort(v)).slice(0,3);
 
   const eb=new EmbedBuilder()
     .setColor(0x00b894)
@@ -71,10 +71,9 @@ async function buildPanel(key, source){
     .addFields(
       {name:"구독자",value:subsHidden?"비공개":`**${fmt(subs)}**`,inline:true},
       {name:"총 조회수",value:`**${fmt(totalViews)}**`,inline:true},
-      {name:"총 영상 수",value:`**${fmt(totalVideos)}**`,inline:true},
-      {name:"최근 업로드(롱폼)",value:latestLong?`**${cut(latestLong.snippet?.title||"제목 없음",80)}**\n${toKST(latestLong.snippet?.publishedAt)}\nhttps://www.youtube.com/watch?v=${latestLong.id}`:"없음",inline:false},
-      {name:"인기가 많은 동영상 Top 3",value:popularTop3.length?popularTop3.map((v,i)=>`**${i+1}. ${cut(v.snippet?.title||"제목 없음",70)}** • 조회수 ${fmt(v.statistics?.viewCount||0)}\nhttps://www.youtube.com/watch?v=${v.id}`).join("\n\n"):"없음",inline:false},
-      {name:"최근 쇼츠 영상 3",value:recentShorts.length?recentShorts.map((v,i)=>`**${i+1}. ${cut(v.snippet?.title||"제목 없음",70)}** • ${toKST(v.snippet?.publishedAt)}\nhttps://www.youtube.com/shorts/${v.id}`).join("\n\n"):"없음",inline:false}
+      {name:"최근 업로드",value:latestLong?`**${cut(latestLong.snippet?.title||"제목 없음",80)}**\n${toKST(latestLong.snippet?.publishedAt)}\nhttps://www.youtube.com/watch?v=${latestLong.id}`:"없음",inline:false},
+      {name:"인기 동영상",value:popularTop3.length?popularTop3.map((v,i)=>`**${i+1}. ${cut(v.snippet?.title||"제목 없음",70)}**\nhttps://www.youtube.com/watch?v=${v.id}`).join("\n\n"):"없음",inline:false},
+      {name:"최근 쇼츠",value:recentShorts.length?recentShorts.map((v,i)=>`**${i+1}. ${cut(v.snippet?.title||"제목 없음",70)}** • ${toKST(v.snippet?.publishedAt)}\nhttps://www.youtube.com/shorts/${v.id}`).join("\n\n"):"없음",inline:false}
     )
     .setFooter({text:`마지막 갱신: ${new Date().toLocaleString("ko-KR",{timeZone:"Asia/Seoul"})} • Asia/Seoul`});
 
