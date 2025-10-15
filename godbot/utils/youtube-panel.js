@@ -80,7 +80,7 @@ async function buildPanel(key, source){
 
   const eb=new EmbedBuilder()
     .setColor(0x00b894)
-    .setTitle(`${sn.title||"채널"} • 실시간 현황`)
+    .setTitle(`${sn.title||"채널"} • 공포게임 유튜버`)
     .setURL(`https://www.youtube.com/channel/${ch.id}`)
     .setThumbnail(sn.thumbnails?.high?.url||sn.thumbnails?.default?.url)
     .addFields(
