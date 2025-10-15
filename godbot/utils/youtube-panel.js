@@ -64,7 +64,6 @@ async function buildPanel(key, source){
   const subsHidden=!!st.hiddenSubscriberCount;
   const subs=subsHidden?null:Number(st.subscriberCount||0);
   const totalViews=Number(st.viewCount||0);
-  const totalVideos=Number(st.videoCount||0);
 
   const longVideos=vids.filter(v=>!isShort(v));
   const shortVideos=vids.filter(v=>isShort(v));
@@ -86,7 +85,6 @@ async function buildPanel(key, source){
     .addFields(
       {name:"구독자",value:subsHidden?"비공개":`**${fmt(subs)}**`,inline:true},
       {name:"총 조회수",value:`**${fmt(totalViews)}**`,inline:true},
-      {name:"총 영상 수",value:`**${fmt(totalVideos)}**`,inline:true},
       {name:"최근 업로드(롱폼 기준)",value:latestLong?`**[${(latestLong.snippet?.title||"제목 없음").slice(0,80)}](${lastUrl})**\n${toKST(latestLong.snippet?.publishedAt)} • 롱폼`:"없음",inline:false},
       {name:"인기 롱폼 TOP 3",value:top3LongLines,inline:false},
       {name:"최근 쇼츠 3",value:latest3ShortLines,inline:false}
