@@ -1528,94 +1528,110 @@ ${showDelisted
 
     // 6. 순위
     if (sub === '순위') {
-      await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ ephemeral: true });
 
-      const coins = await loadJson(coinsPath, {});
-      const wallets = await loadJson(walletsPath, {});
+  const coins = await loadJson(coinsPath, {});
+  const wallets = await loadJson(walletsPath, {});
 
-      let realized = {};
-      let profitMap = {};
-      let revenueMap = {};
-      for (const uid in wallets) {
-      if (uid.endsWith("_realized_profit")) {
-      profitMap[uid.replace("_realized_profit", "")] = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
-      } else if (uid.endsWith("_realized")) {
-      revenueMap[uid.replace("_realized", "")] = Object.values(wallets[uid] || {}).reduce((a, b) => a + b, 0);
+  let profitMap = {};
+  let revenueMap = {};
+  for (const uid in wallets) {
+    if (uid.endsWith("_realized_profit")) {
+      const base = uid.slice(0, -"_realized_profit".length);
+      const src = wallets[uid] || {};
+      let sum = 0;
+      for (const [c, v] of Object.entries(src)) {
+        if (!Number.isFinite(v)) continue;
+        if (!coins[c] || coins[c].delistedAt) continue;
+        sum += v;
+      }
+      if (sum !== 0) profitMap[base] = sum;
+    } else if (uid.endsWith("_realized")) {
+      const base = uid.slice(0, -"_realized".length);
+      const src = wallets[uid] || {};
+      let sum = 0;
+      for (const [c, v] of Object.entries(src)) {
+        if (!Number.isFinite(v)) continue;
+        if (!coins[c] || coins[c].delistedAt) continue;
+        sum += v;
+      }
+      if (sum !== 0) revenueMap[base] = sum;
     }
   }
-realized = Object.keys(profitMap).length ? profitMap : revenueMap;
+  const realized = Object.keys(profitMap).length ? profitMap : revenueMap;
 
-const realizedRank = Object.entries(realized)
-  .sort((a, b) => b[1] - a[1])
-  .slice(0, 20);
+  const realizedRank = Object.entries(realized)
+    .filter(([_, val]) => Number.isFinite(val) && val !== 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20);
 
+  let userHoldings = {};
+  for (const uid in wallets) {
+    if (uid.endsWith("_buys") || uid.endsWith("_realized") || uid.endsWith("_realized_profit")) continue;
+    const userW = wallets[uid] || {};
+    let evalSum = 0;
+    for (const [coin, q] of Object.entries(userW)) {
+      if (!coins[coin] || coins[coin].delistedAt) continue;
+      evalSum += (Number(coins[coin]?.price) || 0) * (Number(q) || 0);
+    }
+    userHoldings[uid] = evalSum;
+  }
+  const holdingsRank = Object.entries(userHoldings)
+    .filter(([_, val]) => Number.isFinite(val) && val > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20);
 
-      let userHoldings = {};
-      for (const uid in wallets) {
-        if (uid.endsWith("_buys") || uid.endsWith("_realized")) continue;
-        const userW = wallets[uid] || {};
-        let evalSum = 0;
-        for (const [coin, q] of Object.entries(userW)) {
-          if (!coins[coin] || coins[coin].delistedAt) continue;
-          evalSum += (coins[coin]?.price || 0) * q;
-        }
-        userHoldings[uid] = evalSum;
-      }
-      const holdingsRank = Object.entries(userHoldings)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 20);
+  const realizedEmbed = new EmbedBuilder()
+    .setTitle(Object.keys(profitMap).length ? '💰 실현 수익(매도 차익) TOP 20' : '💰 실현 매출(입금액) TOP 20')
+    .setColor('#ffcc00')
+    .setDescription(
+      realizedRank.length
+        ? realizedRank.map(([uid, val], i) =>
+            `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
+        : '데이터 없음'
+    )
+    .setFooter({ text: '상폐/없는 코인은 합산에서 제외됨' });
 
-      const realizedEmbed = new EmbedBuilder()
-        .setTitle(Object.keys(profitMap).length ? '💰 실현 수익(매도 차익) TOP 20' : '💰 실현 매출(입금액) TOP 20')
-        .setColor('#ffcc00')
-        .setDescription(
-          realizedRank.length
-            ? realizedRank.map(([uid, val], i) =>
-                `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
-            : '데이터 없음'
-        )
-        .setFooter({ text: '실현수익: 코인 매도를 통한 누적 손익 합산' });
+  const holdingsEmbed = new EmbedBuilder()
+    .setTitle('🏦 코인 평가자산 TOP 20')
+    .setColor('#33ccff')
+    .setDescription(
+      holdingsRank.length
+        ? holdingsRank.map(([uid, val], i) =>
+            `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
+        : '데이터 없음'
+    )
+    .setFooter({ text: '상폐/없는 코인은 평가자산에서 제외됨' });
 
-      const holdingsEmbed = new EmbedBuilder()
-        .setTitle('🏦 코인 평가자산 TOP 20')
-        .setColor('#33ccff')
-        .setDescription(
-          holdingsRank.length
-            ? holdingsRank.map(([uid, val], i) =>
-                `**${i+1}. <@${uid}>**  \`${Number(val).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} 파랑 정수\``).join('\n')
-            : '데이터 없음'
-        )
-        .setFooter({ text: '자산평가: 현재 보유 코인의 시세 기준 합산' });
+  let page = 0;
+  const pages = [realizedEmbed, holdingsEmbed];
 
-      let page = 0;
-      const pages = [realizedEmbed, holdingsEmbed];
+  const navRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('rank_prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId('rank_next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page === pages.length-1)
+  );
 
-      const navRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('rank_prev').setLabel('◀️ 이전').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
-        new ButtonBuilder().setCustomId('rank_next').setLabel('▶️ 다음').setStyle(ButtonStyle.Primary).setDisabled(page === pages.length-1)
-      );
+  await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
+  const msg = await interaction.fetchReply();
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 600_000,
+    filter: btn => btn.user.id === interaction.user.id
+  });
 
-      await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
-      const msg = await interaction.fetchReply();
-      const collector = msg.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 600_000,
-        filter: btn => btn.user.id === interaction.user.id
-      });
+  collector.on('collect', async btn => {
+    await btn.deferUpdate();
+    if (btn.customId === 'rank_prev' && page > 0) page -= 1;
+    else if (btn.customId === 'rank_next' && page < pages.length-1) page += 1;
+    navRow.components[0].setDisabled(page === 0);
+    navRow.components[1].setDisabled(page === pages.length-1);
+    await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
+  });
 
-      collector.on('collect', async btn => {
-        await btn.deferUpdate();
-        if (btn.customId === 'rank_prev' && page > 0) page -= 1;
-        else if (btn.customId === 'rank_next' && page < pages.length-1) page += 1;
-        navRow.components[0].setDisabled(page === 0);
-        navRow.components[1].setDisabled(page === pages.length-1);
-        await interaction.editReply({ embeds: [pages[page]], components: [navRow] });
-      });
-
-      collector.on('end', async () => {
-        try { await interaction.editReply({ components: [] }); } catch {}
-      });
-      return;
+  collector.on('end', async () => {
+    try { await interaction.editReply({ components: [] }); } catch {}
+  });
+  return;
     }
   },
 
