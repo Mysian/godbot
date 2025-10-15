@@ -99,7 +99,7 @@ async function buildPanel(key, source){
   const row=new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(BTN_REFRESH).setLabel("새로고침").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(BTN_OPEN_CH).setLabel("채널 열기").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(BTN_OPEN_LAST).setLabel("최신 롱폼").setStyle(ButtonStyle.Secondary).setDisabled(!lastUrl)
+    new ButtonBuilder().setCustomId(BTN_OPEN_LAST).setLabel("최근 영상 바로보기").setStyle(ButtonStyle.Secondary).setDisabled(!lastUrl)
   );
 
   return { embed: eb, components: [row], urls: { channel: `https://www.youtube.com/channel/${ch.id}`, last: lastUrl }, channelId: cid };
