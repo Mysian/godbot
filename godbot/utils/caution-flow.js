@@ -336,16 +336,13 @@ module.exports = (client) => {
       const isCaution = String(i.customId || "").startsWith("cau:");
       const isControl = i.channelId === CONTROL_CHANNEL_ID;
 
-      // 상호작용 실패 방지: 먼저 즉시 ACK
       const ackUpdate = async () => { if (!i.deferred && !i.replied) { await i.deferUpdate().catch(() => {}); } };
       const ackReply = async () => { if (!i.deferred && !i.replied) { await i.deferReply({ ephemeral: true }).catch(() => {}); } };
 
-      // CONTROL 채널 외에서는 사용자 동의/복귀 버튼만 허용
       if (!isControl && !isCaution) return;
       if (!isControl && isCaution && !(String(i.customId).startsWith("cau:ack:") || String(i.customId).startsWith("cau:restore:"))) return;
 
       if (i.isStringSelectMenu()) {
-        // 즉시 ACK 후 원본 메시지 편집
         await ackUpdate();
 
         const parts = String(i.customId).split(":");
@@ -380,7 +377,6 @@ module.exports = (client) => {
       }
 
       if (i.isModalSubmit()) {
-        // 모달은 showModal로 이미 ACK됨 → 이후 followUp 사용
         const [ns, act, ownerId, uid, key] = String(i.customId).split(":");
         if (ns !== "cau" || act !== "custom") return;
         if (i.user.id !== ownerId) { await i.followUp({ content: "권한 없음", ephemeral: true }).catch(() => {}); return; }
@@ -406,7 +402,6 @@ module.exports = (client) => {
         }
 
         if (parts[1] === "addcustom") {
-          // 모달 표시 자체가 ACK → 별도 defer 불필요
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) return;
           const modal = new ModalBuilder().setCustomId(`cau:custom:${ownerId}:${uid}:${key}`).setTitle("커스텀 항목 입력");
@@ -417,8 +412,8 @@ module.exports = (client) => {
         }
 
         if (parts[1] === "apply") {
-          // 무거운 처리 많음 → 먼저 ephemeral로 ACK
           await ackReply();
+          await i.editReply({ content: "주의 적용 처리 중..." }).catch(() => {});
 
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) { await i.editReply({ content: "요청자만 적용할 수 있어." }).catch(() => {}); return; }
@@ -440,14 +435,13 @@ module.exports = (client) => {
           for (const k of selected) { if (k === "rc") items.push({ type: "custom", text: st.custom.trim() }); else items.push({ type: "preset", key: k }); }
           const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
 
-          await ensureRoleOverwritesForGuild(i.guild);
           const member = await assignCautionRole(i.guild, uid);
           if (!member) { await i.editReply({ content: "대상을 찾을 수 없어." }).catch(() => {}); return; }
-          await enforceCautionOnlyRole(member, all[uid]);
-          await moveToHoldVoiceIfNeeded(i.guild, member);
+          await enforceCautionOnlyRole(member, all[uid]).catch(() => {});
+          await moveToHoldVoiceIfNeeded(i.guild, member).catch(() => {});
           const ch = await ensureCautionChannel(i.guild, member);
           if (!ch) { await i.editReply({ content: "주의 채널 생성 실패." }).catch(() => {}); return; }
-          await quarantineMemberAcrossGuild(i.guild, member, ch.id);
+          await quarantineMemberAcrossGuild(i.guild, member, ch.id).catch(() => {});
 
           const embed = renderAgreeEmbed(member, all[uid]);
           const rows = buildAgreeButtons(uid, all[uid]);
@@ -455,7 +449,6 @@ module.exports = (client) => {
           if (canBotTalkIn(ch)) sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch((e) => { safeLog("send(caution-room)", e); return null; });
           all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null; saveAll(all);
 
-          // 원본 컨트롤 메시지 업데이트는 편집으로 처리
           if (isControl && canBotTalkIn(i.channel)) {
             try {
               await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date())], components: [] });
@@ -467,13 +460,11 @@ module.exports = (client) => {
         }
 
         if (parts[1] === "ack") {
-          // 대상 동의 → 빠르게 ACK 후 메시지 편집
           await ackUpdate();
 
           const uid = parts[2]; const itemId = parts[3];
           const targetId = uid;
           const all = loadAll(); const rec = all[targetId]; if (!rec) return;
-          // 대상자 또는 관리자만
           if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) return;
 
           rec.acks = rec.acks || {}; rec.acks[itemId] = true; saveAll(all);
@@ -490,8 +481,8 @@ module.exports = (client) => {
         }
 
         if (parts[1] === "restore") {
-          // 복귀 처리도 선 ACK
           await ackReply();
+          await i.editReply({ content: "복귀 처리 중..." }).catch(() => {});
 
           const targetId = parts[2] ?? i.user.id;
           const all = loadAll(); const rec = all[targetId]; if (!rec) { await i.editReply({ content: "진행 중인 주의 절차가 없어." }).catch(() => {}); return; }
@@ -500,9 +491,9 @@ module.exports = (client) => {
           if (!allAck) { await i.editReply({ content: "모든 항목에 동의해야 복귀할 수 있어." }).catch(() => {}); return; }
 
           const member = await i.guild.members.fetch(targetId).catch(() => null);
-          if (member) await restoreSnapshotRoles(member, rec);
-          await removeCautionRole(i.guild, targetId);
-          await clearQuarantineForMember(i.guild, targetId);
+          if (member) await restoreSnapshotRoles(member, rec).catch(() => {});
+          await removeCautionRole(i.guild, targetId).catch(() => {});
+          await clearQuarantineForMember(i.guild, targetId).catch(() => {});
           const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
           if (ch && ch.deletable) await ch.delete().catch(() => {});
           delete all[targetId]; saveAll(all);
@@ -513,10 +504,17 @@ module.exports = (client) => {
       }
     } catch (e) {
       safeLog("interactionCreate", e);
-      try { if (e?.code === 40060) return; if (e?.message?.includes("Unknown interaction")) return; } catch {}
-      // 마지막 안전장치
-      // 이미 응답 못했으면 ephemeral로라도
-      // 이 라인은 주석 없이 두되 무음 처리
+      try {
+        if (e?.code === 40060) return;
+        if (e?.message?.includes("Unknown interaction")) return;
+      } catch {}
+      try {
+        const i = arguments?.[0];
+        if (!i) return;
+        if (i.replied) return;
+        if (i.deferred) { await i.editReply({ content: "처리 중 오류가 발생했어. 권한과 로그를 확인해줘." }).catch(() => {}); }
+        else { await i.reply({ content: "처리 중 오류가 발생했어. 권한과 로그를 확인해줘.", ephemeral: true }).catch(() => {}); }
+      } catch {}
     }
   });
 
