@@ -10,10 +10,8 @@ const DATA_PATH = path.join(__dirname, "../data/caution-flow.json");
 
 function loadAll() { try { const j = JSON.parse(fs.readFileSync(DATA_PATH, "utf8")); if (j && typeof j === "object") return j; return {}; } catch { return {}; } }
 function saveAll(all) { try { fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true }); fs.writeFileSync(DATA_PATH, JSON.stringify(all), "utf8"); } catch {} }
-
 function getSafeName(member) { const base = (member?.displayName || member?.user?.username || "유저").replace(/[^ㄱ-ㅎ가-힣A-Za-z0-9-_]/g, ""); return base || "유저"; }
 function now() { return Date.now(); }
-
 function hasAdminRole(member) { if (!member) return false; return ADMIN_ROLE_IDS.some(id => member.roles?.cache?.has(id)); }
 
 async function ensureRoleOverwritesForGuild(guild) {
@@ -21,13 +19,17 @@ async function ensureRoleOverwritesForGuild(guild) {
   if (!role) return;
   await guild.channels.fetch().catch(() => {});
   const chans = guild.channels.cache.filter((c) =>
-    [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory, ChannelType.PublicThread, ChannelType.PrivateThread].includes(c.type)
+    [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(c.type)
   );
   for (const ch of chans.values()) {
     const exists = ch.permissionOverwrites.cache.get(role.id);
     const need = !exists || !exists.deny.has(PermissionFlagsBits.ViewChannel);
-    if (need) {
-      await ch.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
+    if (need) await ch.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
+    if (ch.threads && typeof ch.threads.fetchActive === "function") {
+      const active = await ch.threads.fetchActive().catch(() => null);
+      if (active?.threads) for (const th of active.threads.values()) await th.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
+      const archived = await ch.threads.fetchArchived().catch(() => null);
+      if (archived?.threads) for (const th of archived.threads.values()) await th.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
     }
   }
 }
@@ -79,11 +81,8 @@ function renderAgreeEmbed(member, record) {
       lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${it.text}`);
     }
   }
-  const desc = [
-    "주의 단계는 '경고'보다 낮은 단계이며, 서버 이용 시 유의가 필요한 상태입니다.",
-    "아래 항목 각각의 [동의] 버튼을 모두 누르면 복귀할 수 있습니다."
-  ].join("\n");
-  return new EmbedBuilder().setTitle(`주의 절차 진행 중`).setDescription(desc).addFields({ name: "대상", value: `<@${member.id}> (${member.id})` }, { name: "항목", value: lines.join("\n") || "-" }).setTimestamp(new Date());
+  const desc = ["주의 단계는 '경고'보다 낮은 단계이며, 서버 이용 시 유의가 필요한 상태입니다.", "아래 항목 각각의 [동의] 버튼을 모두 누르면 복귀할 수 있습니다."].join("\n");
+  return new EmbedBuilder().setTitle("주의 절차 진행 중").setDescription(desc).addFields({ name: "대상", value: `<@${member.id}> (${member.id})` }, { name: "항목", value: lines.join("\n") || "-" }).setTimestamp(new Date());
 }
 
 function buildAgreeButtons(uid, record) {
@@ -100,8 +99,7 @@ function buildAgreeButtons(uid, record) {
 }
 
 function newRecord(uid, items) {
-  const rec = { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null };
-  return rec;
+  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null };
 }
 
 async function ensureCautionChannel(guild, member, record) {
@@ -109,9 +107,7 @@ async function ensureCautionChannel(guild, member, record) {
   const name = `주의-${base}`;
   await guild.channels.fetch().catch(() => {});
   let ch = guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name === name);
-  if (!ch) {
-    ch = await guild.channels.create({ name, type: ChannelType.GuildText }).catch(() => null);
-  }
+  if (!ch) ch = await guild.channels.create({ name, type: ChannelType.GuildText }).catch(() => null);
   if (!ch) return null;
   const everyone = guild.roles.everyone;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
@@ -247,43 +243,40 @@ module.exports = (client) => {
   client.on("interactionCreate", async (i) => {
     try {
       if (!i.guild) return;
-      if (i.channelId !== CONTROL_CHANNEL_ID && !String(i.customId || "").startsWith("cau:ack:") && !String(i.customId || "").startsWith("cau:restore:")) {
-        return;
-      }
+      if (i.channelId !== CONTROL_CHANNEL_ID && !String(i.customId || "").startsWith("cau:ack:") && !String(i.customId || "").startsWith("cau:restore:")) return;
 
       if ((i.isButton() || i.isStringSelectMenu() || i.isModalSubmit()) && i.channelId === CONTROL_CHANNEL_ID) {
         const member = i.member;
         const ok = ADMIN_ROLE_IDS.some(id => member?.roles?.cache?.has(id));
-        if (!ok && !String(i.customId || "").startsWith("cau:ack:") && !String(i.customId || "").startsWith("cau:restore:")) {
-          await i.reply({ content: "권한이 없어.", ephemeral: true }).catch(() => {});
-          return;
-        }
+        if (!ok && !String(i.customId || "").startsWith("cau:ack:") && !String(i.customId || "").startsWith("cau:restore:")) { await i.reply({ content: "권한이 없어.", ephemeral: true }).catch(() => {}); return; }
       }
 
       if (i.isStringSelectMenu()) {
         const parts = String(i.customId).split(":");
         if (parts[0] !== "cau") return;
         if (parts[1] === "pick") {
+          await i.deferUpdate().catch(() => {});
           const ownerId = parts[2]; const key = parts[3];
-          if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 선택할 수 있어.", ephemeral: true }).catch(() => {}); return; }
-          const uid = i.values?.[0]; if (!/^\d{17,20}$/.test(uid)) { await i.reply({ content: "대상 선택이 올바르지 않아.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 선택할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          const uid = i.values?.[0]; if (!/^\d{17,20}$/.test(uid)) { await i.followUp({ content: "대상 선택이 올바르지 않아.", ephemeral: true }).catch(() => {}); return; }
           const targetM = await i.guild.members.fetch(uid).catch(() => null);
-          if (hasAdminRole(targetM)) { await i.reply({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
+          if (hasAdminRole(targetM)) { await i.followUp({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
           const allData = loadAll(); const exists = !!allData[uid];
           const embed = buildPickEmbed(uid, exists);
           const rows = buildReasonSelect(ownerId, uid, key, exists ? allData[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
           pending.set(key, { uid, selected: exists ? allData[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
-          await i.update({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(async () => { await i.reply({ content: "갱신에 실패했어.", ephemeral: true }).catch(() => {}); });
+          await i.message.edit({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(() => {});
           return;
         }
         if (parts[1] === "reasons") {
+          await i.deferUpdate().catch(() => {});
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
-          if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 변경할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 변경할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           const sel = i.values || [];
           const st = pending.get(key) || { uid, selected: [] }; st.selected = sel; pending.set(key, st);
           const embed = buildPickEmbed(uid, !!loadAll()[uid]);
           const rows = buildReasonSelect(ownerId, uid, key, sel);
-          await i.update({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(async () => { await i.reply({ content: "갱신에 실패했어.", ephemeral: true }).catch(() => {}); });
+          await i.message.edit({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(() => {});
           return;
         }
       }
@@ -291,12 +284,13 @@ module.exports = (client) => {
       if (i.isModalSubmit()) {
         const [ns, act, ownerId, uid, key] = String(i.customId).split(":");
         if (ns !== "cau" || act !== "custom") return;
-        if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 입력할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+        await i.deferReply({ ephemeral: true }).catch(() => {});
+        if (i.user.id !== ownerId) { await i.editReply({ content: "요청자만 입력할 수 있어." }).catch(() => {}); return; }
         const text = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
         const st = pending.get(key) || { uid, selected: [] };
         if (text) st.custom = text;
         pending.set(key, st);
-        await i.reply({ content: "커스텀 항목이 반영되었어.", ephemeral: true }).catch(() => {});
+        await i.editReply({ content: "커스텀 항목이 반영되었어." }).catch(() => {});
         return;
       }
 
@@ -305,8 +299,9 @@ module.exports = (client) => {
         if (parts[0] !== "cau") return;
 
         if (parts[1] === "addcustom") {
+          if (i.deferred || i.replied) {} else { await i.deferUpdate().catch(() => {}); }
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
-          if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 입력할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 입력할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           const modal = new ModalBuilder().setCustomId(`cau:custom:${ownerId}:${uid}:${key}`).setTitle("커스텀 항목 입력");
           const input = new TextInputBuilder().setCustomId("cau_custom_text").setLabel("문구").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
           modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -315,24 +310,24 @@ module.exports = (client) => {
         }
 
         if (parts[1] === "cancel") {
+          await i.deferUpdate().catch(() => {});
           const ownerId = parts[2]; const key = parts[3];
-          if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 취소할 수 있어.", ephemeral: true }).catch(() => {}); return; }
-          await i.update({ embeds: [new EmbedBuilder().setTitle("요청 취소됨").setColor(0x95a5a6).setTimestamp(new Date())], components: [] }).catch(async () => {
-            await i.message.edit({ embeds: [new EmbedBuilder().setTitle("요청 취소됨").setColor(0x95a5a6).setTimestamp(new Date())], components: [] }).catch(() => {});
-          });
+          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 취소할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          await i.message.edit({ embeds: [new EmbedBuilder().setTitle("요청 취소됨").setColor(0x95a5a6).setTimestamp(new Date())], components: [] }).catch(() => {});
           pending.delete(key);
           return;
         }
 
         if (parts[1] === "apply") {
+          await i.deferUpdate().catch(() => {});
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
-          if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 적용할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 적용할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           const st = pending.get(key) || { uid, selected: [] };
           const selected = Array.isArray(st.selected) ? st.selected : [];
-          if (!selected.length) { await i.reply({ content: "부여할 항목을 선택해줘.", ephemeral: true }).catch(() => {}); return; }
+          if (!selected.length) { await i.followUp({ content: "부여할 항목을 선택해줘.", ephemeral: true }).catch(() => {}); return; }
           const targetMember = await i.guild.members.fetch(uid).catch(() => null);
-          if (!targetMember) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
-          if (hasAdminRole(targetMember)) { await i.reply({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
+          if (!targetMember) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
+          if (hasAdminRole(targetMember)) { await i.followUp({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
           const items = [];
           for (const k of selected) {
             if (k === "rc") {
@@ -341,63 +336,60 @@ module.exports = (client) => {
               items.push({ type: "preset", key: k });
             }
           }
-          if (!items.length) { await i.reply({ content: "유효한 항목이 없어. 커스텀 문구를 입력했는지 확인해줘.", ephemeral: true }).catch(() => {}); return; }
-          const all = loadAll();
-          all[uid] = newRecord(uid, items);
-          saveAll(all);
+          if (!items.length) { await i.followUp({ content: "유효한 항목이 없어. 커스텀 문구를 입력했는지 확인해줘.", ephemeral: true }).catch(() => {}); return; }
+          const all = loadAll(); all[uid] = newRecord(uid, items); saveAll(all);
           await ensureRoleOverwritesForGuild(i.guild);
           const member = await assignCautionRole(i.guild, uid);
-          if (!member) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
+          if (!member) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
           await moveToHoldVoiceIfNeeded(i.guild, member);
           const ch = await ensureCautionChannel(i.guild, member, all[uid]);
-          if (!ch) { await i.reply({ content: "주의 채널 생성에 실패했어.", ephemeral: true }).catch(() => {}); return; }
+          if (!ch) { await i.followUp({ content: "주의 채널 생성에 실패했어.", ephemeral: true }).catch(() => {}); return; }
           const embed = renderAgreeEmbed(member, all[uid]);
           const rows = buildAgreeButtons(uid, all[uid]);
           const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => null);
           all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null; saveAll(all);
-          await i.update({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date())], components: [] }).catch(async () => { await i.reply({ content: "적용은 완료됐지만 메시지 갱신에 실패했어.", ephemeral: true }).catch(() => {}); });
+          await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date())], components: [] }).catch(() => {});
           pending.delete(key);
+          await i.followUp({ content: "적용 완료.", ephemeral: true }).catch(() => {});
           return;
         }
 
         if (parts[1] === "ack") {
+          if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
           const uid = parts[2]; const itemId = parts[3];
           const targetId = uid;
-          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "대상자 또는 관리자만 동의할 수 있어.", ephemeral: true }).catch(() => {}); return; }
-          const all = loadAll(); const rec = all[targetId]; if (!rec) { await i.reply({ content: "진행 중인 주의 절차가 없어.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { await i.followUp({ content: "대상자 또는 관리자만 동의할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          const all = loadAll(); const rec = all[targetId]; if (!rec) { await i.followUp({ content: "진행 중인 주의 절차가 없어.", ephemeral: true }).catch(() => {}); return; }
           rec.acks = rec.acks || {}; rec.acks[itemId] = true; saveAll(all);
           const member = await i.guild.members.fetch(targetId).catch(() => null);
-          if (!member) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
+          if (!member) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
           const embed = renderAgreeEmbed(member, rec);
           const rows = buildAgreeButtons(targetId, rec);
           if (i.channel?.id === rec.channelId && i.message?.id === rec.messageId) {
-            await i.update({ content: `<@${targetId}>`, embeds: [embed], components: rows, allowedMentions: { users: [targetId] } }).catch(async () => {
-              await i.reply({ embeds: [embed], ephemeral: true }).catch(() => {});
-            });
+            await i.message.edit({ content: `<@${targetId}>`, embeds: [embed], components: rows, allowedMentions: { users: [targetId] } }).catch(() => {});
           } else {
-            await i.reply({ embeds: [embed], ephemeral: true }).catch(() => {});
+            await i.followUp({ embeds: [embed], ephemeral: true }).catch(() => {});
           }
           return;
         }
 
         if (parts[1] === "restore") {
+          if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
           const targetId = parts[2] ?? i.user.id;
-          const all = loadAll(); const rec = all[targetId]; if (!rec) { await i.reply({ content: "진행 중인 주의 절차가 없어.", ephemeral: true }).catch(() => {}); return; }
-          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "대상자 또는 관리자만 복귀할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          const all = loadAll(); const rec = all[targetId]; if (!rec) { await i.followUp({ content: "진행 중인 주의 절차가 없어.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { await i.followUp({ content: "대상자 또는 관리자만 복귀할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           const allAck = rec.items.every(it => rec.acks?.[it.id]);
-          if (!allAck) { await i.reply({ content: "모든 항목에 동의해야 복귀할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          if (!allAck) { await i.followUp({ content: "모든 항목에 동의해야 복귀할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           await removeCautionRole(i.guild, targetId);
           const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
           if (ch && ch.deletable) await ch.delete().catch(() => {});
           delete all[targetId]; saveAll(all);
-          if (i.isRepliable()) {
-            await i.reply({ content: "복귀가 완료되었습니다.", ephemeral: true }).catch(() => {});
-          }
+          await i.followUp({ content: "복귀가 완료되었습니다.", ephemeral: true }).catch(() => {});
           return;
         }
       }
     } catch {
-      try { if (i.isRepliable()) await i.reply({ content: "처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+      try { if (i.isRepliable()) { if (!i.deferred && !i.replied) await i.deferReply({ ephemeral: true }).catch(() => {}); await i.editReply({ content: "처리 중 오류가 발생했어." }).catch(() => {}); } } catch {}
     }
   });
 
@@ -414,9 +406,7 @@ module.exports = (client) => {
       const embed = renderAgreeEmbed(m, rec);
       const rows = buildAgreeButtons(member.id, rec);
       let msg = null;
-      if (rec.messageId) {
-        msg = await ch.messages.fetch(rec.messageId).catch(() => null);
-      }
+      if (rec.messageId) msg = await ch.messages.fetch(rec.messageId).catch(() => null);
       if (!msg) {
         const sent = await ch.send({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch(() => null);
         rec.channelId = ch.id; rec.messageId = sent?.id || null; saveAll(all);
@@ -432,7 +422,7 @@ module.exports = (client) => {
       if (!guild) return;
       const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
       if (!role) return;
-      if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory, ChannelType.PublicThread, ChannelType.PrivateThread].includes(ch.type)) {
+      if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(ch.type)) {
         await ch.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
       }
     } catch {}
