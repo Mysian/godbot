@@ -14,8 +14,10 @@ const PER_ROUND_MAX_TICKETS = 100;
 const PER_ROUND_MAX_SPEND = 1000000;
 
 function loadState() {
-  if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ round: 1, controlMessageId: null, rounds: {}, lastDrawAt: 0 }, null, 2));
-  return JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
+  if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ round: 1, rounds: {}, lastDrawAt: 0 }, null, 2));
+  const s = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
+  if (!s.rounds) s.rounds = {};
+  return s;
 }
 function saveState(s) {
   fs.writeFileSync(DATA_PATH, JSON.stringify(s, null, 2));
@@ -101,7 +103,7 @@ function prizeByTier(matches, pool, rule, counts) {
   }
 }
 function ensureRound(state, r) {
-  if (!state.rounds[r]) state.rounds[r] = { tickets: [], result: null, drawnAt: 0, rule: null };
+  if (!state.rounds[r]) state.rounds[r] = { tickets: [], result: null, drawnAt: 0, rule: null, messageId: null, closedEdited: false };
   if (!state.rounds[r].rule) {
     const legacyExists = state.rounds[r].result || state.rounds[r].tickets.some(t => Array.isArray(t.numbers) && t.numbers.length === 5);
     state.rounds[r].rule = legacyExists ? { pick: 5 } : { pick: 6 };
@@ -112,31 +114,56 @@ async function computePoolBE() {
   const rec = all[BOT_BANK_ID];
   return rec && typeof rec.amount === 'number' ? rec.amount : 0;
 }
-function controlRows(closed) {
+function controlRows(closed, forceDisabled) {
+  const disabled = !!forceDisabled || !!closed;
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('lottery_enter').setLabel('응모하기').setStyle(ButtonStyle.Primary).setDisabled(closed),
-    new ButtonBuilder().setCustomId('lottery_records').setLabel('기록 보기').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('lottery_mine').setLabel('내 응모내역').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('lottery_enter').setLabel('응모하기').setStyle(ButtonStyle.Primary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('lottery_records').setLabel('기록 보기').setStyle(ButtonStyle.Secondary).setDisabled(!!forceDisabled),
+    new ButtonBuilder().setCustomId('lottery_mine').setLabel('내 응모내역').setStyle(ButtonStyle.Secondary).setDisabled(!!forceDisabled)
   );
   return [row1];
 }
-function buildControlEmbed(livePot, state, nextDrawTs, closed) {
+function buildControlEmbed(livePot, state, nextDrawTs, closed, ended) {
   const r = state.round;
   const count = state.rounds[r]?.tickets?.length || 0;
-  const status = closed ? '판매 중지' : '판매 중';
+  const status = ended ? '판매 종료' : (closed ? '판매 중지' : '판매 중');
   const nextText = closed ? '다음 판매 재개' : '다음 추첨';
   const embed = new EmbedBuilder()
-    .setTitle(`🎟️ 주간 복권 | ${r}회차`)
-    .setColor(closed ? 0x9e9e9e : 0x00bcd4)
-    .setDescription(['안녕하세요. 주간 복권 안내입니다.', '아래 버튼으로 응모, 기록 확인이 가능합니다.'].join('\n'))
+    .setTitle(`🎟️ 주간 복권 | ${r}회차${ended ? ' (종료)' : ''}`)
+    .setColor(ended ? 0x9e9e9e : (closed ? 0x9e9e9e : 0x00bcd4))
+    .setDescription(['아래 버튼으로 응모, 기록 확인이 가능합니다.'].join('\n'))
     .addFields(
       { name: '배분 예정 전체 금액', value: `**${formatAmount(livePot)} BE**`, inline: true },
       { name: '판매 상태', value: `**${status}**`, inline: true },
       { name: '응모 장수', value: `**${formatAmount(count)} 장**`, inline: true },
       { name: nextText, value: `<t:${toUnix(nextDrawTs.getTime())}:R> (<t:${toUnix(nextDrawTs.getTime())}:F>)`, inline: false }
     )
-    .setFooter({ text: closed ? '토 19:30~월 08:59에는 판매가 중지됩니다.' : '토 20:00에 추첨이 진행됩니다.' });
+    .setFooter({ text: ended ? '해당 회차는 종료되었습니다.' : (closed ? '토 19:30~월 08:59에는 판매가 중지됩니다.' : '토 20:00에 추첨이 진행됩니다.') });
   return embed;
+}
+async function buildEndedEmbedFromMessage(msg) {
+  const e = msg.embeds?.[0];
+  const nb = new EmbedBuilder(e?.data || {}).setColor(0x9e9e9e);
+  const title = e?.title || '주간 복권';
+  nb.setTitle(title.includes('(종료)') ? title : `${title} (종료)`);
+  nb.setFooter({ text: '해당 회차는 종료되었습니다.' });
+  return nb;
+}
+async function disableOldMessages(client, state) {
+  const ch = await client.channels.fetch(CHANNEL_ID);
+  const keys = Object.keys(state.rounds).map(v => parseInt(v, 10)).filter(v => v < state.round);
+  for (const rr of keys) {
+    const info = state.rounds[rr];
+    if (!info?.messageId) continue;
+    if (info.closedEdited) continue;
+    try {
+      const msg = await ch.messages.fetch(info.messageId);
+      const endedEmbed = await buildEndedEmbedFromMessage(msg);
+      await msg.edit({ embeds: [endedEmbed], components: controlRows(true, true) });
+      info.closedEdited = true;
+      saveState(state);
+    } catch {}
+  }
 }
 async function publishOrUpdate(client) {
   const channel = await client.channels.fetch(CHANNEL_ID);
@@ -145,18 +172,26 @@ async function publishOrUpdate(client) {
   const nextDraw = getThisSaturday20OrNext();
   const closed = isClosedForSales();
   const pot = await computePoolBE();
-  const embed = buildControlEmbed(pot, state, nextDraw, closed);
-  const rows = controlRows(closed);
-  if (state.controlMessageId) {
+  if (state.rounds[state.round].messageId) {
     try {
-      const msg = await channel.messages.fetch(state.controlMessageId);
-      await msg.edit({ embeds: [embed], components: rows });
-      return;
-    } catch {}
+      const msg = await channel.messages.fetch(state.rounds[state.round].messageId);
+      const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+      await msg.edit({ embeds: [embed], components: controlRows(closed, false) });
+    } catch {
+      const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+      const rows = controlRows(closed, false);
+      const msg = await channel.send({ embeds: [embed], components: rows });
+      state.rounds[state.round].messageId = msg.id;
+      saveState(state);
+    }
+  } else {
+    await disableOldMessages(client, state);
+    const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+    const rows = controlRows(closed, false);
+    const msg = await channel.send({ embeds: [embed], components: rows });
+    state.rounds[state.round].messageId = msg.id;
+    saveState(state);
   }
-  const msg = await channel.send({ embeds: [embed], components: rows });
-  state.controlMessageId = msg.id;
-  saveState(state);
 }
 function buildRecordsEmbed(state, page) {
   const rounds = Object.keys(state.rounds).map(v => parseInt(v, 10)).filter(r => state.rounds[r]?.result).sort((a, b) => b - a);
@@ -287,7 +322,7 @@ async function handleEnterModal(interaction) {
     const ticket = { id: `${interaction.user.id}-${Date.now()}`, userId: interaction.user.id, numbers: picked, ts: Date.now(), result: null, prize: 0, paid: false };
     s.rounds[s.round].tickets.push(ticket);
     saveState(s);
-    const remain = PER_ROUND_MAX_TICKETS - nextCount;
+    const remain = PER_ROUND_MAX_TICKETS - (myCount + 1);
     await interaction.reply({ content: `응모 완료: [${picked.join(', ')}] | 가격 ${formatAmount(TICKET_PRICE)} BE | 이번 회차 남은 구매 가능 장수: ${remain}장`, ephemeral: true });
   } finally {
     if (release) await release();
@@ -353,24 +388,31 @@ async function announceDraw(client, state) {
   const ch = await client.channels.fetch(CHANNEL_ID);
   const res = state.rounds[r].result;
   const rule = state.rounds[r].rule || { pick: 6 };
-  const win = res.win.join(', ');
-  if (rule.pick === 6) {
-    const msg = [
-      `🎊 복권 ${r}회차 추첨 결과`,
-      `당첨 번호: [${win}]`,
-      `1등 ${res.winners6}명, 2등 ${res.winners5}명, 3등 ${res.winners4}명, 4등 ${res.winners3}명`,
-      `총 포트: ${formatAmount(res.pool)} BE`
-    ].join('\n');
-    await ch.send({ content: msg });
-  } else {
-    const msg = [
-      `🎊 복권 ${r}회차 추첨 결과`,
-      `당첨 번호: [${win}]`,
-      `1등 ${res.winners5}명, 2등 ${res.winners4}명, 3등 ${res.winners3}명`,
-      `총 포트: ${formatAmount(res.pool)} BE`
-    ].join('\n');
-    await ch.send({ content: msg });
-  }
+  const win = res.win.map(n => `\`${n}\``).join('  ');
+  const drawnAt = state.rounds[r].drawnAt || Math.floor(Date.now() / 1000);
+  const title = `🎊 복권 ${r}회차 추첨 결과`;
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(0xFBC02D)
+    .setDescription(`당첨 번호\n${win}`)
+    .addFields(
+      ...(rule.pick === 6
+        ? [
+            { name: '1등', value: `${res.winners6}명`, inline: true },
+            { name: '2등', value: `${res.winners5}명`, inline: true },
+            { name: '3등', value: `${res.winners4}명`, inline: true },
+            { name: '4등', value: `${res.winners3}명`, inline: true }
+          ]
+        : [
+            { name: '1등', value: `${res.winners5}명`, inline: true },
+            { name: '2등', value: `${res.winners4}명`, inline: true },
+            { name: '3등', value: `${res.winners3}명`, inline: true }
+          ]),
+      { name: '총 포트', value: `${formatAmount(res.pool)} BE`, inline: true },
+      { name: '추첨 시각', value: `<t:${drawnAt}:F>`, inline: true }
+    )
+    .setFooter({ text: '다음 회차에 참여하려면 채널 하단 최신 임베드의 버튼을 사용하세요.' });
+  await ch.send({ embeds: [embed] });
 }
 async function tick(client) {
   const state = loadState();
@@ -385,6 +427,7 @@ async function tick(client) {
     saveState(state);
     await payPrizes(client, state);
     await announceDraw(client, state);
+    await disableOldMessages(client, state);
     await publishOrUpdate(client);
     return;
   }
