@@ -178,6 +178,23 @@ function buildSearchSelect(authorId, key, members) {
 
 const pending = new Map();
 
+async function quarantineMemberAcrossGuild(guild, member, exceptChannelId) {
+  await guild.channels.fetch().catch(() => {});
+  const chans = guild.channels.cache.filter(c =>
+    [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(c.type)
+  );
+  for (const ch of chans.values()) {
+    if (ch.id === exceptChannelId) continue;
+    await ch.permissionOverwrites.edit(member.id, { ViewChannel: false }).catch(() => {});
+    if (ch.threads && typeof ch.threads.fetchActive === "function") {
+      const active = await ch.threads.fetchActive().catch(() => null);
+      if (active?.threads) for (const th of active.threads.values()) await th.permissionOverwrites.edit(member.id, { ViewChannel: false }).catch(() => {});
+      const archived = await ch.threads.fetchArchived().catch(() => null);
+      if (archived?.threads) for (const th of archived.threads.values()) await th.permissionOverwrites.edit(member.id, { ViewChannel: false }).catch(() => {});
+    }
+  }
+}
+
 module.exports = (client) => {
   client.on("messageCreate", async (msg) => {
     try {
@@ -299,9 +316,8 @@ module.exports = (client) => {
         if (parts[0] !== "cau") return;
 
         if (parts[1] === "addcustom") {
-          if (i.deferred || i.replied) {} else { await i.deferUpdate().catch(() => {}); }
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
-          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 입력할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 입력할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           const modal = new ModalBuilder().setCustomId(`cau:custom:${ownerId}:${uid}:${key}`).setTitle("커스텀 항목 입력");
           const input = new TextInputBuilder().setCustomId("cau_custom_text").setLabel("문구").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
           modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -344,6 +360,7 @@ module.exports = (client) => {
           await moveToHoldVoiceIfNeeded(i.guild, member);
           const ch = await ensureCautionChannel(i.guild, member, all[uid]);
           if (!ch) { await i.followUp({ content: "주의 채널 생성에 실패했어.", ephemeral: true }).catch(() => {}); return; }
+          await quarantineMemberAcrossGuild(i.guild, member, ch.id);
           const embed = renderAgreeEmbed(member, all[uid]);
           const rows = buildAgreeButtons(uid, all[uid]);
           const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => null);
@@ -403,6 +420,7 @@ module.exports = (client) => {
       const rec = all[member.id];
       const ch = await ensureCautionChannel(member.guild, m, rec);
       if (!ch) return;
+      await quarantineMemberAcrossGuild(member.guild, m, ch.id);
       const embed = renderAgreeEmbed(m, rec);
       const rows = buildAgreeButtons(member.id, rec);
       let msg = null;
@@ -443,6 +461,7 @@ module.exports = (client) => {
           await moveToHoldVoiceIfNeeded(g, m);
           const ch = await ensureCautionChannel(g, m, rec);
           if (!ch) continue;
+          await quarantineMemberAcrossGuild(g, m, ch.id);
           const embed = renderAgreeEmbed(m, rec);
           const rows = buildAgreeButtons(uid, rec);
           let msg = null;
