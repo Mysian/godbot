@@ -10,7 +10,6 @@ const DATA_PATH = path.join(__dirname, '../data/lottery.json');
 const LOCK_PATH = DATA_PATH;
 const TICKET_PRICE = 10000;
 const MAX_NUMBER = 45;
-const PICK_COUNT = 5;
 const PER_ROUND_MAX_TICKETS = 100;
 const PER_ROUND_MAX_SPEND = 1000000;
 
@@ -72,11 +71,11 @@ function salesStatusText() {
 function formatAmount(n) {
   return n.toLocaleString('ko-KR');
 }
-function uniqueSortedFive(arr) {
+function uniqueSortedPick(arr, pickCount) {
   if (!Array.isArray(arr)) return null;
   const f = arr.filter(v => Number.isInteger(v) && v >= 1 && v <= MAX_NUMBER);
   const set = Array.from(new Set(f));
-  if (set.length !== PICK_COUNT) return null;
+  if (set.length !== pickCount) return null;
   set.sort((a, b) => a - b);
   return set;
 }
@@ -97,23 +96,26 @@ function compareWin(picked, win) {
   }
   return m;
 }
-function winningPrize(matches, pool, winners5, winners4, winners3) {
-  if (matches === 5) {
-    if (winners5 === 0) return Math.floor(pool * 0.7);
-    return Math.floor((pool * 0.7) / winners5);
+function prizeByTier(matches, pool, rule, counts) {
+  if (rule.pick === 6) {
+    if (matches === 6) return counts.w6 ? Math.floor((pool * 0.6) / counts.w6) : Math.floor(pool * 0.6);
+    if (matches === 5) return counts.w5 ? Math.floor((pool * 0.25) / counts.w5) : Math.floor(pool * 0.25);
+    if (matches === 4) return counts.w4 ? Math.floor((pool * 0.10) / counts.w4) : Math.floor(pool * 0.10);
+    if (matches === 3) return counts.w3 ? Math.floor((pool * 0.05) / counts.w3) : Math.floor(pool * 0.05);
+    return 0;
+  } else {
+    if (matches === 5) return counts.w5 ? Math.floor((pool * 0.7) / counts.w5) : Math.floor(pool * 0.7);
+    if (matches === 4) return counts.w4 ? Math.floor((pool * 0.2) / counts.w4) : Math.floor(pool * 0.2);
+    if (matches === 3) return counts.w3 ? Math.floor((pool * 0.1) / counts.w3) : Math.floor(pool * 0.1);
+    return 0;
   }
-  if (matches === 4) {
-    if (winners4 === 0) return Math.floor(pool * 0.2);
-    return Math.floor((pool * 0.2) / winners4);
-  }
-  if (matches === 3) {
-    if (winners3 === 0) return Math.floor(pool * 0.1);
-    return Math.floor((pool * 0.1) / winners3);
-  }
-  return 0;
 }
 function ensureRound(state, r) {
-  if (!state.rounds[r]) state.rounds[r] = { tickets: [], result: null, drawnAt: 0 };
+  if (!state.rounds[r]) state.rounds[r] = { tickets: [], result: null, drawnAt: 0, rule: null };
+  if (!state.rounds[r].rule) {
+    const legacyExists = state.rounds[r].result || state.rounds[r].tickets.some(t => Array.isArray(t.numbers) && t.numbers.length === 5);
+    state.rounds[r].rule = legacyExists ? { pick: 5 } : { pick: 6 };
+  }
 }
 async function computePoolBE() {
   const all = await loadBE();
@@ -168,17 +170,25 @@ async function publishOrUpdate(client) {
 }
 function buildRecordsEmbed(state, page) {
   const rounds = Object.keys(state.rounds).map(v => parseInt(v, 10)).filter(r => state.rounds[r]?.result).sort((a, b) => b - a);
-  const per = 5;
+  const per = 50;
   const maxPage = Math.max(1, Math.ceil(rounds.length / per));
   const p = Math.min(maxPage, Math.max(1, page || 1));
   const list = rounds.slice((p - 1) * per, (p - 1) * per + per).map(rr => {
     const r = state.rounds[rr];
     const w = r.result?.win?.join(', ') || '-';
     const pool = r.result?.pool || 0;
-    const w5 = r.result?.winners5 || 0;
-    const w4 = r.result?.winners4 || 0;
-    const w3 = r.result?.winners3 || 0;
-    return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+    if (r.rule?.pick === 6) {
+      const w6 = r.result?.winners6 || 0;
+      const w5 = r.result?.winners5 || 0;
+      const w4 = r.result?.winners4 || 0;
+      const w3 = r.result?.winners3 || 0;
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명, 2등 ${w5}명, 3등 ${w4}명, 4등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+    } else {
+      const w5 = r.result?.winners5 || 0;
+      const w4 = r.result?.winners4 || 0;
+      const w3 = r.result?.winners3 || 0;
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+    }
   }).join('\n');
   const embed = new EmbedBuilder().setTitle('📜 복권 기록').setColor(0x607d8b).setDescription(list || '아직 공개된 기록이 없습니다.');
   return embed;
@@ -221,33 +231,39 @@ async function handleEnter(interaction) {
     await interaction.reply({ content: '현재는 판매가 중지된 시간입니다. 월요일 오전 9시에 판매가 재개됩니다.', ephemeral: true });
     return;
   }
-  const modal = new ModalBuilder().setCustomId('lottery_enter_modal').setTitle('복권 응모(1줄 10,000 BE)');
-  const input = new TextInputBuilder().setCustomId('numbers').setLabel('숫자 5개 입력(1~45, 쉼표) | 비우거나 0=자동').setStyle(TextInputStyle.Short).setPlaceholder('예: 3,7,12,28,41 | 공란 또는 0=랜덤').setRequired(false);
+  const state = loadState();
+  ensureRound(state, state.round);
+  const pick = state.rounds[state.round].rule.pick || 6;
+  const modal = new ModalBuilder().setCustomId('lottery_enter_modal').setTitle(`복권 응모(1줄 ${formatAmount(TICKET_PRICE)} BE)`);
+  const input = new TextInputBuilder().setCustomId('numbers').setLabel(`숫자 ${pick}개 입력(1~45, 쉼표) | 비우거나 0=자동`).setStyle(TextInputStyle.Short).setPlaceholder('예: 3,7,12,28,41,44 | 공란 또는 0=랜덤').setRequired(false);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   await interaction.showModal(modal);
 }
-function drawNumbers() {
+function drawNumbers(pick) {
   const set = new Set();
-  while (set.size < PICK_COUNT) {
+  while (set.size < pick) {
     set.add(1 + Math.floor(Math.random() * MAX_NUMBER));
   }
   return Array.from(set).sort((a, b) => a - b);
 }
 async function handleEnterModal(interaction) {
+  const state = loadState();
+  ensureRound(state, state.round);
+  const pick = state.rounds[state.round].rule.pick || 6;
   const raw = (interaction.fields.getTextInputValue('numbers') || '').trim();
   let picked = null;
   if (raw.length === 0) {
-    picked = drawNumbers();
+    picked = drawNumbers(pick);
   } else {
     const parsed = raw.split(/[,\s]+/).filter(Boolean).map(v => parseInt(v.trim(), 10));
     if (parsed.length === 1 && parsed[0] === 0) {
-      picked = drawNumbers();
+      picked = drawNumbers(pick);
     } else if (parsed.some(v => v === 0)) {
-      picked = drawNumbers();
+      picked = drawNumbers(pick);
     } else {
-      picked = uniqueSortedFive(parsed);
+      picked = uniqueSortedPick(parsed, pick);
       if (!picked) {
-        await interaction.reply({ content: '입력 형식이 잘못되었습니다. 1부터 45 사이의 서로 다른 숫자 5개를 쉼표로 구분해 입력하거나, 공란/0으로 자동 선택을 이용해 주세요.', ephemeral: true });
+        await interaction.reply({ content: `입력 형식이 잘못되었습니다. 1부터 45 사이의 서로 다른 숫자 ${pick}개를 쉼표로 구분해 입력하거나, 공란/0으로 자동 선택을 이용해 주세요.`, ephemeral: true });
         return;
       }
     }
@@ -259,9 +275,9 @@ async function handleEnterModal(interaction) {
   let release;
   try {
     release = await lockfile.lock(LOCK_PATH, { retries: { retries: 10, minTimeout: 30, maxTimeout: 120 } });
-    const state = loadState();
-    ensureRound(state, state.round);
-    const myCount = state.rounds[state.round].tickets.filter(t => t.userId === interaction.user.id).length;
+    const s = loadState();
+    ensureRound(s, s.round);
+    const myCount = s.rounds[s.round].tickets.filter(t => t.userId === interaction.user.id).length;
     if (myCount >= PER_ROUND_MAX_TICKETS) {
       await interaction.reply({ content: `해당 회차 구매 한도(${PER_ROUND_MAX_TICKETS}장)를 초과했습니다. 현재 ${myCount}장 구매하였습니다.`, ephemeral: true });
       return;
@@ -276,11 +292,11 @@ async function handleEnterModal(interaction) {
       await interaction.reply({ content: `잔액이 부족합니다. 필요 금액: ${formatAmount(TICKET_PRICE)} BE`, ephemeral: true });
       return;
     }
-    await addBE(interaction.user.id, -TICKET_PRICE, `복권 ${state.round}회차 1줄 구매(${picked.join('-')})`);
-    await addBE(BOT_BANK_ID, TICKET_PRICE, `복권 ${state.round}회차 판매 수익`);
+    await addBE(interaction.user.id, -TICKET_PRICE, `복권 ${s.round}회차 1줄 구매(${picked.join('-')})`);
+    await addBE(BOT_BANK_ID, TICKET_PRICE, `복권 ${s.round}회차 판매 수익`);
     const ticket = { id: `${interaction.user.id}-${Date.now()}`, userId: interaction.user.id, numbers: picked, ts: Date.now(), result: null, prize: 0, paid: false };
-    state.rounds[state.round].tickets.push(ticket);
-    saveState(state);
+    s.rounds[s.round].tickets.push(ticket);
+    saveState(s);
     const remain = PER_ROUND_MAX_TICKETS - nextCount;
     await interaction.reply({ content: `응모 완료: [${picked.join(', ')}] | 가격 ${formatAmount(TICKET_PRICE)} BE | 이번 회차 남은 구매 가능 장수: ${remain}장`, ephemeral: true });
   } finally {
@@ -290,25 +306,40 @@ async function handleEnterModal(interaction) {
 function runDrawInternal(state, ts) {
   const r = state.round;
   ensureRound(state, r);
-  const win = drawNumbers();
-  const pool = state.rounds[r].tickets.length * TICKET_PRICE + 0;
-  let winners5 = 0;
-  let winners4 = 0;
-  let winners3 = 0;
-  for (const t of state.rounds[r].tickets) {
-    const m = compareWin(t.numbers, win);
-    if (m === 5) winners5++;
-    else if (m === 4) winners4++;
-    else if (m === 3) winners3++;
+  const rule = state.rounds[r].rule || { pick: 6 };
+  const win = drawNumbers(rule.pick);
+  const pool = Math.max(0, getBE(BOT_BANK_ID) || 0);
+  let counts = { w6: 0, w5: 0, w4: 0, w3: 0 };
+  if (rule.pick === 6) {
+    for (const t of state.rounds[r].tickets) {
+      const m = compareWin(t.numbers, win);
+      if (m === 6) counts.w6++;
+      else if (m === 5) counts.w5++;
+      else if (m === 4) counts.w4++;
+      else if (m === 3) counts.w3++;
+    }
+  } else {
+    counts = { w5: 0, w4: 0, w3: 0 };
+    for (const t of state.rounds[r].tickets) {
+      const m = compareWin(t.numbers, win);
+      if (m === 5) counts.w5++;
+      else if (m === 4) counts.w4++;
+      else if (m === 3) counts.w3++;
+    }
   }
   for (const t of state.rounds[r].tickets) {
     const m = compareWin(t.numbers, win);
-    const prize = winningPrize(m, pool, winners5, winners4, winners3);
-    t.result = { win: m >= 3, matches: m };
+    const prize = prizeByTier(m, pool, rule, counts);
+    const winFlag = rule.pick === 6 ? (m >= 3) : (m >= 3);
+    t.result = { win: winFlag, matches: m };
     t.prize = prize;
     t.paid = false;
   }
-  state.rounds[r].result = { win, pool, winners5, winners4, winners3 };
+  if (rule.pick === 6) {
+    state.rounds[r].result = { win, pool, winners6: counts.w6, winners5: counts.w5, winners4: counts.w4, winners3: counts.w3 };
+  } else {
+    state.rounds[r].result = { win, pool, winners5: counts.w5, winners4: counts.w4, winners3: counts.w3 };
+  }
   state.rounds[r].drawnAt = Math.floor(ts / 1000);
   state.lastDrawAt = ts;
   state.round = r + 1;
@@ -319,7 +350,10 @@ async function payPrizes(client, state) {
   if (!state.rounds[r] || !state.rounds[r].result) return;
   for (const t of state.rounds[r].tickets) {
     if (t.paid) continue;
-    if (t.prize > 0) await addBE(t.userId, t.prize, `복권 ${r}회차 당첨금 지급`);
+    if (t.prize > 0) {
+      await addBE(BOT_BANK_ID, -t.prize, `복권 ${r}회차 당첨금 차감`);
+      await addBE(t.userId, t.prize, `복권 ${r}회차 당첨금 지급`);
+    }
     t.paid = true;
   }
   saveState(state);
@@ -328,14 +362,25 @@ async function announceDraw(client, state) {
   const r = state.round - 1;
   const ch = await client.channels.fetch(CHANNEL_ID);
   const res = state.rounds[r].result;
+  const rule = state.rounds[r].rule || { pick: 6 };
   const win = res.win.join(', ');
-  const msg = [
-    `🎊 복권 ${r}회차 추첨 결과`,
-    `당첨 번호: [${win}]`,
-    `1등 ${res.winners5}명, 2등 ${res.winners4}명, 3등 ${res.winners3}명`,
-    `총 포트: ${formatAmount(res.pool)} BE`
-  ].join('\n');
-  await ch.send({ content: msg });
+  if (rule.pick === 6) {
+    const msg = [
+      `🎊 복권 ${r}회차 추첨 결과`,
+      `당첨 번호: [${win}]`,
+      `1등 ${res.winners6}명, 2등 ${res.winners5}명, 3등 ${res.winners4}명, 4등 ${res.winners3}명`,
+      `총 포트: ${formatAmount(res.pool)} BE`
+    ].join('\n');
+    await ch.send({ content: msg });
+  } else {
+    const msg = [
+      `🎊 복권 ${r}회차 추첨 결과`,
+      `당첨 번호: [${win}]`,
+      `1등 ${res.winners5}명, 2등 ${res.winners4}명, 3등 ${res.winners3}명`,
+      `총 포트: ${formatAmount(res.pool)} BE`
+    ].join('\n');
+    await ch.send({ content: msg });
+  }
 }
 async function tick(client) {
   const state = loadState();
@@ -344,7 +389,6 @@ async function tick(client) {
   const nextUnix = Math.floor(next.getTime() / 1000);
   const nowUnix = Math.floor(Date.now() / 1000);
   const lastUnix = nextUnix - 7 * 24 * 3600;
-
   if (!state.rounds[state.round]?.result) {
     if (Math.abs(nowUnix - nextUnix) <= 120) {
       runDrawInternal(state, Date.now());
@@ -363,7 +407,6 @@ async function tick(client) {
       return;
     }
   }
-
   if (Math.floor(Date.now() / 60000) % 5 === 0) {
     await publishOrUpdate(client);
   }
