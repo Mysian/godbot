@@ -234,40 +234,6 @@ async function moveToHoldVoiceIfNeeded(guild, member) {
   await member.voice.setChannel(dst).catch(e => safeLog("voice.setChannel", e));
 }
 
-async function quarantineMemberAcrossGuild(guild, member, exceptChannelId) {
-  await guild.channels.fetch().catch(() => {});
-  const chans = guild.channels.cache.filter(c =>
-    [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(c.type)
-  );
-  for (const ch of chans.values()) {
-    if (ch.id === exceptChannelId) continue;
-    await ch.permissionOverwrites.edit(member.id, { ViewChannel: false }).catch(() => {});
-    if (ch.threads && typeof ch.threads.fetchActive === "function") {
-      const active = await ch.threads.fetchActive().catch(() => null);
-      if (active?.threads) for (const th of active.threads.values()) await th.permissionOverwrites.edit(member.id, { ViewChannel: false }).catch(() => {});
-      const archived = await ch.threads.fetchArchived().catch(() => null);
-      if (archived?.threads) for (const th of archived.threads.values()) await th.permissionOverwrites.edit(member.id, { ViewChannel: false }).catch(() => {});
-    }
-  }
-}
-
-async function clearQuarantineForMember(guild, memberId) {
-  await guild.channels.fetch().catch(() => {});
-  const chans = guild.channels.cache.filter(c =>
-    [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(c.type)
-  );
-  for (const ch of chans.values()) {
-    const ow = ch.permissionOverwrites.cache.get(memberId);
-    if (ow) await ch.permissionOverwrites.delete(memberId).catch(() => {});
-    if (ch.threads && typeof ch.threads.fetchActive === "function") {
-      const active = await ch.threads.fetchActive().catch(() => null);
-      if (active?.threads) for (const th of active.threads.values()) { const o = th.permissionOverwrites.cache.get(memberId); if (o) await th.permissionOverwrites.delete(memberId).catch(() => {}); }
-      const archived = await ch.threads.fetchArchived().catch(() => null);
-      if (archived?.threads) for (const th of archived.threads.values()) { const o = th.permissionOverwrites.cache.get(memberId); if (o) await th.permissionOverwrites.delete(memberId).catch(() => {}); }
-    }
-  }
-}
-
 function parseIdsFromMessage(msg) {
   const set = new Set();
   for (const u of msg.mentions.users.values()) set.add(u.id);
@@ -458,7 +424,7 @@ module.exports = (client) => {
             }
           }
         } catch {}
-        await i.editReply({ content: "커스텀 항목이 반영되었어." }).catch(() => {});
+        await i.editReply({ content: "커ส텀 항목이 반영되었어." }).catch(() => {});
         return;
       }
 
@@ -517,25 +483,20 @@ module.exports = (client) => {
           }
           if (!items.length) { await i.editReply({ content: "부여할 항목을 선택하거나 커스텀을 입력해줘." }).catch(() => {}); return; }
 
-          await updateProgressMessage(progressMsg, "주의 적용 중", "데이터 저장...", 20);
+          await updateProgressMessage(progressMsg, "주의 적용 중", "데이터 저장...", 25);
           const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
 
-          await updateProgressMessage(progressMsg, "주의 적용 중", "역할 부여...", 40);
+          await updateProgressMessage(progressMsg, "주의 적용 중", "역할 부여 및 스냅샷...", 55);
           const member = await assignCautionRole(i.guild, uid);
           if (!member) { await i.editReply({ content: "대상을 찾을 수 없어." }).catch(() => {}); return; }
-
-          await updateProgressMessage(progressMsg, "주의 적용 중", "역할 스냅샷 및 격리...", 55);
           await enforceCautionOnlyRole(member, all[uid]);
 
-          await updateProgressMessage(progressMsg, "주의 적용 중", "보이스 이동 확인...", 60);
+          await updateProgressMessage(progressMsg, "주의 적용 중", "보이스 이동 확인...", 65);
           await moveToHoldVoiceIfNeeded(i.guild, member).catch(() => {});
 
-          await updateProgressMessage(progressMsg, "주의 적용 중", "주의 채널 생성...", 75);
+          await updateProgressMessage(progressMsg, "주의 적용 중", "주의 채널 생성...", 80);
           const ch = await ensureCautionChannel(i.guild, member);
           if (!ch) { await i.editReply({ content: "주의 채널 생성 실패." }).catch(() => {}); return; }
-
-          await updateProgressMessage(progressMsg, "주의 적용 중", "서버 전역 접근 제한...", 90);
-          await quarantineMemberAcrossGuild(i.guild, member, ch.id).catch(() => {});
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "안내 임베드 게시...", 95);
           const embed = renderAgreeEmbed(member, all[uid]);
@@ -610,13 +571,12 @@ module.exports = (client) => {
 
           try {
             const member = await i.guild.members.fetch(targetId).catch(() => null);
-            await updateProgressMessage(progressMsg, "복귀 처리 중", "역할 복원...", 50);
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "역할 복원...", 60);
             if (member) await restoreSnapshotRoles(member, rec).catch(() => {});
-            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 역할 제거...", 65);
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 역할 제거...", 85);
             await removeCautionRole(i.guild, targetId).catch(() => {});
-            await updateProgressMessage(progressMsg, "복귀 처리 중", "접근 제한 해제...", 80);
-            await clearQuarantineForMember(i.guild, targetId).catch(() => {});
-            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 채널 정리 준비...", 95);
+            await updateProgressMessage(progressMsg, "복귀 처리 완료", "정상적으로 복귀가 완료되었습니다.", 100);
+            await sleep(1500);
 
             try {
               if (rec.controlChannelId && rec.controlMessageId) {
@@ -628,8 +588,7 @@ module.exports = (client) => {
               }
             } catch {}
 
-            await updateProgressMessage(progressMsg, "복귀 처리 완료", "정상적으로 복귀가 완료되었습니다.", 100);
-            await sleep(1500);
+            try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
 
             if (ch) {
               try {
@@ -652,8 +611,8 @@ module.exports = (client) => {
           } catch (e) {
             safeLog("restore", e);
             finalMsg = "복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘.";
-          } finally {
             try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
+          } finally {
             await i.editReply({ content: finalMsg }).catch(() => {});
           }
           return;
@@ -686,7 +645,6 @@ module.exports = (client) => {
       const rec = all[member.id];
       const ch = await ensureCautionChannel(member.guild, m);
       if (!ch) return;
-      await quarantineMemberAcrossGuild(member.guild, m, ch.id);
       const embed = renderAgreeEmbed(m, rec);
       const rows = buildAgreeButtons(member.id, rec);
       let msg = null;
@@ -737,7 +695,6 @@ module.exports = (client) => {
           await moveToHoldVoiceIfNeeded(g, m);
           const ch = await ensureCautionChannel(g, m);
           if (!ch) continue;
-          await quarantineMemberAcrossGuild(g, m, ch.id);
           const embed = renderAgreeEmbed(m, rec);
           const rows = buildAgreeButtons(uid, rec);
           let msg = null;
