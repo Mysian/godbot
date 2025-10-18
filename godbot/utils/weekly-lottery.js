@@ -89,7 +89,8 @@ function compareWin(picked, win) {
   return m;
 }
 function prizeByTier(matches, pool, rule, counts) {
-  if (rule.pick === 6) {
+  const pick = rule?.pick ?? (counts?.w6 !== undefined ? 6 : 5);
+  if (pick === 6) {
     if (matches === 6) return counts.w6 ? Math.floor((pool * 0.6) / counts.w6) : Math.floor(pool * 0.6);
     if (matches === 5) return counts.w5 ? Math.floor((pool * 0.25) / counts.w5) : Math.floor(pool * 0.25);
     if (matches === 4) return counts.w4 ? Math.floor((pool * 0.10) / counts.w4) : Math.floor(pool * 0.10);
@@ -124,17 +125,18 @@ function controlRows(closed, forceDisabled) {
   return [row1];
 }
 function computeTierAmounts(rule, pool, res) {
-  if (rule.pick === 6) {
+  const inferredPick = rule?.pick ?? (res && Object.prototype.hasOwnProperty.call(res, 'winners6') ? 6 : 5);
+  if (inferredPick === 6) {
     const a1 = res.winners6 > 0 ? Math.floor(pool * 0.6 / res.winners6) : 0;
     const a2 = res.winners5 > 0 ? Math.floor(pool * 0.25 / res.winners5) : 0;
     const a3 = res.winners4 > 0 ? Math.floor(pool * 0.10 / res.winners4) : 0;
     const a4 = res.winners3 > 0 ? Math.floor(pool * 0.05 / res.winners3) : 0;
-    return { a1, a2, a3, a4 };
+    return { a1, a2, a3, a4, pick: 6 };
   } else {
     const a1 = res.winners5 > 0 ? Math.floor(pool * 0.7 / res.winners5) : 0;
     const a2 = res.winners4 > 0 ? Math.floor(pool * 0.2 / res.winners4) : 0;
     const a3 = res.winners3 > 0 ? Math.floor(pool * 0.1 / res.winners3) : 0;
-    return { a1, a2, a3 };
+    return { a1, a2, a3, pick: 5 };
   }
 }
 function buildControlEmbed(livePot, state, nextDrawTs, closed, ended) {
@@ -214,20 +216,21 @@ function buildRecordsEmbed(state, page) {
   const p = Math.min(maxPage, Math.max(1, page || 1));
   const list = rounds.slice((p - 1) * per, (p - 1) * per + per).map(rr => {
     const r = state.rounds[rr];
-    const w = r.result?.win?.join(', ') || '-';
-    const pool = r.result?.pool || 0;
-    if (r.rule?.pick === 6) {
-      const w6 = r.result?.winners6 || 0;
-      const w5 = r.result?.winners5 || 0;
-      const w4 = r.result?.winners4 || 0;
-      const w3 = r.result?.winners3 || 0;
-      const amt = computeTierAmounts(r.rule, pool, r.result);
+    const res = r.result || {};
+    const w = res.win ? res.win.join(', ') : '-';
+    const pool = res.pool || 0;
+    const inferredRule = r.rule || { pick: (Object.prototype.hasOwnProperty.call(res, 'winners6') ? 6 : 5) };
+    const amt = computeTierAmounts(inferredRule, pool, res);
+    if (amt.pick === 6) {
+      const w6 = res.winners6 || 0;
+      const w5 = res.winners5 || 0;
+      const w4 = res.winners4 || 0;
+      const w3 = res.winners3 || 0;
       return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명(인당 ${formatAmount(amt.a1)}), 2등 ${w5}명(인당 ${formatAmount(amt.a2)}), 3등 ${w4}명(인당 ${formatAmount(amt.a3)}), 4등 ${w3}명(인당 ${formatAmount(amt.a4)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
     } else {
-      const w5 = r.result?.winners5 || 0;
-      const w4 = r.result?.winners4 || 0;
-      const w3 = r.result?.winners3 || 0;
-      const amt = computeTierAmounts(r.rule, pool, r.result);
+      const w5 = res.winners5 || 0;
+      const w4 = res.winners4 || 0;
+      const w3 = res.winners3 || 0;
       return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명(인당 ${formatAmount(amt.a1)}), 2등 ${w4}명(인당 ${formatAmount(amt.a2)}), 3등 ${w3}명(인당 ${formatAmount(amt.a3)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
     }
   }).join('\n');
@@ -350,19 +353,15 @@ function runDrawInternal(state, ts) {
   const rule = state.rounds[r].rule || { pick: 6 };
   const win = drawNumbers(rule.pick);
   const pool = Math.max(0, getBE(BOT_BANK_ID) || 0);
-  let counts = { w6: 0, w5: 0, w4: 0, w3: 0 };
-  if (rule.pick === 6) {
-    for (const t of state.rounds[r].tickets) {
-      const m = compareWin(t.numbers, win);
+  let counts = rule.pick === 6 ? { w6: 0, w5: 0, w4: 0, w3: 0 } : { w5: 0, w4: 0, w3: 0 };
+  for (const t of state.rounds[r].tickets) {
+    const m = compareWin(t.numbers, win);
+    if (rule.pick === 6) {
       if (m === 6) counts.w6++;
       else if (m === 5) counts.w5++;
       else if (m === 4) counts.w4++;
       else if (m === 3) counts.w3++;
-    }
-  } else {
-    counts = { w5: 0, w4: 0, w3: 0 };
-    for (const t of state.rounds[r].tickets) {
-      const m = compareWin(t.numbers, win);
+    } else {
       if (m === 5) counts.w5++;
       else if (m === 4) counts.w4++;
       else if (m === 3) counts.w3++;
@@ -371,7 +370,7 @@ function runDrawInternal(state, ts) {
   for (const t of state.rounds[r].tickets) {
     const m = compareWin(t.numbers, win);
     const prize = prizeByTier(m, pool, rule, counts);
-    const winFlag = rule.pick === 6 ? (m >= 3) : (m >= 3);
+    const winFlag = m >= 3;
     t.result = { win: winFlag, matches: m };
     t.prize = prize;
     t.paid = false;
@@ -403,7 +402,7 @@ async function announceDraw(client, state) {
   const r = state.round - 1;
   const ch = await client.channels.fetch(CHANNEL_ID);
   const res = state.rounds[r].result;
-  const rule = state.rounds[r].rule || { pick: 6 };
+  const rule = state.rounds[r].rule || { pick: (Object.prototype.hasOwnProperty.call(res, 'winners6') ? 6 : 5) };
   const win = res.win.map(n => `\`${n}\``).join('  ');
   const drawnAt = state.rounds[r].drawnAt || Math.floor(Date.now() / 1000);
   const title = `🎊 복권 ${r}회차 추첨 결과`;
@@ -413,7 +412,7 @@ async function announceDraw(client, state) {
     .setColor(0xFBC02D)
     .setDescription(`당첨 번호\n${win}`)
     .addFields(
-      ...(rule.pick === 6
+      ...(amt.pick === 6
         ? [
             { name: '1등', value: `${res.winners6}명 (인당 ${formatAmount(amt.a1)} BE)`, inline: true },
             { name: '2등', value: `${res.winners5}명 (인당 ${formatAmount(amt.a2)} BE)`, inline: true },
