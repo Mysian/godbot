@@ -153,13 +153,15 @@ function collectRestorableRoleIds(guild, ids) {
 
 async function enforceCautionOnlyRole(member, record) {
   const guild = member.guild;
+  if (!botCanManageRole(guild, CAUTION_ROLE_ID)) {
+    throw new Error("봇이 CAUTION 역할을 관리할 수 없음(역할 순위 확인 필요).");
+  }
   const current = member.roles.cache.map(r => r.id).filter(id => id !== guild.roles.everyone.id);
   if (!record.backupRoleIds) {
     record.backupRoleIds = collectRestorableRoleIds(guild, current);
     const all = loadAll(); all[member.id] = record; saveAll(all);
   }
-  const target = collectRestorableRoleIds(guild, [CAUTION_ROLE_ID]);
-  await member.roles.set(target).catch(e => safeLog("roles.set(caution)", e));
+  await member.roles.set([CAUTION_ROLE_ID]).catch(e => { safeLog("roles.set([CAUTION])", e); throw e; });
 }
 
 async function restoreSnapshotRoles(member, record) {
@@ -176,7 +178,8 @@ async function assignCautionRole(guild, uid) {
   if (!m) return null;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
   if (!role) return m;
-  if (!m.roles.cache.has(role.id)) await m.roles.add(role).catch(e => safeLog("roles.add(caution)", e));
+  if (!botCanManageRole(guild, CAUTION_ROLE_ID)) throw new Error("봇이 CAUTION 역할을 관리할 수 없음(역할 순위 확인 필요).");
+  if (!m.roles.cache.has(role.id)) await m.roles.add(role).catch(e => { safeLog("roles.add(caution)", e); throw e; });
   return m;
 }
 
@@ -184,7 +187,7 @@ async function removeCautionRole(guild, uid) {
   const m = await guild.members.fetch(uid).catch(() => null);
   if (!m) return null;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
-  if (role && m.roles.cache.has(role.id)) await m.roles.remove(role).catch(e => safeLog("roles.remove(caution)", e));
+  if (role && m.roles.cache.has(role.id) && botCanManageRole(guild, CAUTION_ROLE_ID)) await m.roles.remove(role).catch(e => safeLog("roles.remove(caution)", e));
   return m;
 }
 
@@ -382,7 +385,11 @@ module.exports = (client) => {
         if (i.user.id !== ownerId) { await i.followUp({ content: "권한 없음", ephemeral: true }).catch(() => {}); return; }
         const text = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
         const st = pending.get(key) || { uid, selected: [] };
-        if (text) st.custom = text;
+        if (text) {
+          st.custom = text;
+          if (!st.selected) st.selected = [];
+          if (!st.selected.includes("rc")) st.selected.push("rc");
+        }
         pending.set(key, st);
         await i.followUp({ content: "커스텀 항목이 반영되었어.", ephemeral: true }).catch(() => {});
         return;
@@ -419,25 +426,20 @@ module.exports = (client) => {
           if (i.user.id !== ownerId) { await i.editReply({ content: "요청자만 적용할 수 있어." }).catch(() => {}); return; }
           const st = pending.get(key) || { uid, selected: [] };
           let selected = Array.isArray(st.selected) ? [...st.selected] : [];
-          if (selected.includes("rc") && !(st.custom && st.custom.trim())) selected = selected.filter(v => v !== "rc");
-          if (!selected.length) {
-            const allData = loadAll();
-            const old = allData[uid];
-            const fallback = old?.items?.filter(it => it.type === "preset").map(it => it.key) || [];
-            if (fallback.length) selected = fallback;
-            else { await i.editReply({ content: "부여할 항목을 선택해줘." }).catch(() => {}); return; }
-          }
           const targetMember = await i.guild.members.fetch(uid).catch(() => null);
           if (!targetMember) { await i.editReply({ content: "대상을 찾을 수 없어." }).catch(() => {}); return; }
           if (hasAdminRole(targetMember)) { await i.editReply({ content: "해당 유저는 예외 대상이야." }).catch(() => {}); return; }
 
           const items = [];
-          for (const k of selected) { if (k === "rc") items.push({ type: "custom", text: st.custom.trim() }); else items.push({ type: "preset", key: k }); }
+          for (const k of selected) { if (k !== "rc") items.push({ type: "preset", key: k }); }
+          if (st.custom && st.custom.trim()) items.push({ type: "custom", text: st.custom.trim() });
+          if (!items.length) { await i.editReply({ content: "부여할 항목을 선택하거나 커스텀을 입력해줘." }).catch(() => {}); return; }
+
           const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
 
           const member = await assignCautionRole(i.guild, uid);
           if (!member) { await i.editReply({ content: "대상을 찾을 수 없어." }).catch(() => {}); return; }
-          await enforceCautionOnlyRole(member, all[uid]).catch(() => {});
+          await enforceCautionOnlyRole(member, all[uid]);
           await moveToHoldVoiceIfNeeded(i.guild, member).catch(() => {});
           const ch = await ensureCautionChannel(i.guild, member);
           if (!ch) { await i.editReply({ content: "주의 채널 생성 실패." }).catch(() => {}); return; }
