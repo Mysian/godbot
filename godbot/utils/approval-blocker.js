@@ -151,11 +151,40 @@ function makeButtons(uid, blocked) {
   }
   return rows;
 }
-function parseTargetsFromMessage(msg) {
+function extractNameQueries(text) {
+  const quoted = Array.from(text.matchAll(/"([^"]{1,32})"/g)).map(m => m[1].trim()).filter(Boolean);
+  const raw = text.replace(/"[^"]*"/g, " ").split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2 && !/^\d{17,20}$/.test(s));
+  const all = [...quoted, ...raw].slice(0, 20);
+  const set = new Set();
+  for (const q of all) set.add(q);
+  return Array.from(set);
+}
+async function resolveByNickname(msg) {
+  const results = new Set();
+  const queries = extractNameQueries(msg.content);
+  if (!queries.length) return [];
+  await msg.guild.members.fetch().catch(() => {});
+  for (const q of queries) {
+    for (const m of msg.guild.members.cache.values()) {
+      const dn = (m.displayName || "").toLowerCase();
+      const un = (m.user?.username || "").toLowerCase();
+      const qq = q.toLowerCase();
+      if (dn.includes(qq) || un.includes(qq)) results.add(m.id);
+      if (results.size >= 10) break;
+    }
+    if (results.size >= 10) break;
+  }
+  return Array.from(results);
+}
+async function parseTargetsFromMessage(msg) {
   const set = new Set();
   for (const m of msg.mentions.users.values()) set.add(m.id);
   const ids = (msg.content.match(/\b\d{17,20}\b/g) || []);
   for (const id of ids) set.add(id);
+  if (set.size < 10) {
+    const viaName = await resolveByNickname(msg);
+    for (const id of viaName) set.add(id);
+  }
   return Array.from(set);
 }
 module.exports = (client) => {
@@ -167,15 +196,15 @@ module.exports = (client) => {
       if (msg.webhookId) return;
       const hasManage = msg.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
       if (!hasManage) return;
-      let targets = parseTargetsFromMessage(msg).slice(0, 10);
+      let targets = (await parseTargetsFromMessage(msg)).slice(0, 10);
       targets = targets.filter((id) => !isExempt(id));
       if (!targets.length) return;
       for (const uid of targets) {
-      const blocked = isBlocked(uid);
-      const embed = makeConfirmEmbed(msg.guild, uid, blocked, msg.author.id);
-      const components = makeButtons(uid, blocked);
-      await msg.reply({ embeds: [embed], components, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
-    }
+        const blocked = isBlocked(uid);
+        const embed = makeConfirmEmbed(msg.guild, uid, blocked, msg.author.id);
+        const components = makeButtons(uid, blocked);
+        await msg.reply({ embeds: [embed], components, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
+      }
     } catch {}
   });
   client.on("interactionCreate", async (i) => {
@@ -192,10 +221,9 @@ module.exports = (client) => {
         try { await i.update({ components: [], content: "취소되었습니다.", allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
         return;
       }
-      
       if (isExempt(uid)) {
-      try { await i.reply({ content: "해당 ID는 예외 대상이라 제한/해제가 적용되지 않습니다.", ephemeral: true }); } catch {}
-      return;
+        try { await i.reply({ content: "해당 ID는 예외 대상이라 제한/해제가 적용되지 않습니다.", ephemeral: true }); } catch {}
+        return;
       }
       if (action === "apply") {
         addBlocked(uid);
@@ -234,8 +262,8 @@ module.exports = (client) => {
       const guild = ch.guild;
       const topic = ch.topic;
       if (topic && /^\d{17,20}$/.test(topic) && !isExempt(topic) && isBlocked(topic)) {
-      await ch.delete("승인 절차 차단 대상의 개인 채널 자동 삭제");
-      return;
+        await ch.delete("승인 절차 차단 대상의 개인 채널 자동 삭제");
+        return;
       }
       if (typeof ch.name === "string" && ch.name.startsWith("입장-")) {
         await guild.members.fetch().catch(() => {});
@@ -261,13 +289,13 @@ module.exports = (client) => {
         await g.members.fetch().catch(() => {});
         for (const uid of ids) {
           if (isExempt(uid)) {
-          removeBlocked(uid); 
-          continue;
+            removeBlocked(uid);
+            continue;
           }
           if (g.members.cache.has(uid)) {
             await applyBlockNow(g, uid);
-           } else {
-           await deletePrivateJoinChannel(g, uid);
+          } else {
+            await deletePrivateJoinChannel(g, uid);
           }
         }
       }
