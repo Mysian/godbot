@@ -60,6 +60,19 @@ function buildPickEmbed(uid, exists) {
   return new EmbedBuilder().setTitle("주의 적용 대상 확인").setDescription(exists ? "이미 주의 절차 진행 중입니다. 항목 갱신 또는 해제를 선택할 수 있습니다." : "해당 유저에게 주의를 적용합니다. 부여할 항목을 선택하세요.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date());
 }
 
+function buildSelectionEmbed(st) {
+  const all = reasonsMaster();
+  const names = [];
+  const preset = (st?.selected || []).filter(v => v !== "rc");
+  for (const k of preset) {
+    const f = all.find(a => a.key === k);
+    if (f) names.push(`• ${f.label}`);
+  }
+  if (st?.custom) names.push(`• ${st.custom}`);
+  const val = names.length ? names.join("\n") : "선택 없음";
+  return new EmbedBuilder().setTitle("선택 항목 미리보기").addFields({ name: "항목", value: val }).setTimestamp(new Date());
+}
+
 function buildReasonSelect(ownerId, uid, key, preselected) {
   const presetSet = new Set(preselected || []);
   const opts = reasonsMaster().map(r => ({
@@ -116,8 +129,19 @@ function buildAgreeButtons(uid, record) {
   return rows;
 }
 
+function buildControlStatusEmbed(uid, rec) {
+  const total = rec.items.length;
+  const done = Object.values(rec.acks || {}).filter(Boolean).length;
+  const allDone = done >= total && total > 0;
+  const title = allDone ? "주의 절차 완료" : "주의 절차 진행 중";
+  const status = allDone ? "모든 항목 동의 완료. 복귀하기 버튼으로 완료되었습니다." : `동의 진행 상황: ${done}/${total}`;
+  const fields = [{ name: "대상", value: `<@${uid}> (${uid})` }];
+  if (rec.channelId) fields.push({ name: "채널", value: `<#${rec.channelId}>` });
+  return new EmbedBuilder().setTitle(title).setDescription(status).addFields(fields).setTimestamp(new Date());
+}
+
 function newRecord(uid, items) {
-  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null };
+  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null, controlChannelId: null, controlMessageId: null };
 }
 
 async function ensureCautionChannel(guild, member) {
@@ -305,11 +329,11 @@ module.exports = (client) => {
         if (hasAdminRole(targetM)) { await msg.reply({ content: "해당 유저는 예외 대상이야.", allowedMentions: { parse: [] } }).catch(() => {}); return; }
         const all = loadAll();
         const exists = !!all[uid];
-        const preselected = exists ? all[uid].items.filter(x => x.type === "preset").map(x => x.key) : [];
+        const preselected = exists ? [...all[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
         const embed = buildPickEmbed(uid, exists);
         const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected);
-        await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch((e) => safeLog("reply(pick-single)", e));
-        pending.set(ownerKey, { uid, selected: preselected });
+        const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch((e) => { safeLog("reply(pick-single)", e); return null; });
+        pending.set(ownerKey, { uid, selected: preselected, messageId: sent?.id || null, channelId: msg.channelId });
       } else {
         const filtered = matches.filter(m => !hasAdminRole(m));
         if (!filtered.length) { await msg.reply({ content: "검색 결과가 모두 예외 대상이야.", allowedMentions: { parse: [] } }).catch(() => {}); return; }
@@ -334,11 +358,11 @@ module.exports = (client) => {
       const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
       const all = loadAll();
       const exists = !!all[uid];
-      const preselected = exists ? all[uid].items.filter(x => x.type === "preset").map(x => x.key) : [];
+      const preselected = exists ? [...all[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
       const embed = buildPickEmbed(uid, exists);
       const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected);
-      await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch((e) => safeLog("reply(pick-multi)", e));
-      pending.set(ownerKey, { uid, selected: preselected });
+      const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch((e) => { safeLog("reply(pick-multi)", e); return null; });
+      pending.set(ownerKey, { uid, selected: preselected, messageId: sent?.id || null, channelId: msg.channelId });
     }
   });
 
@@ -369,11 +393,12 @@ module.exports = (client) => {
           if (hasAdminRole(targetM)) return;
 
           const allData = loadAll(); const exists = !!allData[uid];
-          const preselected = exists ? allData[uid].items.filter(x => x.type === "preset").map(x => x.key) : [];
+          const preselected = exists ? [...allData[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
           const embed = buildPickEmbed(uid, exists);
           const rows = buildReasonSelect(ownerId, uid, key, preselected);
-          pending.set(key, { uid, selected: preselected });
-          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed], components: rows }).catch((e) => safeLog("edit(pick->showReasons)", e));
+          const st = { uid, selected: preselected, messageId: i.message?.id || null, channelId: i.channelId };
+          pending.set(key, st);
+          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch((e) => safeLog("edit(pick->showReasons)", e));
           return;
         }
 
@@ -381,45 +406,47 @@ module.exports = (client) => {
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) return;
           const sel = i.values || [];
-          const st = pending.get(key) || { uid, selected: [] }; st.selected = sel; pending.set(key, st);
+          const st = pending.get(key) || { uid, selected: [] };
+          st.selected = sel;
+          pending.set(key, st);
           const embed = buildPickEmbed(uid, !!loadAll()[uid]);
-          const rows = buildReasonSelect(ownerId, uid, key, sel.filter(v => v !== "rc"));
-          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed], components: rows }).catch((e) => safeLog("edit(reasons)", e));
+          const rows = buildReasonSelect(ownerId, uid, key, sel);
+          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch((e) => safeLog("edit(reasons)", e));
           return;
         }
       }
 
       if (i.isModalSubmit()) {
-  const [ns, act, ownerId, uid, key] = String(i.customId).split(":");
-  if (ns !== "cau" || act !== "custom") return;
-
-  // 권한 체크는 'reply'로 바로 응답
-  if (i.user.id !== ownerId) {
-    await i.reply({ content: "권한 없음", ephemeral: true }).catch(() => {});
-    return;
-  }
-
-  // 모달 처리 시작: 먼저 ACK
-  await i.deferReply({ ephemeral: true }).catch(() => {});
-
-  const text  = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
-  const agree = i.fields.getTextInputValue("cau_custom_agree")?.trim().slice(0, 80);
-
-  const st = pending.get(key) || { uid, selected: [] };
-  let changed = false;
-  if (text)  { st.custom = text;  changed = true; }
-  if (agree) { st.customAgree = agree; changed = true; }
-  if (changed) {
-    if (!st.selected) st.selected = [];
-    if (!st.selected.includes("rc")) st.selected.push("rc");
-  }
-  pending.set(key, st);
-
-  // ACK 이후에는 editReply로 마무리
-  await i.editReply({ content: "커스텀 항목이 반영되었어." }).catch(() => {});
-  return;
-}
-
+        const [ns, act, ownerId, uid, key] = String(i.customId).split(":");
+        if (ns !== "cau" || act !== "custom") return;
+        if (i.user.id !== ownerId) { await i.reply({ content: "권한 없음", ephemeral: true }).catch(() => {}); return; }
+        await i.deferReply({ ephemeral: true }).catch(() => {});
+        const text  = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
+        const agree = i.fields.getTextInputValue("cau_custom_agree")?.trim().slice(0, 80);
+        const st = pending.get(key) || { uid, selected: [] };
+        let changed = false;
+        if (text)  { st.custom = text;  changed = true; }
+        if (agree) { st.customAgree = agree; changed = true; }
+        if (changed) {
+          if (!st.selected) st.selected = [];
+          if (!st.selected.includes("rc")) st.selected.push("rc");
+        }
+        pending.set(key, st);
+        try {
+          if (st.messageId && st.channelId) {
+            const ch = await i.guild.channels.fetch(st.channelId).catch(() => null);
+            const msg = ch ? await ch.messages.fetch(st.messageId).catch(() => null) : null;
+            if (msg && canBotTalkIn(ch)) {
+              const exists = !!loadAll()[uid];
+              const embed = buildPickEmbed(uid, exists);
+              const rows = buildReasonSelect(ownerId, uid, key, st.selected);
+              await msg.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch(() => {});
+            }
+          }
+        } catch {}
+        await i.editReply({ content: "커스텀 항목이 반영되었어." }).catch(() => {});
+        return;
+      }
 
       if (i.isButton()) {
         const parts = String(i.customId).split(":");
@@ -437,6 +464,10 @@ module.exports = (client) => {
         if (parts[1] === "addcustom") {
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) return;
+          const st = pending.get(key) || { uid, selected: [], messageId: i.message?.id || null, channelId: i.channelId };
+          st.messageId = i.message?.id || st.messageId || null;
+          st.channelId = i.channelId || st.channelId || null;
+          pending.set(key, st);
           const modal = new ModalBuilder().setCustomId(`cau:custom:${ownerId}:${uid}:${key}`).setTitle("커스텀 항목 입력");
           const input1 = new TextInputBuilder().setCustomId("cau_custom_text").setLabel("항목 문구").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
           const input2 = new TextInputBuilder().setCustomId("cau_custom_agree").setLabel("버튼 문구(약속문)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80).setPlaceholder("예: 해당 항목을 지키겠습니다");
@@ -484,11 +515,13 @@ module.exports = (client) => {
           const rows = buildAgreeButtons(uid, all[uid]);
           let sent = null;
           if (canBotTalkIn(ch)) sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch((e) => { safeLog("send(caution-room)", e); return null; });
-          all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null; saveAll(all);
+          all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null;
+          all[uid].controlChannelId = i.channelId; all[uid].controlMessageId = i.message?.id || null;
+          saveAll(all);
 
           if (isControl && canBotTalkIn(i.channel)) {
             try {
-              await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date())], components: [] });
+              await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date()), buildControlStatusEmbed(uid, all[uid])], components: [] });
             } catch (e) { safeLog("edit(control->applied)", e); }
           }
           await i.editReply({ content: "적용 완료." }).catch(() => {});
@@ -514,6 +547,17 @@ module.exports = (client) => {
           if (i.channel?.id === rec.channelId && i.message?.id === rec.messageId && canBotTalkIn(i.channel)) {
             await i.message.edit({ content: `<@${targetId}>`, embeds: [embed], components: rows, allowedMentions: { users: [targetId] } }).catch((e) => safeLog("edit(ack)", e));
           }
+
+          try {
+            if (rec.controlChannelId && rec.controlMessageId) {
+              const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+              const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+              if (ctrlMsg && canBotTalkIn(ctrlCh)) {
+                await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(targetId, rec)] }).catch(() => {});
+              }
+            }
+          } catch {}
+
           return;
         }
 
@@ -549,6 +593,16 @@ module.exports = (client) => {
               }
               await ch.delete().catch(() => {});
             }
+
+            try {
+              if (rec.controlChannelId && rec.controlMessageId) {
+                const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+                const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+                if (ctrlMsg && canBotTalkIn(ctrlCh)) {
+                  await ctrlMsg.edit({ embeds: [new EmbedBuilder().setTitle("복귀 완료").setDescription("모든 절차가 완료되었습니다.").addFields({ name: "대상", value: `<@${targetId}> (${targetId})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
+                }
+              }
+            } catch {}
 
             delete all[targetId]; saveAll(all);
           } catch (e) {
@@ -600,6 +654,13 @@ module.exports = (client) => {
       } else {
         if (canBotTalkIn(ch)) await msg.edit({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch(() => {});
       }
+      try {
+        if (rec.controlChannelId && rec.controlMessageId) {
+          const ctrlCh = await member.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+          const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+          if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, rec)] }).catch(() => {});
+        }
+      } catch {}
     } catch (e) { safeLog("guildMemberAdd", e); }
   });
 
@@ -644,6 +705,13 @@ module.exports = (client) => {
           } else {
             if (canBotTalkIn(ch)) await msg.edit({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => {});
           }
+          try {
+            if (rec.controlChannelId && rec.controlMessageId) {
+              const ctrlCh = await g.channels.fetch(rec.controlChannelId).catch(() => null);
+              const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+              if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, rec)] }).catch(() => {});
+            }
+          } catch {}
         }
       }
     } catch (e) { safeLog("ready", e); }
