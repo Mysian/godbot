@@ -1,4 +1,11 @@
-const { PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const {
+  PermissionFlagsBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder
+} = require("discord.js");
 
 const CONTROL_CHANNEL_ID = "1428962638083133550";
 
@@ -41,7 +48,7 @@ const DM_TYPES = {
   }
 };
 
-function parseTargetsFromMessage(msg) {
+function parseIdsAndMentions(msg) {
   const set = new Set();
   for (const u of msg.mentions.users.values()) set.add(u.id);
   const ids = msg.content.match(/\b\d{17,20}\b/g) || [];
@@ -57,18 +64,25 @@ function buildChoiceEmbed(targetId) {
     .setTimestamp(new Date());
 }
 
-function buildButtons(targetId) {
+function buildCancelRow(ownerKey) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`dm:cancel:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildButtons(targetId, ownerKey) {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`dm:greet:${targetId}`).setLabel("첫 인사 요청").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`dm:return:${targetId}`).setLabel("복귀 요청").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`dm:ticket_ok:${targetId}`).setLabel("민원/신고 접수 완료 안내").setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId(`dm:greet:${targetId}:${ownerKey}`).setLabel("첫 인사 요청").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`dm:return:${targetId}:${ownerKey}`).setLabel("복귀 요청").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`dm:ticket_ok:${targetId}:${ownerKey}`).setLabel("민원/신고 접수 완료 안내").setStyle(ButtonStyle.Success)
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`dm:thanks:${targetId}`).setLabel("감사 인사").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`dm:caution:${targetId}`).setLabel("음성채널 인사 요청").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`dm:removed:${targetId}`).setLabel("채팅 내용 제거 안내").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`dm:thanks:${targetId}:${ownerKey}`).setLabel("감사 인사").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`dm:caution:${targetId}:${ownerKey}`).setLabel("음성채널 인사 요청").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`dm:removed:${targetId}:${ownerKey}`).setLabel("채팅 내용 제거 안내").setStyle(ButtonStyle.Danger)
   );
-  return [row1, row2];
+  const row3 = buildCancelRow(ownerKey);
+  return [row1, row2, row3];
 }
 
 async function sendDm(client, guild, targetId, kind) {
@@ -91,15 +105,46 @@ async function sendDm(client, guild, targetId, kind) {
 function buildLogEmbed({ kind, targetId, actorId, ok, reason }) {
   const base = new EmbedBuilder()
     .setTitle("DM 처리 로그")
-    .setDescription(`유형: **${DM_TYPES[kind].title}**`)
+    .setDescription(`유형: **${DM_TYPES[kind]?.title ?? "취소/기타"}**`)
     .addFields(
-      { name: "대상", value: `<@${targetId}> (${targetId})`, inline: true },
+      { name: "대상", value: targetId ? `<@${targetId}> (${targetId})` : "-", inline: true },
       { name: "처리자", value: `<@${actorId}> (${actorId})`, inline: true },
-      { name: "결과", value: ok ? "전송 완료" : `전송 실패\n${reason || ""}`, inline: true }
+      { name: "결과", value: ok ? "전송 완료" : `실패/취소\n${reason || ""}`, inline: true }
     )
     .setColor(ok ? 0x2ecc71 : 0xe74c3c)
     .setTimestamp(new Date());
   return base;
+}
+
+function buildSearchEmbed(nick, results) {
+  const e = new EmbedBuilder()
+    .setTitle("대상자 선택")
+    .setDescription(`닉네임 검색 결과: **${nick}**`)
+    .setTimestamp(new Date());
+  if (!results?.length) e.addFields({ name: "결과", value: "일치하는 유저가 없습니다." });
+  return e;
+}
+
+function buildSearchSelect(authorId, key, members) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`dm:pick:${authorId}:${key}`)
+    .setPlaceholder("대상자를 선택하세요")
+    .addOptions(
+      members.slice(0, 25).map((m) => ({
+        label: (m.nickname || m.user.globalName || m.user.username || m.user.tag).slice(0, 100),
+        description: m.user.tag.slice(0, 100),
+        value: m.id
+      }))
+    );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+async function resolveByNickname(guild, text) {
+  const nick = text.trim();
+  if (!nick) return [];
+  const found = await guild.members.search({ query: nick.slice(0, 100), limit: 10 }).catch(() => null);
+  if (!found) return [];
+  return Array.from(found.values());
 }
 
 module.exports = (client) => {
@@ -110,11 +155,54 @@ module.exports = (client) => {
       if (msg.channelId !== CONTROL_CHANNEL_ID) return;
       const hasManage = msg.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
       if (!hasManage) return;
-      let targets = parseTargetsFromMessage(msg).slice(0, 10);
-      if (!targets.length) return;
+
+      let targets = parseIdsAndMentions(msg).slice(0, 10);
+
+      if (!targets.length) {
+        const text = msg.content.replace(/\s+/g, " ").trim();
+        if (!text) return;
+        const matches = await resolveByNickname(msg.guild, text);
+
+        if (matches.length === 0) {
+          const logFail = buildLogEmbed({
+            kind: "greet",
+            targetId: null,
+            actorId: msg.author.id,
+            ok: false,
+            reason: "대상자 검색 실패"
+          });
+          await msg.reply({ embeds: [logFail], allowedMentions: { parse: [] } });
+          return;
+        }
+
+        const ownerKey = `${msg.author.id}:${Date.now()}`;
+        if (matches.length === 1) {
+          const uid = matches[0].id;
+          const embed = buildChoiceEmbed(uid);
+          const components = buildButtons(uid, ownerKey);
+          await msg.reply({
+            embeds: [embed],
+            components,
+            allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }
+          });
+          return;
+        } else {
+          const embed = buildSearchEmbed(text, matches);
+          const select = buildSearchSelect(msg.author.id, ownerKey, matches);
+          const cancel = buildCancelRow(ownerKey);
+          await msg.reply({
+            embeds: [embed],
+            components: [select, cancel],
+            allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }
+          });
+          return;
+        }
+      }
+
       for (const uid of targets) {
+        const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
         const embed = buildChoiceEmbed(uid);
-        const components = buildButtons(uid);
+        const components = buildButtons(uid, ownerKey);
         await msg.reply({
           embeds: [embed],
           components,
@@ -126,34 +214,86 @@ module.exports = (client) => {
 
   client.on("interactionCreate", async (i) => {
     try {
-      if (!i.isButton()) return;
       if (!i.guild) return;
       if (i.channelId !== CONTROL_CHANNEL_ID) return;
-      if (i.user?.bot) {
-        await i.deferUpdate().catch(() => {});
-        return;
-      }
-      const hasManage = i.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
-      if (!hasManage) {
-        await i.reply({ content: "권한이 없습니다.", ephemeral: true }).catch(() => {});
-        return;
-      }
-      const [ns, kind, targetId] = String(i.customId).split(":");
-      if (ns !== "dm" || !DM_TYPES[kind] || !/^\d{17,20}$/.test(targetId)) return;
 
-      await i.deferReply({ ephemeral: true }).catch(() => {});
-      try {
-        await sendDm(i.client, i.guild, targetId, kind);
-        const logOk = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: true });
-        await i.editReply({ embeds: [new EmbedBuilder().setDescription("DM 전송이 완료되었습니다.").setColor(0x2ecc71)] }).catch(() => {});
-        await i.message.edit({ embeds: [logOk], components: [], allowedMentions: { parse: [] } }).catch(() => {});
-      } catch (err) {
-        let reason = "알 수 없는 오류로 전송에 실패했습니다.";
-        if (String(err?.message) === "USER_NOT_FOUND") reason = "대상 사용자를 찾을 수 없습니다.";
-        if (String(err?.message) === "DM_OPEN_FAIL") reason = "상대방의 DM이 닫혀 있어 전송할 수 없습니다.";
-        const logFail = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: false, reason });
-        await i.editReply({ embeds: [new EmbedBuilder().setDescription("DM 전송에 실패했습니다.").setColor(0xe74c3c)] }).catch(() => {});
-        await i.message.edit({ embeds: [logFail], components: [], allowedMentions: { parse: [] } }).catch(() => {});
+      if (i.isStringSelectMenu()) {
+        const [ns, act, ownerId, key] = String(i.customId).split(":");
+        if (ns !== "dm" || act !== "pick") return;
+        if (i.user.id !== ownerId) {
+          await i.reply({ content: "요청자만 선택할 수 있어.", ephemeral: true }).catch(() => {});
+          return;
+        }
+        const uid = i.values?.[0];
+        if (!/^\d{17,20}$/.test(uid)) return;
+        const embed = buildChoiceEmbed(uid);
+        const rows = buildButtons(uid, `${ownerId}:${key}`);
+        await i.update({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(() => {});
+        return;
+      }
+
+      if (i.isButton()) {
+        const parts = String(i.customId).split(":");
+        if (parts[0] !== "dm") return;
+
+        if (parts[1] === "cancel") {
+          const ownerKey = parts[2] || "";
+          const ownerId = ownerKey.split(":")[0];
+          if (i.user.id !== ownerId) {
+            await i.reply({ content: "요청자만 취소할 수 있어.", ephemeral: true }).catch(() => {});
+            return;
+          }
+          const log = buildLogEmbed({
+            kind: "cancel",
+            targetId: null,
+            actorId: i.user.id,
+            ok: false,
+            reason: "요청 취소됨"
+          });
+          if (i.deferred || i.replied) {
+            await i.editReply({ embeds: [log], components: [] }).catch(async () => {
+              await i.message.edit({ embeds: [log], components: [], allowedMentions: { parse: [] } }).catch(() => {});
+            });
+          } else {
+            await i.update({ embeds: [log], components: [], allowedMentions: { parse: [] } }).catch(async () => {
+              await i.reply({ embeds: [log], ephemeral: true }).catch(() => {});
+            });
+          }
+          return;
+        }
+
+        const [ns, kind, targetId, ownerKey] = parts;
+        if (!DM_TYPES[kind]) return;
+        if (!/^\d{17,20}$/.test(targetId)) return;
+        const ownerId = (ownerKey || "").split(":")[0] || "";
+        const hasManage = i.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
+        if (!hasManage) {
+          await i.reply({ content: "권한이 없습니다.", ephemeral: true }).catch(() => {});
+          return;
+        }
+        if (ownerId && i.user.id !== ownerId) {
+          await i.reply({ content: "요청자만 처리할 수 있어.", ephemeral: true }).catch(() => {});
+          return;
+        }
+
+        await i.deferReply({ ephemeral: true }).catch(() => {});
+        try {
+          await sendDm(i.client, i.guild, targetId, kind);
+          const logOk = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: true });
+          await i.editReply({
+            embeds: [new EmbedBuilder().setDescription("DM 전송이 완료되었어.").setColor(0x2ecc71)]
+          }).catch(() => {});
+          await i.message.edit({ embeds: [logOk], components: [], allowedMentions: { parse: [] } }).catch(() => {});
+        } catch (err) {
+          let reason = "알 수 없는 오류";
+          if (String(err?.message) === "USER_NOT_FOUND") reason = "대상 사용자를 찾을 수 없음";
+          if (String(err?.message) === "DM_OPEN_FAIL") reason = "상대방의 DM이 닫혀 있음";
+          const logFail = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: false, reason });
+          await i.editReply({
+            embeds: [new EmbedBuilder().setDescription("DM 전송 실패").setColor(0xe74c3c)]
+          }).catch(() => {});
+          await i.message.edit({ embeds: [logFail], components: [], allowedMentions: { parse: [] } }).catch(() => {});
+        }
       }
     } catch {}
   });
