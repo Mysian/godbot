@@ -99,7 +99,7 @@ function buildAgreeButtons(uid, record) {
 }
 
 function newRecord(uid, items) {
-  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null };
+  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null };
 }
 
 async function ensureCautionChannel(guild, member, record) {
@@ -123,12 +123,49 @@ async function ensureCautionChannel(guild, member, record) {
   return ch;
 }
 
+function botCanManageRole(guild, roleId) {
+  const role = guild.roles.cache.get(roleId);
+  const me = guild.members.me;
+  if (!role || !me) return false;
+  if (role.managed) return false;
+  return me.roles.highest.comparePositionTo(role) > 0;
+}
+
+function collectRestorableRoleIds(guild, ids) {
+  const set = new Set();
+  for (const id of ids || []) {
+    if (id === guild.roles.everyone.id) continue;
+    if (id === CAUTION_ROLE_ID) continue;
+    if (!guild.roles.cache.has(id)) continue;
+    if (!botCanManageRole(guild, id)) continue;
+    set.add(id);
+  }
+  return Array.from(set);
+}
+
+async function enforceCautionOnlyRole(member, record) {
+  const guild = member.guild;
+  const current = member.roles.cache.map(r => r.id).filter(id => id !== guild.roles.everyone.id);
+  if (!record.backupRoleIds) {
+    record.backupRoleIds = collectRestorableRoleIds(guild, current);
+    const all = loadAll(); all[member.id] = record; saveAll(all);
+  }
+  const target = collectRestorableRoleIds(guild, [CAUTION_ROLE_ID]);
+  await member.roles.set(target).catch(() => {});
+}
+
+async function restoreSnapshotRoles(member, record) {
+  const guild = member.guild;
+  const restore = collectRestorableRoleIds(guild, record.backupRoleIds || []);
+  await member.roles.set(restore).catch(async () => { for (const id of restore) { if (botCanManageRole(guild, id)) await member.roles.add(id).catch(() => {}); } });
+}
+
 async function assignCautionRole(guild, uid) {
   const m = await guild.members.fetch(uid).catch(() => null);
   if (!m) return null;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
   if (!role) return m;
-  await m.roles.add(role).catch(() => {});
+  if (!m.roles.cache.has(role.id)) await m.roles.add(role).catch(() => {});
   return m;
 }
 
@@ -136,7 +173,7 @@ async function removeCautionRole(guild, uid) {
   const m = await guild.members.fetch(uid).catch(() => null);
   if (!m) return null;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
-  if (role) await m.roles.remove(role).catch(() => {});
+  if (role && m.roles.cache.has(role.id)) await m.roles.remove(role).catch(() => {});
   return m;
 }
 
@@ -382,10 +419,11 @@ module.exports = (client) => {
             if (k === "rc") items.push({ type: "custom", text: st.custom.trim() });
             else items.push({ type: "preset", key: k });
           }
-          const all = loadAll(); all[uid] = newRecord(uid, items); saveAll(all);
+          const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
           await ensureRoleOverwritesForGuild(i.guild);
           const member = await assignCautionRole(i.guild, uid);
           if (!member) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
+          await enforceCautionOnlyRole(member, all[uid]);
           await moveToHoldVoiceIfNeeded(i.guild, member);
           const ch = await ensureCautionChannel(i.guild, member, all[uid]);
           if (!ch) { await i.reply({ content: "주의 채널 생성에 실패했어.", ephemeral: true }).catch(() => {}); return; }
@@ -425,6 +463,8 @@ module.exports = (client) => {
           if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { await i.reply({ content: "대상자 또는 관리자만 복귀할 수 있어.", ephemeral: true }).catch(() => {}); return; }
           const allAck = rec.items.every(it => rec.acks?.[it.id]);
           if (!allAck) { await i.reply({ content: "모든 항목에 동의해야 복귀할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+          const member = await i.guild.members.fetch(targetId).catch(() => null);
+          if (member) await restoreSnapshotRoles(member, rec);
           await removeCautionRole(i.guild, targetId);
           await clearQuarantineForMember(i.guild, targetId);
           const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
@@ -443,6 +483,7 @@ module.exports = (client) => {
       await ensureRoleOverwritesForGuild(member.guild);
       const m = await assignCautionRole(member.guild, member.id);
       if (!m) return;
+      await enforceCautionOnlyRole(m, all[member.id]);
       await moveToHoldVoiceIfNeeded(member.guild, m);
       const rec = all[member.id];
       const ch = await ensureCautionChannel(member.guild, m, rec);
@@ -485,6 +526,7 @@ module.exports = (client) => {
           const rec = all[uid];
           const m = await assignCautionRole(g, uid);
           if (!m) continue;
+          await enforceCautionOnlyRole(m, rec);
           await moveToHoldVoiceIfNeeded(g, m);
           const ch = await ensureCautionChannel(g, m, rec);
           if (!ch) continue;
