@@ -478,7 +478,7 @@ module.exports = (client) => {
         if (parts[1] === "addcustom") {
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) return;
-          const st = pending.get(key) || { uid, selected: [], messageId: i.message?.id || null, channelId: i.channelId };
+          const st = pending.get(key) || { uid, selected: [], messageId: i.message?.id || null, channelId: i.channelId || null };
           st.messageId = i.message?.id || st.messageId || null;
           st.channelId = i.channelId || st.channelId || null;
           pending.set(key, st);
@@ -552,6 +552,8 @@ module.exports = (client) => {
             } catch (e) { safeLog("edit(control->applied)", e); }
           }
           await updateProgressMessage(progressMsg, "주의 적용 완료", "모든 준비가 완료되었습니다.", 100);
+          await sleep(1500);
+          if (progressMsg) { try { await progressMsg.delete().catch(() => {}); } catch {} }
           await i.editReply({ content: "적용 완료." }).catch(() => {});
           pending.delete(key);
           return;
@@ -601,11 +603,8 @@ module.exports = (client) => {
           const allAck = rec.items.every(it => rec.acks?.[it.id]);
           if (!allAck) { finalMsg = "모든 항목에 동의해야 복귀할 수 있어."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
 
-          let progressChannel = i.channel;
-          if (rec.controlChannelId) {
-            const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
-            if (ctrlCh && canBotTalkIn(ctrlCh)) progressChannel = ctrlCh;
-          }
+          const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
+          let progressChannel = ch || i.channel;
           const progressMsg = await postProgressIn(progressChannel, "복귀 처리 중", "검증 중...", 10);
           await sleep(200);
 
@@ -617,22 +616,7 @@ module.exports = (client) => {
             await removeCautionRole(i.guild, targetId).catch(() => {});
             await updateProgressMessage(progressMsg, "복귀 처리 중", "접근 제한 해제...", 80);
             await clearQuarantineForMember(i.guild, targetId).catch(() => {});
-            const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
-            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 채널 정리...", 95);
-            if (ch) {
-              if (rec.messageId) {
-                const msg = await ch.messages.fetch(rec.messageId).catch(() => null);
-                if (msg) {
-                  const disabled = msg.components.map(row => {
-                    const r = ActionRowBuilder.from(row);
-                    r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
-                    return r;
-                  });
-                  await msg.edit({ components: disabled }).catch(() => {});
-                }
-              }
-              await ch.delete().catch(() => {});
-            }
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 채널 정리 준비...", 95);
 
             try {
               if (rec.controlChannelId && rec.controlMessageId) {
@@ -644,12 +628,32 @@ module.exports = (client) => {
               }
             } catch {}
 
+            await updateProgressMessage(progressMsg, "복귀 처리 완료", "정상적으로 복귀가 완료되었습니다.", 100);
+            await sleep(1500);
+
+            if (ch) {
+              try {
+                if (rec.messageId) {
+                  const msg = await ch.messages.fetch(rec.messageId).catch(() => null);
+                  if (msg) {
+                    const disabled = msg.components.map(row => {
+                      const r = ActionRowBuilder.from(row);
+                      r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+                      return r;
+                    });
+                    await msg.edit({ components: disabled }).catch(() => {});
+                  }
+                }
+              } catch {}
+              await ch.delete().catch(() => {});
+            }
+
             delete all[targetId]; saveAll(all);
           } catch (e) {
             safeLog("restore", e);
             finalMsg = "복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘.";
           } finally {
-            await updateProgressMessage(progressMsg, "복귀 처리 완료", "정상적으로 복귀가 완료되었습니다.", 100);
+            try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
             await i.editReply({ content: finalMsg }).catch(() => {});
           }
           return;
