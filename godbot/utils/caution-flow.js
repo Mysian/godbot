@@ -208,8 +208,8 @@ async function restoreSnapshotRoles(member, record) {
   });
 }
 
-async function assignCautionRole(guild, uid) {
-  const m = await guild.members.fetch(uid).catch((e) => { safeLog("members.fetch(assign)", e); return null; });
+async function assignCautionRole(guild, uid, memberObj) {
+  const m = memberObj || await guild.members.fetch(uid).catch((e) => { safeLog("members.fetch(assign)", e); return null; });
   if (!m) return null;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
   if (!role) return m;
@@ -295,6 +295,40 @@ async function deleteJoinChannelsByName(guild, safeName) {
   await guild.channels.fetch().catch(() => {});
   const targets = guild.channels.cache.filter(c => c.type === ChannelType.GuildText && c.name === `입장-${safeName}`);
   for (const ch of targets.values()) { await ch.delete().catch(() => {}); }
+}
+
+async function resumeCautionFlow(guild, member) {
+  const all = loadAll(); const rec = all[member.id]; if (!rec) return;
+  rec.leftAt = null; saveAll(all);
+  await ensureRoleOverwritesForGuild(guild);
+  await deleteJoinChannels(guild, member);
+  const mm = await assignCautionRole(guild, member.id, member); if (!mm) return;
+  await enforceCautionOnlyRole(mm, rec);
+  await moveToHoldVoiceIfNeeded(guild, mm);
+  const ch = await ensureCautionChannel(guild, mm); if (!ch) return;
+  rec.lastSafeName = getSafeName(mm);
+  const embed = renderAgreeEmbed(mm, rec);
+  const rows = buildAgreeButtons(member.id, rec);
+  let msg = null;
+  if (rec.messageId) msg = await ch.messages.fetch(rec.messageId).catch(() => null);
+  if (!msg) {
+    if (canBotTalkIn(ch)) {
+      const sent = await ch.send({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch((e) => { safeLog("send(resume)", e); return null; });
+      rec.channelId = ch.id; rec.messageId = sent?.id || null; saveAll(all);
+    }
+  } else {
+    if (canBotTalkIn(ch)) await msg.edit({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch(() => {});
+  }
+  try {
+    if (rec.controlChannelId && rec.controlMessageId) {
+      const ctrlCh = await guild.channels.fetch(rec.controlChannelId).catch(() => null);
+      const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+      if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, rec)] }).catch(() => {});
+    }
+  } catch {}
+  await deleteJoinChannels(guild, member);
+  await sleep(1200);
+  await deleteJoinChannels(guild, member);
 }
 
 module.exports = (client) => {
@@ -723,44 +757,19 @@ module.exports = (client) => {
   client.on("guildMemberAdd", async (member) => {
     try {
       const all = loadAll(); if (!all[member.id]) return;
-      all[member.id].leftAt = null; saveAll(all);
-
-      await ensureRoleOverwritesForGuild(member.guild);
-
-      await deleteJoinChannels(member.guild, member);
-
-      const m = await assignCautionRole(member.guild, member.id);
-      if (!m) return;
-      await enforceCautionOnlyRole(m, all[member.id]);
-      await moveToHoldVoiceIfNeeded(member.guild, m);
-      const rec = all[member.id];
-      const ch = await ensureCautionChannel(member.guild, m);
-      if (!ch) return;
-      rec.lastSafeName = getSafeName(m);
-      const embed = renderAgreeEmbed(m, rec);
-      const rows = buildAgreeButtons(member.id, rec);
-      let msg = null;
-      if (rec.messageId) msg = await ch.messages.fetch(rec.messageId).catch(() => null);
-      if (!msg) {
-        if (canBotTalkIn(ch)) {
-          const sent = await ch.send({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch((e) => { safeLog("send(memberAdd)", e); return null; });
-          rec.channelId = ch.id; rec.messageId = sent?.id || null; saveAll(all);
-        }
-      } else {
-        if (canBotTalkIn(ch)) await msg.edit({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch(() => {});
-      }
-      try {
-        if (rec.controlChannelId && rec.controlMessageId) {
-          const ctrlCh = await member.guild.channels.fetch(rec.controlChannelId).catch(() => null);
-          const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-          if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, rec)] }).catch(() => {});
-        }
-      } catch {}
-
-      await deleteJoinChannels(member.guild, member);
-      await sleep(1200);
-      await deleteJoinChannels(member.guild, member);
+      if (member.pending) return;
+      await resumeCautionFlow(member.guild, member);
     } catch (e) { safeLog("guildMemberAdd", e); }
+  });
+
+  client.on("guildMemberUpdate", async (oldM, newM) => {
+    try {
+      if (!newM || !newM.guild) return;
+      const all = loadAll(); if (!all[newM.id]) return;
+      if (oldM?.pending && newM.pending === false) {
+        await resumeCautionFlow(newM.guild, newM);
+      }
+    } catch (e) { safeLog("guildMemberUpdate", e); }
   });
 
   client.on("guildMemberRemove", async (member) => {
@@ -788,32 +797,31 @@ module.exports = (client) => {
   });
 
   client.on("channelCreate", async (ch) => {
-  try {
-    const guild = ch.guild;
-    if (!guild) return;
+    try {
+      const guild = ch.guild;
+      if (!guild) return;
 
-    const cautionRole = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
-    if (!cautionRole) return;
+      const cautionRole = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
+      if (!cautionRole) return;
 
-    if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(ch.type)) {
-      await ch.permissionOverwrites.edit(cautionRole, { ViewChannel: false }).catch(() => {});
-    }
+      if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(ch.type)) {
+        await ch.permissionOverwrites.edit(cautionRole, { ViewChannel: false }).catch(() => {});
+      }
 
-    if (ch.type === ChannelType.GuildText && ch.name.startsWith("입장-")) {
-      try {
-        const all = loadAll(); const ids = Object.keys(all);
-        if (ids.length) {
-          for (const uid of ids) {
-            const rec = all[uid];
-            const targetMatch = ch.permissionOverwrites?.cache?.has(uid) || (rec?.lastSafeName && ch.name === `입장-${rec.lastSafeName}`);
-            if (targetMatch) { await ch.delete().catch(() => {}); break; }
+      if (ch.type === ChannelType.GuildText && ch.name.startsWith("입장-")) {
+        try {
+          const all = loadAll(); const ids = Object.keys(all);
+          if (ids.length) {
+            for (const uid of ids) {
+              const rec = all[uid];
+              const targetMatch = ch.permissionOverwrites?.cache?.has(uid) || (rec?.lastSafeName && ch.name === `입장-${rec.lastSafeName}`);
+              if (targetMatch) { await ch.delete().catch(() => {}); break; }
+            }
           }
-        }
-      } catch {}
-    }
-  } catch (e) { safeLog("channelCreate", e); }
-});
-
+        } catch {}
+      }
+    } catch (e) { safeLog("channelCreate", e); }
+  });
 
   client.once("ready", async () => {
     try {
@@ -830,8 +838,9 @@ module.exports = (client) => {
 
           const m = await g.members.fetch(uid).catch(() => null);
           if (!m) continue;
+          if (m.pending) continue;
 
-          const mm = await assignCautionRole(g, uid);
+          const mm = await assignCautionRole(g, uid, m);
           if (!mm) continue;
           await enforceCautionOnlyRole(mm, rec);
           await moveToHoldVoiceIfNeeded(g, mm);
