@@ -44,14 +44,14 @@ async function ensureRoleOverwritesForGuild(guild) {
 
 function reasonsMaster() {
   return [
-    { key: "r1", label: "동의되지 않은 상대에게 반말을 사용하지 않겠습니다." },
-    { key: "r2", label: "욕설을 사용하지 않겠습니다." },
-    { key: "r3", label: "서버 이용시 채널을 목적에 맞게 사용하겠습니다." },
-    { key: "r4", label: "서버 내 유저를 사적인 목적을 위해 이용하지 않겠습니다." },
-    { key: "r5", label: "유저 모집 후 게임 불참(노쇼) 행위를 하지 않겠습니다." },
-    { key: "r6", label: "음성채널 입퇴장 시 인사 등 상호 존중 및 예의를 지키겠습니다." },
-    { key: "r7", label: "제3자의 개인정보 및 오프라인 정보를 공유하지 않겠습니다." },
-    { key: "r8", label: "음성채널 이용 시 불필요한 잡음을 유발하지 않겠습니다." },
+    { key: "r1", label: "동의되지 않은 상대에게 반말을 사용하지 않겠습니다.", agreeLabel: "동의 없는 반말을 하지 않겠습니다" },
+    { key: "r2", label: "욕설을 사용하지 않겠습니다.", agreeLabel: "욕설을 하지 않겠습니다" },
+    { key: "r3", label: "서버 이용시 채널을 목적에 맞게 사용하겠습니다.", agreeLabel: "채널을 목적에 맞게 사용하겠습니다" },
+    { key: "r4", label: "서버 내 유저를 사적인 목적을 위해 이용하지 않겠습니다.", agreeLabel: "사적 이용을 하지 않겠습니다" },
+    { key: "r5", label: "유저 모집 후 게임 불참(노쇼) 행위를 하지 않겠습니다.", agreeLabel: "모집 후 노쇼를 하지 않겠습니다" },
+    { key: "r6", label: "음성채널 입퇴장 시 인사 등 상호 존중 및 예의를 지키겠습니다.", agreeLabel: "입퇴장 시 예의를 지키겠습니다" },
+    { key: "r7", label: "제3자의 개인정보 및 오프라인 정보를 공유하지 않겠습니다.", agreeLabel: "개인정보·오프라인 정보 공유를 하지 않겠습니다" },
+    { key: "r8", label: "음성채널 이용 시 불필요한 잡음을 유발하지 않겠습니다.", agreeLabel: "불필요한 잡음을 유발하지 않겠습니다" },
     { key: "rc", label: "커스텀 항목" }
   ];
 }
@@ -89,8 +89,17 @@ function renderAgreeEmbed(member, record) {
       lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${it.text}`);
     }
   }
-  const desc = ["주의 단계는 '경고'보다 낮은 단계이며, 서버 이용 시 유의가 필요한 상태입니다.", "아래 항목 각각의 [동의] 버튼을 모두 누르면 복귀할 수 있습니다."].join("\n");
+  const desc = ["주의 단계는 '경고'보다 낮은 단계이며, 서버 이용 시 유의가 필요한 상태입니다.", "아래 각 항목의 버튼은 약속 문구입니다. 모든 항목의 버튼을 눌러 약속하면 복귀할 수 있습니다."].join("\n");
   return new EmbedBuilder().setTitle("주의 절차 진행 중").setDescription(desc).addFields({ name: "대상", value: `<@${member.id}> (${member.id})` }, { name: "항목", value: lines.join("\n") || "-" }).setTimestamp(new Date());
+}
+
+function toAgreeLabel(item) {
+  if (typeof item?.agreeLabel === "string" && item.agreeLabel.trim()) return item.agreeLabel.trim().slice(0, 80);
+  if (item?.type === "preset") {
+    const p = reasonsMaster().find(a => a.key === item.key);
+    if (p?.agreeLabel) return String(p.agreeLabel).slice(0, 80);
+  }
+  return "위 항목에 동의합니다";
 }
 
 function buildAgreeButtons(uid, record) {
@@ -98,7 +107,8 @@ function buildAgreeButtons(uid, record) {
   const btns = [];
   for (const it of record.items) {
     const done = !!record.acks?.[it.id];
-    btns.push(new ButtonBuilder().setCustomId(`cau:ack:${uid}:${it.id}`).setLabel(done ? "동의됨" : "동의").setStyle(done ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(done));
+    const label = done ? "동의됨" : toAgreeLabel(it);
+    btns.push(new ButtonBuilder().setCustomId(`cau:ack:${uid}:${it.id}`).setLabel(label).setStyle(done ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(done));
   }
   for (let i = 0; i < btns.length; i += 5) rows.push(new ActionRowBuilder().addComponents(btns.slice(i, i + 5)));
   const allAck = record.items.every(it => record.acks?.[it.id]);
@@ -384,9 +394,12 @@ module.exports = (client) => {
         if (ns !== "cau" || act !== "custom") return;
         if (i.user.id !== ownerId) { await i.followUp({ content: "권한 없음", ephemeral: true }).catch(() => {}); return; }
         const text = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
+        const agree = i.fields.getTextInputValue("cau_custom_agree")?.trim().slice(0, 80);
         const st = pending.get(key) || { uid, selected: [] };
-        if (text) {
-          st.custom = text;
+        let changed = false;
+        if (text) { st.custom = text; changed = true; }
+        if (agree) { st.customAgree = agree; changed = true; }
+        if (changed) {
           if (!st.selected) st.selected = [];
           if (!st.selected.includes("rc")) st.selected.push("rc");
         }
@@ -412,8 +425,9 @@ module.exports = (client) => {
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) return;
           const modal = new ModalBuilder().setCustomId(`cau:custom:${ownerId}:${uid}:${key}`).setTitle("커스텀 항목 입력");
-          const input = new TextInputBuilder().setCustomId("cau_custom_text").setLabel("문구").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
-          modal.addComponents(new ActionRowBuilder().addComponents(input));
+          const input1 = new TextInputBuilder().setCustomId("cau_custom_text").setLabel("항목 문구").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
+          const input2 = new TextInputBuilder().setCustomId("cau_custom_agree").setLabel("버튼 문구(약속문)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80).setPlaceholder("예: 해당 항목을 지키겠습니다");
+          modal.addComponents(new ActionRowBuilder().addComponents(input1), new ActionRowBuilder().addComponents(input2));
           await i.showModal(modal).catch((e) => safeLog("showModal", e));
           return;
         }
@@ -431,8 +445,16 @@ module.exports = (client) => {
           if (hasAdminRole(targetMember)) { await i.editReply({ content: "해당 유저는 예외 대상이야." }).catch(() => {}); return; }
 
           const items = [];
-          for (const k of selected) { if (k !== "rc") items.push({ type: "preset", key: k }); }
-          if (st.custom && st.custom.trim()) items.push({ type: "custom", text: st.custom.trim() });
+          for (const k of selected) {
+            if (k !== "rc") {
+              const pm = reasonsMaster().find(a => a.key === k);
+              items.push({ type: "preset", key: k, agreeLabel: pm?.agreeLabel ? String(pm.agreeLabel).slice(0, 80) : undefined });
+            }
+          }
+          if (st.custom && st.custom.trim()) {
+            const agree = st.customAgree && st.customAgree.trim() ? st.customAgree.trim().slice(0, 80) : "위 항목을 지키겠습니다";
+            items.push({ type: "custom", text: st.custom.trim(), agreeLabel: agree });
+          }
           if (!items.length) { await i.editReply({ content: "부여할 항목을 선택하거나 커스텀을 입력해줘." }).catch(() => {}); return; }
 
           const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
