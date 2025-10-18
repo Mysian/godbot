@@ -2,7 +2,7 @@ const { PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, Button
 const fs = require("fs");
 const path = require("path");
 
-const CONTROL_CHANNEL_ID = "1425966714604224566";
+const CONTROL_CHANNEL_ID = "1429042667504930896";
 const CAUTION_ROLE_ID = "1429039343603027979";
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const VOICE_HOLD_CHANNEL_ID = "1202971727915651092";
