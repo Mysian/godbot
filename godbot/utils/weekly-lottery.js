@@ -30,18 +30,19 @@ function toUnix(ts) {
 function kstYMD(d) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
 }
-function getNextSaturday20OrNext() {
+function getThisSaturday20OrNext() {
   const n = nowKST();
   const k = kstYMD(n);
-  const sat20 = new Date(Date.UTC(k.y, k.m - 1, k.day, 11, 0, 0));
-  let d = sat20;
-  while (d.getUTCDay() !== 6) d = new Date(d.getTime() + 24 * 3600 * 1000);
-  if (d <= new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss))) {
-    const nd = new Date(d.getTime());
+  const base = new Date(Date.UTC(k.y, k.m - 1, k.day, 11, 0, 0));
+  let sat = base;
+  while (sat.getUTCDay() !== 6) sat = new Date(sat.getTime() + 24 * 3600 * 1000);
+  const nowUtc = new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss));
+  if (sat <= nowUtc) {
+    const nd = new Date(sat.getTime());
     nd.setUTCDate(nd.getUTCDate() + 7);
     return nd;
   }
-  return d;
+  return sat;
 }
 function isClosedForSales() {
   const n = nowKST();
