@@ -2,9 +2,10 @@ const { PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, Button
 const fs = require("fs");
 const path = require("path");
 
-const CONTROL_CHANNEL_ID = "1429042667504930896";
+const CONTROL_CHANNEL_ID = "1425966714604224566";
 const CAUTION_ROLE_ID = "1429039343603027979";
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
+const VOICE_HOLD_CHANNEL_ID = "1202971727915651092";
 const DATA_PATH = path.join(__dirname, "../data/caution-flow.json");
 
 function loadAll() { try { const j = JSON.parse(fs.readFileSync(DATA_PATH, "utf8")); if (j && typeof j === "object") return j; return {}; } catch { return {}; } }
@@ -12,6 +13,8 @@ function saveAll(all) { try { fs.mkdirSync(path.dirname(DATA_PATH), { recursive:
 
 function getSafeName(member) { const base = (member?.displayName || member?.user?.username || "유저").replace(/[^ㄱ-ㅎ가-힣A-Za-z0-9-_]/g, ""); return base || "유저"; }
 function now() { return Date.now(); }
+
+function hasAdminRole(member) { if (!member) return false; return ADMIN_ROLE_IDS.some(id => member.roles?.cache?.has(id)); }
 
 async function ensureRoleOverwritesForGuild(guild) {
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
@@ -133,6 +136,15 @@ async function removeCautionRole(guild, uid) {
   return m;
 }
 
+async function moveToHoldVoiceIfNeeded(guild, member) {
+  if (!member?.voice?.channelId) return;
+  if (member.voice.channelId === VOICE_HOLD_CHANNEL_ID) return;
+  const dst = await guild.channels.fetch(VOICE_HOLD_CHANNEL_ID).catch(() => null);
+  if (!dst) return;
+  if (![ChannelType.GuildVoice, ChannelType.GuildStageVoice].includes(dst.type)) return;
+  await member.voice.setChannel(dst).catch(() => {});
+}
+
 function parseIdsFromMessage(msg) {
   const set = new Set();
   for (const u of msg.mentions.users.values()) set.add(u.id);
@@ -168,8 +180,8 @@ module.exports = (client) => {
       if (!msg.guild) return;
       if (msg.author?.bot) return;
       if (msg.channelId !== CONTROL_CHANNEL_ID) return;
-      const hasManage = msg.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
-      if (!hasManage) return;
+      const isAdminRole = ADMIN_ROLE_IDS.some(id => msg.member?.roles?.cache?.has(id));
+      if (!isAdminRole) return;
 
       let targets = parseIdsFromMessage(msg).slice(0, 10);
       if (!targets.length) {
@@ -183,6 +195,8 @@ module.exports = (client) => {
         const ownerKey = `${msg.author.id}:${Date.now()}`;
         if (matches.length === 1) {
           const uid = matches[0].id;
+          const targetM = await msg.guild.members.fetch(uid).catch(() => null);
+          if (hasAdminRole(targetM)) { await msg.reply({ content: "해당 유저는 예외 대상이야.", allowedMentions: { parse: [] } }); return; }
           const all = loadAll();
           const exists = !!all[uid];
           const embed = buildPickEmbed(uid, exists);
@@ -190,15 +204,25 @@ module.exports = (client) => {
           await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } });
           pending.set(ownerKey, { uid, selected: exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
         } else {
-          const embed = buildSearchEmbed(raw, matches);
-          const row = buildSearchSelect(msg.author.id, ownerKey, matches);
+          const filtered = matches.filter(m => !hasAdminRole(m));
+          if (!filtered.length) { await msg.reply({ content: "검색 결과가 모두 예외 대상이야.", allowedMentions: { parse: [] } }); return; }
+          const embed = buildSearchEmbed(raw, filtered);
+          const row = buildSearchSelect(msg.author.id, ownerKey, filtered);
           const cancel = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`cau:cancel:${msg.author.id}:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary));
           await msg.reply({ embeds: [embed], components: [row, cancel], allowedMentions: { parse: [] } });
         }
         return;
       }
 
+      const filteredIds = [];
       for (const uid of targets) {
+        const targetM = await msg.guild.members.fetch(uid).catch(() => null);
+        if (hasAdminRole(targetM)) continue;
+        filteredIds.push(uid);
+      }
+      if (!filteredIds.length) { await msg.reply({ content: "모든 대상이 예외 역할을 보유하고 있어.", allowedMentions: { parse: [] } }); return; }
+
+      for (const uid of filteredIds) {
         const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
         const all = loadAll();
         const exists = !!all[uid];
@@ -217,6 +241,15 @@ module.exports = (client) => {
         return;
       }
 
+      if ((i.isButton() || i.isStringSelectMenu() || i.isModalSubmit()) && i.channelId === CONTROL_CHANNEL_ID) {
+        const member = i.member;
+        const ok = ADMIN_ROLE_IDS.some(id => member?.roles?.cache?.has(id));
+        if (!ok && !String(i.customId || "").startsWith("cau:ack:") && !String(i.customId || "").startsWith("cau:restore:")) {
+          await i.reply({ content: "권한이 없어.", ephemeral: true }).catch(() => {});
+          return;
+        }
+      }
+
       if (i.isStringSelectMenu()) {
         const parts = String(i.customId).split(":");
         if (parts[0] !== "cau") return;
@@ -224,6 +257,8 @@ module.exports = (client) => {
           const ownerId = parts[2]; const key = parts[3];
           if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 선택할 수 있어.", ephemeral: true }); return; }
           const uid = i.values?.[0]; if (!/^\d{17,20}$/.test(uid)) return;
+          const targetM = await i.guild.members.fetch(uid).catch(() => null);
+          if (hasAdminRole(targetM)) { await i.reply({ content: "해당 유저는 예외 대상이야.", ephemeral: true }); return; }
           const allData = loadAll(); const exists = !!allData[uid];
           const embed = buildPickEmbed(uid, exists);
           const rows = buildReasonSelect(ownerId, uid, key, exists ? allData[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
@@ -285,6 +320,9 @@ module.exports = (client) => {
           const st = pending.get(key) || { uid, selected: [] };
           const selected = Array.isArray(st.selected) ? st.selected : [];
           if (!selected.length) { await i.reply({ content: "부여할 항목을 선택해줘.", ephemeral: true }); return; }
+          const targetMember = await i.guild.members.fetch(uid).catch(() => null);
+          if (!targetMember) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }); return; }
+          if (hasAdminRole(targetMember)) { await i.reply({ content: "해당 유저는 예외 대상이야.", ephemeral: true }); return; }
           const items = [];
           for (const k of selected) {
             if (k === "rc") {
@@ -300,6 +338,7 @@ module.exports = (client) => {
           await ensureRoleOverwritesForGuild(i.guild);
           const member = await assignCautionRole(i.guild, uid);
           if (!member) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }); return; }
+          await moveToHoldVoiceIfNeeded(i.guild, member);
           const ch = await ensureCautionChannel(i.guild, member, all[uid]);
           if (!ch) { await i.reply({ content: "주의 채널 생성에 실패했어.", ephemeral: true }); return; }
           const embed = renderAgreeEmbed(member, all[uid]);
@@ -357,6 +396,7 @@ module.exports = (client) => {
       await ensureRoleOverwritesForGuild(member.guild);
       const m = await assignCautionRole(member.guild, member.id);
       if (!m) return;
+      await moveToHoldVoiceIfNeeded(member.guild, m);
       const rec = all[member.id];
       const ch = await ensureCautionChannel(member.guild, m, rec);
       if (!ch) return;
@@ -399,6 +439,7 @@ module.exports = (client) => {
           const rec = all[uid];
           const m = await assignCautionRole(g, uid);
           if (!m) continue;
+          await moveToHoldVoiceIfNeeded(g, m);
           const ch = await ensureCautionChannel(g, m, rec);
           if (!ch) continue;
           const embed = renderAgreeEmbed(m, rec);
