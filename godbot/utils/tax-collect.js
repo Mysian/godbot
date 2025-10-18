@@ -108,12 +108,6 @@ async function collectTaxFromSnapshot(client, date = null) {
 
   await addBE(GODBOT_ID, totalTax, "정수세 수납");
 
-  if (client) {
-    const channel = client.channels.cache.get('1380874052855529605');
-    if (channel) {
-      await channel.send(`💸 오늘의 정수세 납부가 완료되었습니다.\n총 세금: **${totalTax.toLocaleString('ko-KR')} BE**\n세금풀 적립 및 갓봇 계정 입금 완료!`);
-    }
-  }
   return { totalTax, taxedUsers };
 }
 
