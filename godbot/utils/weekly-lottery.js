@@ -30,18 +30,7 @@ function toUnix(ts) {
 function kstYMD(d) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
 }
-function getNextSaturday20() {
-  const n = nowKST();
-  const k = kstYMD(n);
-  const tmp = new Date(Date.UTC(k.y, k.m - 1, k.day, 11, 0, 0));
-  let dow = tmp.getUTCDay();
-  while (dow !== 6 || tmp <= new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss))) {
-    tmp.setUTCDate(tmp.getUTCDate() + 1);
-    dow = tmp.getUTCDay();
-  }
-  return tmp;
-}
-function getThisSaturday20OrNext() {
+function getNextSaturday20OrNext() {
   const n = nowKST();
   const k = kstYMD(n);
   const sat20 = new Date(Date.UTC(k.y, k.m - 1, k.day, 11, 0, 0));
@@ -384,28 +373,19 @@ async function announceDraw(client, state) {
 }
 async function tick(client) {
   const state = loadState();
-  const now = nowKST();
+  ensureRound(state, state.round);
   const next = getThisSaturday20OrNext();
   const nextUnix = Math.floor(next.getTime() / 1000);
   const nowUnix = Math.floor(Date.now() / 1000);
-  const lastUnix = nextUnix - 7 * 24 * 3600;
-  if (!state.rounds[state.round]?.result) {
-    if (Math.abs(nowUnix - nextUnix) <= 120) {
-      runDrawInternal(state, Date.now());
-      saveState(state);
-      await payPrizes(client, state);
-      await announceDraw(client, state);
-      await publishOrUpdate(client);
-      return;
-    }
-    if (nowUnix >= lastUnix + 120 && nowUnix < nextUnix - 120) {
-      runDrawInternal(state, lastUnix * 1000);
-      saveState(state);
-      await payPrizes(client, state);
-      await announceDraw(client, state);
-      await publishOrUpdate(client);
-      return;
-    }
+  const inWindow = nowUnix >= nextUnix - 120 && nowUnix <= nextUnix + 120;
+  const alreadyDrawnThisWindow = state.lastDrawAt && Math.abs(Math.floor(state.lastDrawAt / 1000) - nextUnix) <= 300;
+  if (!state.rounds[state.round]?.result && inWindow && !alreadyDrawnThisWindow) {
+    runDrawInternal(state, Date.now());
+    saveState(state);
+    await payPrizes(client, state);
+    await announceDraw(client, state);
+    await publishOrUpdate(client);
+    return;
   }
   if (Math.floor(Date.now() / 60000) % 5 === 0) {
     await publishOrUpdate(client);
