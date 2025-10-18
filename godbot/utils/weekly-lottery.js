@@ -226,12 +226,12 @@ function buildRecordsEmbed(state, page) {
       const w5 = res.winners5 || 0;
       const w4 = res.winners4 || 0;
       const w3 = res.winners3 || 0;
-      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명(인당 ${formatAmount(amt.a1)}), 2등 ${w5}명(인당 ${formatAmount(amt.a2)}), 3등 ${w4}명(인당 ${formatAmount(amt.a3)}), 4등 ${w3}명(인당 ${formatAmount(amt.a4)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명(인당 ${formatAmount(amt.a1)}), 2등 ${w5}명(인당 ${formatAmount(amt.a2)}), 3등 ${w4}명(인당 ${formatAmount(amt.a3)}), 4등 ${w3}명(인당 ${formatAmount(amt.a4)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${r.drawnAt}:f>`;
     } else {
       const w5 = res.winners5 || 0;
       const w4 = res.winners4 || 0;
       const w3 = res.winners3 || 0;
-      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명(인당 ${formatAmount(amt.a1)}), 2등 ${w4}명(인당 ${formatAmount(amt.a2)}), 3등 ${w3}명(인당 ${formatAmount(amt.a3)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명(인당 ${formatAmount(amt.a1)}), 2등 ${w4}명(인당 ${formatAmount(amt.a2)}), 3등 ${w3}명(인당 ${formatAmount(amt.a3)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${r.drawnAt}:f>`;
     }
   }).join('\n');
   const embed = new EmbedBuilder().setTitle('📜 복권 기록').setColor(0x607d8b).setDescription(list || '아직 공개된 기록이 없습니다.');
