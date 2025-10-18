@@ -340,19 +340,30 @@ async function announceDraw(client, state) {
 async function tick(client) {
   const state = loadState();
   const now = nowKST();
-  const k = kstYMD(now);
   const next = getThisSaturday20OrNext();
   const nextUnix = Math.floor(next.getTime() / 1000);
   const nowUnix = Math.floor(Date.now() / 1000);
-  const closed = isClosedForSales();
-  if (Math.abs(nowUnix - nextUnix) <= 120 && !state.rounds[state.round]?.result && !closed) {
-    runDrawInternal(state, Date.now());
-    saveState(state);
-    await payPrizes(client, state);
-    await announceDraw(client, state);
-    await publishOrUpdate(client);
-    return;
+  const lastUnix = nextUnix - 7 * 24 * 3600;
+
+  if (!state.rounds[state.round]?.result) {
+    if (Math.abs(nowUnix - nextUnix) <= 120) {
+      runDrawInternal(state, Date.now());
+      saveState(state);
+      await payPrizes(client, state);
+      await announceDraw(client, state);
+      await publishOrUpdate(client);
+      return;
+    }
+    if (nowUnix >= lastUnix + 120 && nowUnix < nextUnix - 120) {
+      runDrawInternal(state, lastUnix * 1000);
+      saveState(state);
+      await payPrizes(client, state);
+      await announceDraw(client, state);
+      await publishOrUpdate(client);
+      return;
+    }
   }
+
   if (Math.floor(Date.now() / 60000) % 5 === 0) {
     await publishOrUpdate(client);
   }
