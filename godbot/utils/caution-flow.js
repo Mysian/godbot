@@ -160,10 +160,23 @@ function parseIdsFromMessage(msg) {
 function stripIds(text) { return text.replace(/<@!?(\d{17,20})>/g, " ").replace(/\b\d{17,20}\b/g, " ").replace(/\s+/g, " ").trim(); }
 
 async function searchByNickname(guild, q) {
-  const s = await guild.members.search({ query: q.slice(0, 100), limit: 10 }).catch(() => null);
-  if (!s) return [];
-  return Array.from(s.values());
+  const key = q.slice(0, 100);
+  let list = [];
+  try {
+    const s = await guild.members.search({ query: key, limit: 10 });
+    if (s) list = Array.from(s.values());
+  } catch {}
+  if (list.length) return list;
+
+  await guild.members.fetch().catch(() => {});
+  const lower = key.toLowerCase();
+  const cached = guild.members.cache.filter(m => {
+    const a = m.nickname || m.user.globalName || m.user.username || m.user.tag;
+    return a && a.toLowerCase().includes(lower);
+  });
+  return Array.from(cached.values()).slice(0, 10);
 }
+
 
 function buildSearchEmbed(keyword, list) {
   const e = new EmbedBuilder().setTitle("대상자 선택").setDescription(`닉네임 검색: **${keyword}**`).setTimestamp(new Date());
@@ -197,65 +210,89 @@ async function quarantineMemberAcrossGuild(guild, member, exceptChannelId) {
 
 module.exports = (client) => {
   client.on("messageCreate", async (msg) => {
-    try {
-      if (!msg.guild) return;
-      if (msg.author?.bot) return;
-      if (msg.channelId !== CONTROL_CHANNEL_ID) return;
-      const isAdminRole = ADMIN_ROLE_IDS.some(id => msg.member?.roles?.cache?.has(id));
-      if (!isAdminRole) return;
+  if (!msg.guild) return;
+  if (msg.author?.bot) return;
+  if (msg.channelId !== CONTROL_CHANNEL_ID) return;
 
-      let targets = parseIdsFromMessage(msg).slice(0, 10);
-      if (!targets.length) {
-        const raw = stripIds(msg.content);
-        if (!raw) return;
-        const matches = await searchByNickname(msg.guild, raw);
-        if (!matches.length) {
-          await msg.reply({ embeds: [new EmbedBuilder().setTitle("검색 실패").setDescription("대상이 없어. 맨션/ID 또는 더 정확한 닉네임으로 다시 시도해줘.").setColor(0xe74c3c)], allowedMentions: { parse: [] } });
-          return;
-        }
-        const ownerKey = `${msg.author.id}:${Date.now()}`;
-        if (matches.length === 1) {
-          const uid = matches[0].id;
-          const targetM = await msg.guild.members.fetch(uid).catch(() => null);
-          if (hasAdminRole(targetM)) { await msg.reply({ content: "해당 유저는 예외 대상이야.", allowedMentions: { parse: [] } }); return; }
-          const all = loadAll();
-          const exists = !!all[uid];
-          const embed = buildPickEmbed(uid, exists);
-          const rows = buildReasonSelect(msg.author.id, uid, ownerKey, exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
-          await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } });
-          pending.set(ownerKey, { uid, selected: exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
-        } else {
-          const filtered = matches.filter(m => !hasAdminRole(m));
-          if (!filtered.length) { await msg.reply({ content: "검색 결과가 모두 예외 대상이야.", allowedMentions: { parse: [] } }); return; }
-          const embed = buildSearchEmbed(raw, filtered);
-          const row = buildSearchSelect(msg.author.id, ownerKey, filtered);
-          const cancel = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`cau:cancel:${msg.author.id}:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary));
-          await msg.reply({ embeds: [embed], components: [row, cancel], allowedMentions: { parse: [] } });
-        }
+  const isAdminRole = ADMIN_ROLE_IDS.some(id => msg.member?.roles?.cache?.has(id));
+  if (!isAdminRole) return;
+
+  try {
+    let targets = parseIdsFromMessage(msg).slice(0, 10);
+
+    if (!targets.length) {
+      const raw = stripIds(msg.content);
+      if (!raw) return;
+
+      const matches = await searchByNickname(msg.guild, raw);
+      if (!matches.length) {
+        await msg.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("검색 실패")
+              .setDescription("일치하는 유저가 없어. 맨션/ID 또는 더 정확한 닉네임으로 다시 시도해줘.")
+              .setColor(0xe74c3c)
+          ],
+          allowedMentions: { parse: [] }
+        });
         return;
       }
 
-      const filteredIds = [];
-      for (const uid of targets) {
+      const ownerKey = `${msg.author.id}:${Date.now()}`;
+      if (matches.length === 1) {
+        const uid = matches[0].id;
         const targetM = await msg.guild.members.fetch(uid).catch(() => null);
-        if (hasAdminRole(targetM)) continue;
-        filteredIds.push(uid);
-      }
-      if (!filteredIds.length) { await msg.reply({ content: "모든 대상이 예외 역할을 보유하고 있어.", allowedMentions: { parse: [] } }); return; }
-
-      for (const uid of filteredIds) {
-        const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
+        if (hasAdminRole(targetM)) {
+          await msg.reply({ content: "해당 유저는 예외 대상이야.", allowedMentions: { parse: [] } });
+          return;
+        }
         const all = loadAll();
         const exists = !!all[uid];
         const embed = buildPickEmbed(uid, exists);
         const rows = buildReasonSelect(msg.author.id, uid, ownerKey, exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
         await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } });
         pending.set(ownerKey, { uid, selected: exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
+        return;
       }
-    } catch (e) {
-      try { await msg.reply({ content: "처리 중 오류가 발생했어.", allowedMentions: { parse: [] } }); } catch {}
+
+      const filtered = matches.filter(m => !hasAdminRole(m));
+      if (!filtered.length) {
+        await msg.reply({ content: "검색 결과가 모두 예외 대상이야.", allowedMentions: { parse: [] } });
+        return;
+      }
+      const embed = buildSearchEmbed(raw, filtered);
+      const row = buildSearchSelect(msg.author.id, ownerKey, filtered);
+      const cancel = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`cau:cancel:${msg.author.id}:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
+      );
+      await msg.reply({ embeds: [embed], components: [row, cancel], allowedMentions: { parse: [] } });
+      return;
     }
-  });
+
+    const filteredIds = [];
+    for (const uid of targets) {
+      const targetM = await msg.guild.members.fetch(uid).catch(() => null);
+      if (hasAdminRole(targetM)) continue;
+      filteredIds.push(uid);
+    }
+    if (!filteredIds.length) {
+      await msg.reply({ content: "모든 대상이 예외 역할을 보유하고 있어.", allowedMentions: { parse: [] } });
+      return;
+    }
+
+    for (const uid of filteredIds) {
+      const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
+      const all = loadAll();
+      const exists = !!all[uid];
+      const embed = buildPickEmbed(uid, exists);
+      const rows = buildReasonSelect(msg.author.id, uid, ownerKey, exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
+      await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } });
+      pending.set(ownerKey, { uid, selected: exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
+    }
+  } catch {
+  }
+});
+
 
   client.on("interactionCreate", async (i) => {
     try {
@@ -335,41 +372,64 @@ module.exports = (client) => {
         }
 
         if (parts[1] === "apply") {
-          await i.deferUpdate().catch(() => {});
-          const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
-          if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 적용할 수 있어.", ephemeral: true }).catch(() => {}); return; }
-          const st = pending.get(key) || { uid, selected: [] };
-          const selected = Array.isArray(st.selected) ? st.selected : [];
-          if (!selected.length) { await i.followUp({ content: "부여할 항목을 선택해줘.", ephemeral: true }).catch(() => {}); return; }
-          const targetMember = await i.guild.members.fetch(uid).catch(() => null);
-          if (!targetMember) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
-          if (hasAdminRole(targetMember)) { await i.followUp({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
-          const items = [];
-          for (const k of selected) {
-            if (k === "rc") {
-              if (st.custom && st.custom.trim()) items.push({ type: "custom", text: st.custom.trim() });
-            } else {
-              items.push({ type: "preset", key: k });
-            }
-          }
-          if (!items.length) { await i.followUp({ content: "유효한 항목이 없어. 커스텀 문구를 입력했는지 확인해줘.", ephemeral: true }).catch(() => {}); return; }
-          const all = loadAll(); all[uid] = newRecord(uid, items); saveAll(all);
-          await ensureRoleOverwritesForGuild(i.guild);
-          const member = await assignCautionRole(i.guild, uid);
-          if (!member) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
-          await moveToHoldVoiceIfNeeded(i.guild, member);
-          const ch = await ensureCautionChannel(i.guild, member, all[uid]);
-          if (!ch) { await i.followUp({ content: "주의 채널 생성에 실패했어.", ephemeral: true }).catch(() => {}); return; }
-          await quarantineMemberAcrossGuild(i.guild, member, ch.id);
-          const embed = renderAgreeEmbed(member, all[uid]);
-          const rows = buildAgreeButtons(uid, all[uid]);
-          const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => null);
-          all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null; saveAll(all);
-          await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date())], components: [] }).catch(() => {});
-          pending.delete(key);
-          await i.followUp({ content: "적용 완료.", ephemeral: true }).catch(() => {});
-          return;
-        }
+  await i.deferUpdate().catch(() => {});
+  const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
+  if (i.user.id !== ownerId) { await i.followUp({ content: "요청자만 적용할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+
+  const st = pending.get(key) || { uid, selected: [] };
+  let selected = Array.isArray(st.selected) ? [...st.selected] : [];
+
+  if (selected.includes("rc") && !(st.custom && st.custom.trim())) {
+    selected = selected.filter(v => v !== "rc");
+  }
+
+  if (!selected.length) {
+    await i.followUp({ content: "부여할 항목을 선택해줘. (커스텀을 선택했다면 문구도 입력해줘)", ephemeral: true }).catch(() => {});
+    return;
+  }
+
+  const targetMember = await i.guild.members.fetch(uid).catch(() => null);
+  if (!targetMember) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
+  if (hasAdminRole(targetMember)) { await i.followUp({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
+
+  const items = [];
+  for (const k of selected) {
+    if (k === "rc") items.push({ type: "custom", text: st.custom.trim() });
+    else items.push({ type: "preset", key: k });
+  }
+  const all = loadAll(); all[uid] = newRecord(uid, items); saveAll(all);
+
+  await ensureRoleOverwritesForGuild(i.guild);
+  const member = await assignCautionRole(i.guild, uid);
+  if (!member) { await i.followUp({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
+
+  await moveToHoldVoiceIfNeeded(i.guild, member);
+
+  const ch = await ensureCautionChannel(i.guild, member, all[uid]);
+  if (!ch) { await i.followUp({ content: "주의 채널 생성에 실패했어.", ephemeral: true }).catch(() => {}); return; }
+
+  await quarantineMemberAcrossGuild(i.guild, member, ch.id);
+
+  const embed = renderAgreeEmbed(member, all[uid]);
+  const rows = buildAgreeButtons(uid, all[uid]);
+  const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => null);
+  all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null; saveAll(all);
+
+  await i.message.edit({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("주의 적용 완료")
+        .setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.")
+        .addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` })
+        .setTimestamp(new Date())
+    ],
+    components: []
+  }).catch(() => {});
+  pending.delete(key);
+  await i.followUp({ content: "적용 완료.", ephemeral: true }).catch(() => {});
+  return;
+}
+
 
         if (parts[1] === "ack") {
           if (!i.deferred && !i.replied) await i.deferUpdate().catch(() => {});
