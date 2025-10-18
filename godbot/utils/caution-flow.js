@@ -74,7 +74,7 @@ function buildSelectionEmbed(st) {
   return new EmbedBuilder().setTitle("선택 항목 미리보기").addFields({ name: "항목", value: val }).setTimestamp(new Date());
 }
 
-function buildReasonSelect(ownerId, uid, key, preselected) {
+function buildReasonSelect(ownerId, uid, key, preselected, exists) {
   const presetSet = new Set(preselected || []);
   const opts = reasonsMaster().map(r => ({
     label: r.label.slice(0, 100),
@@ -84,11 +84,13 @@ function buildReasonSelect(ownerId, uid, key, preselected) {
   }));
   const menu = new StringSelectMenuBuilder().setCustomId(`cau:reasons:${ownerId}:${uid}:${key}`).setPlaceholder("부여할 주의 항목 선택").setMinValues(1).setMaxValues(opts.length).addOptions(opts);
   const row1 = new ActionRowBuilder().addComponents(menu);
-  const row2 = new ActionRowBuilder().addComponents(
+  const controlButtons = [
     new ButtonBuilder().setCustomId(`cau:addcustom:${ownerId}:${uid}:${key}`).setLabel("커스텀 항목 입력").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`cau:apply:${ownerId}:${uid}:${key}`).setLabel("주의 적용").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`cau:forceRestore:${ownerId}:${uid}:${key}`).setLabel("주의 해제(강제복귀)").setStyle(ButtonStyle.Success).setDisabled(!exists),
     new ButtonBuilder().setCustomId(`cau:cancel:${ownerId}:${key}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
-  );
+  ];
+  const row2 = new ActionRowBuilder().addComponents(controlButtons);
   return [row1, row2];
 }
 
@@ -163,7 +165,6 @@ async function ensureCautionChannel(guild, member) {
 
   return ch;
 }
-
 
 function botCanManageRole(guild, roleId) {
   const role = guild.roles.cache.get(roleId);
@@ -324,7 +325,7 @@ module.exports = (client) => {
         const exists = !!all[uid];
         const preselected = exists ? [...all[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
         const embed = buildPickEmbed(uid, exists);
-        const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected);
+        const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected, exists);
         const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch((e) => { safeLog("reply(pick-single)", e); return null; });
         pending.set(ownerKey, { uid, selected: preselected, messageId: sent?.id || null, channelId: msg.channelId });
       } else {
@@ -353,7 +354,7 @@ module.exports = (client) => {
       const exists = !!all[uid];
       const preselected = exists ? [...all[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
       const embed = buildPickEmbed(uid, exists);
-      const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected);
+      const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected, exists);
       const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch((e) => { safeLog("reply(pick-multi)", e); return null; });
       pending.set(ownerKey, { uid, selected: preselected, messageId: sent?.id || null, channelId: msg.channelId });
     }
@@ -388,7 +389,7 @@ module.exports = (client) => {
           const allData = loadAll(); const exists = !!allData[uid];
           const preselected = exists ? [...allData[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
           const embed = buildPickEmbed(uid, exists);
-          const rows = buildReasonSelect(ownerId, uid, key, preselected);
+          const rows = buildReasonSelect(ownerId, uid, key, preselected, exists);
           const st = { uid, selected: preselected, messageId: i.message?.id || null, channelId: i.channelId };
           pending.set(key, st);
           if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch((e) => safeLog("edit(pick->showReasons)", e));
@@ -402,8 +403,9 @@ module.exports = (client) => {
           const st = pending.get(key) || { uid, selected: [] };
           st.selected = sel;
           pending.set(key, st);
-          const embed = buildPickEmbed(uid, !!loadAll()[uid]);
-          const rows = buildReasonSelect(ownerId, uid, key, sel);
+          const exists = !!loadAll()[uid];
+          const embed = buildPickEmbed(uid, exists);
+          const rows = buildReasonSelect(ownerId, uid, key, sel, exists);
           if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch((e) => safeLog("edit(reasons)", e));
           return;
         }
@@ -432,7 +434,7 @@ module.exports = (client) => {
             if (msg && canBotTalkIn(ch)) {
               const exists = !!loadAll()[uid];
               const embed = buildPickEmbed(uid, exists);
-              const rows = buildReasonSelect(ownerId, uid, key, st.selected);
+              const rows = buildReasonSelect(ownerId, uid, key, st.selected, exists);
               await msg.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch(() => {});
             }
           }
@@ -633,6 +635,71 @@ module.exports = (client) => {
             try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
           } finally {
             await i.editReply({ content: finalMsg }).catch(() => {});
+          }
+          return;
+        }
+
+        if (parts[1] === "forceRestore") {
+          await ackReply();
+          await i.editReply({ content: "주의 해제(강제복귀) 처리 중..." }).catch(() => {});
+          const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
+          if (i.user.id !== ownerId) { await i.editReply({ content: "요청자만 처리할 수 있어." }).catch(() => {}); return; }
+          const all = loadAll(); const rec = all[uid];
+          if (!rec) { await i.editReply({ content: "진행 중인 주의 절차가 없어." }).catch(() => {}); return; }
+
+          const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
+          const progressChannel = ch || i.channel;
+          const progressMsg = await postProgressIn(progressChannel, "강제복귀 처리 중", "검증 중...", 10);
+          await sleep(200);
+          try {
+            const member = await i.guild.members.fetch(uid).catch(() => null);
+            await updateProgressMessage(progressMsg, "강제복귀 처리 중", "역할 복원...", 60);
+            if (member) await restoreSnapshotRoles(member, rec).catch(() => {});
+            await updateProgressMessage(progressMsg, "강제복귀 처리 중", "주의 역할 제거...", 85);
+            await removeCautionRole(i.guild, uid).catch(() => {});
+            await updateProgressMessage(progressMsg, "강제복귀 완료", "정상적으로 복귀가 완료되었습니다.", 100);
+            await sleep(1200);
+
+            if (rec.controlChannelId && rec.controlMessageId) {
+              try {
+                const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+                const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+                if (ctrlMsg && canBotTalkIn(ctrlCh)) {
+                  await ctrlMsg.edit({ embeds: [new EmbedBuilder().setTitle("주의 해제(관리자)").setDescription("관리자에 의해 강제복귀되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
+                }
+              } catch {}
+            }
+
+            try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
+
+            if (ch) {
+              try {
+                if (rec.messageId) {
+                  const msg = await ch.messages.fetch(rec.messageId).catch(() => null);
+                  if (msg) {
+                    const disabled = msg.components.map(row => {
+                      const r = ActionRowBuilder.from(row);
+                      r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+                      return r;
+                    });
+                    await msg.edit({ components: disabled }).catch(() => {});
+                  }
+                }
+              } catch {}
+              await ch.delete().catch(() => {});
+            }
+
+            delete all[uid]; saveAll(all);
+            try {
+              if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 해제 완료").setDescription("관리자에 의해 강제복귀 처리되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
+            } catch {}
+            await i.editReply({ content: "강제복귀 완료." }).catch(() => {});
+          } catch (e) {
+            safeLog("forceRestore", e);
+            try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
+            await i.editReply({ content: "강제복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘." }).catch(() => {});
+          } finally {
+            pending.delete(key);
           }
           return;
         }
