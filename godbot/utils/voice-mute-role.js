@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const ROLE_ID = "1286237811959140363";
+const ROLE_ID = "1429076711341031465";
 const STORE_DIR = path.resolve(process.cwd(), "data");
 const STORE_PATH = path.join(STORE_DIR, "auto-mute-role.json");
 
