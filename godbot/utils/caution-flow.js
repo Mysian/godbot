@@ -123,7 +123,7 @@ async function ensureCautionChannel(guild, member) {
   if (everyone) await ch.permissionOverwrites.edit(everyone, { ViewChannel: false }).catch(() => {});
   if (role) await ch.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
   if (botMember) await ch.permissionOverwrites.edit(botMember, { ViewChannel: true, SendMessages: true, ManageChannels: true, EmbedLinks: true }).catch(() => {});
-  await ch.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, EmbedLinks: true }).catch(() => {});
+  await ch.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true, EmbedLinks: true }).catch(() => {});
   for (const rid of ADMIN_ROLE_IDS) {
     const r = guild.roles.cache.get(rid) || await guild.roles.fetch(rid).catch(() => null);
     if (r) await ch.permissionOverwrites.edit(r, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
@@ -483,22 +483,43 @@ module.exports = (client) => {
         if (parts[1] === "restore") {
           await ackReply();
           await i.editReply({ content: "복귀 처리 중..." }).catch(() => {});
+          let finalMsg = "복귀 완료.";
 
-          const targetId = parts[2] ?? i.user.id;
-          const all = loadAll(); const rec = all[targetId]; if (!rec) { await i.editReply({ content: "진행 중인 주의 절차가 없어." }).catch(() => {}); return; }
-          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { await i.editReply({ content: "대상자 또는 관리자만 복귀 가능." }).catch(() => {}); return; }
-          const allAck = rec.items.every(it => rec.acks?.[it.id]);
-          if (!allAck) { await i.editReply({ content: "모든 항목에 동의해야 복귀할 수 있어." }).catch(() => {}); return; }
+          try {
+            const targetId = parts[2] ?? i.user.id;
+            const all = loadAll(); const rec = all[targetId]; if (!rec) { finalMsg = "진행 중인 주의 절차가 없어."; return; }
+            if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { finalMsg = "대상자 또는 관리자만 복귀 가능."; return; }
+            const allAck = rec.items.every(it => rec.acks?.[it.id]);
+            if (!allAck) { finalMsg = "모든 항목에 동의해야 복귀할 수 있어."; return; }
 
-          const member = await i.guild.members.fetch(targetId).catch(() => null);
-          if (member) await restoreSnapshotRoles(member, rec).catch(() => {});
-          await removeCautionRole(i.guild, targetId).catch(() => {});
-          await clearQuarantineForMember(i.guild, targetId).catch(() => {});
-          const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
-          if (ch && ch.deletable) await ch.delete().catch(() => {});
-          delete all[targetId]; saveAll(all);
+            const member = await i.guild.members.fetch(targetId).catch(() => null);
+            if (member) await restoreSnapshotRoles(member, rec).catch(() => {});
+            await removeCautionRole(i.guild, targetId).catch(() => {});
+            await clearQuarantineForMember(i.guild, targetId).catch(() => {});
 
-          await i.editReply({ content: "복귀 완료." }).catch(() => {});
+            const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
+            if (ch) {
+              if (rec.messageId) {
+                const msg = await ch.messages.fetch(rec.messageId).catch(() => null);
+                if (msg) {
+                  const disabled = msg.components.map(row => {
+                    const r = ActionRowBuilder.from(row);
+                    r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+                    return r;
+                  });
+                  await msg.edit({ components: disabled }).catch(() => {});
+                }
+              }
+              await ch.delete().catch(() => {});
+            }
+
+            delete all[targetId]; saveAll(all);
+          } catch (e) {
+            safeLog("restore", e);
+            finalMsg = "복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘.";
+          } finally {
+            await i.editReply({ content: finalMsg }).catch(() => {});
+          }
           return;
         }
       }
