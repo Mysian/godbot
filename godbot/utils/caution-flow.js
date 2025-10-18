@@ -134,15 +134,16 @@ function buildControlStatusEmbed(uid, rec) {
   const total = rec.items.length;
   const done = Object.values(rec.acks || {}).filter(Boolean).length;
   const allDone = done >= total && total > 0;
-  const title = allDone ? "주의 절차 완료" : "주의 절차 진행 중";
-  const status = allDone ? "모든 항목 동의 완료. 복귀하기 버튼으로 완료되었습니다." : `동의 진행 상황: ${done}/${total}`;
+  let title = allDone ? "주의 절차 완료" : "주의 절차 진행 중";
+  let status = allDone ? "모든 항목 동의 완료. 복귀하기 버튼으로 완료되었습니다." : `동의 진행 상황: ${done}/${total}`;
+  if (rec.leftAt) { title = "주의 절차 중단(서버 이탈)"; status = "대상이 서버를 이탈하여 절차가 중단되었습니다. 재입장 시 자동 재개되며, 입장 절차는 차단됩니다."; }
   const fields = [{ name: "대상", value: `<@${uid}> (${uid})` }];
   if (rec.channelId) fields.push({ name: "채널", value: `<#${rec.channelId}>` });
   return new EmbedBuilder().setTitle(title).setDescription(status).addFields(fields).setTimestamp(new Date());
 }
 
 function newRecord(uid, items) {
-  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null, controlChannelId: null, controlMessageId: null };
+  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null, controlChannelId: null, controlMessageId: null, lastSafeName: null, leftAt: null };
 }
 
 async function ensureCautionChannel(guild, member) {
@@ -150,21 +151,19 @@ async function ensureCautionChannel(guild, member) {
   const name = `주의-${base}`;
   await guild.channels.fetch().catch(() => {});
   let ch = guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name === name);
-  if (!ch) ch = await guild.channels.create({ name, type: ChannelType.GuildText }).catch((e) => { safeLog("channel.create", e); return null; });
+  if (!ch) ch = await guild.channels.create({ name, type: ChannelType.GuildText }).catch(() => null);
   if (!ch) return null;
+
   const everyone = guild.roles.everyone;
-  const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
   const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
+
   if (everyone) await ch.permissionOverwrites.edit(everyone, { ViewChannel: false }).catch(() => {});
-  if (role) await ch.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
   if (botMember) await ch.permissionOverwrites.edit(botMember, { ViewChannel: true, SendMessages: true, ManageChannels: true, EmbedLinks: true }).catch(() => {});
   await ch.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true, EmbedLinks: true }).catch(() => {});
-  for (const rid of ADMIN_ROLE_IDS) {
-    const r = guild.roles.cache.get(rid) || await guild.roles.fetch(rid).catch(() => null);
-    if (r) await ch.permissionOverwrites.edit(r, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
-  }
+
   return ch;
 }
+
 
 function botCanManageRole(guild, roleId) {
   const role = guild.roles.cache.get(roleId);
@@ -288,6 +287,12 @@ async function deleteJoinChannels(guild, member) {
   const base = getSafeName(member);
   await guild.channels.fetch().catch(() => {});
   const targets = guild.channels.cache.filter(c => c.type === ChannelType.GuildText && c.name.startsWith("입장-") && (c.name === `입장-${base}` || c.permissionOverwrites?.cache?.has(member.id)));
+  for (const ch of targets.values()) { await ch.delete().catch(() => {}); }
+}
+
+async function deleteJoinChannelsByName(guild, safeName) {
+  await guild.channels.fetch().catch(() => {});
+  const targets = guild.channels.cache.filter(c => c.type === ChannelType.GuildText && c.name === `입장-${safeName}`);
   for (const ch of targets.values()) { await ch.delete().catch(() => {}); }
 }
 
@@ -492,7 +497,7 @@ module.exports = (client) => {
           if (!items.length) { await i.editReply({ content: "부여할 항목을 선택하거나 커스텀을 입력해줘." }).catch(() => {}); return; }
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "데이터 저장...", 25);
-          const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
+          const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, leftAt: null } : newRecord(uid, items); saveAll(all);
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "역할 부여 및 스냅샷...", 55);
           const member = await assignCautionRole(i.guild, uid);
@@ -505,6 +510,8 @@ module.exports = (client) => {
           await updateProgressMessage(progressMsg, "주의 적용 중", "주의 채널 생성...", 80);
           const ch = await ensureCautionChannel(i.guild, member);
           if (!ch) { await i.editReply({ content: "주의 채널 생성 실패." }).catch(() => {}); return; }
+
+          all[uid].lastSafeName = getSafeName(member);
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "안내 임베드 게시...", 95);
           const embed = renderAgreeEmbed(member, all[uid]);
@@ -649,6 +656,8 @@ module.exports = (client) => {
   client.on("guildMemberAdd", async (member) => {
     try {
       const all = loadAll(); if (!all[member.id]) return;
+      all[member.id].leftAt = null; saveAll(all);
+
       await ensureRoleOverwritesForGuild(member.guild);
 
       await deleteJoinChannels(member.guild, member);
@@ -660,6 +669,7 @@ module.exports = (client) => {
       const rec = all[member.id];
       const ch = await ensureCautionChannel(member.guild, m);
       if (!ch) return;
+      rec.lastSafeName = getSafeName(m);
       const embed = renderAgreeEmbed(m, rec);
       const rows = buildAgreeButtons(member.id, rec);
       let msg = null;
@@ -686,17 +696,57 @@ module.exports = (client) => {
     } catch (e) { safeLog("guildMemberAdd", e); }
   });
 
-  client.on("channelCreate", async (ch) => {
+  client.on("guildMemberRemove", async (member) => {
     try {
-      const guild = ch.guild;
-      if (!guild) return;
-      const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
-      if (!role) return;
-      if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(ch.type)) {
-        await ch.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
+      const all = loadAll(); const rec = all[member.id]; if (!rec) return;
+      rec.leftAt = now();
+      if (!rec.lastSafeName) rec.lastSafeName = getSafeName(member);
+      if (rec.channelId) {
+        try {
+          const ch = await member.guild.channels.fetch(rec.channelId).catch(() => null);
+          if (ch) await ch.delete().catch(() => {});
+        } catch {}
+        rec.channelId = null; rec.messageId = null;
       }
-    } catch (e) { safeLog("channelCreate", e); }
+      saveAll(all);
+
+      try {
+        if (rec.controlChannelId && rec.controlMessageId) {
+          const ctrlCh = await member.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+          const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+          if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, rec)] }).catch(() => {});
+        }
+      } catch {}
+    } catch (e) { safeLog("guildMemberRemove", e); }
   });
+
+  client.on("channelCreate", async (ch) => {
+  try {
+    const guild = ch.guild;
+    if (!guild) return;
+
+    const cautionRole = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
+    if (!cautionRole) return;
+
+    if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(ch.type)) {
+      await ch.permissionOverwrites.edit(cautionRole, { ViewChannel: false }).catch(() => {});
+    }
+
+    if (ch.type === ChannelType.GuildText && ch.name.startsWith("입장-")) {
+      try {
+        const all = loadAll(); const ids = Object.keys(all);
+        if (ids.length) {
+          for (const uid of ids) {
+            const rec = all[uid];
+            const targetMatch = ch.permissionOverwrites?.cache?.has(uid) || (rec?.lastSafeName && ch.name === `입장-${rec.lastSafeName}`);
+            if (targetMatch) { await ch.delete().catch(() => {}); break; }
+          }
+        }
+      } catch {}
+    }
+  } catch (e) { safeLog("channelCreate", e); }
+});
+
 
   client.once("ready", async () => {
     try {
@@ -708,20 +758,26 @@ module.exports = (client) => {
         await g.members.fetch().catch(() => {});
         for (const uid of ids) {
           const rec = all[uid];
-          const m = await assignCautionRole(g, uid);
+
+          if (rec?.lastSafeName) await deleteJoinChannelsByName(g, rec.lastSafeName);
+
+          const m = await g.members.fetch(uid).catch(() => null);
           if (!m) continue;
-          await enforceCautionOnlyRole(m, rec);
-          await moveToHoldVoiceIfNeeded(g, m);
-          const ch = await ensureCautionChannel(g, m);
+
+          const mm = await assignCautionRole(g, uid);
+          if (!mm) continue;
+          await enforceCautionOnlyRole(mm, rec);
+          await moveToHoldVoiceIfNeeded(g, mm);
+          const ch = await ensureCautionChannel(g, mm);
           if (!ch) continue;
-          const embed = renderAgreeEmbed(m, rec);
+          const embed = renderAgreeEmbed(mm, rec);
           const rows = buildAgreeButtons(uid, rec);
           let msg = null;
           if (rec.messageId) msg = await ch.messages.fetch(rec.messageId).catch(() => null);
           if (!msg) {
             if (canBotTalkIn(ch)) {
               const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch((e) => { safeLog("send(ready)", e); return null; });
-              rec.channelId = ch.id; rec.messageId = sent?.id || null; saveAll(all);
+              rec.channelId = ch.id; rec.messageId = sent?.id || null; rec.lastSafeName = getSafeName(mm); saveAll(all);
             }
           } else {
             if (canBotTalkIn(ch)) await msg.edit({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => {});
@@ -733,7 +789,7 @@ module.exports = (client) => {
               if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, rec)] }).catch(() => {});
             }
           } catch {}
-          await deleteJoinChannels(g, m);
+          await deleteJoinChannels(g, mm);
         }
       }
     } catch (e) { safeLog("ready", e); }
