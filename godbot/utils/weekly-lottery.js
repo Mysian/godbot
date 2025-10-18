@@ -123,6 +123,20 @@ function controlRows(closed, forceDisabled) {
   );
   return [row1];
 }
+function computeTierAmounts(rule, pool, res) {
+  if (rule.pick === 6) {
+    const a1 = res.winners6 > 0 ? Math.floor(pool * 0.6 / res.winners6) : 0;
+    const a2 = res.winners5 > 0 ? Math.floor(pool * 0.25 / res.winners5) : 0;
+    const a3 = res.winners4 > 0 ? Math.floor(pool * 0.10 / res.winners4) : 0;
+    const a4 = res.winners3 > 0 ? Math.floor(pool * 0.05 / res.winners3) : 0;
+    return { a1, a2, a3, a4 };
+  } else {
+    const a1 = res.winners5 > 0 ? Math.floor(pool * 0.7 / res.winners5) : 0;
+    const a2 = res.winners4 > 0 ? Math.floor(pool * 0.2 / res.winners4) : 0;
+    const a3 = res.winners3 > 0 ? Math.floor(pool * 0.1 / res.winners3) : 0;
+    return { a1, a2, a3 };
+  }
+}
 function buildControlEmbed(livePot, state, nextDrawTs, closed, ended) {
   const r = state.round;
   const count = state.rounds[r]?.tickets?.length || 0;
@@ -207,12 +221,14 @@ function buildRecordsEmbed(state, page) {
       const w5 = r.result?.winners5 || 0;
       const w4 = r.result?.winners4 || 0;
       const w3 = r.result?.winners3 || 0;
-      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명, 2등 ${w5}명, 3등 ${w4}명, 4등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+      const amt = computeTierAmounts(r.rule, pool, r.result);
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명(인당 ${formatAmount(amt.a1)}), 2등 ${w5}명(인당 ${formatAmount(amt.a2)}), 3등 ${w4}명(인당 ${formatAmount(amt.a3)}), 4등 ${w3}명(인당 ${formatAmount(amt.a4)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
     } else {
       const w5 = r.result?.winners5 || 0;
       const w4 = r.result?.winners4 || 0;
       const w3 = r.result?.winners3 || 0;
-      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명, 2등 ${w4}명, 3등 ${w3}명 | 총포트 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
+      const amt = computeTierAmounts(r.rule, pool, r.result);
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명(인당 ${formatAmount(amt.a1)}), 2등 ${w4}명(인당 ${formatAmount(amt.a2)}), 3등 ${w3}명(인당 ${formatAmount(amt.a3)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${toUnix(r.drawnAt)}:f>`;
     }
   }).join('\n');
   const embed = new EmbedBuilder().setTitle('📜 복권 기록').setColor(0x607d8b).setDescription(list || '아직 공개된 기록이 없습니다.');
@@ -241,7 +257,7 @@ async function handleMine(interaction) {
     if (!state.rounds[rr]) return;
     for (const t of state.rounds[rr].tickets) {
       if (t.userId !== interaction.user.id) continue;
-      const res = t.result == null ? `추첨 대기` : (t.result.win ? `당첨 ${formatAmount(t.prize)} BE` : `낙첨`);
+      const res = t.result == null ? `추첨 대기` : (t.result.win ? `당첨 금액 ${formatAmount(t.prize)} BE` : `낙첨`);
       list.push(`${tag} ${rr}회차 | [${t.numbers.join(', ')}] | ${res} | 구매 <t:${toUnix(t.ts)}:R>`);
     }
   };
@@ -391,6 +407,7 @@ async function announceDraw(client, state) {
   const win = res.win.map(n => `\`${n}\``).join('  ');
   const drawnAt = state.rounds[r].drawnAt || Math.floor(Date.now() / 1000);
   const title = `🎊 복권 ${r}회차 추첨 결과`;
+  const amt = computeTierAmounts(rule, res.pool, res);
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(0xFBC02D)
@@ -398,17 +415,17 @@ async function announceDraw(client, state) {
     .addFields(
       ...(rule.pick === 6
         ? [
-            { name: '1등', value: `${res.winners6}명`, inline: true },
-            { name: '2등', value: `${res.winners5}명`, inline: true },
-            { name: '3등', value: `${res.winners4}명`, inline: true },
-            { name: '4등', value: `${res.winners3}명`, inline: true }
+            { name: '1등', value: `${res.winners6}명 (인당 ${formatAmount(amt.a1)} BE)`, inline: true },
+            { name: '2등', value: `${res.winners5}명 (인당 ${formatAmount(amt.a2)} BE)`, inline: true },
+            { name: '3등', value: `${res.winners4}명 (인당 ${formatAmount(amt.a3)} BE)`, inline: true },
+            { name: '4등', value: `${res.winners3}명 (인당 ${formatAmount(amt.a4)} BE)`, inline: true }
           ]
         : [
-            { name: '1등', value: `${res.winners5}명`, inline: true },
-            { name: '2등', value: `${res.winners4}명`, inline: true },
-            { name: '3등', value: `${res.winners3}명`, inline: true }
+            { name: '1등', value: `${res.winners5}명 (인당 ${formatAmount(amt.a1)} BE)`, inline: true },
+            { name: '2등', value: `${res.winners4}명 (인당 ${formatAmount(amt.a2)} BE)`, inline: true },
+            { name: '3등', value: `${res.winners3}명 (인당 ${formatAmount(amt.a3)} BE)`, inline: true }
           ]),
-      { name: '총 포트', value: `${formatAmount(res.pool)} BE`, inline: true },
+      { name: '총 복권 금액', value: `${formatAmount(res.pool)} BE`, inline: true },
       { name: '추첨 시각', value: `<t:${drawnAt}:F>`, inline: true }
     )
     .setFooter({ text: '다음 회차에 참여하려면 채널 하단 최신 임베드의 버튼을 사용하세요.' });
