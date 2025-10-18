@@ -61,7 +61,7 @@ function salesStatusText() {
   return '판매 중';
 }
 function formatAmount(n) {
-  return n.toLocaleString('ko-KR');
+  return Number(n || 0).toLocaleString('ko-KR');
 }
 function uniqueSortedPick(arr, pickCount) {
   if (!Array.isArray(arr)) return null;
@@ -76,15 +76,9 @@ function compareWin(picked, win) {
   let i = 0;
   let j = 0;
   while (i < picked.length && j < win.length) {
-    if (picked[i] === win[j]) {
-      m++;
-      i++;
-      j++;
-    } else if (picked[i] < win[j]) {
-      i++;
-    } else {
-      j++;
-    }
+    if (picked[i] === win[j]) { m++; i++; j++; }
+    else if (picked[i] < win[j]) { i++; }
+    else { j++; }
   }
   return m;
 }
@@ -226,12 +220,12 @@ function buildRecordsEmbed(state, page) {
       const w5 = res.winners5 || 0;
       const w4 = res.winners4 || 0;
       const w3 = res.winners3 || 0;
-      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명(인당 ${formatAmount(amt.a1)}), 2등 ${w5}명(인당 ${formatAmount(amt.a2)}), 3등 ${w4}명(인당 ${formatAmount(amt.a3)}), 4등 ${w3}명(인당 ${formatAmount(amt.a4)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${r.drawnAt}:f>`;
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w6}명(인당 ${formatAmount(amt.a1)}), 2등 ${w5}명(인당 ${formatAmount(amt.a2)}), 3등 ${w4}명(인당 ${formatAmount(amt.a3)}), 4등 ${w3}명(인당 ${formatAmount(amt.a4)}) | 상금 기준 금액 ${formatAmount(pool)} BE | 추첨 <t:${r.drawnAt}:f>`;
     } else {
       const w5 = res.winners5 || 0;
       const w4 = res.winners4 || 0;
       const w3 = res.winners3 || 0;
-      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명(인당 ${formatAmount(amt.a1)}), 2등 ${w4}명(인당 ${formatAmount(amt.a2)}), 3등 ${w3}명(인당 ${formatAmount(amt.a3)}) | 총 복권 금액 ${formatAmount(pool)} BE | 추첨 <t:${r.drawnAt}:f>`;
+      return `• ${rr}회차 | 당첨번호: [${w}] | 1등 ${w5}명(인당 ${formatAmount(amt.a1)}), 2등 ${w4}명(인당 ${formatAmount(amt.a2)}), 3등 ${w3}명(인당 ${formatAmount(amt.a3)}) | 상금 기준 금액 ${formatAmount(pool)} BE | 추첨 <t:${r.drawnAt}:f>`;
     }
   }).join('\n');
   const embed = new EmbedBuilder().setTitle('📜 복권 기록').setColor(0x607d8b).setDescription(list || '아직 공개된 기록이 없습니다.');
@@ -299,7 +293,7 @@ async function handleEnterModal(interaction) {
   if (raw.length === 0) {
     picked = drawNumbers(pick);
   } else {
-    const parsed = raw.split(/[,\s]+/).filter(Boolean).map(v => parseInt(v.trim(), 10));
+    const parsed = raw.split(/[\,\s]+/).filter(Boolean).map(v => parseInt(v.trim(), 10));
     if (parsed.length === 1 && parsed[0] === 0) {
       picked = drawNumbers(pick);
     } else if (parsed.some(v => v === 0)) {
@@ -376,9 +370,9 @@ function runDrawInternal(state, ts) {
     t.paid = false;
   }
   if (rule.pick === 6) {
-    state.rounds[r].result = { win, pool, winners6: counts.w6, winners5: counts.w5, winners4: counts.w4, winners3: counts.w3 };
+    state.rounds[r].result = { win, pool, poolSource: 'BOT_BANK', pct: { p1: 0.6, p2: 0.25, p3: 0.10, p4: 0.05 }, winners6: counts.w6, winners5: counts.w5, winners4: counts.w4, winners3: counts.w3 };
   } else {
-    state.rounds[r].result = { win, pool, winners5: counts.w5, winners4: counts.w4, winners3: counts.w3 };
+    state.rounds[r].result = { win, pool, poolSource: 'BOT_BANK', pct: { p1: 0.7, p2: 0.2, p3: 0.1 }, winners5: counts.w5, winners4: counts.w4, winners3: counts.w3 };
   }
   state.rounds[r].drawnAt = Math.floor(ts / 1000);
   state.lastDrawAt = ts;
@@ -424,7 +418,7 @@ async function announceDraw(client, state) {
             { name: '2등', value: `${res.winners4}명 (인당 ${formatAmount(amt.a2)} BE)`, inline: true },
             { name: '3등', value: `${res.winners3}명 (인당 ${formatAmount(amt.a3)} BE)`, inline: true }
           ]),
-      { name: '총 복권 금액', value: `${formatAmount(res.pool)} BE`, inline: true },
+      { name: '상금 기준 금액', value: `${formatAmount(res.pool)} BE`, inline: true },
       { name: '추첨 시각', value: `<t:${drawnAt}:F>`, inline: true }
     )
     .setFooter({ text: '다음 회차에 참여하려면 채널 하단 최신 임베드의 버튼을 사용하세요.' });
