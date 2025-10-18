@@ -390,23 +390,36 @@ module.exports = (client) => {
       }
 
       if (i.isModalSubmit()) {
-        const [ns, act, ownerId, uid, key] = String(i.customId).split(":");
-        if (ns !== "cau" || act !== "custom") return;
-        if (i.user.id !== ownerId) { await i.followUp({ content: "권한 없음", ephemeral: true }).catch(() => {}); return; }
-        const text = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
-        const agree = i.fields.getTextInputValue("cau_custom_agree")?.trim().slice(0, 80);
-        const st = pending.get(key) || { uid, selected: [] };
-        let changed = false;
-        if (text) { st.custom = text; changed = true; }
-        if (agree) { st.customAgree = agree; changed = true; }
-        if (changed) {
-          if (!st.selected) st.selected = [];
-          if (!st.selected.includes("rc")) st.selected.push("rc");
-        }
-        pending.set(key, st);
-        await i.followUp({ content: "커스텀 항목이 반영되었어.", ephemeral: true }).catch(() => {});
-        return;
-      }
+  const [ns, act, ownerId, uid, key] = String(i.customId).split(":");
+  if (ns !== "cau" || act !== "custom") return;
+
+  // 권한 체크는 'reply'로 바로 응답
+  if (i.user.id !== ownerId) {
+    await i.reply({ content: "권한 없음", ephemeral: true }).catch(() => {});
+    return;
+  }
+
+  // 모달 처리 시작: 먼저 ACK
+  await i.deferReply({ ephemeral: true }).catch(() => {});
+
+  const text  = i.fields.getTextInputValue("cau_custom_text")?.trim().slice(0, 200);
+  const agree = i.fields.getTextInputValue("cau_custom_agree")?.trim().slice(0, 80);
+
+  const st = pending.get(key) || { uid, selected: [] };
+  let changed = false;
+  if (text)  { st.custom = text;  changed = true; }
+  if (agree) { st.customAgree = agree; changed = true; }
+  if (changed) {
+    if (!st.selected) st.selected = [];
+    if (!st.selected.includes("rc")) st.selected.push("rc");
+  }
+  pending.set(key, st);
+
+  // ACK 이후에는 editReply로 마무리
+  await i.editReply({ content: "커스텀 항목이 반영되었어." }).catch(() => {});
+  return;
+}
+
 
       if (i.isButton()) {
         const parts = String(i.customId).split(":");
