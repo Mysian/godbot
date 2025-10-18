@@ -87,6 +87,7 @@ if (fs.existsSync(eventsPath)) {
 require("./utils/approval-flow")(client);
 require("./utils/approval-blocker")(client);
 require("./utils/youtube-panel").setup(client);
+require("./utils/caution-flow.js")(client);
 require('./utils/voiceWatcher')(client);
 require('./utils/restricted-role-guard')(client);
 require('./utils/donor-role-expirer')(client);
