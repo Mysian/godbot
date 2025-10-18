@@ -303,6 +303,20 @@ function buildSearchSelect(authorId, key, members) {
 
 const pending = new Map();
 
+function bar(p, w = 12) { const f = Math.max(0, Math.min(100, Math.floor(p))); const n = Math.round((f / 100) * w); return `[${"█".repeat(n)}${"░".repeat(w - n)}] ${f}%`; }
+function progressEmbed(title, phase, p) { return new EmbedBuilder().setTitle(title).setDescription(`${phase}\n${bar(p)}`).setColor(0x3498db).setTimestamp(new Date()); }
+function doneEmbed(title, desc, fields) { const e = new EmbedBuilder().setTitle(title).setDescription(desc).setColor(0x2ecc71).setTimestamp(new Date()); for (const f of fields || []) e.addFields(f); return e; }
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function postProgressIn(channel, title, phase, p) {
+  if (!canBotTalkIn(channel)) return null;
+  return await channel.send({ embeds: [progressEmbed(title, phase, p)] }).catch(() => null);
+}
+async function updateProgressMessage(msg, title, phase, p) {
+  if (!msg) return;
+  await msg.edit({ embeds: [progressEmbed(title, phase, p)] }).catch(() => {});
+}
+
 module.exports = (client) => {
   client.on("messageCreate", async (msg) => {
     if (!msg.guild) return;
@@ -479,7 +493,6 @@ module.exports = (client) => {
         if (parts[1] === "apply") {
           await ackReply();
           await i.editReply({ content: "주의 적용 처리 중..." }).catch(() => {});
-
           const ownerId = parts[2]; const uid = parts[3]; const key = parts[4];
           if (i.user.id !== ownerId) { await i.editReply({ content: "요청자만 적용할 수 있어." }).catch(() => {}); return; }
           const st = pending.get(key) || { uid, selected: [] };
@@ -487,6 +500,9 @@ module.exports = (client) => {
           const targetMember = await i.guild.members.fetch(uid).catch(() => null);
           if (!targetMember) { await i.editReply({ content: "대상을 찾을 수 없어." }).catch(() => {}); return; }
           if (hasAdminRole(targetMember)) { await i.editReply({ content: "해당 유저는 예외 대상이야." }).catch(() => {}); return; }
+
+          const progressMsg = await postProgressIn(i.channel, "주의 적용 중", "초기화 중...", 5);
+          await sleep(200);
 
           const items = [];
           for (const k of selected) {
@@ -501,16 +517,27 @@ module.exports = (client) => {
           }
           if (!items.length) { await i.editReply({ content: "부여할 항목을 선택하거나 커스텀을 입력해줘." }).catch(() => {}); return; }
 
+          await updateProgressMessage(progressMsg, "주의 적용 중", "데이터 저장...", 20);
           const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {} } : newRecord(uid, items); saveAll(all);
 
+          await updateProgressMessage(progressMsg, "주의 적용 중", "역할 부여...", 40);
           const member = await assignCautionRole(i.guild, uid);
           if (!member) { await i.editReply({ content: "대상을 찾을 수 없어." }).catch(() => {}); return; }
+
+          await updateProgressMessage(progressMsg, "주의 적용 중", "역할 스냅샷 및 격리...", 55);
           await enforceCautionOnlyRole(member, all[uid]);
+
+          await updateProgressMessage(progressMsg, "주의 적용 중", "보이스 이동 확인...", 60);
           await moveToHoldVoiceIfNeeded(i.guild, member).catch(() => {});
+
+          await updateProgressMessage(progressMsg, "주의 적용 중", "주의 채널 생성...", 75);
           const ch = await ensureCautionChannel(i.guild, member);
           if (!ch) { await i.editReply({ content: "주의 채널 생성 실패." }).catch(() => {}); return; }
+
+          await updateProgressMessage(progressMsg, "주의 적용 중", "서버 전역 접근 제한...", 90);
           await quarantineMemberAcrossGuild(i.guild, member, ch.id).catch(() => {});
 
+          await updateProgressMessage(progressMsg, "주의 적용 중", "안내 임베드 게시...", 95);
           const embed = renderAgreeEmbed(member, all[uid]);
           const rows = buildAgreeButtons(uid, all[uid]);
           let sent = null;
@@ -524,6 +551,7 @@ module.exports = (client) => {
               await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date()), buildControlStatusEmbed(uid, all[uid])], components: [] });
             } catch (e) { safeLog("edit(control->applied)", e); }
           }
+          await updateProgressMessage(progressMsg, "주의 적용 완료", "모든 준비가 완료되었습니다.", 100);
           await i.editReply({ content: "적용 완료." }).catch(() => {});
           pending.delete(key);
           return;
@@ -566,19 +594,31 @@ module.exports = (client) => {
           await i.editReply({ content: "복귀 처리 중..." }).catch(() => {});
           let finalMsg = "복귀 완료.";
 
+          const targetId = parts[2] ?? i.user.id;
+          const all = loadAll(); const rec = all[targetId];
+          if (!rec) { finalMsg = "진행 중인 주의 절차가 없어."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
+          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { finalMsg = "대상자 또는 관리자만 복귀 가능."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
+          const allAck = rec.items.every(it => rec.acks?.[it.id]);
+          if (!allAck) { finalMsg = "모든 항목에 동의해야 복귀할 수 있어."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
+
+          let progressChannel = i.channel;
+          if (rec.controlChannelId) {
+            const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+            if (ctrlCh && canBotTalkIn(ctrlCh)) progressChannel = ctrlCh;
+          }
+          const progressMsg = await postProgressIn(progressChannel, "복귀 처리 중", "검증 중...", 10);
+          await sleep(200);
+
           try {
-            const targetId = parts[2] ?? i.user.id;
-            const all = loadAll(); const rec = all[targetId]; if (!rec) { finalMsg = "진행 중인 주의 절차가 없어."; return; }
-            if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { finalMsg = "대상자 또는 관리자만 복귀 가능."; return; }
-            const allAck = rec.items.every(it => rec.acks?.[it.id]);
-            if (!allAck) { finalMsg = "모든 항목에 동의해야 복귀할 수 있어."; return; }
-
             const member = await i.guild.members.fetch(targetId).catch(() => null);
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "역할 복원...", 50);
             if (member) await restoreSnapshotRoles(member, rec).catch(() => {});
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 역할 제거...", 65);
             await removeCautionRole(i.guild, targetId).catch(() => {});
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "접근 제한 해제...", 80);
             await clearQuarantineForMember(i.guild, targetId).catch(() => {});
-
             const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
+            await updateProgressMessage(progressMsg, "복귀 처리 중", "주의 채널 정리...", 95);
             if (ch) {
               if (rec.messageId) {
                 const msg = await ch.messages.fetch(rec.messageId).catch(() => null);
@@ -609,6 +649,7 @@ module.exports = (client) => {
             safeLog("restore", e);
             finalMsg = "복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘.";
           } finally {
+            await updateProgressMessage(progressMsg, "복귀 처리 완료", "정상적으로 복귀가 완료되었습니다.", 100);
             await i.editReply({ content: finalMsg }).catch(() => {});
           }
           return;
