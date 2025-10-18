@@ -248,14 +248,16 @@ module.exports = (client) => {
         if (hasAdminRole(targetM)) { await msg.reply({ content: "해당 유저는 예외 대상이야.", allowedMentions: { parse: [] } }); return; }
         const all = loadAll();
         const exists = !!all[uid];
+        const preselected = exists ? all[uid].items.filter(x => x.type === "preset").map(x => x.key) : [];
         const embed = buildPickEmbed(uid, exists);
-        const rows = buildReasonSelect(msg.author.id, uid, ownerKey, exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
+        const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected);
         await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } });
-        pending.set(ownerKey, { uid, selected: exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
+        pending.set(ownerKey, { uid, selected: preselected });
       } else {
         const filtered = matches.filter(m => !hasAdminRole(m));
         if (!filtered.length) { await msg.reply({ content: "검색 결과가 모두 예외 대상이야.", allowedMentions: { parse: [] } }); return; }
         const embed = buildSearchEmbed(raw, filtered);
+        const ownerKey = `${msg.author.id}:${Date.now()}`;
         const row = buildSearchSelect(msg.author.id, ownerKey, filtered);
         const cancel = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`cau:cancel:${msg.author.id}:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary));
         await msg.reply({ embeds: [embed], components: [row, cancel], allowedMentions: { parse: [] } });
@@ -275,10 +277,11 @@ module.exports = (client) => {
       const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
       const all = loadAll();
       const exists = !!all[uid];
+      const preselected = exists ? all[uid].items.filter(x => x.type === "preset").map(x => x.key) : [];
       const embed = buildPickEmbed(uid, exists);
-      const rows = buildReasonSelect(msg.author.id, uid, ownerKey, exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
+      const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected);
       await msg.reply({ embeds: [embed], components: rows, allowedMentions: { parse: [] } });
-      pending.set(ownerKey, { uid, selected: exists ? all[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
+      pending.set(ownerKey, { uid, selected: preselected });
     }
   });
 
@@ -303,9 +306,10 @@ module.exports = (client) => {
           const targetM = await i.guild.members.fetch(uid).catch(() => null);
           if (hasAdminRole(targetM)) { await i.reply({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
           const allData = loadAll(); const exists = !!allData[uid];
+          const preselected = exists ? allData[uid].items.filter(x => x.type === "preset").map(x => x.key) : [];
           const embed = buildPickEmbed(uid, exists);
-          const rows = buildReasonSelect(ownerId, uid, key, exists ? allData[uid].items.map(x => x.type === "preset" ? x.key : "rc") : null);
-          pending.set(key, { uid, selected: exists ? allData[uid].items.map(x => x.type === "preset" ? x.key : "rc") : [] });
+          const rows = buildReasonSelect(ownerId, uid, key, preselected);
+          pending.set(key, { uid, selected: preselected });
           await i.update({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(() => {});
           return;
         }
@@ -315,7 +319,7 @@ module.exports = (client) => {
           const sel = i.values || [];
           const st = pending.get(key) || { uid, selected: [] }; st.selected = sel; pending.set(key, st);
           const embed = buildPickEmbed(uid, !!loadAll()[uid]);
-          const rows = buildReasonSelect(ownerId, uid, key, sel);
+          const rows = buildReasonSelect(ownerId, uid, key, sel.filter(v => v !== "rc"));
           await i.update({ embeds: [embed], components: rows }).catch(() => {});
           return;
         }
@@ -363,7 +367,13 @@ module.exports = (client) => {
           const st = pending.get(key) || { uid, selected: [] };
           let selected = Array.isArray(st.selected) ? [...st.selected] : [];
           if (selected.includes("rc") && !(st.custom && st.custom.trim())) selected = selected.filter(v => v !== "rc");
-          if (!selected.length) { await i.reply({ content: "부여할 항목을 선택해줘. (커스텀 선택 시 문구 입력 필요)", ephemeral: true }).catch(() => {}); return; }
+          if (!selected.length) {
+            const allData = loadAll();
+            const old = allData[uid];
+            const fallback = old?.items?.filter(it => it.type === "preset").map(it => it.key) || [];
+            if (fallback.length) selected = fallback;
+            else { await i.reply({ content: "부여할 항목을 선택해줘. (커스텀만 있었던 기록이거나 선택값이 없어요)", ephemeral: true }).catch(() => {}); return; }
+          }
           const targetMember = await i.guild.members.fetch(uid).catch(() => null);
           if (!targetMember) { await i.reply({ content: "대상을 찾을 수 없어.", ephemeral: true }).catch(() => {}); return; }
           if (hasAdminRole(targetMember)) { await i.reply({ content: "해당 유저는 예외 대상이야.", ephemeral: true }).catch(() => {}); return; }
