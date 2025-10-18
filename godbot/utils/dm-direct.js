@@ -59,13 +59,13 @@ function buildChoiceEmbed(targetId) {
 
 function buildButtons(targetId) {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`dm:greet:${targetId}`).setLabel("인사 요청").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`dm:greet:${targetId}`).setLabel("첫 인사 요청").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`dm:return:${targetId}`).setLabel("복귀 요청").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`dm:ticket_ok:${targetId}`).setLabel("민원/신고 접수 완료 안내").setStyle(ButtonStyle.Success)
   );
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`dm:thanks:${targetId}`).setLabel("감사 인사").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`dm:caution:${targetId}`).setLabel("주의 경고").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`dm:caution:${targetId}`).setLabel("음성채널 인사 요청").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`dm:removed:${targetId}`).setLabel("채팅 내용 제거 안내").setStyle(ButtonStyle.Danger)
   );
   return [row1, row2];
