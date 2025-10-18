@@ -88,6 +88,20 @@ async function sendDm(client, guild, targetId, kind) {
   return true;
 }
 
+function buildLogEmbed({ kind, targetId, actorId, ok, reason }) {
+  const base = new EmbedBuilder()
+    .setTitle("DM 처리 로그")
+    .setDescription(`유형: **${DM_TYPES[kind].title}**`)
+    .addFields(
+      { name: "대상", value: `<@${targetId}> (${targetId})`, inline: true },
+      { name: "처리자", value: `<@${actorId}> (${actorId})`, inline: true },
+      { name: "결과", value: ok ? "전송 완료" : `전송 실패\n${reason || ""}`, inline: true }
+    )
+    .setColor(ok ? 0x2ecc71 : 0xe74c3c)
+    .setTimestamp(new Date());
+  return base;
+}
+
 module.exports = (client) => {
   client.on("messageCreate", async (msg) => {
     try {
@@ -126,30 +140,20 @@ module.exports = (client) => {
       }
       const [ns, kind, targetId] = String(i.customId).split(":");
       if (ns !== "dm" || !DM_TYPES[kind] || !/^\d{17,20}$/.test(targetId)) return;
+
       await i.deferReply({ ephemeral: true }).catch(() => {});
       try {
         await sendDm(i.client, i.guild, targetId, kind);
-        const done = new EmbedBuilder()
-          .setTitle("DM 전송 완료")
-          .setDescription(`다음 유형의 DM이 전송되었습니다: **${DM_TYPES[kind].title}**`)
-          .addFields({ name: "대상", value: `<@${targetId}> (${targetId})` })
-          .setColor(0x2ecc71)
-          .setTimestamp(new Date());
-        await i.editReply({ embeds: [done] }).catch(() => {});
-        try {
-          await i.message.edit({ components: [] }).catch(() => {});
-        } catch {}
+        const logOk = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: true });
+        await i.editReply({ embeds: [new EmbedBuilder().setDescription("DM 전송이 완료되었습니다.").setColor(0x2ecc71)] }).catch(() => {});
+        await i.message.edit({ embeds: [logOk], components: [], allowedMentions: { parse: [] } }).catch(() => {});
       } catch (err) {
         let reason = "알 수 없는 오류로 전송에 실패했습니다.";
         if (String(err?.message) === "USER_NOT_FOUND") reason = "대상 사용자를 찾을 수 없습니다.";
         if (String(err?.message) === "DM_OPEN_FAIL") reason = "상대방의 DM이 닫혀 있어 전송할 수 없습니다.";
-        const fail = new EmbedBuilder()
-          .setTitle("DM 전송 실패")
-          .setDescription(reason)
-          .addFields({ name: "대상", value: `<@${targetId}> (${targetId})` })
-          .setColor(0xe74c3c)
-          .setTimestamp(new Date());
-        await i.editReply({ embeds: [fail] }).catch(() => {});
+        const logFail = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: false, reason });
+        await i.editReply({ embeds: [new EmbedBuilder().setDescription("DM 전송에 실패했습니다.").setColor(0xe74c3c)] }).catch(() => {});
+        await i.message.edit({ embeds: [logFail], components: [], allowedMentions: { parse: [] } }).catch(() => {});
       }
     } catch {}
   });
