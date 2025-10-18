@@ -44,6 +44,7 @@ async function ensureRoleOverwritesForGuild(guild) {
 
 function reasonsMaster() {
   return [
+    { key: "r0", label: "서버 이용에 앞서 첫 인사를 진행해주세요.", agreeLabel: "네, 진행하겠습니다" },
     { key: "r1", label: "동의되지 않은 상대에게 반말을 사용하지 않겠습니다.", agreeLabel: "동의 없는 반말을 하지 않겠습니다" },
     { key: "r2", label: "욕설을 사용하지 않겠습니다.", agreeLabel: "욕설을 하지 않겠습니다" },
     { key: "r3", label: "서버 이용시 채널을 목적에 맞게 사용하겠습니다.", agreeLabel: "채널을 목적에 맞게 사용하겠습니다" },
