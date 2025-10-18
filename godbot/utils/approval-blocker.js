@@ -1,4 +1,4 @@
-const { PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { PermissionFlagsBits, ChannelType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
@@ -7,47 +7,15 @@ const ROLE_ID_A = "1205052922296016906";
 const ROLE_ID_B = "1403748042666151936";
 const DATA_PATH = path.join(__dirname, "../data/approval-blocked.json");
 const EXEMPT_IDS = new Set(["285645561582059520", "1380841362752274504"]);
-function isExempt(uid) { return EXEMPT_IDS.has(String(uid)); }
 
-function loadBlocked() {
-  try {
-    const j = JSON.parse(fs.readFileSync(DATA_PATH, "utf8"));
-    if (j && typeof j === "object") return j;
-    return {};
-  } catch {
-    return {};
-  }
-}
-function saveBlocked(all) {
-  try {
-    fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
-    fs.writeFileSync(DATA_PATH, JSON.stringify(all), "utf8");
-  } catch {}
-}
-function addBlocked(uid) {
-  if (isExempt(uid)) return null;
-  const all = loadBlocked();
-  all[uid] = { userId: uid, blockedAt: Date.now() };
-  saveBlocked(all);
-  return all[uid];
-}
-function removeBlocked(uid) {
-  const all = loadBlocked();
-  if (all[uid]) {
-    delete all[uid];
-    saveBlocked(all);
-    return true;
-  }
-  return false;
-}
-function isBlocked(uid) {
-  if (isExempt(uid)) return false;
-  const all = loadBlocked();
-  return !!all[uid];
-}
-function getAllBlockedIds() {
-  return Object.keys(loadBlocked()).filter((id) => !isExempt(id));
-}
+function isExempt(uid) { return EXEMPT_IDS.has(String(uid)); }
+function loadBlocked() { try { const j = JSON.parse(fs.readFileSync(DATA_PATH, "utf8")); if (j && typeof j === "object") return j; return {}; } catch { return {}; } }
+function saveBlocked(all) { try { fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true }); fs.writeFileSync(DATA_PATH, JSON.stringify(all), "utf8"); } catch {} }
+function addBlocked(uid) { if (isExempt(uid)) return null; const all = loadBlocked(); all[uid] = { userId: uid, blockedAt: Date.now() }; saveBlocked(all); return all[uid]; }
+function removeBlocked(uid) { const all = loadBlocked(); if (all[uid]) { delete all[uid]; saveBlocked(all); return true; } return false; }
+function isBlocked(uid) { if (isExempt(uid)) return false; const all = loadBlocked(); return !!all[uid]; }
+function getAllBlockedIds() { return Object.keys(loadBlocked()).filter((id) => !isExempt(id)); }
+
 async function deletePrivateJoinChannel(guild, uid) {
   let target = null;
   try {
@@ -57,55 +25,41 @@ async function deletePrivateJoinChannel(guild, uid) {
     }
   } catch {}
   if (!target) {
-    try {
-      await guild.channels.fetch();
-    } catch {}
+    try { await guild.channels.fetch(); } catch {}
     target = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.topic === uid);
   }
-  if (target) {
-    try { await target.delete("승인 절차 차단 대상 정리"); } catch {}
-  }
+  if (target) { try { await target.delete("승인 절차 차단 대상 정리"); } catch {} }
 }
+
 async function deleteFallbackJoinChannelsByName(guild, member) {
-  try {
-    await guild.channels.fetch();
-  } catch {}
+  try { await guild.channels.fetch(); } catch {}
   const base = (member.displayName || member.user.username || "").replace(/[^ㄱ-ㅎ가-힣A-Za-z0-9-_]/g, "");
-  const candidates = guild.channels.cache.filter(
-    (c) =>
-      c.type === ChannelType.GuildText &&
-      typeof c.name === "string" &&
-      c.name.startsWith("입장-") &&
-      c.name.includes(base)
-  );
-  for (const ch of candidates.values()) {
-    try { await ch.delete("승인 절차 차단 대상 정리(이름 패턴)"); } catch {}
-  }
+  const candidates = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText && typeof c.name === "string" && c.name.startsWith("입장-") && c.name.includes(base));
+  for (const ch of candidates.values()) { try { await ch.delete("승인 절차 차단 대상 정리(이름 패턴)"); } catch {} }
 }
+
 async function assignBypassRoles(guild, uid) {
   try { await guild.roles.fetch(); } catch {}
   const member = await guild.members.fetch(uid).catch(() => null);
   if (!member) return false;
   try {
-    const r1 = guild.roles.cache.get(ROLE_ID_A);
-    if (r1) { try { await member.roles.add(r1, "승인 절차 차단 대상 역할 부여(A)"); } catch {} }
-    const r2 = guild.roles.cache.get(ROLE_ID_B);
-    if (r2) { try { await member.roles.add(r2, "승인 절차 차단 대상 역할 부여(B)"); } catch {} }
+    const r1 = guild.roles.cache.get(ROLE_ID_A); if (r1) { try { await member.roles.add(r1, "승인 절차 차단 대상 역할 부여(A)"); } catch {} }
+    const r2 = guild.roles.cache.get(ROLE_ID_B); if (r2) { try { await member.roles.add(r2, "승인 절차 차단 대상 역할 부여(B)"); } catch {} }
   } catch {}
   return true;
 }
+
 async function removeBypassRoles(guild, uid) {
   try { await guild.roles.fetch(); } catch {}
   const member = await guild.members.fetch(uid).catch(() => null);
   if (!member) return false;
   try {
-    const r1 = guild.roles.cache.get(ROLE_ID_A);
-    if (r1) { try { await member.roles.remove(r1, "승인 절차 제한 해제(A)"); } catch {} }
-    const r2 = guild.roles.cache.get(ROLE_ID_B);
-    if (r2) { try { await member.roles.remove(r2, "승인 절차 제한 해제(B)"); } catch {} }
+    const r1 = guild.roles.cache.get(ROLE_ID_A); if (r1) { try { await member.roles.remove(r1, "승인 절차 제한 해제(A)"); } catch {} }
+    const r2 = guild.roles.cache.get(ROLE_ID_B); if (r2) { try { await member.roles.remove(r2, "승인 절차 제한 해제(B)"); } catch {} }
   } catch {}
   return true;
 }
+
 async function applyBlockNow(guild, uid) {
   if (isExempt(uid)) return;
   await assignBypassRoles(guild, uid);
@@ -118,137 +72,186 @@ async function applyBlockNow(guild, uid) {
     await deletePrivateJoinChannel(guild, uid);
   }
 }
+
 function makeConfirmEmbed(guild, uid, blocked, actorId) {
   const title = blocked ? "이미 제한된 유저입니다" : "승인 절차 제한 확인";
   const desc = blocked ? "이미 제한된 유저입니다. 제한을 해제하시겠습니까?" : "해당 유저의 승인 절차를 모두 차단하고 지정 역할을 부여합니다. 진행하시겠습니까?";
-  const e = new EmbedBuilder()
+  return new EmbedBuilder()
     .setTitle(title)
     .setDescription(desc)
-    .addFields(
-      { name: "대상", value: `<@${uid}> (${uid})`, inline: false },
-      { name: "상태", value: blocked ? "제한됨" : "미제한", inline: true }
-    )
+    .addFields({ name: "대상", value: `<@${uid}> (${uid})`, inline: false }, { name: "상태", value: blocked ? "제한됨" : "미제한", inline: true })
     .setFooter({ text: `요청자: ${actorId}` })
     .setTimestamp(new Date());
+}
+
+function makeButtons(uid, blocked, ownerKey) {
+  if (!blocked) {
+    return [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`blk:apply:${uid}:${ownerKey}`).setLabel("제한 적용").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`blk:cancel:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
+    )];
+  } else {
+    return [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`blk:remove:${uid}:${ownerKey}`).setLabel("제한 해제").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`blk:cancel:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
+    )];
+  }
+}
+
+function buildSearchEmbed(nick, results) {
+  const e = new EmbedBuilder().setTitle("대상자 선택").setDescription(`닉네임 검색 결과: **${nick}**`).setTimestamp(new Date());
+  if (!results?.length) e.addFields({ name: "결과", value: "일치하는 유저가 없습니다." });
   return e;
 }
-function makeButtons(uid, blocked) {
-  const rows = [];
-  if (!blocked) {
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`blk:apply:${uid}`).setLabel("제한 적용").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`blk:cancel:${uid}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
-      )
+
+function buildSearchSelect(authorId, key, members) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`blk:pick:${authorId}:${key}`)
+    .setPlaceholder("대상자를 선택하세요")
+    .addOptions(
+      members.slice(0, 25).map((m) => ({
+        label: (m.nickname || m.user.globalName || m.user.username || m.user.tag).slice(0, 100),
+        description: m.user.tag.slice(0, 100),
+        value: m.id
+      }))
     );
-  } else {
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`blk:remove:${uid}`).setLabel("제한 해제").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(`blk:cancel:${uid}`).setLabel("취소").setStyle(ButtonStyle.Secondary)
-      )
-    );
-  }
-  return rows;
+  return new ActionRowBuilder().addComponents(menu);
 }
-function extractNameQueries(text) {
-  const quoted = Array.from(text.matchAll(/"([^"]{1,32})"/g)).map(m => m[1].trim()).filter(Boolean);
-  const raw = text.replace(/"[^"]*"/g, " ").split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2 && !/^\d{17,20}$/.test(s));
-  const all = [...quoted, ...raw].slice(0, 20);
+
+function parseIdsAndMentions(msg) {
   const set = new Set();
-  for (const q of all) set.add(q);
-  return Array.from(set);
-}
-async function resolveByNickname(msg) {
-  const results = new Set();
-  const queries = extractNameQueries(msg.content);
-  if (!queries.length) return [];
-  await msg.guild.members.fetch().catch(() => {});
-  for (const q of queries) {
-    for (const m of msg.guild.members.cache.values()) {
-      const dn = (m.displayName || "").toLowerCase();
-      const un = (m.user?.username || "").toLowerCase();
-      const qq = q.toLowerCase();
-      if (dn.includes(qq) || un.includes(qq)) results.add(m.id);
-      if (results.size >= 10) break;
-    }
-    if (results.size >= 10) break;
-  }
-  return Array.from(results);
-}
-async function parseTargetsFromMessage(msg) {
-  const set = new Set();
-  for (const m of msg.mentions.users.values()) set.add(m.id);
-  const ids = (msg.content.match(/\b\d{17,20}\b/g) || []);
+  for (const u of msg.mentions.users.values()) set.add(u.id);
+  const ids = msg.content.match(/\b\d{17,20}\b/g) || [];
   for (const id of ids) set.add(id);
-  if (set.size < 10) {
-    const viaName = await resolveByNickname(msg);
-    for (const id of viaName) set.add(id);
-  }
   return Array.from(set);
 }
+
+function stripMentionsAndIds(text) {
+  return text.replace(/<@!?(\d{17,20})>/g, " ").replace(/\b\d{17,20}\b/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function resolveByNickname(guild, text) {
+  const nick = text.trim();
+  if (!nick) return [];
+  const found = await guild.members.search({ query: nick.slice(0, 100), limit: 10 }).catch(() => null);
+  if (!found) return [];
+  return Array.from(found.values());
+}
+
 module.exports = (client) => {
   client.on("messageCreate", async (msg) => {
     try {
-      if (msg.channelId !== CONTROL_CHANNEL_ID) return;
       if (!msg.guild) return;
       if (msg.author?.bot) return;
-      if (msg.webhookId) return;
+      if (msg.channelId !== CONTROL_CHANNEL_ID) return;
       const hasManage = msg.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
       if (!hasManage) return;
-      let targets = (await parseTargetsFromMessage(msg)).slice(0, 10);
-      targets = targets.filter((id) => !isExempt(id));
-      if (!targets.length) return;
+
+      let targets = parseIdsAndMentions(msg).slice(0, 10).filter((id) => !isExempt(id));
+
+      if (!targets.length) {
+        const raw = stripMentionsAndIds(msg.content);
+        if (!raw) return;
+        const matches = await resolveByNickname(msg.guild, raw);
+        if (!matches.length) {
+          const e = new EmbedBuilder().setTitle("검색 실패").setDescription("일치하는 유저가 없어. 맨션/ID 또는 더 정확한 닉네임으로 다시 시도해줘.").setColor(0xe74c3c).setTimestamp(new Date());
+          await msg.reply({ embeds: [e], allowedMentions: { parse: [] } });
+          return;
+        }
+        const ownerKey = `${msg.author.id}:${Date.now()}`;
+        if (matches.length === 1) {
+          const uid = matches[0].id;
+          if (isExempt(uid)) {
+            await msg.reply({ content: "해당 ID는 예외 대상이라 제한/해제가 적용되지 않아.", allowedMentions: { parse: [] } });
+            return;
+          }
+          const embed = makeConfirmEmbed(msg.guild, uid, isBlocked(uid), msg.author.id);
+          const components = makeButtons(uid, isBlocked(uid), ownerKey);
+          await msg.reply({ embeds: [embed], components, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
+          return;
+        } else {
+          const embed = buildSearchEmbed(raw, matches);
+          const select = buildSearchSelect(msg.author.id, ownerKey, matches);
+          const cancel = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`blk:cancel:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary));
+          await msg.reply({ embeds: [embed], components: [select, cancel], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
+          return;
+        }
+      }
+
       for (const uid of targets) {
-        const blocked = isBlocked(uid);
-        const embed = makeConfirmEmbed(msg.guild, uid, blocked, msg.author.id);
-        const components = makeButtons(uid, blocked);
+        const ownerKey = `${msg.author.id}:${Date.now()}:${uid}`;
+        const embed = makeConfirmEmbed(msg.guild, uid, isBlocked(uid), msg.author.id);
+        const components = makeButtons(uid, isBlocked(uid), ownerKey);
         await msg.reply({ embeds: [embed], components, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } });
       }
     } catch {}
   });
+
   client.on("interactionCreate", async (i) => {
     try {
-      if (!i.isButton()) return;
-      if (i.channelId !== CONTROL_CHANNEL_ID) return;
       if (!i.guild) return;
-      if (i.user?.bot) { try { await i.deferUpdate().catch(() => {}); } catch {} return; }
+      if (i.channelId !== CONTROL_CHANNEL_ID) return;
+
+      if (i.isStringSelectMenu()) {
+        const [ns, act, ownerId, key] = String(i.customId).split(":");
+        if (ns !== "blk" || act !== "pick") return;
+        if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 선택할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+        const uid = i.values?.[0];
+        if (!/^\d{17,20}$/.test(uid)) return;
+        if (isExempt(uid)) { await i.reply({ content: "해당 ID는 예외 대상이라 제한/해제가 적용되지 않아.", ephemeral: true }).catch(() => {}); return; }
+        const embed = makeConfirmEmbed(i.guild, uid, isBlocked(uid), i.user.id);
+        const rows = makeButtons(uid, isBlocked(uid), `${ownerId}:${key}`);
+        await i.update({ embeds: [embed], components: rows, allowedMentions: { parse: [] } }).catch(() => {});
+        return;
+      }
+
+      if (!i.isButton()) return;
+      const parts = String(i.customId).split(":");
+      if (parts[0] !== "blk") return;
+
+      if (parts[1] === "cancel") {
+        const ownerKey = parts[2] || "";
+        const ownerId = ownerKey.split(":")[0];
+        if (i.user.id !== ownerId) { await i.reply({ content: "요청자만 취소할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+        const log = new EmbedBuilder().setTitle("요청 취소됨").setColor(0x95a5a6).setTimestamp(new Date());
+        if (i.deferred || i.replied) {
+          await i.editReply({ embeds: [log], components: [] }).catch(async () => {
+            await i.message.edit({ embeds: [log], components: [], allowedMentions: { parse: [] } }).catch(() => {});
+          });
+        } else {
+          await i.update({ embeds: [log], components: [], allowedMentions: { parse: [] } }).catch(async () => {
+            await i.reply({ embeds: [log], ephemeral: true }).catch(() => {});
+          });
+        }
+        return;
+      }
+
+      const [ns, action, uid, ownerKey] = parts;
+      if (!/^\d{17,20}$/.test(uid)) return;
+      const ownerId = (ownerKey || "").split(":")[0] || "";
       const hasManage = i.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
-      if (!hasManage) { try { await i.reply({ content: "권한이 없습니다.", ephemeral: true }); } catch {} return; }
-      const [ns, action, uid] = String(i.customId).split(":");
-      if (ns !== "blk" || !/^\d{17,20}$/.test(uid)) return;
-      if (action === "cancel") {
-        try { await i.update({ components: [], content: "취소되었습니다.", allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
-        return;
-      }
-      if (isExempt(uid)) {
-        try { await i.reply({ content: "해당 ID는 예외 대상이라 제한/해제가 적용되지 않습니다.", ephemeral: true }); } catch {}
-        return;
-      }
+      if (!hasManage) { await i.reply({ content: "권한이 없습니다.", ephemeral: true }).catch(() => {}); return; }
+      if (ownerId && i.user.id !== ownerId) { await i.reply({ content: "요청자만 처리할 수 있어.", ephemeral: true }).catch(() => {}); return; }
+      if (isExempt(uid)) { await i.reply({ content: "해당 ID는 예외 대상이라 제한/해제가 적용되지 않아.", ephemeral: true }).catch(() => {}); return; }
+
       if (action === "apply") {
         addBlocked(uid);
         await applyBlockNow(i.guild, uid);
-        const embed = new EmbedBuilder()
-          .setTitle("🚫 제한 적용 완료")
-          .setDescription("해당 유저의 승인 절차가 차단되었으며 지정 역할이 부여되었습니다.")
-          .addFields({ name: "대상", value: `<@${uid}> (${uid})` })
-          .setTimestamp(new Date());
-        try { await i.update({ embeds: [embed], components: [], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
+        const embed = new EmbedBuilder().setTitle("🚫 제한 적용 완료").setDescription("해당 유저의 승인 절차가 차단되었으며 지정 역할이 부여되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date());
+        await i.update({ embeds: [embed], components: [], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }).catch(() => {});
         return;
       }
+
       if (action === "remove") {
         removeBlocked(uid);
         await removeBypassRoles(i.guild, uid);
-        const embed = new EmbedBuilder()
-          .setTitle("✅ 제한 해제 완료")
-          .setDescription("해당 유저의 승인 절차 제한이 해제되었습니다.")
-          .addFields({ name: "대상", value: `<@${uid}> (${uid})` })
-          .setTimestamp(new Date());
-        try { await i.update({ embeds: [embed], components: [], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }); } catch {}
+        const embed = new EmbedBuilder().setTitle("✅ 제한 해제 완료").setDescription("해당 유저의 승인 절차 제한이 해제되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date());
+        await i.update({ embeds: [embed], components: [], allowedMentions: { parse: [], users: [], roles: [], repliedUser: false } }).catch(() => {});
         return;
       }
     } catch {}
   });
+
   client.on("guildMemberAdd", async (member) => {
     try {
       if (isExempt(member.id) || !isBlocked(member.id)) return;
@@ -256,15 +259,13 @@ module.exports = (client) => {
       await applyBlockNow(member.guild, member.id);
     } catch {}
   });
+
   client.on("channelCreate", async (ch) => {
     try {
       if (ch.type !== ChannelType.GuildText) return;
       const guild = ch.guild;
       const topic = ch.topic;
-      if (topic && /^\d{17,20}$/.test(topic) && !isExempt(topic) && isBlocked(topic)) {
-        await ch.delete("승인 절차 차단 대상의 개인 채널 자동 삭제");
-        return;
-      }
+      if (topic && /^\d{17,20}$/.test(topic) && !isExempt(topic) && isBlocked(topic)) { await ch.delete("승인 절차 차단 대상의 개인 채널 자동 삭제"); return; }
       if (typeof ch.name === "string" && ch.name.startsWith("입장-")) {
         await guild.members.fetch().catch(() => {});
         const blockedIds = getAllBlockedIds().filter((id) => !isExempt(id) && guild.members.cache.has(id));
@@ -273,14 +274,12 @@ module.exports = (client) => {
           const m = guild.members.cache.get(uid);
           if (!m) continue;
           const base = (m.displayName || m.user.username || "").replace(/[^ㄱ-ㅎ가-힣A-Za-z0-9-_]/g, "");
-          if (base && ch.name.includes(base)) {
-            try { await ch.delete("승인 절차 차단 대상의 개인 채널 자동 삭제(이름 매칭)"); } catch {}
-            break;
-          }
+          if (base && ch.name.includes(base)) { try { await ch.delete("승인 절차 차단 대상의 개인 채널 자동 삭제(이름 매칭)"); } catch {} break; }
         }
       }
     } catch {}
   });
+
   client.once("ready", async () => {
     try {
       for (const g of client.guilds.cache.values()) {
@@ -288,15 +287,8 @@ module.exports = (client) => {
         if (!ids.length) continue;
         await g.members.fetch().catch(() => {});
         for (const uid of ids) {
-          if (isExempt(uid)) {
-            removeBlocked(uid);
-            continue;
-          }
-          if (g.members.cache.has(uid)) {
-            await applyBlockNow(g, uid);
-          } else {
-            await deletePrivateJoinChannel(g, uid);
-          }
+          if (isExempt(uid)) { removeBlocked(uid); continue; }
+          if (g.members.cache.has(uid)) { await applyBlockNow(g, uid); } else { await deletePrivateJoinChannel(g, uid); }
         }
       }
     } catch {}
