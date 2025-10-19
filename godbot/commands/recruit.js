@@ -10,11 +10,43 @@ const {
   TextInputBuilder,
   TextInputStyle,
   PermissionFlagsBits,
+  ChannelType,
 } = require("discord.js");
 
 const 모집채널ID = "1209147973255036959";
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const ADMIN_USER_IDS = ["285645561582059520"];
+
+const VOICE_ALIAS = {
+  "🎙️ 101호": "1222085152600096778",
+  "🎙️ 102호": "1222085194706587730",
+  "🎙️ 201호": "1230536383941050368",
+  "🎙️ 202호": "1230536435526926356",
+  "🎙️ 301호": "1207990601002389564",
+  "🎙️ 302호": "1209157046432170015",
+  "🎙️ 401호": "1209157237977911336",
+  "🎙️ 402호": "1209157289555140658",
+  "🎙️ 501호": "1209157326469210172",
+  "🎙️ 502호": "1209157352771682304",
+  "🎙️ 601호": "1209157451895672883",
+  "🎙️ 602호": "1209157492207255572",
+  "🎙️ 701호": "1209157524243091466",
+  "🎙️ 702호": "1209157622662561813",
+  "101호": "1222085152600096778",
+  "102호": "1222085194706587730",
+  "201호": "1230536383941050368",
+  "202호": "1230536435526926356",
+  "301호": "1207990601002389564",
+  "302호": "1209157046432170015",
+  "401호": "1209157237977911336",
+  "402호": "1209157289555140658",
+  "501호": "1209157326469210172",
+  "502호": "1209157352771682304",
+  "601호": "1209157451895672883",
+  "602호": "1209157492207255572",
+  "701호": "1209157524243091466",
+  "702호": "1209157622662561813",
+};
 
 const GAME_BANNERS = {
   "소환사의 협곡": "https://media.discordapp.net/attachments/1429435030647607397/1429435435628761108/gFMpf7qOe9pdHzFgOtJ7PRywQiY5m7BDfJZoNpD9zP03jg2voZU88ZAY0PkUAebbF79vj7djAJTS-UbpzAt6QQ.png?ex=68f620fd&is=68f4cf7d&hm=a451243053991af2f2498b98494ca95ab7842cdc283693d09ff1b55027011cf9&=&format=webp&quality=lossless",
@@ -238,6 +270,50 @@ function resolveRoleIdsFromSelection(guild, uid) {
   });
   return { names, ids };
 }
+function normalizeVoiceInput(raw) {
+  if (!raw) return null;
+  const v = raw.trim();
+  if (!v) return null;
+  if (/^\d{10,20}$/.test(v)) return v;
+  if (VOICE_ALIAS[v]) return VOICE_ALIAS[v];
+  return null;
+}
+async function fetchValidVoiceChannel(guild, idOrNull) {
+  if (!idOrNull) return null;
+  const ch = await guild.channels.fetch(idOrNull).catch(() => null);
+  if (ch && (ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildStageVoice)) return ch;
+  return null;
+}
+function canMemberConnect(member, channel) {
+  const perms = member?.permissionsIn(channel);
+  return perms?.has(PermissionFlagsBits.Connect) ?? false;
+}
+function isChannelFull(channel) {
+  if (!channel?.userLimit || channel.userLimit === 0) return false;
+  return channel.members.size >= channel.userLimit;
+}
+async function dmRecruiterAboutParticipant(client, recruiterId, guild, participant) {
+  try {
+    const user = await client.users.fetch(recruiterId).catch(() => null);
+    if (!user) return;
+    const m = await guild.members.fetch(participant.id).catch(() => null);
+    const embed = new EmbedBuilder()
+      .setTitle("🙋 새 참여 의사 알림")
+      .setDescription(`<@${participant.id}> 님이 모집글에 참여 의사를 밝혔어요.`)
+      .addFields(
+        { name: "유저", value: `<@${participant.id}> (${participant.username}#${participant.discriminator || "0000"})`, inline: false },
+        { name: "유저 ID", value: participant.id, inline: true },
+        { name: "계정 생성일", value: `<t:${Math.floor(participant.createdTimestamp / 1000)}:D>`, inline: true },
+        ...(m ? [
+          { name: "서버 닉네임", value: m.displayName, inline: true },
+          { name: "서버 합류일", value: `<t:${Math.floor(m.joinedTimestamp / 1000)}:D>`, inline: true },
+        ] : [])
+      )
+      .setColor(0x57c3ff)
+      .setTimestamp();
+    await user.send({ embeds: [embed] }).catch(() => {});
+  } catch {}
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -265,7 +341,7 @@ module.exports = {
             session.set(i.user.id, { page: 0, selected: new Set() });
             const panel = new EmbedBuilder()
               .setTitle("📝 모집 글 작성")
-              .setDescription("게임을 선택한 뒤, 모집 내용을 입력하세요.")
+              .setDescription("게임을 선택하거나 건너뛴 뒤, 모집 내용을 입력하세요.")
               .setColor(0x2ecc71);
             await i.reply({
               embeds: [panel],
@@ -313,9 +389,9 @@ module.exports = {
                 .setCustomId(CID_CREATE_MODAL)
                 .setTitle("모집 글 작성");
               const tiContent = new TextInputBuilder().setCustomId("content").setLabel("모집 내용").setStyle(TextInputStyle.Paragraph).setMaxLength(1000).setRequired(true);
-              const tiCount = new TextInputBuilder().setCustomId("count").setLabel("모집 인원 (1~9)").setStyle(TextInputStyle.Short).setRequired(true);
+              const tiCount = new TextInputBuilder().setCustomId("count").setLabel("모집 인원수 (본인은 제외하고 1~9명까지 가능)").setStyle(TextInputStyle.Short).setRequired(true);
               const tiHours = new TextInputBuilder().setCustomId("hours").setLabel("마감까지 유지 시간(시간, 1~24)").setStyle(TextInputStyle.Short).setRequired(true);
-              const tiVoice = new TextInputBuilder().setCustomId("voice").setLabel("음성 채널 ID(선택)").setPlaceholder("예: 1222085152600096778").setStyle(TextInputStyle.Short).setRequired(false);
+              const tiVoice = new TextInputBuilder().setCustomId("voice").setLabel("음성 채널(예: 101호 또는 채널ID)").setPlaceholder("예: 101호 또는 1222085152600096778").setStyle(TextInputStyle.Short).setRequired(false);
               contentModal.addComponents(
                 new ActionRowBuilder().addComponents(tiContent),
                 new ActionRowBuilder().addComponents(tiCount),
@@ -374,38 +450,53 @@ module.exports = {
                 disableNow = true;
               }
               await msg.edit({ embeds: [embed], components: buildRecruitComponents(msg.id, disableNow) });
-              const recruiterMention = recruiterId ? `<@${recruiterId}>` : null;
-              const boldName = `**${i.member?.displayName || i.user.username}**`;
-              const line = `-# ${recruiterMention || "모집자"} 님, ${boldName}님이 모집 글에 참여 의사를 밝혔습니다.`;
-              if (voiceId) {
-                const vc = await i.guild.channels.fetch(voiceId).catch(() => null);
-                if (vc?.isTextBased()) await vc.send(line).catch(() => {});
-              }
+
+              if (recruiterId) await dmRecruiterAboutParticipant(client, recruiterId, i.guild, i.user);
+
               await i.reply({ content: "✅ 참여 의사를 전달했어요!", ephemeral: true });
               return;
             }
 
             if (i.customId.startsWith(CID_JOINVOICE)) {
-              if (!voiceId) { await i.reply({ content: "❌ 이 모집글에는 음성 채널이 지정되지 않았어요.", ephemeral: true }); return; }
-              const vc = await i.guild.channels.fetch(voiceId).catch(() => null);
-              if (!vc || vc.type !== 2) { await i.reply({ content: "❌ 유효한 음성 채널이 아니에요.", ephemeral: true }); return; }
-              const me = i.member;
+              let targetVoice = null;
+              if (voiceId) {
+                targetVoice = await fetchValidVoiceChannel(i.guild, voiceId);
+              } else if (recruiterId) {
+                const recMember = await i.guild.members.fetch(recruiterId).catch(() => null);
+                const recVC = recMember?.voice?.channel || null;
+                if (recVC && (recVC.type === ChannelType.GuildVoice || recVC.type === ChannelType.GuildStageVoice)) {
+                  targetVoice = recVC;
+                }
+              }
+              if (!targetVoice) {
+                await i.reply({ content: "❌ 지정된 음성 채널이 없고, 모집자가 현재 접속한 음성 채널도 없어요.", ephemeral: true });
+                return;
+              }
+              if (isChannelFull(targetVoice)) {
+                await i.reply({ content: "❌ 해당 음성 채널이 인원 마감이라 접속할 수 없어요.", ephemeral: true });
+                return;
+              }
+              if (!canMemberConnect(i.member, targetVoice)) {
+                const invite = await targetVoice.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
+                await i.reply({ content: invite ? `권한이 부족해 이동은 불가해요. 초대 링크로 참여해주세요: ${invite.url}` : "권한이 부족하여 이동/초대가 불가해요.", ephemeral: true });
+                return;
+              }
               const canMove = i.guild.members.me?.permissions?.has(PermissionFlagsBits.MoveMembers);
-              if (me?.voice?.channel) {
+              if (i.member?.voice?.channel) {
                 if (canMove) {
                   try {
-                    await me.voice.setChannel(vc, "모집글 참여 이동");
+                    await i.member.voice.setChannel(targetVoice, "모집글 참여 이동");
                     await i.reply({ content: "🎙️ 음성 채널로 이동시켰어요!", ephemeral: true });
                   } catch {
-                    const invite = await vc.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
+                    const invite = await targetVoice.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
                     await i.reply({ content: invite ? `채널 초대: ${invite.url}` : "채널 이동에 실패했어요. 직접 참여해주세요.", ephemeral: true });
                   }
                 } else {
-                  const invite = await vc.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
+                  const invite = await targetVoice.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
                   await i.reply({ content: invite ? `채널 초대: ${invite.url}` : "권한이 없어 이동시킬 수 없어요. 직접 참여해주세요.", ephemeral: true });
                 }
               } else {
-                const invite = await vc.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
+                const invite = await targetVoice.createInvite({ maxAge: 300, maxUses: 1, unique: true }).catch(() => null);
                 await i.reply({ content: invite ? `채널 초대: ${invite.url}` : "초대링크 생성에 실패했어요. 직접 채널로 들어가주세요.", ephemeral: true });
               }
               return;
@@ -441,17 +532,13 @@ module.exports = {
         if (i.isModalSubmit() && i.customId === CID_CREATE_MODAL) {
           try {
             const s = ensureSession(i.user.id);
-            if (s.selected.size === 0) {
-              await i.reply({ content: "❌ 게임을 최소 1개 이상 선택하세요.", ephemeral: true });
-              return;
-            }
             const content = i.fields.getTextInputValue("content");
             let count = parseInt(i.fields.getTextInputValue("count") || "0", 10);
             let hours = parseInt(i.fields.getTextInputValue("hours") || "1", 10);
-            const voiceIdRaw = (i.fields.getTextInputValue("voice") || "").trim();
+            const voiceRaw = (i.fields.getTextInputValue("voice") || "").trim();
             if (!Number.isInteger(count) || count < 1 || count > 9) count = 1;
             if (!Number.isInteger(hours) || hours < 1 || hours > 24) hours = 1;
-            const voiceId = voiceIdRaw || null;
+            const voiceIdCandidate = normalizeVoiceInput(voiceRaw);
 
             const channel = await i.guild.channels.fetch(모집채널ID).catch(() => null);
             if (!channel?.isTextBased()) {
@@ -466,19 +553,21 @@ module.exports = {
             const recruiterId = i.user.id;
             const gameNames = [...s.selected];
             const banner = deriveBannerByGames(gameNames);
-            const tagLine = buildGameTagLineByRoleNames(i.guild, gameNames);
+            const tagLine = gameNames.length > 0 ? buildGameTagLineByRoleNames(i.guild, gameNames) : null;
+
+            const fields = [
+              { name: "모집 인원", value: `${count}명`, inline: true },
+              { name: "모집자", value: `<@${recruiterId}>`, inline: true },
+              { name: "마감까지", value: `<t:${closeTs}:R>`, inline: true },
+            ];
+            if (voiceIdCandidate) fields.splice(1, 0, { name: "음성 채널", value: `<#${voiceIdCandidate}>`, inline: true });
+            if (gameNames.length > 0) fields.push({ name: "선택 게임", value: gameNames.join(", "), inline: false });
+            fields.push({ name: "참여자", value: "없음", inline: false });
 
             const embed = new EmbedBuilder()
               .setTitle("📢 모집 글")
               .setDescription(content)
-              .addFields(
-                { name: "모집 인원", value: `${count}명`, inline: true },
-                ...(voiceId ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }] : []),
-                { name: "모집자", value: `<@${recruiterId}>`, inline: true },
-                { name: "마감까지", value: `<t:${closeTs}:R>`, inline: true },
-                { name: "선택 게임", value: gameNames.join(", "), inline: false },
-                { name: "참여자", value: "없음", inline: false },
-              )
+              .addFields(fields)
               .setColor(0x57c3ff)
               .setImage(banner)
               .setTimestamp();
