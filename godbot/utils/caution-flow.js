@@ -102,7 +102,7 @@ function renderAgreeEmbed(member, record) {
       const f = all.find(a => a.key === it.key);
       lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${f ? f.label : it.key}${record.inputMode === "text" ? ` 〔약속문구: ${toAgreeLabel(it)}〕` : ""}`);
     } else {
-      lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${it.text}${record.inputMode === "text" ? ` 〔약속문구: ${toAgreeLabel(it)}〕` : ""}`);
+      lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${it.text}${record.inputMode === "text" ? `\n〔약속문구: ${toAgreeLabel(it)}〕` : ""}`);
     }
   }
   const descBtn = "주의 단계는 '경고'보다 낮은 단계이며, 서버 이용 시 유의가 필요한 상태입니다.\n아래 각 항목의 버튼은 약속 문구입니다. 모든 항목의 버튼을 눌러 약속하면 복귀할 수 있습니다.";
