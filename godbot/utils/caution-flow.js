@@ -9,7 +9,8 @@ const VOICE_HOLD_CHANNEL_ID = "1202971727915651092";
 const CAUTION_CATEGORY_ID = "1429341340772077669";
 const CATEGORY_LIMIT = 50;
 const RETRY_INTERVAL_MS = 20000;
-const HEARTBEAT_INTERVAL_MS = 20000;
+
+const DO_NOT_TOUCH_ON_REJOIN = true;
 
 const DATA_PATH = path.join(__dirname, "../data/caution-flow.json");
 
@@ -18,13 +19,7 @@ function saveAll(all) { try { fs.mkdirSync(path.dirname(DATA_PATH), { recursive:
 function now() { return Date.now(); }
 function getSafeName(member) { const base = (member?.displayName || member?.user?.username || "유저").replace(/[^ㄱ-ㅎ가-힣A-Za-z0-9-_]/g, ""); return base || "유저"; }
 function hasAdminRole(member) { if (!member) return false; return ADMIN_ROLE_IDS.some(id => member.roles?.cache?.has(id)); }
-
-function canBotTalkIn(channel) {
-  const me = channel?.guild?.members?.me;
-  if (!me) return false;
-  const perms = channel.permissionsFor(me);
-  return perms?.has(PermissionFlagsBits.ViewChannel) && perms?.has(PermissionFlagsBits.SendMessages) && perms?.has(PermissionFlagsBits.EmbedLinks);
-}
+function canBotTalkIn(channel) { const me = channel?.guild?.members?.me; if (!me) return false; const perms = channel.permissionsFor(me); return perms?.has(PermissionFlagsBits.ViewChannel) && perms?.has(PermissionFlagsBits.SendMessages) && perms?.has(PermissionFlagsBits.EmbedLinks); }
 function safeLog(tag, e) { try { console.error(`[caution-flow] ${tag}:`, e?.stack || e?.message || e); } catch {} }
 
 async function ensureRoleOverwritesForGuild(guild) {
@@ -143,8 +138,11 @@ function buildControlStatusEmbed(uid, rec) {
   const allDone = done >= total && total > 0;
   let title = allDone ? "주의 절차 완료" : "주의 절차 진행 중";
   let status = allDone ? "모든 항목 동의 완료. 복귀하기 버튼으로 완료되었습니다." : `동의 진행 상황: ${done}/${total}`;
-  if (rec.leftAt) { title = "주의 절차 중단(서버 이탈)"; status = "대상이 서버를 이탈하여 절차가 중단되었습니다. 재입장 시 자동 재개되며, 입장 절차는 차단됩니다."; }
-  if (rec.paused === "CATEGORY_FULL") { title = "주의 채널 대기 중"; status = "주의 채널 카테고리가 포화 상태입니다. 여유가 나면 자동으로 생성되고 절차가 재개됩니다."; }
+  if (rec.leftAt) {
+    title = "재입장 제한 안내";
+    status = "해당 유저는 주의 단계 진행 도중 이탈하였기 때문에 서버 재입장 시 입장이 제한됩니다.";
+  }
+  if (rec.paused === "CATEGORY_FULL") { title = "주의 채널 대기 중"; status = "주의 채널 카테고리가 포화 상태입니다. 여유가 나면 자동으로 생성되어 절차가 재개됩니다."; }
   const fields = [{ name: "대상", value: `<@${uid}> (${uid})` }];
   if (rec.channelId) fields.push({ name: "채널", value: `<#${rec.channelId}>` });
   return new EmbedBuilder().setTitle(title).setDescription(status).addFields(fields).setTimestamp(new Date());
@@ -176,9 +174,7 @@ function collectRestorableRoleIds(guild, ids) {
 
 async function enforceCautionOnlyRole(member, record) {
   const guild = member.guild;
-  if (!botCanManageRole(guild, CAUTION_ROLE_ID)) {
-    throw new Error("봇이 CAUTION 역할을 관리할 수 없음(역할 순위 확인 필요).");
-  }
+  if (!botCanManageRole(guild, CAUTION_ROLE_ID)) throw new Error("봇이 CAUTION 역할을 관리할 수 없음.");
   const current = member.roles.cache.map(r => r.id).filter(id => id !== guild.roles.everyone.id);
   if (!record.backupRoleIds) {
     record.backupRoleIds = collectRestorableRoleIds(guild, current);
@@ -190,18 +186,17 @@ async function enforceCautionOnlyRole(member, record) {
 async function restoreSnapshotRoles(member, record) {
   const guild = member.guild;
   const restore = collectRestorableRoleIds(guild, record.backupRoleIds || []);
-  await member.roles.set(restore).catch(async (e) => {
-    safeLog("roles.set(restore)", e);
+  await member.roles.set(restore).catch(async () => {
     for (const id of restore) { if (botCanManageRole(guild, id)) await member.roles.add(id).catch(() => {}); }
   });
 }
 
 async function assignCautionRole(guild, uid, memberObj) {
-  const m = memberObj || await guild.members.fetch(uid).catch((e) => { safeLog("members.fetch(assign)", e); return null; });
+  const m = memberObj || await guild.members.fetch(uid).catch(() => null);
   if (!m) return null;
   const role = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
   if (!role) return m;
-  if (!botCanManageRole(guild, CAUTION_ROLE_ID)) throw new Error("봇이 CAUTION 역할을 관리할 수 없음(역할 순위 확인 필요).");
+  if (!botCanManageRole(guild, CAUTION_ROLE_ID)) throw new Error("봇이 CAUTION 역할을 관리할 수 없음.");
   if (!m.roles.cache.has(role.id)) await m.roles.add(role).catch(e => { safeLog("roles.add(caution)", e); throw e; });
   return m;
 }
@@ -251,14 +246,11 @@ async function ensureCautionChannel(guild, member) {
     ch = await guild.channels.create({ name, type: ChannelType.GuildText, parent: CAUTION_CATEGORY_ID }).catch(() => null);
     if (!ch) return null;
   }
-
   const everyone = guild.roles.everyone;
   const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
-
   if (everyone) await ch.permissionOverwrites.edit(everyone, { ViewChannel: false }).catch(() => {});
   if (botMember) await ch.permissionOverwrites.edit(botMember, { ViewChannel: true, SendMessages: true, ManageChannels: true, EmbedLinks: true }).catch(() => {});
   await ch.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true, EmbedLinks: true }).catch(() => {});
-
   return ch;
 }
 
@@ -302,14 +294,8 @@ function progressEmbed(title, phase, p) { return new EmbedBuilder().setTitle(tit
 function doneEmbed(title, desc, fields) { const e = new EmbedBuilder().setTitle(title).setDescription(desc).setColor(0x2ecc71).setTimestamp(new Date()); for (const f of fields || []) e.addFields(f); return e; }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function postProgressIn(channel, title, phase, p) {
-  if (!canBotTalkIn(channel)) return null;
-  return await channel.send({ embeds: [progressEmbed(title, phase, p)] }).catch(() => null);
-}
-async function updateProgressMessage(msg, title, phase, p) {
-  if (!msg) return;
-  await msg.edit({ embeds: [progressEmbed(title, phase, p)] }).catch(() => {});
-}
+async function postProgressIn(channel, title, phase, p) { if (!canBotTalkIn(channel)) return null; return await channel.send({ embeds: [progressEmbed(title, phase, p)] }).catch(() => null); }
+async function updateProgressMessage(msg, title, phase, p) { if (!msg) return; await msg.edit({ embeds: [progressEmbed(title, phase, p)] }).catch(() => {}); }
 
 async function deleteJoinChannels(guild, member) {
   const base = getSafeName(member);
@@ -325,19 +311,16 @@ async function deleteJoinChannelsByName(guild, safeName) {
 }
 
 const channelRetryTimers = new Map();
-const rejoinWaiters = new Map();
 
 async function startChannelCreationWatch(guild, member, rec) {
   if (channelRetryTimers.has(member.id)) return;
   rec.paused = "CATEGORY_FULL";
   const all0 = loadAll(); all0[member.id] = rec; saveAll(all0);
-
   const tick = async () => {
     try {
       if (!guild.available) return;
       const m = await guild.members.fetch(member.id).catch(() => null);
       if (!m) return;
-      if (m.pending) return;
       const ch = await ensureCautionChannel(guild, m);
       if (ch) {
         const all = loadAll();
@@ -354,95 +337,16 @@ async function startChannelCreationWatch(guild, member, rec) {
         const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(fresh.controlMessageId).catch(() => null) : null;
         if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, fresh)] }).catch(() => {});
         saveAll(all);
-
         await deleteJoinChannels(guild, m);
         await sleep(1200);
         await deleteJoinChannels(guild, m);
-
         clearInterval(channelRetryTimers.get(member.id));
         channelRetryTimers.delete(member.id);
       }
     } catch (e) { safeLog("startChannelCreationWatch.tick", e); }
   };
-
   const itv = setInterval(tick, RETRY_INTERVAL_MS);
   channelRetryTimers.set(member.id, itv);
-}
-
-async function resumeCautionFlow(guild, member) {
-  const all = loadAll(); const rec = all[member.id]; if (!rec) return;
-  rec.leftAt = null; saveAll(all);
-  await ensureRoleOverwritesForGuild(guild);
-  await deleteJoinChannels(guild, member);
-  const mm = await assignCautionRole(guild, member.id, member); if (!mm) return;
-  await enforceCautionOnlyRole(mm, rec);
-  await moveToHoldVoiceIfNeeded(guild, mm);
-  const ch = await ensureCautionChannel(guild, mm);
-  if (!ch) {
-    await startChannelCreationWatch(guild, mm, rec);
-    try {
-      if (rec.controlChannelId && rec.controlMessageId) {
-        const ctrlCh = await guild.channels.fetch(rec.controlChannelId).catch(() => null);
-        const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-        if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, { ...rec, paused: "CATEGORY_FULL" })] }).catch(() => {});
-      }
-    } catch {}
-    return;
-  }
-  rec.lastSafeName = getSafeName(mm);
-  const embed = renderAgreeEmbed(mm, rec);
-  const rows = buildAgreeButtons(member.id, rec);
-  let msg = null;
-  if (rec.messageId) msg = await ch.messages.fetch(rec.messageId).catch(() => null);
-  if (!msg) {
-    if (canBotTalkIn(ch)) {
-      const sent = await ch.send({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch((e) => { safeLog("send(resume)", e); return null; });
-      rec.channelId = ch.id; rec.messageId = sent?.id || null; saveAll(all);
-    }
-  } else {
-    if (canBotTalkIn(ch)) await msg.edit({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch(() => {});
-  }
-  try {
-    if (rec.controlChannelId && rec.controlMessageId) {
-      const ctrlCh = await guild.channels.fetch(rec.controlChannelId).catch(() => null);
-      const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-      if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, rec)] }).catch(() => {});
-    }
-  } catch {}
-  await deleteJoinChannels(guild, member);
-  await sleep(1200);
-  await deleteJoinChannels(guild, member);
-}
-
-async function waitUntilMembershipCompleteAndResume(guild, uid) {
-  if (rejoinWaiters.has(uid)) return;
-  const itv = setInterval(async () => {
-    try {
-      const m = await guild.members.fetch(uid).catch(() => null);
-      if (!m) return;
-      if (m.pending) return;
-      clearInterval(rejoinWaiters.get(uid));
-      rejoinWaiters.delete(uid);
-      await resumeCautionFlow(guild, m);
-    } catch {}
-  }, 5000);
-  rejoinWaiters.set(uid, itv);
-}
-
-async function reconcileForGuild(guild) {
-  const all = loadAll();
-  const ids = Object.keys(all);
-  if (!ids.length) return;
-  await guild.members.fetch().catch(() => {});
-  for (const uid of ids) {
-    const rec = all[uid];
-    const m = await guild.members.fetch(uid).catch(() => null);
-    if (!m) continue;
-    if (m.pending) { await waitUntilMembershipCompleteAndResume(guild, uid); continue; }
-    const ch = rec.channelId ? await guild.channels.fetch(rec.channelId).catch(() => null) : null;
-    const needResume = !ch || rec.leftAt || rec.paused === "CATEGORY_FULL";
-    if (needResume) await resumeCautionFlow(guild, m);
-  }
 }
 
 module.exports = (client) => {
@@ -460,10 +364,7 @@ module.exports = (client) => {
       const raw = stripIds(msg.content);
       if (!raw) return;
       const matches = await searchByNickname(msg.guild, raw);
-      if (!matches.length) {
-        await msg.reply({ embeds: [new EmbedBuilder().setTitle("검색 실패").setDescription("대상이 없어. 맨션/ID 또는 더 정확한 닉네임으로 다시 시도해줘.").setColor(0xe74c3c)], allowedMentions: { parse: [] } }).catch(() => {});
-        return;
-      }
+      if (!matches.length) { await msg.reply({ embeds: [new EmbedBuilder().setTitle("검색 실패").setDescription("대상이 없어. 맨션/ID 또는 더 정확한 닉네임으로 다시 시도해줘.").setColor(0xe74c3c)], allowedMentions: { parse: [] } }).catch(() => {}); return; }
       const ownerKey = `${msg.author.id}:${Date.now()}`;
       if (matches.length === 1) {
         const uid = matches[0].id;
@@ -474,7 +375,7 @@ module.exports = (client) => {
         const preselected = exists ? [...all[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
         const embed = buildPickEmbed(uid, exists);
         const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected, exists);
-        const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch((e) => { safeLog("reply(pick-single)", e); return null; });
+        const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch(() => null);
         pending.set(ownerKey, { uid, selected: preselected, messageId: sent?.id || null, channelId: msg.channelId });
       } else {
         const filtered = matches.filter(m => !hasAdminRole(m));
@@ -483,7 +384,7 @@ module.exports = (client) => {
         const ownerKey = `${msg.author.id}:${Date.now()}`;
         const row = buildSearchSelect(msg.author.id, ownerKey, filtered);
         const cancel = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`cau:cancel:${msg.author.id}:${ownerKey}`).setLabel("취소").setStyle(ButtonStyle.Secondary));
-        await msg.reply({ embeds: [embed], components: [row, cancel], allowedMentions: { parse: [] } }).catch((e) => safeLog("reply(search-list)", e));
+        await msg.reply({ embeds: [embed], components: [row, cancel], allowedMentions: { parse: [] } }).catch(() => {});
       }
       return;
     }
@@ -503,7 +404,7 @@ module.exports = (client) => {
       const preselected = exists ? [...all[uid].items.filter(x => x.type === "preset").map(x => x.key)] : [];
       const embed = buildPickEmbed(uid, exists);
       const rows = buildReasonSelect(msg.author.id, uid, ownerKey, preselected, exists);
-      const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch((e) => { safeLog("reply(pick-multi)", e); return null; });
+      const sent = await msg.reply({ embeds: [embed, buildSelectionEmbed({ selected: preselected })], components: rows, allowedMentions: { parse: [] } }).catch(() => null);
       pending.set(ownerKey, { uid, selected: preselected, messageId: sent?.id || null, channelId: msg.channelId });
     }
   });
@@ -540,7 +441,7 @@ module.exports = (client) => {
           const rows = buildReasonSelect(ownerId, uid, key, preselected, exists);
           const st = { uid, selected: preselected, messageId: i.message?.id || null, channelId: i.channelId };
           pending.set(key, st);
-          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch((e) => safeLog("edit(pick->showReasons)", e));
+          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch(() => {});
           return;
         }
 
@@ -554,7 +455,7 @@ module.exports = (client) => {
           const exists = !!loadAll()[uid];
           const embed = buildPickEmbed(uid, exists);
           const rows = buildReasonSelect(ownerId, uid, key, sel, exists);
-          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch((e) => safeLog("edit(reasons)", e));
+          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [embed, buildSelectionEmbed(st)], components: rows }).catch(() => {});
           return;
         }
       }
@@ -599,7 +500,7 @@ module.exports = (client) => {
           await ackUpdate();
           const ownerId = parts[2]; const key = parts[3];
           if (i.user.id !== ownerId) return;
-          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [new EmbedBuilder().setTitle("요청 취소됨").setColor(0x95a5a6).setTimestamp(new Date())], components: [] }).catch((e) => safeLog("edit(cancel)", e));
+          if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [new EmbedBuilder().setTitle("요청 취소됨").setColor(0x95a5a6).setTimestamp(new Date())], components: [] }).catch(() => {});
           pending.delete(key);
           return;
         }
@@ -615,7 +516,7 @@ module.exports = (client) => {
           const input1 = new TextInputBuilder().setCustomId("cau_custom_text").setLabel("항목 문구").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(200);
           const input2 = new TextInputBuilder().setCustomId("cau_custom_agree").setLabel("버튼 문구(약속문)").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(80).setPlaceholder("예: 해당 항목을 지키겠습니다");
           modal.addComponents(new ActionRowBuilder().addComponents(input1), new ActionRowBuilder().addComponents(input2));
-          await i.showModal(modal).catch((e) => safeLog("showModal", e));
+          await i.showModal(modal).catch(() => {});
           return;
         }
 
@@ -664,7 +565,7 @@ module.exports = (client) => {
             if (isControl && canBotTalkIn(i.channel)) {
               try {
                 await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 채널 대기 중").setDescription("카테고리 포화로 인해 채널을 지금은 만들 수 없습니다. 여유가 나면 자동으로 생성되어 절차가 재개됩니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date()), buildControlStatusEmbed(uid, all[uid])], components: [] });
-              } catch (e) { safeLog("edit(control->paused)", e); }
+              } catch {}
             }
             await updateProgressMessage(progressMsg, "주의 채널 대기 중", "카테고리 여유를 기다리는 중", 85);
             await startChannelCreationWatch(i.guild, member, all[uid]);
@@ -681,7 +582,7 @@ module.exports = (client) => {
           const embed = renderAgreeEmbed(member, all[uid]);
           const rows = buildAgreeButtons(uid, all[uid]);
           let sent = null;
-          if (canBotTalkIn(ch)) sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch((e) => { safeLog("send(caution-room)", e); return null; });
+          if (canBotTalkIn(ch)) sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => null);
           all[uid].channelId = ch.id; all[uid].messageId = sent?.id || null;
           all[uid].controlChannelId = i.channelId; all[uid].controlMessageId = i.message?.id || null;
           saveAll(all);
@@ -693,7 +594,7 @@ module.exports = (client) => {
           if (isControl && canBotTalkIn(i.channel)) {
             try {
               await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 적용 완료").setDescription("주의 채널이 생성되었고 절차가 시작되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }, { name: "채널", value: `<#${ch.id}>` }).setTimestamp(new Date()), buildControlStatusEmbed(uid, all[uid])], components: [] });
-            } catch (e) { safeLog("edit(control->applied)", e); }
+            } catch {}
           }
           await updateProgressMessage(progressMsg, "주의 적용 완료", "모든 준비가 완료되었습니다.", 100);
           await sleep(1500);
@@ -705,33 +606,24 @@ module.exports = (client) => {
 
         if (parts[1] === "ack") {
           await ackUpdate();
-
           const uid = parts[2]; const itemId = parts[3];
-          const targetId = uid;
-          const all = loadAll(); const rec = all[targetId]; if (!rec) return;
-          if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) return;
-
+          const all = loadAll(); const rec = all[uid]; if (!rec) return;
+          if (i.user.id !== uid && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) return;
           rec.acks = rec.acks || {}; rec.acks[itemId] = true; saveAll(all);
-          const member = await i.guild.members.fetch(targetId).catch(() => null);
+          const member = await i.guild.members.fetch(uid).catch(() => null);
           if (!member) return;
-
           const embed = renderAgreeEmbed(member, rec);
-          const rows = buildAgreeButtons(targetId, rec);
-
+          const rows = buildAgreeButtons(uid, rec);
           if (i.channel?.id === rec.channelId && i.message?.id === rec.messageId && canBotTalkIn(i.channel)) {
-            await i.message.edit({ content: `<@${targetId}>`, embeds: [embed], components: rows, allowedMentions: { users: [targetId] } }).catch((e) => safeLog("edit(ack)", e));
+            await i.message.edit({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => {});
           }
-
           try {
             if (rec.controlChannelId && rec.controlMessageId) {
               const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
               const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-              if (ctrlMsg && canBotTalkIn(ctrlCh)) {
-                await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(targetId, rec)] }).catch(() => {});
-              }
+              if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, rec)] }).catch(() => {});
             }
           } catch {}
-
           return;
         }
 
@@ -739,19 +631,16 @@ module.exports = (client) => {
           await ackReply();
           await i.editReply({ content: "복귀 처리 중..." }).catch(() => {});
           let finalMsg = "복귀 완료.";
-
           const targetId = parts[2] ?? i.user.id;
           const all = loadAll(); const rec = all[targetId];
           if (!rec) { finalMsg = "진행 중인 주의 절차가 없어."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
           if (i.user.id !== targetId && !i.member?.permissions?.has(PermissionFlagsBits.ManageGuild)) { finalMsg = "대상자 또는 관리자만 복귀 가능."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
           const allAck = rec.items.every(it => rec.acks?.[it.id]);
           if (!allAck) { finalMsg = "모든 항목에 동의해야 복귀할 수 있어."; await i.editReply({ content: finalMsg }).catch(() => {}); return; }
-
           const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
           let progressChannel = ch || i.channel;
           const progressMsg = await postProgressIn(progressChannel, "복귀 처리 중", "검증 중...", 10);
           await sleep(200);
-
           try {
             const member = await i.guild.members.fetch(targetId).catch(() => null);
             await updateProgressMessage(progressMsg, "복귀 처리 중", "역할 복원...", 60);
@@ -760,19 +649,14 @@ module.exports = (client) => {
             await removeCautionRole(i.guild, targetId).catch(() => {});
             await updateProgressMessage(progressMsg, "복귀 처리 완료", "정상적으로 복귀가 완료되었습니다.", 100);
             await sleep(1500);
-
             try {
               if (rec.controlChannelId && rec.controlMessageId) {
                 const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
                 const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-                if (ctrlMsg && canBotTalkIn(ctrlCh)) {
-                  await ctrlMsg.edit({ embeds: [new EmbedBuilder().setTitle("복귀 완료").setDescription("모든 절차가 완료되었습니다.").addFields({ name: "대상", value: `<@${targetId}> (${targetId})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
-                }
+                if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [new EmbedBuilder().setTitle("복귀 완료").setDescription("모든 절차가 완료되었습니다.").addFields({ name: "대상", value: `<@${targetId}> (${targetId})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
               }
             } catch {}
-
             try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
-
             if (ch) {
               try {
                 if (rec.messageId) {
@@ -789,8 +673,7 @@ module.exports = (client) => {
               } catch {}
               await ch.delete().catch(() => {});
             }
-
-            const all2 = loadAll(); delete all2[targetId]; saveAll(all2);
+            delete all[targetId]; saveAll(all);
           } catch (e) {
             safeLog("restore", e);
             finalMsg = "복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘.";
@@ -808,7 +691,6 @@ module.exports = (client) => {
           if (i.user.id !== ownerId) { await i.editReply({ content: "요청자만 처리할 수 있어." }).catch(() => {}); return; }
           const all = loadAll(); const rec = all[uid];
           if (!rec) { await i.editReply({ content: "진행 중인 주의 절차가 없어." }).catch(() => {}); return; }
-
           const ch = rec.channelId ? await i.guild.channels.fetch(rec.channelId).catch(() => null) : null;
           const progressChannel = ch || i.channel;
           const progressMsg = await postProgressIn(progressChannel, "강제복귀 처리 중", "검증 중...", 10);
@@ -821,7 +703,6 @@ module.exports = (client) => {
             await removeCautionRole(i.guild, uid).catch(() => {});
             await updateProgressMessage(progressMsg, "강제복귀 완료", "정상적으로 복귀가 완료되었습니다.", 100);
             await sleep(1200);
-
             if (rec.controlChannelId && rec.controlMessageId) {
               try {
                 const ctrlCh = await i.guild.channels.fetch(rec.controlChannelId).catch(() => null);
@@ -831,9 +712,7 @@ module.exports = (client) => {
                 }
               } catch {}
             }
-
             try { if (progressMsg && progressMsg.channel) await progressMsg.delete().catch(() => {}); } catch {}
-
             if (ch) {
               try {
                 if (rec.messageId) {
@@ -850,11 +729,8 @@ module.exports = (client) => {
               } catch {}
               await ch.delete().catch(() => {});
             }
-
-            const all2 = loadAll(); delete all2[uid]; saveAll(all2);
-            try {
-              if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 해제 완료").setDescription("관리자에 의해 강제복귀 처리되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
-            } catch {}
+            delete all[uid]; saveAll(all);
+            try { if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 해제 완료").setDescription("관리자에 의해 강제복귀 처리되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date())], components: [] }).catch(() => {}); } catch {}
             await i.editReply({ content: "강제복귀 완료." }).catch(() => {});
           } catch (e) {
             safeLog("forceRestore", e);
@@ -884,17 +760,50 @@ module.exports = (client) => {
 
   client.on("guildMemberAdd", async (member) => {
     try {
-      const all = loadAll(); if (!all[member.id]) return;
-      await waitUntilMembershipCompleteAndResume(member.guild, member.id);
+      const all = loadAll(); const rec = all[member.id]; if (!rec) return;
+      if (member.pending) return;
+      if (DO_NOT_TOUCH_ON_REJOIN) {
+        rec.leftAt = rec.leftAt || now();
+        saveAll(all);
+        if (rec.lastSafeName) {
+          await deleteJoinChannelsByName(member.guild, rec.lastSafeName);
+          await sleep(1200);
+          await deleteJoinChannelsByName(member.guild, rec.lastSafeName);
+        }
+        if (rec.controlChannelId && rec.controlMessageId) {
+          try {
+            const ctrlCh = await member.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+            const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+            if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, rec)] }).catch(() => {});
+          } catch {}
+        }
+        return;
+      }
     } catch (e) { safeLog("guildMemberAdd", e); }
   });
 
   client.on("guildMemberUpdate", async (oldM, newM) => {
     try {
       if (!newM || !newM.guild) return;
-      const all = loadAll(); if (!all[newM.id]) return;
+      const all = loadAll(); const rec = all[newM.id]; if (!rec) return;
       if (oldM?.pending && newM.pending === false) {
-        await resumeCautionFlow(newM.guild, newM);
+        if (DO_NOT_TOUCH_ON_REJOIN) {
+          rec.leftAt = rec.leftAt || now();
+          saveAll(all);
+          if (rec.lastSafeName) {
+            await deleteJoinChannelsByName(newM.guild, rec.lastSafeName);
+            await sleep(1200);
+            await deleteJoinChannelsByName(newM.guild, rec.lastSafeName);
+          }
+          if (rec.controlChannelId && rec.controlMessageId) {
+            try {
+              const ctrlCh = await newM.guild.channels.fetch(rec.controlChannelId).catch(() => null);
+              const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+              if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(newM.id, rec)] }).catch(() => {});
+            } catch {}
+          }
+          return;
+        }
       }
     } catch (e) { safeLog("guildMemberUpdate", e); }
   });
@@ -912,7 +821,6 @@ module.exports = (client) => {
         rec.channelId = null; rec.messageId = null;
       }
       saveAll(all);
-
       try {
         if (rec.controlChannelId && rec.controlMessageId) {
           const ctrlCh = await member.guild.channels.fetch(rec.controlChannelId).catch(() => null);
@@ -927,14 +835,11 @@ module.exports = (client) => {
     try {
       const guild = ch.guild;
       if (!guild) return;
-
       const cautionRole = guild.roles.cache.get(CAUTION_ROLE_ID) || await guild.roles.fetch(CAUTION_ROLE_ID).catch(() => null);
       if (!cautionRole) return;
-
       if ([ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildForum, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildMedia, ChannelType.GuildCategory].includes(ch.type)) {
         await ch.permissionOverwrites.edit(cautionRole, { ViewChannel: false }).catch(() => {});
       }
-
       if (ch.type === ChannelType.GuildText && ch.name.startsWith("입장-")) {
         try {
           const all = loadAll(); const ids = Object.keys(all);
@@ -954,17 +859,28 @@ module.exports = (client) => {
     try {
       for (const g of client.guilds.cache.values()) {
         await ensureRoleOverwritesForGuild(g);
-        await reconcileForGuild(g);
+        const all = loadAll();
+        const ids = Object.keys(all);
+        if (!ids.length) continue;
+        await g.members.fetch().catch(() => {});
+        for (const uid of ids) {
+          const rec = all[uid];
+          if (rec?.lastSafeName) await deleteJoinChannelsByName(g, rec.lastSafeName);
+          const m = await g.members.fetch(uid).catch(() => null);
+          if (!m) continue;
+          if (m.pending) continue;
+          if (DO_NOT_TOUCH_ON_REJOIN && rec.leftAt) {
+            try {
+              if (rec.controlChannelId && rec.controlMessageId) {
+                const ctrlCh = await g.channels.fetch(rec.controlChannelId).catch(() => null);
+                const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+                if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, rec)] }).catch(() => {});
+              }
+            } catch {}
+            continue;
+          }
+        }
       }
     } catch (e) { safeLog("ready", e); }
-    try {
-      setInterval(async () => {
-        try {
-          for (const g of client.guilds.cache.values()) {
-            await reconcileForGuild(g);
-          }
-        } catch (e) { safeLog("heartbeat", e); }
-      }, HEARTBEAT_INTERVAL_MS);
-    } catch (e) { safeLog("heartbeat-setup", e); }
   });
 };
