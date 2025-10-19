@@ -414,12 +414,14 @@ module.exports = {
               const tiContent = new TextInputBuilder().setCustomId("content").setLabel("모집 내용").setStyle(TextInputStyle.Paragraph).setMaxLength(1000).setRequired(true);
               const tiCount = new TextInputBuilder().setCustomId("count").setLabel("모집 인원수 (본인은 제외하고 1~9명까지 가능)").setStyle(TextInputStyle.Short).setRequired(true);
               const tiHours = new TextInputBuilder().setCustomId("hours").setLabel("마감까지 유지 시간(시간, 1~24)").setStyle(TextInputStyle.Short).setRequired(true);
-              const tiVoice = new TextInputBuilder().setCustomId("voice").setLabel("음성 채널(예: 101호 또는 채널ID)").setPlaceholder("예: 101호 또는 1222085152600096778").setStyle(TextInputStyle.Short).setRequired(false);
+              const tiVoice = new TextInputBuilder().setCustomId("voice").setLabel("음성 채널(예: 101호 또는 채널ID, 비워두면 현재 접속중인 음성채널 자동 지정)").setPlaceholder("예: 101호 또는 1222085152600096778").setStyle(TextInputStyle.Short).setRequired(false);
+              const tiImage = new TextInputBuilder().setCustomId("image").setLabel("모집 이미지 URL (https:// 로 시작, 비워두면 게임 배너)").setPlaceholder("https://example.com/image.png").setStyle(TextInputStyle.Short).setRequired(false);
               contentModal.addComponents(
                 new ActionRowBuilder().addComponents(tiContent),
                 new ActionRowBuilder().addComponents(tiCount),
                 new ActionRowBuilder().addComponents(tiHours),
-                new ActionRowBuilder().addComponents(tiVoice)
+                new ActionRowBuilder().addComponents(tiVoice),
+                new ActionRowBuilder().addComponents(tiImage)
               );
               await i.showModal(contentModal);
               return;
@@ -561,9 +563,18 @@ module.exports = {
             let count = parseInt(i.fields.getTextInputValue("count") || "0", 10);
             let hours = parseInt(i.fields.getTextInputValue("hours") || "1", 10);
             const voiceRaw = (i.fields.getTextInputValue("voice") || "").trim();
+            const imageRaw = (i.fields.getTextInputValue("image") || "").trim();
             if (!Number.isInteger(count) || count < 1 || count > 9) count = 1;
             if (!Number.isInteger(hours) || hours < 1 || hours > 24) hours = 1;
-            const voiceIdCandidate = normalizeVoiceInput(voiceRaw);
+
+            let voiceIdCandidate = normalizeVoiceInput(voiceRaw);
+            if (!voiceIdCandidate) {
+              const curVC = i.member?.voice?.channel;
+              if (curVC && (curVC.type === ChannelType.GuildVoice || curVC.type === ChannelType.GuildStageVoice)) {
+                voiceIdCandidate = curVC.id;
+              }
+            }
+            const validVoice = await fetchValidVoiceChannel(i.guild, voiceIdCandidate);
 
             const channel = await i.guild.channels.fetch(모집채널ID).catch(() => null);
             if (!channel?.isTextBased()) {
@@ -577,7 +588,9 @@ module.exports = {
 
             const recruiterId = i.user.id;
             const gameNames = [...s.selected];
-            const banner = deriveBannerByGames(gameNames);
+
+            const userImageUrl = /^https:\/\/\S+$/i.test(imageRaw) ? imageRaw : null;
+            const banner = userImageUrl || deriveBannerByGames(gameNames);
             const tagLine = gameNames.length > 0 ? buildGameTagLineByRoleNames(i.guild, gameNames) : null;
 
             const fields = [
@@ -585,7 +598,7 @@ module.exports = {
               { name: "모집자", value: `<@${recruiterId}>`, inline: true },
               { name: "마감까지", value: `<t:${closeTs}:R>`, inline: true },
             ];
-            if (voiceIdCandidate) fields.splice(1, 0, { name: "음성 채널", value: `<#${voiceIdCandidate}>`, inline: true });
+            if (validVoice) fields.splice(1, 0, { name: "음성 채널", value: `<#${validVoice.id}>`, inline: true });
             if (gameNames.length > 0) fields.push({ name: "선택 게임", value: gameNames.join(", "), inline: false });
             fields.push({ name: "참여자", value: "없음", inline: false });
 
