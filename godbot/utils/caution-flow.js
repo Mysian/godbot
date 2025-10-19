@@ -6,6 +6,10 @@ const CONTROL_CHANNEL_ID = "1429042667504930896";
 const CAUTION_ROLE_ID = "1429039343603027979";
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const VOICE_HOLD_CHANNEL_ID = "1202971727915651092";
+const CAUTION_CATEGORY_ID = "1429341340772077669";
+const CATEGORY_LIMIT = 50;
+const RETRY_INTERVAL_MS = 20000;
+
 const DATA_PATH = path.join(__dirname, "../data/caution-flow.json");
 
 function loadAll() { try { const j = JSON.parse(fs.readFileSync(DATA_PATH, "utf8")); if (j && typeof j === "object") return j; return {}; } catch { return {}; } }
@@ -139,31 +143,14 @@ function buildControlStatusEmbed(uid, rec) {
   let title = allDone ? "주의 절차 완료" : "주의 절차 진행 중";
   let status = allDone ? "모든 항목 동의 완료. 복귀하기 버튼으로 완료되었습니다." : `동의 진행 상황: ${done}/${total}`;
   if (rec.leftAt) { title = "주의 절차 중단(서버 이탈)"; status = "대상이 서버를 이탈하여 절차가 중단되었습니다. 재입장 시 자동 재개되며, 입장 절차는 차단됩니다."; }
+  if (rec.paused === "CATEGORY_FULL") { title = "주의 채널 대기 중"; status = "주의 채널 카테고리가 포화 상태입니다. 여유가 나면 자동으로 생성되고 절차가 재개됩니다."; }
   const fields = [{ name: "대상", value: `<@${uid}> (${uid})` }];
   if (rec.channelId) fields.push({ name: "채널", value: `<#${rec.channelId}>` });
   return new EmbedBuilder().setTitle(title).setDescription(status).addFields(fields).setTimestamp(new Date());
 }
 
 function newRecord(uid, items) {
-  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null, controlChannelId: null, controlMessageId: null, lastSafeName: null, leftAt: null };
-}
-
-async function ensureCautionChannel(guild, member) {
-  const base = getSafeName(member);
-  const name = `주의-${base}`;
-  await guild.channels.fetch().catch(() => {});
-  let ch = guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name === name);
-  if (!ch) ch = await guild.channels.create({ name, type: ChannelType.GuildText }).catch(() => null);
-  if (!ch) return null;
-
-  const everyone = guild.roles.everyone;
-  const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
-
-  if (everyone) await ch.permissionOverwrites.edit(everyone, { ViewChannel: false }).catch(() => {});
-  if (botMember) await ch.permissionOverwrites.edit(botMember, { ViewChannel: true, SendMessages: true, ManageChannels: true, EmbedLinks: true }).catch(() => {});
-  await ch.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true, EmbedLinks: true }).catch(() => {});
-
-  return ch;
+  return { userId: uid, startedAt: now(), items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, channelId: null, messageId: null, backupRoleIds: null, controlChannelId: null, controlMessageId: null, lastSafeName: null, leftAt: null, paused: null };
 }
 
 function botCanManageRole(guild, roleId) {
@@ -235,6 +222,45 @@ async function moveToHoldVoiceIfNeeded(guild, member) {
   await member.voice.setChannel(dst).catch(e => safeLog("voice.setChannel", e));
 }
 
+async function getCautionCategory(guild) {
+  const cat = await guild.channels.fetch(CAUTION_CATEGORY_ID).catch(() => null);
+  return cat && cat.type === ChannelType.GuildCategory ? cat : null;
+}
+
+async function isCategoryFull(guild) {
+  const cat = await getCautionCategory(guild);
+  if (!cat) return false;
+  await guild.channels.fetch().catch(() => {});
+  const count = guild.channels.cache.filter(c => c.parentId === CAUTION_CATEGORY_ID).size;
+  return count >= CATEGORY_LIMIT;
+}
+
+async function ensureCautionChannel(guild, member) {
+  const base = getSafeName(member);
+  const name = `주의-${base}`;
+  await guild.channels.fetch().catch(() => {});
+  let ch = guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name === name);
+  const cat = await getCautionCategory(guild);
+  if (ch) {
+    if (cat && ch.parentId !== CAUTION_CATEGORY_ID) {
+      await ch.setParent(CAUTION_CATEGORY_ID, { lockPermissions: false }).catch(() => {});
+    }
+  } else {
+    if (cat && await isCategoryFull(guild)) return null;
+    ch = await guild.channels.create({ name, type: ChannelType.GuildText, parent: CAUTION_CATEGORY_ID }).catch(() => null);
+    if (!ch) return null;
+  }
+
+  const everyone = guild.roles.everyone;
+  const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
+
+  if (everyone) await ch.permissionOverwrites.edit(everyone, { ViewChannel: false }).catch(() => {});
+  if (botMember) await ch.permissionOverwrites.edit(botMember, { ViewChannel: true, SendMessages: true, ManageChannels: true, EmbedLinks: true }).catch(() => {});
+  await ch.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true, EmbedLinks: true }).catch(() => {});
+
+  return ch;
+}
+
 function parseIdsFromMessage(msg) {
   const set = new Set();
   for (const u of msg.mentions.users.values()) set.add(u.id);
@@ -297,6 +323,49 @@ async function deleteJoinChannelsByName(guild, safeName) {
   for (const ch of targets.values()) { await ch.delete().catch(() => {}); }
 }
 
+const channelRetryTimers = new Map();
+
+async function startChannelCreationWatch(guild, member, rec) {
+  if (channelRetryTimers.has(member.id)) return;
+  rec.paused = "CATEGORY_FULL";
+  const all0 = loadAll(); all0[member.id] = rec; saveAll(all0);
+
+  const tick = async () => {
+    try {
+      if (!guild.available) return;
+      const m = await guild.members.fetch(member.id).catch(() => null);
+      if (!m) return;
+      const ch = await ensureCautionChannel(guild, m);
+      if (ch) {
+        const all = loadAll();
+        const fresh = all[member.id] || rec;
+        fresh.channelId = ch.id;
+        fresh.lastSafeName = getSafeName(m);
+        fresh.paused = null;
+        const embed = renderAgreeEmbed(m, fresh);
+        const rows = buildAgreeButtons(member.id, fresh);
+        let sent = null;
+        if (canBotTalkIn(ch)) sent = await ch.send({ content: `<@${member.id}>`, embeds: [embed], components: rows, allowedMentions: { users: [member.id] } }).catch(() => null);
+        fresh.messageId = sent?.id || fresh.messageId || null;
+        const ctrlCh = fresh.controlChannelId ? await guild.channels.fetch(fresh.controlChannelId).catch(() => null) : null;
+        const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(fresh.controlMessageId).catch(() => null) : null;
+        if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, fresh)] }).catch(() => {});
+        saveAll(all);
+
+        await deleteJoinChannels(guild, m);
+        await sleep(1200);
+        await deleteJoinChannels(guild, m);
+
+        clearInterval(channelRetryTimers.get(member.id));
+        channelRetryTimers.delete(member.id);
+      }
+    } catch (e) { safeLog("startChannelCreationWatch.tick", e); }
+  };
+
+  const itv = setInterval(tick, RETRY_INTERVAL_MS);
+  channelRetryTimers.set(member.id, itv);
+}
+
 async function resumeCautionFlow(guild, member) {
   const all = loadAll(); const rec = all[member.id]; if (!rec) return;
   rec.leftAt = null; saveAll(all);
@@ -305,7 +374,18 @@ async function resumeCautionFlow(guild, member) {
   const mm = await assignCautionRole(guild, member.id, member); if (!mm) return;
   await enforceCautionOnlyRole(mm, rec);
   await moveToHoldVoiceIfNeeded(guild, mm);
-  const ch = await ensureCautionChannel(guild, mm); if (!ch) return;
+  const ch = await ensureCautionChannel(guild, mm);
+  if (!ch) {
+    await startChannelCreationWatch(guild, mm, rec);
+    try {
+      if (rec.controlChannelId && rec.controlMessageId) {
+        const ctrlCh = await guild.channels.fetch(rec.controlChannelId).catch(() => null);
+        const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+        if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(member.id, { ...rec, paused: "CATEGORY_FULL" })] }).catch(() => {});
+      }
+    } catch {}
+    return;
+  }
   rec.lastSafeName = getSafeName(mm);
   const embed = renderAgreeEmbed(mm, rec);
   const rows = buildAgreeButtons(member.id, rec);
@@ -533,7 +613,7 @@ module.exports = (client) => {
           if (!items.length) { await i.editReply({ content: "부여할 항목을 선택하거나 커스텀을 입력해줘." }).catch(() => {}); return; }
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "데이터 저장...", 25);
-          const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, leftAt: null } : newRecord(uid, items); saveAll(all);
+          const all = loadAll(); const existed = all[uid]; all[uid] = existed ? { ...existed, items: items.map((it, idx) => ({ ...it, id: `${idx + 1}` })), acks: {}, leftAt: null, paused: null } : newRecord(uid, items); saveAll(all);
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "역할 부여 및 스냅샷...", 55);
           const member = await assignCautionRole(i.guild, uid);
@@ -545,7 +625,21 @@ module.exports = (client) => {
 
           await updateProgressMessage(progressMsg, "주의 적용 중", "주의 채널 생성...", 80);
           const ch = await ensureCautionChannel(i.guild, member);
-          if (!ch) { await i.editReply({ content: "주의 채널 생성 실패." }).catch(() => {}); return; }
+          if (!ch) {
+            all[uid].paused = "CATEGORY_FULL"; saveAll(all);
+            if (isControl && canBotTalkIn(i.channel)) {
+              try {
+                await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 채널 대기 중").setDescription("카테고리 포화로 인해 채널을 지금은 만들 수 없습니다. 여유가 나면 자동으로 생성되어 절차가 재개됩니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date()), buildControlStatusEmbed(uid, all[uid])], components: [] });
+              } catch (e) { safeLog("edit(control->paused)", e); }
+            }
+            await updateProgressMessage(progressMsg, "주의 채널 대기 중", "카테고리 여유를 기다리는 중", 85);
+            await startChannelCreationWatch(i.guild, member, all[uid]);
+            await sleep(1200);
+            if (progressMsg) { try { await progressMsg.delete().catch(() => {}); } catch {} }
+            await i.editReply({ content: "카테고리 포화로 채널 생성 대기 중." }).catch(() => {});
+            pending.delete(key);
+            return;
+          }
 
           all[uid].lastSafeName = getSafeName(member);
 
@@ -845,7 +939,17 @@ module.exports = (client) => {
           await enforceCautionOnlyRole(mm, rec);
           await moveToHoldVoiceIfNeeded(g, mm);
           const ch = await ensureCautionChannel(g, mm);
-          if (!ch) continue;
+          if (!ch) {
+            await startChannelCreationWatch(g, mm, rec);
+            try {
+              if (rec.controlChannelId && rec.controlMessageId) {
+                const ctrlCh = await g.channels.fetch(rec.controlChannelId).catch(() => null);
+                const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
+                if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, { ...rec, paused: "CATEGORY_FULL" })] }).catch(() => {});
+              }
+            } catch {}
+            continue;
+          }
           const embed = renderAgreeEmbed(mm, rec);
           const rows = buildAgreeButtons(uid, rec);
           let msg = null;
@@ -853,7 +957,7 @@ module.exports = (client) => {
           if (!msg) {
             if (canBotTalkIn(ch)) {
               const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch((e) => { safeLog("send(ready)", e); return null; });
-              rec.channelId = ch.id; rec.messageId = sent?.id || null; rec.lastSafeName = getSafeName(mm); saveAll(all);
+              rec.channelId = ch.id; rec.messageId = sent?.id || null; rec.lastSafeName = getSafeName(mm); rec.paused = null; saveAll(all);
             }
           } else {
             if (canBotTalkIn(ch)) await msg.edit({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => {});
