@@ -734,24 +734,24 @@ if (interaction.isModalSubmit()) {
       break;
     }
   }
-if (!handled) {
-  const id = interaction.customId || "";
-  const isCautionFlowModal = id.startsWith("cau:");
-  const isApprovalFlowModal =
-    id.startsWith("modal_nickreq_") ||
-    id.startsWith("modal_reject_") ||
-    id === "modal_bio" ||
-    id === "modal_SNS" ||
-    id === "modal_추천인" ||
-    id === "modal_alt" ||
-    id === "modal_nickchange";
-
-  if (!interaction.replied && !interaction.deferred && !isApprovalFlowModal && !isCautionFlowModal) {
-    if (!interaction.channel?.name?.startsWith('입장-')) {
-      await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
+  if (!handled) {
+    const id = interaction.customId || "";
+    const isCautionFlowModal = id.startsWith("cau:");
+    const isApprovalFlowModal =
+      id.startsWith("modal_nickreq_") ||
+      id.startsWith("modal_reject_") ||
+      id === "modal_bio" ||
+      id === "modal_SNS" ||
+      id === "modal_추천인" ||
+      id === "modal_alt" ||
+      id === "modal_nickchange";
+    const isRecruitModal = id.startsWith("recruit:");
+    if (!interaction.replied && !interaction.deferred && !isApprovalFlowModal && !isCautionFlowModal && !isRecruitModal) {
+      if (!interaction.channel?.name?.startsWith('입장-')) {
+        await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
+      }
     }
   }
-}
   return;
 }
 
