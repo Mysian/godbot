@@ -12,12 +12,10 @@ const {
   PermissionFlagsBits,
 } = require("discord.js");
 
-// 필수 설정
 const 모집채널ID = "1209147973255036959";
 const ADMIN_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const ADMIN_USER_IDS = ["285645561582059520"];
 
-// 게임 배너(하단 큰 이미지). 필요시 계속 추가.
 const GAME_BANNERS = {
   "소환사의 협곡": "https://media.discordapp.net/attachments/1429435030647607397/1429435435628761108/gFMpf7qOe9pdHzFgOtJ7PRywQiY5m7BDfJZoNpD9zP03jg2voZU88ZAY0PkUAebbF79vj7djAJTS-UbpzAt6QQ.png?ex=68f620fd&is=68f4cf7d&hm=a451243053991af2f2498b98494ca95ab7842cdc283693d09ff1b55027011cf9&=&format=webp&quality=lossless",
   "칼바람 나락": "https://media.discordapp.net/attachments/1429435030647607397/1429435614801035387/20220914064327.png?ex=68f62128&is=68f4cfa8&hm=f89ae3c22922abe39d5977f480edd98b149ecc04fd72b3b557eecb86611a18fd&=&format=webp&quality=lossless",
@@ -52,7 +50,7 @@ const GAME_BANNERS = {
   "배틀필드": "https://media.discordapp.net/attachments/1429435030647607397/1429440766777753610/dk7o37s-40bc1e09-2fdb-4d31-b2e4-cec3733fd211.png?ex=68f625f4&is=68f4d474&hm=1c9ca74bbde0795002ae14743ef371f0a4182ff69a04afc18609a145bfb2b2c8&=&format=webp&quality=lossless&width=1390&height=782",
   "백룸": "https://media.discordapp.net/attachments/1429435030647607397/1429440960470978570/the-backrooms-8hmdrwfhzhbpebgv.png?ex=68f62622&is=68f4d4a2&hm=9f2f21906ca0736d8e7e4766761f20c683fd3e83c05ebbdc0ddb7ed1bae56271&=&format=webp&quality=lossless&width=1390&height=782",
   "백 포 블러드": "https://media.discordapp.net/attachments/1429435030647607397/1429441072047587349/the-battle-against-the-ridden-back-4-blood-gameplay-0ce8dyxkom86p1xt.png?ex=68f6263d&is=68f4d4bd&hm=d2173b912ee7ee279ac868ac4d282c9dd265c36f12cf68709701f87390f81f3a&=&format=webp&quality=lossless&width=1390&height=782",
-  "비세라 클린업": "https://media.discordapp.net/attachments/1429435030647607397/1429441222002479134/3bc12b164f98f3ab35b47e92e0abc59852e9aa4c.png?ex=68f62661&is=68f4d4e1&hm=b746fc7ae8da7a4340de30e80ca21d69a7e22ec958f7c28e60339dad311c38cc&=&format=webp&quality=lossless&width=1390&height=782",
+  "비세라 클린업": "https://media.discordapp.net/attachments/1429435030647607397/1429441222002479134/3bc12a164f98f3ab35b47e92e0abc59852e9aa4c.png?ex=68f62661&is=68f4d4e1&hm=b746fc7ae8da7a4340de30e80ca21d69a7e22ec958f7c28e60339dad311c38cc&=&format=webp&quality=lossless&width=1390&height=782",
   "서든어택": "https://media.discordapp.net/attachments/1429435030647607397/1429441424042102794/74926_68157_221.png?ex=68f62691&is=68f4d511&hm=bc5d4e5489568c6b15e75b8a2e5f6b2f99c518528fce4682c7fd249cd9f21996&=&format=webp&quality=lossless",
   "선 헤이븐": "https://media.discordapp.net/attachments/1429435030647607397/1429441514257252392/header.png?ex=68f626a6&is=68f4d526&hm=4a1d03714e8272e203f93d0b6ea7d8a2d34f5e8d602de48e113cbdb09d7eb2d2&=&format=webp&quality=lossless",
   "스컬": "https://media.discordapp.net/attachments/1429435030647607397/1429441677860405379/L0r2jKDBRZCsesjXX8x4GeNqAdm-lq1Dl6WSInbClGvzm2lehhGzXIrGRKcYWxb8C575WbKKxwbH0Mz1I5_vqw.png?ex=68f626cd&is=68f4d54d&hm=d88a96620b9568eb26124357585b3a64eff83fac5e9a0c33731e4ff983664871&=&format=webp&quality=lossless",
@@ -82,18 +80,14 @@ const GAME_BANNERS = {
   "헬다이버즈": "https://media.discordapp.net/attachments/1429435030647607397/1429445472644239452/b00d1c5f8e72940ef4f23ee0a78ae6da.png?ex=68f62a56&is=68f4d8d6&hm=bc722e0a262c0a62507c33bbeb8963c828724129013a6b0f8e371423b8e92e64&=&format=webp&quality=lossless",
   "히오스": "https://media.discordapp.net/attachments/1429435030647607397/1429445547521212496/game_features_1.png?ex=68f62a68&is=68f4d8e8&hm=9772d16afb759ee4501170284f3eb6a106f78dbde53832f585df9b6fc94cd58e&=&format=webp&quality=lossless&width=1390&height=782"
 };
-
 const DEFAULT_BANNER = "https://media.discordapp.net/attachments/1388728993787940914/1389192042143551548/image.png?ex=68f60fe8&is=68f4be68&hm=c4682adfda5c83bd89672252b69e20109776eb204c0fde487b6a1dbf2a980d7c&=&format=webp&quality=lossless";
 
-// select-game.js 의 ALL_GAMES 를 가져와서 동일 이름의 역할을 찾는다.
 let ALL_GAMES = [];
 try {
   ALL_GAMES = require("./select-game.js").ALL_GAMES || [];
 } catch { ALL_GAMES = []; }
 
-// 커스텀 아이디 키
 const CID_ROOT = "recruit";
-const CID_OPEN_PANEL = `${CID_ROOT}:panel`;
 const CID_CREATE_OPEN = `${CID_ROOT}:createOpen`;
 const CID_EDIT_OPEN = `${CID_ROOT}:editOpen`;
 const CID_DELETE_OPEN = `${CID_ROOT}:deleteOpen`;
@@ -103,8 +97,15 @@ const CID_DELETE_MODAL = `${CID_ROOT}:deleteModal`;
 const CID_CREATE_GAME_SELECT = `${CID_ROOT}:createGameSelect`;
 const CID_PARTICIPATE = `${CID_ROOT}:participate`;
 const CID_JOINVOICE = `${CID_ROOT}:joinvoice`;
+const CID_PAGE_PREV = `${CID_ROOT}:page:prev`;
+const CID_PAGE_NEXT = `${CID_ROOT}:page:next`;
+const CID_SEARCH_OPEN = `${CID_ROOT}:searchOpen`;
+const CID_SEARCH_MODAL = `${CID_ROOT}:search`;
+const CID_CLEAR = `${CID_ROOT}:clear`;
+const CID_OPEN_MODAL_NOW = `${CID_ROOT}:openModalNow`;
 
-// 유틸
+const session = new Map();
+
 function getField(embed, name) {
   const fields = embed.data?.fields || [];
   return fields.find(f => f.name === name) || null;
@@ -169,12 +170,75 @@ function buildGameTagLineByRoleNames(guild, gameNames) {
   if (roleMentions.length === 0) return null;
   return `-# ${roleMentions.join(" ")}`;
 }
-function parseMessageIdFromCustomId(customId, prefix) {
+function parseMessageIdFromCustomId(customId) {
   const parts = customId.split(":");
   return parts.length >= 3 ? parts[2] : parts[1];
 }
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+function ensureSession(uid) {
+  if (!session.has(uid)) session.set(uid, { page: 0, selected: new Set() });
+  return session.get(uid);
+}
+function buildGamePageSelect(guild, uid) {
+  const s = ensureSession(uid);
+  const pages = chunk(ALL_GAMES, 25);
+  const total = pages.length;
+  if (s.page >= total) s.page = total - 1;
+  if (s.page < 0) s.page = 0;
+  const current = pages[s.page] || [];
+  const opts = current.map(n => {
+    const role = guild.roles.cache.find(r => r.name === n);
+    return {
+      label: n,
+      value: role ? role.id : `name:${n}`,
+      default: false
+    };
+  });
+  const placeholder = `게임 선택 • ${s.selected.size}개 선택됨 • 페이지 ${s.page + 1}/${Math.max(total, 1)}`;
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(CID_CREATE_GAME_SELECT)
+    .setPlaceholder(placeholder)
+    .setMinValues(1)
+    .setMaxValues(Math.min(25, Math.max(1, current.length)))
+    .addOptions(opts);
+  const rows = [];
+  rows.push(new ActionRowBuilder().addComponents(select));
+  const nav = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(CID_PAGE_PREV).setStyle(ButtonStyle.Secondary).setEmoji("◀️").setLabel("이전"),
+    new ButtonBuilder().setCustomId(CID_PAGE_NEXT).setStyle(ButtonStyle.Secondary).setEmoji("▶️").setLabel("다음"),
+    new ButtonBuilder().setCustomId(CID_SEARCH_OPEN).setStyle(ButtonStyle.Primary).setEmoji("🔎").setLabel("검색"),
+    new ButtonBuilder().setCustomId(CID_CLEAR).setStyle(ButtonStyle.Danger).setEmoji("🧹").setLabel("초기화"),
+    new ButtonBuilder().setCustomId(CID_OPEN_MODAL_NOW).setStyle(ButtonStyle.Success).setEmoji("⌨️").setLabel("모집 내용 입력")
+  );
+  rows.push(nav);
+  return rows;
+}
+function addByKeyword(uid, keyword) {
+  const s = ensureSession(uid);
+  const pattern = keyword.toLowerCase().split("").map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  const regex = new RegExp(pattern);
+  const matches = ALL_GAMES.filter(g => regex.test(g.toLowerCase()));
+  if (matches.length === 1) {
+    s.selected.add(matches[0]);
+    return { ok: true, added: matches[0], many: false, none: false };
+  }
+  if (matches.length === 0) return { ok: false, many: false, none: true };
+  return { ok: false, many: true, list: matches.slice(0, 30) };
+}
+function resolveRoleIdsFromSelection(guild, uid) {
+  const s = ensureSession(uid);
+  const names = [...s.selected];
+  const ids = names.map(n => {
+    const role = guild.roles.cache.find(r => r.name === n);
+    return role ? role.id : `name:${n}`;
+  });
+  return { names, ids };
+}
 
-// 슬래시 명령
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("모집")
@@ -197,228 +261,97 @@ module.exports = {
     client.on("interactionCreate", async (i) => {
       try {
         if (i.isButton()) {
-          // 패널 버튼
           if (i.customId === CID_CREATE_OPEN) {
-            const vcChoices = [
-              { name: "🎙️ 101호", value: "1222085152600096778" },
-              { name: "🎙️ 102호", value: "1222085194706587730" },
-              { name: "🎙️ 201호", value: "1230536383941050368" },
-              { name: "🎙️ 202호", value: "1230536435526926356" },
-              { name: "🎙️ 301호", value: "1207990601002389564" },
-              { name: "🎙️ 302호", value: "1209157046432170015" },
-              { name: "🎙️ 401호", value: "1209157237977911336" },
-              { name: "🎙️ 402호", value: "1209157289555140658" },
-              { name: "🎙️ 501호", value: "1209157326469210172" },
-              { name: "🎙️ 502호", value: "1209157352771682304" },
-              { name: "🎙️ 601호", value: "1209157451895672883" },
-              { name: "🎙️ 602호", value: "1209157492207255572" },
-              { name: "🎙️ 701호", value: "1209157524243091466" },
-              { name: "🎙️ 702호", value: "1209157622662561813" },
-            ];
-            const select = new StringSelectMenuBuilder()
-              .setCustomId(`${CID_CREATE_GAME_SELECT}`)
-              .setPlaceholder("모집할 게임들을 선택하세요 (최소 1개)")
-              .setMinValues(1)
-              .setMaxValues(Math.min(25, ALL_GAMES.length))
-              .addOptions(
-                ALL_GAMES
-                  .slice(0, 25)
-                  .map(n => {
-                    const role = i.guild.roles.cache.find(r => r.name === n);
-                    return { label: n, value: role ? role.id : `name:${n}` };
-                  })
-              );
-
-            const rowSel = new ActionRowBuilder().addComponents(select);
-
-            const modal = new ModalBuilder()
-              .setCustomId(CID_CREATE_MODAL)
-              .setTitle("모집 글 작성");
-
-            const tiContent = new TextInputBuilder()
-              .setCustomId("content")
-              .setLabel("모집 내용")
-              .setStyle(TextInputStyle.Paragraph)
-              .setMaxLength(1000)
-              .setRequired(true);
-
-            const tiCount = new TextInputBuilder()
-              .setCustomId("count")
-              .setLabel("모집 인원 (1~9)")
-              .setPlaceholder("예: 4")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true);
-
-            const tiHours = new TextInputBuilder()
-              .setCustomId("hours")
-              .setLabel("마감까지 유지 시간(시간 단위, 1~24)")
-              .setPlaceholder("예: 2")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true);
-
-            const tiVoice = new TextInputBuilder()
-              .setCustomId("voice")
-              .setLabel("음성 채널 ID(선택, 위 선택 목록 중 하나)")
-              .setPlaceholder("예: 1222085152600096778 (비워도 됨)")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(false);
-
-            modal.addComponents(
-              new ActionRowBuilder().addComponents(tiContent),
-              new ActionRowBuilder().addComponents(tiCount),
-              new ActionRowBuilder().addComponents(tiHours),
-              new ActionRowBuilder().addComponents(tiVoice),
-            );
-
+            session.set(i.user.id, { page: 0, selected: new Set() });
             const panel = new EmbedBuilder()
               .setTitle("📝 모집 글 작성")
-              .setDescription("먼저 아래 셀렉트로 **게임**을 선택한 뒤, 모달을 열어 내용을 작성하세요.")
+              .setDescription("게임을 선택한 뒤, 모집 내용을 입력하세요.")
               .setColor(0x2ecc71);
-
-            await i.reply({ embeds: [panel], components: [rowSel, new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId("openModalNow").setLabel("모집 내용 입력하기").setStyle(ButtonStyle.Primary).setEmoji("⌨️")
-            )], ephemeral: true });
-
-            const replyMsg = await i.fetchReply();
-            const collector = replyMsg.createMessageComponentCollector({ time: 600_000, filter: x => x.user.id === i.user.id });
-            let selectedGameRoleIds = [];
-
-            collector.on("collect", async ci => {
-              if (ci.isStringSelectMenu() && ci.customId === CID_CREATE_GAME_SELECT) {
-                selectedGameRoleIds = ci.values;
-                await ci.reply({ content: `선택한 게임 수: ${selectedGameRoleIds.length}`, ephemeral: true });
-              } else if (ci.isButton() && ci.customId === "openModalNow") {
-                await ci.showModal(modal);
-              }
+            await i.reply({
+              embeds: [panel],
+              components: buildGamePageSelect(i.guild, i.user.id),
+              ephemeral: true
             });
-
-            client.once("interactionCreate", async mi => {
-              if (!mi.isModalSubmit()) return;
-              if (mi.customId !== CID_CREATE_MODAL) return;
-              try {
-                const content = mi.fields.getTextInputValue("content");
-                let count = parseInt(mi.fields.getTextInputValue("count") || "0", 10);
-                let hours = parseInt(mi.fields.getTextInputValue("hours") || "1", 10);
-                const voiceIdRaw = (mi.fields.getTextInputValue("voice") || "").trim();
-                if (!Array.isArray(selectedGameRoleIds) || selectedGameRoleIds.length === 0) {
-                  await mi.reply({ content: "❌ 게임을 최소 1개 이상 선택하세요.", ephemeral: true });
-                  return;
-                }
-                if (!Number.isInteger(count) || count < 1 || count > 9) count = 1;
-                if (!Number.isInteger(hours) || hours < 1 || hours > 24) hours = 1;
-                const voiceId = voiceIdRaw || null;
-
-                const channel = await mi.guild.channels.fetch(모집채널ID).catch(() => null);
-                if (!channel?.isTextBased()) {
-                  await mi.reply({ content: "❌ 모집 전용 채널을 찾을 수 없어요.", ephemeral: true });
-                  return;
-                }
-
-                const now = Date.now();
-                const closeAt = now + hours * 3600_000;
-                const closeTs = Math.floor(closeAt / 1000);
-
-                const recruiterId = mi.user.id;
-                const gameNames = selectedGameRoleIds.map(v => {
-                  if (v.startsWith("name:")) return v.slice(5);
-                  const r = mi.guild.roles.cache.get(v);
-                  return r ? r.name : null;
-                }).filter(Boolean);
-
-                const banner = deriveBannerByGames(gameNames);
-                const tagLine = buildGameTagLineByRoleNames(mi.guild, gameNames);
-
-                const embed = new EmbedBuilder()
-                  .setTitle("📢 모집 글")
-                  .setDescription(content)
-                  .addFields(
-                    { name: "모집 인원", value: `${count}명`, inline: true },
-                    ...(voiceId ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }] : []),
-                    { name: "모집자", value: `<@${recruiterId}>`, inline: true },
-                    { name: "마감까지", value: `<t:${closeTs}:R>`, inline: true },
-                    { name: "선택 게임", value: gameNames.join(", "), inline: false },
-                    { name: "참여자", value: "없음", inline: false },
-                  )
-                  .setColor(0x57c3ff)
-                  .setImage(banner)
-                  .setTimestamp();
-
-                const message = await channel.send({
-                  content: tagLine || undefined,
-                  embeds: [embed],
-                  components: buildRecruitComponents("PENDING"),
-                });
-
-                const realComponents = buildRecruitComponents(message.id);
-                await message.edit({ components: realComponents });
-
-                await mi.reply({ content: "✅ 모집 글을 게시했어요!", ephemeral: true });
-              } catch {
-                try { await mi.reply({ content: "❌ 모집 글 작성 중 오류가 발생했어요.", ephemeral: true }); } catch {}
-              }
-            });
-
             return;
           }
 
+          if (i.customId === CID_PAGE_PREV || i.customId === CID_PAGE_NEXT || i.customId === CID_CLEAR || i.customId === CID_SEARCH_OPEN || i.customId === CID_OPEN_MODAL_NOW) {
+            if (!i.isRepliable()) return;
+            if (i.customId === CID_PAGE_PREV) {
+              const s = ensureSession(i.user.id);
+              s.page -= 1;
+              await i.update({ components: buildGamePageSelect(i.guild, i.user.id) });
+              return;
+            }
+            if (i.customId === CID_PAGE_NEXT) {
+              const s = ensureSession(i.user.id);
+              s.page += 1;
+              await i.update({ components: buildGamePageSelect(i.guild, i.user.id) });
+              return;
+            }
+            if (i.customId === CID_CLEAR) {
+              const s = ensureSession(i.user.id);
+              s.selected.clear();
+              await i.update({ components: buildGamePageSelect(i.guild, i.user.id) });
+              return;
+            }
+            if (i.customId === CID_SEARCH_OPEN) {
+              const modal = new ModalBuilder()
+                .setCustomId(CID_SEARCH_MODAL)
+                .setTitle("게임 검색");
+              const ti = new TextInputBuilder()
+                .setCustomId("searchKeyword")
+                .setLabel("게임 이름 일부를 입력")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+              modal.addComponents(new ActionRowBuilder().addComponents(ti));
+              await i.showModal(modal);
+              return;
+            }
+            if (i.customId === CID_OPEN_MODAL_NOW) {
+              const contentModal = new ModalBuilder()
+                .setCustomId(CID_CREATE_MODAL)
+                .setTitle("모집 글 작성");
+              const tiContent = new TextInputBuilder().setCustomId("content").setLabel("모집 내용").setStyle(TextInputStyle.Paragraph).setMaxLength(1000).setRequired(true);
+              const tiCount = new TextInputBuilder().setCustomId("count").setLabel("모집 인원 (1~9)").setStyle(TextInputStyle.Short).setRequired(true);
+              const tiHours = new TextInputBuilder().setCustomId("hours").setLabel("마감까지 유지 시간(시간, 1~24)").setStyle(TextInputStyle.Short).setRequired(true);
+              const tiVoice = new TextInputBuilder().setCustomId("voice").setLabel("음성 채널 ID(선택)").setPlaceholder("예: 1222085152600096778").setStyle(TextInputStyle.Short).setRequired(false);
+              contentModal.addComponents(
+                new ActionRowBuilder().addComponents(tiContent),
+                new ActionRowBuilder().addComponents(tiCount),
+                new ActionRowBuilder().addComponents(tiHours),
+                new ActionRowBuilder().addComponents(tiVoice)
+              );
+              await i.showModal(contentModal);
+              return;
+            }
+          }
+
           if (i.customId === CID_EDIT_OPEN) {
-            const modal = new ModalBuilder()
-              .setCustomId(CID_EDIT_MODAL)
-              .setTitle("모집 글 수정");
-
-            const tiMsg = new TextInputBuilder()
-              .setCustomId("msgid")
-              .setLabel("모집글 메시지 ID")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true);
-
-            const tiContent = new TextInputBuilder()
-              .setCustomId("content")
-              .setLabel("새 모집 내용(비우면 기존 유지)")
-              .setStyle(TextInputStyle.Paragraph)
-              .setRequired(false);
-
-            const tiCount = new TextInputBuilder()
-              .setCustomId("count")
-              .setLabel("새 모집 인원(1~9, 비우면 기존 유지)")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(false);
-
-            modal.addComponents(
-              new ActionRowBuilder().addComponents(tiMsg),
-              new ActionRowBuilder().addComponents(tiContent),
-              new ActionRowBuilder().addComponents(tiCount),
-            );
+            const modal = new ModalBuilder().setCustomId(CID_EDIT_MODAL).setTitle("모집 글 수정");
+            const tiMsg = new TextInputBuilder().setCustomId("msgid").setLabel("모집글 메시지 ID").setStyle(TextInputStyle.Short).setRequired(true);
+            const tiContent = new TextInputBuilder().setCustomId("content").setLabel("새 모집 내용(비우면 유지)").setStyle(TextInputStyle.Paragraph).setRequired(false);
+            const tiCount = new TextInputBuilder().setCustomId("count").setLabel("새 모집 인원(1~9, 비우면 유지)").setStyle(TextInputStyle.Short).setRequired(false);
+            modal.addComponents(new ActionRowBuilder().addComponents(tiMsg), new ActionRowBuilder().addComponents(tiContent), new ActionRowBuilder().addComponents(tiCount));
             await i.showModal(modal);
             return;
           }
 
           if (i.customId === CID_DELETE_OPEN) {
-            const modal = new ModalBuilder()
-              .setCustomId(CID_DELETE_MODAL)
-              .setTitle("모집 글 삭제");
-
-            const tiMsg = new TextInputBuilder()
-              .setCustomId("msgid")
-              .setLabel("모집글 메시지 ID")
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true);
-
+            const modal = new ModalBuilder().setCustomId(CID_DELETE_MODAL).setTitle("모집 글 삭제");
+            const tiMsg = new TextInputBuilder().setCustomId("msgid").setLabel("모집글 메시지 ID").setStyle(TextInputStyle.Short).setRequired(true);
             modal.addComponents(new ActionRowBuilder().addComponents(tiMsg));
             await i.showModal(modal);
             return;
           }
 
-          // 모집글 하단 버튼: 참여, 음성 참여
           if (i.customId.startsWith(CID_PARTICIPATE) || i.customId.startsWith(CID_JOINVOICE)) {
-            const msgId = parseMessageIdFromCustomId(i.customId, CID_ROOT);
+            const msgId = parseMessageIdFromCustomId(i.customId);
             const ch = i.channel;
             if (!ch?.isTextBased()) { await i.reply({ content: "❌ 텍스트 채널에서만 사용 가능합니다.", ephemeral: true }); return; }
             const msg = await ch.messages.fetch(msgId).catch(() => null);
             if (!msg || !msg.embeds?.[0]) { await i.reply({ content: "❌ 모집글을 찾을 수 없어요.", ephemeral: true }); return; }
             const embed = EmbedBuilder.from(msg.embeds[0]);
-
-            // 권한/상태 파싱
             const fRecruiter = getField(embed, "모집자");
             const recruiterId = fRecruiter?.value?.replace(/[<@>]/g, "") || null;
             const fCount = getField(embed, "모집 인원");
@@ -433,18 +366,14 @@ module.exports = {
               if (isClosed) { await i.reply({ content: "모집이 종료되었어요.", ephemeral: true }); return; }
               if (curIds.includes(i.user.id)) { await i.reply({ content: "이미 참여 중이에요.", ephemeral: true }); return; }
               if (curIds.length >= maxCount) { await i.reply({ content: "정원이 가득 찼어요.", ephemeral: true }); return; }
-
               curIds.push(i.user.id);
               setField(embed, "참여자", listMentions(curIds), false);
-
               let disableNow = false;
               if (curIds.length >= maxCount) {
                 closeEmbed(embed);
                 disableNow = true;
               }
               await msg.edit({ embeds: [embed], components: buildRecruitComponents(msg.id, disableNow) });
-
-              // 모집자에게 알림(해당 음성 텍스트 또는 모집자가 있는 음성 채팅방 텍텍)
               const recruiterMention = recruiterId ? `<@${recruiterId}>` : null;
               const boldName = `**${i.member?.displayName || i.user.username}**`;
               const line = `-# ${recruiterMention || "모집자"} 님, ${boldName}님이 모집 글에 참여 의사를 밝혔습니다.`;
@@ -484,60 +413,136 @@ module.exports = {
           }
         }
 
-        if (i.isModalSubmit()) {
-          // 수정
-          if (i.customId === CID_EDIT_MODAL) {
-            try {
-              const msgId = i.fields.getTextInputValue("msgid").trim();
-              const newContent = (i.fields.getTextInputValue("content") || "").trim();
-              const newCountRaw = (i.fields.getTextInputValue("count") || "").trim();
-              const ch = await i.guild.channels.fetch(모집채널ID).catch(() => null);
-              if (!ch?.isTextBased()) { await i.reply({ content: "❌ 모집 채널을 찾을 수 없어요.", ephemeral: true }); return; }
-              const msg = await ch.messages.fetch(msgId).catch(() => null);
-              if (!msg || !msg.embeds?.[0]) { await i.reply({ content: "❌ 모집글을 찾을 수 없어요.", ephemeral: true }); return; }
-              const embed = EmbedBuilder.from(msg.embeds[0]);
-
-              const recruiterId = getField(embed, "모집자")?.value?.replace(/[<@>]/g, "");
-              const isOwner = recruiterId && recruiterId === i.user.id;
-              if (!(isOwner || isAdminOrOwner(i))) { await i.reply({ content: "❌ 수정 권한이 없어요.", ephemeral: true }); return; }
-
-              if (newContent) embed.setDescription(newContent);
-              if (newCountRaw) {
-                const n = parseInt(newCountRaw, 10);
-                if (Number.isInteger(n) && n >= 1 && n <= 9) setField(embed, "모집 인원", `${n}명`, true);
-              }
-
-              await msg.edit({ embeds: [embed] });
-              await i.reply({ content: "✅ 모집 글을 수정했어요!", ephemeral: true });
-            } catch {
-              try { await i.reply({ content: "❌ 수정 중 오류가 발생했어요.", ephemeral: true }); } catch {}
-            }
-            return;
-          }
-
-          // 삭제
-          if (i.customId === CID_DELETE_MODAL) {
-            try {
-              const msgId = i.fields.getTextInputValue("msgid").trim();
-              const ch = await i.guild.channels.fetch(모집채널ID).catch(() => null);
-              if (!ch?.isTextBased()) { await i.reply({ content: "❌ 모집 채널을 찾을 수 없어요.", ephemeral: true }); return; }
-              const msg = await ch.messages.fetch(msgId).catch(() => null);
-              if (!msg || !msg.embeds?.[0]) { await i.reply({ content: "❌ 모집글을 찾을 수 없어요.", ephemeral: true }); return; }
-              const embed = EmbedBuilder.from(msg.embeds[0]);
-
-              const recruiterId = getField(embed, "모집자")?.value?.replace(/[<@>]/g, "");
-              const isOwner = recruiterId && recruiterId === i.user.id;
-              if (!(isOwner || isAdminOrOwner(i))) { await i.reply({ content: "❌ 삭제 권한이 없어요.", ephemeral: true }); return; }
-
-              await msg.delete().catch(() => {});
-              await i.reply({ content: "🗑️ 모집 글을 삭제했어요!", ephemeral: true });
-            } catch {
-              try { await i.reply({ content: "❌ 삭제 중 오류가 발생했어요.", ephemeral: true }); } catch {}
-            }
-            return;
-          }
+        if (i.isStringSelectMenu() && i.customId === CID_CREATE_GAME_SELECT) {
+          const s = ensureSession(i.user.id);
+          const picked = i.values.map(v => {
+            if (v.startsWith("name:")) return v.slice(5);
+            const role = i.guild.roles.cache.get(v);
+            return role ? role.name : null;
+          }).filter(Boolean);
+          picked.forEach(n => s.selected.add(n));
+          await i.reply({ content: `선택한 게임 수: ${s.selected.size}`, ephemeral: true });
+          return;
         }
-      } catch { /* 무시 */ }
+
+        if (i.isModalSubmit() && i.customId === CID_SEARCH_MODAL) {
+          const keyword = i.fields.getTextInputValue("searchKeyword").trim();
+          const r = addByKeyword(i.user.id, keyword);
+          if (r.ok) {
+            await i.reply({ content: `추가됨: ${r.added} • 총 ${ensureSession(i.user.id).selected.size}개`, ephemeral: true });
+          } else if (r.none) {
+            await i.reply({ content: "검색 결과가 없습니다.", ephemeral: true });
+          } else if (r.many) {
+            await i.reply({ content: `여러 개가 검색됨. 더 구체적으로 입력: ${r.list.join(", ")}`, ephemeral: true });
+          }
+          return;
+        }
+
+        if (i.isModalSubmit() && i.customId === CID_CREATE_MODAL) {
+          try {
+            const s = ensureSession(i.user.id);
+            if (s.selected.size === 0) {
+              await i.reply({ content: "❌ 게임을 최소 1개 이상 선택하세요.", ephemeral: true });
+              return;
+            }
+            const content = i.fields.getTextInputValue("content");
+            let count = parseInt(i.fields.getTextInputValue("count") || "0", 10);
+            let hours = parseInt(i.fields.getTextInputValue("hours") || "1", 10);
+            const voiceIdRaw = (i.fields.getTextInputValue("voice") || "").trim();
+            if (!Number.isInteger(count) || count < 1 || count > 9) count = 1;
+            if (!Number.isInteger(hours) || hours < 1 || hours > 24) hours = 1;
+            const voiceId = voiceIdRaw || null;
+
+            const channel = await i.guild.channels.fetch(모집채널ID).catch(() => null);
+            if (!channel?.isTextBased()) {
+              await i.reply({ content: "❌ 모집 전용 채널을 찾을 수 없어요.", ephemeral: true });
+              return;
+            }
+
+            const now = Date.now();
+            const closeAt = now + hours * 3600_000;
+            const closeTs = Math.floor(closeAt / 1000);
+
+            const recruiterId = i.user.id;
+            const gameNames = [...s.selected];
+            const banner = deriveBannerByGames(gameNames);
+            const tagLine = buildGameTagLineByRoleNames(i.guild, gameNames);
+
+            const embed = new EmbedBuilder()
+              .setTitle("📢 모집 글")
+              .setDescription(content)
+              .addFields(
+                { name: "모집 인원", value: `${count}명`, inline: true },
+                ...(voiceId ? [{ name: "음성 채널", value: `<#${voiceId}>`, inline: true }] : []),
+                { name: "모집자", value: `<@${recruiterId}>`, inline: true },
+                { name: "마감까지", value: `<t:${closeTs}:R>`, inline: true },
+                { name: "선택 게임", value: gameNames.join(", "), inline: false },
+                { name: "참여자", value: "없음", inline: false },
+              )
+              .setColor(0x57c3ff)
+              .setImage(banner)
+              .setTimestamp();
+
+            const message = await channel.send({
+              content: tagLine || undefined,
+              embeds: [embed],
+              components: buildRecruitComponents("PENDING"),
+            });
+            const realComponents = buildRecruitComponents(message.id);
+            await message.edit({ components: realComponents });
+            session.delete(i.user.id);
+            await i.reply({ content: "✅ 모집 글을 게시했어요!", ephemeral: true });
+          } catch {
+            try { await i.reply({ content: "❌ 모집 글 작성 중 오류가 발생했어요.", ephemeral: true }); } catch {}
+          }
+          return;
+        }
+
+        if (i.isModalSubmit() && i.customId === CID_EDIT_MODAL) {
+          try {
+            const msgId = i.fields.getTextInputValue("msgid").trim();
+            const newContent = (i.fields.getTextInputValue("content") || "").trim();
+            const newCountRaw = (i.fields.getTextInputValue("count") || "").trim();
+            const ch = await i.guild.channels.fetch(모집채널ID).catch(() => null);
+            if (!ch?.isTextBased()) { await i.reply({ content: "❌ 모집 채널을 찾을 수 없어요.", ephemeral: true }); return; }
+            const msg = await ch.messages.fetch(msgId).catch(() => null);
+            if (!msg || !msg.embeds?.[0]) { await i.reply({ content: "❌ 모집글을 찾을 수 없어요.", ephemeral: true }); return; }
+            const embed = EmbedBuilder.from(msg.embeds[0]);
+            const recruiterId = getField(embed, "모집자")?.value?.replace(/[<@>]/g, "");
+            const isOwner = recruiterId && recruiterId === i.user.id;
+            if (!(isOwner || isAdminOrOwner(i))) { await i.reply({ content: "❌ 수정 권한이 없어요.", ephemeral: true }); return; }
+            if (newContent) embed.setDescription(newContent);
+            if (newCountRaw) {
+              const n = parseInt(newCountRaw, 10);
+              if (Number.isInteger(n) && n >= 1 && n <= 9) setField(embed, "모집 인원", `${n}명`, true);
+            }
+            await msg.edit({ embeds: [embed] });
+            await i.reply({ content: "✅ 모집 글을 수정했어요!", ephemeral: true });
+          } catch {
+            try { await i.reply({ content: "❌ 수정 중 오류가 발생했어요.", ephemeral: true }); } catch {}
+          }
+          return;
+        }
+
+        if (i.isModalSubmit() && i.customId === CID_DELETE_MODAL) {
+          try {
+            const msgId = i.fields.getTextInputValue("msgid").trim();
+            const ch = await i.guild.channels.fetch(모집채널ID).catch(() => null);
+            if (!ch?.isTextBased()) { await i.reply({ content: "❌ 모집 채널을 찾을 수 없어요.", ephemeral: true }); return; }
+            const msg = await ch.messages.fetch(msgId).catch(() => null);
+            if (!msg || !msg.embeds?.[0]) { await i.reply({ content: "❌ 모집글을 찾을 수 없어요.", ephemeral: true }); return; }
+            const embed = EmbedBuilder.from(msg.embeds[0]);
+            const recruiterId = getField(embed, "모집자")?.value?.replace(/[<@>]/g, "");
+            const isOwner = recruiterId && recruiterId === i.user.id;
+            if (!(isOwner || isAdminOrOwner(i))) { await i.reply({ content: "❌ 삭제 권한이 없어요.", ephemeral: true }); return; }
+            await msg.delete().catch(() => {});
+            await i.reply({ content: "🗑️ 모집 글을 삭제했어요!", ephemeral: true });
+          } catch {
+            try { await i.reply({ content: "❌ 삭제 중 오류가 발생했어요.", ephemeral: true }); } catch {}
+          }
+          return;
+        }
+      } catch {}
     });
   },
 };
