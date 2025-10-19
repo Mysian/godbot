@@ -293,26 +293,48 @@ function isChannelFull(channel) {
   if (!channel?.userLimit || channel.userLimit === 0) return false;
   return channel.members.size >= channel.userLimit;
 }
-async function dmRecruiterAboutParticipant(client, recruiterId, guild, participant) {
+async function dmRecruiterAboutParticipant(client, recruiterId, guild, participant, recruitEmbed) {
   try {
-    const user = await client.users.fetch(recruiterId).catch(() => null);
-    if (!user) return;
-    const m = await guild.members.fetch(participant.id).catch(() => null);
+    const dmTarget = await client.users.fetch(recruiterId).catch(() => null);
+    if (!dmTarget) return;
+
+    const member = await guild.members.fetch(participant.id).catch(() => null);
+    const nickname = member?.displayName || participant.username;
+    const thumb =
+      (member?.displayAvatarURL && member.displayAvatarURL({ extension: "png", size: 256 })) ||
+      participant.displayAvatarURL({ extension: "png", size: 256 });
+    const recruitContent =
+      recruitEmbed?.data?.description?.slice(0, 1000) || "모집글 본문 없음";
+    const ROLE_JULGEM = "1210762420151394354";
+    const ROLE_JULBBAG = "1210762298172383273";
+    const ROLE_BBAG = "1210762363704311838";
+    let gameStyle = "알 수 없음";
+    if (member?.roles?.cache) {
+      const hasJ = member.roles.cache.has(ROLE_JULGEM);
+      const hasJB = member.roles.cache.has(ROLE_JULBBAG);
+      const hasB = member.roles.cache.has(ROLE_BBAG);
+      const owned = [hasJ, hasJB, hasB].filter(Boolean).length;
+      if (owned === 1) {
+        if (hasJ) gameStyle = "즐겜러";
+        else if (hasJB) gameStyle = "즐빡겜러";
+        else if (hasB) gameStyle = "빡겜러";
+      } else {
+        gameStyle = "알 수 없음";
+      }
+    }
+    const joinedTs = member?.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
     const embed = new EmbedBuilder()
-      .setTitle("🙋 새 참여 의사 알림")
-      .setDescription(`<@${participant.id}> 님이 모집글에 참여 의사를 밝혔어요.`)
+      .setTitle(`🙋 ${nickname}님이 참여를 원합니다.`)
+      .setThumbnail(thumb)
       .addFields(
-        { name: "유저", value: `<@${participant.id}> (${participant.username}#${participant.discriminator || "0000"})`, inline: false },
-        { name: "유저 ID", value: participant.id, inline: true },
-        { name: "계정 생성일", value: `<t:${Math.floor(participant.createdTimestamp / 1000)}:D>`, inline: true },
-        ...(m ? [
-          { name: "서버 닉네임", value: m.displayName, inline: true },
-          { name: "서버 합류일", value: `<t:${Math.floor(m.joinedTimestamp / 1000)}:D>`, inline: true },
-        ] : [])
+        { name: "모집글 정보", value: recruitContent || "모집글 본문 없음", inline: false },
+        { name: "유저 정보", value: `<@${participant.id}> (${participant.id})`, inline: false },
+        { name: "게임 스타일", value: gameStyle, inline: true },
+        ...(joinedTs ? [{ name: "서버 합류일", value: `<t:${joinedTs}:D>`, inline: true }] : [])
       )
       .setColor(0x57c3ff)
       .setTimestamp();
-    await user.send({ embeds: [embed] }).catch(() => {});
+    await dmTarget.send({ embeds: [embed] }).catch(() => {});
   } catch {}
 }
 
@@ -452,7 +474,7 @@ module.exports = {
               }
               await msg.edit({ embeds: [embed], components: buildRecruitComponents(msg.id, disableNow) });
 
-              if (recruiterId) await dmRecruiterAboutParticipant(client, recruiterId, i.guild, i.user);
+              if (recruiterId) await dmRecruiterAboutParticipant(client, recruiterId, i.guild, i.user, embed);
 
               await i.reply({ content: "✅ 참여 의사를 전달했어요!", ephemeral: true });
               return;
