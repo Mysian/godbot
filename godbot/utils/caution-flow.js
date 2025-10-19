@@ -9,6 +9,7 @@ const VOICE_HOLD_CHANNEL_ID = "1202971727915651092";
 const CAUTION_CATEGORY_ID = "1429341340772077669";
 const CATEGORY_LIMIT = 50;
 const RETRY_INTERVAL_MS = 20000;
+const HEARTBEAT_INTERVAL_MS = 20000;
 
 const DATA_PATH = path.join(__dirname, "../data/caution-flow.json");
 
@@ -324,6 +325,7 @@ async function deleteJoinChannelsByName(guild, safeName) {
 }
 
 const channelRetryTimers = new Map();
+const rejoinWaiters = new Map();
 
 async function startChannelCreationWatch(guild, member, rec) {
   if (channelRetryTimers.has(member.id)) return;
@@ -335,6 +337,7 @@ async function startChannelCreationWatch(guild, member, rec) {
       if (!guild.available) return;
       const m = await guild.members.fetch(member.id).catch(() => null);
       if (!m) return;
+      if (m.pending) return;
       const ch = await ensureCautionChannel(guild, m);
       if (ch) {
         const all = loadAll();
@@ -409,6 +412,37 @@ async function resumeCautionFlow(guild, member) {
   await deleteJoinChannels(guild, member);
   await sleep(1200);
   await deleteJoinChannels(guild, member);
+}
+
+async function waitUntilMembershipCompleteAndResume(guild, uid) {
+  if (rejoinWaiters.has(uid)) return;
+  const itv = setInterval(async () => {
+    try {
+      const m = await guild.members.fetch(uid).catch(() => null);
+      if (!m) return;
+      if (m.pending) return;
+      clearInterval(rejoinWaiters.get(uid));
+      rejoinWaiters.delete(uid);
+      await resumeCautionFlow(guild, m);
+    } catch {}
+  }, 5000);
+  rejoinWaiters.set(uid, itv);
+}
+
+async function reconcileForGuild(guild) {
+  const all = loadAll();
+  const ids = Object.keys(all);
+  if (!ids.length) return;
+  await guild.members.fetch().catch(() => {});
+  for (const uid of ids) {
+    const rec = all[uid];
+    const m = await guild.members.fetch(uid).catch(() => null);
+    if (!m) continue;
+    if (m.pending) { await waitUntilMembershipCompleteAndResume(guild, uid); continue; }
+    const ch = rec.channelId ? await guild.channels.fetch(rec.channelId).catch(() => null) : null;
+    const needResume = !ch || rec.leftAt || rec.paused === "CATEGORY_FULL";
+    if (needResume) await resumeCautionFlow(guild, m);
+  }
 }
 
 module.exports = (client) => {
@@ -756,7 +790,7 @@ module.exports = (client) => {
               await ch.delete().catch(() => {});
             }
 
-            delete all[targetId]; saveAll(all);
+            const all2 = loadAll(); delete all2[targetId]; saveAll(all2);
           } catch (e) {
             safeLog("restore", e);
             finalMsg = "복귀 처리 중 오류가 발생했어. 권한과 로그를 확인해줘.";
@@ -817,7 +851,7 @@ module.exports = (client) => {
               await ch.delete().catch(() => {});
             }
 
-            delete all[uid]; saveAll(all);
+            const all2 = loadAll(); delete all2[uid]; saveAll(all2);
             try {
               if (canBotTalkIn(i.channel)) await i.message.edit({ embeds: [new EmbedBuilder().setTitle("주의 해제 완료").setDescription("관리자에 의해 강제복귀 처리되었습니다.").addFields({ name: "대상", value: `<@${uid}> (${uid})` }).setTimestamp(new Date())], components: [] }).catch(() => {});
             } catch {}
@@ -851,8 +885,7 @@ module.exports = (client) => {
   client.on("guildMemberAdd", async (member) => {
     try {
       const all = loadAll(); if (!all[member.id]) return;
-      if (member.pending) return;
-      await resumeCautionFlow(member.guild, member);
+      await waitUntilMembershipCompleteAndResume(member.guild, member.id);
     } catch (e) { safeLog("guildMemberAdd", e); }
   });
 
@@ -921,57 +954,17 @@ module.exports = (client) => {
     try {
       for (const g of client.guilds.cache.values()) {
         await ensureRoleOverwritesForGuild(g);
-        const all = loadAll();
-        const ids = Object.keys(all);
-        if (!ids.length) continue;
-        await g.members.fetch().catch(() => {});
-        for (const uid of ids) {
-          const rec = all[uid];
-
-          if (rec?.lastSafeName) await deleteJoinChannelsByName(g, rec.lastSafeName);
-
-          const m = await g.members.fetch(uid).catch(() => null);
-          if (!m) continue;
-          if (m.pending) continue;
-
-          const mm = await assignCautionRole(g, uid, m);
-          if (!mm) continue;
-          await enforceCautionOnlyRole(mm, rec);
-          await moveToHoldVoiceIfNeeded(g, mm);
-          const ch = await ensureCautionChannel(g, mm);
-          if (!ch) {
-            await startChannelCreationWatch(g, mm, rec);
-            try {
-              if (rec.controlChannelId && rec.controlMessageId) {
-                const ctrlCh = await g.channels.fetch(rec.controlChannelId).catch(() => null);
-                const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-                if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, { ...rec, paused: "CATEGORY_FULL" })] }).catch(() => {});
-              }
-            } catch {}
-            continue;
-          }
-          const embed = renderAgreeEmbed(mm, rec);
-          const rows = buildAgreeButtons(uid, rec);
-          let msg = null;
-          if (rec.messageId) msg = await ch.messages.fetch(rec.messageId).catch(() => null);
-          if (!msg) {
-            if (canBotTalkIn(ch)) {
-              const sent = await ch.send({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch((e) => { safeLog("send(ready)", e); return null; });
-              rec.channelId = ch.id; rec.messageId = sent?.id || null; rec.lastSafeName = getSafeName(mm); rec.paused = null; saveAll(all);
-            }
-          } else {
-            if (canBotTalkIn(ch)) await msg.edit({ content: `<@${uid}>`, embeds: [embed], components: rows, allowedMentions: { users: [uid] } }).catch(() => {});
-          }
-          try {
-            if (rec.controlChannelId && rec.controlMessageId) {
-              const ctrlCh = await g.channels.fetch(rec.controlChannelId).catch(() => null);
-              const ctrlMsg = ctrlCh ? await ctrlCh.messages.fetch(rec.controlMessageId).catch(() => null) : null;
-              if (ctrlMsg && canBotTalkIn(ctrlCh)) await ctrlMsg.edit({ embeds: [buildControlStatusEmbed(uid, rec)] }).catch(() => {});
-            }
-          } catch {}
-          await deleteJoinChannels(g, mm);
-        }
+        await reconcileForGuild(g);
       }
     } catch (e) { safeLog("ready", e); }
+    try {
+      setInterval(async () => {
+        try {
+          for (const g of client.guilds.cache.values()) {
+            await reconcileForGuild(g);
+          }
+        } catch (e) { safeLog("heartbeat", e); }
+      }, HEARTBEAT_INTERVAL_MS);
+    } catch (e) { safeLog("heartbeat-setup", e); }
   });
 };
