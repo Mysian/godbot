@@ -100,7 +100,7 @@ function renderAgreeEmbed(member, record) {
   for (const it of record.items) {
     if (it.type === "preset") {
       const f = all.find(a => a.key === it.key);
-      lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${f ? f.label : it.key}${record.inputMode === "text" ? ` 〔약속문구: ${toAgreeLabel(it)}〕` : ""}`);
+      lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${f ? f.label : it.key}${record.inputMode === "text" ? `\n〔약속문구: ${toAgreeLabel(it)}〕` : ""}`);
     } else {
       lines.push(`${record.acks?.[it.id] ? "✅" : "☑️"} ${it.text}${record.inputMode === "text" ? `\n〔약속문구: ${toAgreeLabel(it)}〕` : ""}`);
     }
