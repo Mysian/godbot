@@ -235,7 +235,7 @@ function buildGamePageSelect(guild, uid) {
     .setCustomId(CID_CREATE_GAME_SELECT)
     .setPlaceholder(placeholder)
     .setMinValues(1)
-    .setMaxValues(Math.min(25, Math.max(1, current.length)))
+    .setMaxValues(1)
     .addOptions(opts);
   const rows = [];
   rows.push(new ActionRowBuilder().addComponents(select));
@@ -255,6 +255,7 @@ function addByKeyword(uid, keyword) {
   const regex = new RegExp(pattern);
   const matches = ALL_GAMES.filter(g => regex.test(g.toLowerCase()));
   if (matches.length === 1) {
+    s.selected.clear();
     s.selected.add(matches[0]);
     return { ok: true, added: matches[0], many: false, none: false };
   }
@@ -511,8 +512,10 @@ module.exports = {
             const role = i.guild.roles.cache.get(v);
             return role ? role.name : null;
           }).filter(Boolean);
-          picked.forEach(n => s.selected.add(n));
-          await i.reply({ content: `선택한 게임 수: ${s.selected.size}`, ephemeral: true });
+          const first = picked[0] || null;
+          s.selected.clear();
+          if (first) s.selected.add(first);
+          await i.reply({ content: first ? `선택됨: ${first}` : "선택이 초기화됐어요.", ephemeral: true });
           return;
         }
 
@@ -520,7 +523,7 @@ module.exports = {
           const keyword = i.fields.getTextInputValue("searchKeyword").trim();
           const r = addByKeyword(i.user.id, keyword);
           if (r.ok) {
-            await i.reply({ content: `추가됨: ${r.added} • 총 ${ensureSession(i.user.id).selected.size}개`, ephemeral: true });
+            await i.reply({ content: `선택됨: ${r.added}`, ephemeral: true });
           } else if (r.none) {
             await i.reply({ content: "검색 결과가 없습니다.", ephemeral: true });
           } else if (r.many) {
