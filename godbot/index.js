@@ -99,6 +99,9 @@ require('./utils/admin-digest').start(client);
 require('./utils/weekly-lottery').init(client);
 require('./utils/dm-direct')(client);
 
+const recruit = require("./commands/recruit.js");
+recruit.registerRecruitHandlers(client);
+
 const { registerVoiceMuteRole } = require("./utils/voice-mute-role");
 registerVoiceMuteRole(client);
 
