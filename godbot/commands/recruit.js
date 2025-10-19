@@ -292,25 +292,7 @@ module.exports = {
               }
             });
 
-            
-            const filter = (mi) => mi.isModalSubmit() && mi.customId === CID_CREATE_MODAL && mi.user.id === i.user.id;
-            const mi = await i.awaitModalSubmit({ filter, time: 600_000 }).catch(() => null);
-            if (!mi) {
-              try { await i.followUp({ content: "⏳ 시간이 초과되었어요. 다시 시도해주세요.", ephemeral: true }); } catch {}
-              return;
-            }
-            try {
-              const content = mi.fields.getTextInputValue("content");
-              let count = parseInt(mi.fields.getTextInputValue("count") || "0", 10);
-              let hours = parseInt(mi.fields.getTextInputValue("hours") || "1", 10);
-              const voiceIdRaw = (mi.fields.getTextInputValue("voice") || "").trim();
-              if (!Array.isArray(selectedGameRoleIds) || selectedGameRoleIds.length === 0) {
-                await mi.reply({ content: "❌ 게임을 최소 1개 이상 선택하세요.", ephemeral: true });
-                return;
-              }
-              if (!Number.isInteger(count) || count < 1 || count > 9) count = 1;
-              if (!Number.isInteger(hours) || hours < 1 || hours > 24) hours = 1;
-
+            client.once("interactionCreate", async mi => {
               if (!mi.isModalSubmit()) return;
               if (mi.customId !== CID_CREATE_MODAL) return;
               try {
@@ -374,6 +356,7 @@ module.exports = {
               } catch {
                 try { await mi.reply({ content: "❌ 모집 글 작성 중 오류가 발생했어요.", ephemeral: true }); } catch {}
               }
+            });
 
             return;
           }
