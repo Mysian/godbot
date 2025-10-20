@@ -185,12 +185,19 @@ function collectRestorableRoleIds(guild, ids) {
 async function enforceCautionOnlyRole(member, record) {
   const guild = member.guild;
   if (!botCanManageRole(guild, CAUTION_ROLE_ID)) throw new Error("봇이 CAUTION 역할을 관리할 수 없음.");
-  const current = member.roles.cache.map(r => r.id).filter(id => id !== guild.roles.everyone.id);
+  const currentRoleIds = member.roles.cache.map(r => r.id).filter(id => id !== guild.roles.everyone.id);
   if (!record.backupRoleIds) {
-    record.backupRoleIds = collectRestorableRoleIds(guild, current);
+    record.backupRoleIds = collectRestorableRoleIds(guild, currentRoleIds);
     const all = loadAll(); all[member.id] = record; saveAll(all);
   }
-  await member.roles.set([CAUTION_ROLE_ID]).catch(e => { safeLog("roles.set([CAUTION])", e); throw e; });
+  const manageableNow = collectRestorableRoleIds(guild, currentRoleIds);
+  for (const rid of manageableNow) {
+    if (rid === CAUTION_ROLE_ID) continue;
+    try { await member.roles.remove(rid); } catch (e) { safeLog("roles.remove(manageable)", e); }
+  }
+  if (!member.roles.cache.has(CAUTION_ROLE_ID)) {
+    try { await member.roles.add(CAUTION_ROLE_ID); } catch (e) { safeLog("roles.add(CAUTION)", e); throw e; }
+  }
 }
 
 async function restoreSnapshotRoles(member, record) {
