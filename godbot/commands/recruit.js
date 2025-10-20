@@ -299,45 +299,72 @@ function isChannelFull(channel) {
   return channel.members.size >= channel.userLimit;
 }
 async function dmRecruiterAboutParticipant(client, recruiterId, guild, participant, recruitEmbed) {
+  const member = await guild.members.fetch(participant.id).catch(() => null);
+  const nickname = member?.displayName || participant.username;
+  const thumb =
+    (member?.displayAvatarURL && member.displayAvatarURL({ extension: "png", size: 256 })) ||
+    participant.displayAvatarURL({ extension: "png", size: 256 });
+  const recruitContent = recruitEmbed?.data?.description?.slice(0, 1000) || "모집글 본문 없음";
+
+  const ROLE_JULGEM = "1210762420151394354";
+  const ROLE_JULBBAG = "1210762298172383273";
+  const ROLE_BBAG = "1210762363704311838";
+
+  let gameStyle = "알 수 없음";
+  if (member?.roles?.cache) {
+    const hasJ = member.roles.cache.has(ROLE_JULGEM);
+    const hasJB = member.roles.cache.has(ROLE_JULBBAG);
+    const hasB = member.roles.cache.has(ROLE_BBAG);
+    const owned = [hasJ, hasJB, hasB].filter(Boolean).length;
+    if (owned === 1) {
+      if (hasJ) gameStyle = "즐겜러";
+      else if (hasJB) gameStyle = "즐빡겜러";
+      else if (hasB) gameStyle = "빡겜러";
+    }
+  }
+  const joinedTs = member?.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
+
+  const baseEmbed = new EmbedBuilder()
+    .setTitle(`🙋 ${nickname}님이 참여를 원합니다.`)
+    .setThumbnail(thumb)
+    .addFields(
+      { name: "모집글 정보", value: recruitContent, inline: false },
+      { name: "유저 정보", value: `<@${participant.id}> (${participant.id})`, inline: false },
+      { name: "게임 스타일", value: gameStyle, inline: true },
+      ...(joinedTs ? [{ name: "서버 합류일", value: `<t:${joinedTs}:D>`, inline: true }] : [])
+    )
+    .setColor(0x57c3ff)
+    .setTimestamp();
+  
+  let voiceId = null;
+  try {
+    const fVoice = (recruitEmbed?.data?.fields || []).find((f) => f.name === "음성 채널");
+    voiceId = fVoice?.value?.match(/<#(\d+)>/)?.[1] || null;
+  } catch { voiceId = null; }
+  let dmFailed = false;
   try {
     const dmTarget = await client.users.fetch(recruiterId).catch(() => null);
-    if (!dmTarget) return;
-    const member = await guild.members.fetch(participant.id).catch(() => null);
-    const nickname = member?.displayName || participant.username;
-    const thumb = (member?.displayAvatarURL && member.displayAvatarURL({ extension: "png", size: 256 })) || participant.displayAvatarURL({ extension: "png", size: 256 });
-    const recruitContent = recruitEmbed?.data?.description?.slice(0, 1000) || "모집글 본문 없음";
-    const ROLE_JULGEM = "1210762420151394354";
-    const ROLE_JULBBAG = "1210762298172383273";
-    const ROLE_BBAG = "1210762363704311838";
-    let gameStyle = "알 수 없음";
-    if (member?.roles?.cache) {
-      const hasJ = member.roles.cache.has(ROLE_JULGEM);
-      const hasJB = member.roles.cache.has(ROLE_JULBBAG);
-      const hasB = member.roles.cache.has(ROLE_BBAG);
-      const owned = [hasJ, hasJB, hasB].filter(Boolean).length;
-      if (owned === 1) {
-        if (hasJ) gameStyle = "즐겜러";
-        else if (hasJB) gameStyle = "즐빡겜러";
-        else if (hasB) gameStyle = "빡겜러";
-      } else {
-        gameStyle = "알 수 없음";
-      }
+    if (!dmTarget) dmFailed = true;
+    else {
+      await dmTarget.send({ embeds: [baseEmbed] });
     }
-    const joinedTs = member?.joinedTimestamp ? Math.floor(member.joinedTimestamp / 1000) : null;
-    const embed = new EmbedBuilder()
-      .setTitle(`🙋 ${nickname}님이 참여를 원합니다.`)
-      .setThumbnail(thumb)
-      .addFields(
-        { name: "모집글 정보", value: recruitContent || "모집글 본문 없음", inline: false },
-        { name: "유저 정보", value: `<@${participant.id}> (${participant.id})`, inline: false },
-        { name: "게임 스타일", value: gameStyle, inline: true },
-        ...(joinedTs ? [{ name: "서버 합류일", value: `<t:${joinedTs}:D>`, inline: true }] : [])
-      )
-      .setColor(0x57c3ff)
-      .setTimestamp();
-    await dmTarget.send({ embeds: [embed] }).catch(() => {});
-  } catch {}
+  } catch {
+    dmFailed = true;
+  }
+  if (dmFailed && voiceId) {
+    try {
+      const ch = await guild.channels.fetch(voiceId).catch(() => null);
+      if (ch && ch.isTextBased && ch.isTextBased()) {
+        await ch.send({
+          content: "-# (DM 차단/거부로 인해 여기로 안내돼요)",
+          embeds: [baseEmbed],
+        });
+      }
+    } catch {
+    }
+  }
 }
+
 
 function buildImageChoiceRow() {
   return new ActionRowBuilder().addComponents(
