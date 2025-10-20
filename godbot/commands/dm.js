@@ -1,10 +1,12 @@
-const { SlashCommandBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 const THREAD_PARENT_CHANNEL_ID = '1380874052855529605';
 const ANON_NICK = '까리한 디스코드';
 const RELAY_PATH = path.join(__dirname, '../data/relayMap.json');
+const FALLBACK_PATH = path.join(__dirname, '../data/relayFallbackMap.json');
+const FALLBACK_CATEGORY_ID = '1354742687022186608';
 
 function loadRelayMap() {
   if (!fs.existsSync(RELAY_PATH)) fs.writeFileSync(RELAY_PATH, '{}');
@@ -13,6 +15,51 @@ function loadRelayMap() {
 }
 function saveRelayMap(map) {
   fs.writeFileSync(RELAY_PATH, JSON.stringify(Object.fromEntries(map), null, 2));
+}
+
+function loadFallbackMap() {
+  if (!fs.existsSync(FALLBACK_PATH)) fs.writeFileSync(FALLBACK_PATH, '{}');
+  const raw = fs.readFileSync(FALLBACK_PATH, 'utf8');
+  return new Map(Object.entries(JSON.parse(raw)));
+}
+function saveFallbackMap(map) {
+  fs.writeFileSync(FALLBACK_PATH, JSON.stringify(Object.fromEntries(map), null, 2));
+}
+
+async function sendToUserOrFallback(client, guild, user, payload) {
+  try {
+    await user.send(payload);
+    return { via: 'dm' };
+  } catch (e) {
+    const fbMap = loadFallbackMap();
+    let channelId = fbMap.get(user.id);
+    let channel = channelId ? guild.channels.cache.get(channelId) : null;
+    if (channel && channel.deleted) channel = null;
+    if (!channel) {
+      const category = guild.channels.cache.get(FALLBACK_CATEGORY_ID);
+      const name = `dm-${user.username}-${String(user.id).slice(-4)}`;
+      channel = await guild.channels.create({
+        name,
+        type: ChannelType.GuildText,
+        parent: category?.id || undefined,
+        permissionOverwrites: [
+          { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+          { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.ReadMessageHistory] }
+        ],
+        topic: `DM 대체 채널 | 대상: ${user.tag} (${user.id})`
+      });
+      fbMap.set(user.id, channel.id);
+      saveFallbackMap(fbMap);
+      try {
+        await channel.send({ content: `-# <@${user.id}> 이 채널은 DM을 받을 수 없는 설정이어서 임시로 개설된 대체 채널입니다.` });
+      } catch {}
+    }
+    const files = payload.files && payload.files.length ? payload.files : undefined;
+    const content = (payload.content || '').trim();
+    const finalContent = content.length ? `**[${ANON_NICK}]**\n${content}\n\n<@${user.id}>` : `<@${user.id}>`;
+    await channel.send({ content: finalContent, files });
+    return { via: 'fallback', channelId: channel.id };
+  }
 }
 
 module.exports = {
@@ -74,41 +121,28 @@ module.exports = {
   },
 
   relayRegister(client) {
-    // DM → 스레드 릴레이 (파일에서 매번 최신 relayMap 불러오기!)
     client.on('messageCreate', async msg => {
       if (!msg.guild && !msg.author.bot) {
-        console.log('[익명DM-DM] DM도착:', msg.author.id, msg.content, msg.attachments?.size);
-        const relayMap = loadRelayMap(); // 매번 최신상태로!
+        const relayMap = loadRelayMap();
         const threadId = relayMap.get(msg.author.id);
-        if (!threadId) {
-          console.log('[익명DM-DM] relayMap에 해당 유저가 없음');
-          return;
-        }
+        if (!threadId) return;
         const guild = client.guilds.cache.find(g => g.channels.cache.has(THREAD_PARENT_CHANNEL_ID));
         if (!guild) return;
         const parentChannel = guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
         if (!parentChannel) return;
         const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
-        if (!thread) {
-          console.log('[익명DM-DM] 스레드를 못찾음');
-          return;
-        }
+        if (!thread) return;
 
-        // 첨부파일(이미지, 동영상 등) url 추출
         let files = [];
         if (msg.attachments && msg.attachments.size > 0) {
           files = Array.from(msg.attachments.values()).map(a => a.url);
         }
 
-        const contentMsg =
-          `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content ? msg.content : ''}`;
-
+        const contentMsg = `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content ? msg.content : ''}`;
         await thread.send({ content: contentMsg, files: files.length > 0 ? files : undefined });
-        console.log('[익명DM-DM] 메시지+첨부파일 스레드 전송 완료');
       }
     });
 
-    // 스레드 → DM 릴레이 (운영진 → 유저)
     client.on('messageCreate', async msg => {
       if (msg.channel.type !== ChannelType.PublicThread) return;
       if (msg.author.bot) return;
@@ -118,15 +152,19 @@ module.exports = {
           const user = await client.users.fetch(userId).catch(() => null);
           if (!user) return;
 
-          // 첨부파일(이미지, 동영상 등) url 추출
           let files = [];
           if (msg.attachments && msg.attachments.size > 0) {
             files = Array.from(msg.attachments.values()).map(a => a.url);
           }
-          const contentMsg =
-            `**[${ANON_NICK}]**\n${msg.content ? msg.content : ''}`;
+          const contentMsg = `**[${ANON_NICK}]**\n${msg.content ? msg.content : ''}`;
 
-          await user.send({ content: contentMsg, files: files.length > 0 ? files : undefined });
+          const guild = msg.guild;
+          const result = await sendToUserOrFallback(client, guild, user, { content: contentMsg, files: files.length > 0 ? files : [] });
+
+          if (result.via === 'fallback') {
+            const notice = `DM 전송이 불가하여 대체 채널 <#${result.channelId}> 로 전달했습니다.`;
+            try { await msg.channel.send(`-# ${notice}`); } catch {}
+          }
         }
       }
     });
