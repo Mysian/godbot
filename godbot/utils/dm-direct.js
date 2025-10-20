@@ -4,10 +4,12 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  ChannelType
 } = require("discord.js");
 
 const CONTROL_CHANNEL_ID = "1428962638083133550";
+const FALLBACK_CATEGORY_ID = "1354742687022186608";
 
 const DM_TYPES = {
   greet: {
@@ -85,7 +87,54 @@ function buildButtons(targetId, ownerKey) {
   return [row1, row2, row3];
 }
 
-async function sendDm(client, guild, targetId, kind) {
+async function ensureFallbackChannel(guild, targetId) {
+  const name = `dm-${targetId}`;
+  let channel = guild.channels.cache.find(
+    (c) => c.type === ChannelType.GuildText && c.parentId === FALLBACK_CATEGORY_ID && (c.name === name || c.name.startsWith(name))
+  );
+  if (!channel) {
+    channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildText,
+      parent: FALLBACK_CATEGORY_ID,
+      permissionOverwrites: [
+        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: targetId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        {
+          id: guild.members?.me?.id ?? guild.client?.user?.id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.EmbedLinks,
+            PermissionFlagsBits.AttachFiles
+          ]
+        }
+      ]
+    }).catch(() => null);
+  } else {
+    await channel.permissionOverwrites.edit(guild.id, { ViewChannel: false }).catch(() => {});
+    await channel.permissionOverwrites.edit(targetId, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true
+    }).catch(() => {});
+    if (guild.members?.me?.id) {
+      await channel.permissionOverwrites
+        .edit(guild.members.me.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          ReadMessageHistory: true,
+          EmbedLinks: true,
+          AttachFiles: true
+        })
+        .catch(() => {});
+    }
+  }
+  return channel;
+}
+
+async function sendDmOrFallback(client, guild, targetId, kind) {
   const t = DM_TYPES[kind];
   if (!t) throw new Error("INVALID_KIND");
   const user = await client.users.fetch(targetId).catch(() => null);
@@ -96,13 +145,21 @@ async function sendDm(client, guild, targetId, kind) {
     .setColor(t.color)
     .setFooter({ text: guild?.name ? `${guild.name} 운영진` : "서버 운영진" })
     .setTimestamp(new Date());
-  const dm = await user.createDM().catch(() => null);
-  if (!dm) throw new Error("DM_OPEN_FAIL");
-  await dm.send({ embeds: [embed], allowedMentions: { parse: [] } });
-  return true;
+
+  let dmChannel = await user.createDM().catch(() => null);
+  if (dmChannel) {
+    const sent = await dmChannel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => null);
+    if (sent) return { ok: true, via: "dm", channelId: dmChannel.id };
+  }
+
+  const fb = await ensureFallbackChannel(guild, targetId);
+  if (!fb) throw new Error("DM_AND_FALLBACK_FAIL");
+  const sent2 = await fb.send({ content: `<@${targetId}>`, embeds: [embed], allowedMentions: { users: [targetId] } }).catch(() => null);
+  if (!sent2) throw new Error("DM_AND_FALLBACK_FAIL");
+  return { ok: true, via: "fallback", channelId: fb.id, guildChannelId: fb.id };
 }
 
-function buildLogEmbed({ kind, targetId, actorId, ok, reason }) {
+function buildLogEmbed({ kind, targetId, actorId, ok, reason, destText }) {
   const base = new EmbedBuilder()
     .setTitle("DM 처리 로그")
     .setDescription(`유형: **${DM_TYPES[kind]?.title ?? "취소/기타"}**`)
@@ -113,6 +170,7 @@ function buildLogEmbed({ kind, targetId, actorId, ok, reason }) {
     )
     .setColor(ok ? 0x2ecc71 : 0xe74c3c)
     .setTimestamp(new Date());
+  if (destText) base.addFields({ name: "전달", value: destText, inline: false });
   return base;
 }
 
@@ -278,16 +336,21 @@ module.exports = (client) => {
 
         await i.deferReply({ ephemeral: true }).catch(() => {});
         try {
-          await sendDm(i.client, i.guild, targetId, kind);
-          const logOk = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: true });
+          const result = await sendDmOrFallback(i.client, i.guild, targetId, kind);
+          const destText = result.via === "dm" ? "DM" : `<#${result.channelId}>`;
+          const logOk = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: true, destText });
           await i.editReply({
-            embeds: [new EmbedBuilder().setDescription("DM 전송이 완료되었어.").setColor(0x2ecc71)]
+            embeds: [
+              new EmbedBuilder()
+                .setDescription(result.via === "dm" ? "DM 전송이 완료되었어." : `DM이 막혀 있어서 <#${result.channelId}> 채널로 대신 전달했어.`)
+                .setColor(0x2ecc71)
+            ]
           }).catch(() => {});
           await i.message.edit({ embeds: [logOk], components: [], allowedMentions: { parse: [] } }).catch(() => {});
         } catch (err) {
           let reason = "알 수 없는 오류";
           if (String(err?.message) === "USER_NOT_FOUND") reason = "대상 사용자를 찾을 수 없음";
-          if (String(err?.message) === "DM_OPEN_FAIL") reason = "상대방의 DM이 닫혀 있음";
+          if (String(err?.message) === "DM_AND_FALLBACK_FAIL") reason = "DM 차단/닫힘이며 대체 채널 생성에도 실패";
           const logFail = buildLogEmbed({ kind, targetId, actorId: i.user.id, ok: false, reason });
           await i.editReply({
             embeds: [new EmbedBuilder().setDescription("DM 전송 실패").setColor(0xe74c3c)]
