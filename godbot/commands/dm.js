@@ -8,17 +8,19 @@ const RELAY_PATH = path.join(__dirname, '../data/relayMap.json');
 const FALLBACK_PATH = path.join(__dirname, '../data/relayFallbackMap.json');
 const FALLBACK_CATEGORY_ID = '1354742687022186608';
 
+function ensureFile(p) {
+  if (!fs.existsSync(p)) fs.writeFileSync(p, '{}');
+}
 function loadRelayMap() {
-  if (!fs.existsSync(RELAY_PATH)) fs.writeFileSync(RELAY_PATH, '{}');
+  ensureFile(RELAY_PATH);
   const raw = fs.readFileSync(RELAY_PATH, 'utf8');
   return new Map(Object.entries(JSON.parse(raw)));
 }
 function saveRelayMap(map) {
   fs.writeFileSync(RELAY_PATH, JSON.stringify(Object.fromEntries(map), null, 2));
 }
-
 function loadFallbackMap() {
-  if (!fs.existsSync(FALLBACK_PATH)) fs.writeFileSync(FALLBACK_PATH, '{}');
+  ensureFile(FALLBACK_PATH);
   const raw = fs.readFileSync(FALLBACK_PATH, 'utf8');
   return new Map(Object.entries(JSON.parse(raw)));
 }
@@ -30,7 +32,7 @@ async function sendToUserOrFallback(client, guild, user, payload) {
   try {
     await user.send(payload);
     return { via: 'dm' };
-  } catch (e) {
+  } catch {
     const fbMap = loadFallbackMap();
     let channelId = fbMap.get(user.id);
     let channel = channelId ? guild.channels.cache.get(channelId) : null;
@@ -50,9 +52,7 @@ async function sendToUserOrFallback(client, guild, user, payload) {
       });
       fbMap.set(user.id, channel.id);
       saveFallbackMap(fbMap);
-      try {
-        await channel.send({ content: `-# <@${user.id}> 이 채널은 DM을 받을 수 없는 설정이어서 임시로 개설된 대체 채널입니다.` });
-      } catch {}
+      await channel.send({ content: `-# <@${user.id}> DM 수신이 불가하여 이 채널에서 이어집니다.` }).catch(() => {});
     }
     const files = payload.files && payload.files.length ? payload.files : undefined;
     const content = (payload.content || '').trim();
@@ -73,7 +73,7 @@ module.exports = {
     )
     .addStringOption(opt =>
       opt.setName('이어서')
-        .setDescription('기존 DM 이어서 진행')
+        .setDescription('기존 스레드를 이어서 진행')
         .addChoices(
           { name: '예', value: 'yes' },
           { name: '아니오', value: 'no' }
@@ -83,10 +83,9 @@ module.exports = {
   async execute(interaction) {
     const user = interaction.options.getUser('유저');
     const useExisting = (interaction.options.getString('이어서') || 'no') === 'yes';
-    const parentChannel = await interaction.guild.channels.fetch(THREAD_PARENT_CHANNEL_ID);
-
+    const parentChannel = await interaction.guild.channels.fetch(THREAD_PARENT_CHANNEL_ID).catch(() => null);
     if (!parentChannel || parentChannel.type !== ChannelType.GuildText) {
-      return interaction.reply({ content: '❗️지정된 채널을 찾을 수 없거나 텍스트채널이 아닙니다.', ephemeral: true });
+      return interaction.reply({ content: '지정 텍스트채널을 찾을 수 없음.', ephemeral: true });
     }
 
     let relayMap = loadRelayMap();
@@ -106,16 +105,15 @@ module.exports = {
       });
       relayMap.set(user.id, thread.id);
       saveRelayMap(relayMap);
-
       await thread.send({
-        content: `🔒 이 스레드는 **${ANON_NICK}**에서 익명으로 시작된 1:1 임시 DM입니다.\n서로 자유롭게 익명으로 대화하세요.\n(24시간 후 자동 종료/삭제)\n※ 운영진이 직접 관여하지 않습니다.`,
+        content: `🔒 **${ANON_NICK}**에서 시작된 익명 1:1 스레드입니다. 24시간 후 자동 보관됩니다.`,
       });
     } else {
       saveRelayMap(relayMap);
     }
 
     await interaction.reply({
-      content: `✅ 익명 임시 DM이 시작되었습니다.\n\n*이제 스레드에서 보내는 모든 메시지는 <@${user.id}> 님에게 모두 [까리한 디스코드]라는 익명으로 전송됩니다.`,
+      content: `✅ 스레드 준비 완료. 이 스레드의 메시지는 <@${user.id}>에게 익명으로 전달돼.`,
       ephemeral: true,
     });
   },
@@ -134,38 +132,52 @@ module.exports = {
         if (!thread) return;
 
         let files = [];
-        if (msg.attachments && msg.attachments.size > 0) {
-          files = Array.from(msg.attachments.values()).map(a => a.url);
-        }
-
-        const contentMsg = `**[${ANON_NICK}]**\n\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content ? msg.content : ''}`;
-        await thread.send({ content: contentMsg, files: files.length > 0 ? files : undefined });
+        if (msg.attachments?.size > 0) files = Array.from(msg.attachments.values()).map(a => a.url);
+        const contentMsg = `**[상대]**\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content || ''}`;
+        await thread.send({ content: contentMsg, files: files.length ? files : undefined });
       }
     });
 
     client.on('messageCreate', async msg => {
-      if (msg.channel.type !== ChannelType.PublicThread) return;
       if (msg.author.bot) return;
-      const relayMap = loadRelayMap();
-      for (const [userId, threadId] of relayMap.entries()) {
-        if (threadId === msg.channel.id) {
-          const user = await client.users.fetch(userId).catch(() => null);
-          if (!user) return;
 
-          let files = [];
-          if (msg.attachments && msg.attachments.size > 0) {
-            files = Array.from(msg.attachments.values()).map(a => a.url);
-          }
-          const contentMsg = `**[${ANON_NICK}]**\n${msg.content ? msg.content : ''}`;
-
-          const guild = msg.guild;
-          const result = await sendToUserOrFallback(client, guild, user, { content: contentMsg, files: files.length > 0 ? files : [] });
-
-          if (result.via === 'fallback') {
-            const notice = `DM 전송이 불가하여 대체 채널 <#${result.channelId}> 로 전달했습니다.`;
-            try { await msg.channel.send(`-# ${notice}`); } catch {}
+      if (msg.channel.type === ChannelType.PublicThread) {
+        const relayMap = loadRelayMap();
+        for (const [userId, threadId] of relayMap.entries()) {
+          if (threadId === msg.channel.id) {
+            const user = await client.users.fetch(userId).catch(() => null);
+            if (!user) return;
+            let files = [];
+            if (msg.attachments?.size > 0) files = Array.from(msg.attachments.values()).map(a => a.url);
+            const contentMsg = `**[${ANON_NICK}]**\n${msg.content || ''}`;
+            const result = await sendToUserOrFallback(client, msg.guild, user, { content: contentMsg, files });
+            if (result.via === 'fallback') {
+              await msg.channel.send(`-# DM 불가로 대체 채널 <#${result.channelId}> 에 전달했어.`).catch(() => {});
+            }
+            return;
           }
         }
+      }
+
+      if (msg.guild && msg.channel?.type === ChannelType.GuildText) {
+        const fbMap = loadFallbackMap();
+        const entry = Array.from(fbMap.entries()).find(([, chId]) => chId === msg.channel.id);
+        if (!entry) return;
+        const [userId] = entry;
+        if (msg.author.id !== userId) return;
+
+        const relayMap = loadRelayMap();
+        const threadId = relayMap.get(userId);
+        if (!threadId) return;
+        const parentChannel = msg.guild.channels.cache.get(THREAD_PARENT_CHANNEL_ID);
+        if (!parentChannel) return;
+        const thread = await parentChannel.threads.fetch(threadId).catch(() => null);
+        if (!thread) return;
+
+        let files = [];
+        if (msg.attachments?.size > 0) files = Array.from(msg.attachments.values()).map(a => a.url);
+        const contentMsg = `**[상대]**\n(From: <@${msg.author.id}> | ${msg.author.tag})\n${msg.content || ''}`;
+        await thread.send({ content: contentMsg, files: files.length ? files : undefined });
       }
     });
   }
