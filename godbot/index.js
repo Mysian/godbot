@@ -107,7 +107,7 @@ const { registerVoiceMuteRole } = require("./utils/voice-mute-role");
 registerVoiceMuteRole(client);
 
 registerSafeSearchListener(client, {
-  channelId: "1345775748526510201", 
+  channelId: "1429984530491506798", 
   prefix: "!검색",         
   configOverride: {
     allowGuildIntrospection: true,  
