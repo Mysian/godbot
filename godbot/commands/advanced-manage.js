@@ -7,10 +7,7 @@ const {
   ComponentType,
   StringSelectMenuBuilder,
   Events,
-  ChannelType,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
+  ChannelType
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -419,7 +416,6 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: '장기 미접속 유저', value: 'long' },
-          { name: '장기 미접속 유저(강제 처리)', value: 'long_force' },
           { name: '비활동 신규 유저', value: 'newbie' },
           { name: '입장절차 토글', value: 'approval_toggle' },
           { name: '음성채널 알림 설정', value: 'voice_notify' },
@@ -657,189 +653,6 @@ module.exports = {
       });
       return;
     }
-
-if (option === 'long_force') {
-  const modal = new ModalBuilder()
-    .setCustomId('forceLongModal')
-    .setTitle('장기 미접속(강제) 대상 지정');
-  const input = new TextInputBuilder()
-    .setCustomId('targetUser')
-    .setLabel('대상 유저 ID 또는 맨션(예: 2856... 또는 <@2856...>)')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-  const row = new ActionRowBuilder().addComponents(input);
-  modal.addComponents(row);
-  await interaction.showModal(modal);
-  const sub = await interaction.awaitModalSubmit({
-    time: 60_000,
-    filter: i => i.customId === 'forceLongModal' && i.user.id === interaction.user.id
-  }).catch(() => null);
-
-  if (!sub) {
-    return interaction.followUp({ content: '⏱️ 시간 초과로 취소됐어.', ephemeral: true });
-  }
-  const raw = sub.fields.getTextInputValue('targetUser') || '';
-  const targetId = (raw.match(/\d{16,}/) || [])[0];
-  if (!targetId) {
-    return sub.reply({ content: '❌ 유효한 유저 ID/맨션을 입력해줘.', ephemeral: true });
-  }
-  const m = await interaction.guild.members.fetch(targetId).catch(() => null);
-  if (!m) {
-    return sub.reply({ content: `❌ 대상(<@${targetId}>)을 찾을 수 없어.`, ephemeral: true });
-  }
-  let warnedObj = readWarnHistory();
-  const forcedUser = {
-    id: m.id,
-    tag: `<@${m.id}>`,
-    user: m.user,
-    nickname: m.displayName,
-    lastActive: null,
-    warned: !!warnedObj[m.id]
-  };
-  const buildEmbed = (u) =>
-    new EmbedBuilder()
-      .setTitle('장기 미접속 유저(강제 처리) - 개별 대상')
-      .setDescription(
-        [
-          `대상: ${u.tag} | \`${u.id}\` | ${u.nickname}`,
-          `경고DM 상태: ${u.warned ? '⚠️ 발송됨' : '미발송'}`
-        ].join('\n')
-      )
-      .setColor(0xffab00);
-  const rowBtns = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('force_warn_one').setLabel('개별 경고 DM').setStyle(ButtonStyle.Success).setDisabled(forcedUser.warned),
-    new ButtonBuilder().setCustomId('force_kick_one').setLabel('개별 추방').setStyle(ButtonStyle.Danger).setDisabled(!forcedUser.warned),
-    new ButtonBuilder().setCustomId('force_kick_now').setLabel('즉시 추방(경고 생략)').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('force_close').setLabel('닫기').setStyle(ButtonStyle.Secondary)
-  );
-  await sub.reply({ embeds: [buildEmbed(forcedUser)], components: [rowBtns], ephemeral: true });
-  const msg = await sub.fetchReply();
-  const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
-  const collector = msg.createMessageComponentCollector({ filter, time: 120000 });
-  collector.on('collect', async i => {
-    try {
-      if (i.customId === 'force_warn_one') {
-        await i.deferUpdate();
-        const member = await interaction.guild.members.fetch(forcedUser.id).catch(() => null);
-        let dmOk = false;
-        if (member) {
-          dmOk = await member.send(`⚠️ [${interaction.guild.name}] 장기 미접속/비활동 기준으로 추방될 수 있어 활동이 필요합니다. 서버 내 단 한 번의 채팅만으로도 활동 집계가 진행됩니다.`)
-            .then(() => true).catch(() => false);
-        }
-        warnedObj = readWarnHistory();
-        if (dmOk) {
-          warnedObj[forcedUser.id] = { ts: Date.now() };
-          saveWarnHistory(warnedObj);
-        }
-        forcedUser.warned = !!warnedObj[forcedUser.id];
-        await interaction.followUp({
-          content: dmOk ? `✅ 경고 DM 전송 완료: ${forcedUser.tag}` : `❌ 경고 DM 실패(차단/수신거부?): ${forcedUser.tag}`,
-          ephemeral: true
-        });
-        const updatedRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('force_warn_one').setLabel('개별 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true),
-          new ButtonBuilder().setCustomId('force_kick_one').setLabel('개별 추방').setStyle(ButtonStyle.Danger).setDisabled(false),
-          new ButtonBuilder().setCustomId('force_kick_now').setLabel('즉시 추방(경고 생략)').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId('force_close').setLabel('닫기').setStyle(ButtonStyle.Secondary)
-        );
-        await msg.edit({ embeds: [buildEmbed(forcedUser)], components: [updatedRow] });
-
-      } else if (i.customId === 'force_kick_one') {
-        await i.deferUpdate();
-        warnedObj = readWarnHistory();
-        if (!warnedObj[forcedUser.id]) {
-          await interaction.followUp({ content: '⚠️ 먼저 경고 DM을 보내야 추방 가능해.', ephemeral: true });
-          return;
-        }
-        const member = await interaction.guild.members.fetch(forcedUser.id).catch(() => null);
-        let ok = false;
-        if (member) {
-          ok = await member.kick(`고급관리 - 장기 미접속(강제) 개별 추방`).then(() => true).catch(() => false);
-        }
-        const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-        if (logChannel) {
-          const logEmbed = new EmbedBuilder()
-            .setTitle('장기 미접속 유저(강제) 개별 추방')
-            .setDescription(
-              [
-                `관리자: <@${interaction.user.id}>`,
-                `대상: ${forcedUser.nickname} (\`${forcedUser.id}\`)`,
-                `결과: ${ok ? '성공' : '실패'}`
-              ].join('\n')
-            )
-            .setColor('#c0392b')
-            .setTimestamp();
-          logChannel.send({ embeds: [logEmbed] }).catch(() => {});
-        }
-        await interaction.followUp({ content: ok ? `🗑️ 추방 완료: ${forcedUser.tag}` : `❌ 추방 실패(권한/존재 여부 확인): ${forcedUser.tag}`, ephemeral: true });
-        const closedRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('force_warn_one').setLabel('개별 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true),
-          new ButtonBuilder().setCustomId('force_kick_one').setLabel('개별 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
-          new ButtonBuilder().setCustomId('force_kick_now').setLabel('즉시 추방(경고 생략)').setStyle(ButtonStyle.Danger).setDisabled(true),
-          new ButtonBuilder().setCustomId('force_close').setLabel('닫기').setStyle(ButtonStyle.Secondary).setDisabled(true)
-        );
-        await msg.edit({ embeds: [buildEmbed(forcedUser)], components: [closedRow] });
-
-        } else if (i.customId === 'force_kick_now') {
-  await i.deferUpdate();
-
-  // 경고 여부 무시하고 즉시 추방
-  const member = await interaction.guild.members.fetch(forcedUser.id).catch(() => null);
-  let ok = false;
-  if (member) {
-    ok = await member.kick('고급관리 - 장기 미접속(강제) 즉시 추방(경고 생략)').then(() => true).catch(() => false);
-  }
-
-  // 로그 남기기 (경고 생략 사유 명시)
-  const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-  if (logChannel) {
-    const logEmbed = new EmbedBuilder()
-      .setTitle('장기 미접속 유저(강제) 즉시 추방')
-      .setDescription(
-        [
-          `관리자: <@${interaction.user.id}>`,
-          `대상: ${forcedUser.nickname} (\`${forcedUser.id}\`)`,
-          `결과: ${ok ? '성공' : '실패'}`,
-          `비고: 경고 절차 생략`
-        ].join('\n')
-      )
-      .setColor('#8e44ad')
-      .setTimestamp();
-    logChannel.send({ embeds: [logEmbed] }).catch(() => {});
-  }
-
-  await interaction.followUp({
-    content: ok ? `🗑️ 즉시 추방 완료: ${forcedUser.tag}` : `❌ 즉시 추방 실패(권한/존재 여부 확인): ${forcedUser.tag}`,
-    ephemeral: true
-  });
-
-  // 모든 버튼 잠금
-  const closedRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('force_warn_one').setLabel('개별 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true),
-    new ButtonBuilder().setCustomId('force_kick_one').setLabel('개별 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
-    new ButtonBuilder().setCustomId('force_kick_now').setLabel('즉시 추방(경고 생략)').setStyle(ButtonStyle.Danger).setDisabled(true),
-    new ButtonBuilder().setCustomId('force_close').setLabel('닫기').setStyle(ButtonStyle.Secondary).setDisabled(true)
-  );
-  await msg.edit({ components: [closedRow] });
-
-
-      } else if (i.customId === 'force_close') {
-        await i.update({
-          components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId('force_warn_one').setLabel('개별 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true),
-              new ButtonBuilder().setCustomId('force_kick_one').setLabel('개별 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
-              new ButtonBuilder().setCustomId('force_kick_now').setLabel('즉시 추방(경고 생략)').setStyle(ButtonStyle.Danger).setDisabled(true),
-              new ButtonBuilder().setCustomId('force_close').setLabel('닫기').setStyle(ButtonStyle.Secondary).setDisabled(true)
-            )
-          ]
-        });
-        collector.stop();
-      }
-    } catch 
-  });
-  return;
-}
 
     if (option === 'long') {
       title = '장기 미접속 유저';
