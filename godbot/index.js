@@ -9,6 +9,7 @@ const activityLogger = require('./utils/activity-logger');
 const relationship = require("./utils/relationship.js");
 const { ALL_GAMES } = require("./commands/select-game.js");
 const setupPersonalChannelUtility = require('./utils/personal-channel.js');
+const { registerSafeSearchListener, sendSafeSearchEmbed } = require("./utils/id-search-embed.js");
 
 const client = new Client({
   intents: [
@@ -104,6 +105,15 @@ recruit.registerRecruitHandlers(client);
 
 const { registerVoiceMuteRole } = require("./utils/voice-mute-role");
 registerVoiceMuteRole(client);
+
+registerSafeSearchListener(client, {
+  channelId: "1345775748526510201", 
+  prefix: "!검색",         
+  configOverride: {
+    allowGuildIntrospection: true,  
+    color: 0x5865F2,     
+  }
+});
 
 const controlPanel = require('./utils/control-panel');
 controlPanel.register(client);
