@@ -11,7 +11,7 @@ const {
 // ===== 설정 =====
 const DEFAULT_CONFIG = {
   // 이 채널로 결과를 보낼 수 있게 기본값을 둠. 필요 시 호출부에서 덮어쓰기.
-  defaultChannelId: '1345775748526510201',
+  defaultChannelId: '1429984530491506798',
 
   // 허용된 공개 검색 엔진/플랫폼 (링크만 생성)
   engines: [
