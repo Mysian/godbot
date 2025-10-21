@@ -7,7 +7,8 @@ const {
   ComponentType,
   StringSelectMenuBuilder,
   Events,
-  ChannelType
+  ChannelType,
+  UserSelectMenuBuilder
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -303,11 +304,10 @@ async function fetchInactiveNewbies(guild, days, warnedObj) {
 }
 
 async function collectAllThreads(guild, allowedParentIds = THREAD_PARENT_WHITELIST, includePrivateArchived = false) {
-  // allowedParentIds가 지정되어 있으면 해당 부모 채널만 스캔
   const channels = guild.channels.cache.filter(ch =>
     ch &&
     [ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum].includes(ch.type) &&
-    allowedParentIds.includes(ch.id) // ★ 핵심: 두 채널만
+    allowedParentIds.includes(ch.id)
   );
 
   const threads = [];
@@ -327,7 +327,7 @@ async function collectAllThreads(guild, allowedParentIds = THREAD_PARENT_WHITELI
     } catch (_) {}
     if (includePrivateArchived) {
       try {
-        const archivedPriv = await withTimeout(ch.threads.fetchArchived({ type: 'private', limit: 100 }).catch(() => null));
+        const archivedPriv = await withTimeout(ch.reads.fetchArchived({ type: 'private', limit: 100 }).catch(() => null));
         if (archivedPriv?.threads?.size) threads.push(...archivedPriv.threads.values());
       } catch (_) {}
     }
@@ -416,6 +416,7 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: '장기 미접속 유저', value: 'long' },
+          { name: '장기 미접속 유저(강제 처리)', value: 'long_force' },
           { name: '비활동 신규 유저', value: 'newbie' },
           { name: '입장절차 토글', value: 'approval_toggle' },
           { name: '음성채널 알림 설정', value: 'voice_notify' },
@@ -654,6 +655,110 @@ module.exports = {
       return;
     }
 
+    if (option === 'long_force') {
+      const embed = new EmbedBuilder()
+        .setTitle('장기 미접속 유저(강제 처리)')
+        .setDescription('대상 1명을 선택하면, DM 없이 즉시 강제 추방됩니다.')
+        .setColor('#c0392b');
+      const rowSelect = new ActionRowBuilder().addComponents(
+        new UserSelectMenuBuilder().setCustomId('lf_user').setPlaceholder('대상 유저 선택').setMinValues(1).setMaxValues(1)
+      );
+      const rowButtons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('lf_confirm').setLabel('강제 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+        new ButtonBuilder().setCustomId('lf_cancel').setLabel('취소').setStyle(ButtonStyle.Secondary).setDisabled(false)
+      );
+      const msg = await interaction.editReply({ embeds: [embed], components: [rowSelect, rowButtons], ephemeral: true });
+      let targetId = null;
+      const filter = i => i.user.id === interaction.user.id && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 120000 });
+      collector.on('collect', async i => {
+        try {
+          if (i.componentType === ComponentType.UserSelect && i.customId === 'lf_user') {
+            targetId = i.values[0];
+            const targetMention = `<@${targetId}>`;
+            const picked = new EmbedBuilder()
+              .setTitle('장기 미접속 유저(강제 처리)')
+              .setDescription(`선택된 대상: ${targetMention}\n이 상태에서 [강제 추방]을 누르면 곧바로 추방됩니다.`)
+              .setColor('#e74c3c');
+            const enabledButtons = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('lf_confirm').setLabel('강제 추방').setStyle(ButtonStyle.Danger).setDisabled(false),
+              new ButtonBuilder().setCustomId('lf_cancel').setLabel('취소').setStyle(ButtonStyle.Secondary).setDisabled(false)
+            );
+            await i.update({ embeds: [picked], components: [rowSelect, enabledButtons], ephemeral: true });
+          } else if (i.componentType === ComponentType.Button && i.customId === 'lf_confirm') {
+            await i.deferUpdate();
+            if (!targetId) {
+              await interaction.followUp({ content: '대상을 먼저 선택하세요.', ephemeral: true });
+              return;
+            }
+            let ok = false;
+            try {
+              const m = await guild.members.fetch(targetId).catch(() => null);
+              if (!m) throw new Error('notfound');
+              await m.kick('고급관리 - 장기 미접속(강제 처리): DM 생략, 즉시 추방');
+              ok = true;
+            } catch {
+              ok = false;
+            }
+            if (ok) {
+              const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+              if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                  .setTitle('장기 미접속 유저 강제 추방')
+                  .setDescription(
+                    `관리자: <@${interaction.user.id}>\n` +
+                    `대상: <@${targetId}> (\`${targetId}\`)\n` +
+                    `처리: DM 생략 후 즉시 추방`
+                  )
+                  .setColor('#c0392b')
+                  .setTimestamp();
+                logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+              }
+              await interaction.followUp({ content: `🛑 <@${targetId}> 강제 추방 완료`, ephemeral: true });
+              try {
+                await msg.edit({
+                  components: [new ActionRowBuilder().addComponents(
+                    new UserSelectMenuBuilder().setCustomId('lf_user').setPlaceholder('대상 유저 선택').setMinValues(1).setMaxValues(1).setDisabled(true)
+                  ), new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('lf_confirm').setLabel('강제 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+                    new ButtonBuilder().setCustomId('lf_cancel').setLabel('취소').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                  )]
+                });
+              } catch {}
+              collector.stop('done');
+            } else {
+              await interaction.followUp({ content: '❌ 추방 실패. 권한 또는 대상 상태를 확인하세요.', ephemeral: true });
+            }
+          } else if (i.componentType === ComponentType.Button && i.customId === 'lf_cancel') {
+            await i.update({
+              embeds: [new EmbedBuilder().setTitle('장기 미접속 유저(강제 처리)').setDescription('취소되었습니다.').setColor('#95a5a6')],
+              components: [new ActionRowBuilder().addComponents(
+                new UserSelectMenuBuilder().setCustomId('lf_user').setPlaceholder('대상 유저 선택').setMinValues(1).setMaxValues(1).setDisabled(true)
+              ), new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('lf_confirm').setLabel('강제 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+                new ButtonBuilder().setCustomId('lf_cancel').setLabel('취소').setStyle(ButtonStyle.Secondary).setDisabled(true)
+              )],
+              ephemeral: true
+            });
+            collector.stop('cancel');
+          }
+        } catch {}
+      });
+      collector.on('end', async () => {
+        try {
+          await msg.edit({
+            components: [new ActionRowBuilder().addComponents(
+              new UserSelectMenuBuilder().setCustomId('lf_user').setPlaceholder('대상 유저 선택').setMinValues(1).setMaxValues(1).setDisabled(true)
+            ), new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('lf_confirm').setLabel('강제 추방').setStyle(ButtonStyle.Danger).setDisabled(true),
+              new ButtonBuilder().setCustomId('lf_cancel').setLabel('취소').setStyle(ButtonStyle.Secondary).setDisabled(true)
+            )]
+          });
+        } catch {}
+      });
+      return;
+    }
+
     if (option === 'long') {
       title = '장기 미접속 유저';
       const getUserList = async () => {
@@ -670,8 +775,7 @@ module.exports = {
       userList = await getUserList();
     }
 
-        // ★ 비활동 스레드 제거
-    if (option === 'thread_cleanup') {
+        if (option === 'thread_cleanup') {
   await interaction.editReply({ content: '🔎 비활동 스레드를 검색 중입니다…', ephemeral: true });
   let threads = await fetchInactiveThreads(guild, INACTIVE_THREAD_DAYS);
   let page = 0;
@@ -699,7 +803,6 @@ module.exports = {
 
       const buildComponents = () => {
         const cur = pageSlice();
-        // 개별 삭제 버튼 (최대 5개)
         const row1 = new ActionRowBuilder();
         cur.forEach(t => {
           row1.addComponents(
@@ -710,7 +813,6 @@ module.exports = {
           );
         });
 
-        // 네비/일괄 버튼
         const row2 = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('th-prev').setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
           new ButtonBuilder().setCustomId('th-refresh').setLabel('새로고침').setStyle(ButtonStyle.Primary),
@@ -718,7 +820,6 @@ module.exports = {
           new ButtonBuilder().setCustomId('th-bulk').setLabel('이 페이지 5개 일괄 삭제').setStyle(ButtonStyle.Danger).setDisabled(cur.length === 0)
         );
 
-        // row1에 버튼이 1개도 없을 수 있으니, 최소 row2는 항상 붙여줌
         const rows = [];
         if (row1.components.length) rows.push(row1);
         rows.push(row2);
@@ -750,7 +851,6 @@ module.exports = {
   await i.deferUpdate();
 
   const cur = pageSlice();
-  // 로딩바(진행률 바) 시작
   const loading = await interaction.followUp({
     embeds: [progressEmbed('비활동 스레드 일괄 삭제 진행중', cur.length, 0, 0)],
     ephemeral: true,
@@ -813,10 +913,8 @@ module.exports = {
   const threadId = i.customId.slice('thdel-'.length);
   await i.deferUpdate();
 
-  // 현재 페이지 목록에서 메타 찾기(로그용)
   const meta = pageSlice().find(t => t.id === threadId) || threads.find(t => t.id === threadId);
 
-  // 로딩바 시작 (총 1건)
   const loading = await interaction.followUp({
     embeds: [progressEmbed('스레드 삭제 진행중', 1, 0, 0)],
     ephemeral: true,
@@ -834,7 +932,7 @@ module.exports = {
       await th.delete(`고급관리 - 비활동 스레드 제거(개별)`);
       ok = true;
     }
-  } catch { /* noop */ }
+  } catch { }
   if (ok) {
     await editLoading(progressEmbed('스레드 삭제 진행중', 1, 1, 0));
     threads = threads.filter(t => t.id !== threadId);
@@ -860,7 +958,7 @@ module.exports = {
   await msg.edit({ embeds: [buildEmbed()], components: buildComponents() });
 }
           collector.resetTimer();
-        } catch { /* ignore */ }
+        } catch { }
       });
       collector.on('end', async () => {
         try {
@@ -870,7 +968,7 @@ module.exports = {
               return row;
             })
           });
-        } catch { /* ignore */ }
+        } catch { }
       });
       return;
     }
