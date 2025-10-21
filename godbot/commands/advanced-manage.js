@@ -1002,6 +1002,9 @@ module.exports = {
           new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
         ),
         new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('warn_all').setLabel('전체 경고 DM (중복)').setStyle(ButtonStyle.Secondary),
+        ),
+        new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId('period')
             .setPlaceholder(`비활동 기간(일) 선택`)
@@ -1178,6 +1181,9 @@ module.exports = {
               new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
             ),
             new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('warn_all').setLabel('전체 경고 DM (중복)').setStyle(ButtonStyle.Secondary).setDisabled(true)
+            ),
+            new ActionRowBuilder().addComponents(
               new StringSelectMenuBuilder()
                 .setCustomId('period')
                 .setPlaceholder(`비활동 기간(일) 선택`)
@@ -1189,6 +1195,71 @@ module.exports = {
                 })))
             ),
           ] });
+        } else if (i.customId === 'warn_all') {
+          await i.deferUpdate();
+          let warned = 0, failed = 0;
+          let warnedList = [];
+          warnedObj = readWarnHistory();
+          const targets = userList; // 중복 포함 전체 재발송
+          const loading = await interaction.followUp({
+            embeds: [progressEmbed('전체 경고 DM(중복) 진행중', targets.length, 0, 0)],
+            ephemeral: true,
+            fetchReply: true
+          });
+          const editLoading = makeProgressEditor(interaction, loading);
+          await runWithConcurrency(targets, 5, async (u) => {
+            try {
+              const m = await guild.members.fetch(u.id).catch(() => null);
+              if (!m) throw new Error('notfound');
+              await m.send(`⚠️ [${guild.name}] 장기 미접속/비활동 상태로 추방될 수 있어 활동이 필요합니다. 서버내 단 한 번의 채팅만으로도 활동 집계가 진행됩니다.`).catch(() => { failed++; return; });
+              warnedObj[u.id] = { ts: Date.now() };
+              warnedList.push({ nickname: u.nickname, id: u.id });
+              warned++;
+            } catch {
+              failed++;
+            }
+            await editLoading(progressEmbed('전체 경고 DM(중복) 진행중', targets.length, warned, failed));
+          });
+          saveWarnHistory(warnedObj);
+          if (option === 'long') {
+            userList = await fetchLongInactive(guild, selectedDays, warnedObj);
+          } else if (option === 'newbie') {
+            userList = await fetchInactiveNewbies(guild, selectedDays, warnedObj);
+          }
+          embeds = getEmbeds(userList, page, title, selectedDays);
+          const warnTitle = option === 'long' ? '장기 미접속 유저 경고 DM(중복)' : '비활동 신규 유저 경고 DM(중복)';
+          const warnDesc =
+            `관리자: <@${interaction.user.id}>\n` +
+            `기준: ${option === 'long' ? '장기 미접속 유저' : '비활동 신규 유저'}\n` +
+            `비활동 일수: ${selectedDays}일\n` +
+            `전체 대상: ${targets.length}명\n` +
+            `DM 성공: ${warned}명 / 실패: ${failed}명`;
+          const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+          if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+              .setTitle(warnTitle)
+              .setDescription(warnDesc)
+              .setColor('#e67e22')
+              .setTimestamp();
+            if (warnedList.length)
+              logEmbed.addFields({
+                name: `성공 닉네임(ID) [${warnedList.length}명]`,
+                value: getUserDisplay(warnedList)
+              });
+            if (failed > 0)
+              logEmbed.addFields({
+                name: `DM 실패 수`,
+                value: String(failed)
+              });
+            logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+          }
+          await editLoading(
+            new EmbedBuilder()
+              .setTitle('전체 경고 DM(중복) 완료')
+              .setDescription(`성공 ${warned} | 실패 ${failed} | 총 ${targets.length}`)
+              .setColor('#2ecc71')
+              .setTimestamp()
+          );
         }
         embeds = getEmbeds(userList, page, title, selectedDays);
         await i.update({ embeds, components: [
@@ -1198,6 +1269,9 @@ module.exports = {
             new ButtonBuilder().setCustomId('next').setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= Math.ceil(userList.length / PAGE_SIZE) - 1),
             new ButtonBuilder().setCustomId('kick').setLabel('전체 추방').setStyle(ButtonStyle.Danger),
             new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
+          ),
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('warn_all').setLabel('전체 경고 DM (중복)').setStyle(ButtonStyle.Secondary),
           ),
           new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
@@ -1236,6 +1310,9 @@ module.exports = {
             new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success)
           ),
           new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('warn_all').setLabel('전체 경고 DM (중복)').setStyle(ButtonStyle.Secondary),
+          ),
+          new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId('period')
               .setPlaceholder(`비활동 기간(일) 선택`)
@@ -1262,6 +1339,9 @@ module.exports = {
             new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
           ),
           new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('warn_all').setLabel('전체 경고 DM (중복)').setStyle(ButtonStyle.Secondary).setDisabled(true),
+          ),
+          new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId('period')
               .setPlaceholder(`비활동 기간(일) 선택`)
@@ -1286,6 +1366,9 @@ module.exports = {
             new ButtonBuilder().setCustomId('warn').setLabel('전체 경고 DM').setStyle(ButtonStyle.Success).setDisabled(true)
           ),
           new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('warn_all').setLabel('전체 경고 DM (중복)').setStyle(ButtonStyle.Secondary).setDisabled(true),
+          ),
+          new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId('period')
               .setPlaceholder(`비활동 기간(일) 선택`)
@@ -1301,3 +1384,23 @@ module.exports = {
     });
   }
 };
+
+async function fetchInactiveColorRoleUsers(guild, days) {
+  const activityData = fs.existsSync(__dirname + '/../activity-data.json')
+    ? JSON.parse(fs.readFileSync(__dirname + '/../activity-data.json', 'utf8')) : {};
+  const now = new Date();
+  const allMembers = await guild.members.fetch();
+  const result = [];
+  for (const member of allMembers.values()) {
+    if (member.user.bot) continue;
+    const hasColorRole = COLOR_ROLE_IDS.some(id => member.roles.cache.has(id));
+    if (!hasColorRole) continue;
+    const userData = activityData[member.id];
+    const lastDate = userData ? getMostRecentDate(userData) : null;
+    const diffDays = lastDate ? (now - lastDate) / (1000 * 60 * 60 * 24) : Infinity;
+    if (diffDays >= days) {
+      result.push({ id: member.id, tag: `<@${member.id}>`, nickname: member.displayName, lastActive: lastDate });
+    }
+  }
+  return result;
+}
