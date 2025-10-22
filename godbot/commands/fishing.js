@@ -2942,15 +2942,20 @@ if (a.lv > beforeLv) {
     if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝!(하루 5회)", ...(buildAquariumView(u, idx)) });
 
     // 자신보다 작은 인벤 물고기만 선택지로 노출 (최대 25개)
-    const options = (u.inv.fishes || [])
-      .map((f,i)=>({ f, i }))
-      .filter(x => x.f.l < a.l)
-      .slice(0, 25)
-      .map(x => ({ label: withStarName(x.f.n, x.f.l), value: String(x.i) }));
+    // 자신보다 작은 "잠금 해제된" 인벤 물고기만 선택지로 노출 (최대 25개)
+const options = (u.inv.fishes || [])
+  .map((f,i)=>({ f, i }))
+  .filter(x => !x.f.lock && x.f.l < a.l)
+  .slice(0, 25)
+  .map(x => ({ label: withStarName(x.f.n, x.f.l), value: String(x.i) }));
 
-    if (!options.length) {
-      return edit({ content:"먹일 수 있는(자기보다 작은) 물고기가 없어.", ...(buildAquariumView(u, idx)) });
-    }
+if (!options.length) {
+  return edit({
+    content:"먹이로 줄 더 작은 물고기가 없어.\n(더 작은 물고기를 잡아와줘!)",
+    ...(buildAquariumView(u, idx))
+  });
+}
+
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId(`aqua:feed_select|${idx}`)
@@ -3411,12 +3416,13 @@ if (sid === "aqua:add_select") {
   const invIdx = Number(first);
 
   const a = u.aquarium[idx];
-  const feed = (u.inv.fishes||[])[invIdx];
-  if (!a || !feed) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
+const feed = (u.inv.fishes||[])[invIdx];
+if (!a || !feed) return edit({ content:"대상을 찾지 못했어.", embeds:[], components:[] });
 
-  resetFeedIfNewDay(a);
-  if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
-  if (feed.l >= a.l)     return edit({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
+resetFeedIfNewDay(a);
+if (a.feedCount >= 5) return edit({ content:"오늘 먹이는 끝! (하루 5회)", ...(buildAquariumView(u, idx)) });
+if (feed.lock)        return edit({ content:"잠금된 물고기는 먹이로 사용할 수 없어.", ...(buildAquariumView(u, idx)) });
+if (feed.l >= a.l)    return edit({ content:"자기보다 작은 물고기만 먹일 수 있어.", ...(buildAquariumView(u, idx)) });
 
   const beforeLv = a.lv;
   const gain = feedXpGain(a, feed);
