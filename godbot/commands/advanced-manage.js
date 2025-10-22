@@ -694,9 +694,19 @@ module.exports = {
   const testEmbed = buildApprovalLikeEmbed({ memberLike, progress });
   const row = buildApprovalLikeButtons(nonce);
 
-  // 4) 더미 임베드 송출
-  const startAt = Date.now();
-  const testMsg = await interaction.channel.send({ embeds: [testEmbed], components: [row] });
+const me = interaction.guild.members.me || await interaction.guild.members.fetch(interaction.client.user.id).catch(()=>null);
+const needPerms = ['ViewChannel','SendMessages','EmbedLinks'];
+const hasAll = me && interaction.channel && interaction.channel.permissionsFor(me).has(needPerms, true);
+
+if (!hasAll) {
+  await interaction.followUp({
+    content: '이 채널에 더미 승인 임베드를 보낼 권한이 없어. `메시지 보내기`/`임베드 링크` 권한을 열어주거나, 권한 있는 채널에서 다시 실행해줘.',
+    ephemeral: true
+  });
+  return;
+}
+const startAt = Date.now();
+const testMsg = await interaction.channel.send({ embeds: [testEmbed], components: [row] });
 
   // 5) 버튼 수집
   const collector = testMsg.createMessageComponentCollector({
