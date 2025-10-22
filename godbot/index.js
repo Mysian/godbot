@@ -744,7 +744,7 @@ if (interaction.isModalSubmit()) {
       break;
     }
   }
-    if (!handled) {
+  if (!handled) {
     const id = interaction.customId || "";
     const isCautionFlowModal = id.startsWith("cau:");
     const isApprovalFlowModal =
@@ -756,10 +756,7 @@ if (interaction.isModalSubmit()) {
       id === "modal_alt" ||
       id === "modal_nickchange";
     const isRecruitModal = id.startsWith("recruit:");
-    const isDummyModal = id.startsWith("dummy_"); 
-
-    if (!interaction.replied && !interaction.deferred
-        && !isApprovalFlowModal && !isCautionFlowModal && !isRecruitModal && !isDummyModal) {
+    if (!interaction.replied && !interaction.deferred && !isApprovalFlowModal && !isCautionFlowModal && !isRecruitModal) {
       if (!interaction.channel?.name?.startsWith('입장-')) {
         await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
       }
