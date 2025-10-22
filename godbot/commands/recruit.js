@@ -107,6 +107,7 @@ const GAME_BANNERS = {
   "파티 애니멀즈": "https://media.discordapp.net/attachments/1429435030647607397/1429444924905885816/download.png?format=webp&quality=lossless&width=550&height=309",
   "팰월드": "https://media.discordapp.net/attachments/1429435030647607397/1429444999912755280/UPX5478k5eOc0I22TRgcFWhlu6Sp1Nw-V4SkaIECQoCowybAC9zbTJhb-epG1oP2VL8MutNT14oDXkWyiFA7pA.png?format=webp&quality=lossless",
   "페긴": "https://media.discordapp.net/attachments/1429435030647607397/1429445103335899207/15106a3d-5965-4e97-8abe-21840bfd3797_base_resized.png?format=webp&quality=lossless",
+  "포트나이트": "https://media.discordapp.net/attachments/1429435030647607397/1430535886705131521/AKR20251002092100017_01_i_P4.png?ex=68fa21dd&is=68f8d05d&hm=e013f65f2ceddc20ef3ee2345fed11f76b57015347348ace985d97b0cfdd26b0&=&format=webp&quality=lossless",
   "프래그 펑크": "https://media.discordapp.net/attachments/1429435030647607397/1429445181580513420/i1753499517.png?format=webp&quality=lossless",
   "휴먼폴플랫": "https://media.discordapp.net/attachments/1429435030647607397/1429445259267407882/hero_1.png?format=webp&quality=lossless",
   "헬다이버즈": "https://media.discordapp.net/attachments/1429435030647607397/1429445472644239452/b00d1c5f8e72940ef4f23ee0a78ae6da.png?format=webp&quality=lossless",
