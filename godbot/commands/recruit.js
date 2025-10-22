@@ -366,7 +366,6 @@ async function dmRecruiterAboutParticipant(client, recruiterId, guild, participa
   }
 }
 
-
 function buildImageChoiceRow() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(CID_IMG_MENU_URL).setStyle(ButtonStyle.Primary).setLabel("이미지 URL 입력").setEmoji("🌐"),
@@ -383,6 +382,58 @@ function isImageUrl(u) {
     if (p.endsWith(".png") || p.endsWith(".jpg") || p.endsWith(".jpeg") || p.endsWith(".webp") || p.endsWith(".gif")) return true;
     return true;
   } catch { return false; }
+}
+
+function parseCloseTsFromEmbed(embed) {
+  const f = (embed?.data?.fields || []).find(x => x.name === "마감까지");
+  if (!f) return null;
+  const m = String(f.value || "").match(/<t:(\d+):[A-Z]>/i);
+  if (!m) return null;
+  const ts = parseInt(m[1], 10);
+  if (!Number.isFinite(ts)) return null;
+  return ts;
+}
+
+function isEmbedClosed(embed) {
+  const desc = embed?.data?.description || "";
+  if (desc.startsWith("[모집 종료]")) return true;
+  const f = (embed?.data?.fields || []).find(x => x.name === "마감까지");
+  if (!f) return false;
+  return String(f.value).includes("마감 종료");
+}
+
+async function tryCloseMessageIfExpired(msg) {
+  if (!msg?.embeds?.[0]) return false;
+  const base = EmbedBuilder.from(msg.embeds[0]);
+  if (isEmbedClosed(base)) return false;
+  const ts = parseCloseTsFromEmbed(base);
+  if (!ts) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (nowSec < ts) return false;
+  closeEmbed(base);
+  const comps = buildRecruitComponents(msg.id, true);
+  await msg.edit({ embeds: [base], components: comps }).catch(() => {});
+  return true;
+}
+
+async function sweepExpired(client) {
+  const ch = await client.channels.fetch(모집채널ID).catch(() => null);
+  if (!ch || !ch.isTextBased()) return;
+  let before = undefined;
+  for (let round = 0; round < 10; round++) {
+    const fetched = await ch.messages.fetch({ limit: 100, before }).catch(() => null);
+    if (!fetched || fetched.size === 0) break;
+    const arr = Array.from(fetched.values());
+    for (const m of arr) {
+      if (!m.embeds?.[0]) continue;
+      const e = m.embeds[0];
+      const title = e?.title || "";
+      if (title !== "📢 모집 글") continue;
+      await tryCloseMessageIfExpired(m);
+    }
+    before = arr[arr.length - 1]?.id;
+    if (!before) break;
+  }
 }
 
 module.exports = {
@@ -404,6 +455,11 @@ module.exports = {
   },
 
   registerRecruitHandlers(client) {
+    client.once("ready", async () => {
+      await sweepExpired(client).catch(() => {});
+      setInterval(() => { sweepExpired(client).catch(() => {}); }, 60000);
+    });
+
     client.on("interactionCreate", async (i) => {
       try {
         if (i.isButton()) {
@@ -510,6 +566,13 @@ module.exports = {
 
             if (i.customId.startsWith(CID_PARTICIPATE)) {
               if (isClosed) { await i.reply({ content: "모집이 종료되었어요.", ephemeral: true }); return; }
+              const ts = parseCloseTsFromEmbed(embed);
+              if (ts && Math.floor(Date.now()/1000) >= ts) {
+                closeEmbed(embed);
+                await msg.edit({ embeds: [embed], components: buildRecruitComponents(msg.id, true) });
+                await i.reply({ content: "모집이 마감되어 종료되었어요.", ephemeral: true });
+                return;
+              }
               if (curIds.includes(i.user.id)) { await i.reply({ content: "이미 참여 중이에요.", ephemeral: true }); return; }
               if (curIds.length >= maxCount) { await i.reply({ content: "정원이 가득 찼어요.", ephemeral: true }); return; }
               curIds.push(i.user.id);
@@ -520,7 +583,7 @@ module.exports = {
                 disableNow = true;
               }
               await msg.edit({ embeds: [embed], components: buildRecruitComponents(msg.id, disableNow) });
-              if (recruiterId) await dmRecruiterAboutParticipant(client, recruiterId, i.guild, i.user, embed);
+              if (recruiterId) await dmRecruiterAboutParticipant(i.client, recruiterId, i.guild, i.user, embed);
               await i.reply({ content: "✅ 참여 의사를 전달했어요!", ephemeral: true });
               return;
             }
