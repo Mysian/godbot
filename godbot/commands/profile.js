@@ -383,13 +383,13 @@ async function getFavTimeRangeText(userId, now = new Date()) {
     return `${hour}시 ~ ${((hour + 1) % 24)}시`;
   };
   const isWeekday = (d) => {
-    aconst day = d.getDay();
-    return day >= 1 && day <= 5;
-  };
-  const isWeekend = (d) => {
-    const day = d.getDay();
-    return day === 0 || day === 6;
-  };
+  const day = d.getDay();
+  return day >= 1 && day <= 5;
+};
+const isWeekend = (d) => {
+  const day = d.getDay();
+  return day === 0 || day === 6;
+};
   const emptyHours = () => {
     const obj = {};
     for (let h = 0; h < 24; h++) obj[String(h).padStart(2, "0")] = 0;
