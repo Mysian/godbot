@@ -533,12 +533,12 @@ async function buildTop3RelationsField(interaction, targetUserId) {
   const top3 = rows.sort((a, b) => b.score - a.score).slice(0, 3);
   const lines = [];
   for (const r of top3) {
-    const member = await interaction.guild.members.fetch(r.id).catch(() => null);
-    const name = member ? member.displayName : (await interaction.client.users.fetch(r.id).catch(() => null))?.username || "(탈주)";
-    const pct = totalEligibleScore > 0 ? (Math.max(0, r.score) / totalEligibleScore) * 100 : 0;
-    lines.push(`• ${name} ${renderBar(pct)}`);
-  }
-  return lines.join("\n");
+  const member = await interaction.guild.members.fetch(r.id).catch(() => null);
+  const name = member ? member.displayName : (await interaction.client.users.fetch(r.id).catch(() => null))?.username || "(탈주)";
+  const pct = totalEligibleScore > 0 ? (Math.max(0, r.score) / totalEligibleScore) * 100 : 0;
+  lines.push(`- ${name}\n${renderBar(pct)}`);
+}
+return lines.join("\n");
 }
 
 async function buildProfileView(interaction, targetUser) {
