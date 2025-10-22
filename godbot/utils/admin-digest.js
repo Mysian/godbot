@@ -28,6 +28,14 @@ const MEMBER_ROLE_ID = '816619403205804042';
 
 const DIGEST_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
+const ADMIN_REACT_TEST_PATH = path.join(DATA_DIR, 'admin-react-test.json');
+function readAdminReactTests() {
+  try {
+    if (!fs.existsSync(ADMIN_REACT_TEST_PATH)) return [];
+    return JSON.parse(fs.readFileSync(ADMIN_REACT_TEST_PATH, 'utf8'));
+  } catch { return []; }
+}
+
 function readJsonSafe(p, fallback) {
   try {
     if (!fs.existsSync(p)) return fallback;
@@ -365,13 +373,32 @@ const embed1 = new EmbedBuilder()
   const adminsSorted = adminMembers.slice().sort((a,b)=>adminScore(b)-adminScore(a));
   const totalAdminScore = adminsSorted.reduce((s,p)=>s+adminScore(p),0) || 1;
   const adminLines = adminsSorted.map(p => {
-    const pct = Math.round((adminScore(p)/totalAdminScore)*100);
-    return `<@${p.id}>  ${String(pct).padStart(2,'0')}%  ${bar(pct)}`;
-  });
-  const embedAdmin = new EmbedBuilder()
-    .setTitle('🛠 관리진 활동량')
-    .setColor(0x3498DB)
-    .setDescription(adminLines.length ? adminLines.join('\n') : '관리진 데이터 없음');
+  const pct = Math.round((adminScore(p)/totalAdminScore)*100);
+  return `<@${p.id}>  ${String(pct).padStart(2,'0')}%  ${bar(pct)}`;
+});
+
+const reactTests = readAdminReactTests().filter(x => x && typeof x === 'object');
+const finished = reactTests.filter(x => typeof x.ms === 'number');
+let extraLine = '';
+if (finished.length) {
+  const avgMs = Math.round(finished.reduce((s, r) => s + r.ms, 0) / finished.length);
+  const last = finished[finished.length - 1];
+  const lastWhen = new Date(last.endAt || Date.now());
+  const lastStr = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  }).format(lastWhen);
+  extraLine = `\n\n**🧪 승인 더미 테스트**  평균 ${(avgMs/1000).toFixed(2)}초  (n=${finished.length})  ·  최근 ${(last.ms/1000).toFixed(2)}초 (${lastStr}, <@${last.testerId}>)`;
+} else if (reactTests.length) {
+  extraLine = `\n\n**🧪 승인 더미 테스트**  기록은 있으나 완료된 테스트가 없어.`;
+}
+
+const embedAdmin = new EmbedBuilder()
+  .setTitle('🛠 관리진 활동량')
+  .setColor(0x3498DB)
+  .setDescription((adminLines.length ? adminLines.join('\n') : '관리진 데이터 없음') + extraLine);
+
 
   return [embed1, embedAdmin, embedJoin, embed3];
 }
