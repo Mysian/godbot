@@ -458,7 +458,7 @@ module.exports = {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    UserSelectMenuBuilder,
+    StringSelectMenuBuilder,
     ComponentType,
     ModalBuilder,
     TextInputBuilder,
@@ -468,6 +468,8 @@ module.exports = {
   const path = require('path');
 
   const REACT_TEST_PATH = path.join(__dirname, '..', 'data', 'admin-react-test.json');
+  const ADMIN_ROLE_IDS = ['1201856430580432906', '786128824365482025'];
+
   const readReactTests = () => {
     try {
       if (!fs.existsSync(REACT_TEST_PATH)) return [];
@@ -523,16 +525,36 @@ module.exports = {
     );
   };
 
-  // 1) 측정 대상 관리진 선택
+  // 1) 측정 대상 관리진 선택 (역할 필터 적용)
+  const allMembers = await interaction.guild.members.fetch();
+  const eligible = [...allMembers.values()].filter(
+    (m) => !m.user.bot && ADMIN_ROLE_IDS.some((rid) => m.roles.cache.has(rid)),
+  );
+
+  if (eligible.length === 0) {
+    await interaction.followUp({
+      content: '해당 역할을 가진 관리진을 찾을 수 없어.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const options = eligible.slice(0, 25).map((m) => ({
+    label: m.displayName || m.user.username,
+    description: m.user.tag,
+    value: m.id,
+  }));
+
   const pickMsg = await interaction.followUp({
-    content: '반응을 측정할 **관리진 1명**을 선택해줘.',
+    content: '반응을 측정할 **관리진 1명**을 선택해줘. (관리자 역할만 표시됨)',
     components: [
       new ActionRowBuilder().addComponents(
-        new UserSelectMenuBuilder()
+        new StringSelectMenuBuilder()
           .setCustomId('dummy_tester_pick')
           .setPlaceholder('관리진 선택')
           .setMinValues(1)
-          .setMaxValues(1),
+          .setMaxValues(1)
+          .addOptions(options),
       ),
     ],
     ephemeral: true,
@@ -541,7 +563,7 @@ module.exports = {
 
   const pick = await pickMsg
     .awaitMessageComponent({
-      componentType: ComponentType.UserSelect,
+      componentType: ComponentType.StringSelect,
       time: 60_000,
       filter: (i) => i.user.id === interaction.user.id && i.customId === 'dummy_tester_pick',
     })
