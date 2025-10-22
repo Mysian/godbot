@@ -39,7 +39,7 @@ const PLAY_STYLE_ROLES = {
 };
 
 const PRIVACY_BYPASS_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
-const BASE_ROLE_ID = "816619403205804042";
+const BASE_MEMBER_ROLE_ID = "816619403205804042";
 
 const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p)) : {});
 const writeJson = (p, obj) => {
@@ -383,7 +383,7 @@ async function getFavTimeRangeText(userId, now = new Date()) {
     return `${hour}시 ~ ${((hour + 1) % 24)}시`;
   };
   const isWeekday = (d) => {
-    const day = d.getDay();
+    aconst day = d.getDay();
     return day >= 1 && day <= 5;
   };
   const isWeekend = (d) => {
@@ -502,19 +502,43 @@ function buildRatingFieldValue(targetId) {
   return `${head}\n${lines.join("\n")}`;
 }
 
-function buildInteractionRateLine(guild, userId) {
-  const last = relationship.loadLastInteraction?.() || {};
-  const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-  const partnersAll = Object.entries(last[userId] || {}).filter(([, t]) => Number(t) >= cutoff).map(([id]) => id);
-  const baseRole = guild.roles.cache.get(BASE_ROLE_ID);
-  const baseMembers = baseRole ? baseRole.members : new Map();
-  const eligible = baseMembers.size || 0;
-  const partnerEligible = partnersAll.filter(id => baseMembers.has(id)).length;
-  const pct = eligible > 0 ? Math.round((partnerEligible / eligible) * 1000) / 10 : 0;
-  const slots = 12;
-  const filled = Math.max(0, Math.min(slots, Math.round((pct / 100) * slots)));
-  const bar = "█".repeat(filled) + "░".repeat(slots - filled);
-  return `서버 교류률 ${bar} ${pct}% (${partnerEligible}/${eligible}, 최근 30일)`;
+function renderBar(pct, width = 16) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  const filled = Math.round((p / 100) * width);
+  const empty = Math.max(0, width - filled);
+  return `〔${"█".repeat(filled)}${"░".repeat(empty)}〕 ${p.toFixed(1)}%`;
+}
+
+async function getEligibleMemberIds(guild) {
+  const role = guild.roles.cache.get(BASE_MEMBER_ROLE_ID) || await guild.roles.fetch(BASE_MEMBER_ROLE_ID).catch(() => null);
+  if (role && role.members) return Array.from(role.members.keys());
+  return guild.members.cache.filter(m => m.roles.cache.has(BASE_MEMBER_ROLE_ID)).map(m => m.id);
+}
+
+async function buildTop3RelationsField(interaction, targetUserId) {
+  const eligible = new Set(await getEligibleMemberIds(interaction.guild));
+  eligible.delete(targetUserId);
+  const raw = relationship.getTopRelations?.(targetUserId, 1000) || [];
+  const rows = [];
+  for (const entry of raw) {
+    const id = typeof entry === "string" ? entry : (entry?.userId || entry?.id || null);
+    if (!id) continue;
+    if (!eligible.has(id)) continue;
+    const score = Number(entry?.score ?? entry?.value ?? relationship.getScore?.(targetUserId, id) ?? 0);
+    if (!isFinite(score)) continue;
+    rows.push({ id, score });
+  }
+  if (!rows.length) return "없음";
+  const totalEligibleScore = rows.reduce((a, b) => a + Math.max(0, b.score), 0) || 0;
+  const top3 = rows.sort((a, b) => b.score - a.score).slice(0, 3);
+  const lines = [];
+  for (const r of top3) {
+    const member = await interaction.guild.members.fetch(r.id).catch(() => null);
+    const name = member ? member.displayName : (await interaction.client.users.fetch(r.id).catch(() => null))?.username || "(탈주)";
+    const pct = totalEligibleScore > 0 ? (Math.max(0, r.score) / totalEligibleScore) * 100 : 0;
+    lines.push(`• ${name} ${renderBar(pct)}`);
+  }
+  return lines.join("\n");
 }
 
 async function buildProfileView(interaction, targetUser) {
@@ -540,22 +564,7 @@ async function buildProfileView(interaction, targetUser) {
   const beAmount = formatAmount(be[userId]?.amount ?? 0);
   const statusMsg = `🗨️ 『${profile.statusMsg?.trim() || "상태 메시지가 없습니다."}』`;
   const joinedStr = `<t:${Math.floor((targetMember?.joinedAt || new Date()).getTime() / 1000)}:R>`;
-  let friendsStr = "없음";
-  try {
-    const rawTop = relationship?.getTopRelations ? relationship.getTopRelations(userId, 3) : [];
-    const names = [];
-    for (const rel of rawTop) {
-      const fid = typeof rel === "string" ? rel : rel.userId ?? rel.id;
-      if (!fid) continue;
-      const m = await interaction.guild.members.fetch(fid).catch(() => null);
-      if (m) names.push(m.displayName);
-      else {
-        const u = await interaction.client.users.fetch(fid).catch(() => null);
-        names.push(u ? `${u.username} (탈주)` : "(탈주)");
-      }
-    }
-    if (names.length) friendsStr = names.map(n => `• ${n}`).join("\n");
-  } catch {}
+  const friendsStr = await buildTop3RelationsField(interaction, userId).catch(() => "없음");
   let recentMsg = 0, recentVoice = 0;
   try {
     const now = new Date();
@@ -589,8 +598,6 @@ async function buildProfileView(interaction, targetUser) {
   const ratingFieldValue = buildRatingFieldValue(userId);
   const viewerMemoText = getMemo(userId, viewerId);
   const memoFieldValue = viewerMemoText ? viewerMemoText : "등록된 메모가 없습니다.";
-  const interactionRateLine = buildInteractionRateLine(interaction.guild, userId);
-  const friendsWithRate = friendsStr === "없음" ? interactionRateLine : `${friendsStr}\n${interactionRateLine}`;
   const fields = [
     { name: "🎮 스타일", value: playStyle, inline: true },
     { name: `${getFavorEmoji(favorVal)} 호감도`, value: String(favorVal), inline: true },
@@ -601,7 +608,7 @@ async function buildProfileView(interaction, targetUser) {
     { name: "💻 스팀", value: profile.steamNick || "없음", inline: true },
     { name: "🔖 롤 닉네임", value: profile.lolNick || "없음", inline: true },
     { name: "🟦 배틀넷", value: profile.bnetNick || "없음", inline: true },
-    { name: "🤗 교류가 활발한 3인", value: friendsWithRate, inline: false },
+    { name: "🤗 교류가 활발한 3인", value: friendsStr, inline: false },
     { name: "📊 최근 7일 채팅", value: `${recentMsg}회`, inline: true },
     { name: "🔊 최근 7일 음성", value: formatVoice(recentVoice), inline: true },
     { name: "📝 최근 활동 이력", value: recentActivitiesStr, inline: false },
@@ -625,6 +632,7 @@ async function buildProfileView(interaction, targetUser) {
       text: userId === interaction.user.id ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!" : "혁신적 종합게임서버, 까리한디스코드",
       iconURL: interaction.client.user.displayAvatarURL()
     });
+
   const viewerEntry = ratings[userId]?.entries?.[interaction.user.id] || null;
   const rateBtnLabel = viewerEntry ? "해당 유저 평가 수정하기" : "해당 유저 평가하기";
   const memoBtnLabel = viewerMemoText ? "메모 수정" : "메모하기";
@@ -658,6 +666,7 @@ async function buildProfileView(interaction, targetUser) {
         .setLabel("서버 스탯 오각형 공유")
     )
   ];
+
   return { embeds: [embed], files: [attachment], components, ephemeral: true };
 }
 
@@ -701,8 +710,10 @@ module.exports = {
     const view = await buildProfileView(interaction, target);
     if (view.content) return await interaction.reply({ content: view.content, ephemeral: true });
     await interaction.reply({ embeds: view.embeds, files: view.files, components: view.components, ephemeral: true });
+
     const msg = await interaction.fetchReply().catch(() => null);
     if (!msg) return;
+
     const filter = i => {
       if (i.user.id !== interaction.user.id) return false;
       if (!i.customId) return false;
@@ -715,7 +726,9 @@ module.exports = {
         i.customId === `profile:share_radar|${target.id}`
       );
     };
+
     const collector = msg.createMessageComponentCollector({ filter, time: 10 * 60 * 1000 });
+
     collector.on("collect", async i => {
       if (i.customId === `profile:rate|${target.id}`) {
         const modal = new ModalBuilder().setCustomId(`profile:rate|${target.id}`).setTitle("유저 평가 입력");
@@ -729,6 +742,7 @@ module.exports = {
           new ActionRowBuilder().addComponents(ti("r_skill", "게임 실력 (1~5)", "예: 4")),
         );
         await i.showModal(modal);
+
         let submitted = null;
         try {
           submitted = await i.awaitModalSubmit({
@@ -737,6 +751,7 @@ module.exports = {
           });
         } catch {}
         if (!submitted) return;
+
         const scores = {
           kindness: submitted.fields.getTextInputValue("r_kindness"),
           manners: submitted.fields.getTextInputValue("r_manners"),
@@ -745,11 +760,15 @@ module.exports = {
           skill: submitted.fields.getTextInputValue("r_skill"),
         };
         upsertRating(target.id, interaction.user.id, scores);
+
         const { overall } = summarizeRatings(target.id);
         await submitted.reply({ content: `평가가 저장되었습니다. 현재 종합 ${overall.toFixed(1)}점입니다.`, ephemeral: true });
+
         const refreshed = await buildProfileView(interaction, target);
         await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
-      } else if (i.customId === `profile:memo|${target.id}`) {
+      }
+
+      else if (i.customId === `profile:memo|${target.id}`) {
         const modal = new ModalBuilder().setCustomId(`profile:memo|${target.id}`).setTitle("메모 입력/수정");
         const input = new TextInputBuilder()
           .setCustomId("memo_text")
@@ -760,6 +779,7 @@ module.exports = {
           .setPlaceholder("메모를 입력하세요.");
         modal.addComponents(new ActionRowBuilder().addComponents(input));
         await i.showModal(modal);
+
         let submitted = null;
         try {
           submitted = await i.awaitModalSubmit({
@@ -768,12 +788,16 @@ module.exports = {
           });
         } catch {}
         if (!submitted) return;
+
         const text = submitted.fields.getTextInputValue("memo_text");
         upsertMemo(target.id, interaction.user.id, text);
         await submitted.reply({ content: `메모가 저장되었습니다.\n\n당신에게만 보이는 메모: ${text}`, ephemeral: true });
+
         const refreshed = await buildProfileView(interaction, target);
         await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
-      } else if (i.customId === `profile:share|${target.id}`) {
+      }
+
+      else if (i.customId === `profile:share|${target.id}`) {
         const profileRec = readJson(profilesPath)[target.id] || {};
         const isPrivate = !!profileRec.isPrivate;
         const canBypass = hasAnyRole(i.member, PRIVACY_BYPASS_ROLE_IDS);
@@ -784,24 +808,31 @@ module.exports = {
         const pub = await buildProfileShareEmbed(interaction, target);
         await i.channel.send({ embeds: pub.embeds, files: pub.files });
         await i.editReply({ content: "채널에 프로필을 공유했어!" });
-      } else if (i.customId === `profile:share_radar|${target.id}`) {
+      }
+
+      else if (i.customId === `profile:share_radar|${target.id}`) {
         await i.deferReply({ ephemeral: true });
         const pub = await buildRadarOnlyShareEmbed(interaction, target);
         await i.channel.send({ embeds: pub.embeds, files: pub.files });
         await i.editReply({ content: "채널에 오각형 스탯을 공유했어!" });
-      } else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
+      }
+
+      else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
         const isGive = i.customId.includes("favor+");
         const giver = interaction.user.id;
         const receiver = target.id;
+
         if (giver === receiver) {
           return i.reply({
             content: isGive ? "자기 자신에게는 호감도를 줄 수 없어." : "자기 자신에게는 호감도를 차감할 수 없어.",
             ephemeral: true
           });
         }
+
         const favor = readJson(favorPath);
         const cooldown = readJson(cooldownPath);
         const now = Date.now();
+
         const cdKey = (isGive ? "" : "rm_") + `${giver}_${receiver}`;
         const DAY = 24 * 60 * 60 * 1000;
         if (cooldown[cdKey] && now - cooldown[cdKey] < DAY) {
@@ -810,10 +841,12 @@ module.exports = {
           const min = Math.floor((left % 3600000) / 60000);
           return i.reply({ content: `쿨타임이 남아 있어. (남은 시간: ${hr}시간 ${min}분)`, ephemeral: true });
         }
+
         favor[receiver] = (favor[receiver] || 0) + (isGive ? 1 : -1);
         cooldown[cdKey] = now;
         writeJson(favorPath, favor);
         writeJson(cooldownPath, cooldown);
+
         try {
           if (isGive) {
             relationship.onPositive(giver, receiver, 0.3);
@@ -822,14 +855,17 @@ module.exports = {
             relationship.addScore(giver, receiver, -0.3);
           }
         } catch {}
+
         const reward = Math.floor(Math.random() * 2) + 1;
         addBE(giver, reward, isGive ? "호감도 지급 성공 보상" : "호감도 차감 성공 보상");
+
         await i.reply({
           content: isGive
             ? `<@${receiver}>에게 호감도를 1점 지급했어!\n🎁 파랑 정수 ${reward} BE를 획득했어!`
             : `<@${receiver}>의 호감도를 1점 차감했어.\n🎁 파랑 정수 ${reward} BE를 획득했어!`,
           ephemeral: true
         });
+
         const refreshed = await buildProfileView(interaction, target);
         await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
       }
