@@ -93,6 +93,20 @@ function resetVoiceAutoTimer(member, channel) {
   }
 }
 
+const ADMIN_REACT_TEST_PATH = path.join(__dirname, '../data/admin-react-test.json');
+function readReactTests() {
+  try {
+    if (!fs.existsSync(ADMIN_REACT_TEST_PATH)) return [];
+    return JSON.parse(fs.readFileSync(ADMIN_REACT_TEST_PATH, 'utf8'));
+  } catch { return []; }
+}
+function writeReactTests(arr) {
+  try {
+    fs.mkdirSync(path.dirname(ADMIN_REACT_TEST_PATH), { recursive: true });
+    fs.writeFileSync(ADMIN_REACT_TEST_PATH, JSON.stringify(arr, null, 2));
+  } catch {}
+}
+
 const APPROVAL_SETTINGS_PATH = path.join(__dirname, '../data/approval-settings.json');
 function loadApprovalToggle() {
   if (!fs.existsSync(APPROVAL_SETTINGS_PATH)) return { enabled: true };
@@ -423,7 +437,8 @@ module.exports = {
           { name: '음성채널 자동이동 설정', value: 'voice_auto' },
           { name: '세금누락 강제처리', value: 'tax_force' },
           { name: '30일 미접속 색상 칭호 해제', value: 'colorrole_inactive' },
-          { name: '비활동 스레드 제거', value: 'thread_cleanup' }
+          { name: '비활동 스레드 제거', value: 'thread_cleanup' },
+          { name: '관리진 승인 더미 테스트', value: 'approval_dummy' }
         )
     ),
   async execute(interaction) {
@@ -436,6 +451,115 @@ module.exports = {
     let selectedDays = defaultDays;
     let warnedObj = readWarnHistory();
     let page = 0;
+
+    if (option === 'approval_dummy') {
+  // 1) 관리자 1명 선택 UI
+  const pickMsg = await interaction.followUp({
+    content: '반응할 **관리진 1명**을 선택해줘.',
+    components: [
+      new ActionRowBuilder().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('dummy_tester_pick')
+          .setPlaceholder('관리진 선택')
+          .setMinValues(1)
+          .setMaxValues(1)
+      )
+    ],
+    ephemeral: true,
+    fetchReply: true
+  });
+
+  const pick = await pickMsg.awaitMessageComponent({
+    componentType: ComponentType.UserSelect,
+    time: 60_000,
+    filter: i => i.user.id === interaction.user.id && i.customId === 'dummy_tester_pick'
+  }).catch(() => null);
+
+  if (!pick) {
+    await interaction.followUp({ content: '선택 시간 초과.', ephemeral: true });
+    return;
+  }
+  const testerId = pick.values[0];
+  const tester = await interaction.guild.members.fetch(testerId).catch(()=>null);
+  if (!tester) {
+    await interaction.followUp({ content: '대상 관리진을 찾지 못했어.', ephemeral: true });
+    return;
+  }
+  await pick.update({ components: [], content: `테스터: <@${testerId}>` }).catch(()=>{});
+
+  // 2) 테스트 임베드 송출 (현재 채널)
+  const startAt = Date.now();
+  const testEmbed = new EmbedBuilder()
+    .setTitle('✅ 관리진 승인 더미 테스트')
+    .setDescription([
+      `- 대상 관리진: <@${testerId}>`,
+      `- 지침: 아래 버튼 중 하나를 **가장 빠르게** 눌러줘.`,
+      `- 이 테스트는 승인/거절 실전 임베드와 동일한 감각을 가정함.`
+    ].join('\n'))
+    .setColor(0x2ecc71)
+    .setTimestamp(new Date(startAt));
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`dummy_approve_${startAt}`).setStyle(ButtonStyle.Success).setLabel('승인'),
+    new ButtonBuilder().setCustomId(`dummy_reject_${startAt}`).setStyle(ButtonStyle.Danger).setLabel('거절')
+  );
+
+  const testMsg = await interaction.channel.send({ embeds: [testEmbed], components: [row] });
+
+  // 3) 리스너(테스터만 반응 가능)
+  const collector = testMsg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 5 * 60 * 1000,
+    filter: i => i.user.id === testerId && (i.customId.startsWith('dummy_approve_') || i.customId.startsWith('dummy_reject_'))
+  });
+
+  let recorded = false;
+  collector.on('collect', async btn => {
+    if (recorded) return;
+    recorded = true;
+    const endAt = Date.now();
+    const ms = endAt - startAt;
+    // 저장
+    const arr = readReactTests();
+    arr.push({ testerId, startAt, endAt, ms, action: btn.customId.startsWith('dummy_approve_') ? 'approve' : 'reject', messageId: testMsg.id, channelId: testMsg.channel.id });
+    writeReactTests(arr);
+
+    await btn.update({
+      embeds: [
+        EmbedBuilder.from(testEmbed)
+          .setColor(0x5865F2)
+          .addFields(
+            { name: '결과', value: btn.customId.startsWith('dummy_approve_') ? '승인' : '거절', inline: true },
+            { name: '반응 시간', value: `${(ms/1000).toFixed(2)}초`, inline: true }
+          )
+      ],
+      components: []
+    }).catch(()=>{});
+    await interaction.followUp({ content: `완료! <@${testerId}> 반응: ${(ms/1000).toFixed(2)}초`, ephemeral: true });
+  });
+
+  collector.on('end', async () => {
+    if (!recorded) {
+      const arr = readReactTests();
+      arr.push({ testerId, startAt, endAt: null, ms: null, action: 'timeout', messageId: testMsg.id, channelId: testMsg.channel.id });
+      writeReactTests(arr);
+      try {
+        await testMsg.edit({
+          embeds: [
+            EmbedBuilder.from(testEmbed)
+              .setColor(0xE67E22)
+              .addFields({ name: '결과', value: '시간 초과(5분)', inline: true })
+          ],
+          components: []
+        });
+      } catch {}
+      await interaction.followUp({ content: `테스트 시간 초과.`, ephemeral: true });
+    }
+  });
+
+  return;
+}
+
 
     if (option === 'voice_notify') {
       const notifyData = loadVoiceNotify();
