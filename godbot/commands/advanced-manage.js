@@ -453,113 +453,336 @@ module.exports = {
     let page = 0;
 
     if (option === 'approval_dummy') {
-  // 1) 관리자 1명 선택 UI
+  const {
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    UserSelectMenuBuilder,
+    ComponentType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+  } = require('discord.js');
+  const fs = require('fs');
+  const path = require('path');
+
+  const REACT_TEST_PATH = path.join(__dirname, '..', 'data', 'admin-react-test.json');
+  const readReactTests = () => {
+    try {
+      if (!fs.existsSync(REACT_TEST_PATH)) return [];
+      const raw = fs.readFileSync(REACT_TEST_PATH, 'utf8');
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  };
+  const writeReactTests = (arr) => {
+    try {
+      fs.mkdirSync(path.dirname(REACT_TEST_PATH), { recursive: true });
+      fs.writeFileSync(REACT_TEST_PATH, JSON.stringify(arr, null, 2), 'utf8');
+    } catch {}
+  };
+
+  const randPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+  const buildApprovalLikeEmbed = ({ memberLike, progress }) => {
+    const createdStr = progress.createdAt.toISOString().slice(0, 10);
+    const hasPastJoin = progress.pastJoin;
+    const rejoinCount = progress.rejoinCount;
+
+    return new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle('신규 입장 승인 대기')
+      .setThumbnail(memberLike.avatarURL)
+      .addFields(
+        { name: '디스코드 계정', value: `${memberLike.mention} (${memberLike.tag})`, inline: false },
+        { name: '변경 닉네임', value: progress.nickname || '-', inline: true },
+        { name: '출생년도', value: String(progress.birthYear || '-'), inline: true },
+        { name: '성별', value: progress.gender === 'M' ? '남자' : progress.gender === 'F' ? '여자' : '-', inline: true },
+        { name: '유입 경로', value: progress.sourceText || '미입력', inline: true },
+        { name: '부계정 여부', value: progress.isAlt ? '부계정' : '일반', inline: true },
+        { name: '거절 이력', value: `${progress.rejectCount}회`, inline: true },
+        { name: '계정 생성일', value: `${createdStr} (경과 ${progress.accountAge}일)`, inline: true },
+        { name: '과거 입장 이력', value: hasPastJoin ? '있음' : '없음', inline: true },
+        { name: '들락(재입장) 횟수', value: `${rejoinCount}회`, inline: true },
+        { name: '플레이스타일', value: progress.playStyle || '미선택', inline: true },
+        { name: '주 게임', value: progress.gameTags?.length ? progress.gameTags.join(', ') : '미선택', inline: false },
+      );
+  };
+
+  const buildApprovalLikeButtons = (nonce) => {
+    return new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`dummy_approve_${nonce}`).setLabel('승인').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`dummy_approve_silent_${nonce}`).setLabel('조용히 승인').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`dummy_nickreq_${nonce}`).setLabel('닉네임 변경 요청').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`dummy_reject_${nonce}`).setLabel('거절').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`dummy_ban_${nonce}`).setLabel('차단').setStyle(ButtonStyle.Danger),
+    );
+  };
+
+  // 1) 측정 대상 관리진 선택
   const pickMsg = await interaction.followUp({
-    content: '반응할 **관리진 1명**을 선택해줘.',
+    content: '반응을 측정할 **관리진 1명**을 선택해줘.',
     components: [
       new ActionRowBuilder().addComponents(
         new UserSelectMenuBuilder()
           .setCustomId('dummy_tester_pick')
           .setPlaceholder('관리진 선택')
           .setMinValues(1)
-          .setMaxValues(1)
-      )
+          .setMaxValues(1),
+      ),
     ],
     ephemeral: true,
-    fetchReply: true
+    fetchReply: true,
   });
 
-  const pick = await pickMsg.awaitMessageComponent({
-    componentType: ComponentType.UserSelect,
-    time: 60_000,
-    filter: i => i.user.id === interaction.user.id && i.customId === 'dummy_tester_pick'
-  }).catch(() => null);
+  const pick = await pickMsg
+    .awaitMessageComponent({
+      componentType: ComponentType.UserSelect,
+      time: 60_000,
+      filter: (i) => i.user.id === interaction.user.id && i.customId === 'dummy_tester_pick',
+    })
+    .catch(() => null);
 
   if (!pick) {
     await interaction.followUp({ content: '선택 시간 초과.', ephemeral: true });
     return;
   }
+
   const testerId = pick.values[0];
-  const tester = await interaction.guild.members.fetch(testerId).catch(()=>null);
+  const tester = await interaction.guild.members.fetch(testerId).catch(() => null);
   if (!tester) {
     await interaction.followUp({ content: '대상 관리진을 찾지 못했어.', ephemeral: true });
     return;
   }
-  await pick.update({ components: [], content: `테스터: <@${testerId}>` }).catch(()=>{});
+  await pick.update({ components: [], content: `테스터: <@${testerId}>` }).catch(() => {});
 
-  // 2) 테스트 임베드 송출 (현재 채널)
+  // 2) 닉네임/출생년도 설정 방식 (랜덤/직접 입력)
+  const chooser = await interaction.followUp({
+    content: '닉네임/출생년도 **설정 방식**을 골라줘.',
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('dummy_mode_random').setLabel('랜덤 생성').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('dummy_mode_manual').setLabel('직접 입력').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+    ephemeral: true,
+    fetchReply: true,
+  });
+
+  const modePick = await chooser
+    .awaitMessageComponent({
+      componentType: ComponentType.Button,
+      time: 60_000,
+      filter: (i) => i.user.id === interaction.user.id && ['dummy_mode_random', 'dummy_mode_manual'].includes(i.customId),
+    })
+    .catch(() => null);
+
+  if (!modePick) {
+    await interaction.followUp({ content: '선택 시간 초과.', ephemeral: true });
+    return;
+  }
+
+  let nickname = null;
+  let birthYear = null;
+
+  if (modePick.customId === 'dummy_mode_manual') {
+    const modal = new ModalBuilder().setCustomId('dummy_modal_input').setTitle('더미: 닉네임/출생년도 설정');
+    const nickIn = new TextInputBuilder()
+      .setCustomId('dummy_in_nick')
+      .setLabel('변경 닉네임')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('예) 밤비쨩')
+      .setRequired(true)
+      .setMaxLength(20);
+    const yearIn = new TextInputBuilder()
+      .setCustomId('dummy_in_year')
+      .setLabel('출생년도(YYYY)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('예) 1998')
+      .setRequired(true)
+      .setMaxLength(4);
+
+    const row1 = new ActionRowBuilder().addComponents(nickIn);
+    const row2 = new ActionRowBuilder().addComponents(yearIn);
+    modal.addComponents(row1, row2);
+
+    await modePick.showModal(modal);
+
+    const modalSubmit = await interaction.client
+      .awaitModalSubmit({
+        time: 120_000,
+        filter: (i) => i.customId === 'dummy_modal_input' && i.user.id === interaction.user.id,
+      })
+      .catch(() => null);
+
+    if (!modalSubmit) {
+      await interaction.followUp({ content: '입력 시간 초과.', ephemeral: true });
+      return;
+    }
+
+    nickname = modalSubmit.fields.getTextInputValue('dummy_in_nick').trim();
+    birthYear = parseInt(modalSubmit.fields.getTextInputValue('dummy_in_year').trim(), 10);
+    if (!Number.isFinite(birthYear) || birthYear < 1970 || birthYear > 2015) birthYear = randInt(1990, 2005);
+
+    await modalSubmit.reply({ content: `설정 완료: 닉네임=${nickname}, 출생년도=${birthYear}`, ephemeral: true });
+  } else {
+    const pool1 = ['밤비', '라임', '츄', '이브', '모코', '제리', '호떡', '라떼', '카미', '유나', '히로', '밍'];
+    const pool2 = ['쨩', '냥', '링', '킥', '요', '콩', '찌', '짱', '톤', '민', '루', '별'];
+    nickname = `${randPick(pool1)}${randPick(pool2)}${Math.random() < 0.35 ? randInt(1, 99) : ''}`;
+    birthYear = randInt(1991, 2005);
+    await modePick.update({ components: [], content: `랜덤 생성 완료: 닉네임=${nickname}, 출생년도=${birthYear}` }).catch(() => {});
+  }
+
+  // 3) 가짜 지원자 프로필/진행정보
+  const members = await interaction.guild.members.fetch();
+  const candidates = [...members.values()].filter((m) => !m.user.bot);
+  const avatarFrom = randPick(candidates) || interaction.member;
+  const memberLike = {
+    mention: `<@${avatarFrom.id}>`,
+    tag: avatarFrom.user.tag,
+    avatarURL: avatarFrom.user.displayAvatarURL({ size: 256 }),
+  };
+
+  const genders = ['M', 'F', null];
+  const styles = ['즐겜러', '즐빡겜러', '빡겜러', null];
+  const games = ['발로란트', '배틀그라운드', '로그라이트', '스타듀밸리', '로아', '메이플', '오버워치', '이터널리턴'];
+  const createdAgoDays = randInt(120, 2600);
+
+  const progress = {
+    userId: 'dummy',
+    nickname,
+    birthYear,
+    gender: randPick(genders),
+    sourceText: randPick([null, '디스보드', '추천인(지인)', 'SNS', '재입장']),
+    isAlt: Math.random() < 0.1,
+    rejectCount: randInt(0, 2),
+    createdAt: new Date(Date.now() - createdAgoDays * 86400000),
+    accountAge: createdAgoDays,
+    pastJoin: Math.random() < 0.35,
+    rejoinCount: randInt(0, 3),
+    playStyle: randPick(styles),
+    gameTags: Array.from(new Set(Array.from({ length: randInt(1, 3) }, () => randPick(games)))),
+  };
+
+  const nonce = `${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+  const testEmbed = buildApprovalLikeEmbed({ memberLike, progress });
+  const row = buildApprovalLikeButtons(nonce);
+
+  // 4) 더미 임베드 송출
   const startAt = Date.now();
-  const testEmbed = new EmbedBuilder()
-    .setTitle('✅ 관리진 승인 더미 테스트')
-    .setDescription([
-      `- 대상 관리진: <@${testerId}>`,
-      `- 지침: 아래 버튼 중 하나를 **가장 빠르게** 눌러줘.`,
-      `- 이 테스트는 승인/거절 실전 임베드와 동일한 감각을 가정함.`
-    ].join('\n'))
-    .setColor(0x2ecc71)
-    .setTimestamp(new Date(startAt));
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`dummy_approve_${startAt}`).setStyle(ButtonStyle.Success).setLabel('승인'),
-    new ButtonBuilder().setCustomId(`dummy_reject_${startAt}`).setStyle(ButtonStyle.Danger).setLabel('거절')
-  );
-
   const testMsg = await interaction.channel.send({ embeds: [testEmbed], components: [row] });
 
-  // 3) 리스너(테스터만 반응 가능)
+  // 5) 버튼 수집
   const collector = testMsg.createMessageComponentCollector({
     componentType: ComponentType.Button,
     time: 5 * 60 * 1000,
-    filter: i => i.user.id === testerId && (i.customId.startsWith('dummy_approve_') || i.customId.startsWith('dummy_reject_'))
   });
 
   let recorded = false;
-  collector.on('collect', async btn => {
+
+  collector.on('collect', async (btn) => {
+    if (btn.user.id !== testerId) {
+      try {
+        await btn.reply({
+          content: '해당 승인/거절 절차는 **특정 관리인의 반응속도 측정**을 위함입니다.',
+          ephemeral: true,
+        });
+      } catch {}
+      return;
+    }
+
     if (recorded) return;
     recorded = true;
+
     const endAt = Date.now();
     const ms = endAt - startAt;
-    // 저장
+
     const arr = readReactTests();
-    arr.push({ testerId, startAt, endAt, ms, action: btn.customId.startsWith('dummy_approve_') ? 'approve' : 'reject', messageId: testMsg.id, channelId: testMsg.channel.id });
+    arr.push({
+      testerId,
+      startAt,
+      endAt,
+      ms,
+      action: btn.customId.includes('_reject_')
+        ? 'reject'
+        : btn.customId.includes('_ban_')
+        ? 'ban'
+        : btn.customId.includes('_nickreq_')
+        ? 'nickreq'
+        : btn.customId.includes('_approve_silent_')
+        ? 'approve_silent'
+        : 'approve',
+      messageId: testMsg.id,
+      channelId: testMsg.channel.id,
+    });
     writeReactTests(arr);
 
-    await btn.update({
-      embeds: [
-        EmbedBuilder.from(testEmbed)
-          .setColor(0x5865F2)
-          .addFields(
-            { name: '결과', value: btn.customId.startsWith('dummy_approve_') ? '승인' : '거절', inline: true },
-            { name: '반응 시간', value: `${(ms/1000).toFixed(2)}초`, inline: true }
-          )
-      ],
-      components: []
-    }).catch(()=>{});
-    await interaction.followUp({ content: `완료! <@${testerId}> 반응: ${(ms/1000).toFixed(2)}초`, ephemeral: true });
+    try {
+      const finished = EmbedBuilder.from(testEmbed)
+        .setColor(0x5865f2)
+        .addFields(
+          {
+            name: '결과',
+            value: btn.customId.includes('_reject_')
+              ? '거절'
+              : btn.customId.includes('_ban_')
+              ? '차단'
+              : btn.customId.includes('_nickreq_')
+              ? '닉네임 변경 요청'
+              : btn.customId.includes('_approve_silent_')
+              ? '조용히 승인'
+              : '승인',
+            inline: true,
+          },
+          { name: '반응 시간', value: `${(ms / 1000).toFixed(2)}초`, inline: true },
+        );
+
+      const disabledRow = new ActionRowBuilder().addComponents(
+        ...row.components.map((b) => ButtonBuilder.from(b).setDisabled(true)),
+      );
+
+      await btn.update({ embeds: [finished], components: [disabledRow] });
+    } catch {}
+
+    await interaction.followUp({ content: `완료! <@${testerId}> 반응: ${(ms / 1000).toFixed(2)}초`, ephemeral: true });
   });
 
   collector.on('end', async () => {
     if (!recorded) {
       const arr = readReactTests();
-      arr.push({ testerId, startAt, endAt: null, ms: null, action: 'timeout', messageId: testMsg.id, channelId: testMsg.channel.id });
+      arr.push({
+        testerId,
+        startAt,
+        endAt: null,
+        ms: null,
+        action: 'timeout',
+        messageId: testMsg.id,
+        channelId: testMsg.channel.id,
+      });
       writeReactTests(arr);
+
       try {
-        await testMsg.edit({
-          embeds: [
-            EmbedBuilder.from(testEmbed)
-              .setColor(0xE67E22)
-              .addFields({ name: '결과', value: '시간 초과(5분)', inline: true })
-          ],
-          components: []
-        });
+        const timeoutEmbed = EmbedBuilder.from(testEmbed)
+          .setColor(0xe67e22)
+          .addFields({ name: '결과', value: '시간 초과(5분)', inline: true });
+
+        const disabledRow = new ActionRowBuilder().addComponents(
+          ...row.components.map((b) => ButtonBuilder.from(b).setDisabled(true)),
+        );
+
+        await testMsg.edit({ embeds: [timeoutEmbed], components: [disabledRow] });
       } catch {}
-      await interaction.followUp({ content: `테스트 시간 초과.`, ephemeral: true });
+
+      await interaction.followUp({ content: '테스트 시간 초과.', ephemeral: true });
     }
   });
 
   return;
 }
-
 
     if (option === 'voice_notify') {
       const notifyData = loadVoiceNotify();
