@@ -265,5 +265,17 @@ async function register(client) {
 }
 
 async function publish(client) { return await ensurePanel(client); }
+function allowWhileOff(i) {
+  if (i.channelId !== PANEL_CHANNEL_ID) return false;
+  if (i.isButton() && i.customId === 'ctrl_global_toggle') return true;
+  if (i.isModalSubmit() && i.customId === 'ctrl_global_toggle_modal') return true;
+  return false;
+}
 
-module.exports = { register, publish, isBotEnabled };
+module.exports = {
+  register,
+  publish,
+  isBotEnabled,
+  allowWhileOff,
+  PANEL_CHANNEL_ID
+};
