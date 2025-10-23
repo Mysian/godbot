@@ -1,16 +1,15 @@
 const { EmbedBuilder, ChannelType, Collection, PermissionsBitField } = require('discord.js');
 
-// ====== CONFIG ======
-const DEBUG = true;           // true면 실패 시 상세 오류를 채널에 출력
-const SCAN_PAGES = 15;        // 기록채널 뒤로 몇 페이지만 훑을지
+const DEBUG = true;
+const SCAN_PAGES = 15;
 const GUILD_CHANNEL_LIMIT = 40;
 const PER_CHANNEL_FETCH = 60;
-// =====================
 
 function trim(s){return (s??'').toString().trim()}
 function tokens(content){return content.split(/\n|,|\/|\||\s{2,}/g).map(t=>trim(t)).filter(Boolean).slice(0,4)}
 function score(member,q){const dn=trim(member.displayName).toLowerCase(),un=trim(member.user?.username).toLowerCase(),qq=q.toLowerCase();let s=0;if(dn===qq)s+=100;if(un===qq)s+=100;if(dn.startsWith(qq))s+=40;if(un.startsWith(qq))s+=40;if(dn.includes(qq))s+=20;if(un.includes(qq))s+=20;return s}
 function toBigIntSafe(id){try{return id?BigInt(id):0n;}catch{return 0n}}
+function cmpByLastMsgDesc(a,b){const A=toBigIntSafe(a.lastMessageId);const B=toBigIntSafe(b.lastMessageId);if(A===B)return 0;return A>B?-1:1}
 
 async function checkChannelPerms(me, channel, needs){
   if(!channel) return { ok:false, missing:['CHANNEL_NOT_FOUND'] };
@@ -101,7 +100,7 @@ async function lastMessage(guild,uid,channelLimit=GUILD_CHANNEL_LIMIT,perChannel
       return c.viewable && perms && perms.has([PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.ReadMessageHistory]);
     })
     .map(c=>c)
-    .sort((a,b)=>toBigIntSafe(b.lastMessageId)-toBigIntSafe(a.lastMessageId))
+    .sort(cmpByLastMsgDesc)
     .slice(0,channelLimit);
   let best=null;
   for(const ch of channels){
@@ -200,7 +199,6 @@ function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
         ]);
       }catch(e){
         await debugLog('병렬 조회 실패', e);
-        // 부분 실패해도 계속 진행
         sourceScan = sourceScan || { record:null, parsed:null, reason:'INTERNAL_FAIL', perm:{ ok:false, missing:['INTERNAL'] } };
         lastMsg = lastMsg || null;
       }
