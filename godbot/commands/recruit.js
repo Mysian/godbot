@@ -188,8 +188,8 @@ function closeEmbed(embed) {
 function buildRecruitComponents(messageId, disabled = false) {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`${CID_PARTICIPATE}:${messageId}`).setStyle(ButtonStyle.Primary).setLabel("참여하고 싶어요").setEmoji("🙋").setDisabled(disabled),
-      new ButtonBuilder().setCustomId(`${CID_JOINVOICE}:${messageId}`).setStyle(ButtonStyle.Success).setLabel("해당 음성채널 참여하기").setEmoji("🎙️").setDisabled(disabled)
+      new ButtonBuilder().setCustomId(`${CID_PARTICIPATE}:${messageId}`).setStyle(ButtonStyle.Success).setLabel("참여하고 싶어요").setEmoji("🙋").setDisabled(disabled),
+      new ButtonBuilder().setCustomId(`${CID_JOINVOICE}:${messageId}`).setStyle(ButtonStyle.Primary).setLabel("해당 음성채널 참여하기").setEmoji("🎙️").setDisabled(disabled)
     ),
   ];
 }
