@@ -266,4 +266,5 @@ async function register(client) {
 
 async function publish(client) { return await ensurePanel(client); }
 
-module.exports = { register, publish };
+module.exports = { register, publish, isBotEnabled };
+
