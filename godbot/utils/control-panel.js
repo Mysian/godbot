@@ -12,6 +12,11 @@ const VOICE_AUTO_PATH = path.join(__dirname, '../data/voice-auto.json');
 const GLOBAL_TOGGLE_PATH = path.join(__dirname, '../data/bot-global.json');
 const ADMINPW_PATH = path.join(__dirname, '../data/adminpw.json');
 
+const EXEMPT_USER_IDS = ['285645561582059520', '638742607861645372'];
+function isExempt(userId) {
+  return !!userId && EXEMPT_USER_IDS.includes(String(userId));
+}
+
 const VOICE_AUTO_CATEGORY_IDS = [
   '1207980297854124032',
   '1273762376889532426',
@@ -234,27 +239,32 @@ async function handleModal(i) {
   const panelMsg = await findExistingPanel(i.channel).catch(() => null);
   if (panelMsg) await panelMsg.edit({ embeds: [buildEmbed(i.guild)], components: buildComponents(i.guild) }).catch(() => {});
 }
-
 function registerGlobalGuard(client) {
   client.on(Events.InteractionCreate, async (i) => {
-    if (i.channelId === PANEL_CHANNEL_ID) {
-      if (i.isButton() && i.customId === 'ctrl_global_toggle') return;
-      if (i.isModalSubmit() && i.customId === 'ctrl_global_toggle_modal') return;
+  if (i.channelId === PANEL_CHANNEL_ID) {
+    if (i.isButton() && i.customId === 'ctrl_global_toggle') return;
+    if (i.isModalSubmit() && i.customId === 'ctrl_global_toggle_modal') return;
+  }
+  if (!isBotEnabled()) {
+    if (isExempt(i?.user?.id)) return;
+    if (i.isRepliable()) {
+      const already = i.replied || i.deferred;
+      if (!already) await i.reply({ content: '현재 봇 기능 전체 OFF 상태입니다.', ephemeral: true }).catch(() => {});
     }
-    if (!isBotEnabled()) {
-      if (i.isRepliable()) {
-        const already = i.replied || i.deferred;
-        if (!already) await i.reply({ content: '현재 봇 기능 전체 OFF 상태입니다.', ephemeral: true }).catch(() => {});
-      }
-      return;
-    }
-  });
+    return;
+  }
+});
+  
   client.on('messageCreate', async (m) => {
-    if (!isBotEnabled()) return;
-  });
-  client.on('messageReactionAdd', async () => {
-    if (!isBotEnabled()) return;
-  });
+  if (!isBotEnabled()) {
+    if (!isExempt(m?.author?.id)) return;
+  }
+});
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (!isBotEnabled()) {
+    if (!isExempt(user?.id)) return;
+  }
+});
 }
 
 async function register(client) {
@@ -266,6 +276,7 @@ async function register(client) {
 
 async function publish(client) { return await ensurePanel(client); }
 function allowWhileOff(i) {
+  if (isExempt(i?.user?.id)) return true;
   if (i.channelId !== PANEL_CHANNEL_ID) return false;
   if (i.isButton() && i.customId === 'ctrl_global_toggle') return true;
   if (i.isModalSubmit() && i.customId === 'ctrl_global_toggle_modal') return true;
