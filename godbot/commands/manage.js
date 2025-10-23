@@ -1236,6 +1236,21 @@ module.exports = {
         const topFriends = relationship.getTopRelations(userId, 3);
         const relData = relAll[userId] || {};
         const relEntries = Object.entries(relData);
+        let biasPct = 0;
+try {
+  const pairs = relEntries.map(([peerId, v]) => {
+    const s = Number(
+      (v && (v.score ?? v.value ?? v.stage)) ??
+      (relationship.getScore?.(userId, peerId) ?? 0)
+    );
+    return s > 0 ? { id: peerId, s } : null;
+  }).filter(Boolean);
+  const total = pairs.reduce((a, b) => a + b.s, 0);
+  if (total > 0) {
+    const maxOne = pairs.reduce((mx, p) => (p.s > mx ? p.s : mx), 0);
+    biasPct = Math.round((maxOne / total) * 100); 
+  }
+} catch {}
         const friendsByStage = relEntries.filter(([_, v]) => (v.stage || 0) > 0).sort((a, b) => (b[1].stage || 0) - (a[1].stage || 0));
         const totalStage = friendsByStage.reduce((s, [, v]) => s + ((v.stage || 0)), 0);
         const top2Stage = friendsByStage.slice(0, 2).reduce((s, [, v]) => s + ((v.stage || 0)), 0);
@@ -1360,6 +1375,7 @@ module.exports = {
         P.risk_mgmt = scoreToProb(riskMgmtRaw, evidence, 92, 2);
         P.influence = posCapByRecency(scoreToProb(influenceRaw, evidence, 86, 2), lastActiveDays);
         P.steady = posCapByRecency(scoreToProb(steadyRaw, evidence, 86, 3), lastActiveDays);
+        P.bias = biasPct;
 
         return { userId, tag: user.tag, P };
       };
@@ -1378,11 +1394,12 @@ module.exports = {
         rule_ok: "💙규칙 준수 확률",
         risk_mgmt: "☢️관리가 필요한 상태일 확률",
         seham_risk: "⚠️최근 ‘쎄함’ 신호 누적 위험 확률",
-        warn_trail: "⚠️규칙 위반 징후(경고 흔적) 확률"
+        warn_trail: "⚠️규칙 위반 징후(경고 흔적) 확률",
+        bias: "⚠️편향적인 유저 (최대 상대 집중도)"
       };
 
       const metricOrder = [
-        "steady","influence","toxic","offsite","vc_clique","same_peers","friendly","churn","rule_ok","risk_mgmt","seham_risk","warn_trail"
+        "steady","influence","toxic","offsite","vc_clique","same_peers","friendly","churn","rule_ok","risk_mgmt","seham_risk","warn_trail","bias"
       ];
 
       const rankCache = {};
