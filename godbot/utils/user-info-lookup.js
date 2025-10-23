@@ -1,13 +1,13 @@
 const { EmbedBuilder, ChannelType, Collection, PermissionsBitField } = require('discord.js');
 
-const DEBUG = true;
+const DEBUG = false;                // 필요시 true로
 const SCAN_PAGES = 15;
 const GUILD_CHANNEL_LIMIT = 40;
 const PER_CHANNEL_FETCH = 60;
 
 function trim(s){return (s??'').toString().trim()}
 function tokens(content){return content.split(/\n|,|\/|\||\s{2,}/g).map(t=>trim(t)).filter(Boolean).slice(0,4)}
-function score(member,q){const dn=trim(member.displayName).toLowerCase(),un=trim(member.user?.username).toLowerCase(),qq=q.toLowerCase();let s=0;if(dn===qq)s+=100;if(un===qq)s+=100;if(dn.startsWith(qq))s+=40;if(un.startsWith(qq))s+=40;if(dn.includes(qq))s+=20;if(un.includes(qq))s+=20;return s}
+function score(m,q){const dn=trim(m.displayName).toLowerCase(),un=trim(m.user?.username).toLowerCase(),qq=q.toLowerCase();let s=0;if(dn===qq)s+=100;if(un===qq)s+=100;if(dn.startsWith(qq))s+=40;if(un.startsWith(qq))s+=40;if(dn.includes(qq))s+=20;if(un.includes(qq))s+=20;return s}
 function toBigIntSafe(id){try{return id?BigInt(id):0n;}catch{return 0n}}
 function cmpByLastMsgDesc(a,b){const A=toBigIntSafe(a.lastMessageId);const B=toBigIntSafe(b.lastMessageId);if(A===B)return 0;return A>B?-1:1}
 
@@ -28,14 +28,25 @@ async function findMember(guild, raw){
   for(const q of qs){
     for(const m of guild.members.cache.values()){const sc=score(m,q); if(sc>bestScore){best=m;bestScore=sc}}
     if(bestScore>=100) return best;
-    try{const found=await guild.members.search({query:q,limit:10});found.forEach(m=>{const sc=score(m,q); if(sc>bestScore){best=m;bestScore=sc}}); if(bestScore>=100) return best;}catch{}
+    try{
+      const found=await guild.members.search({query:q,limit:10});
+      found.forEach(m=>{const sc=score(m,q); if(sc>bestScore){best=m;bestScore=sc}});
+      if(bestScore>=100) return best;
+    }catch{}
   }
   return best;
 }
 
 function extractText(msg){
   let t=''; if(msg.content) t+=msg.content+'\n';
-  if(msg.embeds&&msg.embeds.length){for(const e of msg.embeds){if(e.title)t+=e.title+'\n'; if(e.description)t+=e.description+'\n'; if(e.fields&&e.fields.length){for(const f of e.fields){t+=`${f.name}\n${f.value}\n`}} if(e.footer?.text)t+=e.footer.text+'\n';}}
+  if(msg.embeds&&msg.embeds.length){
+    for(const e of msg.embeds){
+      if(e.title)t+=e.title+'\n';
+      if(e.description)t+=e.description+'\n';
+      if(e.fields&&e.fields.length){for(const f of e.fields){t+=`${f.name}\n${f.value}\n`}}
+      if(e.footer?.text)t+=e.footer.text+'\n';
+    }
+  }
   return t;
 }
 function pick(re,text){const m=re.exec(text); return m?trim(m[1]):null}
@@ -153,10 +164,26 @@ function enrichWithParsed(eb, parsed){
 function addRecordPreview(eb, record){const preview=record?(record.text.length>1024?record.text.slice(0,1021)+'…':record.text):'해당 채널에서 기록을 찾지 못함'; eb.addFields({name:'기록 채널 최근 기록',value:preview,inline:false})}
 function addLastMessage(eb, guild, msg){const value=msg?`채널: <#${msg.channelId}>\n시간: <t:${Math.floor(msg.createdTimestamp/1000)}:F>\n내용: ${msg.content&&trim(msg.content)!==''?(msg.content.length>900?msg.content.slice(0,897)+'…':msg.content):(msg.embeds?.length?'(임베드/첨부 메시지)':'(내용 없음)')}\n링크: https://discord.com/channels/${guild.id}/${msg.channelId}/${msg.id}`:'최근 메시지 없음'; eb.addFields({name:'가장 최근 메시지',value,inline:false})}
 
+// ── 로딩 UX ──────────────────────────────────────────────────────────────
+function ms(s){return `${(s/1000).toFixed(1)}s`}
+function makeLoadingEmbed(state){
+  const eb=new EmbedBuilder().setColor(0x5865F2).setTitle('⏳ 유저 정보 조회 중');
+  eb.addFields(
+    {name:'1) 대상 식별', value: state.step>=1?`✅ 완료 (${ms(state.t1)})`:'🔍 진행 중…', inline:false},
+    {name:'2) 기록 채널 스캔', value: state.step>=2?`✅ 완료 (${ms(state.t2)})`:'📜 대조 중…', inline:false},
+    {name:'3) 최근 메시지 탐색', value: state.step>=3?`✅ 완료 (${ms(state.t3)})`:'🧭 찾는 중…', inline:false},
+    {name:'4) 결과 구성', value: state.step>=4?`✅ 완료 (${ms(state.t4)})`:'🧩 합치는 중…', inline:false},
+  );
+  if(state.note) eb.setFooter({text:state.note});
+  return eb;
+}
+// ────────────────────────────────────────────────────────────────────────
+
 let wired=false;
 function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
   if(wired) return; wired=true;
   client.on('messageCreate',async(message)=>{
+    const startAll=Date.now();
     const debugLog = async (title, err) => {
       if(!DEBUG) return;
       const body = (err && (err.stack||err.message||String(err))) || 'unknown';
@@ -182,42 +209,61 @@ function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
         return;
       }
 
+      // 0) 로딩 메시지 띄우기
+      let state={step:0,t1:0,t2:0,t3:0,t4:0,note:'준비중…'};
+      const loadingMsg = await message.channel.send({ embeds: [makeLoadingEmbed(state)] });
+
+      // 1) 대상 식별
+      const s1=Date.now();
       const base=message.mentions.users.first()?.id?`<@${message.mentions.users.first().id}>`:message.content;
       const target=await Promise.race([findMember(message.guild,base),new Promise(r=>setTimeout(()=>r(null),5000))]);
-      if(!target){await message.reply('대상 못 찾았어. 맨션/ID/닉네임으로 다시 보내줘.');return;}
+      state.step=1; state.t1=Date.now()-s1; state.note='대상 식별 완료'; 
+      await loadingMsg.edit({ embeds: [makeLoadingEmbed(state)] });
+      if(!target){
+        state.note='대상 식별 실패: 맨션/ID/닉네임으로 다시 보내줘';
+        await loadingMsg.edit({ embeds: [makeLoadingEmbed(state)] });
+        return;
+      }
 
+      // 2) 기록 채널 스캔 + 3) 최근 메시지 탐색 병렬
       await message.channel.sendTyping();
-
       const uid=target.id||target.user.id;
       const member=message.guild.members.cache.get(uid)||null;
 
-      let sourceScan, lastMsg;
-      try{
-        [sourceScan, lastMsg] = await Promise.all([
-          scanSource(client,message.guild.id,sourceChannelId,uid,member),
-          lastMessage(message.guild,uid,GUILD_CHANNEL_LIMIT,PER_CHANNEL_FETCH)
-        ]);
-      }catch(e){
-        await debugLog('병렬 조회 실패', e);
-        sourceScan = sourceScan || { record:null, parsed:null, reason:'INTERNAL_FAIL', perm:{ ok:false, missing:['INTERNAL'] } };
-        lastMsg = lastMsg || null;
-      }
+      const s2=Date.now();
+      const p1 = scanSource(client,message.guild.id,sourceChannelId,uid,member).then(r=>({ok:true,r})).catch(e=>({ok:false,e}));
+      const s3=Date.now();
+      const p2 = lastMessage(message.guild,uid,GUILD_CHANNEL_LIMIT,PER_CHANNEL_FETCH).then(r=>({ok:true,r})).catch(e=>({ok:false,e}));
 
+      const [scanRes,lastRes] = await Promise.all([p1,p2]);
+
+      state.step=2; state.t2=Date.now()-s2;
+      state.step=3; state.t3=Date.now()-s3;
+      if(!scanRes.ok) state.note='기록 채널 스캔 오류'; 
+      if(!lastRes.ok) state.note = state.note? (state.note+' / 최근메시지 탐색 오류') : '최근메시지 탐색 오류';
+      await loadingMsg.edit({ embeds: [makeLoadingEmbed(state)] });
+
+      const sourceScan = scanRes.ok ? scanRes.r : { record:null, parsed:null, reason:'INTERNAL_FAIL', perm:{ ok:false, missing:['INTERNAL'] } };
+      const lastMsg   = lastRes.ok ? lastRes.r : null;
+
+      // 4) 결과 구성
+      const s4=Date.now();
       let eb=baseEmbed(message.guild,target);
       if(sourceScan?.parsed) eb=enrichWithParsed(eb,sourceScan.parsed);
       addRecordPreview(eb, sourceScan?.record||null);
       addLastMessage(eb, message.guild, lastMsg);
-
       let footerNote=[];
       if(sourceScan?.reason==='SOURCE_NOT_FOUND') footerNote.push('기록 채널을 찾지 못함');
       if(sourceScan?.reason==='NO_SOURCE_PERMISSION') footerNote.push(`기록 채널 권한 부족: ${sourceScan.perm?.missing?.join(', ')||'확인 불가'}`);
       if(sourceScan?.reason==='INTERNAL_FAIL') footerNote.push('기록 채널 스캔 중 내부 오류');
       if(footerNote.length) eb.setFooter({text:footerNote.join(' | ')});
+      state.step=4; state.t4=Date.now()-s4; state.note=`완료 (${ms(Date.now()-startAll)})`;
+      // 로딩 메시지를 결과로 교체
+      await loadingMsg.edit({ embeds: [eb] });
 
-      await message.channel.send({embeds:[eb]});
     }catch(e){
       await debugLog('최상위 핸들러 오류', e);
-      try{await message.reply('조회 실패(핸들러). 위 오류 메시지를 확인해줘.');}catch{}
+      try{await message.reply('조회 실패. 위 오류 메시지를 확인해줘.');}catch{}
     }
   });
 }
