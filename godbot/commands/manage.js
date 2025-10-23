@@ -26,6 +26,7 @@ const adminpwPath = path.join(dataDir, "adminpw.json");
 const SERVER_LOCK_ROLE_ID = "1403748042666151936";
 const XP_LOCK_ROLE_ID = "1286237811959140363";
 const VOICE_REDIRECT_CHANNEL_ID = "1202971727915651092";
+const BASE_MEMBER_ROLE_ID = "816619403205804042";
 
 async function safeRender(ix, payload) {
   try {
@@ -1158,6 +1159,11 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
 
       const members = await guild.members.fetch();
+      const eligibleIds = new Set(
+  [...members.values()]
+    .filter(mm => mm.roles.cache.has(BASE_MEMBER_ROLE_ID))
+    .map(mm => mm.id)
+);
       const warningsDb = loadWarnings();
       const warnHistoryDb = loadWarnHistory();
       const sehamDb = loadSeham();
@@ -1238,17 +1244,20 @@ module.exports = {
         const relEntries = Object.entries(relData);
         let biasPct = 0;
 try {
-  const pairs = relEntries.map(([peerId, v]) => {
-    const s = Number(
-      (v && (v.score ?? v.value ?? v.stage)) ??
-      (relationship.getScore?.(userId, peerId) ?? 0)
-    );
-    return s > 0 ? { id: peerId, s } : null;
-  }).filter(Boolean);
-  const total = pairs.reduce((a, b) => a + b.s, 0);
-  if (total > 0) {
+  const raw = relationship.getTopRelations?.(userId, 1000) || [];
+  const pairs = [];
+  for (const entry of raw) {
+    const peerId = typeof entry === "string" ? entry : (entry?.userId || entry?.id || null);
+    if (!peerId || peerId === userId) continue;
+    if (!eligibleIds.has(peerId)) continue;
+    const s = Number(entry?.score ?? entry?.value ?? relationship.getScore?.(userId, peerId) ?? 0);
+    if (!isFinite(s) || s <= 0) continue;
+    pairs.push({ id: peerId, s });
+  }
+  const totalEligibleScore = pairs.reduce((a, b) => a + b.s, 0);
+  if (totalEligibleScore > 0) {
     const maxOne = pairs.reduce((mx, p) => (p.s > mx ? p.s : mx), 0);
-    biasPct = Math.round((maxOne / total) * 100); 
+    biasPct = Math.round((maxOne / totalEligibleScore) * 100);
   }
 } catch {}
         const friendsByStage = relEntries.filter(([_, v]) => (v.stage || 0) > 0).sort((a, b) => (b[1].stage || 0) - (a[1].stage || 0));
