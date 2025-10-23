@@ -186,49 +186,14 @@ async function buildPages(guild, targetUser) {
   return pages;
 }
 
-function navRow(prefix, userId, idx, total) {
+function navRow(userId, index) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`${prefix}:first|${userId}`).setStyle(ButtonStyle.Secondary).setEmoji("⏮️").setDisabled(idx <= 0),
-    new ButtonBuilder().setCustomId(`${prefix}:prev|${userId}`).setStyle(ButtonStyle.Secondary).setEmoji("◀️").setDisabled(idx <= 0),
-    new ButtonBuilder().setCustomId(`${prefix}:next|${userId}`).setStyle(ButtonStyle.Secondary).setEmoji("▶️").setDisabled(idx >= total - 1),
-    new ButtonBuilder().setCustomId(`${prefix}:last|${userId}`).setStyle(ButtonStyle.Secondary).setEmoji("⏭️").setDisabled(idx >= total - 1),
-    new ButtonBuilder().setCustomId(`${prefix}:stop|${userId}`).setStyle(ButtonStyle.Danger).setEmoji("🛑")
+    new ButtonBuilder().setCustomId(`relins|${userId}|${index}|first`).setStyle(ButtonStyle.Secondary).setEmoji("⏮️"),
+    new ButtonBuilder().setCustomId(`relins|${userId}|${index}|prev`).setStyle(ButtonStyle.Secondary).setEmoji("◀️"),
+    new ButtonBuilder().setCustomId(`relins|${userId}|${index}|next`).setStyle(ButtonStyle.Secondary).setEmoji("▶️"),
+    new ButtonBuilder().setCustomId(`relins|${userId}|${index}|last`).setStyle(ButtonStyle.Secondary).setEmoji("⏭️"),
+    new ButtonBuilder().setCustomId(`relins|${userId}|${index}|stop`).setStyle(ButtonStyle.Danger).setEmoji("🛑")
   );
-}
-
-async function sendPaged(message, targetUser) {
-  const pages = await buildPages(message.guild, targetUser);
-  let index = 0;
-  const row = navRow("relins", targetUser.id, index, pages.length);
-  const sent = await message.channel.send({ embeds: [pages[index].embed], components: [row] });
-  const collector = sent.createMessageComponentCollector({ componentType: ComponentType.Button, time: 10 * 60 * 1000 });
-  collector.on("collect", async i => {
-    if (i.channelId !== message.channelId) return i.deferUpdate().catch(() => {});
-    const [pref, actionUid] = (i.customId || "").split(":");
-    if (pref !== "relins") return i.deferUpdate().catch(() => {});
-    const [action, uid] = (actionUid || "").split("|");
-    if (uid !== String(targetUser.id)) return i.deferUpdate().catch(() => {});
-    if (action === "first") index = 0;
-    else if (action === "prev") index = Math.max(0, index - 1);
-    else if (action === "next") index = Math.min(pages.length - 1, index + 1);
-    else if (action === "last") index = pages.length - 1;
-    else if (action === "stop") {
-      collector.stop("user_stop");
-      try {
-        await i.update({ components: [] });
-      } catch {}
-      return;
-    }
-    const newRow = navRow("relins", targetUser.id, index, pages.length);
-    try {
-      await i.update({ embeds: [pages[index].embed], components: [newRow] });
-    } catch {}
-  });
-  collector.on("end", async () => {
-    try {
-      await sent.edit({ components: [] });
-    } catch {}
-  });
 }
 
 async function postHeader(message, targetUser) {
@@ -261,6 +226,13 @@ async function postHeader(message, targetUser) {
   await message.channel.send({ embeds: [e] });
 }
 
+async function sendPaged(message, targetUser) {
+  const pages = await buildPages(message.guild, targetUser);
+  const index = 0;
+  const row = navRow(targetUser.id, index);
+  await message.channel.send({ embeds: [pages[index].embed], components: [row] });
+}
+
 async function handleMessage(message) {
   if (!message.guild) return;
   if (message.author.bot) return;
@@ -274,8 +246,46 @@ async function handleMessage(message) {
   await sendPaged(message, target);
 }
 
+async function handleInteraction(i) {
+  if (!i.isButton()) return;
+  const id = i.customId || "";
+  if (!id.startsWith("relins|")) return;
+  const parts = id.split("|");
+  const userId = parts[1];
+  const oldIndex = Number(parts[2] || "0") || 0;
+  const action = parts[3] || "";
+  const guild = i.guild;
+  if (!guild) return i.deferUpdate().catch(() => {});
+  let targetUser = null;
+  try {
+    targetUser = await i.client.users.fetch(userId);
+  } catch {}
+  if (!targetUser) return i.deferUpdate().catch(() => {});
+  const pages = await buildPages(guild, targetUser);
+  let index = oldIndex;
+  if (action === "first") index = 0;
+  else if (action === "prev") index = Math.max(0, oldIndex - 1);
+  else if (action === "next") index = Math.min(pages.length - 1, oldIndex + 1);
+  else if (action === "last") index = pages.length - 1;
+  else if (action === "stop") {
+    try {
+      await i.update({ components: [] });
+    } catch {}
+    return;
+  }
+  const row = navRow(userId, index);
+  try {
+    await i.update({ embeds: [pages[index].embed], components: [row] });
+  } catch {
+    try {
+      await i.deferUpdate();
+    } catch {}
+  }
+}
+
 function registerRelationshipInspector(client) {
   client.on("messageCreate", handleMessage);
+  client.on("interactionCreate", handleInteraction);
 }
 
 module.exports = {
