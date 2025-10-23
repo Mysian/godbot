@@ -116,6 +116,7 @@ registerSafeSearchListener(client, {
 });
 
 const controlPanel = require('./utils/control-panel');
+const { isBotEnabled, allowWhileOff, PANEL_CHANNEL_ID } = controlPanel;
 controlPanel.register(client);
 
 const { startSecretChannels } = require('./utils/secret-channels.js');
@@ -154,6 +155,7 @@ disasterWatcher.start(client);
 gameNews.start(client);
 
 setInterval(async () => {
+  if (!isBotEnabled()) return;
   try {
     const guild = client.guilds.cache.get(GUILD_ID);
     if (!guild) return;
@@ -216,6 +218,7 @@ for (const [gid, guild] of client.guilds.cache) {
   let activityIndex = 0;
 
   setInterval(() => {
+    if (!isBotEnabled()) return;
     client.user.setPresence({
       status: "online",
       activities: [
@@ -466,6 +469,17 @@ const scrimAnnounce =
   require("./commands/scrim-announce.js");
 
 client.on(Events.InteractionCreate, async interaction => {
+    if (!isBotEnabled()) {
+    if (allowWhileOff(interaction)) {
+    } else {
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "현재 봇 기능 전체 OFF 상태입니다.", ephemeral: true });
+        }
+      } catch {}
+      return; 
+    }
+  }
   if (interaction.guildId && !isAllowedGuild(interaction.guildId)) {
   try {
     const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
@@ -840,6 +854,17 @@ if (interaction.isModalSubmit()) {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
+    if (!isBotEnabled()) {
+    if (allowWhileOff(interaction)) {
+    } else {
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "현재 봇 기능 전체 OFF 상태입니다.", ephemeral: true });
+        }
+      } catch {}
+      return;
+    }
+  }
   if (interaction.guildId && !isAllowedGuild(interaction.guildId)) {
     try {
       if (!interaction.replied && !interaction.deferred) {
@@ -1010,6 +1035,7 @@ setupFastGive(client);
 const voiceStartMap = new Map();
 
 client.once('ready', async () => {
+  if (!isBotEnabled()) return;
   for (const [guildId, guild] of client.guilds.cache) {
     for (const [memberId, voiceState] of guild.voiceStates.cache) {
       if (!voiceState.channel || voiceState.member.user.bot) continue;
@@ -1025,6 +1051,7 @@ client.once('ready', async () => {
 });
 
 client.on("voiceStateUpdate", (oldState, newState) => {
+  if (!isBotEnabled()) return;
   if (!oldState.channel && newState.channel && !newState.member.user.bot) {
     if (
       activity.isTracked(newState.channel, "voice") &&
@@ -1094,6 +1121,7 @@ client.on("voiceStateUpdate", (oldState, newState) => {
 });
 
 setInterval(() => {
+  if (!isBotEnabled()) return;
   const now = Date.now();
   for (const [userId, info] of voiceStartMap.entries()) {
     let voiceState = null;
@@ -1118,6 +1146,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 setInterval(() => {
+  if (!isBotEnabled()) return;
   for (const [guildId, guild] of client.guilds.cache) {
     const voiceStates = guild.voiceStates.cache;
     const channelMap = {};
@@ -1139,6 +1168,7 @@ setInterval(() => {
 }, 10 * 60 * 300);
 
 setInterval(() => {
+  if (!isBotEnabled()) return;
   relationship.decayRelationships(0.5);
 }, 1000 * 60 * 60 * 24);
 
@@ -1201,6 +1231,7 @@ client.on("messageCreate", async message => {
 });
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
+  if (!isBotEnabled()) return;
   const userId = newPresence.userId;
   const user = newPresence.user || client.users.cache.get(userId);
   if (!user || user.bot) return;
@@ -1240,6 +1271,7 @@ function getRandomTimeout() {
 }
 
 client.on("messageCreate", async message => {
+  if (!isBotEnabled()) return;
   if (message.partial) {
     try { message = await message.fetch(); } catch { return; }
   }
@@ -1371,6 +1403,7 @@ function addBE(userId, amount, reason = "") {
 }
 
 client.on("messageCreate", async msg => {
+  if (!isBotEnabled()) return;
   if (msg.partial) {
     try { msg = await msg.fetch(); } catch { return; }
   }
@@ -1475,11 +1508,13 @@ const { saveTaxSnapshot, collectTaxFromSnapshot } = require('./utils/tax-collect
 const cron = require('node-cron');
 
 cron.schedule('55 17 * * *', () => {
+  if (!isBotEnabled()) return;
   saveTaxSnapshot();
   console.log('정수세 스냅샷 저장 완료');
 }, { timezone: 'Asia/Seoul' });
 
 cron.schedule('0 18 * * *', async () => {
+  if (!isBotEnabled()) return;
   await collectTaxFromSnapshot(global.client);
   console.log('정수세 납부 완료');
 }, { timezone: 'Asia/Seoul' });
@@ -1489,6 +1524,7 @@ const coinsPath = path.join(__dirname, './data/godbit-coins.json');
 const SIMPLE_COIN_CHANNEL = '1381193562330370048';
 
 client.on('messageCreate', async (msg) => {
+  if (!isBotEnabled()) return;
   if (msg.channel.id !== SIMPLE_COIN_CHANNEL) return;
   if (msg.author.bot) return;
   if (!msg.content.startsWith('!')) return;
@@ -1550,6 +1586,7 @@ const WELCOME_ROLE_ID = '1286237811959140363';
 const WELCOME_CHANNEL_ID = '1202425624061415464';
 
 client.on(Events.GuildMemberAdd, async member => {
+  if (!isBotEnabled()) return;
   try {
     if (!member.roles.cache.has(WELCOME_ROLE_ID)) {
       await member.roles.add(WELCOME_ROLE_ID, '서버 첫 입장시 자동 역할 부여');
@@ -1560,6 +1597,7 @@ client.on(Events.GuildMemberAdd, async member => {
 });
 
 client.on(Events.MessageCreate, async message => {
+  if (!isBotEnabled()) return;
   if (message.author.bot) return;
   if (message.channel.id !== WELCOME_CHANNEL_ID) return;
   if (!message.guild) return;
@@ -1615,6 +1653,7 @@ const ALLOWED_CATEGORY_IDS = [
 ];
 
 client.on("messageCreate", async msg => {
+  if (!isBotEnabled()) return;
   if (!msg.guild || msg.author.bot) return;
 
   const inAllowedTextChannel = ALLOWED_CHANNEL_IDS.includes(msg.channel.id);
