@@ -1,12 +1,20 @@
 const { EmbedBuilder, ChannelType, Collection, PermissionsBitField } = require('discord.js');
 
+// ====== CONFIG ======
+const DEBUG = true;           // true면 실패 시 상세 오류를 채널에 출력
+const SCAN_PAGES = 15;        // 기록채널 뒤로 몇 페이지만 훑을지
+const GUILD_CHANNEL_LIMIT = 40;
+const PER_CHANNEL_FETCH = 60;
+// =====================
+
 function trim(s){return (s??'').toString().trim()}
 function tokens(content){return content.split(/\n|,|\/|\||\s{2,}/g).map(t=>trim(t)).filter(Boolean).slice(0,4)}
 function score(member,q){const dn=trim(member.displayName).toLowerCase(),un=trim(member.user?.username).toLowerCase(),qq=q.toLowerCase();let s=0;if(dn===qq)s+=100;if(un===qq)s+=100;if(dn.startsWith(qq))s+=40;if(un.startsWith(qq))s+=40;if(dn.includes(qq))s+=20;if(un.includes(qq))s+=20;return s}
+function toBigIntSafe(id){try{return id?BigInt(id):0n;}catch{return 0n}}
 
 async function checkChannelPerms(me, channel, needs){
   if(!channel) return { ok:false, missing:['CHANNEL_NOT_FOUND'] };
-  const perms = channel.permissionsFor(me);
+  const perms = channel.permissionsFor(me ?? channel.guild?.members?.me);
   if(!perms) return { ok:false, missing:['NO_PERMISSION_OBJECT'] };
   const missing = needs.filter(p => !perms.has(p));
   return { ok: missing.length===0, missing };
@@ -66,11 +74,11 @@ function matchRecordToUser(parsed, uid, member){
 async function scanSource(client,guildId,sourceChannelId,uid,member){
   const ch=await client.channels.fetch(sourceChannelId).catch(()=>null);
   if(!ch||ch.guildId!==guildId) return {record:null,parsed:null,reason:'SOURCE_NOT_FOUND',channel:null,perm:{ok:false,missing:['CHANNEL_NOT_FOUND']}};
-  const me = ch.guild.members.me;
+  const me = ch.guild.members.me ?? await ch.guild.members.fetchMe().catch(()=>null);
   const perm = await checkChannelPerms(me, ch, [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.ReadMessageHistory]);
   if(!perm.ok) return {record:null,parsed:null,reason:'NO_SOURCE_PERMISSION',channel:ch,perm};
   let before, latest=null, latestParsed=null;
-  for(let i=0;i<15;i++){
+  for(let i=0;i<SCAN_PAGES;i++){
     const msgs=await ch.messages.fetch({limit:100,before}).catch(()=>new Collection());
     if(!msgs||msgs.size===0) break;
     for(const [,m] of msgs){
@@ -85,12 +93,15 @@ async function scanSource(client,guildId,sourceChannelId,uid,member){
   return {record:latest,parsed:latestParsed,reason:latest?'OK':'NOT_FOUND',channel:ch,perm};
 }
 
-async function lastMessage(guild,uid,channelLimit=40,perChannel=60){
+async function lastMessage(guild,uid,channelLimit=GUILD_CHANNEL_LIMIT,perChannel=PER_CHANNEL_FETCH){
   const channels=guild.channels.cache
     .filter(c=>[ChannelType.GuildText,ChannelType.GuildAnnouncement,ChannelType.GuildMedia].includes(c.type))
-    .filter(c=>c.viewable&&c.permissionsFor(guild.members.me)?.has([PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.ReadMessageHistory]))
+    .filter(c=>{
+      const perms=c.permissionsFor(guild.members.me ?? null);
+      return c.viewable && perms && perms.has([PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.ReadMessageHistory]);
+    })
     .map(c=>c)
-    .sort((a,b)=>(b.lastMessageId?BigInt(b.lastMessageId):0n)-(a.lastMessageId?BigInt(a.lastMessageId):0n))
+    .sort((a,b)=>toBigIntSafe(b.lastMessageId)-toBigIntSafe(a.lastMessageId))
     .slice(0,channelLimit);
   let best=null;
   for(const ch of channels){
@@ -109,20 +120,20 @@ function baseEmbed(guild,target){
   const user=target.user||target;
   const member=guild.members.cache.get(target.id)||null;
   const roles=member?member.roles.cache.filter(r=>r.id!==guild.id).sort((a,b)=>b.position-a.position).map(r=>`<@&${r.id}>`).slice(0,25).join(' ')||'없음':'길드 미가입';
-  const created=`<t:${Math.floor(user.createdTimestamp/1000)}:F> (<t:${Math.floor(user.createdTimestamp/1000)}:R>)`;
-  const joined=member&&member.joinedTimestamp?`<t:${Math.floor(member.joinedTimestamp/1000)}:F> (<t:${Math.floor(member.joinedTimestamp/1000)}:R>)`:'정보 없음';
+  const createdTs = user.createdTimestamp ? Math.floor(user.createdTimestamp/1000) : Math.floor(Date.now()/1000);
+  const joinedTs  = member?.joinedTimestamp ? Math.floor(member.joinedTimestamp/1000) : null;
   const nick=member?.displayName||'정보 없음';
-  const booster=member?.premiumSince?`<t:${Math.floor(member.premiumSinceTimestamp/1000)}:F>`:'아님';
+  const booster=member?.premiumSince ? `<t:${Math.floor(new Date(member.premiumSince).getTime()/1000)}:F>` : '아님';
   const eb=new EmbedBuilder()
     .setColor(member?.displayHexColor||0x2b2d31)
-    .setAuthor({name:`${user.username}#${user.discriminator==='0'?'':user.discriminator}`.trim(),iconURL:user.displayAvatarURL({size:256})})
+    .setAuthor({name:`${user.username}${user.discriminator==='0'?'':('#'+user.discriminator)}`,iconURL:user.displayAvatarURL({size:256})})
     .setTitle('유저 정보')
     .addFields(
       {name:'유저',value:`<@${user.id}>`,inline:true},
       {name:'유저 ID',value:user.id,inline:true},
       {name:'닉네임',value:nick,inline:true},
-      {name:'계정 생성일',value:created,inline:true},
-      {name:'서버 합류일',value:joined,inline:true},
+      {name:'계정 생성일',value:`<t:${createdTs}:F> (<t:${createdTs}:R>)`,inline:true},
+      {name:'서버 합류일',value: joinedTs ? `<t:${joinedTs}:F> (<t:${joinedTs}:R>)` : '정보 없음',inline:true},
       {name:'부스트',value:booster,inline:true},
       {name:'역할',value:roles,inline:false},
     )
@@ -147,11 +158,19 @@ let wired=false;
 function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
   if(wired) return; wired=true;
   client.on('messageCreate',async(message)=>{
+    const debugLog = async (title, err) => {
+      if(!DEBUG) return;
+      const body = (err && (err.stack||err.message||String(err))) || 'unknown';
+      const text = `❌ ${title}\n\`\`\`\n${body.slice(0,1800)}\n\`\`\``;
+      try{ await message.channel.send(text); }catch{}
+      try{ console.error('[user-info-lookup]', title, err); }catch{}
+    };
+
     try{
       if(!message.guild||message.author.bot) return;
       if(triggerChannelId&&message.channelId!==triggerChannelId) return;
 
-      const me = message.guild.members.me;
+      const me = message.guild.members.me ?? await message.guild.members.fetchMe().catch(()=>null);
       const triggerPermCheck = await checkChannelPerms(me, message.channel, [
         PermissionsBitField.Flags.ViewChannel,
         PermissionsBitField.Flags.ReadMessageHistory,
@@ -173,24 +192,34 @@ function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
       const uid=target.id||target.user.id;
       const member=message.guild.members.cache.get(uid)||null;
 
-      const [sourceScan, lastMsg] = await Promise.all([
-        scanSource(client,message.guild.id,sourceChannelId,uid,member),
-        lastMessage(message.guild,uid,40,80)
-      ]);
+      let sourceScan, lastMsg;
+      try{
+        [sourceScan, lastMsg] = await Promise.all([
+          scanSource(client,message.guild.id,sourceChannelId,uid,member),
+          lastMessage(message.guild,uid,GUILD_CHANNEL_LIMIT,PER_CHANNEL_FETCH)
+        ]);
+      }catch(e){
+        await debugLog('병렬 조회 실패', e);
+        // 부분 실패해도 계속 진행
+        sourceScan = sourceScan || { record:null, parsed:null, reason:'INTERNAL_FAIL', perm:{ ok:false, missing:['INTERNAL'] } };
+        lastMsg = lastMsg || null;
+      }
 
       let eb=baseEmbed(message.guild,target);
-      if(sourceScan.parsed) eb=enrichWithParsed(eb,sourceScan.parsed);
-      addRecordPreview(eb, sourceScan.record);
+      if(sourceScan?.parsed) eb=enrichWithParsed(eb,sourceScan.parsed);
+      addRecordPreview(eb, sourceScan?.record||null);
       addLastMessage(eb, message.guild, lastMsg);
 
       let footerNote=[];
-      if(sourceScan.reason==='SOURCE_NOT_FOUND') footerNote.push('기록 채널을 찾지 못함');
-      if(sourceScan.reason==='NO_SOURCE_PERMISSION') footerNote.push(`기록 채널 권한 부족: ${sourceScan.perm?.missing?.join(', ')||'확인 불가'}`);
+      if(sourceScan?.reason==='SOURCE_NOT_FOUND') footerNote.push('기록 채널을 찾지 못함');
+      if(sourceScan?.reason==='NO_SOURCE_PERMISSION') footerNote.push(`기록 채널 권한 부족: ${sourceScan.perm?.missing?.join(', ')||'확인 불가'}`);
+      if(sourceScan?.reason==='INTERNAL_FAIL') footerNote.push('기록 채널 스캔 중 내부 오류');
       if(footerNote.length) eb.setFooter({text:footerNote.join(' | ')});
 
       await message.channel.send({embeds:[eb]});
     }catch(e){
-      try{await message.reply('실패: 내부 오류. 봇 콘솔 로그를 확인해줘.');}catch{}
+      await debugLog('최상위 핸들러 오류', e);
+      try{await message.reply('조회 실패(핸들러). 위 오류 메시지를 확인해줘.');}catch{}
     }
   });
 }
