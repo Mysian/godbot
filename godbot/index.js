@@ -106,6 +106,8 @@ recruit.registerRecruitHandlers(client);
 const { registerVoiceMuteRole } = require("./utils/voice-mute-role");
 registerVoiceMuteRole(client);
 
+require("./utils/relationship-inspector").registerRelationshipInspector(client);
+
 registerSafeSearchListener(client, {
   channelId: "1429984530491506798", 
   prefix: "!검색",         
