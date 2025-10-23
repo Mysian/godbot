@@ -107,6 +107,12 @@ const { registerVoiceMuteRole } = require("./utils/voice-mute-role");
 registerVoiceMuteRole(client);
 
 require("./utils/relationship-inspector").registerRelationshipInspector(client);
+const { registerUserInfoLookup } = require('./utils/user-info-lookup');
+
+registerUserInfoLookup(client, {     
+  sourceChannelId: "1240936843122573312",     
+  triggerChannelId: "1430796757968617492"       
+});
 
 registerSafeSearchListener(client, {
   channelId: "1429984530491506798", 
