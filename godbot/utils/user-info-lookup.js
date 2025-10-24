@@ -1,6 +1,6 @@
 const { EmbedBuilder, ChannelType, Collection, PermissionsBitField } = require('discord.js');
 
-const DEBUG = false;                // 필요시 true로
+const DEBUG = false;
 const SCAN_PAGES = 15;
 const GUILD_CHANNEL_LIMIT = 40;
 const PER_CHANNEL_FETCH = 60;
@@ -164,7 +164,6 @@ function enrichWithParsed(eb, parsed){
 function addRecordPreview(eb, record){const preview=record?(record.text.length>1024?record.text.slice(0,1021)+'…':record.text):'해당 채널에서 기록을 찾지 못함'; eb.addFields({name:'기록 채널 최근 기록',value:preview,inline:false})}
 function addLastMessage(eb, guild, msg){const value=msg?`채널: <#${msg.channelId}>\n시간: <t:${Math.floor(msg.createdTimestamp/1000)}:F>\n내용: ${msg.content&&trim(msg.content)!==''?(msg.content.length>900?msg.content.slice(0,897)+'…':msg.content):(msg.embeds?.length?'(임베드/첨부 메시지)':'(내용 없음)')}\n링크: https://discord.com/channels/${guild.id}/${msg.channelId}/${msg.id}`:'최근 메시지 없음'; eb.addFields({name:'가장 최근 메시지',value,inline:false})}
 
-// ── 로딩 UX ──────────────────────────────────────────────────────────────
 function ms(s){return `${(s/1000).toFixed(1)}s`}
 function makeLoadingEmbed(state){
   const eb=new EmbedBuilder().setColor(0x5865F2).setTitle('⏳ 유저 정보 조회 중');
@@ -177,7 +176,17 @@ function makeLoadingEmbed(state){
   if(state.note) eb.setFooter({text:state.note});
   return eb;
 }
-// ────────────────────────────────────────────────────────────────────────
+function makeFailEmbed(state, reason){
+  const eb=new EmbedBuilder().setColor(0xED4245).setTitle('❌ 유저 정보 조회 실패').setDescription(reason||'조회에 실패했어.');
+  eb.addFields(
+    {name:'1) 대상 식별', value: state.step>=1?`✅ 완료 (${ms(state.t1)})`:'❌ 실패', inline:false},
+    {name:'2) 기록 채널 스캔', value: state.step>=2?`✅ 완료 (${ms(state.t2)})`:'⏸ 미수행', inline:false},
+    {name:'3) 최근 메시지 탐색', value: state.step>=3?`✅ 완료 (${ms(state.t3)})`:'⏸ 미수행', inline:false},
+    {name:'4) 결과 구성', value: state.step>=4?`✅ 완료 (${ms(state.t4)})`:'⏸ 미수행', inline:false},
+  );
+  eb.setFooter({text:'요청을 다시 보내줄래? 예: @유저, 유저ID, 닉네임'});
+  return eb;
+}
 
 let wired=false;
 function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
@@ -209,23 +218,20 @@ function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
         return;
       }
 
-      // 0) 로딩 메시지 띄우기
       let state={step:0,t1:0,t2:0,t3:0,t4:0,note:'준비중…'};
       const loadingMsg = await message.channel.send({ embeds: [makeLoadingEmbed(state)] });
 
-      // 1) 대상 식별
       const s1=Date.now();
       const base=message.mentions.users.first()?.id?`<@${message.mentions.users.first().id}>`:message.content;
       const target=await Promise.race([findMember(message.guild,base),new Promise(r=>setTimeout(()=>r(null),5000))]);
-      state.step=1; state.t1=Date.now()-s1; state.note='대상 식별 완료'; 
+      state.step=1; state.t1=Date.now()-s1; state.note='대상 식별 완료';
       await loadingMsg.edit({ embeds: [makeLoadingEmbed(state)] });
       if(!target){
-        state.note='대상 식별 실패: 맨션/ID/닉네임으로 다시 보내줘';
-        await loadingMsg.edit({ embeds: [makeLoadingEmbed(state)] });
+        state.note='대상 식별 실패';
+        await loadingMsg.edit({ embeds: [makeFailEmbed(state,'대상 식별 실패: 맨션/ID/닉네임으로 다시 보내줘')] });
         return;
       }
 
-      // 2) 기록 채널 스캔 + 3) 최근 메시지 탐색 병렬
       await message.channel.sendTyping();
       const uid=target.id||target.user.id;
       const member=message.guild.members.cache.get(uid)||null;
@@ -239,14 +245,13 @@ function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
 
       state.step=2; state.t2=Date.now()-s2;
       state.step=3; state.t3=Date.now()-s3;
-      if(!scanRes.ok) state.note='기록 채널 스캔 오류'; 
+      if(!scanRes.ok) state.note='기록 채널 스캔 오류';
       if(!lastRes.ok) state.note = state.note? (state.note+' / 최근메시지 탐색 오류') : '최근메시지 탐색 오류';
       await loadingMsg.edit({ embeds: [makeLoadingEmbed(state)] });
 
       const sourceScan = scanRes.ok ? scanRes.r : { record:null, parsed:null, reason:'INTERNAL_FAIL', perm:{ ok:false, missing:['INTERNAL'] } };
       const lastMsg   = lastRes.ok ? lastRes.r : null;
 
-      // 4) 결과 구성
       const s4=Date.now();
       let eb=baseEmbed(message.guild,target);
       if(sourceScan?.parsed) eb=enrichWithParsed(eb,sourceScan.parsed);
@@ -258,7 +263,6 @@ function registerUserInfoLookup(client,{sourceChannelId,triggerChannelId}){
       if(sourceScan?.reason==='INTERNAL_FAIL') footerNote.push('기록 채널 스캔 중 내부 오류');
       if(footerNote.length) eb.setFooter({text:footerNote.join(' | ')});
       state.step=4; state.t4=Date.now()-s4; state.note=`완료 (${ms(Date.now()-startAll)})`;
-      // 로딩 메시지를 결과로 교체
       await loadingMsg.edit({ embeds: [eb] });
 
     }catch(e){
