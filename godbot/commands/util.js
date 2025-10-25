@@ -80,26 +80,18 @@ async function fetchLottoNumbers(drwNo) {
   const j = await r.json().catch(() => null);
   if (!j || j.returnValue !== "success") return null;
   const nums = [j.drwtNo1, j.drwtNo2, j.drwtNo3, j.drwtNo4, j.drwtNo5, j.drwtNo6].map(Number).sort((a,b)=>a-b);
-  // firstPrzwnerCo가 있으면 1등 인원도 확보
   const firstCnt = Number(j.firstPrzwnerCo || 0);
   return { drawNo: Number(j.drwNo), drawDate: j.drwNoDate, nums, bonus: Number(j.bnusNo), firstWin: Number(j.firstWinamnt||0), firstCnt };
 }
 
-// 등위별 "당첨자 수"와 "1인당 당첨금"을 HTML에서 안전하게 파싱
 async function fetchPrizeTable(drwNo) {
   const url = `https://www.dhlottery.co.kr/gameResult.do?method=byWin&drwNo=${drwNo}`;
   const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
   if (!r || !r.ok) return null;
   const html = await r.text();
-
-  // 다양한 마크업 변형에 대비한 다중 패턴 매칭
-  // 패턴 A: <tr><td>1등</td><td>n명/게임</td><td>x,xxx,xxx원</td>...
   const rowReA = /<tr[^>]*>\s*<td[^>]*>\s*(\d)\s*등\s*<\/td>[\s\S]*?<td[^>]*>\s*([\d,]+)\s*(?:명|게임)[\s\S]*?<\/td>[\s\S]*?<td[^>]*>\s*([\d,]+)\s*원/gi;
-  // 패턴 B: "등위","당첨자 수","1인당 당첨금" 순서를 가정
   const rowReB = /(\d)\s*등[\s\S]*?(?:당첨자|게임)\s*수[^<]*<\/th>[\s\S]*?([\d,]+)[^<]*<\/td>[\s\S]*?1인당[^<]*<\/th>[\s\S]*?([\d,]+)\s*원/gi;
-
-  const perRank = {}; // { 1: { winners, each }, ... }
-
+  const perRank = {};
   function collect(re) {
     let m;
     while ((m = re.exec(html)) !== null) {
@@ -111,8 +103,6 @@ async function fetchPrizeTable(drwNo) {
   }
   collect(rowReA);
   collect(rowReB);
-
-  // 1등 인원 보강: API에서 확보되면 우선 사용
   try {
     const apiInfo = await fetchLottoNumbers(drwNo);
     if (apiInfo && apiInfo.firstCnt && (!perRank[1] || !perRank[1].winners)) {
@@ -120,7 +110,6 @@ async function fetchPrizeTable(drwNo) {
       perRank[1] = { winners: apiInfo.firstCnt, each: base.each || apiInfo.firstWin || 0 };
     }
   } catch {}
-
   return Object.keys(perRank).length ? perRank : null;
 }
 
@@ -847,7 +836,6 @@ function renderImageButtons(sessionId, shared) {
   ];
 }
 
-/* ===== 복권 이력/결과 렌더링 ===== */
 function sortDescByDrawNo(a, b) { return (b.drawNo||0) - (a.drawNo||0); }
 
 async function buildResultForDecision(decision) {
@@ -1112,6 +1100,8 @@ module.exports = {
     if (customId.startsWith(CALC_PREFIX)) {
       const userId = user.id;
       const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
+      const isDeferred = !interaction.deferred && !interaction.replied;
+      if (isDeferred) { try { await interaction.deferUpdate(); } catch {} }
 
       if (customId === CALC_PREFIX + "neg") toggleSign(st);
       else if (customId === CALC_PREFIX + "dot") pushDot(st);
@@ -1140,28 +1130,30 @@ module.exports = {
       calcSessions.set(userId, st);
       const embed = renderCalcEmbed(userId);
       const rows = renderCalcButtons(st);
-      return interaction.update({ embeds: [embed], components: rows });
+      return interaction.editReply({ embeds: [embed], components: rows });
     }
 
     if (customId.startsWith(MEMO_PREFIX)) {
       const userId = user.id;
 
       if (customId.startsWith(MEMO_PREFIX + "prev|")) {
+        try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
         const currPage = Number(customId.split("|")[1]) || 0;
         const list = await readMemos(userId);
         const page = Math.max(0, currPage - 1);
         const embed = renderMemoListEmbed(userId, list, page, "");
         const rows = renderMemoListButtons(list, page, "");
-        return interaction.update({ embeds: [embed], components: rows });
+        return interaction.editReply({ embeds: [embed], components: rows });
       }
       if (customId.startsWith(MEMO_PREFIX + "next|")) {
+        try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
         const currPage = Number(customId.split("|")[1]) || 0;
         const list = await readMemos(userId);
         const max = Math.max(0, Math.ceil(list.length / MEMO_PAGE_SIZE) - 1);
         const page = Math.min(max, currPage + 1);
         const embed = renderMemoListEmbed(userId, list, page, "");
         const rows = renderMemoListButtons(list, page, "");
-        return interaction.update({ embeds: [embed], components: rows });
+        return interaction.editReply({ embeds: [embed], components: rows });
       }
 
       if (customId.startsWith(MEMO_PREFIX + "search|")) {
@@ -1210,36 +1202,39 @@ module.exports = {
       }
 
       if (customId.startsWith(MEMO_PREFIX + "open|")) {
+        try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
         const [, id, pageStr] = customId.split("|");
         const list = await readMemos(userId);
         const memo = list.find(m => String(m.id) === String(id));
         if (!memo) {
-          return interaction.reply({ content: "해당 메모를 찾을 수 없습니다.", ephemeral: true });
+          return interaction.followUp({ content: "해당 메모를 찾을 수 없습니다.", ephemeral: true });
         }
         const embed = renderMemoDetailEmbed(memo);
         const rows = renderMemoDetailButtons(Number(pageStr) || 0);
-        return interaction.update({ embeds: [embed], components: rows });
+        return interaction.editReply({ embeds: [embed], components: rows });
       }
 
       if (customId.startsWith(MEMO_PREFIX + "back|")) {
+        try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
         const [, pageStr] = customId.split("|");
         const page = Number(pageStr) || 0;
         const list = await readMemos(userId);
         const embed = renderMemoListEmbed(userId, list, page, "");
         const rows = renderMemoListButtons(list, page, "");
-        return interaction.update({ embeds: [embed], components: rows });
+        return interaction.editReply({ embeds: [embed], components: rows });
       }
 
       if (customId === MEMO_PREFIX + "del") {
+        try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
         const embeds = interaction.message.embeds || [];
         if (!embeds.length || !embeds[0].footer?.text) {
-          return interaction.reply({ content: "삭제 대상을 찾을 수 없습니다.", ephemeral: true });
+          return interaction.followUp({ content: "삭제 대상을 찾을 수 없습니다.", ephemeral: true });
         }
         const footer = embeds[0].footer.text;
         const idMatch = footer.match(/ID:\s*(\S+)/);
         const delId = idMatch ? idMatch[1] : null;
         if (!delId) {
-          return interaction.reply({ content: "삭제 대상을 찾을 수 없습니다.", ephemeral: true });
+          return interaction.followUp({ content: "삭제 대상을 찾을 수 없습니다.", ephemeral: true });
         }
         const list = await readMemos(userId);
         const next = list.filter(m => String(m.id) !== String(delId));
@@ -1247,7 +1242,7 @@ module.exports = {
         const page = 0;
         const embed = renderMemoListEmbed(userId, next, page, "");
         const rows = renderMemoListButtons(next, page, "");
-        return interaction.update({ content: "🗑 삭제 완료되었습니다.", embeds: [embed], components: rows });
+        return interaction.editReply({ content: "🗑 삭제 완료되었습니다.", embeds: [embed], components: rows });
       }
 
       if (customId.startsWith(MEMO_PREFIX + "edit|")) {
@@ -1389,6 +1384,8 @@ module.exports = {
       let drawNo = Number(parts[1] || "0") || 0;
       const userId = user.id;
 
+      try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
+
       if (!drawNo || drawNo <= 0) {
         try {
           const latest = await fetchLatestDrawNo();
@@ -1403,36 +1400,38 @@ module.exports = {
 
       if (action === "regen") {
         if (mine) {
-          return interaction.reply({ content: "이미 이 회차는 번호가 ‘결정’되었습니다. 다시 뽑기는 불가합니다.", ephemeral: true });
+          await interaction.followUp({ content: "이미 이 회차는 번호가 ‘결정’되었습니다. 다시 뽑기는 불가합니다.", ephemeral: true });
+          return;
         }
         const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
         const embed = renderLottoEmbed(userId, lines, drawNo);
         const rows = renderLottoButtons(drawNo, false);
-        return interaction.update({ embeds: [embed], components: rows });
+        return interaction.editReply({ embeds: [embed], components: rows });
       }
 
       if (action === "lock") {
         if (mine) {
-          return interaction.reply({ content: "이미 이 회차는 결정되어 있습니다.", ephemeral: true });
+          await interaction.followUp({ content: "이미 이 회차는 결정되어 있습니다.", ephemeral: true });
+          return;
         }
         const embedNow = interaction.message.embeds?.[0];
         const currentLines = parseLottoLinesFromEmbed(embedNow);
         if (!currentLines.length) {
-          return interaction.reply({ content: "현재 화면에서 번호를 읽어오지 못했습니다. 다시 `/유틸 복권번호`로 시작해 주세요.", ephemeral: true });
+          await interaction.followUp({ content: "현재 화면에서 번호를 읽어오지 못했습니다. 다시 `/유틸 복권번호`로 시작해 주세요.", ephemeral: true });
+          return;
         }
         decisions.unshift({ userId, drawNo, lines: currentLines, decidedAt: Date.now() });
         await writeLottoDecisions(decisions);
 
         const embed = renderLottoEmbed(userId, currentLines, drawNo);
         const rows = renderLottoButtons(drawNo, true);
-        return interaction.update({ content: "✅ 이번 회차 번호가 결정되었습니다.", embeds: [embed], components: rows });
+        return interaction.editReply({ content: "✅ 이번 회차 번호가 결정되었습니다.", embeds: [embed], components: rows });
       }
 
       if (action === "check") {
         const latestOpen = await fetchLatestDrawNo();
         let info = await fetchLottoNumbers(drawNo);
         if (!info) {
-          // 아직 미공개 회차: 기본적으로 최신 공개 회차의 전체 정보를 안내
           const publicInfo = await fetchLottoNumbers(latestOpen);
           const publicPrize = await fetchPrizeTable(latestOpen);
 
@@ -1442,17 +1441,16 @@ module.exports = {
             const result = await buildResultForDecision(decision);
             if (!result) {
               const ebPublic = renderPublicDrawEmbed(publicInfo, publicPrize, "(최신 공개 회차 안내)");
-              return interaction.update({ content: "아직 해당 회차가 공개되지 않아 최근 회차 정보를 먼저 안내드립니다.", embeds: [ebPublic], components: [] });
+              return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아 최근 회차 정보를 먼저 안내드립니다.", embeds: [ebPublic], components: [] });
             }
             const { embed, rows } = renderHistoryEmbed(decision, result, 0, userPub.length, latestOpen, true);
-            return interaction.update({ content: "아직 해당 회차가 공개되지 않아, 최신 공개 회차 기준의 이력을 보여드립니다.", embeds: [embed], components: rows });
+            return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아, 최신 공개 회차 기준의 이력을 보여드립니다.", embeds: [embed], components: rows });
           } else {
             const ebPublic = renderPublicDrawEmbed(publicInfo, publicPrize, "(최신 공개 회차 안내)");
-            return interaction.update({ content: "아직 해당 회차가 공개되지 않아 최근 회차의 기본 정보를 안내드립니다.", embeds: [ebPublic], components: [] });
+            return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아 최근 회차의 기본 정보를 안내드립니다.", embeds: [ebPublic], components: [] });
           }
         }
 
-        // 공개된 회차
         let baseLines = mine?.lines;
         if (!baseLines || !baseLines.length) {
           const embedNow = interaction.message.embeds?.[0];
@@ -1463,9 +1461,8 @@ module.exports = {
         const perRankEach = (r)=> prize && prize[r] ? prize[r].each : 0;
 
         if (!baseLines || !baseLines.length) {
-          // 비교할 번호가 없어도, 해당 회차의 기본 정보는 반드시 안내
           const ebPublic = renderPublicDrawEmbed(info, prize);
-          return interaction.update({ content: "결정하신 번호가 없어 기본 당첨 정보를 안내드립니다.", embeds: [ebPublic], components: renderLottoButtons(info.drawNo, !!mine) });
+          return interaction.editReply({ content: "결정하신 번호가 없어 기본 당첨 정보를 안내드립니다.", embeds: [ebPublic], components: renderLottoButtons(info.drawNo, !!mine) });
         }
 
         const results = [];
@@ -1497,7 +1494,7 @@ module.exports = {
 
         const locked = !!mine;
         const rows2 = renderLottoButtons(info.drawNo, locked);
-        await interaction.update({ embeds: [eb], components: rows2 }).catch(()=>{});
+        await interaction.editReply({ embeds: [eb], components: rows2 }).catch(()=>{});
 
         try {
           const dm = await interaction.user.send({ embeds: [eb] });
@@ -1509,6 +1506,7 @@ module.exports = {
     }
 
     if (customId.startsWith(LOTTOH_PREFIX)) {
+      try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
       const parts = customId.slice(LOTTOH_PREFIX.length).split("|");
       const action = parts[0];
       if (action === "page") return;
@@ -1519,7 +1517,7 @@ module.exports = {
       const decisions = await readLottoDecisions();
       const userPub = getUserPublishedDecisions(decisions, userId, latestOpen);
       if (!userPub.length) {
-        return interaction.update({ content: "표시할 이력이 없습니다.", components: [] });
+        return interaction.editReply({ content: "표시할 이력이 없습니다.", components: [] });
       }
       let nextIdx = currIdx;
       if (action === "prev") nextIdx = Math.max(0, currIdx - 1);
@@ -1527,10 +1525,10 @@ module.exports = {
 
       const decision = userPub[nextIdx];
       const result = await buildResultForDecision(decision);
-      if (!result) return interaction.reply({ content: "결과 페이지를 불러오지 못했습니다.", ephemeral: true });
+      if (!result) return interaction.followUp({ content: "결과 페이지를 불러오지 못했습니다.", ephemeral: true });
 
       const { embed, rows } = renderHistoryEmbed(decision, result, nextIdx, userPub.length, latestOpen, false);
-      return interaction.update({ embeds: [embed], components: rows });
+      return interaction.editReply({ embeds: [embed], components: rows });
     }
 
     if (customId === CONCH_PREFIX + "ask") {
@@ -1566,18 +1564,20 @@ module.exports = {
         let [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
         let sess = imageSessions.get(sessionId);
 
+        try { if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate(); } catch {}
+
         if (!sess) {
           const embedNow = interaction.message.embeds?.[0];
           const title = embedNow?.title || "";
           const m = title.match(/이미지:\s*(.+)$/) || title.match(/이미지\s*[:：]\s*(.+)$/);
           const q = (m && m[1]) ? m[1].trim() : null;
           if (!q) {
-            return interaction.update({ content: "세션이 만료되었습니다. 다시 `/유틸 이미지`로 검색해 주세요.", embeds: [], components: [] });
+            return interaction.editReply({ content: "세션이 만료되었습니다. 다시 `/유틸 이미지`로 검색해 주세요.", embeds: [], components: [] });
           }
           const lang = detectLang(q);
           const list = await findImages(q, lang);
           if (!Array.isArray(list) || !list.length) {
-            return interaction.update({ content: "세션을 복구하지 못했습니다. 다시 `/유틸 이미지`로 검색해 주세요.", embeds: [], components: [] });
+            return interaction.editReply({ content: "세션을 복구하지 못했습니다. 다시 `/유틸 이미지`로 검색해 주세요.", embeds: [], components: [] });
           }
           let idx = 0;
           const currUrl = embedNow?.image?.url || null;
@@ -1592,7 +1592,7 @@ module.exports = {
         }
 
         if (sess.ownerId !== interaction.user.id) {
-          return interaction.update({ content: "이 이미지는 다른 사용자의 검색 세션입니다.", embeds: [], components: [] });
+          return interaction.editReply({ content: "이 이미지는 다른 사용자의 검색 세션입니다.", embeds: [], components: [] });
         }
 
         if (action === "share") {
@@ -1600,7 +1600,7 @@ module.exports = {
             const url = sess.list[sess.idx];
             const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
             const rows = renderImageButtons(sessionId, true);
-            await interaction.update({ embeds: [eb], components: rows });
+            await interaction.editReply({ embeds: [eb], components: rows });
           }
           try {
             const url = sess.list[sess.idx];
@@ -1619,7 +1619,7 @@ module.exports = {
 
         if (action === "more") {
           if (!Array.isArray(sess.list) || !sess.list.length) {
-            return interaction.update({ content: "추가로 보여드릴 결과가 없습니다.", embeds: [], components: [] });
+            return interaction.editReply({ content: "추가로 보여드릴 결과가 없습니다.", embeds: [], components: [] });
           }
           let nextIdx = sess.idx;
           if (sess.list.length > 1) {
@@ -1635,18 +1635,14 @@ module.exports = {
           const url = sess.list[sess.idx];
           const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
           const rows = renderImageButtons(sessionId, false);
-          return interaction.update({ embeds: [eb], components: rows });
+          return interaction.editReply({ embeds: [eb], components: rows });
         }
 
-        return interaction.update({ content: "알 수 없는 동작입니다.", components: [] });
+        return interaction.editReply({ content: "알 수 없는 동작입니다.", components: [] });
 
       } catch (err) {
         console.error("[IMG BTN 오류]", err);
-        if (!interaction.replied && !interaction.deferred) {
-          try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했습니다.", ephemeral: true }); } catch {}
-        } else {
-          try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했습니다.", ephemeral: true }); } catch {}
-        }
+        try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했습니다.", ephemeral: true }); } catch {}
       }
     }
   },
