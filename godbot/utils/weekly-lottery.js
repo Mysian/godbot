@@ -23,28 +23,34 @@ function saveState(s) {
   fs.writeFileSync(DATA_PATH, JSON.stringify(s, null, 2));
 }
 function nowKST() {
-  const d = new Date();
-  return new Date(d.getTime() + 9 * 3600 * 1000);
-}
-function toUnix(ts) {
-  return Math.floor(ts / 1000);
+  return new Date(Date.now() + 9 * 3600 * 1000);
 }
 function kstYMD(d) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
 }
-function getThisSaturday20OrNext() {
+// KST 토 20:00의 UTC 시각을 구함
+function getNextDrawTime() {
   const n = nowKST();
   const k = kstYMD(n);
-  const base = new Date(Date.UTC(k.y, k.m - 1, k.day, 11, 0, 0));
-  let sat = base;
-  while (sat.getUTCDay() !== 6) sat = new Date(sat.getTime() + 24 * 3600 * 1000);
+  // 오늘 00:00(KST)을 UTC로 맞춘 기준
+  const base = new Date(Date.UTC(k.y, k.m - 1, k.day, 0, 0, 0));
+  // 이번 주 토요일 20:00(KST) == UTC 11:00
+  let sat2000 = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), 11, 0, 0));
+  while (sat2000.getUTCDay() !== 6) sat2000 = new Date(sat2000.getTime() + 24 * 3600 * 1000);
+  // 지금이 이미 지났으면 다음 주 토요일 20:00으로
   const nowUtc = new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss));
-  if (sat <= nowUtc) {
-    const nd = new Date(sat.getTime());
+  if (nowUtc >= sat2000) {
+    const nd = new Date(sat2000.getTime());
     nd.setUTCDate(nd.getUTCDate() + 7);
     return nd;
   }
-  return sat;
+  return sat2000;
+}
+function getLastDrawTime() {
+  // getNextDrawTime에서 7일 빼면 지난 토요일 20:00(KST)
+  const next = getNextDrawTime();
+  const last = new Date(next.getTime() - 7 * 24 * 3600 * 1000);
+  return last;
 }
 function isClosedForSales() {
   const n = nowKST();
@@ -179,7 +185,7 @@ async function publishOrUpdate(client) {
   const channel = await client.channels.fetch(CHANNEL_ID);
   const state = loadState();
   ensureRound(state, state.round);
-  const nextDraw = getThisSaturday20OrNext();
+  const nextDraw = getNextDrawTime();
   const closed = isClosedForSales();
   const pot = await computePoolBE();
   if (state.rounds[state.round].messageId) {
@@ -427,12 +433,16 @@ async function announceDraw(client, state) {
 async function tick(client) {
   const state = loadState();
   ensureRound(state, state.round);
-  const next = getThisSaturday20OrNext();
-  const nextUnix = Math.floor(next.getTime() / 1000);
-  const nowUnix = Math.floor(Date.now() / 1000);
-  const inWindow = nowUnix >= nextUnix - 120 && nowUnix <= nextUnix + 120;
-  const alreadyDrawnThisWindow = state.lastDrawAt && Math.abs(Math.floor(state.lastDrawAt / 1000) - nextUnix) <= 300;
-  if (!state.rounds[state.round]?.result && inWindow && !alreadyDrawnThisWindow) {
+
+  const lastScheduled = getLastDrawTime();   // 지난 토요일 20:00(KST)
+  const nextScheduled = getNextDrawTime();   // 다음 토요일 20:00(KST)
+  const lastUnix = Math.floor(lastScheduled.getTime() / 1000);
+
+  const alreadyDrawnForLast =
+    state.lastDrawAt && Math.abs(Math.floor(state.lastDrawAt / 1000) - lastUnix) <= 300; // 5분 이내면 같은 회차로 간주
+
+  // 지난 토 20:00을 이미 지났고, 그 회차를 아직 안 돌렸다면 지금이라도 즉시 보정 추첨
+  if (!alreadyDrawnForLast && Math.floor(Date.now() / 1000) >= lastUnix) {
     runDrawInternal(state, Date.now());
     saveState(state);
     await payPrizes(client, state);
@@ -441,6 +451,8 @@ async function tick(client) {
     await publishOrUpdate(client);
     return;
   }
+
+  // 정시 이전이라면 UI만 주기적으로 갱신
   if (Math.floor(Date.now() / 60000) % 5 === 0) {
     await publishOrUpdate(client);
   }
