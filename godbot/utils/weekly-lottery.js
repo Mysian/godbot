@@ -170,7 +170,7 @@ function buildControlEmbed(livePot, state, nextDrawTs, closed, ended) {
     .setColor(ended ? 0x9e9e9e : (closed ? 0x9e9e9e : 0x00bcd4))
     .setDescription(['아래 버튼으로 응모, 기록 확인이 가능합니다.'].join('\n'))
     .addFields(
-      { name: '배분 예정 전체 금액', value: **`${formatAmount(livePot)} BE`**, inline: true },
+      { name: '배분 예정 전체 금액', value: `${formatAmount(livePot)} BE`, inline: true },
       { name: '판매 상태', value: `**${status}**`, inline: true },
       { name: '응모 장수', value: `**${formatAmount(count)} 장**`, inline: true },
       { name: nextText, value: `<t:${toUnix(nextDrawTs.getTime())}:R> (<t:${toUnix(nextDrawTs.getTime())}:F>)`, inline: false }
