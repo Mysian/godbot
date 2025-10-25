@@ -28,6 +28,8 @@ function nowKST() {
 function kstYMD(d) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
 }
+function toUnix(v) { return Math.floor((v instanceof Date ? v.getTime() : Number(v)) / 1000); }
+
 // KST 토 20:00의 UTC 시각을 구함
 function getNextDrawTime() {
   const n = nowKST();
