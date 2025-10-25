@@ -13,14 +13,30 @@ const MAX_NUMBER = 45;
 const PER_ROUND_MAX_TICKETS = 100;
 const PER_ROUND_MAX_SPEND = 1000000;
 
+// 최초 1회만 상태를 2회차 완료로 보정하기 위한 스위치(내부 플래그로 재실행 시 중복 적용 방지)
+const FORCE_RESET_ONCE = true;
+
 function loadState() {
   if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, JSON.stringify({ round: 1, rounds: {}, lastDrawAt: 0 }, null, 2));
   const s = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
   if (!s.rounds) s.rounds = {};
+  ensureStateDefaults(s);
+  if (FORCE_RESET_ONCE && !s._resetApplied) {
+    forceResetToRound2(s);
+    s._resetApplied = true;
+    saveState(s);
+  }
   return s;
 }
 function saveState(s) {
   fs.writeFileSync(DATA_PATH, JSON.stringify(s, null, 2));
+}
+function ensureStateDefaults(state){
+  if(typeof state.round!=='number' || state.round<1) state.round=1;
+  if(typeof state.lastDrawKey!=='string') state.lastDrawKey='';
+  if(typeof state.isDrawing!=='boolean') state.isDrawing=false;
+  if(typeof state._resetApplied!=='boolean') state._resetApplied=false;
+  if(!state.rounds) state.rounds={};
 }
 function nowKST() {
   return new Date(Date.now() + 9 * 3600 * 1000);
@@ -28,18 +44,16 @@ function nowKST() {
 function kstYMD(d) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
 }
+function pad(n){ return (n<10?'0':'')+n; }
 function toUnix(v) { return Math.floor((v instanceof Date ? v.getTime() : Number(v)) / 1000); }
 
 // KST 토 20:00의 UTC 시각을 구함
 function getNextDrawTime() {
   const n = nowKST();
   const k = kstYMD(n);
-  // 오늘 00:00(KST)을 UTC로 맞춘 기준
   const base = new Date(Date.UTC(k.y, k.m - 1, k.day, 0, 0, 0));
-  // 이번 주 토요일 20:00(KST) == UTC 11:00
   let sat2000 = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), 11, 0, 0));
   while (sat2000.getUTCDay() !== 6) sat2000 = new Date(sat2000.getTime() + 24 * 3600 * 1000);
-  // 지금이 이미 지났으면 다음 주 토요일 20:00으로
   const nowUtc = new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss));
   if (nowUtc >= sat2000) {
     const nd = new Date(sat2000.getTime());
@@ -49,10 +63,15 @@ function getNextDrawTime() {
   return sat2000;
 }
 function getLastDrawTime() {
-  // getNextDrawTime에서 7일 빼면 지난 토요일 20:00(KST)
   const next = getNextDrawTime();
   const last = new Date(next.getTime() - 7 * 24 * 3600 * 1000);
   return last;
+}
+// 회차키: ‘그 주 토요일 20:00(KST)’의 KST 날짜 문자열(YYYY-MM-DD)
+function drawKeyFromKSTSaturday(dUtc){
+  const kst=new Date(dUtc.getTime()+9*3600*1000);
+  const y=kst.getUTCFullYear(), m=kst.getUTCMonth()+1, day=kst.getUTCDate();
+  return `${y}-${pad(m)}-${pad(day)}`;
 }
 function isClosedForSales() {
   const n = nowKST();
@@ -151,7 +170,7 @@ function buildControlEmbed(livePot, state, nextDrawTs, closed, ended) {
     .setColor(ended ? 0x9e9e9e : (closed ? 0x9e9e9e : 0x00bcd4))
     .setDescription(['아래 버튼으로 응모, 기록 확인이 가능합니다.'].join('\n'))
     .addFields(
-      { name: '배분 예정 전체 금액', value: `**${formatAmount(livePot)} BE**`, inline: true },
+      { name: '배분 예정 전체 금액', value: **`${formatAmount(livePot)} BE`**, inline: true },
       { name: '판매 상태', value: `**${status}**`, inline: true },
       { name: '응모 장수', value: `**${formatAmount(count)} 장**`, inline: true },
       { name: nextText, value: `<t:${toUnix(nextDrawTs.getTime())}:R> (<t:${toUnix(nextDrawTs.getTime())}:F>)`, inline: false }
@@ -387,6 +406,23 @@ function runDrawInternal(state, ts) {
   state.round = r + 1;
   ensureRound(state, state.round);
 }
+async function runDrawOnceForKey(state, key, client){
+  if(state.isDrawing) return false;
+  state.isDrawing=true; saveState(state);
+  try{
+    runDrawInternal(state, Date.now());
+    state.lastDrawKey=key;
+    state.lastDrawAt=Date.now();
+    saveState(state);
+    await payPrizes(client, state);
+    await announceDraw(client, state);
+    await disableOldMessages(client, state);
+    await publishOrUpdate(client);
+    return true;
+  } finally {
+    state.isDrawing=false; saveState(state);
+  }
+}
 async function payPrizes(client, state) {
   const r = state.round - 1;
   if (!state.rounds[r] || !state.rounds[r].result) return;
@@ -436,28 +472,14 @@ async function tick(client) {
   const state = loadState();
   ensureRound(state, state.round);
 
-  const lastScheduled = getLastDrawTime();   // 지난 토요일 20:00(KST)
-  const nextScheduled = getNextDrawTime();   // 다음 토요일 20:00(KST)
-  const lastUnix = Math.floor(lastScheduled.getTime() / 1000);
+  const lastScheduled = getLastDrawTime();         // 지난 토 20:00
+  const lastKey = drawKeyFromKSTSaturday(lastScheduled);
 
-  const alreadyDrawnForLast =
-    state.lastDrawAt && Math.abs(Math.floor(state.lastDrawAt / 1000) - lastUnix) <= 300; // 5분 이내면 같은 회차로 간주
-
-  // 지난 토 20:00을 이미 지났고, 그 회차를 아직 안 돌렸다면 지금이라도 즉시 보정 추첨
-  if (!alreadyDrawnForLast && Math.floor(Date.now() / 1000) >= lastUnix) {
-    runDrawInternal(state, Date.now());
-    saveState(state);
-    await payPrizes(client, state);
-    await announceDraw(client, state);
-    await disableOldMessages(client, state);
-    await publishOrUpdate(client);
+  if(state.lastDrawKey===lastKey){
+    if(Math.floor(Date.now()/60000)%5===0){ await publishOrUpdate(client); }
     return;
   }
-
-  // 정시 이전이라면 UI만 주기적으로 갱신
-  if (Math.floor(Date.now() / 60000) % 5 === 0) {
-    await publishOrUpdate(client);
-  }
+  await runDrawOnceForKey(state, lastKey, client);
 }
 async function handleMineMenu(interaction, state, r) {
   const mine = state.rounds[r]?.tickets?.filter(t => t.userId === interaction.user.id) || [];
@@ -501,3 +523,15 @@ async function init(client) {
   });
 }
 module.exports = { init, publish: publishOrUpdate };
+
+// 내부 보정: 2회차까지만 완료 상태로 강제 세팅(한 번만 적용)
+function forceResetToRound2(state){
+  state.rounds = state.rounds || {};
+  state.rounds[1] = state.rounds[1] || { tickets: [], result: null, drawnAt: 0, rule: { pick: 6 }, messageId: null, closedEdited: false };
+  state.rounds[2] = state.rounds[2] || { tickets: [], result: null, drawnAt: 0, rule: { pick: 6 }, messageId: null, closedEdited: false };
+  state.round = 3;
+  const last = getLastDrawTime();
+  state.lastDrawKey = drawKeyFromKSTSaturday(last);
+  state.lastDrawAt = Date.now();
+  state.isDrawing = false;
+}
