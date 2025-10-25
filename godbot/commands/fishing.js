@@ -865,6 +865,21 @@ async function withDB(fn) {
   } finally {
     await rel();
   }
+const __editQueues = new Map();
+function __sanitizeComponents(cs) {
+  if (!Array.isArray(cs)) return cs;
+  const rows = cs.filter(Boolean).map(r => {
+    try {
+      if (!r) return null;
+      if (Array.isArray(r.components)) {
+        r.components = r.components.filter(Boolean).slice(0,5);
+        if (!r.components.length) return null;
+      }
+      return r;
+    } catch { return null; }
+  }).filter(Boolean).slice(0,5);
+  return rows;
+}
 }
 async function updateUser(userId, updater) {
   return await withDB(async db => {
@@ -878,9 +893,25 @@ async function updateUser(userId, updater) {
 }
 
 async function updateOrEdit(interaction, payload) {
-  try {
-    if (!interaction.deferred && !interaction.replied) {
+  const key = (interaction && interaction.message && interaction.message.id) || interaction.id || Math.random().toString(36).slice(2);
+  const prev = __editQueues.get(key) || Promise.resolve();
+  const task = prev.then(async () => {
+    try {
+      await new Promise(r => setTimeout(r, 150));
+      if (payload && payload.components) payload.components = __sanitizeComponents(payload.components);
+      if (!interaction.deferred && !interaction.replied) {
+        try { return await interaction.update(payload); } catch {}
+      }
+      try { return await interaction.editReply(payload); } catch {}
       try { return await interaction.update(payload); } catch {}
+    } catch (err) {
+      console.error("[fishing] updateOrEdit error:", err);
+      try { await interaction.editReply({ content: "⚠️ 결과 처리 중 오류가 발생했어요.", embeds: [], components: [] }); } catch {}
+    }
+  }).finally(() => { if (__editQueues.get(key) === task) __editQueues.delete(key); });
+  __editQueues.set(key, task);
+  return task;
+} catch {}
     }
     try { return await interaction.editReply(payload); } catch {}
     try { return await interaction.update(payload); } catch {}
@@ -891,9 +922,26 @@ async function updateOrEdit(interaction, payload) {
 }
 function mkSafeEditor(interaction) {
   const msg = interaction.message || null;
+  const key = (msg && msg.id) || interaction.id || Math.random().toString(36).slice(2);
   return async (payload) => {
-    if (msg && typeof msg.edit === "function") {
-      try { return await msg.edit(payload); } catch {}
+    const prev = __editQueues.get(key) || Promise.resolve();
+    const task = prev.then(async () => {
+      try {
+        await new Promise(r => setTimeout(r, 150));
+        if (payload && payload.components) payload.components = __sanitizeComponents(payload.components);
+        if (msg && typeof msg.edit === "function") {
+          try { return await msg.edit(payload); } catch {}
+        }
+        return updateOrEdit(interaction, payload);
+      } catch (err) {
+        console.error("[fishing] mkSafeEditor error:", err);
+      }
+    }).finally(() => { if (__editQueues.get(key) === task) __editQueues.delete(key); });
+    __editQueues.set(key, task);
+    return task;
+  };
+}
+ catch {}
     }
     return updateOrEdit(interaction, payload);
   };
@@ -1607,12 +1655,15 @@ function buttonsFight() {
   );
 }
 function buttonsAfterCatch(allowShare = true) {
+  const shareBtn = new ButtonBuilder()
+    .setCustomId("fish:share")
+    .setLabel("📣 잡은 물고기 공유하기")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(!allowShare);
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("fish:recast").setLabel("🎯 다시 찌 던지기").setStyle(ButtonStyle.Primary),
+    shareBtn
   );
-  if (allowShare) {
-    row.addComponents(new ButtonBuilder().setCustomId("fish:share").setLabel("📣 잡은 물고기 공유하기").setStyle(ButtonStyle.Secondary));
-  }
   return row;
 }
 function computeRarityWeight(u){
