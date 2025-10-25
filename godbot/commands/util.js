@@ -30,6 +30,7 @@ const CUSTOM_PREFIX = "util:";
 const CALC_PREFIX   = "calc:";
 const MEMO_PREFIX   = "memo:";
 const LOTTO_PREFIX  = "lotto:";
+const LOTTOH_PREFIX = "lottohist:";
 const CONCH_PREFIX  = "conch:";
 const IMG_PREFIX    = "img:";
 
@@ -57,7 +58,6 @@ async function writeLottoDecisions(list) {
   } finally { await release(); }
 }
 
-/* ===== 동행복권 최신 회차 폴백 상수 (2025-10-25 기준) ===== */
 const LATEST_KNOWN_DRAW = 1195;
 
 async function fetchLatestDrawNo() {
@@ -211,11 +211,9 @@ async function translateByGoogleGtx(text, target) {
   url.searchParams.set("tl", target);
   url.searchParams.set("dt", "t");
   url.searchParams.set("q", text);
-
   const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!r.ok) throw new Error("gtx fail");
   const j = await r.json();
-
   const parts = Array.isArray(j?.[0]) ? j[0].map(x => x?.[0] || "").join("") : "";
   const src = j?.[2] || "auto";
   if (!parts) throw new Error("gtx empty");
@@ -824,6 +822,59 @@ function renderImageButtons(sessionId, shared) {
   ];
 }
 
+/* ===== 복권 이력 페이징 렌더링 ===== */
+function sortDescByDrawNo(a, b) { return (b.drawNo||0) - (a.drawNo||0); }
+
+async function buildResultForDecision(decision) {
+  const info = await fetchLottoNumbers(decision.drawNo);
+  if (!info) return null;
+  const prize = await fetchPrizeTable(decision.drawNo);
+  const rows = [];
+  let totalWon = 0;
+  for (let i=0;i<decision.lines.length;i++) {
+    const line = decision.lines[i];
+    const rank = judgeRank(line, info.nums, info.bonus);
+    const amt = prize && rank>=1 && rank<=5 ? (prize[rank]||0) : 0;
+    if (amt) totalWon += amt;
+    rows.push({ idx:i+1, line, rank, amt });
+  }
+  return { info, prize, rows, totalWon };
+}
+
+function renderHistoryEmbed(decision, result, pageIdx, totalPages, latestOpen, note) {
+  const rowsTxt = result.rows.map(r => {
+    const tag = r.rank===0 ? "낙첨" : `${r.rank}등`;
+    const won = r.amt ? `${r.amt.toLocaleString()}원` : "-";
+    return `**${r.idx}**) ${r.line.join(", ")} → ${tag}${r.amt?` (${won})`:""}`;
+  }).join("\n");
+  const decidedAt = decision.decidedAt ? formatKST(decision.decidedAt) : "-";
+  const eb = new EmbedBuilder()
+    .setTitle(`🧾 ${decision.drawNo}회 당첨 결과${note ? " · 최신 공개 회차 기준" : ""}`)
+    .setDescription(rowsTxt || "(결과 없음)")
+    .addFields(
+      { name: "당첨번호", value: `${result.info.nums.join(", ")} + 보너스 ${result.info.bonus}`, inline: false },
+      { name: "총 당첨금", value: `${result.totalWon.toLocaleString()}원`, inline: true },
+      { name: "결정일", value: decidedAt, inline: true }
+    )
+    .setFooter({ text: `발표일: ${result.info.drawDate || "-"} ・ ${pageIdx+1}/${totalPages}` })
+    .setColor(result.totalWon>0 ? 0x00C853 : 0x9E9E9E);
+  const nav = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(LOTTOH_PREFIX + `prev|${decision.userId}|${latestOpen}|${pageIdx}`).setLabel("◀ 이전 이력").setStyle(ButtonStyle.Primary).setDisabled(pageIdx<=0),
+    new ButtonBuilder().setCustomId(LOTTOH_PREFIX + `page|${pageIdx+1}/${totalPages}`).setLabel(`${pageIdx+1}/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+    new ButtonBuilder().setCustomId(LOTTOH_PREFIX + `next|${decision.userId}|${latestOpen}|${pageIdx}`).setLabel("다음 이력 ▶").setStyle(ButtonStyle.Primary).setDisabled(pageIdx>=totalPages-1),
+  );
+  const util = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(LOTTO_PREFIX + `regen|${latestOpen+1}`).setLabel("다시 뽑기").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(LOTTO_PREFIX + `lock|${latestOpen+1}`).setLabel("이 번호로 결정").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(LOTTO_PREFIX + `check|${latestOpen+1}`).setLabel("당첨 결과 확인").setStyle(ButtonStyle.Secondary),
+  );
+  return { embed: eb, rows: [nav, util] };
+}
+
+function getUserPublishedDecisions(all, userId, latestOpen) {
+  return all.filter(d => d.userId===userId && Number(d.drawNo||0) <= Number(latestOpen||0)).sort(sortDescByDrawNo);
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("유틸")
@@ -1326,21 +1377,41 @@ module.exports = {
       }
 
       if (action === "check") {
+        const latestOpen = await fetchLatestDrawNo();
+        let info = await fetchLottoNumbers(drawNo);
+        if (!info) {
+          const userPub = getUserPublishedDecisions(decisions, userId, latestOpen);
+          if (!userPub.length) {
+            return interaction.reply({ content: "아직 발표된 회차 중에서 네가 '결정'한 번호 이력이 없어.", ephemeral: true });
+          }
+          const decision = userPub[0];
+          const result = await buildResultForDecision(decision);
+          if (!result) {
+            return interaction.reply({ content: "결과 페이지를 불러오지 못했어. 잠시 후 다시 시도해줘.", ephemeral: true });
+          }
+          const { embed, rows } = renderHistoryEmbed(decision, result, 0, userPub.length, latestOpen, true);
+          return interaction.update({ content: "아직 해당 회차는 미공개라서 최신 공개 회차 기준으로 보여줄게.", embeds: [embed], components: rows });
+        }
+
         let baseLines = mine?.lines;
         if (!baseLines || !baseLines.length) {
           const embedNow = interaction.message.embeds?.[0];
           baseLines = parseLottoLinesFromEmbed(embedNow);
         }
         if (!baseLines || !baseLines.length) {
-          return interaction.reply({ content: "비교할 번호가 없어. `/유틸 복권번호`로 번호부터 만들어줘.", ephemeral: true });
+          const userPub = getUserPublishedDecisions(decisions, userId, latestOpen);
+          if (!userPub.length) {
+            return interaction.reply({ content: "비교할 번호가 없어. `/유틸 복권번호`에서 먼저 '이 번호로 결정'해줘.", ephemeral: true });
+          }
+          const decision = userPub.find(d => d.drawNo === info.drawNo) || userPub[0];
+          const result = await buildResultForDecision(decision);
+          if (!result) return interaction.reply({ content: "결과 페이지를 불러오지 못했어.", ephemeral: true });
+          const page0 = userPub.findIndex(d => d.drawNo === decision.drawNo);
+          const { embed, rows } = renderHistoryEmbed(decision, result, Math.max(0,page0), userPub.length, latestOpen, false);
+          return interaction.update({ embeds: [embed], components: rows });
         }
 
-        const info = await fetchLottoNumbers(drawNo);
-        if (!info) {
-          return interaction.reply({ content: `${drawNo}회는 아직 발표 전이야. 발표 후 다시 확인해줘!`, ephemeral: true });
-        }
-
-        const prize = await fetchPrizeTable(drawNo);
+        const prize = await fetchPrizeTable(info.drawNo);
         const perRank = (r)=> prize && prize[r] ? prize[r] : 0;
 
         const results = [];
@@ -1360,7 +1431,7 @@ module.exports = {
         }).join("\n");
 
         const eb = new EmbedBuilder()
-          .setTitle(`🧾 ${drawNo}회 당첨 결과`)
+          .setTitle(`🧾 ${info.drawNo}회 당첨 결과`)
           .setDescription(rowsTxt || "(결과 없음)")
           .addFields(
             { name: "당첨번호", value: `${info.nums.join(", ")} + 보너스 ${info.bonus}`, inline: false },
@@ -1370,7 +1441,7 @@ module.exports = {
           .setColor(totalWon>0 ? 0x00C853 : 0x9E9E9E);
 
         const locked = !!mine;
-        const rows2 = renderLottoButtons(drawNo, locked);
+        const rows2 = renderLottoButtons(info.drawNo, locked);
         await interaction.update({ embeds: [eb], components: rows2 }).catch(()=>{});
 
         try {
@@ -1380,6 +1451,31 @@ module.exports = {
 
         return;
       }
+    }
+
+    if (customId.startsWith(LOTTOH_PREFIX)) {
+      const parts = customId.slice(LOTTOH_PREFIX.length).split("|");
+      const action = parts[0];
+      if (action === "page") return;
+      const userId = parts[1] || interaction.user.id;
+      const latestOpen = Number(parts[2] || LATEST_KNOWN_DRAW);
+      const currIdx = Number(parts[3] || "0") || 0;
+
+      const decisions = await readLottoDecisions();
+      const userPub = getUserPublishedDecisions(decisions, userId, latestOpen);
+      if (!userPub.length) {
+        return interaction.update({ content: "표시할 이력이 없어.", components: [] });
+      }
+      let nextIdx = currIdx;
+      if (action === "prev") nextIdx = Math.max(0, currIdx - 1);
+      if (action === "next") nextIdx = Math.min(userPub.length - 1, currIdx + 1);
+
+      const decision = userPub[nextIdx];
+      const result = await buildResultForDecision(decision);
+      if (!result) return interaction.reply({ content: "결과 페이지를 불러오지 못했어.", ephemeral: true });
+
+      const { embed, rows } = renderHistoryEmbed(decision, result, nextIdx, userPub.length, latestOpen, false);
+      return interaction.update({ embeds: [embed], components: rows });
     }
 
     if (customId === CONCH_PREFIX + "ask") {
