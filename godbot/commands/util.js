@@ -21,33 +21,26 @@ const _nodeFetch = async (...args) => {
 };
 const fetchSafe = (...args) => (global.fetch ? global.fetch(...args) : _nodeFetch(...args));
 
-/* =========================
- * 공통 설정
- * ========================= */
 const DATA_DIR = path.join(__dirname, "../data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const MEMO_DIR = path.join(DATA_DIR, "memos");
 if (!fs.existsSync(MEMO_DIR)) fs.mkdirSync(MEMO_DIR, { recursive: true });
 
-const CUSTOM_PREFIX = "util:";     // 공통 prefix
-const CALC_PREFIX   = "calc:";     // 계산기
-const MEMO_PREFIX   = "memo:";     // 메모장
-const LOTTO_PREFIX  = "lotto:";    // 복권
-const CONCH_PREFIX  = "conch:";    // 소라고동
-const IMG_PREFIX    = "img:";      // 이미지 검색
+const CUSTOM_PREFIX = "util:";
+const CALC_PREFIX   = "calc:";
+const MEMO_PREFIX   = "memo:";
+const LOTTO_PREFIX  = "lotto:";
+const CONCH_PREFIX  = "conch:";
+const IMG_PREFIX    = "img:";
 
-// 메모 페이징
 const MEMO_PAGE_SIZE = 10;
 
-// 계산기 세션 (메모리는 일시적이라 충분)
-const calcSessions = new Map(); // userId -> { a, b, op, input, last, updatedAt, hist, showHist }
+const calcSessions = new Map();
 
-// 로또 고정 저장 파일
 const LOTTO_DIR = path.join(DATA_DIR, "lotto");
 if (!fs.existsSync(LOTTO_DIR)) fs.mkdirSync(LOTTO_DIR, { recursive: true });
 const LOTTO_LOCK_FILE = path.join(LOTTO_DIR, "decisions.json");
 
-// 로또 고정 데이터 IO
 async function readLottoDecisions() {
   if (!fs.existsSync(LOTTO_LOCK_FILE)) fs.writeFileSync(LOTTO_LOCK_FILE, "[]", "utf8");
   const release = await lockfile.lock(LOTTO_LOCK_FILE, { retries: { retries: 5, factor: 1.5, minTimeout: 50 } });
@@ -64,19 +57,22 @@ async function writeLottoDecisions(list) {
   } finally { await release(); }
 }
 
-// ===== 동행복권 로또 결과 가져오기 =====
-// 최신 발표 회차 파악: byWin 페이지에서 최신 회차 숫자 파싱
+/* ===== 동행복권 최신 회차 폴백 상수 (2025-10-25 기준) ===== */
+const LATEST_KNOWN_DRAW = 1195;
+
 async function fetchLatestDrawNo() {
   const url = "https://www.dhlottery.co.kr/gameResult.do?method=byWin";
-  const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
-  if (!r || !r.ok) return null;
-  const html = await r.text();
-  // "XXXX회 당첨결과" 같은 패턴에서 숫자만 뽑기
-  const m = html.match(/(\d+)\s*회\s*당첨결과/);
-  return m ? Number(m[1]) : null;
+  try {
+    const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!r || !r.ok) return LATEST_KNOWN_DRAW;
+    const html = await r.text();
+    const m = html.match(/(\d+)\s*회\s*당첨결과/);
+    return m ? Number(m[1]) : LATEST_KNOWN_DRAW;
+  } catch {
+    return LATEST_KNOWN_DRAW;
+  }
 }
 
-// 특정 회차의 당첨번호(JSON)
 async function fetchLottoNumbers(drwNo) {
   const api = `https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${drwNo}`;
   const r = await fetchSafe(api, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
@@ -87,15 +83,12 @@ async function fetchLottoNumbers(drwNo) {
   return { drawNo: Number(j.drwNo), drawDate: j.drwNoDate, nums, bonus: Number(j.bnusNo), firstWin: Number(j.firstWinamnt||0) };
 }
 
-// 등수별 당첨금(1~5등) 테이블 스크랩
 async function fetchPrizeTable(drwNo) {
   const url = `https://www.dhlottery.co.kr/gameResult.do?method=byWin&drwNo=${drwNo}`;
   const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
   if (!r || !r.ok) return null;
   const html = await r.text();
-  // 행 단위: "1등, 총당첨금, 당첨자수, 1인당당첨금, 조건" 형태 테이블
-  // 1인당 당첨금(원)을 모두 캡처 (쉼표/원 포함)
-  const rowRe = /(\d)등[^<]*?([\d,]+)원[^<]*?\d+[^<]*?([\d,]+)원/g; // 그룹1: 등수, 그룹2: 총당첨금(쓰진 않음), 그룹3: 1인당당첨금
+  const rowRe = /(\d)등[^<]*?([\d,]+)원[^<]*?\d+[^<]*?([\d,]+)원/g;
   const perRank = {};
   let m;
   while ((m = rowRe.exec(html)) !== null) {
@@ -103,11 +96,9 @@ async function fetchPrizeTable(drwNo) {
     const eachWon = Number((m[3] || "0").replace(/[^\d]/g, ""));
     if (rank>=1 && rank<=5) perRank[rank] = eachWon;
   }
-  // 최소 1등은 채워놓고 없으면 null
   return Object.keys(perRank).length ? perRank : null;
 }
 
-// 등수 판정(6개 일치=1등, 5개+보너스=2등, 5개=3등, 4개=4등, 3개=5등)
 function judgeRank(line, winNums, bonus) {
   const s = new Set(winNums);
   let hit = 0;
@@ -120,10 +111,8 @@ function judgeRank(line, winNums, bonus) {
   return 0;
 }
 
-// 임베드에서 현재 5줄 번호를 파싱
 function parseLottoLinesFromEmbed(embed) {
   const desc = embed?.description || "";
-  // 라인: "**1**) 1, 2, 3, 4, 5, 6"
   const lines = [];
   for (const row of desc.split("\n")) {
     const m = row.match(/\*\*\d+\*\*\)\s*([0-9,\s]+)/);
@@ -135,14 +124,9 @@ function parseLottoLinesFromEmbed(embed) {
   return lines;
 }
 
+const imageSessions = new Map();
+const IMG_SESSION_TTL_MS = 60 * 60 * 1000;
 
-/* =========================
- * 이미지 검색 세션
- * ========================= */
-const imageSessions = new Map(); // sessionId -> { q, lang, list, idx, shared, ownerId, createdAt }
-const IMG_SESSION_TTL_MS = 60 * 60 * 1000; // 60분
-
-// 이미지 제공자 키 (있으면 사용, 없으면 건너뜀)
 const IMG_CFG = {
   bingKey: process.env.BING_KEY || process.env.BING_IMAGE_KEY,
   bingEndpoint: process.env.BING_IMAGE_ENDPOINT || "https://api.bing.microsoft.com/v7.0/images/search",
@@ -159,9 +143,6 @@ const BLOCKED_HOSTS = [
 ];
 const getHost = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
 
-/* =========================
- * 유틸 함수
- * ========================= */
 function formatKST(ts) {
   if (ts == null) return "";
   const d = new Date(ts);
@@ -215,9 +196,6 @@ function pruneOldImageSessions() {
   }
 }
 
-/* =========================
- * 번역기 (Google gtx → LibreTranslate → MyMemory 폴백)
- * ========================= */
 const LANG_CHOICES = [
   { name: "한국어", value: "ko" },
   { name: "English", value: "en" },
@@ -270,17 +248,12 @@ async function translateByMyMemory(text, target) {
 }
 
 async function translateTextAuto(text, target) {
-  // 순차 폴백
   try { return await translateByGoogleGtx(text, target); } catch {}
   try { return await translateByLibre(text, target); } catch {}
   try { return await translateByMyMemory(text, target); } catch {}
   return { text: "", src: "auto" };
 }
 
-
-/* =========================
- * 메모 파일 IO (proper-lockfile)
- * ========================= */
 function memoFile(userId) {
   return path.join(MEMO_DIR, `${userId}.json`);
 }
@@ -320,9 +293,6 @@ async function writeMemos(userId, list) {
   }
 }
 
-/* =========================
- * 계산기
- * ========================= */
 function renderCalcEmbed(userId) {
   const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
   const { a, op, input, last } = st;
@@ -410,7 +380,7 @@ function pushHistory(st, a, op, b, res) {
     st.hist = Array.isArray(st.hist) ? st.hist : [];
     st.hist.unshift(line);
     if (st.hist.length > 10) st.hist.length = 10;
-  } catch { /* noop */ }
+  } catch {}
 }
 function calcEqual(st) {
   const a = st.a;
@@ -430,9 +400,6 @@ function calcEqual(st) {
   st.updatedAt = Date.now();
 }
 
-/* =========================
- * 메모장
- * ========================= */
 function renderMemoListEmbed(userId, list, page, query) {
   const total = list.length;
   const maxPage = Math.max(0, Math.ceil(total / MEMO_PAGE_SIZE) - 1);
@@ -509,9 +476,6 @@ function renderMemoDetailButtons(page) {
   ];
 }
 
-/* =========================
- * 복권번호
- * ========================= */
 function bestBuyDay(userId) {
   const key = weekKeyKST(nowKST());
   const seed = seedFromString(`${userId}:${key}`);
@@ -562,10 +526,6 @@ function renderLottoButtons(targetDrawNo, locked=false) {
   return [row];
 }
 
-
-/* =========================
- * 이미지 & QR 검색
- * ========================= */
 function isValidHttpUrl(u) {
   try {
     const x = new URL(u);
@@ -576,7 +536,6 @@ function isValidHttpUrl(u) {
 }
 function sanitizeImageUrl(u) {
   if (!u) return null;
-  // 디스코드에서 잘 보이는 확장자 위주 필터(엄격 X)
   if (!/^https?:\/\//i.test(u)) return null;
   return u.replace(/^http:\/\//i, "https://");
 }
@@ -639,7 +598,6 @@ async function searchNaverImages(q) {
   const urls = items.map(it => sanitizeImageUrl(it.link)).filter(Boolean);
   return urls;
 }
-// ✅ DuckDuckGo 이미지(무키). 서버에서 가끔 rate limit 있으나 성공률 높음
 async function searchDuckDuckGoImages(q) {
   try {
     const url = new URL("https://duckduckgo.com/i.js");
@@ -653,13 +611,11 @@ async function searchDuckDuckGoImages(q) {
     const items = Array.isArray(json.results) ? json.results : [];
     const urls = items.map(it => sanitizeImageUrl(it.image || it.thumbnail)).filter(Boolean);
     return urls;
-  } catch (e) {
-    // console.warn("[DDG]", e);
+  } catch {
     return [];
   }
 }
 
-// ✅ Unsplash(무키) — 리다이렉트지만 디스코드가 따라감, 주제 관련 랜덤 1장
 function unsplashDirectUrl(q) {
   const qp = encodeURIComponent(q);
   return `https://source.unsplash.com/featured/1280x720/?${qp}`;
@@ -668,7 +624,6 @@ async function searchUnsplashNoKey(q) {
   return [unsplashDirectUrl(q)];
 }
 
-// ✅ LoremFlickr(무키) — 캐시 락으로 매번 다른 랜덤 1장
 function loremFlickrDirectUrl(q) {
   const tag = encodeURIComponent(q.replace(/\s+/g, ','));
   const lock = Math.floor(Math.random() * 1e9);
@@ -678,8 +633,6 @@ async function searchLoremFlickrDirect(q) {
   return [loremFlickrDirectUrl(q)];
 }
 
-
-// ✅ Wikimedia Commons(무키) — "파일" 네임스페이스(6)만 검색해서 이미지 보장
 async function searchWikimediaImages(q) {
   try {
     const url = new URL("https://commons.wikimedia.org/w/api.php");
@@ -687,7 +640,7 @@ async function searchWikimediaImages(q) {
     url.searchParams.set("generator", "search");
     url.searchParams.set("gsrsearch", q);
     url.searchParams.set("gsrlimit", "30");
-    url.searchParams.set("gsrnamespace", "6"); // 파일 네임스페이스만
+    url.searchParams.set("gsrnamespace", "6");
     url.searchParams.set("prop", "imageinfo");
     url.searchParams.set("iiprop", "url");
     url.searchParams.set("iiurlwidth", "1600");
@@ -710,13 +663,10 @@ async function searchWikimediaImages(q) {
   }
 }
 
-
-// ===== 이미지 URL 검사(핫링크/403 차단 필터) =====
 async function testImageUrl(u, timeoutMs = 6000) {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    // 일부 서버는 HEAD 차단 → 소량 GET으로 판별
     const r = await fetchSafe(u, {
       method: "GET",
       signal: ctrl.signal,
@@ -737,13 +687,12 @@ async function testImageUrl(u, timeoutMs = 6000) {
   }
 }
 
-// ===== 엔진 요청 유틸 =====
 async function fetchBingImages(q, lang, CFG) {
   if (!CFG.bingKey) return [];
   const url = new URL(CFG.bingImageEndpoint || "https://api.bing.microsoft.com/v7.0/images/search");
   url.searchParams.set("q", q);
   url.searchParams.set("mkt", lang === "ko" ? "ko-KR" : "en-US");
-  url.searchParams.set("safeSearch", "Off");     // 막히면 Moderate로 변경
+  url.searchParams.set("safeSearch", "Off");
   url.searchParams.set("count", "50");
   url.searchParams.set("imageType", "Photo");
   const r = await fetchSafe(url, {
@@ -752,16 +701,14 @@ async function fetchBingImages(q, lang, CFG) {
   if (!r || !r.ok) return [];
   const j = await r.json().catch(() => ({}));
   const items = Array.isArray(j.value) ? j.value : [];
-  // contentUrl 우선, 안되면 thumbnailUrl
   function pickBingUrl(v) {
-  const cu = v.contentUrl || "";
-  const tu = v.thumbnailUrl || "";
-  const h = getHost(cu);
-  // 🔒 핫링크 차단 도메인은 썸네일(Bing CDN) 우선
-  if (h && BLOCKED_HOSTS.some(b => h.includes(b))) return tu || cu;
-  return cu || tu;
-}
-return items.map(pickBingUrl).filter(Boolean);
+    const cu = v.contentUrl || "";
+    const tu = v.thumbnailUrl || "";
+    const h = getHost(cu);
+    if (h && BLOCKED_HOSTS.some(b => h.includes(b))) return tu || cu;
+    return cu || tu;
+  }
+  return items.map(pickBingUrl).filter(Boolean);
 }
 
 async function fetchGoogleImages(q, lang, CFG) {
@@ -800,7 +747,6 @@ async function fetchNaverImages(q, lang, CFG) {
 }
 
 async function fetchWikimedia(q) {
-  // 유명 작품/인물 폴백: 위키미디어(저작권-친화/핫링크 잘 됨)
   const url = new URL("https://commons.wikimedia.org/w/api.php");
   url.searchParams.set("action", "query");
   url.searchParams.set("format", "json");
@@ -825,7 +771,7 @@ function dedupUrls(arr) {
   const s = new Set();
   const out = [];
   for (const u of arr) {
-    const key = String(u).trim().replace(/[#?].*$/, ""); // 쿼리 제거 후 중복 축소
+    const key = String(u).trim().replace(/[#?].*$/, "");
     if (!s.has(key)) { s.add(key); out.push(u); }
   }
   return out;
@@ -841,29 +787,18 @@ async function findImages(q, lang) {
         const su = sanitizeImageUrl(u);
         if (su && !seen.has(su)) { seen.add(su); out.push(su); }
       }
-    } catch { /* ignore */ }
+    } catch {}
   }
-
-  // 0) 무키 ‘즉시 성공’ 라인 — 여기서 최소 1장은 보장
   await addFrom(() => searchUnsplashNoKey(q));
   if (out.length < 1) await addFrom(() => searchLoremFlickrDirect(q));
-
-  // 1) 키 기반 (있으면 다양성 ↑)
   if (out.length < 3) await addFrom(() => searchBingImages(q, lang));
   if (out.length < 3) await addFrom(() => searchGoogleImages(q));
   if (out.length < 3) await addFrom(() => searchNaverImages(q));
-
-  // 2) 무키 폴백
   if (out.length < 3) await addFrom(() => searchWikimediaImages(q));
   if (out.length < 3) await addFrom(() => searchDuckDuckGoImages(q));
-
-  // 🔒 최후 폴백: 그래도 0이면 최소 1장 보장
   if (out.length === 0) out.push(unsplashDirectUrl(q));
-
   return out;
 }
-
-
 
 function renderImageEmbed(q, url, lang, shared = false) {
   const eb = new EmbedBuilder()
@@ -889,9 +824,6 @@ function renderImageButtons(sessionId, shared) {
   ];
 }
 
-/* =========================
- * SlashCommand 정의
- * ========================= */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("유틸")
@@ -900,7 +832,6 @@ module.exports = {
     .addSubcommand(sc => sc.setName("메모장").setDescription("개인 메모/검색/수정/삭제"))
     .addSubcommand(sc => sc.setName("복권번호").setDescription("1~45 중 6개, 총 5줄"))
     .addSubcommand(sc => sc.setName("마법의소라고동").setDescription("봇이 그래/아니 답변"))
-    // ✅ 신규: 이미지
     .addSubcommand(sc =>
       sc.setName("이미지")
         .setDescription("입력한 대상의 랜덤 이미지를 보여줍니다")
@@ -935,7 +866,6 @@ module.exports = {
       )
   ),
   
-  // Slash 명령 처리
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const userId = interaction.user.id;
@@ -959,20 +889,17 @@ module.exports = {
     }
 
     if (sub === "복권번호") {
-  // 최신 발표 회차 → 다음 회차를 '구매 예정 회차'로 가정
-  const latest = await fetchLatestDrawNo();           // 발표된 최신
-  const targetDrawNo = latest ? (latest + 1) : null;  // 다음 회차
-  const lines = genLottoLines(5, `${userId}:${Date.now()}`);
+      const latest = await fetchLatestDrawNo();
+      const targetDrawNo = Number(latest) + 1;
+      const lines = genLottoLines(5, `${userId}:${Date.now()}`);
 
-  // 이미 같은 회차에 '결정' 기록이 있으면 버튼 잠그기
-  const decisions = await readLottoDecisions();
-  const locked = decisions.some(d => d.userId===userId && d.drawNo===targetDrawNo);
+      const decisions = await readLottoDecisions();
+      const locked = decisions.some(d => d.userId===userId && d.drawNo===targetDrawNo);
 
-  const embed = renderLottoEmbed(userId, lines, targetDrawNo || "미정");
-  const rows = renderLottoButtons(targetDrawNo || 0, locked);
-  return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
-}
-
+      const embed = renderLottoEmbed(userId, lines, targetDrawNo);
+      const rows = renderLottoButtons(targetDrawNo, locked);
+      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    }
 
     if (sub === "마법의소라고동") {
       const embed = new EmbedBuilder()
@@ -997,9 +924,9 @@ module.exports = {
       }
 
       const api = new URL("https://api.qrserver.com/v1/create-qr-code/");
-      api.searchParams.set("size", "512x512"); 
-      api.searchParams.set("data", link);  
-      api.searchParams.set("ecc", "M");  
+      api.searchParams.set("size", "512x512");
+      api.searchParams.set("data", link);
+      api.searchParams.set("ecc", "M");
 
       const r = await fetchSafe(api, { headers: { "User-Agent": "Mozilla/5.0" } });
       if (!r || !r.ok) {
@@ -1018,7 +945,6 @@ module.exports = {
       return interaction.reply({ embeds: [eb], files: [file], ephemeral: true });
     }
 
-      // ✅ 신규: 번역
     if (sub === "번역") {
       const target = interaction.options.getString("언어", true);
       const raw = (interaction.options.getString("내용", true) || "").trim();
@@ -1027,7 +953,6 @@ module.exports = {
         return interaction.reply({ content: "번역할 내용을 입력해줘.", ephemeral: true });
       }
 
-      // 번역 수행
       let result;
       try {
         result = await translateTextAuto(raw, target);
@@ -1040,23 +965,19 @@ module.exports = {
         return interaction.reply({ content: "죄송해, 지금은 번역에 실패했어. 잠시 후 다시 시도해줘.", ephemeral: true });
       }
 
-      // 닉네임 가져오기
       const nick =
         interaction.member?.nickname ||
         interaction.user.globalName ||
         interaction.user.username;
 
-      // 길이 보호 (디스코드 2000자 제한)
       const out = clampLen(translated, 1800);
       const orig = clampLen(raw, 400);
 
-      // 모두가 볼 수 있게 공개로 전송
       return interaction.reply({
-      content: `${nick}: ${out}\n-# (${orig})`
+        content: `${nick}: ${out}\n-# (${orig})`
       });
     }
 
-    // ✅ 신규: 이미지
     if (sub === "이미지") {
       pruneOldImageSessions();
       const qRaw = interaction.options.getString("대상", true).trim();
@@ -1064,22 +985,13 @@ module.exports = {
       if (!q.length) return interaction.reply({ content: "대상을 입력해줘.", ephemeral: true });
 
       const lang = detectLang(q);
-
-      // 검색
       let urls = await findImages(q, lang);
-
-// 디버그 로그(콘솔에서 확인)
-try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
-
-// (필터 완화 — 필요 없음지만 혹시 모를 null 제거)
-urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
-
-// ✅ 최후 폴백(혹시 0이면 Unsplash 1장)
-if (!urls.length) urls = [ unsplashDirectUrl(q) ];
-
-if (!urls.length) {
-  return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
-}
+      try { console.log("[IMG] query:", q, "=>", urls.slice(0, 5)); } catch {}
+      urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+      if (!urls.length) urls = [ unsplashDirectUrl(q) ];
+      if (!urls.length) {
+        return interaction.reply({ content: "죄송합니다, 검색 결과를 찾을 수 없습니다.", ephemeral: true });
+      }
 
       const { item: url, idx } = pickRandom(urls, `${q}:${Date.now()}:${interaction.user.id}`);
       const sessionId = crypto.randomBytes(8).toString("hex");
@@ -1091,11 +1003,9 @@ if (!urls.length) {
     }
   },
 
-  // 버튼/모달 라우팅 (index.js에서 위임 호출)
   async route(interaction) {
     const { customId, user } = interaction;
 
-    /* ===== 계산기 ===== */
     if (customId.startsWith(CALC_PREFIX)) {
       const userId = user.id;
       const st = calcSessions.get(userId) || { a: null, b: null, op: null, input: "", last: null, updatedAt: Date.now(), hist: [], showHist: false };
@@ -1130,7 +1040,6 @@ if (!urls.length) {
       return interaction.update({ embeds: [embed], components: rows });
     }
 
-    /* ===== 메모장: 버튼 & 모달 ===== */
     if (customId.startsWith(MEMO_PREFIX)) {
       const userId = user.id;
 
@@ -1295,7 +1204,6 @@ if (!urls.length) {
       }
     }
 
-    // 수정 제출 (모달)
     if (interaction.isModalSubmit()) {
       const { customId } = interaction;
 
@@ -1372,111 +1280,108 @@ if (!urls.length) {
       }
     }
 
-    /* ===== 복권: 버튼 ===== */
-if (customId.startsWith(LOTTO_PREFIX)) {
-  const parts = customId.slice(LOTTO_PREFIX.length).split("|");
-  const action = parts[0];
-  const drawNo = Number(parts[1] || "0") || 0;
-  const userId = user.id;
+    if (customId.startsWith(LOTTO_PREFIX)) {
+      const parts = customId.slice(LOTTO_PREFIX.length).split("|");
+      const action = parts[0];
+      let drawNo = Number(parts[1] || "0") || 0;
+      const userId = user.id;
 
-  // 고정 여부 확인
-  const decisions = await readLottoDecisions();
-  const mine = decisions.find(d => d.userId===userId && d.drawNo===drawNo);
+      if (!drawNo || drawNo <= 0) {
+        try {
+          const latest = await fetchLatestDrawNo();
+          drawNo = Number(latest) + 1;
+        } catch {
+          drawNo = LATEST_KNOWN_DRAW + 1;
+        }
+      }
 
-  if (action === "regen") {
-    if (mine) {
-      return interaction.reply({ content: "이미 이 회차는 번호가 '결정'되었어. 다시 뽑기는 불가해.", ephemeral: true });
+      const decisions = await readLottoDecisions();
+      const mine = decisions.find(d => d.userId===userId && d.drawNo===drawNo);
+
+      if (action === "regen") {
+        if (mine) {
+          return interaction.reply({ content: "이미 이 회차는 번호가 '결정'되었어. 다시 뽑기는 불가해.", ephemeral: true });
+        }
+        const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
+        const embed = renderLottoEmbed(userId, lines, drawNo);
+        const rows = renderLottoButtons(drawNo, false);
+        return interaction.update({ embeds: [embed], components: rows });
+      }
+
+      if (action === "lock") {
+        if (mine) {
+          return interaction.reply({ content: "이미 이 회차는 결정되어 있어.", ephemeral: true });
+        }
+        const embedNow = interaction.message.embeds?.[0];
+        const currentLines = parseLottoLinesFromEmbed(embedNow);
+        if (!currentLines.length) {
+          return interaction.reply({ content: "현재 화면에서 번호를 읽어오지 못했어. 다시 `/유틸 복권번호`로 시작해줘.", ephemeral: true });
+        }
+        decisions.unshift({ userId, drawNo, lines: currentLines, decidedAt: Date.now() });
+        await writeLottoDecisions(decisions);
+
+        const embed = renderLottoEmbed(userId, currentLines, drawNo);
+        const rows = renderLottoButtons(drawNo, true);
+        return interaction.update({ content: "✅ 이번 회차 번호가 결정되었어!", embeds: [embed], components: rows });
+      }
+
+      if (action === "check") {
+        let baseLines = mine?.lines;
+        if (!baseLines || !baseLines.length) {
+          const embedNow = interaction.message.embeds?.[0];
+          baseLines = parseLottoLinesFromEmbed(embedNow);
+        }
+        if (!baseLines || !baseLines.length) {
+          return interaction.reply({ content: "비교할 번호가 없어. `/유틸 복권번호`로 번호부터 만들어줘.", ephemeral: true });
+        }
+
+        const info = await fetchLottoNumbers(drawNo);
+        if (!info) {
+          return interaction.reply({ content: `${drawNo}회는 아직 발표 전이야. 발표 후 다시 확인해줘!`, ephemeral: true });
+        }
+
+        const prize = await fetchPrizeTable(drawNo);
+        const perRank = (r)=> prize && prize[r] ? prize[r] : 0;
+
+        const results = [];
+        let totalWon = 0;
+        for (let i=0;i<baseLines.length;i++) {
+          const line = baseLines[i];
+          const rank = judgeRank(line, info.nums, info.bonus);
+          const amt  = rank>=1 && rank<=5 ? perRank(rank) : 0;
+          if (amt) totalWon += amt;
+          results.push({ idx: i+1, line, rank, amt });
+        }
+
+        const rowsTxt = results.map(r => {
+          const tag = r.rank===0 ? "낙첨" : `${r.rank}등`;
+          const won = r.amt ? `${r.amt.toLocaleString()}원` : "-";
+          return `**${r.idx}**) ${r.line.join(", ")} → ${tag}${r.amt?` (${won})`:""}`;
+        }).join("\n");
+
+        const eb = new EmbedBuilder()
+          .setTitle(`🧾 ${drawNo}회 당첨 결과`)
+          .setDescription(rowsTxt || "(결과 없음)")
+          .addFields(
+            { name: "당첨번호", value: `${info.nums.join(", ")} + 보너스 ${info.bonus}`, inline: false },
+            { name: "총 당첨금", value: `${totalWon.toLocaleString()}원`, inline: true },
+          )
+          .setFooter({ text: `발표일: ${info.drawDate || "-"}` })
+          .setColor(totalWon>0 ? 0x00C853 : 0x9E9E9E);
+
+        const locked = !!mine;
+        const rows2 = renderLottoButtons(drawNo, locked);
+        await interaction.update({ embeds: [eb], components: rows2 }).catch(()=>{});
+
+        try {
+          const dm = await interaction.user.send({ embeds: [eb] });
+          void dm;
+        } catch {}
+
+        return;
+      }
     }
-    const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
-    const embed = renderLottoEmbed(userId, lines, drawNo || "미정");
-    const rows = renderLottoButtons(drawNo || 0, false);
-    return interaction.update({ embeds: [embed], components: rows });
-  }
 
-  if (action === "lock") {
-    if (mine) {
-      return interaction.reply({ content: "이미 이 회차는 결정되어 있어.", ephemeral: true });
-    }
-    // 현재 메시지 임베드에서 5줄 파싱
-    const embedNow = interaction.message.embeds?.[0];
-    const currentLines = parseLottoLinesFromEmbed(embedNow);
-    if (!currentLines.length) {
-      return interaction.reply({ content: "현재 화면에서 번호를 읽어오지 못했어. 다시 `/유틸 복권번호`로 시작해줘.", ephemeral: true });
-    }
-    decisions.unshift({ userId, drawNo, lines: currentLines, decidedAt: Date.now() });
-    await writeLottoDecisions(decisions);
-
-    const embed = renderLottoEmbed(userId, currentLines, drawNo || "미정");
-    const rows = renderLottoButtons(drawNo || 0, true);
-    return interaction.update({ content: "✅ 이번 회차 번호가 결정되었어!", embeds: [embed], components: rows });
-  }
-
-  if (action === "check") {
-    // 1) 저장된 게 없으면 현재 화면의 5줄로 즉석 비교(비결정 상태)
-    let baseLines = mine?.lines;
-    if (!baseLines || !baseLines.length) {
-      const embedNow = interaction.message.embeds?.[0];
-      baseLines = parseLottoLinesFromEmbed(embedNow);
-    }
-    if (!baseLines || !baseLines.length) {
-      return interaction.reply({ content: "비교할 번호가 없어. `/유틸 복권번호`로 번호부터 만들어줘.", ephemeral: true });
-    }
-
-    // 2) 해당 회차의 발표 여부/당첨번호 조회
-    const info = await fetchLottoNumbers(drawNo);
-    if (!info) {
-      return interaction.reply({ content: `${drawNo}회는 아직 발표 전이야. 발표 후 다시 확인해줘!`, ephemeral: true });
-    }
-
-    // 3) 등수별 금액 테이블
-    const prize = await fetchPrizeTable(drawNo);
-    const perRank = (r)=> prize && prize[r] ? prize[r] : 0;
-
-    // 4) 각 줄 등수/금액 계산
-    const results = [];
-    let totalWon = 0;
-    for (let i=0;i<baseLines.length;i++) {
-      const line = baseLines[i];
-      const rank = judgeRank(line, info.nums, info.bonus);
-      const amt  = rank>=1 && rank<=5 ? perRank(rank) : 0;
-      if (amt) totalWon += amt;
-      results.push({ idx: i+1, line, rank, amt });
-    }
-
-    // 5) 요약 문자열
-    const rowsTxt = results.map(r => {
-      const tag = r.rank===0 ? "낙첨" : `${r.rank}등`;
-      const won = r.amt ? `${r.amt.toLocaleString()}원` : "-";
-      return `**${r.idx}**) ${r.line.join(", ")} → ${tag}${r.amt?` (${won})`:""}`;
-    }).join("\n");
-
-    const eb = new EmbedBuilder()
-      .setTitle(`🧾 ${drawNo}회 당첨 결과`)
-      .setDescription(rowsTxt || "(결과 없음)")
-      .addFields(
-        { name: "당첨번호", value: `${info.nums.join(", ")} + 보너스 ${info.bonus}`, inline: false },
-        { name: "총 당첨금", value: `${totalWon.toLocaleString()}원`, inline: true },
-      )
-      .setFooter({ text: `발표일: ${info.drawDate || "-"}` })
-      .setColor(totalWon>0 ? 0x00C853 : 0x9E9E9E);
-
-    // 6) 화면 업데이트
-    const locked = !!mine;
-    const rows2 = renderLottoButtons(drawNo||0, locked);
-    await interaction.update({ embeds: [eb], components: rows2 }).catch(()=>{});
-
-    // 7) DM 발송(가능 시)
-    try {
-      const dm = await interaction.user.send({ embeds: [eb] });
-      void dm;
-    } catch { /* DM 차단/거부면 무시 */ }
-
-    return;
-  }
-}
-
-
-    /* ===== 소라고동 ===== */
     if (customId === CONCH_PREFIX + "ask") {
       const modal = new ModalBuilder()
         .setCustomId(CONCH_PREFIX + "ask_submit")
@@ -1503,107 +1408,95 @@ if (customId.startsWith(LOTTO_PREFIX)) {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    /* ===== 이미지: 버튼 ===== */
-if (customId.startsWith(IMG_PREFIX)) {
-  try {
-    pruneOldImageSessions();
-
-    let [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
-    let sess = imageSessions.get(sessionId);
-
-    // 🔁 세션 복구 시도 (버튼 메시지에서 질의/이미지 재구성)
-    if (!sess) {
-      const embedNow = interaction.message.embeds?.[0];
-      const title = embedNow?.title || "";
-      const m = title.match(/이미지:\s*(.+)$/) || title.match(/이미지\s*[:：]\s*(.+)$/);
-      const q = (m && m[1]) ? m[1].trim() : null;
-      if (!q) {
-        // 메시지 자체가 깨졌으면 안내 후 종료
-        return interaction.update({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
-      }
-      const lang = detectLang(q);
-      const list = await findImages(q, lang);
-      if (!Array.isArray(list) || !list.length) {
-        return interaction.update({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
-      }
-      let idx = 0;
-      const currUrl = embedNow?.image?.url || null;
-      if (currUrl) {
-        const found = list.findIndex(u => u === currUrl);
-        if (found >= 0) idx = found;
-      }
-      const newId = crypto.randomBytes(8).toString("hex");
-      sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
-      imageSessions.set(newId, sess);
-      sessionId = newId;
-    }
-
-    // 소유자만 조작 허용
-    if (sess.ownerId !== interaction.user.id) {
-      return interaction.update({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
-    }
-
-    // === 공유 ===
-    if (action === "share") {
-      // 1) 먼저 버튼 상태를 '공유됨'으로 즉시 갱신
-      {
-        const url = sess.list[sess.idx];
-        const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
-        const rows = renderImageButtons(sessionId, true);
-        await interaction.update({ embeds: [eb], components: rows });
-      }
-
-      // 2) 채널 전송(권한 없으면 에페메럴로 안내)
+    if (customId.startsWith(IMG_PREFIX)) {
       try {
-        const url = sess.list[sess.idx];
-        const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
-        await interaction.channel.send({ embeds: [embedPub] });
-        sess.shared = true;
-        imageSessions.set(sessionId, sess);
-      } catch (e) {
-        await interaction.followUp({
-          content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크 권한 확인)",
-          ephemeral: true
-        }).catch(() => {});
-      }
-      return;
-    }
+        pruneOldImageSessions();
 
-    // === 다른 이미지 ===
-    if (action === "more") {
-      if (!Array.isArray(sess.list) || !sess.list.length) {
-        return interaction.update({ content: "결과가 더 없어.", embeds: [], components: [] });
-      }
-      let nextIdx = sess.idx;
-      if (sess.list.length > 1) {
-        // 현재와 다른 항목으로 5번까지 시도
-        for (let i = 0; i < 5; i++) {
-          const cand = Math.floor(Math.random() * sess.list.length);
-          if (cand !== sess.idx) { nextIdx = cand; break; }
+        let [action, sessionId] = customId.slice(IMG_PREFIX.length).split("|");
+        let sess = imageSessions.get(sessionId);
+
+        if (!sess) {
+          const embedNow = interaction.message.embeds?.[0];
+          const title = embedNow?.title || "";
+          const m = title.match(/이미지:\s*(.+)$/) || title.match(/이미지\s*[:：]\s*(.+)$/);
+          const q = (m && m[1]) ? m[1].trim() : null;
+          if (!q) {
+            return interaction.update({ content: "세션이 만료되었어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+          }
+          const lang = detectLang(q);
+          const list = await findImages(q, lang);
+          if (!Array.isArray(list) || !list.length) {
+            return interaction.update({ content: "세션을 복구하지 못했어. 다시 `/유틸 이미지`로 검색해줘!", embeds: [], components: [] });
+          }
+          let idx = 0;
+          const currUrl = embedNow?.image?.url || null;
+          if (currUrl) {
+            const found = list.findIndex(u => u === currUrl);
+            if (found >= 0) idx = found;
+          }
+          const newId = crypto.randomBytes(8).toString("hex");
+          sess = { q, lang, list, idx, shared: false, ownerId: interaction.user.id, createdAt: Date.now() };
+          imageSessions.set(newId, sess);
+          sessionId = newId;
+        }
+
+        if (sess.ownerId !== interaction.user.id) {
+          return interaction.update({ content: "이 이미지는 다른 사용자의 검색 세션이야.", embeds: [], components: [] });
+        }
+
+        if (action === "share") {
+          {
+            const url = sess.list[sess.idx];
+            const eb  = renderImageEmbed(sess.q, url, sess.lang, true);
+            const rows = renderImageButtons(sessionId, true);
+            await interaction.update({ embeds: [eb], components: rows });
+          }
+          try {
+            const url = sess.list[sess.idx];
+            const embedPub = renderImageEmbed(sess.q, url, sess.lang, true);
+            await interaction.channel.send({ embeds: [embedPub] });
+            sess.shared = true;
+            imageSessions.set(sessionId, sess);
+          } catch (e) {
+            await interaction.followUp({
+              content: "채널 권한이 부족해서 공유에 실패했어. (메시지 전송/임베드 링크 권한 확인)",
+              ephemeral: true
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        if (action === "more") {
+          if (!Array.isArray(sess.list) || !sess.list.length) {
+            return interaction.update({ content: "결과가 더 없어.", embeds: [], components: [] });
+          }
+          let nextIdx = sess.idx;
+          if (sess.list.length > 1) {
+            for (let i = 0; i < 5; i++) {
+              const cand = Math.floor(Math.random() * sess.list.length);
+              if (cand !== sess.idx) { nextIdx = cand; break; }
+            }
+          }
+          sess.idx = nextIdx;
+          sess.shared = false;
+          imageSessions.set(sessionId, sess);
+
+          const url = sess.list[sess.idx];
+          const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
+          const rows = renderImageButtons(sessionId, false);
+          return interaction.update({ embeds: [eb], components: rows });
+        }
+
+        return interaction.update({ content: "알 수 없는 동작이야.", components: [] });
+
+      } catch (err) {
+        console.error("[IMG BTN 오류]", err);
+        if (!interaction.replied && !interaction.deferred) {
+          try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
+        } else {
+          try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
         }
       }
-      sess.idx = nextIdx;
-      sess.shared = false;
-      imageSessions.set(sessionId, sess);
-
-      const url = sess.list[sess.idx];
-      const eb  = renderImageEmbed(sess.q, url, sess.lang, false);
-      const rows = renderImageButtons(sessionId, false);
-      return interaction.update({ embeds: [eb], components: rows });
     }
-
-    // 알 수 없는 action 보호
-    return interaction.update({ content: "알 수 없는 동작이야.", components: [] });
-
-  } catch (err) {
-    console.error("[IMG BTN 오류]", err);
-    // 이미 update를 못했을 수 있으니 followUp로 보장
-    if (!interaction.replied && !interaction.deferred) {
-      try { await interaction.reply({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
-    } else {
-      try { await interaction.followUp({ content: "이미지 버튼 처리 중 오류가 발생했어.", ephemeral: true }); } catch {}
-    }
-  }
- }
   },
 };
