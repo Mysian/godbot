@@ -42,6 +42,100 @@ const MEMO_PAGE_SIZE = 10;
 // 계산기 세션 (메모리는 일시적이라 충분)
 const calcSessions = new Map(); // userId -> { a, b, op, input, last, updatedAt, hist, showHist }
 
+// 로또 고정 저장 파일
+const LOTTO_DIR = path.join(DATA_DIR, "lotto");
+if (!fs.existsSync(LOTTO_DIR)) fs.mkdirSync(LOTTO_DIR, { recursive: true });
+const LOTTO_LOCK_FILE = path.join(LOTTO_DIR, "decisions.json");
+
+// 로또 고정 데이터 IO
+async function readLottoDecisions() {
+  if (!fs.existsSync(LOTTO_LOCK_FILE)) fs.writeFileSync(LOTTO_LOCK_FILE, "[]", "utf8");
+  const release = await lockfile.lock(LOTTO_LOCK_FILE, { retries: { retries: 5, factor: 1.5, minTimeout: 50 } });
+  try {
+    const raw = fs.readFileSync(LOTTO_LOCK_FILE, "utf8").trim();
+    return raw ? JSON.parse(raw) : [];
+  } finally { await release(); }
+}
+async function writeLottoDecisions(list) {
+  if (!fs.existsSync(LOTTO_LOCK_FILE)) fs.writeFileSync(LOTTO_LOCK_FILE, "[]", "utf8");
+  const release = await lockfile.lock(LOTTO_LOCK_FILE, { retries: { retries: 5, factor: 1.5, minTimeout: 50 } });
+  try {
+    fs.writeFileSync(LOTTO_LOCK_FILE, JSON.stringify(list, null, 2), "utf8");
+  } finally { await release(); }
+}
+
+// ===== 동행복권 로또 결과 가져오기 =====
+// 최신 발표 회차 파악: byWin 페이지에서 최신 회차 숫자 파싱
+async function fetchLatestDrawNo() {
+  const url = "https://www.dhlottery.co.kr/gameResult.do?method=byWin";
+  const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const html = await r.text();
+  // "XXXX회 당첨결과" 같은 패턴에서 숫자만 뽑기
+  const m = html.match(/(\d+)\s*회\s*당첨결과/);
+  return m ? Number(m[1]) : null;
+}
+
+// 특정 회차의 당첨번호(JSON)
+async function fetchLottoNumbers(drwNo) {
+  const api = `https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=${drwNo}`;
+  const r = await fetchSafe(api, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const j = await r.json().catch(() => null);
+  if (!j || j.returnValue !== "success") return null;
+  const nums = [j.drwtNo1, j.drwtNo2, j.drwtNo3, j.drwtNo4, j.drwtNo5, j.drwtNo6].map(Number).sort((a,b)=>a-b);
+  return { drawNo: Number(j.drwNo), drawDate: j.drwNoDate, nums, bonus: Number(j.bnusNo), firstWin: Number(j.firstWinamnt||0) };
+}
+
+// 등수별 당첨금(1~5등) 테이블 스크랩
+async function fetchPrizeTable(drwNo) {
+  const url = `https://www.dhlottery.co.kr/gameResult.do?method=byWin&drwNo=${drwNo}`;
+  const r = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const html = await r.text();
+  // 행 단위: "1등, 총당첨금, 당첨자수, 1인당당첨금, 조건" 형태 테이블
+  // 1인당 당첨금(원)을 모두 캡처 (쉼표/원 포함)
+  const rowRe = /(\d)등[^<]*?([\d,]+)원[^<]*?\d+[^<]*?([\d,]+)원/g; // 그룹1: 등수, 그룹2: 총당첨금(쓰진 않음), 그룹3: 1인당당첨금
+  const perRank = {};
+  let m;
+  while ((m = rowRe.exec(html)) !== null) {
+    const rank = Number(m[1]);
+    const eachWon = Number((m[3] || "0").replace(/[^\d]/g, ""));
+    if (rank>=1 && rank<=5) perRank[rank] = eachWon;
+  }
+  // 최소 1등은 채워놓고 없으면 null
+  return Object.keys(perRank).length ? perRank : null;
+}
+
+// 등수 판정(6개 일치=1등, 5개+보너스=2등, 5개=3등, 4개=4등, 3개=5등)
+function judgeRank(line, winNums, bonus) {
+  const s = new Set(winNums);
+  let hit = 0;
+  for (const n of line) if (s.has(n)) hit++;
+  if (hit === 6) return 1;
+  if (hit === 5 && line.includes(bonus)) return 2;
+  if (hit === 5) return 3;
+  if (hit === 4) return 4;
+  if (hit === 3) return 5;
+  return 0;
+}
+
+// 임베드에서 현재 5줄 번호를 파싱
+function parseLottoLinesFromEmbed(embed) {
+  const desc = embed?.description || "";
+  // 라인: "**1**) 1, 2, 3, 4, 5, 6"
+  const lines = [];
+  for (const row of desc.split("\n")) {
+    const m = row.match(/\*\*\d+\*\*\)\s*([0-9,\s]+)/);
+    if (m) {
+      const arr = m[1].split(",").map(s=>Number(s.trim())).filter(Boolean).sort((a,b)=>a-b);
+      if (arr.length===6) lines.push(arr);
+    }
+  }
+  return lines;
+}
+
+
 /* =========================
  * 이미지 검색 세션
  * ========================= */
@@ -440,21 +534,34 @@ function genLottoLines(n = 5, seedStr = String(Date.now())) {
   }
   return lines;
 }
-function renderLottoEmbed(userId, lines) {
+function renderLottoEmbed(userId, lines, targetDrawNo) {
   const day = bestBuyDay(userId);
   const desc = lines.map((arr, i) => `**${i + 1}**) ${arr.join(", ")}`).join("\n");
   return new EmbedBuilder()
-    .setTitle("🎟 복권 번호 추첨")
+    .setTitle(`🎟 복권 번호 추첨 — ${targetDrawNo}회 (예정)`)
     .setDescription(`이번 주 추천 요일: **${day}**\n\n${desc}`)
     .setColor(0xF1C40F);
 }
-function renderLottoButtons() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(LOTTO_PREFIX + "regen").setLabel("다시 뽑기").setStyle(ButtonStyle.Success),
-    ),
-  ];
+function renderLottoButtons(targetDrawNo, locked=false) {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(LOTTO_PREFIX + `regen|${targetDrawNo}`)
+      .setLabel("다시 뽑기")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(locked),
+    new ButtonBuilder()
+      .setCustomId(LOTTO_PREFIX + `lock|${targetDrawNo}`)
+      .setLabel(locked ? "결정됨" : "이 번호로 결정")
+      .setStyle(locked ? ButtonStyle.Secondary : ButtonStyle.Primary)
+      .setDisabled(locked),
+    new ButtonBuilder()
+      .setCustomId(LOTTO_PREFIX + `check|${targetDrawNo}`)
+      .setLabel("당첨 결과 확인")
+      .setStyle(ButtonStyle.Secondary)
+  );
+  return [row];
 }
+
 
 /* =========================
  * 이미지 & QR 검색
@@ -852,11 +959,20 @@ module.exports = {
     }
 
     if (sub === "복권번호") {
-      const lines = genLottoLines(5, `${userId}:${Date.now()}`);
-      const embed = renderLottoEmbed(userId, lines);
-      const rows = renderLottoButtons();
-      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
-    }
+  // 최신 발표 회차 → 다음 회차를 '구매 예정 회차'로 가정
+  const latest = await fetchLatestDrawNo();           // 발표된 최신
+  const targetDrawNo = latest ? (latest + 1) : null;  // 다음 회차
+  const lines = genLottoLines(5, `${userId}:${Date.now()}`);
+
+  // 이미 같은 회차에 '결정' 기록이 있으면 버튼 잠그기
+  const decisions = await readLottoDecisions();
+  const locked = decisions.some(d => d.userId===userId && d.drawNo===targetDrawNo);
+
+  const embed = renderLottoEmbed(userId, lines, targetDrawNo || "미정");
+  const rows = renderLottoButtons(targetDrawNo || 0, locked);
+  return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+}
+
 
     if (sub === "마법의소라고동") {
       const embed = new EmbedBuilder()
@@ -1257,13 +1373,108 @@ if (!urls.length) {
     }
 
     /* ===== 복권: 버튼 ===== */
-    if (customId === LOTTO_PREFIX + "regen") {
-      const userId = user.id;
-      const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
-      const embed = renderLottoEmbed(userId, lines);
-      const rows = renderLottoButtons();
-      return interaction.update({ embeds: [embed], components: rows });
+if (customId.startsWith(LOTTO_PREFIX)) {
+  const parts = customId.slice(LOTTO_PREFIX.length).split("|");
+  const action = parts[0];
+  const drawNo = Number(parts[1] || "0") || 0;
+  const userId = user.id;
+
+  // 고정 여부 확인
+  const decisions = await readLottoDecisions();
+  const mine = decisions.find(d => d.userId===userId && d.drawNo===drawNo);
+
+  if (action === "regen") {
+    if (mine) {
+      return interaction.reply({ content: "이미 이 회차는 번호가 '결정'되었어. 다시 뽑기는 불가해.", ephemeral: true });
     }
+    const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
+    const embed = renderLottoEmbed(userId, lines, drawNo || "미정");
+    const rows = renderLottoButtons(drawNo || 0, false);
+    return interaction.update({ embeds: [embed], components: rows });
+  }
+
+  if (action === "lock") {
+    if (mine) {
+      return interaction.reply({ content: "이미 이 회차는 결정되어 있어.", ephemeral: true });
+    }
+    // 현재 메시지 임베드에서 5줄 파싱
+    const embedNow = interaction.message.embeds?.[0];
+    const currentLines = parseLottoLinesFromEmbed(embedNow);
+    if (!currentLines.length) {
+      return interaction.reply({ content: "현재 화면에서 번호를 읽어오지 못했어. 다시 `/유틸 복권번호`로 시작해줘.", ephemeral: true });
+    }
+    decisions.unshift({ userId, drawNo, lines: currentLines, decidedAt: Date.now() });
+    await writeLottoDecisions(decisions);
+
+    const embed = renderLottoEmbed(userId, currentLines, drawNo || "미정");
+    const rows = renderLottoButtons(drawNo || 0, true);
+    return interaction.update({ content: "✅ 이번 회차 번호가 결정되었어!", embeds: [embed], components: rows });
+  }
+
+  if (action === "check") {
+    // 1) 저장된 게 없으면 현재 화면의 5줄로 즉석 비교(비결정 상태)
+    let baseLines = mine?.lines;
+    if (!baseLines || !baseLines.length) {
+      const embedNow = interaction.message.embeds?.[0];
+      baseLines = parseLottoLinesFromEmbed(embedNow);
+    }
+    if (!baseLines || !baseLines.length) {
+      return interaction.reply({ content: "비교할 번호가 없어. `/유틸 복권번호`로 번호부터 만들어줘.", ephemeral: true });
+    }
+
+    // 2) 해당 회차의 발표 여부/당첨번호 조회
+    const info = await fetchLottoNumbers(drawNo);
+    if (!info) {
+      return interaction.reply({ content: `${drawNo}회는 아직 발표 전이야. 발표 후 다시 확인해줘!`, ephemeral: true });
+    }
+
+    // 3) 등수별 금액 테이블
+    const prize = await fetchPrizeTable(drawNo);
+    const perRank = (r)=> prize && prize[r] ? prize[r] : 0;
+
+    // 4) 각 줄 등수/금액 계산
+    const results = [];
+    let totalWon = 0;
+    for (let i=0;i<baseLines.length;i++) {
+      const line = baseLines[i];
+      const rank = judgeRank(line, info.nums, info.bonus);
+      const amt  = rank>=1 && rank<=5 ? perRank(rank) : 0;
+      if (amt) totalWon += amt;
+      results.push({ idx: i+1, line, rank, amt });
+    }
+
+    // 5) 요약 문자열
+    const rowsTxt = results.map(r => {
+      const tag = r.rank===0 ? "낙첨" : `${r.rank}등`;
+      const won = r.amt ? `${r.amt.toLocaleString()}원` : "-";
+      return `**${r.idx}**) ${r.line.join(", ")} → ${tag}${r.amt?` (${won})`:""}`;
+    }).join("\n");
+
+    const eb = new EmbedBuilder()
+      .setTitle(`🧾 ${drawNo}회 당첨 결과`)
+      .setDescription(rowsTxt || "(결과 없음)")
+      .addFields(
+        { name: "당첨번호", value: `${info.nums.join(", ")} + 보너스 ${info.bonus}`, inline: false },
+        { name: "총 당첨금", value: `${totalWon.toLocaleString()}원`, inline: true },
+      )
+      .setFooter({ text: `발표일: ${info.drawDate || "-"}` })
+      .setColor(totalWon>0 ? 0x00C853 : 0x9E9E9E);
+
+    // 6) 화면 업데이트
+    const locked = !!mine;
+    const rows2 = renderLottoButtons(drawNo||0, locked);
+    await interaction.update({ embeds: [eb], components: rows2 }).catch(()=>{});
+
+    // 7) DM 발송(가능 시)
+    try {
+      const dm = await interaction.user.send({ embeds: [eb] });
+      void dm;
+    } catch { /* DM 차단/거부면 무시 */ }
+
+    return;
+  }
+}
+
 
     /* ===== 소라고동 ===== */
     if (customId === CONCH_PREFIX + "ask") {
