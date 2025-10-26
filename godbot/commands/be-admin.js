@@ -360,7 +360,7 @@ module.exports = {
         .setTitle(title)
         .setColor(0x6c5ce7)
         .setDescription(`${desc ? `${desc}\n\n` : ''}-# 유저당 **1회만** 참여할 수 있어요.\n정답자는 **${reward.toLocaleString('ko-KR')} BE** 쿠폰을 받아요.\n쿠폰 유효기간: **${days}일**\n\n${guide}`)
-        .setFooter({ text: `출제자: ${interaction.user.tag}` });
+        .setFooter({ text: `/정수획득, /정수조회 등의 명령어를 확인해보세요.` });
 
       const nonce = randomNonce();
       const row = type === 'rps_monster'
@@ -398,3 +398,4 @@ module.exports = {
     }
   }
 };
+
