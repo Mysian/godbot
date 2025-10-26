@@ -1,5 +1,5 @@
 // be-admin.js
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, saveConfig } = require('./be-util');
@@ -21,6 +21,11 @@ function randomCode() {
   let s = '';
   for (let i = 0; i < 16; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s.match(/.{1,4}/g).join('-');
+}
+function randomNonce(len=8){
+  const chars='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let s=''; for(let i=0;i<len;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+  return s;
 }
 
 module.exports = {
@@ -73,6 +78,46 @@ module.exports = {
         .setDescription('쿠폰 코드를 서버에 공개 공유')
         .addStringOption(o => o.setName('코드').setDescription('쿠폰 코드').setRequired(true))
         .addChannelOption(o => o.setName('채널').setDescription('공유할 채널(미지정 시 현재 채널)'))
+    )
+    .addSubcommand(sc =>
+      sc.setName('정수게임')
+        .setDescription('정답 맞추기 게임 임베드 생성(임베드당 유저 1회만 참여 가능, 정답자에 보상 BE 지급)')
+        .addStringOption(o =>
+          o.setName('게임옵션')
+            .setDescription('게임 유형 선택')
+            .setRequired(true)
+            .addChoices(
+              { name: '묵찌빠 괴물', value: 'rps_monster' },
+              { name: '홀짝 괴물', value: 'oddeven_monster' }
+            )
+        )
+        .addStringOption(o =>
+          o.setName('정답')
+            .setDescription('게임 정답(묵/찌/빠 또는 홀/짝)')
+            .setRequired(true)
+        )
+        .addIntegerOption(o =>
+          o.setName('보상정수')
+            .setDescription('정답자 1인당 지급 BE')
+            .setRequired(true)
+            .setMinValue(1)
+        )
+        .addIntegerOption(o =>
+          o.setName('유효일수')
+            .setDescription('정답자에게 발급되는 1회용 쿠폰의 유효기간(일), 기본 3일')
+            .setRequired(false)
+            .setMinValue(1)
+        )
+        .addStringOption(o =>
+          o.setName('설명')
+            .setDescription('임베드에 표시할 추가 설명')
+            .setRequired(false)
+        )
+        .addChannelOption(o =>
+          o.setName('채널')
+            .setDescription('게임 임베드를 보낼 채널(미지정 시 현재 채널)')
+            .setRequired(false)
+        )
     ),
   async execute(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -211,7 +256,6 @@ module.exports = {
         return interaction.reply({ content: '유효한 텍스트 채널을 선택해 주세요.', ephemeral: true });
       }
 
-      // ✅ 대괄호 제거 + 코드블록으로 강한 강조
       const share = new EmbedBuilder()
         .setTitle('🧧 쿠폰 코드')
         .setColor(0xff5e5e)
@@ -228,6 +272,125 @@ module.exports = {
 
       await targetChannel.send({ embeds: [share] });
       return interaction.reply({ content: `쿠폰 \`${c.code}\` 공유 완료.`, ephemeral: true });
+    }
+
+    if (sub === '정수게임') {
+      const type = interaction.options.getString('게임옵션', true);
+      const answerRaw = interaction.options.getString('정답', true);
+      const reward = interaction.options.getInteger('보상정수', true);
+      const days = interaction.options.getInteger('유효일수') || 3;
+      const desc = interaction.options.getString('설명') || '';
+      const targetChannel = interaction.options.getChannel('채널') || interaction.channel;
+
+      if (!targetChannel || !targetChannel.isTextBased()) {
+        return interaction.reply({ content: '유효한 텍스트 채널을 선택해 주세요.', ephemeral: true });
+      }
+
+      const norm = s => String(s || '').trim();
+      let validAnswers;
+      if (type === 'rps_monster') validAnswers = ['묵','찌','빠'];
+      else if (type === 'oddeven_monster') validAnswers = ['홀','짝'];
+      else return interaction.reply({ content: '알 수 없는 게임옵션입니다.', ephemeral: true });
+
+      const answer = norm(answerRaw);
+      if (!validAnswers.includes(answer)) {
+        return interaction.reply({ content: `정답은 ${validAnswers.join('/')} 중 하나여야 합니다.`, ephemeral: true });
+      }
+
+      const title = type === 'rps_monster' ? '👾 묵찌빠 괴물' : '👾 홀짝 괴물';
+      const guide = type === 'rps_monster'
+        ? '버튼 중 하나를 눌러 정답을 맞혀보세요! (유저당 1회 참여)'
+        : '홀/짝 중 하나를 선택하세요! (유저당 1회 참여)';
+
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setColor(0x6c5ce7)
+        .setDescription(
+          `${desc ? `${desc}\n\n` : ''}` +
+          `-# 유저당 **1회만** 참여할 수 있어요.\n` +
+          `정답자는 **${reward.toLocaleString('ko-KR')} BE** 쿠폰을 받아요.\n` +
+          `쿠폰 유효기간: **${days}일**\n\n` +
+          guide
+        )
+        .setFooter({ text: `출제자: ${interaction.user.tag}` });
+
+      const nonce = randomNonce();
+      let buttons;
+      if (type === 'rps_monster') {
+        buttons = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`beGame:${nonce}:묵`).setLabel('묵').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`beGame:${nonce}:찌`).setLabel('찌').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`beGame:${nonce}:빠`).setLabel('빠').setStyle(ButtonStyle.Primary)
+        );
+      } else {
+        buttons = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`beGame:${nonce}:홀`).setLabel('홀').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`beGame:${nonce}:짝`).setLabel('짝').setStyle(ButtonStyle.Success)
+        );
+      }
+
+      const msg = await targetChannel.send({ embeds: [embed], components: [buttons] });
+      await interaction.reply({ content: `정수게임 임베드가 전송되었습니다. (채널: <#${targetChannel.id}>)`, ephemeral: true });
+
+      const attempted = new Set();
+      const filter = i => i.customId.startsWith(`beGame:${nonce}:`) && i.message.id === msg.id;
+      const collector = msg.createMessageComponentCollector({ filter, time: 24 * 60 * 60 * 1000 });
+
+      collector.on('collect', async i => {
+        if (attempted.has(i.user.id)) {
+          return i.reply({ content: '이미 이 게임에 참여하셨습니다. (유저당 1회)', ephemeral: true });
+        }
+        attempted.add(i.user.id);
+
+        const choice = i.customId.split(':').pop();
+        const correct = choice === answer;
+
+        if (!correct) {
+          return i.reply({ content: `아쉽지만 오답입니다. 다음 기회에!`, ephemeral: true });
+        }
+
+        const store = loadCoupons();
+        let code;
+        do { code = randomCode(); } while (store[code]);
+        const now = Date.now();
+        const expiresAt = now + days * 24 * 60 * 60 * 1000;
+
+        store[code] = {
+          code,
+          amount: reward,
+          mode: 'single_use',
+          totalLimit: null,
+          usedCount: 0,
+          usedBy: [],
+          perUserLimit: null,
+          creatorId: interaction.user.id,
+          createdAt: now,
+          expiresAt,
+          canceled: false,
+          note: `정수게임(${title}) 정답자 보상`
+        };
+        saveCoupons(store);
+
+        const rewardEmbed = new EmbedBuilder()
+          .setTitle('🎉 정답! 보상 쿠폰 지급')
+          .setColor(0x00b894)
+          .setDescription(
+            `아래 쿠폰을 \`/정수획득\` 명령어로 사용하면 **${reward.toLocaleString('ko-KR')} BE**가 지급됩니다.\n` +
+            `만료: **${toKST(expiresAt)}**`
+          )
+          .addFields({ name: '쿠폰 번호', value: `\`\`\`fix\n${code}\n\`\`\`` });
+
+        return i.reply({ embeds: [rewardEmbed], ephemeral: true });
+      });
+
+      collector.on('end', async () => {
+        try {
+          const ended = new EmbedBuilder(msg.embeds[0].data)
+            .setColor(0x636e72)
+            .setFooter({ text: '마감됨' });
+          await msg.edit({ embeds: [ended], components: [] });
+        } catch {}
+      });
     }
   }
 };
