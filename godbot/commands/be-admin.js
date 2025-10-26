@@ -29,7 +29,7 @@ function isCouponValid(c) {
 
 async function replyCouponEphemeral(i, code, amount, expiresAt) {
   const e = new EmbedBuilder()
-    .setTitle('🎟️ 쿠폰 재안내')
+    .setTitle('🎟️ 쿠폰 안내')
     .setColor(0x00b894)
     .setDescription(`아래 쿠폰을 \`/정수획득\` 명령어로 사용하면 **${amount.toLocaleString('ko-KR')} BE**가 지급됩니다.\n만료: **${toKST(expiresAt)}**`)
     .addFields({ name: '쿠폰 번호', value: `\`\`\`fix\n${code}\n\`\`\`` });
@@ -398,4 +398,5 @@ module.exports = {
     }
   }
 };
+
 
