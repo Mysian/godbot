@@ -28,6 +28,9 @@ const client = new Client({
 });
 global.client = client; 
 
+const beAdminCmd = require('./commands/be-admin');
+beAdminCmd.registerBeGameHandler(client);
+
 const LOG_CHANNEL_ID = "1382168527015776287";
 module.exports.client = client;
 const OWNER_ID = process.env.OWNER_ID || "285645561582059520";
