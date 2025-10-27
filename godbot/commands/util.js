@@ -1438,80 +1438,94 @@ module.exports = {
       }
 
       if (action === "check") {
-        const latestOpen = await fetchLatestDrawNo();
-        let info = await fetchLottoNumbers(drawNo);
-        if (!info) {
-          const publicInfo = await fetchLottoNumbers(latestOpen);
-          const publicPrize = await fetchPrizeTable(latestOpen);
+  const locked = !!mine;
+  const loadingEmbed = new EmbedBuilder()
+    .setTitle(`🧾 ${drawNo}회 당첨 결과`)
+    .setDescription("⏳ 당첨 결과를 조회 중입니다...")
+    .setColor(0x95A5A6);
 
-          const userPub = getUserPublishedDecisions(decisions, userId, latestOpen);
-          if (userPub.length) {
-            const decision = userPub[0];
-            const result = await buildResultForDecision(decision);
-            if (!result) {
-              const ebPublic = renderPublicDrawEmbed(publicInfo, publicPrize, "(최신 공개 회차 안내)");
-              return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아 최근 회차 정보를 먼저 안내드립니다.", embeds: [ebPublic], components: [] });
-            }
-            const { embed, rows } = renderHistoryEmbed(decision, result, 0, userPub.length, latestOpen, true);
-            return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아, 최신 공개 회차 기준의 이력을 보여드립니다.", embeds: [embed], components: rows });
-          } else {
-            const ebPublic = renderPublicDrawEmbed(publicInfo, publicPrize, "(최신 공개 회차 안내)");
-            return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아 최근 회차의 기본 정보를 안내드립니다.", embeds: [ebPublic], components: [] });
-          }
-        }
+  const loadingRows = renderLottoButtons(drawNo, locked).map(row => {
+    row.components.forEach(btn => btn.setDisabled(true));
+    return row;
+  });
 
-        let baseLines = mine?.lines;
-        if (!baseLines || !baseLines.length) {
-          const embedNow = interaction.message.embeds?.[0];
-          baseLines = parseLottoLinesFromEmbed(embedNow);
-        }
+  try {
+    await interaction.editReply({ embeds: [loadingEmbed], components: loadingRows });
+  } catch {}
 
-        const prize = await fetchPrizeTable(info.drawNo);
-        const perRankEach = (r)=> prize && prize[r] ? prize[r].each : 0;
+  const latestOpen = await fetchLatestDrawNo();
+  let info = await fetchLottoNumbers(drawNo);
+  if (!info) {
+    const publicInfo = await fetchLottoNumbers(latestOpen);
+    const publicPrize = await fetchPrizeTable(latestOpen);
 
-        if (!baseLines || !baseLines.length) {
-          const ebPublic = renderPublicDrawEmbed(info, prize);
-          return interaction.editReply({ content: "결정하신 번호가 없어 기본 당첨 정보를 안내드립니다.", embeds: [ebPublic], components: renderLottoButtons(info.drawNo, !!mine) });
-        }
-
-        const results = [];
-        let totalWon = 0;
-        for (let i=0;i<baseLines.length;i++) {
-          const line = baseLines[i];
-          const rank = judgeRank(line, info.nums, info.bonus);
-          const amt  = rank>=1 && rank<=5 ? perRankEach(rank) : 0;
-          if (amt) totalWon += amt;
-          results.push({ idx: i+1, line, rank, amt });
-        }
-
-        const rowsTxt = results.map(r => {
-          const tag = r.rank===0 ? "낙첨" : `${r.rank}등`;
-          const won = r.amt ? `${r.amt.toLocaleString()}원` : "-";
-          return `**${r.idx}**) ${r.line.join(", ")} → ${tag}${r.amt?` (${won})`:""}`;
-        }).join("\n");
-
-        const eb = new EmbedBuilder()
-          .setTitle(`🧾 ${info.drawNo}회 당첨 결과`)
-          .setDescription(rowsTxt || "(결과 없음)")
-          .addFields(
-            { name: "당첨번호", value: `${info.nums.join(", ")} + 보너스 ${info.bonus}`, inline: false },
-            { name: "총 당첨금(귀하 기준)", value: `${totalWon.toLocaleString()}원`, inline: true },
-            { name: "등위별 요약", value: rankSummaryText(prize), inline: false }
-          )
-          .setFooter({ text: `발표일: ${info.drawDate || "-"}` })
-          .setColor(totalWon>0 ? 0x00C853 : 0x9E9E9E);
-
-        const locked = !!mine;
-        const rows2 = renderLottoButtons(info.drawNo, locked);
-        await interaction.editReply({ embeds: [eb], components: rows2 }).catch(()=>{});
-
-        try {
-          const dm = await interaction.user.send({ embeds: [eb] });
-          void dm;
-        } catch {}
-
-        return;
+    const userPub = getUserPublishedDecisions(decisions, userId, latestOpen);
+    if (userPub.length) {
+      const decision = userPub[0];
+      const result = await buildResultForDecision(decision);
+      if (!result) {
+        const ebPublic = renderPublicDrawEmbed(publicInfo, publicPrize, "(최신 공개 회차 안내)");
+        return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아 최근 회차 정보를 먼저 안내드립니다.", embeds: [ebPublic], components: [] });
       }
+      const { embed, rows } = renderHistoryEmbed(decision, result, 0, userPub.length, latestOpen, true);
+      return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아, 최신 공개 회차 기준의 이력을 보여드립니다.", embeds: [embed], components: rows });
+    } else {
+      const ebPublic = renderPublicDrawEmbed(publicInfo, publicPrize, "(최신 공개 회차 안내)");
+      return interaction.editReply({ content: "아직 해당 회차가 공개되지 않아 최근 회차의 기본 정보를 안내드립니다.", embeds: [ebPublic], components: [] });
+    }
+  }
+
+  let baseLines = mine?.lines;
+  if (!baseLines || !baseLines.length) {
+    const embedNow = interaction.message.embeds?.[0];
+    baseLines = parseLottoLinesFromEmbed(embedNow);
+  }
+
+  const prize = await fetchPrizeTable(info.drawNo);
+  const perRankEach = (r)=> prize && prize[r] ? prize[r].each : 0;
+
+  if (!baseLines || !baseLines.length) {
+    const ebPublic = renderPublicDrawEmbed(info, prize);
+    return interaction.editReply({ content: "결정하신 번호가 없어 기본 당첨 정보를 안내드립니다.", embeds: [ebPublic], components: renderLottoButtons(info.drawNo, !!mine) });
+  }
+
+  const results = [];
+  let totalWon = 0;
+  for (let i=0;i<baseLines.length;i++) {
+    const line = baseLines[i];
+    const rank = judgeRank(line, info.nums, info.bonus);
+    const amt  = rank>=1 && rank<=5 ? perRankEach(rank) : 0;
+    if (amt) totalWon += amt;
+    results.push({ idx: i+1, line, rank, amt });
+  }
+
+  const rowsTxt = results.map(r => {
+    const tag = r.rank===0 ? "낙첨" : `${r.rank}등`;
+    const won = r.amt ? `${r.amt.toLocaleString()}원` : "-";
+    return `**${r.idx}**) ${r.line.join(", ")} → ${tag}${r.amt?` (${won})`:""}`;
+  }).join("\n");
+
+  const eb = new EmbedBuilder()
+    .setTitle(`🧾 ${info.drawNo}회 당첨 결과`)
+    .setDescription(rowsTxt || "(결과 없음)")
+    .addFields(
+      { name: "당첨번호", value: `${info.nums.join(", ")} + 보너스 ${info.bonus}`, inline: false },
+      { name: "총 당첨금(귀하 기준)", value: `${totalWon.toLocaleString()}원`, inline: true },
+      { name: "등위별 요약", value: rankSummaryText(prize), inline: false }
+    )
+    .setFooter({ text: `발표일: ${info.drawDate || "-"}` })
+    .setColor(totalWon>0 ? 0x00C853 : 0x9E9E9E);
+
+  const rows2 = renderLottoButtons(info.drawNo, !!mine);
+  await interaction.editReply({ content: "", embeds: [eb], components: rows2 }).catch(()=>{});
+
+  try {
+    const dm = await interaction.user.send({ embeds: [eb] });
+    void dm;
+  } catch {}
+
+  return;
+}
     }
 
     if (customId.startsWith(LOTTOH_PREFIX)) {
