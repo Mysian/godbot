@@ -1045,40 +1045,85 @@ if (sub === '매수') {
   });
 
   collector.on('collect', async btn => {
-    if (btn.customId === 'yes_buy') {
-      wallets[interaction.user.id] = wallets[interaction.user.id] || {};
-      wallets[interaction.user.id][coin] = (wallets[interaction.user.id][coin] || 0) + amount;
-      wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
-      wallets[interaction.user.id + "_buys"][coin] = Number(((wallets[interaction.user.id + "_buys"][coin] || 0) + (price * amount)).toFixed(3));
+  // 1) 즉시 ACK (3초 타임아웃 방지)
+  await btn.deferUpdate();
 
-      await addBE(interaction.user.id, -needBE, `매수 ${amount} ${coin} (수수료 ${fee} BE 포함)`);
-      await saveJson(walletsPath, wallets);
+  // 2) 버튼 즉시 비활성화(이중 클릭 방지)
+  try {
+    const disabled = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('yes_buy').setLabel('예').setStyle(ButtonStyle.Success).setDisabled(true),
+      new ButtonBuilder().setCustomId('no_buy').setLabel('아니오').setStyle(ButtonStyle.Danger).setDisabled(true),
+    );
+    await msg.edit({ components: [disabled] });
+  } catch {}
 
-      await addHistory(coins[coin], price);
-      await saveJson(coinsPath, coins);
+  if (btn.customId === 'yes_buy') {
+    // 3) 최신 데이터 재로딩 + 잔액/최대매수 재검증(이중클릭/지연 대비)
+    const coinsNow = await loadJson(coinsPath, {});
+    const walletsNow = await loadJson(walletsPath, {});
+    const curPrice = coinsNow[coin]?.price || price;
+    const curBal = getBE(interaction.user.id);
+    let maxBuyNow = Math.floor(curBal / (curPrice || 1));
+    let buyAmt = Math.min(amount, maxBuyNow);
 
-      recordVolume(coin, amount);
-
-      await btn.update({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(`✅ 매수 완료!`)
-            .setDescription(
-              `${coin} **${amount}개** 매수 (개당 ${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)\n총 ${total.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모\n잔액: ${afterBal.toLocaleString()} BE`
-            )
-            .setColor('#60be8e')
-        ],
-        components: []
-      });
-    } else {
-      await btn.update({
-        embeds: [
-          new EmbedBuilder().setDescription(`❌ 매수를 취소했습니다.`).setColor('#f24a4a')
-        ],
-        components: []
-      });
+    if (!coinsNow[coin] || coinsNow[coin].delistedAt) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ 상장 중인 코인만 매수 가능: ${coin}`).setColor('#f24a4a')], components: [] });
+      collector.stop('done');
+      return;
     }
-  });
+
+    if (buyAmt <= 0) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ 구매 가능 수량이 없습니다.`).setColor('#f24a4a')], components: [] });
+      collector.stop('done');
+      return;
+    }
+
+    const need = Number((curPrice * buyAmt).toFixed(3));
+    if (curBal < need) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ BE 잔액이 부족합니다. (필요 ${need.toLocaleString()} BE)`).setColor('#f24a4a')], components: [] });
+      collector.stop('done');
+      return;
+    }
+
+    // 4) 실제 반영
+    walletsNow[interaction.user.id] = walletsNow[interaction.user.id] || {};
+    walletsNow[interaction.user.id][coin] = (walletsNow[interaction.user.id][coin] || 0) + buyAmt;
+    walletsNow[interaction.user.id + "_buys"] = walletsNow[interaction.user.id + "_buys"] || {};
+    walletsNow[interaction.user.id + "_buys"][coin] = Number(((walletsNow[interaction.user.id + "_buys"][coin] || 0) + (curPrice * buyAmt)).toFixed(3));
+
+    await addBE(interaction.user.id, -need, `매수 ${buyAmt} ${coin} (수수료 0 BE 포함)`);
+    await saveJson(walletsPath, walletsNow);
+
+    await addHistory(coinsNow[coin], curPrice);
+    await saveJson(coinsPath, coinsNow);
+
+    recordVolume(coin, buyAmt);
+
+    await interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`✅ 매수 완료!`)
+          .setDescription(
+            `${coin} **${buyAmt}개** 매수 (개당 ${curPrice.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)
+총 ${need.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE 소모
+잔액: ${(curBal - need).toLocaleString()} BE`
+          )
+          .setColor('#60be8e')
+      ],
+      components: []
+    });
+
+  } else {
+    await interaction.editReply({
+      embeds: [ new EmbedBuilder().setDescription(`❌ 매수를 취소했습니다.`).setColor('#f24a4a') ],
+      components: []
+    });
+  }
+
+  // 5) 한 번 처리되면 수집기 종료
+  collector.stop('done');
+});
+
 
   collector.on('end', async () => {
     try { await interaction.editReply({ components: [] }); } catch {}
@@ -1145,53 +1190,87 @@ if (sub === '매도') {
   });
 
   collector.on('collect', async btn => {
+  await btn.deferUpdate();
+
+  try {
+    const disabled = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('yes_sell').setLabel('예').setStyle(ButtonStyle.Success).setDisabled(true),
+      new ButtonBuilder().setCustomId('no_sell').setLabel('아니오').setStyle(ButtonStyle.Danger).setDisabled(true),
+    );
+    await msg.edit({ components: [disabled] });
+  } catch {}
+
   if (btn.customId === 'yes_sell') {
-    wallets[interaction.user.id][coin] -= amount;
-    if (wallets[interaction.user.id][coin] <= 0) delete wallets[interaction.user.id][coin];
-    wallets[interaction.user.id + "_buys"] = wallets[interaction.user.id + "_buys"] || {};
-    const userBuysMap = wallets[interaction.user.id + "_buys"];
-    const currentHaveBeforeSell = have;
-    const avgBuyPriceForSell = (userBuysMap[coin] && currentHaveBeforeSell)
-      ? Number((userBuysMap[coin] / currentHaveBeforeSell).toFixed(6))
-      : price;
-    
-    const reduceCost = Number((avgBuyPriceForSell * amount).toFixed(3));
+    // 최신 재로딩
+    const coinsNow = await loadJson(coinsPath, {});
+    const walletsNow = await loadJson(walletsPath, {});
+    if (!coinsNow[coin] || coinsNow[coin].delistedAt) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ 상장 중인 코인만 매도 가능: ${coin}`).setColor('#f24a4a')], components: [] });
+      collector.stop('done');
+      return;
+    }
+
+    const haveNow = walletsNow[interaction.user.id]?.[coin] || 0;
+    let sellAmt = Math.min(amount, haveNow);
+    if (sellAmt <= 0) {
+      await interaction.editReply({ embeds: [new EmbedBuilder().setDescription(`❌ 매도할 보유 코인이 없습니다.`).setColor('#f24a4a')], components: [] });
+      collector.stop('done');
+      return;
+    }
+
+    const curPrice = coinsNow[coin].price;
+    const gross = Number((curPrice * sellAmt).toFixed(3));
+    const fee = Number((gross * 0.3).toFixed(3));
+    const net = Number((gross - fee).toFixed(3));
+    const balNow = getBE(interaction.user.id);
+
+    // 평균원가/원가차감
+    walletsNow[interaction.user.id][coin] -= sellAmt;
+    if (walletsNow[interaction.user.id][coin] <= 0) delete walletsNow[interaction.user.id][coin];
+
+    walletsNow[interaction.user.id + "_buys"] = walletsNow[interaction.user.id + "_buys"] || {};
+    const userBuysMap = walletsNow[interaction.user.id + "_buys"];
+    const avgBuyPriceForSell = (userBuysMap[coin] && haveNow)
+      ? Number((userBuysMap[coin] / haveNow).toFixed(6))
+      : curPrice;
+    const reduceCost = Number((avgBuyPriceForSell * sellAmt).toFixed(3));
     userBuysMap[coin] = Number(((userBuysMap[coin] || 0) - reduceCost).toFixed(3));
     if (userBuysMap[coin] <= 0.0005) delete userBuysMap[coin];
-    
-    await addBE(interaction.user.id, net, `매도 ${amount} ${coin}`);
-    wallets[interaction.user.id + "_realized"] = wallets[interaction.user.id + "_realized"] || {};
-    wallets[interaction.user.id + "_realized"][coin] = Number(((wallets[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
-    wallets[interaction.user.id + "_realized_profit"] = wallets[interaction.user.id + "_realized_profit"] || {};
-    wallets[interaction.user.id + "_realized_profit"][coin] = Number(((wallets[interaction.user.id + "_realized_profit"][coin] || 0) + (net - reduceCost)).toFixed(3));
 
-    await saveJson(walletsPath, wallets);
-    await addHistory(coins[coin], coins[coin].price);
-    await saveJson(coinsPath, coins);
-    recordVolume(coin, amount);
+    await addBE(interaction.user.id, net, `매도 ${sellAmt} ${coin}`);
+    walletsNow[interaction.user.id + "_realized"] = walletsNow[interaction.user.id + "_realized"] || {};
+    walletsNow[interaction.user.id + "_realized"][coin] = Number(((walletsNow[interaction.user.id + "_realized"][coin] || 0) + net).toFixed(3));
+    walletsNow[interaction.user.id + "_realized_profit"] = walletsNow[interaction.user.id + "_realized_profit"] || {};
+    walletsNow[interaction.user.id + "_realized_profit"][coin] = Number(((walletsNow[interaction.user.id + "_realized_profit"][coin] || 0) + (net - reduceCost)).toFixed(3));
 
-    await btn.update({
+    await saveJson(walletsPath, walletsNow);
+    await addHistory(coinsNow[coin], coinsNow[coin].price);
+    await saveJson(coinsPath, coinsNow);
+    recordVolume(coin, sellAmt);
+
+    await interaction.editReply({
       embeds: [
         new EmbedBuilder()
           .setTitle(`✅ 매도 완료!`)
           .setDescription(
-            `${coin} **${amount}개** 매도 (개당 ${price.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)
+            `${coin} **${sellAmt}개** 매도 (개당 ${curPrice.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE)
 실수령: ${net.toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})} BE
-잔액: ${afterBal.toLocaleString()} BE`
+잔액: ${(balNow + net).toLocaleString()} BE`
           )
           .setColor('#f2a96a')
       ],
       components: []
     });
   } else {
-      await btn.update({
-        embeds: [
-          new EmbedBuilder().setDescription(`❌ 매도를 취소했습니다.`).setColor('#f24a4a')
-        ],
-        components: []
-      });
-    }
-  });
+    await interaction.editReply({
+      embeds: [ new EmbedBuilder().setDescription(`❌ 매도를 취소했습니다.`).setColor('#f24a4a') ],
+      components: []
+    });
+  }
+
+  collector.stop('done');
+});
+
 
   collector.on('end', async () => {
     try { await interaction.editReply({ components: [] }); } catch {}
