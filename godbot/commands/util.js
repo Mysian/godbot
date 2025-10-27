@@ -488,13 +488,10 @@ function renderMemoDetailButtons(page) {
   ];
 }
 
-function bestBuyDay(userId) {
-  const key = weekKeyKST(nowKST());
-  const seed = seedFromString(`${userId}:${key}`);
-  const rnd = mulberry32(seed)();
-  const idx = Math.floor(rnd * 6);
+function bestBuyDayForDraw(userId, drawNo) {
   const days = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
-  return days[idx];
+  const { item } = pickRandom(days, `${userId}:${drawNo}:day`);
+  return item || "토요일";
 }
 function genLottoLines(n = 5, seedStr = String(Date.now())) {
   const rng = mulberry32(seedFromString(seedStr));
@@ -510,8 +507,8 @@ function genLottoLines(n = 5, seedStr = String(Date.now())) {
   }
   return lines;
 }
-function renderLottoEmbed(userId, lines, targetDrawNo) {
-  const day = bestBuyDay(userId);
+function renderLottoEmbed(userId, lines, targetDrawNo, dayText) {
+  const day = dayText || bestBuyDayForDraw(userId, targetDrawNo);
   const desc = lines.map((arr, i) => `**${i + 1}**) ${arr.join(", ")}`).join("\n");
   return new EmbedBuilder()
     .setTitle(`🎟 복권 번호 추첨 — ${targetDrawNo}회 (예정)`)
@@ -581,8 +578,6 @@ async function searchGoogleImages(q) {
   url.searchParams.set("q", q);
   url.searchParams.set("searchType", "image");
   url.searchParams.set("num", "10");
-  url.searchParams.set("gl", lang === "ko" ? "kr" : "us");
-  url.searchParams.set("lr", lang === "ko" ? "lang_ko" : "lang_en");
   const res = await fetchSafe(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!res.ok) return [];
   const json = await res.json();
@@ -980,16 +975,23 @@ module.exports = {
     }
 
     if (sub === "복권번호") {
+      try { await interaction.deferReply({ ephemeral: true }); } catch {}
       const latest = await fetchLatestDrawNo();
       const targetDrawNo = Number(latest) + 1;
-      const lines = genLottoLines(5, `${userId}:${Date.now()}`);
-
+      const dayText = bestBuyDayForDraw(userId, targetDrawNo);
       const decisions = await readLottoDecisions();
-      const locked = decisions.some(d => d.userId===userId && d.drawNo===targetDrawNo);
-
-      const embed = renderLottoEmbed(userId, lines, targetDrawNo);
+      const mine = decisions.find(d => d.userId===userId && d.drawNo===targetDrawNo);
+      let lines, locked;
+      if (mine) {
+        lines = mine.lines;
+        locked = true;
+      } else {
+        lines = genLottoLines(5, `${userId}:${Date.now()}`);
+        locked = false;
+      }
+      const embed = renderLottoEmbed(userId, lines, targetDrawNo, mine?.recDay || dayText);
       const rows = renderLottoButtons(targetDrawNo, locked);
-      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+      return interaction.editReply({ embeds: [embed], components: rows });
     }
 
     if (sub === "마법의소라고동") {
@@ -1009,9 +1011,10 @@ module.exports = {
     }
 
     if (sub === "qr") {
+      try { await interaction.deferReply({ ephemeral: true }); } catch {}
       const link = (interaction.options.getString("링크", true) || "").trim();
       if (!isValidHttpUrl(link)) {
-        return interaction.reply({ content: "http(s)로 시작하는 유효한 링크만 입력해 주세요.", ephemeral: true });
+        return interaction.editReply({ content: "http(s)로 시작하는 유효한 링크만 입력해 주세요." });
       }
 
       const api = new URL("https://api.qrserver.com/v1/create-qr-code/");
@@ -1021,7 +1024,7 @@ module.exports = {
 
       const r = await fetchSafe(api, { headers: { "User-Agent": "Mozilla/5.0" } });
       if (!r || !r.ok) {
-        return interaction.reply({ content: "QR 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true });
+        return interaction.editReply({ content: "QR 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." });
       }
 
       const buf = Buffer.from(await r.arrayBuffer());
@@ -1033,15 +1036,16 @@ module.exports = {
         .setImage("attachment://qrcode.png")
         .setColor(0x00BFA5);
 
-      return interaction.reply({ embeds: [eb], files: [file], ephemeral: true });
+      return interaction.editReply({ embeds: [eb], files: [file] });
     }
 
     if (sub === "번역") {
+      try { await interaction.deferReply({ ephemeral: true }); } catch {}
       const target = interaction.options.getString("언어", true);
       const raw = (interaction.options.getString("내용", true) || "").trim();
 
       if (!raw.length) {
-        return interaction.reply({ content: "번역할 내용을 입력해 주세요.", ephemeral: true });
+        return interaction.editReply({ content: "번역할 내용을 입력해 주세요." });
       }
 
       let result;
@@ -1053,7 +1057,7 @@ module.exports = {
 
       const translated = (result.text || "").trim();
       if (!translated) {
-        return interaction.reply({ content: "죄송합니다. 현재 번역에 실패했습니다. 잠시 후 다시 시도해 주세요.", ephemeral: true });
+        return interaction.editReply({ content: "죄송합니다. 현재 번역에 실패했습니다. 잠시 후 다시 시도해 주세요." });
       }
 
       const nick =
@@ -1064,16 +1068,17 @@ module.exports = {
       const out = clampLen(translated, 1800);
       const orig = clampLen(raw, 400);
 
-      return interaction.reply({
+      return interaction.editReply({
         content: `${nick}: ${out}\n-# (${orig})`
       });
     }
 
     if (sub === "이미지") {
+      try { await interaction.deferReply({ ephemeral: true }); } catch {}
       pruneOldImageSessions();
       const qRaw = interaction.options.getString("대상", true).trim();
       const q = qRaw.replace(/\s+/g, " ");
-      if (!q.length) return interaction.reply({ content: "대상을 입력해 주세요.", ephemeral: true });
+      if (!q.length) return interaction.editReply({ content: "대상을 입력해 주세요." });
 
       const lang = detectLang(q);
       let urls = await findImages(q, lang);
@@ -1081,7 +1086,7 @@ module.exports = {
       urls = Array.isArray(urls) ? urls.filter(Boolean) : [];
       if (!urls.length) urls = [ unsplashDirectUrl(q) ];
       if (!urls.length) {
-        return interaction.reply({ content: "죄송합니다. 검색 결과를 찾을 수 없습니다.", ephemeral: true });
+        return interaction.editReply({ content: "죄송합니다. 검색 결과를 찾을 수 없습니다." });
       }
 
       const { item: url, idx } = pickRandom(urls, `${q}:${Date.now()}:${interaction.user.id}`);
@@ -1090,7 +1095,7 @@ module.exports = {
 
       const embed = renderImageEmbed(q, url, lang, false);
       const rows = renderImageButtons(sessionId, false);
-      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+      return interaction.editReply({ embeds: [embed], components: rows });
     }
   },
 
@@ -1404,7 +1409,8 @@ module.exports = {
           return;
         }
         const lines = genLottoLines(5, `${userId}:${Date.now()}:${Math.random()}`);
-        const embed = renderLottoEmbed(userId, lines, drawNo);
+        const dayText = bestBuyDayForDraw(userId, drawNo);
+        const embed = renderLottoEmbed(userId, lines, drawNo, dayText);
         const rows = renderLottoButtons(drawNo, false);
         return interaction.editReply({ embeds: [embed], components: rows });
       }
@@ -1416,14 +1422,17 @@ module.exports = {
         }
         const embedNow = interaction.message.embeds?.[0];
         const currentLines = parseLottoLinesFromEmbed(embedNow);
+        const desc = embedNow?.description || "";
+        const dayMatch = desc.match(/추천 요일:\s*\*\*(.+?)\*\*/);
+        const recDay = dayMatch ? dayMatch[1] : bestBuyDayForDraw(userId, drawNo);
         if (!currentLines.length) {
           await interaction.followUp({ content: "현재 화면에서 번호를 읽어오지 못했습니다. 다시 `/유틸 복권번호`로 시작해 주세요.", ephemeral: true });
           return;
         }
-        decisions.unshift({ userId, drawNo, lines: currentLines, decidedAt: Date.now() });
+        decisions.unshift({ userId, drawNo, lines: currentLines, decidedAt: Date.now(), recDay });
         await writeLottoDecisions(decisions);
 
-        const embed = renderLottoEmbed(userId, currentLines, drawNo);
+        const embed = renderLottoEmbed(userId, currentLines, drawNo, recDay);
         const rows = renderLottoButtons(drawNo, true);
         return interaction.editReply({ content: "✅ 이번 회차 번호가 결정되었습니다.", embeds: [embed], components: rows });
       }
