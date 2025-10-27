@@ -360,29 +360,8 @@ module.exports = {
       );
 
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-
-      const filter = btn => btn.user.id === interaction.user.id && ['donate_money', 'donate_item'].includes(btn.customId);
-      let btnInt;
-      try {
-        btnInt = await interaction.channel.awaitMessageComponent({ filter, time: 120_000 });
-      } catch {
-        try {
-          await interaction.editReply({ content: '⏰ 시간이 초과되었습니다. 다시 시도해주세요.', embeds: [], components: [], ephemeral: true });
-        } catch {}
-        return;
-      }
-
-      // --- 후원금 ---
-      if (btnInt.customId === 'donate_money') {
-        await btnInt.showModal(createDonateMoneyModal());
-        return;
-      }
-
-      // --- 상품후원 ---
-      if (btnInt.customId === 'donate_item') {
-        await btnInt.showModal(createDonateItemModal());
-        return;
-      }
+// 여기서 끝. 버튼 클릭 → 모달 오픈은 index.js 전역 핸들러가 처리
+return;
 
     } catch (err) {
       try {
