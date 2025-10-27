@@ -231,50 +231,69 @@ module.exports = function(client) {
       }
 
       async function updateStatusEmbed(guild, statusChannel) {
-        try {
-          const memory = process.memoryUsage();
-          const rssMB = (memory.rss / 1024 / 1024);
-          const heapMB = (memory.heapUsed / 1024 / 1024);
-          const load = os.loadavg()[0];
-          const cpuCount = os.cpus().length;
-          const uptimeSec = Math.floor(process.uptime());
-          const uptime = (() => {
-            const h = Math.floor(uptimeSec / 3600);
-            const m = Math.floor((uptimeSec % 3600) / 60);
-            const s = uptimeSec % 60;
-            return `${h}시간 ${m}분 ${s}초`;
-          })();
-          let memState = "🟢";
-          if (rssMB > 800) memState = "🔴";
-          else if (rssMB > 400) memState = "🟡";
-          let cpuState = "🟢";
-          if (load > cpuCount) cpuState = "🔴";
-          else if (load > cpuCount / 2) cpuState = "🟡";
-          let total = "🟢 안정적";
-          if (memState === "🔴" || cpuState === "🔴") total = "🔴 불안정";
-          else if (memState === "🟡" || cpuState === "🟡") total = "🟡 주의";
-          let comment = "";
-          if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
-          else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
-          else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
-          const embed = new EmbedBuilder()
-            .setTitle(`${total} | 서버 상태 진단`)
-            .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
-            .setDescription(comment)
-            .addFields(
-              { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(2)}MB\nheapUsed: ${heapMB.toFixed(2)}MB`, inline: true },
-              { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load.toFixed(2)} / ${cpuCount}코어`, inline: true },
-              { name: `실행시간(Uptime)`, value: uptime, inline: true }
-            )
-            .setFooter({ text: "매 5분마다 자동 측정됩니다." });
-          const msg = await statusChannel.messages.fetch(STATUS_MSG_ID).catch(() => null);
-          if (msg) {
-            await msg.edit({ content: '', embeds: [embed] });
-          }
-        } catch (e) {
-          console.error("[Status 임베드 갱신 에러]", e);
-        }
-      }
+  try {
+    const memory = process.memoryUsage();
+    const rssMB = memory.rss / 1024 / 1024;
+    const heapMB = memory.heapUsed / 1024 / 1024;
+
+    const totalMemMB = os.totalmem() / 1024 / 1024;
+    const memPct = Math.min(100, (rssMB / Math.max(1, totalMemMB)) * 100);
+
+    const load1 = os.loadavg()[0];
+    const cpuCount = os.cpus().length;
+
+    const uptimeSec = Math.floor(process.uptime());
+    const uptime = (() => {
+      const h = Math.floor(uptimeSec / 3600);
+      const m = Math.floor((uptimeSec % 3600) / 60);
+      const s = uptimeSec % 60;
+      return `${h}시간 ${m}분 ${s}초`;
+    })();
+
+    const t0 = Date.now();
+    await new Promise(r => setTimeout(r, 100));
+    const elLag = Math.max(0, Date.now() - t0 - 100);
+
+    let memState = "🟢";
+    if (memPct > 85 || rssMB > 1700) memState = "🔴";
+    else if (memPct > 70 || rssMB > 1200) memState = "🟡";
+
+    let cpuState = "🟢";
+    if (load1 > cpuCount * 1.1) cpuState = "🔴";
+    else if (load1 > cpuCount * 0.6) cpuState = "🟡";
+
+    let loopState = "🟢";
+    if (elLag >= 200) loopState = "🔴";
+    else if (elLag >= 80) loopState = "🟡";
+
+    let total = "🟢 안정적";
+    if (memState === "🔴" || cpuState === "🔴" || loopState === "🔴") total = "🔴 불안정";
+    else if (memState === "🟡" || cpuState === "🟡" || loopState === "🟡") total = "🟡 주의";
+
+    let comment = "";
+    if (total === "🟢 안정적") comment = "서버가 매우 쾌적하게 동작 중이에요!";
+    else if (total === "🟡 주의") comment = "서버에 약간의 부하가 있으니 주의하세요.";
+    else comment = "지금 서버가 상당히 무거워요! 재시작이나 최적화가 필요할 수 있음!";
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${total} | 서버 상태 진단`)
+      .setColor(total === "🔴 불안정" ? 0xff2222 : total === "🟡 주의" ? 0xffcc00 : 0x43e743)
+      .setDescription(comment)
+      .addFields(
+        { name: `메모리 사용량 ${memState}`, value: `RSS: ${rssMB.toFixed(0)}MB / ${Math.round(totalMemMB)}MB (${memPct.toFixed(1)}%)\nheapUsed: ${heapMB.toFixed(0)}MB`, inline: true },
+        { name: `CPU 부하율 ${cpuState}`, value: `1분 평균: ${load1.toFixed(2)} / ${cpuCount}코어`, inline: true },
+        { name: `이벤트 루프 지연 ${loopState}`, value: `${elLag}ms`, inline: true },
+        { name: `실행시간(Uptime)`, value: uptime, inline: true }
+      )
+      .setFooter({ text: "매 5분마다 자동 측정됩니다." });
+
+    const msg = await statusChannel.messages.fetch(STATUS_MSG_ID).catch(() => null);
+    if (msg) await msg.edit({ content: '', embeds: [embed] });
+  } catch (e) {
+    console.error("[Status 임베드 갱신 에러]", e);
+  }
+}
+
 
       async function ensureConnected() {
         try {
