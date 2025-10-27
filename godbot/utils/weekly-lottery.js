@@ -272,7 +272,7 @@ async function handleRecordsPage(interaction, dir, cur) {
   const p = dir === 'prev' ? Math.max(1, cur - 1) : cur + 1;
   await interaction.update({ embeds: [buildRecordsEmbed(loadState(), p)], components: [recordsPager(p)] });
 }
-function buildMineEmbed(state, userId, page, pageSize = 50) {
+function buildMineEmbed(state, userId, page, pageSize = 10, filter = { type: 'all' }) {
   const lines = [];
   const rounds = Object.keys(state.rounds || {}).map(n => parseInt(n, 10)).filter(n => !isNaN(n)).sort((a,b)=>b-a);
   for (const rr of rounds) {
@@ -280,39 +280,121 @@ function buildMineEmbed(state, userId, page, pageSize = 50) {
     if (!r || !Array.isArray(r.tickets)) continue;
     for (const t of r.tickets) {
       if (t.userId !== userId) continue;
+
+      // 필터링
+      if (filter?.type === 'wins' && !(t.result && t.result.win && t.prize > 0)) continue;
+      if (filter?.type === 'losses' && !(t.result && !t.result.win)) continue;
+      if (filter?.type === 'round' && Number(filter.round) === Number(filter.round) && rr !== Number(filter.round)) continue;
+
       const res = t.result == null ? `추첨 대기` : (t.result.win ? `당첨 금액 ${formatAmount(t.prize)} BE` : `낙첨`);
       lines.push(`• ${rr}회차 | [${(t.numbers||[]).join(', ')}] | ${res} | 구매 <t:${toUnix(t.ts)}:R>`);
     }
   }
+
   const total = lines.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const p = Math.min(Math.max(1, page), totalPages);
   const start = (p - 1) * pageSize;
   const pageLines = lines.slice(start, start + pageSize);
   const desc = pageLines.length ? pageLines.join('\n') : '구매 내역이 없습니다.';
+
+  // 현재 필터 배지
+  const filterBadge = (() => {
+    if (filter?.type === 'wins') return '🏆 당첨만';
+    if (filter?.type === 'losses') return '🙅 낙첨만';
+    if (filter?.type === 'round') return `🔎 ${filter.round}회차`;
+    return '📄 전체';
+  })();
+
   const embed = new EmbedBuilder()
-    .setTitle('🧾 내 응모 내역')
+    .setTitle(`🧾 내 응모 내역 · ${filterBadge}`)
     .setColor(0x795548)
     .setDescription(desc);
+
   return { embed, page: p, totalPages };
 }
-function minePager(page, totalPages) {
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`lottery_mine_prev:${page}`).setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
-    new ButtonBuilder().setCustomId('lottery_mine_pageinfo').setLabel(`${page}/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId(`lottery_mine_next:${page}`).setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages)
-  );
-  return row;
+function serializeFilter(filter){
+  if(!filter || filter.type==='all') return 'all';
+  if(filter.type==='wins') return 'wins';
+  if(filter.type==='losses') return 'losses';
+  if(filter.type==='round') return `round:${filter.round||''}`;
+  return 'all';
 }
-async function handleMinePage(interaction, dir, cur) {
+function parseFilter(s){
+  if(!s || s==='all') return { type:'all' };
+  if(s==='wins') return { type:'wins' };
+  if(s==='losses') return { type:'losses' };
+  if(s.startsWith('round:')) {
+    const num = parseInt(s.split(':')[1]||'',10);
+    if(!isNaN(num)) return { type:'round', round:num };
+  }
+  return { type:'all' };
+}
+function mineRows(page, totalPages, filter) {
+  const filterStr = serializeFilter(filter);
+
+  const rowPager = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`lottery_mine_prev:${page}:${filterStr}`).setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
+    new ButtonBuilder().setCustomId(`lottery_mine_pageinfo:${page}:${filterStr}`).setLabel(`${page}/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+    new ButtonBuilder().setCustomId(`lottery_mine_next:${page}:${filterStr}`).setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages)
+  );
+
+  const rowFilter1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`lottery_mine_filter:wins`).setLabel('🏆 당첨만 보기').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`lottery_mine_filter:losses`).setLabel('🙅 낙첨만 보기').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`lottery_mine_filter:all`).setLabel('📄 전체보기').setStyle(ButtonStyle.Secondary)
+  );
+
+  const rowFilter2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`lottery_mine_round_open`).setLabel('🔎 회차 검색').setStyle(ButtonStyle.Secondary)
+  );
+
+  return [rowPager, rowFilter1, rowFilter2];
+}
+async function handleMineFilter(interaction, type) {
   const state = loadState();
-  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, dir === 'prev' ? Math.max(1, cur - 1) : cur + 1);
-  await interaction.update({ embeds: [embed], components: [minePager(page, totalPages)] });
+  const filter = type === 'wins' ? { type:'wins' } :
+                 type === 'losses' ? { type:'losses' } :
+                 { type:'all' };
+  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, 1, 10, filter);
+  await interaction.update({ embeds: [embed], components: mineRows(page, totalPages, filter) });
+}
+
+async function handleMineRoundOpen(interaction) {
+  const modal = new ModalBuilder().setCustomId('lottery_mine_round_modal').setTitle('회차 검색');
+  const input = new TextInputBuilder()
+    .setCustomId('round')
+    .setLabel('확인할 회차 번호')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('예: 1195')
+    .setRequired(true);
+  await interaction.showModal(modal.addComponents(new ActionRowBuilder().addComponents(input)));
+}
+
+async function handleMineRoundModal(interaction) {
+  const raw = (interaction.fields.getTextInputValue('round')||'').trim();
+  const round = parseInt(raw,10);
+  if(isNaN(round) || round<=0) {
+    await interaction.reply({ content: '올바른 회차 번호를 입력해줘.', ephemeral: true });
+    return;
+  }
+  const state = loadState();
+  const filter = { type:'round', round };
+  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, 1, 10, filter);
+  await interaction.reply({ embeds: [embed], components: mineRows(page, totalPages, filter), ephemeral: true });
+}
+async function handleMinePage(interaction, dir, cur, filterStr) {
+  const state = loadState();
+  const filter = parseFilter(filterStr);
+  const targetPage = dir === 'prev' ? Math.max(1, cur - 1) : cur + 1;
+  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, targetPage, 10, filter);
+  await interaction.update({ embeds: [embed], components: mineRows(page, totalPages, filter) });
 }
 async function handleMine(interaction) {
   const state = loadState();
-  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, 1);
-  await interaction.reply({ embeds: [embed], components: [minePager(page, totalPages)], ephemeral: true });
+  const filter = { type:'all' };
+  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, 1, 10, filter);
+  await interaction.reply({ embeds: [embed], components: mineRows(page, totalPages, filter), ephemeral: true });
 }
 async function handleEnter(interaction) {
   if (isClosedForSales()) {
@@ -630,20 +712,34 @@ async function onInteractionCreate(interaction) {
       await handleRecordsPage(interaction, 'next', cur);
       return;
     }
-    if (interaction.customId.startsWith('lottery_mine_prev:')) {
-  const cur = parseInt(interaction.customId.split(':')[1], 10) || 1;
-  await handleMinePage(interaction, 'prev', cur);
+if (interaction.customId.startsWith('lottery_mine_prev:')) {
+  const parts = interaction.customId.split(':'); // ['lottery_mine_prev', page, filterStr]
+  const cur = parseInt(parts[1] || '1', 10) || 1;
+  const filterStr = parts[2] || 'all';
+  await handleMinePage(interaction, 'prev', cur, filterStr);
   return;
 }
 if (interaction.customId.startsWith('lottery_mine_next:')) {
-  const cur = parseInt(interaction.customId.split(':')[1], 10) || 1;
-  await handleMinePage(interaction, 'next', cur);
+  const parts = interaction.customId.split(':'); // ['lottery_mine_next', page, filterStr]
+  const cur = parseInt(parts[1] || '1', 10) || 1;
+  const filterStr = parts[2] || 'all';
+  await handleMinePage(interaction, 'next', cur, filterStr);
+  return;
+}
+if (interaction.customId.startsWith('lottery_mine_filter:')) {
+  const type = interaction.customId.split(':')[1]; // wins | losses | all
+  await handleMineFilter(interaction, type);
+  return;
+}
+if (interaction.customId === 'lottery_mine_round_open') {
+  await handleMineRoundOpen(interaction);
   return;
 }
   }
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId === 'lottery_enter_modal') { await handleEnterModal(interaction); return; }
-  }
+if (interaction.isModalSubmit()) {
+  if (interaction.customId === 'lottery_enter_modal') { await handleEnterModal(interaction); return; }
+  if (interaction.customId === 'lottery_mine_round_modal') { await handleMineRoundModal(interaction); return; }
+}
 }
 let _interval = null;
 async function init(client) {
