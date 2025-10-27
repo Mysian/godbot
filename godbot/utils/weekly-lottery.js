@@ -272,24 +272,47 @@ async function handleRecordsPage(interaction, dir, cur) {
   const p = dir === 'prev' ? Math.max(1, cur - 1) : cur + 1;
   await interaction.update({ embeds: [buildRecordsEmbed(loadState(), p)], components: [recordsPager(p)] });
 }
+function buildMineEmbed(state, userId, page, pageSize = 50) {
+  const lines = [];
+  const rounds = Object.keys(state.rounds || {}).map(n => parseInt(n, 10)).filter(n => !isNaN(n)).sort((a,b)=>b-a);
+  for (const rr of rounds) {
+    const r = state.rounds[rr];
+    if (!r || !Array.isArray(r.tickets)) continue;
+    for (const t of r.tickets) {
+      if (t.userId !== userId) continue;
+      const res = t.result == null ? `추첨 대기` : (t.result.win ? `당첨 금액 ${formatAmount(t.prize)} BE` : `낙첨`);
+      lines.push(`• ${rr}회차 | [${(t.numbers||[]).join(', ')}] | ${res} | 구매 <t:${toUnix(t.ts)}:R>`);
+    }
+  }
+  const total = lines.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const p = Math.min(Math.max(1, page), totalPages);
+  const start = (p - 1) * pageSize;
+  const pageLines = lines.slice(start, start + pageSize);
+  const desc = pageLines.length ? pageLines.join('\n') : '구매 내역이 없습니다.';
+  const embed = new EmbedBuilder()
+    .setTitle('🧾 내 응모 내역')
+    .setColor(0x795548)
+    .setDescription(desc);
+  return { embed, page: p, totalPages };
+}
+function minePager(page, totalPages) {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`lottery_mine_prev:${page}`).setLabel('이전').setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
+    new ButtonBuilder().setCustomId('lottery_mine_pageinfo').setLabel(`${page}/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+    new ButtonBuilder().setCustomId(`lottery_mine_next:${page}`).setLabel('다음').setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages)
+  );
+  return row;
+}
+async function handleMinePage(interaction, dir, cur) {
+  const state = loadState();
+  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, dir === 'prev' ? Math.max(1, cur - 1) : cur + 1);
+  await interaction.update({ embeds: [embed], components: [minePager(page, totalPages)] });
+}
 async function handleMine(interaction) {
   const state = loadState();
-  const rNow = state.round;
-  const rPrev = state.round - 1;
-  const list = [];
-  const pushTickets = (rr, tag) => {
-    if (!state.rounds[rr]) return;
-    for (const t of state.rounds[rr].tickets) {
-      if (t.userId !== interaction.user.id) continue;
-      const res = t.result == null ? `추첨 대기` : (t.result.win ? `당첨 금액 ${formatAmount(t.prize)} BE` : `낙첨`);
-      list.push(`${tag} ${rr}회차 | [${t.numbers.join(', ')}] | ${res} | 구매 <t:${toUnix(t.ts)}:R>`);
-    }
-  };
-  pushTickets(rNow, '•');
-  pushTickets(rPrev, '•');
-  const text = list.length ? list.join('\n') : '구매 내역이 없습니다.';
-  const embed = new EmbedBuilder().setTitle('🧾 내 응모 내역').setColor(0x795548).setDescription(text);
-  await interaction.reply({ embeds: [embed], ephemeral: true });
+  const { embed, page, totalPages } = buildMineEmbed(state, interaction.user.id, 1);
+  await interaction.reply({ embeds: [embed], components: [minePager(page, totalPages)], ephemeral: true });
 }
 async function handleEnter(interaction) {
   if (isClosedForSales()) {
@@ -607,6 +630,16 @@ async function onInteractionCreate(interaction) {
       await handleRecordsPage(interaction, 'next', cur);
       return;
     }
+    if (interaction.customId.startsWith('lottery_mine_prev:')) {
+  const cur = parseInt(interaction.customId.split(':')[1], 10) || 1;
+  await handleMinePage(interaction, 'prev', cur);
+  return;
+}
+if (interaction.customId.startsWith('lottery_mine_next:')) {
+  const cur = parseInt(interaction.customId.split(':')[1], 10) || 1;
+  await handleMinePage(interaction, 'next', cur);
+  return;
+}
   }
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'lottery_enter_modal') { await handleEnterModal(interaction); return; }
