@@ -299,11 +299,33 @@ async function handleEnter(interaction) {
   const state = loadState();
   ensureRound(state, state.round);
   const pick = state.rounds[state.round].rule.pick || 6;
-  const modal = new ModalBuilder().setCustomId('lottery_enter_modal').setTitle(`복권 응모(1줄 ${formatAmount(TICKET_PRICE)} BE)`);
-  const input = new TextInputBuilder().setCustomId('numbers').setLabel(`숫자 ${pick}개 입력(1~45, 쉼표) | 비우거나 0=자동`).setStyle(TextInputStyle.Short).setPlaceholder('예: 3,7,12,28,41,44 | 공란 또는 0=랜덤').setRequired(false);
-  modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+  const modal = new ModalBuilder()
+    .setCustomId('lottery_enter_modal')
+    .setTitle(`복권 응모(1줄 ${formatAmount(TICKET_PRICE)} BE)`);
+
+  const inputNumbers = new TextInputBuilder()
+    .setCustomId('numbers')
+    .setLabel(`숫자 ${pick}개 입력(1~45, 쉼표) | 비우거나 0=자동`)
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('예: 3,7,12,28,41,44 | 공란 또는 0=랜덤')
+    .setRequired(false);
+
+  const inputQty = new TextInputBuilder()
+    .setCustomId('qty')
+    .setLabel('구매할 장수(기본 1)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('예: 3, 3장, 3개, 3줄, 3장 살래')
+    .setRequired(false);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(inputNumbers),
+    new ActionRowBuilder().addComponents(inputQty)
+  );
+
   await interaction.showModal(modal);
 }
+
 function drawNumbers(pick) {
   const set = new Set();
   while (set.size < pick) {
@@ -315,55 +337,132 @@ async function handleEnterModal(interaction) {
   const state = loadState();
   ensureRound(state, state.round);
   const pick = state.rounds[state.round].rule.pick || 6;
-  const raw = (interaction.fields.getTextInputValue('numbers') || '').trim();
-  let picked = null;
-  if (raw.length === 0) {
-    picked = drawNumbers(pick);
+
+  const rawNums = (interaction.fields.getTextInputValue('numbers') || '').trim();
+  const rawQty  = (interaction.fields.getTextInputValue('qty') || '').trim();
+
+  // 숫자 라인 파싱
+  let basePicked = null;
+  if (rawNums.length === 0) {
+    basePicked = null; // 자동: 각 줄마다 새로 뽑을 수 있게 null로 둠
   } else {
-    const parsed = raw.split(/[\,\s]+/).filter(Boolean).map(v => parseInt(v.trim(), 10));
+    const parsed = rawNums.split(/[\,\s]+/).filter(Boolean).map(v => parseInt(v.trim(), 10));
     if (parsed.length === 1 && parsed[0] === 0) {
-      picked = drawNumbers(pick);
+      basePicked = null; // 0 포함 → 자동
     } else if (parsed.some(v => v === 0)) {
-      picked = drawNumbers(pick);
+      basePicked = null; // 0 포함 → 자동
     } else {
-      picked = uniqueSortedPick(parsed, pick);
+      const picked = uniqueSortedPick(parsed, pick);
       if (!picked) {
-        await interaction.reply({ content: `입력 형식이 잘못되었습니다. 1부터 45 사이의 서로 다른 숫자 ${pick}개를 쉼표로 구분해 입력하거나, 공란/0으로 자동 선택을 이용해 주세요.`, ephemeral: true });
+        await interaction.reply({
+          content: `입력 형식이 잘못되었습니다. 1부터 45 사이의 서로 다른 숫자 ${pick}개를 쉼표로 구분해 입력하거나, 공란/0으로 자동 선택을 이용해 주세요.`,
+          ephemeral: true
+        });
         return;
       }
+      basePicked = picked; // 지정 숫자 고정
     }
   }
+
+  // 수량 파싱: 숫자 + 아무 문자 허용. 없으면 1, 0/음수는 거절.
+  // 예) "3", "3장", "3개", "3줄", "3장 살래", "3tickets" 등
+  let want = 1;
+  if (rawQty.length > 0) {
+    const m = rawQty.match(/-?\d+/);
+    if (m) {
+      want = parseInt(m[0], 10);
+    } else {
+      // 숫자 자체가 없으면 기본 1
+      want = 1;
+    }
+  }
+  if (want <= 0) {
+    await interaction.reply({ content: '그렇게는 구매할 수 없어요. 1장 이상부터 가능해요.', ephemeral: true });
+    return;
+  }
+
   if (isClosedForSales()) {
     await interaction.reply({ content: '현재는 판매가 중지된 시간입니다. 월요일 오전 9시에 판매가 재개됩니다.', ephemeral: true });
     return;
   }
+
   let release;
   try {
     release = await lockfile.lock(LOCK_PATH, { retries: { retries: 10, minTimeout: 30, maxTimeout: 120 } });
+
     const s = loadState();
     ensureRound(s, s.round);
+
     const myCount = s.rounds[s.round].tickets.filter(t => t.userId === interaction.user.id).length;
-    if (myCount >= PER_ROUND_MAX_TICKETS) {
-      await interaction.reply({ content: `해당 회차 구매 한도(${PER_ROUND_MAX_TICKETS}장)를 초과했습니다. 현재 ${myCount}장 구매하였습니다.`, ephemeral: true });
+
+    // 티켓/금액 한도 기준으로 가능한 최대 장수 계산
+    const leftByTicketLimit = Math.max(0, PER_ROUND_MAX_TICKETS - myCount);
+    const leftBySpendLimit  = Math.max(0, Math.floor((PER_ROUND_MAX_SPEND - myCount * TICKET_PRICE) / TICKET_PRICE));
+    let canByPolicy = Math.min(leftByTicketLimit, leftBySpendLimit);
+
+    if (canByPolicy <= 0) {
+      await interaction.reply({
+        content: `해당 회차 구매 한도를 초과했습니다. 현재 ${myCount}장을 구매하여 더 이상 구매할 수 없습니다.`,
+        ephemeral: true
+      });
       return;
     }
-    const nextCount = myCount + 1;
-    if (nextCount * TICKET_PRICE > PER_ROUND_MAX_SPEND) {
-      await interaction.reply({ content: `해당 회차 최대 구매 금액(${formatAmount(PER_ROUND_MAX_SPEND)} BE)을 초과할 수 없습니다. 현재 ${formatAmount(myCount * TICKET_PRICE)} BE 사용됨.`, ephemeral: true });
-      return;
-    }
+
+    // 잔액 기준으로 가능한 최대 장수
     const balance = getBE(interaction.user.id);
-    if (balance < TICKET_PRICE) {
-      await interaction.reply({ content: `잔액이 부족합니다. 필요 금액: ${formatAmount(TICKET_PRICE)} BE`, ephemeral: true });
+    const canByBalance = Math.max(0, Math.floor(balance / TICKET_PRICE));
+
+    let buyCount = Math.min(want, canByPolicy, canByBalance);
+
+    if (buyCount <= 0) {
+      await interaction.reply({
+        content: `잔액이 부족합니다. 1장 당 ${formatAmount(TICKET_PRICE)} BE가 필요합니다.`,
+        ephemeral: true
+      });
       return;
     }
-    await addBE(interaction.user.id, -TICKET_PRICE, `복권 ${s.round}회차 1줄 구매(${picked.join('-')})`);
-    await addBE(BOT_BANK_ID, TICKET_PRICE, `복권 ${s.round}회차 판매 수익`);
-    const ticket = { id: `${interaction.user.id}-${Date.now()}`, userId: interaction.user.id, numbers: picked, ts: Date.now(), result: null, prize: 0, paid: false };
-    s.rounds[s.round].tickets.push(ticket);
+
+    // 총 결제
+    const cost = buyCount * TICKET_PRICE;
+    await addBE(interaction.user.id, -cost, `복권 ${s.round}회차 ${buyCount}줄 구매`);
+    await addBE(BOT_BANK_ID, cost, `복권 ${s.round}회차 판매 수익`);
+
+    // 티켓 생성: 지정 숫자면 동일 조합 반복, 자동이면 매 줄마다 새로 뽑음
+    const nowTs = Date.now();
+    for (let i = 0; i < buyCount; i++) {
+      const nums = basePicked ? basePicked.slice() : drawNumbers(pick);
+      const ticket = {
+        id: `${interaction.user.id}-${nowTs}-${i}`,
+        userId: interaction.user.id,
+        numbers: nums,
+        ts: nowTs,
+        result: null,
+        prize: 0,
+        paid: false
+      };
+      s.rounds[s.round].tickets.push(ticket);
+    }
+
     saveState(s);
-    const remain = PER_ROUND_MAX_TICKETS - (myCount + 1);
-    await interaction.reply({ content: `응모 완료: [${picked.join(', ')}] | 가격 ${formatAmount(TICKET_PRICE)} BE | 이번 회차 남은 구매 가능 장수: ${remain}장`, ephemeral: true });
+
+    const remain = Math.max(0, PER_ROUND_MAX_TICKETS - (myCount + buyCount));
+
+    // 안내 문구: 캡/삭감 사유 간단 안내
+    let note = '';
+    if (buyCount < want) {
+      // 어떤 제약으로 컷됐는지 힌트 제공
+      const reasons = [];
+      if (want > canByPolicy) reasons.push('회차 한도');
+      if (want > canByBalance) reasons.push('잔액');
+      note = ` (요청 ${want}장 → ${buyCount}장으로 조정: ${reasons.join(' / ')})`;
+    }
+
+    // 대표 라인 예시(첫 줄 번호) 표기
+    const sample = (basePicked ? basePicked : drawNumbers(pick)).join(', ');
+    await interaction.reply({
+      content: `응모 완료: 총 ${buyCount}장${note}\n대표 조합 예시: [${sample}] | 총액 ${formatAmount(cost)} BE\n이번 회차 남은 개인 구매 가능 장수: ${remain}장`,
+      ephemeral: true
+    });
   } finally {
     if (release) await release();
   }
