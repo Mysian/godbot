@@ -102,7 +102,6 @@ require('./commands/nickname-change').register(client);
 require('./utils/admin-digest').start(client);
 require('./utils/weekly-lottery').init(client);
 require('./utils/dm-direct')(client);
-require('./utils/korean-calendar')(client);
 require('./utils/avatar-history').registerAvatarHistory(client);
 
 const recruit = require("./commands/recruit.js");
@@ -211,6 +210,12 @@ for (const [gid, guild] of client.guilds.cache) {
   if (guild) {
     await relationship.cleanupLeftMembers(guild);
     console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
+  }
+
+    try {
+    await require('./utils/korean-calendar')(client);
+  } catch (e) {
+    console.error('[korean-calendar 초기화 실패]', e);
   }
 
   try {
