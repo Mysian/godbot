@@ -113,7 +113,7 @@ module.exports = function(client) {
         channelId: TARGET_CHANNEL_ID,
         guildId: guild.id,
         adapterCreator: guild.voiceAdapterCreator,
-        selfDeaf: true,
+        selfDeaf: false,
         selfMute: false
       });
       const channel = guild.channels.cache.get(TARGET_CHANNEL_ID);
@@ -304,7 +304,7 @@ async function ensureConnected() {
       channelId: TARGET_CHANNEL_ID,
       guildId: guild.id,
       adapterCreator: guild.voiceAdapterCreator,
-      selfDeaf: true,
+      selfDeaf: false,
       selfMute: false
     });
   } catch (_) {}
