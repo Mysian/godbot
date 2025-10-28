@@ -212,12 +212,6 @@ for (const [gid, guild] of client.guilds.cache) {
     console.log("서버 나간 유저 관계/교류 데이터 정리 완료");
   }
 
-    try {
-    await require('./utils/korean-calendar')(client);
-  } catch (e) {
-    console.error('[korean-calendar 초기화 실패]', e);
-  }
-
   try {
     if (guild) {
       const { cleanupBELeftMembers } = require('./commands/be-util.js');
