@@ -1,7 +1,10 @@
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
 const { PermissionsBitField, ChannelType } = require('discord.js');
 const ytdl = require('ytdl-core');
 const YouTube = require('youtube-sr').default;
+const ffmpeg = require('ffmpeg-static');
+if (ffmpeg) process.env.FFMPEG_PATH = ffmpeg;
+
 
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
 
@@ -84,7 +87,8 @@ async function makeResource(url) {
   for (let i = 0; i < 2; i++) {
     try {
       const stream = makeYtdlStream(url);
-      return createAudioResource(stream);
+      const probed = await demuxProbe(stream);
+      return createAudioResource(probed.stream, { inputType: probed.type });
     } catch (e) {
       lastErr = e;
       await new Promise(r => setTimeout(r, 600));
