@@ -1,10 +1,11 @@
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { PermissionsBitField, ChannelType } = require('discord.js');
-const play = require('play-dl');
+const ytdl = require('ytdl-core');
+const YouTube = require('youtube-sr').default;
 
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
 
-if (process.env.YT_COOKIE) { try { play.setToken({ youtube: { cookie: process.env.YT_COOKIE } }); } catch {} }
+const YT_COOKIE = process.env.YT_COOKIE || '';
 
 const queues = new Map();
 
@@ -58,27 +59,36 @@ async function connectTo(message) {
 async function searchTop(query) {
   const q = String(query || '').trim();
   if (!q) throw new Error('EMPTY_QUERY');
-  let results = await play.search(q, { limit: 1, source: { youtube: 'video' } });
-  if (!results || !results[0]?.url) {
-    results = await play.search(q, { limit: 1, source: { youtube: 'search' } });
-  }
-  if (!results || !results[0]?.url) throw new Error('NO_RESULT');
-  const url = results[0].url;
-  let title = results[0].title || url;
-  try {
-    const info = await play.video_basic_info(url);
-    title = info?.video_details?.title || title;
-  } catch {}
-  return { url, title };
+  const res = await YouTube.search(q, { type: 'video', limit: 1, safeSearch: false });
+  if (!res || !res[0]) throw new Error('NO_RESULT');
+  const vid = res[0];
+  const id = vid.id;
+  const title = vid.title || `YouTube ${id}`;
+  const url = `https://www.youtube.com/watch?v=${id}`;
+  return { id, url, title };
+}
+
+function makeYtdlStream(url) {
+  const requestOptions = { headers: {} };
+  if (YT_COOKIE) requestOptions.headers.cookie = YT_COOKIE;
+  return ytdl(url, {
+    filter: 'audioonly',
+    quality: 'highestaudio',
+    highWaterMark: 1 << 25,
+    requestOptions
+  });
 }
 
 async function makeResource(url) {
   let lastErr = null;
   for (let i = 0; i < 2; i++) {
     try {
-      const s = await play.stream(url, { discordPlayerCompatibility: true, quality: 2 });
-      return createAudioResource(s.stream, { inputType: s.type });
-    } catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 600)); }
+      const stream = makeYtdlStream(url);
+      return createAudioResource(stream);
+    } catch (e) {
+      lastErr = e;
+      await new Promise(r => setTimeout(r, 600));
+    }
   }
   throw lastErr || new Error('STREAM_FAIL');
 }
@@ -96,7 +106,7 @@ async function playIndex(guildId, client) {
     if (ch && ch.send) ch.send(`▶️ 재생: **${item.title}**`);
   } catch (e) {
     const ch = await client.channels.fetch(state.textChannelId).catch(() => null);
-    const reason = (e && (e.shortMessage || e.message || e.name)) ? String(e.shortMessage || e.message || e.name).slice(0, 180) : '알 수 없음';
+    const reason = (e && (e.message || e.name)) ? String(e.message || e.name).slice(0, 180) : '알 수 없음';
     if (ch && ch.send) ch.send(`⚠️ 재생 실패: ${item.title}\n사유: ${reason}`);
     console.error('[music] play fail:', reason, '| url:', item.url);
     await next(guildId, client);
