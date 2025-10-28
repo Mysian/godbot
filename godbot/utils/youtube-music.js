@@ -57,16 +57,24 @@ async function connectTo(message) {
   return connection;
 }
 
-async function makeResource(url) {
+async function makeResourceFromUrl(url) {
   let lastErr = null;
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 3; i++) {
     try {
       const s = await play.stream(url, { discordPlayerCompatibility: true, quality: 2 });
       return createAudioResource(s.stream, { inputType: s.type });
     } catch (e) {
       lastErr = e;
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 900));
     }
+  }
+  // 대체 경로: info 기반 스트림 시도
+  try {
+    const info = await play.video_info(url);
+    const s2 = await play.stream_from_info(info, { discordPlayerCompatibility: true, quality: 2 });
+    return createAudioResource(s2.stream, { inputType: s2.type });
+  } catch (e2) {
+    lastErr = e2;
   }
   throw lastErr || new Error('STREAM_FAIL');
 }
@@ -77,7 +85,7 @@ async function playIndex(guildId, client) {
   if (state.index < 0 || state.index >= state.queue.length) state.index = 0;
   const item = state.queue[state.index];
   try {
-    const resource = await makeResource(item.url);
+    const resource = await makeResourceFromUrl(item.url);
     state.player.play(resource);
     state.playing = true;
     const ch = await client.channels.fetch(state.textChannelId).catch(() => null);
@@ -91,16 +99,34 @@ async function playIndex(guildId, client) {
   }
 }
 
-async function enqueue(message, url) {
-  let title = url;
-  try {
-    const info = await play.video_basic_info(url);
-    title = info?.video_details?.title || url;
-  } catch {}
+async function resolveQuery(q) {
+  if (isYoutubeUrl(q)) {
+    try {
+      const info = await play.video_basic_info(q);
+      const title = info?.video_details?.title || q;
+      return { url: q, title };
+    } catch {
+      return { url: q, title: q };
+    }
+  }
+  const results = await play.search(q, { limit: 1, source: { youtube: 'video' } });
+  if (!results || !results.length) throw new Error('NO_RESULTS');
+  const r = results[0];
+  return { url: r.url, title: r.title || q };
+}
+
+async function enqueue(message, urlOrTitle) {
   const state = getOrInitGuildState(message.guild.id);
-  state.queue.push({ url, title, requestedBy: message.author.id });
+  let picked;
+  try {
+    picked = await resolveQuery(urlOrTitle);
+  } catch (e) {
+    const reason = e?.message === 'NO_RESULTS' ? '검색 결과가 없어요.' : '검색 중 오류가 발생했어요.';
+    return void message.channel.send(`❌ ${reason}`);
+  }
+  state.queue.push({ url: picked.url, title: picked.title, requestedBy: message.author.id });
   const ch = message.channel;
-  await ch.send(`➕ 큐 추가: **${title}**`);
+  await ch.send(`➕ 큐 추가: **${picked.title}**`);
   if (!state.playing) {
     try { await connectTo(message); } catch (e) {
       if (e.message === 'VOICE_REQUIRED') return ch.send('먼저 음성 채널에 들어가세요.');
@@ -144,9 +170,10 @@ function isYoutubeUrl(s) {
 }
 
 async function handlePlayCommand(message, argStr) {
-  if (argStr && isYoutubeUrl(argStr)) return enqueue(message, argStr);
+  const query = (argStr || '').trim();
+  if (query) return enqueue(message, query);
   const state = getOrInitGuildState(message.guild.id);
-  if (!state.queue.length) return message.channel.send('대기열이 비어 있어요. 유튜브 링크를 붙여 넣어 주세요.');
+  if (!state.queue.length) return message.channel.send('대기열이 비어 있어요. 제목이나 유튜브 링크를 입력해 주세요.');
   try { await connectTo(message); } catch (e) {
     if (e.message === 'VOICE_REQUIRED') return message.channel.send('먼저 음성 채널에 들어가세요.');
     if (e.message === 'STAGE_UNSUPPORTED') return message.channel.send('스테이지 채널에서는 재생할 수 없어요. 일반 음성 채널을 이용해 주세요.');
@@ -179,10 +206,11 @@ function onMessageCreate(client) {
 
     if (sameTextChannel(message)) {
       const url = extractFirstYoutubeUrl(message.content);
-      if (url) {
+      const raw = message.content.trim();
+      if (url || raw.length > 0) {
         try {
           if (!userInAnyVoice(message)) return message.reply('먼저 음성 채널에 들어가세요.');
-          await enqueue(message, url);
+          await enqueue(message, url ? url : raw); // 링크 없으면 "제목 검색" 사용
         } catch (e) {
           console.error('[music] enqueue fail:', e?.message || e);
           message.channel.send('큐 추가에 실패했습니다.');
