@@ -103,6 +103,8 @@ require('./utils/admin-digest').start(client);
 require('./utils/weekly-lottery').init(client);
 require('./utils/dm-direct')(client);
 require('./utils/avatar-history').registerAvatarHistory(client);
+require('./utils/youtube-music').registerYouTubeMusic(client);
+
 
 const recruit = require("./commands/recruit.js");
 recruit.registerRecruitHandlers(client);
