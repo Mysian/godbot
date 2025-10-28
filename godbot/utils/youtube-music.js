@@ -11,26 +11,31 @@ const {
 const { PermissionsBitField, ChannelType } = require('discord.js');
 const play = require('play-dl');
 const ytdl = require('ytdl-core');
-const { Agent: HttpsAgent } = require('https');
 
-let proxyAgent = null;
-try {
-  if (process.env.YT_PROXY) {
-    const { HttpsProxyAgent } = require('https-proxy-agent');
-    proxyAgent = new HttpsProxyAgent(process.env.YT_PROXY);
-    console.log('[music] proxy enabled:', process.env.YT_PROXY);
-  }
-} catch {}
-
+const USE_PLAYDL = process.env.USE_PLAYDL !== '0';
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
-
 const PRIMARY_TIMEOUT_MS = 45000;
-const INFO_TIMEOUT_MS    = 20000;
-const YTDL_TIMEOUT_MS    = 45000;
+const INFO_TIMEOUT_MS = 20000;
+const YTDL_TIMEOUT_MS = 45000;
 const CONNECT_TIMEOUT_MS = 15000;
 
+let proxyAgent = null;
+(function () {
+  const raw = (process.env.YT_PROXY || '').trim();
+  if (!raw) return;
+  try {
+    const url = new URL(raw);
+    if (!/^https?:$/.test(url.protocol)) return;
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    proxyAgent = new HttpsProxyAgent(url.toString());
+    console.log('[music] proxy: enabled');
+  } catch {
+    console.log('[music] proxy: disabled (invalid URL)');
+  }
+})();
+
 if (process.env.YT_COOKIE) {
-  try { play.setToken({ youtube: { cookie: process.env.YT_COOKIE } }); console.log('[music] YT_COOKIE set for play-dl'); } catch {}
+  try { play.setToken({ youtube: { cookie: process.env.YT_COOKIE, userAgent: process.env.YT_UA || 'Mozilla/5.0' } }); console.log('[music] YT_COOKIE set for play-dl'); } catch {}
 }
 
 const queues = new Map();
@@ -88,9 +93,7 @@ async function connectTo(message) {
   state.player.removeAllListeners('stateChange');
   state.player.on('stateChange', (o, n) => {
     if (state.manualStop) return;
-    if (o.status !== AudioPlayerStatus.Idle && n.status === AudioPlayerStatus.Idle) {
-      next(message.guild.id, message.client).catch(() => {});
-    }
+    if (o.status !== AudioPlayerStatus.Idle && n.status === AudioPlayerStatus.Idle) next(message.guild.id, message.client).catch(() => {});
   });
 
   state.player.removeAllListeners('error');
@@ -111,7 +114,6 @@ async function connectTo(message) {
   return connection;
 }
 
-// ===== 유틸 =====
 function normalizeYouTubeUrl(x) {
   if (!x) return null;
   let s = String(x).trim();
@@ -128,6 +130,7 @@ function normalizeYouTubeUrl(x) {
   }
   return null;
 }
+
 function is429(e) {
   const msg = (e?.message || e?.shortMessage || '').toLowerCase();
   return msg.includes('429') || msg.includes('too many requests') || msg.includes('rate') || e?.statusCode === 429;
@@ -146,48 +149,55 @@ async function probeAndCreateResource(readable) {
   return createAudioResource(stream, { inputType: type, inlineVolume: true });
 }
 
-// ===== ytdl 빌더(헤더/프록시/쿠키/청크/itag) =====
 function buildHeaders() {
+  const cookie = process.env.YT_COOKIE || '';
+  const ua = process.env.YT_UA || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
+  const vi = (cookie.match(/VISITOR_INFO1_LIVE=([^;]+)/) || [])[1];
   const h = {
-    'user-agent': process.env.YT_UA || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'accept-language': 'ko-KR,ko;q=0.9,en;q=0.8',
+    'user-agent': ua,
+    'accept-language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
     'accept': '*/*',
     'origin': 'https://www.youtube.com',
     'referer': 'https://www.youtube.com/',
-    'accept-encoding': 'identity'
+    'accept-encoding': 'identity',
+    'x-youtube-client-name': '62',
+    'x-youtube-client-version': '6.42'
   };
-  if (process.env.YT_COOKIE) h.cookie = process.env.YT_COOKIE;
-  // 가끔 IP 기반 레이트 제한 회피용(효과 없을 수도 있음)
+  if (cookie) h.cookie = cookie;
+  if (vi) h['x-goog-visitor-id'] = vi;
   if (process.env.YT_XFF) h['x-forwarded-for'] = process.env.YT_XFF;
   return h;
 }
+
 function makeYtdl(url, { dlChunkSize = 0, itags = [140, 251, 250, 249] } = {}) {
   const requestOptions = { headers: buildHeaders() };
   if (proxyAgent) requestOptions.agent = proxyAgent;
-  return ytdl(url, {
+  const s = ytdl(url, {
     filter: 'audioonly',
     quality: itags,
     highWaterMark: 1 << 25,
     dlChunkSize,
     requestOptions
   });
+  s.on('response', (res) => {
+    if (res && res.statusCode === 429) s.destroy(new Error('429_FROM_YT'));
+  });
+  return s;
 }
 
-// ===== 429 지수 백오프 래퍼 =====
-async function retryWithBackoff(fn, shouldRetry, maxTry = 4, baseMs = 700) {
+async function retryWithBackoff(fn, shouldRetry, maxTry = 4, baseMs = 1200) {
   let lastErr = null;
   for (let i = 0; i < maxTry; i++) {
     try { return await fn(i); } catch (e) {
       lastErr = e;
       if (!shouldRetry(e, i)) break;
-      const wait = baseMs * Math.pow(2, i) + Math.floor(Math.random() * 200);
+      const wait = baseMs * Math.pow(2, i) + Math.floor(Math.random() * 300);
       await new Promise(r => setTimeout(r, wait));
     }
   }
   throw lastErr;
 }
 
-// ===== 스트림 생성: play-dl → play-dl(info) → ytdl(M4A) → ytdl(Opus) + 429 백오프 =====
 async function makeResourceFromUrl(url) {
   const u = normalizeYouTubeUrl(url);
   if (!u) {
@@ -200,28 +210,29 @@ async function makeResourceFromUrl(url) {
   try { basicInfo = await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT').catch(() => null); } catch {}
   if (basicInfo?.video_details?.live) throw new Error('LIVE_STREAM_UNSUPPORTED');
 
-  // 1) play-dl direct
-  try {
-    const s = await withTimeout(
-      play.stream(u, { discordPlayerCompatibility: true, quality: 2 }),
-      PRIMARY_TIMEOUT_MS,
-      'STREAM_TIMEOUT_PRIMARY'
-    );
-    return createAudioResource(s.stream, { inputType: s.type, inlineVolume: true });
-  } catch {}
+  if (USE_PLAYDL) {
+    try {
+      const s = await withTimeout(
+        play.stream(u, { discordPlayerCompatibility: true, quality: 2 }),
+        PRIMARY_TIMEOUT_MS,
+        'STREAM_TIMEOUT_PRIMARY'
+      );
+      return createAudioResource(s.stream, { inputType: s.type, inlineVolume: true });
+    } catch {}
+  }
 
-  // 2) play-dl via info
-  try {
-    const info = basicInfo || await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT');
-    const s2 = await withTimeout(
-      play.stream_from_info(info, { discordPlayerCompatibility: true, quality: 2 }),
-      PRIMARY_TIMEOUT_MS,
-      'STREAM_TIMEOUT_INFO'
-    );
-    return createAudioResource(s2.stream, { inputType: s2.type, inlineVolume: true });
-  } catch {}
+  if (USE_PLAYDL) {
+    try {
+      const info = basicInfo || await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT');
+      const s2 = await withTimeout(
+        play.stream_from_info(info, { discordPlayerCompatibility: true, quality: 2 }),
+        PRIMARY_TIMEOUT_MS,
+        'STREAM_TIMEOUT_INFO'
+      );
+      return createAudioResource(s2.stream, { inputType: s2.type, inlineVolume: true });
+    } catch {}
+  }
 
-  // 3) ytdl: M4A(140) 우선 + 청크 OFF + 429 백오프
   try {
     const r1 = await retryWithBackoff(
       () => withTimeout(probeAndCreateResource(makeYtdl(u, { dlChunkSize: 0, itags: [140] })), YTDL_TIMEOUT_MS, 'STREAM_TIMEOUT_YTDL_M4A'),
@@ -234,7 +245,6 @@ async function makeResourceFromUrl(url) {
     }
   }
 
-  // 4) ytdl: Opus(251→250→249) + 청크 OFF + 429 백오프
   try {
     const r2 = await retryWithBackoff(
       () => withTimeout(probeAndCreateResource(makeYtdl(u, { dlChunkSize: 0, itags: [251, 250, 249] })), YTDL_TIMEOUT_MS, 'STREAM_TIMEOUT_YTDL_OPUS'),
@@ -246,7 +256,6 @@ async function makeResourceFromUrl(url) {
   }
 }
 
-// ===== 재생 루프 =====
 async function playIndex(guildId, client) {
   const state = getOrInitGuildState(guildId);
   if (!state.queue.length) { state.playing = false; return; }
@@ -272,7 +281,7 @@ async function playIndex(guildId, client) {
     const raw = (e?.cause?.message || e?.shortMessage || e?.message || '알 수 없음');
     if (/STREAM_TIMEOUT/i.test(raw) || /TIMEOUT/i.test(raw)) causeForUser = '스트림 준비 시간 초과';
     else if (e?.message === 'LIVE_STREAM_UNSUPPORTED') causeForUser = '라이브 스트림은 지원하지 않음';
-    else if (is429(e)) causeForUser = '요청 과다(429): 잠시 후 자동 재시도 실패';
+    else if (is429(e)) causeForUser = '요청 과다(429): 재시도 실패';
     else if (is410or416(e)) causeForUser = '요청 범위 거부(410/416): 포맷/전송 방식 재시도 실패';
     else causeForUser = raw;
 
@@ -290,7 +299,6 @@ async function playIndex(guildId, client) {
   }
 }
 
-// ===== 검색/큐 =====
 async function resolveQuery(q) {
   const maybe = normalizeYouTubeUrl(q);
   if (maybe) {
