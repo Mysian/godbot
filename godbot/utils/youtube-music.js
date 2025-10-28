@@ -47,7 +47,7 @@ async function connectTo(message) {
     selfDeaf: true
   });
   state.connection = connection;
-  try { await entersState(connection, VoiceConnectionStatus.Ready, 15000); } catch (e) { connection.destroy(); state.connection = null; throw new Error('CONNECT_FAIL'); }
+  try { await entersState(connection, VoiceConnectionStatus.Ready, 15000); } catch { connection.destroy(); state.connection = null; throw new Error('CONNECT_FAIL'); }
   connection.subscribe(state.player);
   state.player.removeAllListeners('stateChange');
   state.player.on('stateChange', (oldS, newS) => {
@@ -59,12 +59,21 @@ async function connectTo(message) {
 
 /* ---------------- URL/검색 정규화 구간 ---------------- */
 
+function ensureHttp(s) {
+  if (/^(https?:)?\/\//i.test(s)) return s.replace(/^\/\//, 'https://');
+  if (/^(www\.)?youtube\.com/i.test(s)) return 'https://' + s;
+  if (/^youtu\.be\//i.test(s)) return 'https://' + s;
+  return s;
+}
+
 function cleanupUrl(raw) {
   if (!raw) return '';
   let s = String(raw).trim();
   if (s.startsWith('<') && s.endsWith('>')) s = s.slice(1, -1);
   s = s.replace(/^[\(\[]|[\)\]\.,!?;:]+$/g, '');
   s = s.replace(/&si=[^&\s]+/gi, '');
+  s = ensureHttp(s);
+
   if (/youtube\.com\/shorts\//i.test(s)) {
     const id = s.split('/shorts/')[1]?.split(/[?&]/)[0];
     if (id) s = `https://www.youtube.com/watch?v=${id}`;
@@ -73,12 +82,32 @@ function cleanupUrl(raw) {
     const id = s.split('youtu.be/')[1]?.split(/[?&]/)[0];
     if (id) s = `https://www.youtube.com/watch?v=${id}`;
   }
+
+  try {
+    const u = new URL(s);
+    const host = u.hostname.replace(/^www\./, '');
+    const path = u.pathname;
+
+    if ((host === 'youtube.com' || host === 'music.youtube.com') && path === '/watch') {
+      const v = u.searchParams.get('v');
+      if (v) {
+        const t = u.searchParams.get('t') || u.searchParams.get('start');
+        const clean = new URL('https://www.youtube.com/watch');
+        clean.searchParams.set('v', v);
+        if (t) clean.searchParams.set('t', t);
+        s = clean.toString();
+      }
+    }
+    if ((host === 'youtube.com' || host === 'music.youtube.com') && path === '/playlist') {
+      return s; // 플레이리스트는 아래 resolveToPlayable에서 1번 영상으로 처리
+    }
+  } catch {}
   return s;
 }
 
 function looksLikeUrl(s) {
   if (!s) return false;
-  return /(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\/\S+/i.test(String(s).trim());
+  return /(https?:\/\/)?(www\.)?(music\.)?(youtube\.com|youtu\.be)\/\S+/i.test(String(s).trim());
 }
 
 async function resolveToPlayable(input) {
@@ -92,17 +121,15 @@ async function resolveToPlayable(input) {
       if (kind === 'video') return { url };
       if (kind === 'playlist') {
         const pl = await play.playlist_info(url, { incomplete: true });
-        const v = await pl?.videos?.[0]?.fetch();
-        if (v?.url) return { url: v.url };
+        const first = await pl?.videos?.[0]?.fetch();
+        if (first?.url) return { url: first.url };
       }
     } catch {}
-    // URL인데도 실패하면 마지막 시도로 video_basic_info에서 id 뽑기
     try {
       const info = await play.video_basic_info(url);
       const id = info?.video_details?.id;
       if (id) return { url: `https://www.youtube.com/watch?v=${id}` };
     } catch {}
-    // URL이 깨졌으면 아래 검색으로 폴백
   }
 
   const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
@@ -150,7 +177,7 @@ async function enqueue(message, input) {
   let resolved;
   try {
     resolved = await resolveToPlayable(input);
-  } catch (e) {
+  } catch {
     return message.channel.send('링크/검색어를 이해하지 못했어요. 다른 링크나 검색어로 시도해줘.');
   }
 
@@ -204,7 +231,7 @@ async function stopAll(guildId, client) {
 }
 
 function extractFirstYoutubeUrl(text) {
-  const r = /(https?:\/\/(?:www\.)?(?:music\.youtube\.com|youtube\.com|youtu\.be)\/[^\s>]+)/i;
+  const r = /(https?:\/\/(?:www\.)?(?:music\.)?(?:youtube\.com|youtu\.be)\/[^\s>]+)/i;
   const m = text.match(r);
   return m ? cleanupUrl(m[1]) : null;
 }
