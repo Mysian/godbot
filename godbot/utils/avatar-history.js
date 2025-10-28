@@ -48,29 +48,33 @@ function avatarUrlFromMember(member) {
 function pushHistory(store, userId, record) {
   if (!store.users[userId]) store.users[userId] = [];
   const arr = store.users[userId];
-  if (arr.length === 0 || arr[arr.length - 1].url !== record.url) {
+  const last = arr[arr.length - 1];
+  if (!last || last.attachUrl !== record.attachUrl || last.url !== record.url) {
     arr.push(record);
     if (arr.length > 500) arr.splice(0, arr.length - 500);
   }
 }
-function uniqueByUrl(list) {
+function uniqueByAttachOrUrl(list) {
   const seen = new Set();
   const out = [];
   for (let i = list.length - 1; i >= 0; i--) {
     const it = list[i];
-    if (!seen.has(it.url)) {
-      seen.add(it.url);
+    const key = it.attachUrl || it.url;
+    if (!key) continue;
+    if (!seen.has(key)) {
+      seen.add(key);
       out.push(it);
     }
   }
   return out.reverse();
 }
-async function logEmbed(channel, user, url, kind, ts) {
+async function sendLogWithAttachment(channel, user, url, kind, ts) {
+  const fileName = `avatar_${user.id}_${Date.now()}.png`;
   const embed = new EmbedBuilder()
     .setAuthor({ name: `${user.tag || user.username || user.id}`, iconURL: user.displayAvatarURL ? user.displayAvatarURL({ size: 128 }) : undefined })
     .setTitle(kind === 'guild' ? '서버 프로필 사진 변경' : '프로필 사진 변경')
     .setDescription(`<@${user.id}> 님이 프로필 사진을 변경했습니다.`)
-    .setImage(url)
+    .setImage(`attachment://${fileName}`)
     .addFields(
       { name: '유저', value: `<@${user.id}> (${user.id})`, inline: true },
       { name: '종류', value: kind === 'guild' ? '서버 전용 아바타' : '전역 아바타', inline: true },
@@ -78,21 +82,35 @@ async function logEmbed(channel, user, url, kind, ts) {
     )
     .setColor(kind === 'guild' ? 0x2f6fff : 0x00b894)
     .setTimestamp(ts instanceof Date ? ts : new Date(ts));
-  await channel.send({ embeds: [embed] });
+  let sent = null;
+  try {
+    sent = await channel.send({ embeds: [embed], files: [{ attachment: url, name: fileName }] });
+  } catch {
+    const fallback = new EmbedBuilder()
+      .setAuthor({ name: `${user.tag || user.username || user.id}`, iconURL: user.displayAvatarURL ? user.displayAvatarURL({ size: 128 }) : undefined })
+      .setTitle(kind === 'guild' ? '서버 프로필 사진 변경' : '프로필 사진 변경')
+      .setDescription(`<@${user.id}> 님이 프로필 사진을 변경했습니다.`)
+      .setImage(url)
+      .addFields(
+        { name: '유저', value: `<@${user.id}> (${user.id})`, inline: true },
+        { name: '종류', value: kind === 'guild' ? '서버 전용 아바타' : '전역 아바타', inline: true },
+        { name: '시간', value: toKRTime(ts), inline: false }
+      )
+      .setColor(kind === 'guild' ? 0x2f6fff : 0x00b894)
+      .setTimestamp(ts instanceof Date ? ts : new Date(ts));
+    sent = await channel.send({ embeds: [fallback] });
+  }
+  const att = sent.attachments?.first();
+  return { messageId: sent.id, attachUrl: att?.url || null };
 }
-
 async function handleQueryMessage(message, store) {
   if (message.channelId !== QUERY_CHANNEL_ID) return;
   if (message.author?.bot) return;
   const content = message.content.trim();
   if (!content.startsWith('!프사')) return;
-
   const args = content.slice('!프사'.length).trim();
   let target = null;
-
-  if (message.mentions.users.size > 0) {
-    target = message.mentions.users.first();
-  }
+  if (message.mentions.users.size > 0) target = message.mentions.users.first();
   if (!target && args) {
     const idMatch = args.match(/\d{15,25}/);
     if (idMatch) {
@@ -105,42 +123,41 @@ async function handleQueryMessage(message, store) {
     const guild = message.guild;
     if (guild) {
       await guild.members.fetch().catch(() => {});
-      const byNick = guild.members.cache.find(m => m.nickname && m.nickname.toLowerCase() === args.toLowerCase());
+      const lower = args.toLowerCase();
+      const byNick = guild.members.cache.find(m => m.nickname && m.nickname.toLowerCase() === lower);
       if (byNick) target = byNick.user;
       if (!target) {
-        const byTag = guild.members.cache.find(m => (m.user.tag || '').toLowerCase() === args.toLowerCase());
+        const byTag = guild.members.cache.find(m => (m.user.tag || '').toLowerCase() === lower);
         if (byTag) target = byTag.user;
       }
       if (!target) {
-        const byUser = guild.members.cache.find(m => m.user.username && m.user.username.toLowerCase() === args.toLowerCase());
+        const byUser = guild.members.cache.find(m => m.user.username && m.user.username.toLowerCase() === lower);
         if (byUser) target = byUser.user;
       }
     }
   }
   if (!target) target = message.author;
-
   const userId = target.id;
   const raw = store.users[userId] || [];
-  const unique = uniqueByUrl(raw);
+  const unique = uniqueByAttachOrUrl(raw);
   if (unique.length === 0) {
     const current = avatarUrlFromUser(target);
-    if (current) unique.push({ url: current, kind: 'user', ts: Date.now() });
+    if (current) unique.push({ url: current, kind: 'user', ts: Date.now(), attachUrl: null, messageId: null });
   }
   if (unique.length === 0) {
     await message.reply({ content: '해당 유저의 프사 기록이 없습니다.' });
     return;
   }
-
   let index = unique.length - 1;
   const total = unique.length;
-
   const makeEmbed = (i) => {
     const rec = unique[i];
+    const img = rec.attachUrl || rec.url;
     const embed = new EmbedBuilder()
       .setAuthor({ name: `${target.tag || target.username || target.id}`, iconURL: target.displayAvatarURL ? target.displayAvatarURL({ size: 128 }) : undefined })
       .setTitle('프로필 사진 히스토리')
       .setDescription(`<@${userId}> 님의 프사 기록`)
-      .setImage(rec.url)
+      .setImage(img)
       .addFields(
         { name: '순번', value: `${i + 1} / ${total}`, inline: true },
         { name: '종류', value: rec.kind === 'guild' ? '서버 전용 아바타' : '전역 아바타', inline: true },
@@ -150,7 +167,6 @@ async function handleQueryMessage(message, store) {
       .setTimestamp(rec.ts instanceof Date ? rec.ts : new Date(rec.ts));
     return embed;
   };
-
   const rows = () => [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`av_prev_${message.id}_${message.author.id}`).setLabel('이전').setStyle(ButtonStyle.Secondary),
@@ -158,9 +174,7 @@ async function handleQueryMessage(message, store) {
       new ButtonBuilder().setCustomId(`av_stop_${message.id}_${message.author.id}`).setLabel('닫기').setStyle(ButtonStyle.Danger)
     )
   ];
-
   const sent = await message.channel.send({ embeds: [makeEmbed(index)], components: rows() });
-
   const collector = sent.createMessageComponentCollector({ time: 120000 });
   collector.on('collect', async (it) => {
     if (it.user.id !== message.author.id) {
@@ -182,19 +196,28 @@ async function handleQueryMessage(message, store) {
   });
   collector.on('end', async (_, reason) => {
     if (reason !== 'stop') {
-      try {
-        await sent.edit({ components: [] });
-      } catch {}
+      try { await sent.edit({ components: [] }); } catch {}
     }
   });
 }
-
+async function recordAndLog(client, userLike, url, kind) {
+  const ts = Date.now();
+  const ch = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+  let attachUrl = null;
+  let messageId = null;
+  if (ch && ch.type === ChannelType.GuildText) {
+    const r = await sendLogWithAttachment(ch, userLike.user || userLike, url, kind, ts);
+    attachUrl = r.attachUrl;
+    messageId = r.messageId;
+  }
+  const store = loadStore();
+  pushHistory(store, (userLike.user ? userLike.user.id : userLike.id), { url, kind, ts, attachUrl, messageId });
+  saveStore(store);
+}
 function registerAvatarHistory(client) {
   ensureStore();
-
   const pendingUserUpdate = new Collection();
   const pendingMemberUpdate = new Collection();
-
   client.on('userUpdate', async (oldUser, newUser) => {
     try {
       if (!oldUser || !newUser) return;
@@ -203,15 +226,12 @@ function registerAvatarHistory(client) {
       if (oldHash === newHash) return;
       const url = avatarUrlFromUser(newUser);
       if (!url) return;
-      const store = loadStore();
-      pushHistory(store, newUser.id, { url, kind: 'user', ts: Date.now() });
-      saveStore(store);
-      pendingUserUpdate.set(newUser.id, { url, ts: Date.now() });
-      const ch = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (ch && ch.type === ChannelType.GuildText) await logEmbed(ch, newUser, url, 'user', Date.now());
+      if (pendingUserUpdate.get(newUser.id)) return;
+      pendingUserUpdate.set(newUser.id, true);
+      await recordAndLog(client, newUser, url, 'user');
+      setTimeout(() => pendingUserUpdate.delete(newUser.id), 10000);
     } catch {}
   });
-
   client.on('guildMemberUpdate', async (oldMember, newMember) => {
     try {
       if (!oldMember || !newMember) return;
@@ -220,26 +240,16 @@ function registerAvatarHistory(client) {
       if (oldGuildHash === newGuildHash) return;
       const url = avatarUrlFromMember(newMember);
       if (!url) return;
-      const store = loadStore();
-      pushHistory(store, newMember.id, { url, kind: 'guild', ts: Date.now() });
-      saveStore(store);
-      pendingMemberUpdate.set(newMember.id, { url, ts: Date.now() });
-      const ch = await newMember.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (ch && ch.type === ChannelType.GuildText) await logEmbed(ch, newMember.user, url, 'guild', Date.now());
+      if (pendingMemberUpdate.get(newMember.id)) return;
+      pendingMemberUpdate.set(newMember.id, true);
+      await recordAndLog(client, newMember, url, 'guild');
+      setTimeout(() => pendingMemberUpdate.delete(newMember.id), 10000);
     } catch {}
   });
-
   client.on('messageCreate', async (message) => {
     try {
       await handleQueryMessage(message, loadStore());
     } catch {}
   });
-
-  setInterval(() => {
-    const now = Date.now();
-    for (const [k, v] of pendingUserUpdate) if (now - v.ts > 600000) pendingUserUpdate.delete(k);
-    for (const [k, v] of pendingMemberUpdate) if (now - v.ts > 600000) pendingMemberUpdate.delete(k);
-  }, 60000);
 }
-
 module.exports = { registerAvatarHistory };
