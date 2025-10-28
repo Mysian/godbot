@@ -4,9 +4,7 @@ const play = require('play-dl');
 
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
 
-if (process.env.YT_COOKIE) {
-  try { play.setToken({ youtube: { cookie: process.env.YT_COOKIE } }); } catch {}
-}
+if (process.env.YT_COOKIE) { try { play.setToken({ youtube: { cookie: process.env.YT_COOKIE } }); } catch {} }
 
 const queues = new Map();
 
@@ -53,91 +51,26 @@ async function connectTo(message) {
   state.player.on('stateChange', (oldS, newS) => {
     if (oldS.status !== AudioPlayerStatus.Idle && newS.status === AudioPlayerStatus.Idle) next(message.guild.id, message.client).catch(() => {});
   });
-  connection.on(VoiceConnectionStatus.Disconnected, () => { setTimeout(() => { if (state.connection) { state.connection.destroy(); state.connection = null; state.playing = false; } }, 1000); });
+  connection.on(VoiceConnectionStatus.Disconnected, () => { setTimeout(() => { if (state.connection) { state.connection.destroy(); state.connection = null; state.playing = false; } }, 800); });
   return connection;
 }
 
-/* ---------------- URL/검색 정규화 구간 ---------------- */
-
-function ensureHttp(s) {
-  if (/^(https?:)?\/\//i.test(s)) return s.replace(/^\/\//, 'https://');
-  if (/^(www\.)?youtube\.com/i.test(s)) return 'https://' + s;
-  if (/^youtu\.be\//i.test(s)) return 'https://' + s;
-  return s;
-}
-
-function cleanupUrl(raw) {
-  if (!raw) return '';
-  let s = String(raw).trim();
-  if (s.startsWith('<') && s.endsWith('>')) s = s.slice(1, -1);
-  s = s.replace(/^[\(\[]|[\)\]\.,!?;:]+$/g, '');
-  s = s.replace(/&si=[^&\s]+/gi, '');
-  s = ensureHttp(s);
-
-  if (/youtube\.com\/shorts\//i.test(s)) {
-    const id = s.split('/shorts/')[1]?.split(/[?&]/)[0];
-    if (id) s = `https://www.youtube.com/watch?v=${id}`;
+async function searchTop(query) {
+  const q = String(query || '').trim();
+  if (!q) throw new Error('EMPTY_QUERY');
+  let results = await play.search(q, { limit: 1, source: { youtube: 'video' } });
+  if (!results || !results[0]?.url) {
+    results = await play.search(q, { limit: 1, source: { youtube: 'search' } });
   }
-  if (/youtu\.be\//i.test(s)) {
-    const id = s.split('youtu.be/')[1]?.split(/[?&]/)[0];
-    if (id) s = `https://www.youtube.com/watch?v=${id}`;
-  }
-
+  if (!results || !results[0]?.url) throw new Error('NO_RESULT');
+  const url = results[0].url;
+  let title = results[0].title || url;
   try {
-    const u = new URL(s);
-    const host = u.hostname.replace(/^www\./, '');
-    const path = u.pathname;
-
-    if ((host === 'youtube.com' || host === 'music.youtube.com') && path === '/watch') {
-      const v = u.searchParams.get('v');
-      if (v) {
-        const t = u.searchParams.get('t') || u.searchParams.get('start');
-        const clean = new URL('https://www.youtube.com/watch');
-        clean.searchParams.set('v', v);
-        if (t) clean.searchParams.set('t', t);
-        s = clean.toString();
-      }
-    }
-    if ((host === 'youtube.com' || host === 'music.youtube.com') && path === '/playlist') {
-      return s; // 플레이리스트는 아래 resolveToPlayable에서 1번 영상으로 처리
-    }
+    const info = await play.video_basic_info(url);
+    title = info?.video_details?.title || title;
   } catch {}
-  return s;
+  return { url, title };
 }
-
-function looksLikeUrl(s) {
-  if (!s) return false;
-  return /(https?:\/\/)?(www\.)?(music\.)?(youtube\.com|youtu\.be)\/\S+/i.test(String(s).trim());
-}
-
-async function resolveToPlayable(input) {
-  const query = (input || '').trim();
-  if (!query) throw new Error('EMPTY_INPUT');
-
-  if (looksLikeUrl(query)) {
-    let url = cleanupUrl(query);
-    try {
-      const kind = play.yt_validate ? play.yt_validate(url) : play.validate(url);
-      if (kind === 'video') return { url };
-      if (kind === 'playlist') {
-        const pl = await play.playlist_info(url, { incomplete: true });
-        const first = await pl?.videos?.[0]?.fetch();
-        if (first?.url) return { url: first.url };
-      }
-    } catch {}
-    try {
-      const info = await play.video_basic_info(url);
-      const id = info?.video_details?.id;
-      if (id) return { url: `https://www.youtube.com/watch?v=${id}` };
-    } catch {}
-  }
-
-  const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
-  if (results && results[0]?.url) return { url: results[0].url };
-  throw new Error('RESOLVE_FAIL');
-}
-
-/* --------------------------------------------------- */
 
 async function makeResource(url) {
   let lastErr = null;
@@ -145,10 +78,7 @@ async function makeResource(url) {
     try {
       const s = await play.stream(url, { discordPlayerCompatibility: true, quality: 2 });
       return createAudioResource(s.stream, { inputType: s.type });
-    } catch (e) {
-      lastErr = e;
-      await new Promise(r => setTimeout(r, 700));
-    }
+    } catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 600)); }
   }
   throw lastErr || new Error('STREAM_FAIL');
 }
@@ -173,32 +103,23 @@ async function playIndex(guildId, client) {
   }
 }
 
-async function enqueue(message, input) {
-  let resolved;
-  try {
-    resolved = await resolveToPlayable(input);
-  } catch {
-    return message.channel.send('링크/검색어를 이해하지 못했어요. 다른 링크나 검색어로 시도해줘.');
+async function enqueueByTitle(message, titleQuery) {
+  let picked;
+  try { picked = await searchTop(titleQuery); }
+  catch (e) {
+    const why = e?.message === 'NO_RESULT' ? '검색 결과가 없어요.' : '검색에 실패했어요.';
+    return message.channel.send(why);
   }
-
-  let title = resolved.url;
-  try {
-    const info = await play.video_basic_info(resolved.url);
-    title = info?.video_details?.title || title;
-  } catch {}
-
   const state = getOrInitGuildState(message.guild.id);
-  state.queue.push({ url: resolved.url, title, requestedBy: message.author.id });
-
-  const ch = message.channel;
-  await ch.send(`➕ 큐 추가: **${title}**`);
-
+  state.queue.push({ url: picked.url, title: picked.title, requestedBy: message.author.id });
+  await message.channel.send(`➕ 큐 추가: **${picked.title}**`);
   if (!state.playing) {
-    try { await connectTo(message); } catch (e) {
-      if (e.message === 'VOICE_REQUIRED') return ch.send('먼저 음성 채널에 들어가세요.');
-      if (e.message === 'STAGE_UNSUPPORTED') return ch.send('스테이지 채널에서는 재생할 수 없어요. 일반 음성 채널을 이용해 주세요.');
-      if (e.message === 'NO_PERMS') return ch.send('봇에 음성 채널 권한(연결/말하기)이 없어요. 권한을 확인해 주세요.');
-      return ch.send('음성 채널 연결 실패.');
+    try { await connectTo(message); }
+    catch (e) {
+      if (e.message === 'VOICE_REQUIRED') return message.channel.send('먼저 음성 채널에 들어가세요.');
+      if (e.message === 'STAGE_UNSUPPORTED') return message.channel.send('스테이지 채널에서는 재생할 수 없어요. 일반 음성 채널을 이용해 주세요.');
+      if (e.message === 'NO_PERMS') return message.channel.send('봇에 음성 채널 권한(연결/말하기)이 없어요. 권한을 확인해 주세요.');
+      return message.channel.send('음성 채널 연결 실패.');
     }
     state.index = state.queue.length - 1;
     await playIndex(message.guild.id, message.client);
@@ -230,12 +151,6 @@ async function stopAll(guildId, client) {
   if (ch && ch.send) ch.send('⏹️ 중단 및 큐 초기화');
 }
 
-function extractFirstYoutubeUrl(text) {
-  const r = /(https?:\/\/(?:www\.)?(?:music\.)?(?:youtube\.com|youtu\.be)\/[^\s>]+)/i;
-  const m = text.match(r);
-  return m ? cleanupUrl(m[1]) : null;
-}
-
 function userInAnyVoice(message) { return !!message.member?.voice?.channel; }
 
 function gateByVoiceAndChannel(message) {
@@ -245,11 +160,12 @@ function gateByVoiceAndChannel(message) {
 }
 
 async function handlePlayCommand(message, argStr) {
-  const input = (argStr || '').trim();
-  if (!input) {
+  const query = (argStr || '').trim();
+  if (!query) {
     const state = getOrInitGuildState(message.guild.id);
-    if (!state.queue.length) return message.channel.send('대기열이 비어 있어요. 링크나 검색어를 넣어 주세요.');
-    try { await connectTo(message); } catch (e) {
+    if (!state.queue.length) return message.channel.send('대기열이 비어 있어요. `!재생 노래제목`으로 추가해줘.');
+    try { await connectTo(message); }
+    catch (e) {
       if (e.message === 'VOICE_REQUIRED') return message.channel.send('먼저 음성 채널에 들어가세요.');
       if (e.message === 'STAGE_UNSUPPORTED') return message.channel.send('스테이지 채널에서는 재생할 수 없어요. 일반 음성 채널을 이용해 주세요.');
       if (e.message === 'NO_PERMS') return message.channel.send('봇에 음성 채널 권한(연결/말하기)이 없어요. 권한을 확인해 주세요.');
@@ -257,27 +173,13 @@ async function handlePlayCommand(message, argStr) {
     }
     return playIndex(message.guild.id, message.client);
   }
-  return enqueue(message, input);
+  return enqueueByTitle(message, query);
 }
 
 function onMessageCreate(client) {
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.guild) return;
-
-    if (message.channel.id === MUSIC_TEXT_CHANNEL_ID) {
-      const url = extractFirstYoutubeUrl(message.content);
-      if (url) {
-        try {
-          if (!userInAnyVoice(message)) return message.reply('먼저 음성 채널에 들어가세요.');
-          await enqueue(message, url);
-        } catch (e) {
-          console.error('[music] enqueue fail:', e?.message || e);
-          message.channel.send('큐 추가에 실패했습니다.');
-        }
-        return;
-      }
-    }
 
     const content = message.content.trim();
     const prefixCmd = content.startsWith('!') ? content.slice(1) : null;
