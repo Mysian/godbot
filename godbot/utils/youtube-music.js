@@ -1,14 +1,13 @@
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
 const { PermissionsBitField, ChannelType } = require('discord.js');
-const ytdl = require('ytdl-core');
 const YouTube = require('youtube-sr').default;
-const ffmpeg = require('ffmpeg-static');
-if (ffmpeg) process.env.FFMPEG_PATH = ffmpeg;
-
+const ytDlpPath = require('@distube/yt-dlp');
+const ffmpegPath = require('ffmpeg-static');
+const { execFile, spawn } = require('child_process');
 
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
-
 const YT_COOKIE = process.env.YT_COOKIE || '';
+if (ffmpegPath) process.env.FFMPEG_PATH = ffmpegPath;
 
 const queues = new Map();
 
@@ -71,27 +70,59 @@ async function searchTop(query) {
   return { id, url, title };
 }
 
-function makeYtdlStream(url) {
-  const requestOptions = { headers: {} };
-  if (YT_COOKIE) requestOptions.headers.cookie = YT_COOKIE;
-  return ytdl(url, {
-    filter: 'audioonly',
-    quality: 'highestaudio',
-    highWaterMark: 1 << 25,
-    requestOptions
+function ytDlpGetDirectUrl(url) {
+  const args = [
+    '-g',
+    '-f', 'bestaudio[acodec^=opus]/bestaudio/best',
+    '--no-warnings',
+    '--no-check-certificates',
+    '--referer', 'https://www.youtube.com'
+  ];
+  if (YT_COOKIE) args.push('--add-header', `Cookie: ${YT_COOKIE}`);
+  args.push(url);
+  return new Promise((resolve, reject) => {
+    execFile(ytDlpPath, args, { maxBuffer: 20 * 1024 * 1024 }, (err, stdout) => {
+      if (err) return reject(err);
+      const line = String(stdout || '').split('\n').map(s => s.trim()).filter(Boolean)[0];
+      if (!line) return reject(new Error('YTDLP_EMPTY'));
+      resolve(line);
+    });
   });
+}
+
+function spawnFfmpegInput(inputUrl) {
+  const headers = [];
+  if (YT_COOKIE) headers.push(`Cookie: ${YT_COOKIE}`);
+  const headerArg = headers.length ? ['-headers', headers.join('\r\n')] : [];
+  const args = [
+    ...headerArg,
+    '-reconnect','1',
+    '-reconnect_streamed','1',
+    '-reconnect_delay_max','5',
+    '-i', inputUrl,
+    '-vn',
+    '-analyzeduration','0',
+    '-loglevel','-8',
+    '-f','s16le',
+    '-ar','48000',
+    '-ac','2',
+    'pipe:1'
+  ];
+  const ff = spawn(ffmpegPath, args, { stdio: ['ignore','pipe','ignore'] });
+  return ff.stdout;
 }
 
 async function makeResource(url) {
   let lastErr = null;
   for (let i = 0; i < 2; i++) {
     try {
-      const stream = makeYtdlStream(url);
-      const probed = await demuxProbe(stream);
+      const direct = await ytDlpGetDirectUrl(url);
+      const pcm = spawnFfmpegInput(direct);
+      const probed = await demuxProbe(pcm);
       return createAudioResource(probed.stream, { inputType: probed.type });
     } catch (e) {
       lastErr = e;
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 700));
     }
   }
   throw lastErr || new Error('STREAM_FAIL');
@@ -110,7 +141,7 @@ async function playIndex(guildId, client) {
     if (ch && ch.send) ch.send(`▶️ 재생: **${item.title}**`);
   } catch (e) {
     const ch = await client.channels.fetch(state.textChannelId).catch(() => null);
-    const reason = (e && (e.message || e.name)) ? String(e.message || e.name).slice(0, 180) : '알 수 없음';
+    const reason = (e && (e.message || e.name)) ? String(e.message || e.name).slice(0, 200) : '알 수 없음';
     if (ch && ch.send) ch.send(`⚠️ 재생 실패: ${item.title}\n사유: ${reason}`);
     console.error('[music] play fail:', reason, '| url:', item.url);
     await next(guildId, client);
