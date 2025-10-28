@@ -1,6 +1,7 @@
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
 const { PermissionsBitField, ChannelType } = require('discord.js');
 const play = require('play-dl');
+const ytdl = require('ytdl-core');
 
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
 
@@ -21,7 +22,8 @@ function getOrInitGuildState(guildId) {
       textChannelId: MUSIC_TEXT_CHANNEL_ID,
       voiceChannelId: null,
       manualStop: false,
-      consecutiveFailures: 0
+      consecutiveFailures: 0,
+      volume: 0.4
     });
   }
   return queues.get(guildId);
@@ -48,7 +50,8 @@ async function connectTo(message) {
     channelId: channel.id,
     guildId: message.guild.id,
     adapterCreator: message.guild.voiceAdapterCreator,
-    selfDeaf: true
+    selfDeaf: true,
+    selfMute: false
   });
   state.connection = connection;
 
@@ -63,6 +66,11 @@ async function connectTo(message) {
     if (oldS.status !== AudioPlayerStatus.Idle && newS.status === AudioPlayerStatus.Idle) {
       next(message.guild.id, message.client).catch(() => {});
     }
+  });
+
+  state.player.removeAllListeners('error');
+  state.player.on('error', (err) => {
+    console.error('[music] player error:', err?.message || err);
   });
 
   connection.on(VoiceConnectionStatus.Disconnected, () => {
@@ -95,33 +103,69 @@ function normalizeYouTubeUrl(x) {
   if (/^https?:\/\/(www\.)?youtube\.com\/watch\?/.test(s)) return s;
   return null;
 }
+function is429(e) {
+  const msg = (e?.message || e?.shortMessage || '').toLowerCase();
+  return msg.includes('429') || msg.includes('too many requests') || msg.includes('rate') || e?.statusCode === 429;
+}
 
-function isYoutubeUrl(s) {
-  return !!normalizeYouTubeUrl(s);
+async function probeAndCreateResource(readable) {
+  const { stream, type } = await demuxProbe(readable);
+  return createAudioResource(stream, { inputType: type, inlineVolume: true });
 }
 
 async function makeResourceFromUrl(url) {
   const u = normalizeYouTubeUrl(url);
-  if (!u) throw new Error('INVALID_YT_URL');
+  if (!u) {
+    const err = new Error('INVALID_YT_URL');
+    err.hint = 'normalize';
+    throw err;
+  }
   let lastErr = null;
 
+  // 1) 1차: play-dl
   for (let i = 0; i < 2; i++) {
     try {
       const s = await play.stream(u, { discordPlayerCompatibility: true, quality: 2 });
-      return createAudioResource(s.stream, { inputType: s.type });
+      const res = createAudioResource(s.stream, { inputType: s.type, inlineVolume: true });
+      return res;
     } catch (e) {
       lastErr = e;
-      await new Promise(r => setTimeout(r, 700));
+      if (is429(e)) break; // 레이트리밋이면 즉시 폴백 시도
+      await new Promise(r => setTimeout(r, 600));
     }
   }
 
+  // 2) 2차: play.video_info → stream_from_info
   try {
     const info = await play.video_info(u);
     const s2 = await play.stream_from_info(info, { discordPlayerCompatibility: true, quality: 2 });
-    return createAudioResource(s2.stream, { inputType: s2.type });
+    const res = createAudioResource(s2.stream, { inputType: s2.type, inlineVolume: true });
+    return res;
   } catch (e2) {
     lastErr = e2;
   }
+
+  // 3) 최종 폴백: ytdl-core (audioonly)
+  try {
+    const ytdlOpts = {
+      filter: 'audioonly',
+      quality: 'highestaudio',
+      highWaterMark: 1 << 25,
+      requestOptions: {}
+    };
+    if (process.env.YT_COOKIE) {
+      ytdlOpts.requestOptions.headers = {
+        cookie: process.env.YT_COOKIE,
+        'user-agent': 'Mozilla/5.0'
+      };
+    }
+    const readable = ytdl(u, ytdlOpts);
+    const res = await probeAndCreateResource(readable);
+    return res;
+  } catch (e3) {
+    lastErr = e3;
+  }
+
   const err = new Error('STREAM_FAIL');
   err.cause = lastErr;
   throw err;
@@ -138,15 +182,14 @@ async function playIndex(guildId, client) {
     state.player.play(resource);
     state.playing = true;
     state.consecutiveFailures = 0;
+    if (resource.volume) resource.volume.setVolume(state.volume);
     const ch = await client.channels.fetch(state.textChannelId).catch(() => null);
-    if (ch && ch.send) ch.send(`▶️ 재생: **${item.title}**`);
+    if (ch && ch.send) ch.send(`▶️ 재생: **${item.title}** (볼륨: ${(state.volume*100)|0}%)`);
   } catch (e) {
     state.consecutiveFailures += 1;
     const ch = await client.channels.fetch(state.textChannelId).catch(() => null);
-    const reason = (e?.message === 'INVALID_YT_URL') ? '유효하지 않은 유튜브 URL' :
-                   (e?.message === 'STREAM_FAIL' ? (e?.cause?.shortMessage || e?.cause?.message || '스트림 실패') : (e?.shortMessage || e?.message || '알 수 없음'));
-    if (ch && ch.send) ch.send(`⚠️ 재생 실패: ${item.title}\n사유: ${String(reason).slice(0, 180)}`);
-
+    const cause = e?.cause?.message || e?.shortMessage || e?.message || '알 수 없음';
+    if (ch && ch.send) ch.send(`⚠️ 재생 실패: ${item.title}\n사유: ${String(cause).slice(0, 180)}`);
     if (state.consecutiveFailures >= Math.min(state.queue.length, 5)) {
       if (ch && ch.send) ch.send('⛔ 연속 실패가 발생하여 재생을 중단합니다.');
       await stopAll(guildId, client);
@@ -160,14 +203,12 @@ async function resolveQuery(q) {
   const maybe = normalizeYouTubeUrl(q);
   if (maybe) {
     try {
-      const info = await play.video_basic_info(maybe);
+      const info = await play.video_basic_info(maybe).catch(() => null);
       const title = info?.video_details?.title || maybe;
       return { url: maybe, title };
-    } catch {
-      return { url: maybe, title: maybe };
-    }
+    } catch { return { url: maybe, title: maybe }; }
   }
-
+  // 제목 검색 → 정규화된 watch URL 고정
   let results = [];
   for (let trial = 0; trial < 2 && results.length === 0; trial++) {
     results = await play.search(q, { limit: 3, source: { youtube: 'video' } }).catch(() => []);
@@ -192,7 +233,6 @@ async function enqueue(message, urlOrTitle) {
   state.queue.push({ url: picked.url, title: picked.title, requestedBy: message.author.id });
   const ch = message.channel;
   await ch.send(`➕ 큐 추가: **${picked.title}**`);
-
   if (!state.playing) {
     try { await connectTo(message); }
     catch (e) {
@@ -212,14 +252,12 @@ async function next(guildId, client) {
   state.index = (state.index + 1) % state.queue.length;
   await playIndex(guildId, client);
 }
-
 async function prev(guildId, client) {
   const state = getOrInitGuildState(guildId);
   if (!state.queue.length) { state.playing = false; return; }
   state.index = (state.index - 1 + state.queue.length) % state.queue.length;
   await playIndex(guildId, client);
 }
-
 async function stopAll(guildId, client) {
   const state = getOrInitGuildState(guildId);
   state.manualStop = true;
@@ -239,7 +277,6 @@ function extractFirstYoutubeUrl(text) {
   const m = text.match(r);
   return m ? normalizeYouTubeUrl(m[1]) : null;
 }
-
 function userInAnyVoice(message) { return !!message.member?.voice?.channel; }
 function sameTextChannel(message) { return message.channel.id === MUSIC_TEXT_CHANNEL_ID; }
 
@@ -248,6 +285,7 @@ function onMessageCreate(client) {
     if (message.author.bot) return;
     if (!message.guild) return;
 
+    // 음악 채널에서 “제목”만 써도 재생
     if (sameTextChannel(message)) {
       const raw = message.content.trim();
       if (!raw) return;
@@ -262,26 +300,35 @@ function onMessageCreate(client) {
       return;
     }
 
+    // 명령어
     const content = message.content.trim();
     if (!content.startsWith('!')) return;
     const [cmdRaw, ...rest] = content.slice(1).split(/\s+/);
     const cmd = cmdRaw.toLowerCase();
     const args = rest.join(' ');
 
-    if (!['재생','중단','다음곡','이전곡'].includes(cmd)) return;
+    if (!['재생','중단','다음곡','이전곡','볼륨','일시정지','재개'].includes(cmd)) return;
 
-    if (cmd === '중단') {
-      await stopAll(message.guild.id, message.client);
-      return;
-    }
+    if (cmd === '중단') { await stopAll(message.guild.id, message.client); return; }
 
     if (!sameTextChannel(message)) return;
     if (!userInAnyVoice(message)) return void message.reply('먼저 음성 채널에 들어가세요.');
+
+    const state = getOrInitGuildState(message.guild.id);
 
     try {
       if (cmd === '재생') return void enqueue(message, args || '');
       if (cmd === '다음곡') return void next(message.guild.id, message.client);
       if (cmd === '이전곡') return void prev(message.guild.id, message.client);
+      if (cmd === '일시정지') { state.player.pause(true); return void message.reply('⏸️ 일시정지'); }
+      if (cmd === '재개') { state.player.unpause(); return void message.reply('▶️ 재개'); }
+      if (cmd === '볼륨') {
+        const n = Math.max(1, Math.min(100, parseInt(args, 10) || 40));
+        state.volume = n / 100;
+        const res = state.player.state?.resource;
+        if (res?.volume) res.volume.setVolume(state.volume);
+        return void message.reply(`🔊 볼륨: ${n}%`);
+      }
     } catch (e) {
       console.error('[music] cmd fail:', e?.message || e);
       message.channel.send('요청 처리 중 오류가 발생했어요.');
