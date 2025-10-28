@@ -295,25 +295,20 @@ module.exports = function(client) {
 }
 
 
-      async function ensureConnected() {
-        try {
-          const me = guild.members.me;
-          const inTarget = me?.voice?.channelId === TARGET_CHANNEL_ID;
-          if (!inTarget) {
-            const conn = getVoiceConnection(guild.id);
-            if (conn && conn.joinConfig?.channelId !== TARGET_CHANNEL_ID) {
-              try { conn.destroy(); } catch {}
-            }
-            joinVoiceChannel({
-              channelId: TARGET_CHANNEL_ID,
-              guildId: guild.id,
-              adapterCreator: guild.voiceAdapterCreator,
-              selfDeaf: true,
-              selfMute: false
-            });
-          }
-        } catch (_) {}
-      }
+async function ensureConnected() {
+  try {
+    const me = guild.members.me;
+    const conn = getVoiceConnection(guild.id);
+    if (conn) return;
+    joinVoiceChannel({
+      channelId: TARGET_CHANNEL_ID,
+      guildId: guild.id,
+      adapterCreator: guild.voiceAdapterCreator,
+      selfDeaf: true,
+      selfMute: false
+    });
+  } catch (_) {}
+}
 
       await ensureConnected();
       await updateEmbed();
