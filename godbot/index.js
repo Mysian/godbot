@@ -102,6 +102,7 @@ require('./commands/nickname-change').register(client);
 require('./utils/admin-digest').start(client);
 require('./utils/weekly-lottery').init(client);
 require('./utils/dm-direct')(client);
+require('./utils/korean-calendar')(client);
 require('./utils/avatar-history').registerAvatarHistory(client);
 
 const recruit = require("./commands/recruit.js");
