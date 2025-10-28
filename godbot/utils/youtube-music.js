@@ -14,13 +14,11 @@ const ytdl = require('ytdl-core');
 
 const MUSIC_TEXT_CHANNEL_ID = '1432696771796013097';
 
-// ===== 환경설정 =====
-const PRIMARY_TIMEOUT_MS = 45000;   // 1차(play-dl) 타임아웃
-const INFO_TIMEOUT_MS    = 20000;   // video_info 타임아웃
-const YTDL_TIMEOUT_MS    = 45000;   // ytdl 폴백 타임아웃
-const CONNECT_TIMEOUT_MS = 15000;   // 음성채널 연결 타임아웃
+const PRIMARY_TIMEOUT_MS = 45000;
+const INFO_TIMEOUT_MS    = 20000;
+const YTDL_TIMEOUT_MS    = 45000;
+const CONNECT_TIMEOUT_MS = 15000;
 
-// ===== play-dl 쿠키 설정(있으면 사용) =====
 if (process.env.YT_COOKIE) {
   try { play.setToken({ youtube: { cookie: process.env.YT_COOKIE } }); } catch {}
 }
@@ -103,20 +101,16 @@ async function connectTo(message) {
   return connection;
 }
 
-// ===== 유틸 =====
 function normalizeYouTubeUrl(x) {
   if (!x) return null;
   let s = String(x).trim();
-  s = s.replace(/[)>\]\s]+$/g, '');
-  s = s.replace(/&t=\d+s?/i, '');
-  if (/youtu\.be\/([A-Za-z0-9_-]{6,})/i.test(s)) {
-    const id = s.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/i)[1];
-    return `https://www.youtube.com/watch?v=${id}`;
-  }
-  const idm = s.match(/[?&]v=([A-Za-z0-9_-]{6,})/i);
-  if (idm) return `https://www.youtube.com/watch?v=${idm[1]}`;
-  const shorts = s.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/i);
-  if (shorts) return `https://www.youtube.com/watch?v=${shorts[1]}`;
+  s = s.replace(/[)>\]\s]+$/g, '').replace(/&t=\d+s?/i, '');
+  const m1 = s.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/i);
+  if (m1) return `https://www.youtube.com/watch?v=${m1[1]}`;
+  const m2 = s.match(/[?&]v=([A-Za-z0-9_-]{6,})/i);
+  if (m2) return `https://www.youtube.com/watch?v=${m2[1]}`;
+  const m3 = s.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/i);
+  if (m3) return `https://www.youtube.com/watch?v=${m3[1]}`;
   if (/^https?:\/\/(www\.)?youtube\.com\/watch\?/.test(s)) return s;
   return null;
 }
@@ -124,6 +118,10 @@ function normalizeYouTubeUrl(x) {
 function is429(e) {
   const msg = (e?.message || e?.shortMessage || '').toLowerCase();
   return msg.includes('429') || msg.includes('too many requests') || msg.includes('rate') || e?.statusCode === 429;
+}
+function is410or416(e) {
+  const msg = (e?.message || e?.shortMessage || '').toLowerCase();
+  return msg.includes('410') || msg.includes('416') || /status code:\s*(410|416)/i.test(msg);
 }
 
 function withTimeout(promise, ms, tag) {
@@ -137,7 +135,44 @@ async function probeAndCreateResource(readable) {
   return createAudioResource(stream, { inputType: type, inlineVolume: true });
 }
 
-// ===== 스트림 생성(3단계 폴백) =====
+/** ytdl-core 전용 리드러(410/416 대응 강화) */
+function ytdlReadable(url, opts = {}) {
+  const baseHeaders = {
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'accept-language': 'ko-KR,ko;q=0.9,en;q=0.8',
+    'accept': '*/*',
+    'sec-fetch-site': 'same-origin'
+  };
+  const requestOptions = Object.assign({}, opts.requestOptions || {});
+  requestOptions.headers = Object.assign({}, baseHeaders, requestOptions.headers || {});
+  if (process.env.YT_COOKIE) {
+    requestOptions.headers.cookie = process.env.YT_COOKIE;
+  }
+
+  const common = {
+    filter: 'audioonly',
+    quality: 'highestaudio',
+    highWaterMark: 1 << 25,
+    dlChunkSize: 10 * 1024 * 1024,
+    requestOptions
+  };
+
+  // 1) 기본(hightestaudio)
+  try {
+    return ytdl(url, common);
+  } catch {}
+
+  // 2) 410/416 회피: 청크 비활성화
+  try {
+    return ytdl(url, Object.assign({}, common, { dlChunkSize: 0 }));
+  } catch {}
+
+  // 3) 포맷 고정 재시도: Opus(WebM) → M4A
+  const tryItags = [251, 250, 249, 140];
+  return ytdl(url, Object.assign({}, common, { dlChunkSize: 0, quality: tryItags }));
+}
+
+// ===== 스트림 생성(3단계 폴백 + 410 대응 강화) =====
 async function makeResourceFromUrl(url) {
   const u = normalizeYouTubeUrl(url);
   if (!u) {
@@ -146,17 +181,9 @@ async function makeResourceFromUrl(url) {
     throw err;
   }
 
-  // 0) 라이브/멤버십/연령제 제한 등 기초 정보 확인(가능하면)
   let basicInfo = null;
-  try {
-    basicInfo = await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT').catch(() => null);
-  } catch {}
+  try { basicInfo = await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT').catch(() => null); } catch {}
   if (basicInfo?.video_details?.live) {
-    const e = new Error('LIVE_STREAM_UNSUPPORTED');
-    e.hint = 'live';
-    throw e;
-  }
-  if (basicInfo?.video_details?.durationInSec === 0 && /live/i.test(basicInfo?.type || '')) {
     const e = new Error('LIVE_STREAM_UNSUPPORTED');
     e.hint = 'live';
     throw e;
@@ -169,53 +196,55 @@ async function makeResourceFromUrl(url) {
       PRIMARY_TIMEOUT_MS,
       'STREAM_TIMEOUT_PRIMARY'
     );
-    const res = createAudioResource(s.stream, { inputType: s.type, inlineVolume: true });
-    return res;
+    return createAudioResource(s.stream, { inputType: s.type, inlineVolume: true });
   } catch (e1) {
-    if (is429(e1)) {
-      // 429면 바로 ytdl 폴백
-    } else {
-      // 2) info → stream_from_info 폴백
-      try {
-        const info = basicInfo || await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT');
-        const s2 = await withTimeout(
-          play.stream_from_info(info, { discordPlayerCompatibility: true, quality: 2 }),
-          PRIMARY_TIMEOUT_MS,
-          'STREAM_TIMEOUT_INFO'
-        );
-        const res = createAudioResource(s2.stream, { inputType: s2.type, inlineVolume: true });
-        return res;
-      } catch (e2) {
-        // 계속 진행하여 ytdl 폴백
-      }
+    // 2) info → stream_from_info
+    try {
+      const info = basicInfo || await withTimeout(play.video_info(u), INFO_TIMEOUT_MS, 'INFO_TIMEOUT');
+      const s2 = await withTimeout(
+        play.stream_from_info(info, { discordPlayerCompatibility: true, quality: 2 }),
+        PRIMARY_TIMEOUT_MS,
+        'STREAM_TIMEOUT_INFO'
+      );
+      return createAudioResource(s2.stream, { inputType: s2.type, inlineVolume: true });
+    } catch (e2) {
+      // 진행
     }
   }
 
-  // 3) ytdl-core 폴백
+  // 3) ytdl-core 폴백(410 대응)
+  let lastErr = null;
+
+  // 3-1) 기본
   try {
-    const ytdlOpts = {
-      filter: 'audioonly',
-      quality: 'highestaudio',
-      highWaterMark: 1 << 25,
-      requestOptions: {}
-    };
-    if (process.env.YT_COOKIE) {
-      ytdlOpts.requestOptions.headers = {
-        cookie: process.env.YT_COOKIE,
-        'user-agent': 'Mozilla/5.0'
-      };
-    }
-    const readable = ytdl(u, ytdlOpts);
-    const res = await withTimeout(probeAndCreateResource(readable), YTDL_TIMEOUT_MS, 'STREAM_TIMEOUT_YTDL');
-    return res;
-  } catch (e3) {
-    const err = new Error('STREAM_FAIL');
-    err.cause = e3;
-    throw err;
+    const readable = ytdlReadable(u);
+    return await withTimeout(probeAndCreateResource(readable), YTDL_TIMEOUT_MS, 'STREAM_TIMEOUT_YTDL');
+  } catch (e) {
+    lastErr = e;
+    if (!is410or416(e)) throw new (class extends Error{constructor(){super('STREAM_FAIL'); this.cause=e;}})();
   }
+
+  // 3-2) 410/416일 때: 청크 비활성화 재시도
+  try {
+    const readable = ytdlReadable(u, { dlChunkSize: 0 });
+    return await withTimeout(probeAndCreateResource(readable), YTDL_TIMEOUT_MS, 'STREAM_TIMEOUT_YTDL2');
+  } catch (e) {
+    lastErr = e;
+  }
+
+  // 3-3) 410/416일 때: 포맷 강제(Opus→M4A)
+  try {
+    const readable = ytdlReadable(u, { dlChunkSize: 0, quality: [251,250,249,140] });
+    return await withTimeout(probeAndCreateResource(readable), YTDL_TIMEOUT_MS, 'STREAM_TIMEOUT_YTDL3');
+  } catch (e) {
+    lastErr = e;
+  }
+
+  const err = new Error('STREAM_FAIL');
+  err.cause = lastErr;
+  throw err;
 }
 
-// ===== 재생 제어 =====
 async function playIndex(guildId, client) {
   const state = getOrInitGuildState(guildId);
   if (!state.queue.length) { state.playing = false; return; }
@@ -235,25 +264,20 @@ async function playIndex(guildId, client) {
     state.playing = true;
     state.consecutiveFailures = 0;
     if (resource.volume) resource.volume.setVolume(state.volume);
-    if (nowMsg?.edit) {
-      try { await nowMsg.edit(`▶️ 재생: **${item.title}** (볼륨: ${(state.volume*100)|0}%)`); } catch {}
-    } else if (ch && ch.send) {
-      try { await ch.send(`▶️ 재생: **${item.title}** (볼륨: ${(state.volume*100)|0}%)`); } catch {}
-    }
+    if (nowMsg?.edit) { try { await nowMsg.edit(`▶️ 재생: **${item.title}** (볼륨: ${(state.volume*100)|0}%)`); } catch {} }
+    else if (ch && ch.send) { try { await ch.send(`▶️ 재생: **${item.title}** (볼륨: ${(state.volume*100)|0}%)`); } catch {} }
   } catch (e) {
     const raw = (e?.cause?.message || e?.shortMessage || e?.message || '알 수 없음');
     if (/STREAM_TIMEOUT/i.test(raw) || /TIMEOUT/i.test(raw)) causeForUser = '스트림 준비가 시간 초과됨';
     else if (e?.message === 'LIVE_STREAM_UNSUPPORTED') causeForUser = '라이브 스트림은 지원하지 않음';
     else if (is429(e)) causeForUser = '요청이 너무 많음(429), 잠시 후 다시 시도';
+    else if (is410or416(e)) causeForUser = '호스트가 요청 범위를 거부(410/416) — 포맷/전송 방식 재시도 실패';
     else causeForUser = raw;
 
     state.consecutiveFailures += 1;
 
-    if (nowMsg?.edit) {
-      try { await nowMsg.edit(`⚠️ 재생 실패: ${item.title}\n사유: ${String(causeForUser).slice(0, 180)}`); } catch {}
-    } else if (ch && ch.send) {
-      try { await ch.send(`⚠️ 재생 실패: ${item.title}\n사유: ${String(causeForUser).slice(0, 180)}`); } catch {}
-    }
+    if (nowMsg?.edit) { try { await nowMsg.edit(`⚠️ 재생 실패: ${item.title}\n사유: ${String(causeForUser).slice(0, 180)}`); } catch {} }
+    else if (ch && ch.send) { try { await ch.send(`⚠️ 재생 실패: ${item.title}\n사유: ${String(causeForUser).slice(0, 180)}`); } catch {} }
 
     if (state.consecutiveFailures >= Math.min(state.queue.length, 5)) {
       if (ch && ch.send) try { await ch.send('⛔ 연속 실패가 발생하여 재생을 중단합니다.'); } catch {}
@@ -270,7 +294,6 @@ async function resolveQuery(q) {
     try {
       const info = await play.video_basic_info(maybe).catch(() => null);
       const title = info?.video_details?.title || maybe;
-      // 라이브/쇼츠 확인
       if (info?.video_details?.live) {
         const e = new Error('LIVE_STREAM_UNSUPPORTED');
         e.hint = 'live';
@@ -356,13 +379,11 @@ function extractFirstYoutubeUrl(text) {
 function userInAnyVoice(message) { return !!message.member?.voice?.channel; }
 function sameTextChannel(message) { return message.channel.id === MUSIC_TEXT_CHANNEL_ID; }
 
-// ===== 메시지 핸들러 =====
 function onMessageCreate(client) {
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.guild) return;
 
-    // 음악 전용 채널에 아무 텍스트/링크 붙여넣으면 재생 요청
     if (sameTextChannel(message)) {
       const raw = message.content.trim();
       if (!raw) return;
@@ -377,7 +398,6 @@ function onMessageCreate(client) {
       return;
     }
 
-    // 명령어
     const content = message.content.trim();
     if (!content.startsWith('!')) return;
     const [cmdRaw, ...rest] = content.slice(1).split(/\s+/);
@@ -425,7 +445,6 @@ function onMessageCreate(client) {
   });
 }
 
-// ===== 보이스 정리 =====
 function onVoiceCleanup(client) {
   client.on('voiceStateUpdate', (oldS, newS) => {
     const guildId = (oldS.guild || newS.guild)?.id;
