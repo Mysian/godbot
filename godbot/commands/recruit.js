@@ -88,6 +88,7 @@ const GAME_BANNERS = {
   "스컬": "https://media.discordapp.net/attachments/1429435030647607397/1429441677860405379/L0r2jKDBRZCsesjXX8x4GeNqAdm-lq1Dl6WSInbClGvzm2lehhGzXIrGRKcYWxb8C575WbKKxwbH0Mz1I5_vqw.png?format=webp&quality=lossless",
   "스타듀밸리": "https://media.discordapp.net/attachments/1429435030647607397/1429441767530303508/46bf2cd2412c34e4da75cfc398904f7a.png?format=webp&quality=lossless",
   "스타크래프트": "https://media.discordapp.net/attachments/1429435030647607397/1429441906156503161/starcraft-ii-campaign-collection-section1-feature1.png?format=webp&quality=lossless",
+  "아크 레이더스": "https://media.discordapp.net/attachments/1429435030647607397/1433385211617345556/nlq0lvxd.png?ex=69047f81&is=69032e01&hm=7ca187ad7aaff498bcb9990a1cc7855867a8326f7750de118496d6415ccfc00e&=&format=webp&quality=lossless&width=1421&height=799",
   "에이펙스": "https://media.discordapp.net/attachments/1429435030647607397/1429442112956534805/17752_37000_596.png?format=webp&quality=lossless",
   "엘소드": "https://media.discordapp.net/attachments/1429435030647607397/1429442222096384150/EC9798EC868CEB939C10.png?format=webp&quality=lossless&width=550&height=309",
   "오버워치": "https://media.discordapp.net/attachments/1429435030647607397/1429442355102089307/6L5ADHXMMTXD1613676344761.png?format=webp&quality=lossless",
