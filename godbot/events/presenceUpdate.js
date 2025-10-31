@@ -168,10 +168,12 @@ function formatDuration(ms) {
   return parts.join(" ");
 }
 function fmtClockKST(ts = Date.now()) {
-  const d = new Date(ts);
-  const hh = d.toLocaleString("ko-KR", { hour: "2-digit", hour12: false, timeZone: "Asia/Seoul" });
-  const mm = d.toLocaleString("ko-KR", { minute: "2-digit", timeZone: "Asia/Seoul" });
-  return `${hh}:${mm}`;
+  return new Date(ts).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Seoul',
+  }); // 예: "22:29"
 }
 
 // 상태 저장
