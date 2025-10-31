@@ -64,6 +64,8 @@ const GAME_NAME_MAP = new Map([
   ['Rainbow Six Siege X', '레식'],
   ['Need for Speed™ Heat', '니드포스피드'],
   ['Grand Theft Auto V Enhanced', 'GTA5'],
+  ['Viscera Cleanup Detail', '비세라 클린업'],
+  ['Dead by Daylight', '데바데'],
 ]);
 
 // 클라이언트 전환이 잦은 게임 군(예: 롤)
