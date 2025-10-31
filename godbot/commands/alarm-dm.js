@@ -1,7 +1,7 @@
 // commands/alarm-dm.js
 const fs = require("fs");
 const path = require("path");
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 
 const MAP = {
   "경매":        { key: "auction",     type: "role",    roleId: "1255580504745574552" },
@@ -141,8 +141,7 @@ module.exports = {
           { name: "재난문자", value: "재난문자" },
           { name: "게임뉴스", value: "게임뉴스" },
         )
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+    ),
   async execute(interaction) {
     const choice = interaction.options.getString("옵션");
     const meta = MAP[choice];
