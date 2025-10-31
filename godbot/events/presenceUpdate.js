@@ -48,7 +48,7 @@ const GAME_NAME_MAP = new Map([
   ['valheim', '발헤임'],
   ['enshrouded', '인슈라오디드'],
   ['arc raiders', '아크 레이더스'],
-  ['escape from duckov', '이스케이프 프롬 덕코프'],
+  ['Escape from duckov', '이스케이프 프롬 덕코프'],
   ['djmax respect v', '디맥'],
   ['phasmophobia', '파스모포비아'],
   ['lethal company', '리썰컴퍼니'],
