@@ -66,7 +66,7 @@ const GAME_FAMILIES = [
 
 // 안정화 대기/쿨다운
 const STABLE_MS = 20_000;   // 활동이 이 시간 이상 계속될 때만 알림
-const COOLDOWN_MS = 15 * 60_000; // 같은 유저·같은 게임 재알림 제한
+const COOLDOWN_MS = 60 * 60_000; // 같은 유저·같은 게임 재알림 제한
 
 function now() { return Date.now(); }
 
