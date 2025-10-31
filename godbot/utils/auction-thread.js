@@ -1,8 +1,15 @@
-// utils/auction-thread.js
 const fs = require('fs');
 const path = require('path');
 const lockfile = require('proper-lockfile');
-const { getBE } = require('../commands/be-util');
+
+let beUtil = null;
+try { beUtil = require('../utils/be-util'); } catch {}
+if (!beUtil) { try { beUtil = require('../commands/be-util'); } catch {} }
+function getBalance(userId) {
+  if (beUtil && typeof beUtil.getBE === 'function') return beUtil.getBE(userId);
+  if (beUtil && typeof beUtil.getBalance === 'function') return beUtil.getBalance(userId);
+  return 0;
+}
 
 const PARENT_CHANNEL_ID = '1247745291944464424';
 const MANAGER_ROLE_IDS = new Set(['786128824365482025', '1201856430580432906']);
@@ -16,7 +23,7 @@ function ensureStore() {
 }
 function readStore() {
   ensureStore();
-  return JSON.parse(fs.readFileSync(storePath, 'utf8') || '{}');
+  try { return JSON.parse(fs.readFileSync(storePath, 'utf8') || '{}'); } catch { return {}; }
 }
 async function writeStore(data) {
   ensureStore();
@@ -52,15 +59,14 @@ function parseKoreanSection(sec) {
   return total + num;
 }
 function parseKoreanAmount(text) {
-  const t = text.replace(/\s+/g, '').toLowerCase();
+  const t = (text || '').replace(/\s+/g, '').toLowerCase();
   const numMatch = t.match(/(\d{1,3}(?:,\d{3})+|\d+)/);
   if (numMatch) {
     let n = Number(numMatch[0].replace(/,/g, ''));
-    if (/[만]\s*원?/.test(t) && !/억/.test(t) && !/만원\s*단위아님/.test(t)) {}
     if (/만원/.test(t) && !/억/.test(t) && n < 100000) n *= 10000;
     return n;
   }
-  const cleaned = t.replace(/[원\s,\.be정수입니다정수요입니다요요요]+/g, '');
+  const cleaned = t.replace(/[원,\.be정수입니다정수요입니다요]+/g, '');
   if (cleaned.includes('억')) {
     const parts = cleaned.split('억');
     const left = parts[0], right = parts[1] || '';
@@ -68,17 +74,17 @@ function parseKoreanAmount(text) {
     let manVal = 0;
     let rest = right;
     if (right.includes('만')) {
-      const [man, tail] = right.split('만');
-      manVal = parseKoreanSection(man) * 10000;
-      rest = tail || '';
+      const sp = right.split('만');
+      manVal = parseKoreanSection(sp[0]) * 10000;
+      rest = (sp[1] || '');
     }
     const last = parseKoreanSection(rest);
     return leftVal + manVal + last;
   }
   if (cleaned.includes('만')) {
-    const [man, tail] = cleaned.split('만');
-    const manVal = parseKoreanSection(man) * 10000;
-    const last = parseKoreanSection(tail || '');
+    const sp = cleaned.split('만');
+    const manVal = parseKoreanSection(sp[0]) * 10000;
+    const last = parseKoreanSection(sp[1] || '');
     return manVal + last;
   }
   return parseKoreanSection(cleaned);
@@ -118,11 +124,8 @@ async function handleStart(message) {
   if (!message.channel.isThread()) return;
   if (message.channel.parentId !== PARENT_CHANNEL_ID) return;
   if (!canManage(message.member)) return;
-  const st = await setActive(message.channel.id, true, { startedBy: message.author.id, startedAt: Date.now(), bids: {}, highestBid: 0, highestBidder: null });
-  await message.channel.send({
-    content: `경매 시작되었습니다. 최소 호가 단위는 ${formatBE(MIN_STEP)} 입니다. 본인 보유 정수 내에서만 입찰 가능합니다. 숫자·콤마·한글 금액 모두 인식합니다.`
-  });
-  return st;
+  await setActive(message.channel.id, true, { startedBy: message.author.id, startedAt: Date.now(), bids: {}, highestBid: 0, highestBidder: null });
+  await message.channel.send({ content: `경매 시작되었습니다. 최소 호가 단위는 ${formatBE(MIN_STEP)} 입니다. 본인 보유 정수 내에서만 입찰 가능합니다. 숫자·콤마·한글 금액 모두 인식합니다.` });
 }
 
 async function handleEnd(message) {
@@ -148,10 +151,9 @@ async function handleBid(message) {
   const state = getState(message.channel.id);
   if (!state || !state.active) return;
   if (message.author.bot) return;
-  const raw = message.content || '';
-  const amt = parseKoreanAmount(raw);
+  const amt = parseKoreanAmount(message.content || '');
   if (!Number.isFinite(amt) || amt <= 0) return;
-  const be = getBE(message.author.id);
+  const be = getBalance(message.author.id);
   if (amt > be) {
     await message.reply({ content: `보유 정수 부족: 현재 보유 ${formatBE(be)} / 제시 ${formatBE(amt)}` });
     return;
@@ -170,16 +172,10 @@ function registerAuctionThread(client) {
     try {
       if (!message.guild) return;
       const content = (message.content || '').trim();
-      if (content === '!경매 시작') {
-        await handleStart(message);
-        return;
-      }
-      if (content === '!경매 종료') {
-        await handleEnd(message);
-        return;
-      }
+      if (content === '!경매 시작') { await handleStart(message); return; }
+      if (content === '!경매 종료') { await handleEnd(message); return; }
       await handleBid(message);
-    } catch (e) {}
+    } catch {}
   });
 }
 
