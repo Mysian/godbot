@@ -103,19 +103,25 @@ async function logToStaff(client, payload) {
     const ch = await client.channels.fetch(STAFF_LOG_CHANNEL_ID).catch(() => null);
     if (!ch || !ch.isTextBased()) return;
 
-    const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-    const desc = type === "register"
-      ? [
-          `**유저:** <@${user.id}> (\`${user.tag ?? (user.user?.tag || "unknown")}\`)`,
-          `**사유:** ${reason ?? "-"}`,
-          `**기간:** ${days ? `${days}일` : "-"}`,
-          `**시간:** ${ts}`
-        ].join("\n")
-      : [
-          `**유저:** <@${user.id}> (\`${user.tag ?? (user.user?.tag || "unknown")}\`)`,
-          `**조치:** 장기 미접속 역할 해지`,
-          `**시간:** ${ts}`
-        ].join("\n");
+const ts = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+const returnDate = (type === "register" && days)
+  ? addDays(new Date(), days).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })
+  : null;
+
+const desc = type === "register"
+  ? [
+      `**유저:** <@${user.id}> (\`${user.tag ?? (user.user?.tag || "unknown")}\`)`,
+      `**사유:** ${reason ?? "-"}`,
+      `**기간:** ${days ? `${days}일` : "-"}`,
+      `**예정 귀환일:** ${returnDate ?? "-"}`,
+      `**시간:** ${ts}`
+    ].join("\n")
+  : [
+      `**유저:** <@${user.id}> (\`${user.tag ?? (user.user?.tag || "unknown")}\`)`,
+      `**조치:** 장기 미접속 역할 해지`,
+      `**시간:** ${ts}`
+    ].join("\n");
+
 
     const embed = new EmbedBuilder()
       .setColor(type === "register" ? 0x5E35B1 : 0x546E7A)
