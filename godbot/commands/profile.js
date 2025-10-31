@@ -637,7 +637,7 @@ async function buildProfileView(interaction, targetUser) {
   const rateBtnLabel = viewerEntry ? "해당 유저 평가 수정하기" : "해당 유저 평가하기";
   const memoBtnLabel = viewerMemoText ? "메모 수정" : "메모하기";
   let components;
-  if (isSelf) {
+    if (isSelf) {
     const privacyLabel = profile.isPrivate ? "프로필 공개" : "프로필 비공개";
     components = [
       new ActionRowBuilder().addComponents(
@@ -652,15 +652,15 @@ async function buildProfileView(interaction, targetUser) {
       ),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`profile:favor+|${userId}`)
-          .setStyle(ButtonStyle.Success)
-          .setEmoji("♥️")
-          .setLabel("호감도 지급"),
+          .setCustomId(`profile:share|${userId}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("📣")
+          .setLabel("프로필 공유"),
         new ButtonBuilder()
-          .setCustomId(`profile:favor-|${userId}`)
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji("💔")
-          .setLabel("호감도 차감")
+          .setCustomId(`profile:share_radar|${userId}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("📊")
+          .setLabel("서버 스탯 오각형 공유")
       )
     ];
   } else {
@@ -695,7 +695,6 @@ async function buildProfileView(interaction, targetUser) {
       )
     ];
   }
-
   return { embeds: [embed], files: [attachment], components, ephemeral: true };
 }
 
