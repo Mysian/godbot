@@ -3,6 +3,8 @@ const { Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
+const ADMIN_LOG_CHANNEL_ID = '1433747936944062535';
+
 const voiceChannelToTextChannel = {
   '1222085152600096778': '1222085152600096778',
   '1222085194706587730': '1222085194706587730',
@@ -34,7 +36,7 @@ function loadGroupMoves() {
 }
 
 // 집계 버퍼(메모리)
-const batchMap = new Map(); // key: `${guildId}:${from}:${to}`, value: { firstName, count, timer }
+const batchMap = new Map(); // key: `${guildId}:${from}:${to}`, value: { firstName, count, timer, joinEmoji, leaveEmoji }
 
 const DONOR_ROLE_ID = '1397076919127900171';
 const BOOSTER_ROLE_ID = '1207437971037356142';
@@ -44,6 +46,20 @@ const BIRD_EMOJI_ROLE_IDS = [
   '1294560128376246272',
   '1294560174610055198',
 ];
+
+function fmtClockKST(ts = Date.now()) {
+  const d = new Date(ts);
+  const hh = d.toLocaleString('ko-KR', { hour: '2-digit', hour12: false, timeZone: 'Asia/Seoul' });
+  const mm = d.toLocaleString('ko-KR', { minute: '2-digit', timeZone: 'Asia/Seoul' });
+  return `${hh}:${mm}`;
+}
+
+async function sendAdminLog(guild, content) {
+  try {
+    const ch = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
+    if (ch) await ch.send(content);
+  } catch {}
+}
 
 function pushBatch(guild, fromCh, toCh, memberName, joinEmoji, leaveEmoji) {
   const key = `${guild.id}:${fromCh.id}:${toCh.id}`;
@@ -63,7 +79,7 @@ function pushBatch(guild, fromCh, toCh, memberName, joinEmoji, leaveEmoji) {
         const rest = buf.count - 1;
         const baseName = buf.firstName;
 
-        // 떠난 채널 공지
+        // 떠난 채널 공지(공개 텍스트 채널)
         if (leaveTextId) {
           const tc = guild.channels.cache.get(leaveTextId);
           if (tc) {
@@ -74,7 +90,7 @@ function pushBatch(guild, fromCh, toCh, memberName, joinEmoji, leaveEmoji) {
             }
           }
         }
-        // 도착 채널 공지
+        // 도착 채널 공지(공개 텍스트 채널)
         if (joinTextId) {
           const tc = guild.channels.cache.get(joinTextId);
           if (tc) {
@@ -84,6 +100,19 @@ function pushBatch(guild, fromCh, toCh, memberName, joinEmoji, leaveEmoji) {
               await tc.send(`-# [${buf.joinEmoji} **${baseName}** 님이 ${fromCh.name}에서 왔어요.]`);
             }
           }
+        }
+
+        // 관리 채널 로그(단체 이동)
+        if (rest > 0) {
+          await sendAdminLog(
+            guild,
+            `-# [↔️ 채널 이동] **${baseName}** 외 ${rest}명 - ${fromCh.name} → ${toCh.name} [${fmtClockKST()}]`
+          );
+        } else {
+          await sendAdminLog(
+            guild,
+            `-# [↔️ 채널 이동] **${baseName}** - ${fromCh.name} → ${toCh.name} [${fmtClockKST()}]`
+          );
         }
       } finally {
         clearTimeout(buf.timer);
@@ -104,7 +133,7 @@ module.exports = {
     const oldChannel = oldState.channel;
     const newChannel = newState.channel;
     const member = newState.member || oldState.member;
-    if (!member) return;
+    if (!member || member.user?.bot) return; // 봇 제외
 
     const roles = member.roles?.cache;
     const hasDonor = roles?.has(DONOR_ROLE_ID);
@@ -116,6 +145,7 @@ module.exports = {
 
     // 일반 '입장'
     if (!oldChannel && newChannel) {
+      // 공개 텍스트 채널 알림(기존 동작)
       const textChannelId = voiceChannelToTextChannel[newChannel.id];
       if (textChannelId) {
         const textChannel = guild.channels.cache.get(textChannelId);
@@ -123,11 +153,14 @@ module.exports = {
           await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 입장했어요.]`);
         }
       }
+      // 기록 채널 로그
+      await sendAdminLog(guild, `-# [🟢 채널 입장] **${member.displayName}** - 음성: ${newChannel.name} [${fmtClockKST()}]`);
       return;
     }
 
     // 일반 '퇴장'
     if (oldChannel && !newChannel) {
+      // 공개 텍스트 채널 알림(기존 동작)
       const textChannelId = voiceChannelToTextChannel[oldChannel.id];
       if (textChannelId) {
         const textChannel = guild.channels.cache.get(textChannelId);
@@ -135,6 +168,8 @@ module.exports = {
           await textChannel.send(`-# [${leaveEmoji} **${member.displayName}** 님이 퇴장했어요.]`);
         }
       }
+      // 기록 채널 로그
+      await sendAdminLog(guild, `-# [🔴 채널 퇴장] **${member.displayName}** - 음성: ${oldChannel.name} [${fmtClockKST()}]`);
       return;
     }
 
@@ -151,12 +186,13 @@ module.exports = {
         gm.users.includes(member.id);
 
       if (isGroup) {
-        // ★ 단체이동: 집계해서 "유저명 외 n명" 형태로 한 번만 공지
+        // ★ 단체이동: 집계해서 "유저명 외 n명" 형태로 한 번만 공지 + 관리 로그
         pushBatch(guild, oldChannel, newChannel, member.displayName, joinEmoji, leaveEmoji);
         return;
       }
 
       // 일반 이동(개인)
+      // 공개 텍스트 채널 알림(기존 동작)
       const textChannelIdLeave = voiceChannelToTextChannel[oldChannel.id];
       if (textChannelIdLeave) {
         const textChannel = guild.channels.cache.get(textChannelIdLeave);
@@ -171,6 +207,12 @@ module.exports = {
           await textChannel.send(`-# [${joinEmoji} **${member.displayName}** 님이 '${oldChannel.name}'에서 왔어요.]`);
         }
       }
+
+      // 기록 채널 로그
+      await sendAdminLog(
+        guild,
+        `-# [↔️ 채널 이동] **${member.displayName}** - ${oldChannel.name} → ${newChannel.name} [${fmtClockKST()}]`
+      );
     }
   }
 };
