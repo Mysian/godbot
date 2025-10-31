@@ -76,7 +76,7 @@ async function runDeployCommands(interaction) {
 /** 버튼용: pm2 restart */
 async function runPm2Restart(interaction) {
   if (!(await ensureStaff(interaction))) return;
-  await interaction.reply({ content: "♻️ 봇을 재시작할게! 약간 끊길 수 있어.", ephemeral: true }).catch(()=>{});
+  await interaction.reply({ content: "♻️ 봇을 재시작할게요! 처음엔 조금 끊길 수 있습니다.", ephemeral: true }).catch(()=>{});
   setTimeout(() => {
     exec("pm2 restart index.js", () => {});
   }, 1000);
