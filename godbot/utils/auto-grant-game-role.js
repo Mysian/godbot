@@ -1,5 +1,5 @@
 const { Events } = require("discord.js");
-const { ALL_GAMES } = require("../select-game.js");
+const { ALL_GAMES } = require("../commands/select-game.js");
 
 const CHANNEL_WHITELIST = new Set(["1209147973255036959","1202425624061415464"]);
 const EXEMPT_ROLE_IDS = new Set(["786128824365482025","1201856430580432906"]);
