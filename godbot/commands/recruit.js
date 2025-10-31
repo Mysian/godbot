@@ -59,6 +59,7 @@ const GAME_BANNERS = {
   "GTA": "https://media.discordapp.net/attachments/1429435030647607397/1429437002314682531/Grand_Theft_Auto_V_GTA_5_Game_HD_Wallpaper_medium.png?format=webp&quality=lossless",
   "GTFO": "https://media.discordapp.net/attachments/1429435030647607397/1429437135542292612/capsule_616x353.png?format=webp&quality=lossless",
   "TRPG": "https://media.discordapp.net/attachments/1429435030647607397/1429437318422466691/360_F_615946312_g0bFXcJLEsZEfD6pkxA1aof0fYPTbisA.png?format=webp&quality=lossless",
+  "갓필드": "https://media.discordapp.net/attachments/1429435030647607397/1433654281269149802/mu50hats.png?ex=69057a18&is=69042898&hm=bc16bb51905dc5909b533e8a37758872e490b2072746f55e0b2a7a9aeb842347&=&format=webp&quality=lossless&width=550&height=272",
   "건파이어 리본": "https://media.discordapp.net/attachments/1429435030647607397/1429437427101204572/ED8380EC9DB4ED8B80_EAB79CEAB2A9.png?format=webp&quality=lossless",
   "구스구스 덕": "https://media.discordapp.net/attachments/1429435030647607397/1429437526833365042/mbBFUrshAIo_XJnGOoU9POA3aF2r3fwSfV7ljxfY3kqzI4T9CBvHsQwK8jn9_DSCpnnWwAPrzuVJw6PM-6C-dw.png?format=webp&quality=lossless",
   "데드락": "https://media.discordapp.net/attachments/1429435030647607397/1429437684895711362/34206_81714_2451.png?format=webp&quality=lossless",
