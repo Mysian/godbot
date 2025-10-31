@@ -636,36 +636,65 @@ async function buildProfileView(interaction, targetUser) {
   const viewerEntry = ratings[userId]?.entries?.[interaction.user.id] || null;
   const rateBtnLabel = viewerEntry ? "해당 유저 평가 수정하기" : "해당 유저 평가하기";
   const memoBtnLabel = viewerMemoText ? "메모 수정" : "메모하기";
-  const components = [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`profile:rate|${userId}`).setStyle(ButtonStyle.Primary).setLabel(rateBtnLabel),
-      new ButtonBuilder().setCustomId(`profile:memo|${userId}`).setStyle(ButtonStyle.Secondary).setLabel(memoBtnLabel)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`profile:favor+|${userId}`)
-        .setStyle(ButtonStyle.Success)
-        .setEmoji("♥️")
-        .setLabel("호감도 지급"),
-      new ButtonBuilder()
-        .setCustomId(`profile:favor-|${userId}`)
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("💔")
-        .setLabel("호감도 차감")
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`profile:share|${userId}`)
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("📣")
-        .setLabel("프로필 공유"),
-      new ButtonBuilder()
-        .setCustomId(`profile:share_radar|${userId}`)
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("📊")
-        .setLabel("서버 스탯 오각형 공유")
-    )
-  ];
+  let components;
+  if (isSelf) {
+    const privacyLabel = profile.isPrivate ? "프로필 공개" : "프로필 비공개";
+    components = [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`profile:edit|${userId}`)
+          .setStyle(ButtonStyle.Primary)
+          .setLabel("프로필 수정 하기"),
+        new ButtonBuilder()
+          .setCustomId(`profile:pv_toggle|${userId}`)
+          .setStyle(ButtonStyle.Danger)
+          .setLabel(privacyLabel)
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`profile:favor+|${userId}`)
+          .setStyle(ButtonStyle.Success)
+          .setEmoji("♥️")
+          .setLabel("호감도 지급"),
+        new ButtonBuilder()
+          .setCustomId(`profile:favor-|${userId}`)
+          .setStyle(ButtonStyle.Danger)
+          .setEmoji("💔")
+          .setLabel("호감도 차감")
+      )
+    ];
+  } else {
+    components = [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`profile:rate|${userId}`).setStyle(ButtonStyle.Primary).setLabel(rateBtnLabel),
+        new ButtonBuilder().setCustomId(`profile:memo|${userId}`).setStyle(ButtonStyle.Secondary).setLabel(memoBtnLabel)
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`profile:favor+|${userId}`)
+          .setStyle(ButtonStyle.Success)
+          .setEmoji("♥️")
+          .setLabel("호감도 지급"),
+        new ButtonBuilder()
+          .setCustomId(`profile:favor-|${userId}`)
+          .setStyle(ButtonStyle.Danger)
+          .setEmoji("💔")
+          .setLabel("호감도 차감")
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`profile:share|${userId}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("📣")
+          .setLabel("프로필 공유"),
+        new ButtonBuilder()
+          .setCustomId(`profile:share_radar|${userId}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("📊")
+          .setLabel("서버 스탯 오각형 공유")
+      )
+    ];
+  }
 
   return { embeds: [embed], files: [attachment], components, ephemeral: true };
 }
@@ -700,6 +729,32 @@ function getMemo(targetId, authorId) {
   return store[targetId]?.[authorId]?.text || null;
 }
 
+function buildEditRows(profile) {
+  const buttons1 = [
+    new ButtonBuilder().setCustomId('edit:statusMsg').setLabel('상태 메시지').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('edit:favGames').setLabel('선호 게임(3개)').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('edit:owTier').setLabel('오버워치 티어/포지션').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('edit:lolTier').setLabel('롤 티어/포지션').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('edit:steamNick').setLabel('스팀 닉네임').setStyle(ButtonStyle.Secondary),
+  ];
+  const privacyLabel = profile.isPrivate ? '프로필 공개' : '프로필 비공개';
+  const buttons2 = [
+    new ButtonBuilder().setCustomId('edit:lolNick').setLabel('롤 닉네임#태그').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('edit:bnetNick').setLabel('배틀넷 닉네임').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('edit:togglePrivacy').setLabel(privacyLabel).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('edit:submit').setLabel('수정 완료').setStyle(ButtonStyle.Success),
+  ];
+  return [new ActionRowBuilder().addComponents(buttons1), new ActionRowBuilder().addComponents(buttons2)];
+}
+
+function parseFavGames(input) {
+  return String(input || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("프로필")
@@ -723,7 +778,10 @@ module.exports = {
         i.customId === `profile:favor+|${target.id}` ||
         i.customId === `profile:favor-|${target.id}` ||
         i.customId === `profile:share|${target.id}` ||
-        i.customId === `profile:share_radar|${target.id}`
+        i.customId === `profile:share_radar|${target.id}` ||
+        i.customId === `profile:edit|${target.id}` ||  
+        i.customId === `profile:pv_toggle|${target.id}` || 
+        i.customId.startsWith('edit:')     
       );
     };
 
@@ -809,6 +867,7 @@ module.exports = {
         await i.channel.send({ embeds: pub.embeds, files: pub.files });
         await i.editReply({ content: "채널에 프로필을 공유했어!" });
       }
+        
 
       else if (i.customId === `profile:share_radar|${target.id}`) {
         await i.deferReply({ ephemeral: true });
@@ -816,6 +875,142 @@ module.exports = {
         await i.channel.send({ embeds: pub.embeds, files: pub.files });
         await i.editReply({ content: "채널에 오각형 스탯을 공유했어!" });
       }
+
+        else if (i.customId === `profile:pv_toggle|${target.id}`) {
+  if (i.user.id !== target.id) return i.reply({ content: "본인만 사용할 수 있어.", ephemeral: true });
+  const profiles = readJson(profilesPath);
+  const me = profiles[target.id] || {};
+  me.isPrivate = !me.isPrivate;
+  profiles[target.id] = me;
+  writeJson(profilesPath, profiles);
+  await i.reply({ content: `설정 저장됨: 현재 상태는 **${me.isPrivate ? "비공개" : "공개"}** 입니다.`, ephemeral: true });
+
+  const refreshed = await buildProfileView(interaction, target);
+  await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
+}
+
+
+     else if (i.customId === `profile:edit|${target.id}`) {
+  if (i.user.id !== target.id) return i.reply({ content: "본인만 수정할 수 있어.", ephemeral: true });
+
+  const profiles = readJson(profilesPath);
+  const myProfile = Object.assign(
+    { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false },
+    profiles[target.id] || {}
+  );
+
+  const editEmbed = new EmbedBuilder()
+    .setTitle("프로필 수정")
+    .setDescription("수정할 정보를 버튼을 통해 변경할 수 있어. 변경할 항목만 골라서 수정하자.")
+    .setColor(0x00bb77);
+
+  const [row1, row2] = buildEditRows(myProfile);
+  const ep = await i.reply({ embeds: [editEmbed], components: [row1, row2], ephemeral: true, fetchReply: true });
+
+  const validIds = new Set([
+    'edit:statusMsg','edit:favGames','edit:owTier','edit:lolTier','edit:steamNick','edit:lolNick','edit:bnetNick',
+    'edit:togglePrivacy','edit:submit'
+  ]);
+
+  const subCollector = ep.createMessageComponentCollector({
+    filter: x => x.user.id === i.user.id && x.message.id === ep.id && validIds.has(x.customId),
+    time: 10 * 60 * 1000
+  });
+
+  subCollector.on('collect', async b => {
+    // 저장 종료
+    if (b.customId === 'edit:submit') {
+      profiles[target.id] = myProfile;
+      writeJson(profilesPath, profiles);
+      try { await b.update({ content: '✅ 프로필 수정이 완료되었어!', embeds: [], components: [] }); } catch {}
+      subCollector.stop('submitted');
+
+      const refreshed = await buildProfileView(interaction, target);
+      await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
+      return;
+    }
+
+    // 공개/비공개 토글
+    if (b.customId === 'edit:togglePrivacy') {
+      myProfile.isPrivate = !myProfile.isPrivate;
+      profiles[target.id] = myProfile;
+      writeJson(profilesPath, profiles);
+      const [nr1, nr2] = buildEditRows(myProfile);
+      await b.update({ embeds: [editEmbed], components: [nr1, nr2] });
+      await i.followUp({ content: `설정 저장됨: 현재 상태는 **${myProfile.isPrivate ? '비공개' : '공개'}** 입니다.`, ephemeral: true });
+      return;
+    }
+
+    // 모달 공통 생성 헬퍼
+    const showModal = async (customId, title, inputId, label, preset = "", long = false, max = 30) => {
+      const modal = new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId(inputId)
+            .setLabel(label)
+            .setStyle(long ? TextInputStyle.Paragraph : TextInputStyle.Short)
+            .setMaxLength(max)
+            .setValue(preset)
+            .setRequired(true)
+        )
+      );
+      await b.showModal(modal);
+      return b.awaitModalSubmit({ time: 60_000, filter: m => m.user.id === i.user.id });
+    };
+
+    try {
+      if (b.customId === 'edit:statusMsg') {
+        const s = await showModal('modalStatusMsg','상태 메시지 수정','statusMsgInput','상태 메시지', myProfile.statusMsg || '', false, 30);
+        myProfile.statusMsg = s.fields.getTextInputValue('statusMsgInput');
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+      else if (b.customId === 'edit:favGames') {
+        const s = await showModal('modalFavGames','선호 게임 수정 (최대 3개)','favGamesInput','게임명 (콤마로 구분)', (myProfile.favGames||[]).join(', '), false, 50);
+        myProfile.favGames = parseFavGames(s.fields.getTextInputValue('favGamesInput'));
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+      else if (b.customId === 'edit:owTier') {
+        const s = await showModal('modalOwTier','오버워치 티어/포지션 수정','owTierInput','티어/포지션', myProfile.owTier || '');
+        myProfile.owTier = s.fields.getTextInputValue('owTierInput');
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+      else if (b.customId === 'edit:lolTier') {
+        const s = await showModal('modalLolTier','롤 티어/포지션 수정','lolTierInput','티어/포지션', myProfile.lolTier || '');
+        myProfile.lolTier = s.fields.getTextInputValue('lolTierInput');
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+      else if (b.customId === 'edit:steamNick') {
+        const s = await showModal('modalSteamNick','스팀 닉네임 수정','steamNickInput','스팀 닉네임', myProfile.steamNick || '');
+        myProfile.steamNick = s.fields.getTextInputValue('steamNickInput');
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+      else if (b.customId === 'edit:lolNick') {
+        const s = await showModal('modalLolNick','롤 닉네임#태그 수정','lolNickInput','롤 닉네임#태그', myProfile.lolNick || '');
+        myProfile.lolNick = s.fields.getTextInputValue('lolNickInput');
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+      else if (b.customId === 'edit:bnetNick') {
+        const s = await showModal('modalBnetNick','배틀넷 닉네임 수정','bnetNickInput','배틀넷 닉네임', myProfile.bnetNick || '');
+        myProfile.bnetNick = s.fields.getTextInputValue('bnetNickInput');
+        await s.reply({ content: '수정 완료!', ephemeral: true });
+      }
+    } catch {
+      try { await i.followUp({ content: '⏳ 입력 시간이 초과되었어. 다시 시도해줘.', ephemeral: true }); } catch {}
+    }
+  });
+
+  subCollector.on('end', async () => {
+    try {
+      const disabled = ep.components.map(row => {
+        const r = ActionRowBuilder.from(row);
+        r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+        return r;
+      });
+      await ep.edit({ components: disabled });
+    } catch {}
+  });
+}
+
 
       else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
         const isGive = i.customId.includes("favor+");
