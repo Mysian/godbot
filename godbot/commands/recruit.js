@@ -718,6 +718,9 @@ module.exports = {
 
             const recruiterId = i.user.id;
             const gameNames = [...s.selected];
+            const member = await i.guild.members.fetch(recruiterId).catch(() => null);
+            const avatar = (member?.displayAvatarURL && member.displayAvatarURL({ extension: "png", size: 128 }))
+            || i.user.displayAvatarURL({ extension: "png", size: 128 });
 
             const banner = deriveBannerByGames(gameNames);
             const tagLine = gameNames.length > 0 ? buildGameTagLineByRoleNames(i.guild, gameNames) : null;
@@ -731,13 +734,15 @@ module.exports = {
             if (gameNames.length > 0) fields.push({ name: "선택 게임", value: gameNames.join(", "), inline: false });
             fields.push({ name: "참여자", value: "없음", inline: false });
 
-            const embed = new EmbedBuilder()
-              .setTitle("📢 모집 글")
-              .setDescription(content)
-              .addFields(fields)
-              .setColor(0x57c3ff)
-              .setImage(banner)
-              .setTimestamp();
+          const embed = new EmbedBuilder()
+            .setTitle("📢 모집 글")
+            .setDescription(content)
+            .addFields(fields)
+            .setColor(0x57c3ff)
+            .setThumbnail(avatar)
+            .setFooter({ text: "모집 등록", iconURL: avatar })
+            .setImage(banner)
+            .setTimestamp();
 
             const message = await channel.send({
               content: tagLine || undefined,
