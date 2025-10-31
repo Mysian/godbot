@@ -3,11 +3,26 @@ const path = require('path');
 
 const CHANNEL_ID = '1202425624061415464';
 const REQUIRED_ROLE_ID = '1295701019430227988';
+
+const MIN_WELCOME_EMOJI = 5;
+const MAX_WELCOME_EMOJI = 7;
+
 const STATE_DIR = path.join(process.cwd(), 'data');
 const STATE_FILE = path.join(STATE_DIR, 'emoji-react-state.json');
 
-const WELCOME_EMOJIS = [
-  '🎉','🎊','🥳','👋','💜','✨','🌟','😄','😊','🤗','🫶','💫','🌈','🏠','🫡','🎈'
+/*
+  ⬇⬇⬇ 여기만 네 서버 커스텀 이모지로 채워줘 ⬇⬇⬇
+  - 허용 형식: 
+    1) '이모지이름:이모지ID'  (예: 'welcome:123456789012345678')
+    2) '<:이모지이름:이모지ID>' 또는 '<a:이모지이름:이모지ID>' (애니메 이모지)
+    3) '이모지ID' 만 (같은 길드에 존재하면 이름을 캐시에서 찾아 붙여줌)
+  - 유니코드는 넣지 마 (커스텀만 사용)
+*/
+const EMOJI_CANDIDATES = [
+  'alpakaDdabong:1217149460979908619',
+  '<:happybee:1217070624342802502>',
+  '<a:cerbbeat:1277560572807745578>',
+  '1207735830869975040',
 ];
 
 let state = { firstMessage: {} };
@@ -54,6 +69,50 @@ function pickNUnique(arr, n) {
   return out;
 }
 
+function normalizeEmojiToken(token) {
+  if (!token) return null;
+  const t = String(token).trim();
+
+  if (/^<a?:\w+:\d+>$/.test(t)) {
+    const inner = t.slice(1, -1);
+    const [, name, id] = inner.split(':');
+    return `${name}:${id}`;
+  }
+
+  if (/^\w+:\d+$/.test(t)) {
+    return t;
+  }
+
+  if (/^\d+$/.test(t)) {
+    return t;
+  }
+
+  return null;
+}
+
+function toReactResolvable(token, guild) {
+  if (!token) return null;
+
+  if (/^\d+$/.test(token)) {
+    const e = guild?.emojis?.cache?.get(token);
+    if (e?.id && e?.name) return `${e.name}:${e.id}`;
+    return token;
+  }
+
+  return token;
+}
+
+function buildResolvedEmojiList(guild) {
+  const out = [];
+  for (const raw of EMOJI_CANDIDATES) {
+    const norm = normalizeEmojiToken(raw);
+    if (!norm) continue;
+    const resolvable = toReactResolvable(norm, guild);
+    out.push(resolvable);
+  }
+  return out;
+}
+
 function registerEmojiAutoReact(client) {
   loadState();
 
@@ -72,8 +131,14 @@ function registerEmojiAutoReact(client) {
       const firstInChannel = markFirstInChannel(guildId, channelId, userId);
       if (!firstInChannel) return;
 
-      const count = 5 + Math.floor(Math.random() * 3);
-      const picks = pickNUnique(WELCOME_EMOJIS, count);
+      const candidates = buildResolvedEmojiList(message.guild).filter(Boolean);
+      if (candidates.length === 0) return;
+
+      const min = Math.max(1, Math.min(MIN_WELCOME_EMOJI, candidates.length));
+      const max = Math.max(min, Math.min(MAX_WELCOME_EMOJI, candidates.length));
+      const count = min + Math.floor(Math.random() * (max - min + 1));
+
+      const picks = pickNUnique(candidates, count);
       for (const e of picks) {
         try { await message.react(e); } catch {}
       }
