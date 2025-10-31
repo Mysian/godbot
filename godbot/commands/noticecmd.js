@@ -167,7 +167,7 @@ if (type === 'profile') {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('profile_open') 
-      .setLabel('프로필 열기 (/프로필)')
+      .setLabel('내 프로필 확인하기')
       .setEmoji('📝')
       .setStyle(ButtonStyle.Primary),
   );
