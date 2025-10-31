@@ -58,6 +58,7 @@ const GAME_NAME_MAP = new Map([
   ["Lethal Company", "리썰컴퍼니"],
   ["MIMESIS", "미메시스"],
   ["Once Human", "원스휴먼"],
+  ["MapleStory", "버섯 왕국 지키기"],
 ]);
 
 const GAME_FAMILIES = [
