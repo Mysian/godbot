@@ -22,6 +22,10 @@ const voiceChannelToTextChannel = {
 
 const GAME_NAME_MAP = new Map([
   ["league of legends", "롤"],
+  ["league of legends client", "롤"],
+  ["league of legends (tm) client", "롤"],
+  ["league of legends tm client", "롤"],
+  ["league of legends™ client", "롤"],
   ["overwatch 2", "오버워치"],
   ["party animals", "파티 애니멀즈"],
   ["marvel rivals", "마블 라이벌즈"],
@@ -45,12 +49,10 @@ const GAME_NAME_MAP = new Map([
   ["eternal return", "이터널 리턴"],
   ["이터널 리턴", "이터널 리턴"],
   ["valheim", "발헤임"],
-  ["enshrouded", "인슈라오디드"],
-  ["ARC Raiders", "아크 레이더스"],
-  ["Escape from Duckov", "이스케이프 프롬 덕코프"],
-  ["DJMAX RESPECT V", "디맥"],
-  ["Lethal Company", "리썰컴퍼니"],
-  ["Once Human", "원스휴먼"],
+  ["enshrouded", "인슈라우디드"],
+  ["arc raiders", "아크 레이더스"],
+  ["escape from duckov", "이스케이프 프롬 덕코프"],
+  ["djmax respect v", "디맥"],
 ]);
 
 const GAME_FAMILIES = [
@@ -64,7 +66,10 @@ const GAME_FAMILIES = [
       "leagueclient",
       "league client",
       "leagueclientux",
-      "league of Legends (TM) Client",
+      "league of legends client",
+      "league of legends (tm) client",
+      "league of legends tm client",
+      "league of legends™ client",
     ],
   },
 ];
@@ -119,39 +124,41 @@ function matchFamilyOrAlias(activityName) {
   const n = normalize(activityName);
   if (!n) return null;
 
+  let best = null;
+
   for (const fam of GAME_FAMILIES) {
     for (const key of fam.keys) {
       const k = normalize(key);
-      if (n.includes(k) || k.includes(n) || diceCoefficient(n, k) >= 0.85) {
-        return { family: fam.id, alias: fam.alias };
+      const hard =
+        n.includes(k) || k.includes(n) || diceCoefficient(n, k) >= 0.9;
+      const score = hard ? 1 : diceCoefficient(n, k);
+      if (!best || score > best.score) {
+        best = { family: fam.id, alias: fam.alias, score };
       }
     }
   }
 
-  let best = null;
-  let bestScore = 0;
   for (const [raw, alias] of GAME_NAME_MAP) {
     const key = normalize(raw);
-    if (!key) continue;
-    if (n.includes(key) || key.includes(n)) return { family: alias, alias };
-    const score = diceCoefficient(n, key);
-    if (score > bestScore) {
-      bestScore = score;
-      best = alias;
+    const hard = n.includes(key) || key.includes(n) || diceCoefficient(n, key) >= 0.9;
+    const score = hard ? 0.95 : diceCoefficient(n, key);
+    if (!best || score > best.score) {
+      best = { family: alias, alias, score };
     }
   }
-  return bestScore >= 0.72 ? { family: best, alias: best } : null;
+
+  return best && best.score >= 0.72 ? best : null;
 }
 
-function findAliasFamily(presence) {
+function findBestAliasFamily(presence) {
   const acts = presence?.activities || [];
+  let best = null;
   for (const a of acts) {
-    if (a?.type === ActivityType.Playing && a.name) {
-      const res = matchFamilyOrAlias(a.name);
-      if (res) return res;
-    }
+    if (a?.type !== ActivityType.Playing || !a.name) continue;
+    const res = matchFamilyOrAlias(a.name);
+    if (res && (!best || res.score > best.score)) best = res;
   }
-  return null;
+  return best;
 }
 
 const firstSeenStable = new Map();
@@ -228,7 +235,7 @@ module.exports = {
     }
 
     const t = now();
-    const seen = findAliasFamily(newPresence);
+    const seen = findBestAliasFamily(newPresence);
     const currFam = currentFamily.get(bKey) || null;
 
     if (seen && (!currFam || currFam === seen.family)) {
