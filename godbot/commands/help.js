@@ -47,8 +47,7 @@ module.exports = {
         .setTitle("📚 도움말 (2/4)")
         .setDescription("서버 생활에 도움되는 유틸 & 정보 명령어")
         .addFields(
-          { name: "📝 /프로필등록", value: "서버에 나만의 프로필 등록", inline: true },
-          { name: "👤 /프로필 [유저명]", value: "자신 또는 다른 유저의 프로필 조회", inline: true },
+          { name: "👤 /프로필", value: "자신 또는 다른 유저의 프로필 조회 및 수정", inline: true },
           { name: "🖥️ /이용현황", value: "서버 이용현황을 상세 확인", inline: true },
           { name: "💼 /인벤토리", value: "내 정수 아이템(소모품/스킬/강화) 확인", inline: true },
           { name: "🛒 /상점", value: "파랑 정수(BE)로 아이템 구매", inline: true },
@@ -156,6 +155,7 @@ embeds.push(
     });
   },
 };
+
 
 
 
