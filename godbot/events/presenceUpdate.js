@@ -1,9 +1,6 @@
 // godbot/events/presenceUpdate.js
 const { Events, ActivityType } = require("discord.js");
-
 const ADMIN_LOG_CHANNEL_ID = "1433747936944062535";
-
-// (유지) 음성채널 → 텍스트채널 맵핑: 게임 시작 시 해당 텍스트 채널에도 안내 전송
 const voiceChannelToTextChannel = {
   "1222085152600096778": "1222085152600096778",
   "1222085194706587730": "1222085194706587730",
@@ -20,7 +17,6 @@ const voiceChannelToTextChannel = {
   "1209157524243091466": "1209157524243091466",
   "1209157622662561813": "1209157622662561813",
 };
-
 const GAME_NAME_MAP = new Map([
   ["league of legends", "롤"],
   ["league of legends client", "롤"],
@@ -80,18 +76,14 @@ const GAME_FAMILIES = [
   },
 ];
 
-// 안정화·그레이스·쿨다운
-const STABLE_MS_DEFAULT = 20_000;
-const FAMILY_STABLE_MS = { lol: 30_000 };
+const STABLE_MS_DEFAULT = 0;
+const FAMILY_STABLE_MS = { lol: 0 };
 const END_GRACE_MS = 2 * 60_000;
 const COOLDOWN_MS = 60 * 60_000;
-
-// 재부팅 스팸 억제(웜업): 부팅 후 X초 동안은 시작 알림 전송 금지, 상태만 베이스라인으로 세팅
 const BOOT_TS = Date.now();
 const BOOT_SUPPRESS_MS = 90_000;
-
 function getStableMs(fam) {
-  return FAMILY_STABLE_MS[fam] || STABLE_MS_DEFAULT;
+  return FAMILY_STABLE_MS[fam] ?? STABLE_MS_DEFAULT;
 }
 function now() { return Date.now(); }
 function inBootSuppress() { return now() - BOOT_TS < BOOT_SUPPRESS_MS; }
@@ -130,7 +122,6 @@ function matchFamilyOrAlias(activityName) {
   const n = normalize(activityName);
   if (!n) return null;
   let best = null;
-
   for (const fam of GAME_FAMILIES) {
     for (const key of fam.keys) {
       const k = normalize(key);
@@ -174,17 +165,14 @@ function fmtClockKST(ts = Date.now()) {
     minute: '2-digit',
     hour12: false,
     timeZone: 'Asia/Seoul',
-  }); // 예: "22:29"
+  });
 }
-
-// 상태 저장
 const firstSeenStable = new Map();
 const lastSent = new Map();
 const startedAt = new Map();
 const lastSeen = new Map();
 const currentFamily = new Map();
 const lastAlias = new Map();
-
 function famKey(gid, uid, fam) { return `${gid}:${uid}:${fam}`; }
 function baseKey(gid, uid) { return `${gid}:${uid}:`; }
 function clearOtherFamilies(base, keepFam = null) {
@@ -194,8 +182,6 @@ function clearOtherFamilies(base, keepFam = null) {
     }
   }
 }
-
-// 로그 전송
 async function logStart(member, alias, voice) {
   const ch = member.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
   if (!ch) return;
@@ -230,37 +216,26 @@ module.exports = {
     const t = now();
     const seen = findBestAliasFamily(newPresence);
     const currFam = currentFamily.get(bKey) || null;
-
-    // 1) 활동 유지/시작 판단
     if (seen && (!currFam || currFam === seen.family)) {
       const key = famKey(gid, uid, seen.family);
       lastSeen.set(key, t);
 
-      // 아직 시작 처리 안 된 상태
       if (!startedAt.has(key)) {
-        // 첫 관측 타임스탬프 셋
-        if (!firstSeenStable.has(key)) {
-          firstSeenStable.set(key, t);
-          return;
-        }
-        // 안정화 대기
-        const stableMs = getStableMs(seen.family);
-        if (t - firstSeenStable.get(key) < stableMs) return;
-
-        // 재부팅 웜업: 시작 알림 억제(베이스라인만 세팅)
         if (inBootSuppress()) {
           startedAt.set(key, t);
           currentFamily.set(bKey, seen.family);
           lastAlias.set(key, seen.alias);
           clearOtherFamilies(bKey, seen.family);
-          return; // 알림 미전송
+          return;
         }
-
-        // 쿨다운
         const last = lastSent.get(key) || 0;
-        if (t - last < COOLDOWN_MS) return;
-
-        // 실제 시작 처리
+        if (t - last < COOLDOWN_MS) {
+          startedAt.set(key, t);
+          currentFamily.set(bKey, seen.family);
+          lastAlias.set(key, seen.alias);
+          clearOtherFamilies(bKey, seen.family);
+          return;
+        }
         lastSent.set(key, t);
         startedAt.set(key, t);
         currentFamily.set(bKey, seen.family);
@@ -269,7 +244,6 @@ module.exports = {
 
         const name = member.displayName || member.user.username;
 
-        // (유지) 해당 음성 텍스트채널에도 안내
         if (textChannel) {
           try {
             await textChannel.send(`-# [🎮 **${name}** 님이 '${seen.alias}'을(를) 시작하셨습니다.]`);
@@ -279,14 +253,11 @@ module.exports = {
       }
       return;
     }
-
-    // 2) 게임 전환
     if (seen && currFam && currFam !== seen.family) {
       const oldKey = famKey(gid, uid, currFam);
       const alias = lastAlias.get(oldKey);
       const startedTs = startedAt.get(oldKey);
 
-      // 웜업 중에는 종료 알림도 억제
       if (!inBootSuppress()) {
         try { await logEnd(member.guild, member.displayName || member.user.username, alias, startedTs); } catch {}
       }
@@ -297,12 +268,20 @@ module.exports = {
       currentFamily.delete(bKey);
 
       const newKey = famKey(gid, uid, seen.family);
-      firstSeenStable.set(newKey, t);
       lastSeen.set(newKey, t);
+      if (!inBootSuppress()) {
+        currentFamily.set(bKey, seen.family);
+        lastAlias.set(newKey, seen.alias);
+        startedAt.set(newKey, t);
+        clearOtherFamilies(bKey, seen.family);
+      } else {
+        currentFamily.set(bKey, seen.family);
+        lastAlias.set(newKey, seen.alias);
+        startedAt.set(newKey, t);
+        clearOtherFamilies(bKey, seen.family);
+      }
       return;
     }
-
-    // 3) 활동 종료 판정
     if (!seen && currFam) {
       const key = famKey(gid, uid, currFam);
       const lastT = lastSeen.get(key) || t;
@@ -314,7 +293,6 @@ module.exports = {
       if (!inBootSuppress()) {
         try { await logEnd(member.guild, member.displayName || member.user.username, alias, startedTs); } catch {}
       }
-
       startedAt.delete(key);
       firstSeenStable.delete(key);
       lastSeen.delete(key);
