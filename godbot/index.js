@@ -104,6 +104,7 @@ require('./commands/nickname-change').register(client);
 require('./utils/admin-digest').start(client);
 require('./utils/weekly-lottery').init(client);
 require('./utils/dm-direct')(client);
+require('./utils/soundboard-logger')(client);
 require('./utils/avatar-history').registerAvatarHistory(client);
 require('./utils/auction-thread').registerAuctionThread(client);
 
