@@ -106,6 +106,8 @@ require('./utils/dm-direct')(client);
 require('./utils/avatar-history').registerAvatarHistory(client);
 require('./utils/auction-thread').registerAuctionThread(client);
 
+const { registerEmojiAutoReact } = require('./utils/auto-emoji-react');
+registerEmojiAutoReact(client);
 
 const recruit = require("./commands/recruit.js");
 recruit.registerRecruitHandlers(client);
