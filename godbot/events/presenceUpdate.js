@@ -49,6 +49,7 @@ const GAME_NAME_MAP = new Map([
   ["ARC Raiders", "아크 레이더스"],
   ["Escape from Duckov", "이스케이프 프롬 덕코프"],
   ["DJMAX RESPECT V", "디맥"],
+  ["Lethal Company", "리썰컴퍼니"],
 ]);
 
 const GAME_FAMILIES = [
