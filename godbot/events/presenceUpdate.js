@@ -70,16 +70,16 @@ const GAME_FAMILIES = [
   }
 ];
 
-// 감지 지연 ↓ (이전 20초 → 5초)
+// 감지 지연 (안정화 대기)
 const STABLE_MS = 5_000;
-// 중복 알림 쿨다운(동일 활동 재시작 억제)
+// 동일 활동 재시작 쿨다운
 const COOLDOWN_MS = 30 * 60_000;
 // 디버그
 const DEBUG = false;
 
-const firstSeenStable = new Map();
-const lastSent = new Map();
-const startedAt = new Map();
+const lastSent = new Map();   // key -> ts
+const startedAt = new Map();  // key -> ts
+const pendingTimers = new Map(); // key -> timeoutId
 
 const now = () => Date.now();
 const n = (s) => (s || '').toString().normalize('NFKD').toLowerCase()
@@ -127,9 +127,20 @@ function famKey(gid, uid, fam, raw='') {
 }
 function baseKey(gid, uid) { return `${gid}:${uid}:`; }
 
-function clearOtherFamilies(base, keepFam) {
-  for (const k of Array.from(firstSeenStable.keys())) {
-    if (k.startsWith(base) && !k.includes(`:${keepFam}:`)) firstSeenStable.delete(k);
+function cancelPendingByBaseExcept(base, keepFam) {
+  for (const k of Array.from(pendingTimers.keys())) {
+    if (k.startsWith(base) && !k.includes(`:${keepFam}:`)) {
+      clearTimeout(pendingTimers.get(k));
+      pendingTimers.delete(k);
+    }
+  }
+}
+
+function cancelPending(key) {
+  const t = pendingTimers.get(key);
+  if (t) {
+    clearTimeout(t);
+    pendingTimers.delete(key);
   }
 }
 
@@ -149,11 +160,10 @@ function fmtHM(ts = Date.now()) {
   const d = new Date(ts);
   const parts = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
-    hourCycle: 'h23',  
+    hourCycle: 'h23',
     hour: '2-digit',
     minute: '2-digit'
   }).formatToParts(d);
-
   const hh = parts.find(p => p.type === 'hour')?.value?.padStart(2, '0') ?? '00';
   const mm = parts.find(p => p.type === 'minute')?.value?.padStart(2, '0') ?? '00';
   return `${hh}:${mm}`;
@@ -167,6 +177,11 @@ async function sendAdminLog(guild, content) {
   } catch (e) { if (DEBUG) console.warn('[presenceUpdate][adminLog]', e); }
 }
 
+function getPlayingActivity(presence) {
+  const acts = presence?.activities || [];
+  return acts.find(a => a?.type === ActivityType.Playing && a.name) || null;
+}
+
 module.exports = {
   name: 'presenceUpdate',
   async execute(oldPresence, newPresence) {
@@ -178,21 +193,22 @@ module.exports = {
       const uid = member.id;
       const base = baseKey(gid, uid);
 
-      const activities = newPresence?.activities || oldPresence?.activities || [];
-      const playing = activities.find(a => a?.type === ActivityType.Playing && a.name);
+      const playing = getPlayingActivity(newPresence) || getPlayingActivity(oldPresence);
       const aliasRes = playing ? matchFamilyOrAlias(playing.name) : null;
 
       const alias = aliasRes?.alias || (playing?.name ?? null);
       const family = aliasRes?.family || n(playing?.name || '');
 
-      // 종료 감지
-      const oldPlaying = (oldPresence?.activities || []).find(a => a?.type === ActivityType.Playing && a.name);
+      // 종료 감지 (활동이 사라졌거나 family가 바뀐 경우)
+      const oldPlaying = getPlayingActivity(oldPresence);
       const oldAliasRes = oldPlaying ? matchFamilyOrAlias(oldPlaying.name) : null;
       const oldAlias = oldAliasRes?.alias || (oldPlaying?.name ?? null);
       const oldFamily = oldAliasRes?.family || n(oldPlaying?.name || '');
 
       if ((!alias && oldAlias) || (alias && oldAlias && family !== oldFamily)) {
         const endKey = famKey(gid, uid, oldFamily, oldAlias);
+        cancelPending(endKey);
+
         const startedTs = startedAt.get(endKey);
         const timeStr = fmtHM();
         if (startedTs) {
@@ -207,49 +223,79 @@ module.exports = {
           );
         }
         startedAt.delete(endKey);
-        firstSeenStable.delete(endKey);
       }
 
-      if (!alias) return; // 현재 활동 없음
+      // 현재 활동 없음 → 종료 처리만 하고 종료
+      if (!alias) return;
 
-      clearOtherFamilies(base, family);
+      // 다른 패밀리의 보류 타이머는 정리
+      cancelPendingByBaseExcept(base, family);
 
       const key = famKey(gid, uid, family, alias);
       const t = now();
 
-      if (!firstSeenStable.has(key)) {
-        firstSeenStable.set(key, t);
-        if (DEBUG) console.log('[presenceUpdate] firstSeen', key);
-        return;
-      }
-      if (t - firstSeenStable.get(key) < STABLE_MS) return;
-
+      // 쿨다운 체크
       const last = lastSent.get(key) || 0;
       if (t - last < COOLDOWN_MS) return;
 
-      lastSent.set(key, t);
-      startedAt.set(key, t);
+      // 이미 시작 처리된 상태면 무시
+      if (startedAt.has(key)) return;
 
-      // 음성채널 텍스트 방: "님이 '게임명' 을(를) 시작했습니다." 만 전송 (채널/시간 표시 X)
-      const voice = member.voice?.channel || null;
-      let textChannel = null;
-      if (voice?.id) {
-        const textId = voiceChannelToTextChannel[voice.id];
-        if (textId) textChannel = member.guild.channels.cache.get(textId) || null;
-      }
+      // 이미 보류 타이머가 있으면 갱신/중복 방지
+      if (pendingTimers.has(key)) return;
 
-      const name = member.displayName || member.user.username;
-
-      if (textChannel) {
+      // 안정화 타이머: STABLE_MS 뒤에도 같은 활동이면 "활동 시작" 발사
+      const timeoutId = setTimeout(async () => {
         try {
-          await textChannel.send(`-# [🎮 ${name} 님이 '${alias}' 을(를) 시작했습니다.]`);
-        } catch (e) { if (DEBUG) console.warn('[presenceUpdate][text]', e); }
-      }
+          // 현재 활동 재확인
+          const curPlaying = getPlayingActivity(member.presence);
+          const curAliasRes = curPlaying ? matchFamilyOrAlias(curPlaying.name) : null;
+          const curAlias = curAliasRes?.alias || (curPlaying?.name ?? null);
+          const curFamily = curAliasRes?.family || n(curPlaying?.name || '');
 
-      // 관리자 로그: 뒤에 [HH:MM] 추가, 가능하면 음성채널명도 포함
-      const voiceStr = voice?.name ? ` | 음성: ${voice.name}` : '';
-      const timeStr = fmtHM();
-      await sendAdminLog(member.guild, `-# [🎮 활동 시작] ${name} — '${alias}' 시작${voiceStr} [${timeStr}]`);
+          // 활동이 바뀌었거나 사라졌으면 취소
+          if (!curAlias || curFamily !== family || curAlias !== alias) {
+            pendingTimers.delete(key);
+            return;
+          }
+
+          // 쿨다운 최종 확인
+          const nowTs = now();
+          const last2 = lastSent.get(key) || 0;
+          if (nowTs - last2 < COOLDOWN_MS) {
+            pendingTimers.delete(key);
+            return;
+          }
+
+          lastSent.set(key, nowTs);
+          startedAt.set(key, nowTs);
+
+          const voice = member.voice?.channel || null;
+          const name = member.displayName || member.user.username;
+
+          // 음성채널 텍스트 방 안내 (시간/채널명 X)
+          if (voice?.id) {
+            const textId = voiceChannelToTextChannel[voice.id];
+            if (textId) {
+              const textChannel = member.guild.channels.cache.get(textId);
+              if (textChannel) {
+                await textChannel.send(`-# [🎮 ${name} 님이 '${alias}' 을(를) 시작했습니다.]`);
+              }
+            }
+          }
+
+          // 관리자 로그 (시간 포함, 음성채널명 가능 시 표시)
+          const voiceStr = member.voice?.channel?.name ? ` | 음성: ${member.voice.channel.name}` : '';
+          const timeStr = fmtHM();
+          await sendAdminLog(member.guild, `-# [🎮 활동 시작] ${name} — '${alias}' 시작${voiceStr} [${timeStr}]`);
+        } catch (e) {
+          if (DEBUG) console.error('[presenceUpdate][timer]', e);
+        } finally {
+          pendingTimers.delete(key);
+        }
+      }, STABLE_MS);
+
+      pendingTimers.set(key, timeoutId);
     } catch (e) {
       if (DEBUG) console.error('[presenceUpdate][fatal]', e);
     }
