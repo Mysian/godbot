@@ -761,6 +761,12 @@ module.exports = {
     .addUserOption(opt => opt.setName("유저").setDescription("확인할 유저 (입력 안하면 본인)").setRequired(false)),
   async execute(interaction) {
     const target = interaction.options.getUser("유저") || interaction.user;
+    const profiles = readJson(profilesPath);
+    const isSelf = target.id === interaction.user.id;
+    if (!profiles[interaction.user.id] && isSelf) {
+      await startProfileRegistration(interaction);
+      return;
+    }
     const view = await buildProfileView(interaction, target);
     if (view.content) return await interaction.reply({ content: view.content, ephemeral: true });
     await interaction.reply({ embeds: view.embeds, files: view.files, components: view.components, ephemeral: true });
