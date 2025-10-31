@@ -46,6 +46,7 @@ const GAME_NAME_MAP = new Map([
   ["이터널 리턴", "이터널 리턴"],
   ["valheim", "발헤임"],
   ["enshrouded", "인슈라우디드"],
+  ["ARC Raiders", "아크 레이더스"],
 ]);
 
 const GAME_FAMILIES = [
