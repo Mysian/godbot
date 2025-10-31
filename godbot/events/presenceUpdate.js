@@ -49,14 +49,16 @@ const GAME_NAME_MAP = new Map([
   ['valheim', '발헤임'],
   ['enshrouded', '인슈라오디드'],
   ['arc raiders', '아크 레이더스'],
-  ['Escape from duckov', '이스케이프 프롬 덕코프'],
+  ['Escape from Duckov', '이스케이프 프롬 덕코프'],
   ['djmax respect v', '디맥'],
   ['phasmophobia', '파스모포비아'],
   ['lethal company', '리썰컴퍼니'],
   ['mimesis', '미메시스'],
   ['once human', '원스휴먼'],
   ['maplestory', '메이플스토리'],
-  ['던전앤파이터', '던파']
+  ['던전앤파이터', '던파'],
+  ['Delta Force Game', '델타포스'],
+  ['Melvor Idle', '멜버 아이들'],
 ]);
 
 // 클라이언트 전환이 잦은 게임 군(예: 롤)
