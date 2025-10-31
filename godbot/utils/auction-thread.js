@@ -40,54 +40,16 @@ function formatBE(n) {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' BE';
 }
 
-const digitMap = { '영':0,'공':0,'일':1,'한':1,'이':2,'두':2,'삼':3,'세':3,'사':4,'네':4,'오':5,'육':6,'륙':6,'칠':7,'팔':8,'구':9,'열':10 };
-function parseKoreanSection(sec) {
-  let total = 0;
-  let num = 0;
-  const pushUnit = (u) => { if (num === 0) num = 1; total += num * u; num = 0; };
-  for (let i = 0; i < sec.length; i++) {
-    const ch = sec[i];
-    if (digitMap.hasOwnProperty(ch)) {
-      const val = digitMap[ch];
-      if (val >= 10) { num = 1; pushUnit(10); }
-      else num = (num || 0) + val;
-    } else if (ch === '십') pushUnit(10);
-    else if (ch === '백') pushUnit(100);
-    else if (ch === '천') pushUnit(1000);
-    else if (/\d/.test(ch)) num = (num * 10) + Number(ch);
-  }
-  return total + num;
-}
-function parseKoreanAmount(text) {
-  const t = (text || '').replace(/\s+/g, '').toLowerCase();
-  const numMatch = t.match(/(\d{1,3}(?:,\d{3})+|\d+)/);
-  if (numMatch) {
-    let n = Number(numMatch[0].replace(/,/g, ''));
-    if (/만원/.test(t) && !/억/.test(t) && n < 100000) n *= 10000;
-    return n;
-  }
-  const cleaned = t.replace(/[원,\.be정수입니다정수요입니다요]+/g, '');
-  if (cleaned.includes('억')) {
-    const parts = cleaned.split('억');
-    const left = parts[0], right = parts[1] || '';
-    const leftVal = left ? parseKoreanSection(left) * 100000000 : 0;
-    let manVal = 0;
-    let rest = right;
-    if (right.includes('만')) {
-      const sp = right.split('만');
-      manVal = parseKoreanSection(sp[0]) * 10000;
-      rest = (sp[1] || '');
-    }
-    const last = parseKoreanSection(rest);
-    return leftVal + manVal + last;
-  }
-  if (cleaned.includes('만')) {
-    const sp = cleaned.split('만');
-    const manVal = parseKoreanSection(sp[0]) * 10000;
-    const last = parseKoreanSection(sp[1] || '');
-    return manVal + last;
-  }
-  return parseKoreanSection(cleaned);
+/* 숫자만 인식: ^[숫자(콤마허용)] [옵션:원|정수|BE]$ 만 허용 */
+const STRICT_NUM_REGEX = /^\s*(\d{1,3}(?:,\d{3})+|\d+)\s*(원|정수|be)?\s*$/i;
+function parseStrictNumericAmount(text) {
+  if (!text) return null;
+  const m = text.match(STRICT_NUM_REGEX);
+  if (!m) return null;
+  const raw = m[1].replace(/,/g, '');
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
 }
 
 function canManage(member) {
@@ -125,7 +87,7 @@ async function handleStart(message) {
   if (message.channel.parentId !== PARENT_CHANNEL_ID) return;
   if (!canManage(message.member)) return;
   await setActive(message.channel.id, true, { startedBy: message.author.id, startedAt: Date.now(), bids: {}, highestBid: 0, highestBidder: null });
-  await message.channel.send({ content: `경매 시작되었습니다. 최소 호가 단위는 ${formatBE(MIN_STEP)} 입니다. 본인 보유 정수 내에서만 입찰 가능합니다. 숫자·콤마·한글 금액 모두 인식합니다.` });
+  await message.channel.send({ content: `경매 시작되었습니다. 최소 호가 단위는 ${formatBE(MIN_STEP)} 입니다. 보유 정수 내에서만 입찰 가능하며, 숫자(콤마 허용)만 입력하세요. 예) 500000, 500,000, 500000원, 500000정수, 500000 BE` });
 }
 
 async function handleEnd(message) {
@@ -151,8 +113,10 @@ async function handleBid(message) {
   const state = getState(message.channel.id);
   if (!state || !state.active) return;
   if (message.author.bot) return;
-  const amt = parseKoreanAmount(message.content || '');
-  if (!Number.isFinite(amt) || amt <= 0) return;
+
+  const amt = parseStrictNumericAmount(message.content || '');
+  if (amt === null) return; // 숫자 형식이 아니면 무반응
+
   const be = getBalance(message.author.id);
   if (amt > be) {
     await message.reply({ content: `보유 정수 부족: 현재 보유 ${formatBE(be)} / 제시 ${formatBE(amt)}` });
