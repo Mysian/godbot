@@ -144,14 +144,17 @@ function fmtDur(ms) {
 }
 
 function fmtHM(ts = Date.now()) {
-  // 한국 시간 HH:MM (예: 23:07)
   const d = new Date(ts);
-  return new Intl.DateTimeFormat('ko-KR', {
+  const parts = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
-    hour12: false,
+    hourCycle: 'h23',  
     hour: '2-digit',
     minute: '2-digit'
-  }).format(d);
+  }).formatToParts(d);
+
+  const hh = parts.find(p => p.type === 'hour')?.value?.padStart(2, '0') ?? '00';
+  const mm = parts.find(p => p.type === 'minute')?.value?.padStart(2, '0') ?? '00';
+  return `${hh}:${mm}`;
 }
 
 async function sendAdminLog(guild, content) {
