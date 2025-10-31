@@ -92,6 +92,7 @@ require("./utils/approval-flow")(client);
 require("./utils/approval-blocker")(client);
 require("./utils/youtube-panel").setup(client);
 require("./utils/caution-flow.js")(client);
+require("./utils/auto-grant-game-role").register(client);
 require('./utils/voiceWatcher')(client);
 require('./utils/restricted-role-guard')(client);
 require('./utils/donor-role-expirer')(client);
@@ -104,6 +105,7 @@ require('./utils/weekly-lottery').init(client);
 require('./utils/dm-direct')(client);
 require('./utils/avatar-history').registerAvatarHistory(client);
 require('./utils/auction-thread').registerAuctionThread(client);
+
 
 const recruit = require("./commands/recruit.js");
 recruit.registerRecruitHandlers(client);
