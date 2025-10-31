@@ -1006,6 +1006,22 @@ if (
 
 if (interaction.customId.startsWith('profile:')) return;
 
+  if (interaction.customId === 'profile_open') {
+  try {
+    const profileCmd = client.commands.get("프로필") || require("./commands/profile.js");
+    if (!interaction.options) interaction.options = { getUser: () => null };
+    if (!interaction.options.getUser) interaction.options.getUser = () => null;
+
+    await profileCmd.execute(interaction);
+  } catch (err) {
+    console.error('[profile_open 처리 오류]', err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ 프로필 열기 중 오류가 발생했어. 채팅창에서 직접 `/프로필`을 실행해줘.", ephemeral: true }).catch(() => {});
+    }
+  }
+  return; 
+}
+
   if (interaction.customId.endsWith('_open')) {
     try {
       if (interaction.customId === 'complaint_open') return await complaint.execute(interaction);
