@@ -1,7 +1,8 @@
 // godbot/events/presenceUpdate.js
 const { Events, ActivityType } = require("discord.js");
 
-// 음성채널ID → 동일 텍스트채널ID (같은 숫자) 매핑
+const ADMIN_LOG_CHANNEL_ID = "1433747936944062535";
+
 const voiceChannelToTextChannel = {
   "1222085152600096778": "1222085152600096778",
   "1222085194706587730": "1222085194706587730",
@@ -19,7 +20,6 @@ const voiceChannelToTextChannel = {
   "1209157622662561813": "1209157622662561813",
 };
 
-// 인식할 게임명 → 치환 이름
 const GAME_NAME_MAP = new Map([
   ["league of legends", "롤"],
   ["overwatch 2", "오버워치"],
@@ -48,7 +48,6 @@ const GAME_NAME_MAP = new Map([
   ["Enshrouded", "인슈라오디드"],
 ]);
 
-// ‘게임 가족’(동일 계열 활동명)을 하나로 묶기
 const GAME_FAMILIES = [
   {
     id: "lol",
@@ -64,9 +63,8 @@ const GAME_FAMILIES = [
   },
 ];
 
-// 안정화 대기/쿨다운
-const STABLE_MS = 20_000;   // 활동이 이 시간 이상 계속될 때만 알림
-const COOLDOWN_MS = 60 * 60_000; // 같은 유저·같은 게임 재알림 제한
+const STABLE_MS = 20_000;
+const COOLDOWN_MS = 60 * 60_000; // 60분 쿨다운
 
 function now() { return Date.now(); }
 
@@ -80,6 +78,7 @@ function normalize(s) {
     .replace(/\s+/g, " ")
     .trim();
 }
+
 function diceCoefficient(a, b) {
   const A = normalize(a);
   const B = normalize(b);
@@ -104,7 +103,6 @@ function diceCoefficient(a, b) {
   return (2 * hits) / (a2.length + Math.max(0, B.length - 1));
 }
 
-// 가족 우선 감지 → 없으면 기존 매칭
 function matchFamilyOrAlias(activityName) {
   const n = normalize(activityName);
   if (!n) return null;
@@ -118,7 +116,6 @@ function matchFamilyOrAlias(activityName) {
     }
   }
 
-  // 가족이 없으면 기존 룰로 별칭 탐색
   let best = null;
   let bestScore = 0;
   for (const [raw, alias] of GAME_NAME_MAP) {
@@ -145,20 +142,51 @@ function findAliasFamily(presence) {
   return null;
 }
 
-// 상태 메모리
-const firstSeenStable = new Map(); // key=gid:uid:family → 첫 감지 시각
-const lastSent = new Map();        // key=gid:uid:family → 마지막 전송 시각
+const firstSeenStable = new Map(); // gid:uid:family → 첫 감지 시각
+const lastSent = new Map();        // gid:uid:family → 마지막 시작 알림 시각(쿨다운 기준)
+const startedAt = new Map();       // gid:uid:family → 활동 시작 시각(로그용)
 
 function baseKey(gid, uid) { return `${gid}:${uid}:`; }
 function famKey(gid, uid, fam) { return `${gid}:${uid}:${fam}`; }
 
-// 동일 유저의 다른 가족 키들 정리
 function clearOtherFamilies(base, keepFam = null) {
   for (const k of Array.from(firstSeenStable.keys())) {
     if (k.startsWith(base) && (!keepFam || !k.endsWith(`:${keepFam}`))) {
       firstSeenStable.delete(k);
     }
   }
+}
+
+function formatDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const parts = [];
+  if (h) parts.push(`${h}시간`);
+  if (m) parts.push(`${m}분`);
+  if (!h && !m) parts.push(`${sec}초`);
+  return parts.join(" ");
+}
+
+async function logStart(member, alias, voice) {
+  const guild = member.guild;
+  const adminCh = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
+  if (!adminCh) return;
+  const name = member.displayName || member.user.username;
+  const vName = voice?.name ? ` | 음성: ${voice.name}` : "";
+  await adminCh.send(`-# [🎮 활동 시작] **${name}** — '${alias}' 시작${vName}`);
+}
+
+async function logEndByKey(guild, userDisplayName, key, aliasOverride = null) {
+  const adminCh = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
+  if (!adminCh) return;
+  const started = startedAt.get(key);
+  if (!started) return;
+  const dur = formatDuration(now() - started);
+  const alias = aliasOverride || key.split(":").pop();
+  await adminCh.send(`-# [🛑 활동 종료] **${userDisplayName}** — '${alias}' 종료 | 총 플레이: ${dur}`);
+  startedAt.delete(key);
 }
 
 module.exports = {
@@ -171,8 +199,14 @@ module.exports = {
     const gid = member.guild.id;
     const bKey = baseKey(gid, member.id);
 
-    // 음성에 없으면 모든 기록 초기화
+    // 음성 나가면: 진행 중이던 모든 가족 활동 종료 로그
     if (!voice) {
+      const name = member.displayName || member.user.username;
+      for (const k of Array.from(startedAt.keys())) {
+        if (k.startsWith(bKey)) {
+          await logEndByKey(member.guild, name, k);
+        }
+      }
       for (const k of Array.from(firstSeenStable.keys())) {
         if (k.startsWith(bKey)) firstSeenStable.delete(k);
       }
@@ -187,14 +221,15 @@ module.exports = {
     const oldRes = findAliasFamily(oldPresence);
     const newRes = findAliasFamily(newPresence);
 
-    // 가족 전환/활동 종료 시 정리
+    // 가족 전환/활동 종료 시: 이전 가족 종료 로그
     if ((!newRes && oldRes) || (oldRes && newRes && oldRes.family !== newRes.family)) {
-      if (oldRes) firstSeenStable.delete(famKey(gid, member.id, oldRes.family));
+      const kOld = famKey(gid, member.id, oldRes.family);
+      await logEndByKey(member.guild, member.displayName || member.user.username, kOld, oldRes.alias);
+      firstSeenStable.delete(kOld);
     }
 
     if (!newRes) return;
 
-    // 같은 유저의 다른 가족 대기시간 초기화
     clearOtherFamilies(bKey, newRes.family);
 
     const k = famKey(gid, member.id, newRes.family);
@@ -202,21 +237,23 @@ module.exports = {
 
     if (!firstSeenStable.has(k)) {
       firstSeenStable.set(k, t);
-      return; // 첫 감지 → 안정화 대기 시작
+      return;
     }
 
-    // 안정화 대기
     if (t - firstSeenStable.get(k) < STABLE_MS) return;
 
-    // 쿨다운
     const last = lastSent.get(k) || 0;
     if (t - last < COOLDOWN_MS) return;
 
     lastSent.set(k, t);
+    startedAt.set(k, t);
 
     const name = member.displayName || member.user.username;
     try {
       await textChannel.send(`-# [🎮 **${name}** 님이 '${newRes.alias}' 을(를) 시작했습니다.]`);
-    } catch (_) {}
+    } catch {}
+    try {
+      await logStart(member, newRes.alias, voice);
+    } catch {}
   },
 };
