@@ -52,7 +52,7 @@ const GAME_NAME_MAP = new Map([
   ["valheim", "발헤임"],
   ["enshrouded", "인슈라우디드"],
   ["arc raiders", "아크 레이더스"],
-  ["escape from duckov", "이스케이프 프롬 덕코프"],
+  ["Escape from Duckov", "이스케이프 프롬 덕코프"],
   ["djmax respect v", "디맥"],
   ["Phasmophobia", "파스모포비아"],
   ["Lethal Company", "리썰컴퍼니"],
@@ -199,8 +199,8 @@ async function logStart(member, alias, voice) {
   const ch = member.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
   if (!ch) return;
   const name = member.displayName || member.user.username;
-  const vName = voice?.name ? ` | 음성: ${voice.name}` : "";
-  await ch.send(`-# [🎮 활동 시작] **${name}** — '${alias}' 시작${vName} [${fmtClockKST()}]`);
+  const suffix = ` [${fmtClockKST()}]${voice?.name ? ` (🔈${voice.name})` : ""}`;
+  await ch.send(`-# [🎮 활동 시작] **${name}** — '${alias}' 시작${suffix}`);
 }
 async function logEnd(guild, userDisplayName, alias, startedTs) {
   const ch = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
