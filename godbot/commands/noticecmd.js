@@ -153,35 +153,27 @@ module.exports = {
     }
 
     // ───────────── 4. 서버 프로필 관리 안내 ─────────────
-    if (type === 'profile') {
-      const embed = new EmbedBuilder()
-        .setTitle('📝 서버 프로필 관리 안내')
-        .setDescription([
-          '• 아래 버튼을 눌러 **프로필을 등록**하거나 **기존 프로필을 수정**할 수 있습니다.',
-          '• 프로필 정보는 서버 내에서 다양한 기능과 소통에 활용됩니다.',
-          '',
-          '※ 최초 1회는 [프로필 등록] 버튼을, 이후엔 [프로필 수정] 버튼을 이용하세요.'
-        ].join('\n'))
-        .setColor(0x00bb77)
-        .setFooter({ text: '갓봇의 더 자세한 사용법은 /도움말 을 이용하세요.' });
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('profile_register_open')
-          .setLabel('프로필 등록')
-          .setEmoji('🆕')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId('profile_edit_open')
-          .setLabel('프로필 수정')
-          .setEmoji('📝')
-          .setStyle(ButtonStyle.Secondary),
-      );
-
-      await channel.send({ embeds: [embed], components: [row] });
-      return void interaction.reply({ content: '서버 프로필 안내 공지 전송 완료!', ephemeral: true });
-    }
-
+if (type === 'profile') {
+  const embed = new EmbedBuilder()
+    .setTitle('📝 서버 프로필 안내')
+    .setDescription([
+      '• `/프로필` 명령어 하나로 **프로필 등록**, **등록되어 있으면 프로필 보기 및 수정**이 가능합니다.',
+      '• 버튼을 눌러 바로 실행하시거나, 직접 `/프로필`을 입력해보세요.',
+      '',
+      '※ 서버 내 스탯 및 다른 유저를 평가하거나 서버 이용 현황 등을 확인할 수 있습니다.'
+    ].join('\n'))
+    .setColor(0x00bb77)
+    .setFooter({ text: '프로필의 공개/비공개 전환 또한 가능합니다.' });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('profile_open') 
+      .setLabel('프로필 열기 (/프로필)')
+      .setEmoji('📝')
+      .setStyle(ButtonStyle.Primary),
+  );
+  await channel.send({ embeds: [embed], components: [row] });
+  return void interaction.reply({ content: '서버 프로필 안내 공지 전송 완료!', ephemeral: true });
+}
 
 
     // ───────────── 5. 겐지 키우기 챔피언 모험 ─────────────
