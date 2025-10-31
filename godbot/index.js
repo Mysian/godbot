@@ -790,7 +790,7 @@ if (interaction.isModalSubmit()) {
       id === "modal_nickchange";
     const isRecruitModal = id.startsWith("recruit:");
     const isLongAwayFlow = id.startsWith("longaway:");
-    if (!interaction.replied && !interaction.deferred && !isApprovalFlowModal && !isCautionFlowModal && !isRecruitModal) {
+    if (!interaction.replied && !interaction.deferred && !isApprovalFlowModal && !isCautionFlowModal && !isRecruitModal && !isLongAwayFlow ) {
       if (!interaction.channel?.name?.startsWith('입장-')) {
         await interaction.reply({ content: "❣️ 진행 완료", ephemeral: true }).catch(() => {});
       }
