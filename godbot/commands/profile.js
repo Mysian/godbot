@@ -17,6 +17,7 @@ const { createCanvas } = require("canvas");
 const relationship = require("../utils/relationship.js");
 const activity = require("../utils/activity-tracker.js");
 const activityLogger = require("../utils/activity-logger.js");
+
 const profilesPath = path.join(__dirname, "../data/profiles.json");
 const favorPath = path.join(__dirname, "../data/favor.json");
 const bePath = path.join(__dirname, "../data/BE.json");
@@ -244,6 +245,251 @@ function renderRadarPng({ labels, values }) {
   return canvas.toBuffer("image/png");
 }
 
+/* ===============================
+   등록 플로우(프로필 미등록 시) 추가
+   =============================== */
+function buildRegisterRows(profile) {
+  const buttons1 = [
+    new ButtonBuilder().setCustomId('statusMsg').setLabel('상태 메시지').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('favGames').setLabel('선호 게임(3개)').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('owTier').setLabel('오버워치 티어/포지션').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('lolTier').setLabel('롤 티어/포지션').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('steamNick').setLabel('스팀 닉네임').setStyle(ButtonStyle.Secondary),
+  ];
+  const privacyLabel = profile.isPrivate ? '프로필 공개' : '프로필 비공개';
+  const buttons2 = [
+    new ButtonBuilder().setCustomId('lolNick').setLabel('롤 닉네임#태그').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('bnetNick').setLabel('배틀넷 닉네임').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('togglePrivacy').setLabel(privacyLabel).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('submitProfile').setLabel('프로필 등록 완료').setStyle(ButtonStyle.Success),
+  ];
+  return [new ActionRowBuilder().addComponents(buttons1), new ActionRowBuilder().addComponents(buttons2)];
+}
+
+async function startProfileRegistration(interaction) {
+  const userId = interaction.user.id;
+  const profiles = readJson(profilesPath);
+  if (profiles[userId]) {
+    return interaction.reply({ content: '이미 프로필이 등록되어 있어. `/프로필`로 확인하거나, 수정은 버튼으로 진행해.', ephemeral: true });
+  }
+
+  let profile = {
+    statusMsg: '',
+    favGames: [],
+    owTier: '',
+    lolTier: '',
+    steamNick: '',
+    lolNick: '',
+    bnetNick: '',
+    isPrivate: false,
+  };
+
+  const embed = new EmbedBuilder()
+    .setTitle('프로필 등록')
+    .setDescription('버튼을 눌러 각 정보를 입력해줘!\n모든 항목은 나중에 `/프로필` 내 **프로필 수정**으로 변경 가능해.')
+    .setColor(0x0099ff)
+    .setFooter({ text: '최초 등록 완료 전까지는 프로필이 저장되지 않아.' });
+
+  const [row1, row2] = buildRegisterRows(profile);
+  await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+  const msg = await interaction.fetchReply().catch(() => null);
+  if (!msg) return;
+
+  const validIds = new Set([
+    'statusMsg','favGames','owTier','lolTier','steamNick','lolNick','bnetNick',
+    'togglePrivacy','submitProfile'
+  ]);
+
+  const collector = msg.createMessageComponentCollector({
+    filter: (i) => i.user.id === userId && i.message.id === msg.id && validIds.has(i.customId),
+    time: 10 * 60 * 1000,
+  });
+
+  collector.on('collect', async i => {
+    if (i.customId === 'submitProfile') {
+      const all = readJson(profilesPath);
+      all[userId] = profile;
+      writeJson(profilesPath, all);
+      try {
+        await i.update({ content: '✅ 프로필 등록이 완료되었어!', embeds: [], components: [], ephemeral: true });
+      } catch {}
+      collector.stop('submitted');
+      return;
+    }
+
+    if (i.customId === 'togglePrivacy') {
+      profile.isPrivate = !profile.isPrivate;
+      const [nr1, nr2] = buildRegisterRows(profile);
+      await i.update({
+        embeds: [embed],
+        components: [nr1, nr2],
+        ephemeral: true
+      });
+      await i.followUp({ content: `현재 상태: **${profile.isPrivate ? '비공개' : '공개'}**`, ephemeral: true });
+      return;
+    }
+
+    // ===== 모달 입력 처리 =====
+    let modal = null;
+
+    if (i.customId === 'statusMsg') {
+      modal = new ModalBuilder()
+        .setCustomId('modalStatusMsg')
+        .setTitle('상태 메시지 입력')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('statusMsgInput')
+              .setLabel('상태 메시지')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(30)
+              .setPlaceholder('한마디를 입력하세요!')
+              .setRequired(true)
+          )
+        );
+    }
+    if (i.customId === 'favGames') {
+      modal = new ModalBuilder()
+        .setCustomId('modalFavGames')
+        .setTitle('선호 게임 입력 (최대 3개)')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('favGamesInput')
+              .setLabel('게임명을 콤마(,)로 구분하여 입력')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(50)
+              .setPlaceholder('예: 롤, 오버워치, 발로란트')
+              .setRequired(true)
+          )
+        );
+    }
+    if (i.customId === 'owTier') {
+      modal = new ModalBuilder()
+        .setCustomId('modalOwTier')
+        .setTitle('오버워치 티어/포지션 입력')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('owTierInput')
+              .setLabel('예: 마스터/힐러')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(30)
+              .setPlaceholder('티어/포지션')
+              .setRequired(true)
+          )
+        );
+    }
+    if (i.customId === 'lolTier') {
+      modal = new ModalBuilder()
+        .setCustomId('modalLolTier')
+        .setTitle('롤 티어/포지션 입력')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('lolTierInput')
+              .setLabel('예: 플래티넘/정글')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(30)
+              .setPlaceholder('티어/포지션')
+              .setRequired(true)
+          )
+        );
+    }
+    if (i.customId === 'steamNick') {
+      modal = new ModalBuilder()
+        .setCustomId('modalSteamNick')
+        .setTitle('스팀 닉네임 입력')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('steamNickInput')
+              .setLabel('스팀 닉네임')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(30)
+              .setRequired(true)
+          )
+        );
+    }
+    if (i.customId === 'lolNick') {
+      modal = new ModalBuilder()
+        .setCustomId('modalLolNick')
+        .setTitle('롤 닉네임#태그 입력')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('lolNickInput')
+              .setLabel('롤 닉네임#태그')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(30)
+              .setPlaceholder('예: 나무늘보#KR1')
+              .setRequired(true)
+          )
+        );
+    }
+    if (i.customId === 'bnetNick') {
+      modal = new ModalBuilder()
+        .setCustomId('modalBnetNick')
+        .setTitle('배틀넷 닉네임 입력')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('bnetNickInput')
+              .setLabel('배틀넷 닉네임')
+              .setStyle(TextInputStyle.Short)
+              .setMaxLength(30)
+              .setRequired(true)
+          )
+        );
+    }
+
+    if (!modal) {
+      try { await i.deferUpdate(); } catch {}
+      return;
+    }
+
+    try {
+      await i.showModal(modal);
+      const modalSubmit = await i.awaitModalSubmit({ time: 60_000, filter: (m) => m.user.id === userId });
+
+      if (modalSubmit.customId === 'modalStatusMsg')
+        profile.statusMsg = modalSubmit.fields.getTextInputValue('statusMsgInput');
+      if (modalSubmit.customId === 'modalFavGames') {
+        profile.favGames = modalSubmit.fields.getTextInputValue('favGamesInput').split(',').map(s => s.trim()).filter(Boolean).slice(0, 3);
+      }
+      if (modalSubmit.customId === 'modalOwTier')
+        profile.owTier = modalSubmit.fields.getTextInputValue('owTierInput');
+      if (modalSubmit.customId === 'modalLolTier')
+        profile.lolTier = modalSubmit.fields.getTextInputValue('lolTierInput');
+      if (modalSubmit.customId === 'modalSteamNick')
+        profile.steamNick = modalSubmit.fields.getTextInputValue('steamNickInput');
+      if (modalSubmit.customId === 'modalLolNick')
+        profile.lolNick = modalSubmit.fields.getTextInputValue('lolNickInput');
+      if (modalSubmit.customId === 'modalBnetNick')
+        profile.bnetNick = modalSubmit.fields.getTextInputValue('bnetNickInput');
+
+      await modalSubmit.reply({ content: '저장 완료! 다른 항목도 계속 입력 가능해.', ephemeral: true });
+    } catch {
+      try { await i.followUp({ content: '⏳ 입력 시간이 초과되었어. 다시 시도해줘.', ephemeral: true }); } catch {}
+    }
+  });
+
+  collector.on('end', async () => {
+    try {
+      const disabledRows = msg.components.map(row => {
+        const r = ActionRowBuilder.from(row);
+        r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+        return r;
+      });
+      await msg.edit({ components: disabledRows });
+    } catch {}
+  });
+}
+
+/* ===============================
+   (이하 기존 프로필 뷰/공유/수정/평가 로직 그대로)
+   =============================== */
+
 async function buildProfileShareEmbed(interaction, targetUser) {
   const userId = targetUser.id;
   const profiles = readJson(profilesPath);
@@ -383,13 +629,13 @@ async function getFavTimeRangeText(userId, now = new Date()) {
     return `${hour}시 ~ ${((hour + 1) % 24)}시`;
   };
   const isWeekday = (d) => {
-  const day = d.getDay();
-  return day >= 1 && day <= 5;
-};
-const isWeekend = (d) => {
-  const day = d.getDay();
-  return day === 0 || day === 6;
-};
+    const day = d.getDay();
+    return day >= 1 && day <= 5;
+  };
+  const isWeekend = (d) => {
+    const day = d.getDay();
+    return day === 0 || day === 6;
+  };
   const emptyHours = () => {
     const obj = {};
     for (let h = 0; h < 24; h++) obj[String(h).padStart(2, "0")] = 0;
@@ -533,12 +779,12 @@ async function buildTop3RelationsField(interaction, targetUserId) {
   const top3 = rows.sort((a, b) => b.score - a.score).slice(0, 3);
   const lines = [];
   for (const r of top3) {
-  const member = await interaction.guild.members.fetch(r.id).catch(() => null);
-  const name = member ? member.displayName : (await interaction.client.users.fetch(r.id).catch(() => null))?.username || "(탈주)";
-  const pct = totalEligibleScore > 0 ? (Math.max(0, r.score) / totalEligibleScore) * 100 : 0;
-  lines.push(`- ${name}\n${renderBar(pct)}`);
-}
-return lines.join("\n");
+    const member = await interaction.guild.members.fetch(r.id).catch(() => null);
+    const name = member ? member.displayName : (await interaction.client.users.fetch(r.id).catch(() => null))?.username || "(탈주)";
+    const pct = totalEligibleScore > 0 ? (Math.max(0, r.score) / totalEligibleScore) * 100 : 0;
+    lines.push(`- ${name}\n${renderBar(pct)}`);
+  }
+  return lines.join("\n");
 }
 
 async function buildProfileView(interaction, targetUser) {
@@ -629,7 +875,7 @@ async function buildProfileView(interaction, targetUser) {
     .addFields(fields)
     .setImage("attachment://profile-stats.png")
     .setFooter({
-      text: userId === interaction.user.id ? "/프로필등록 /프로필수정 을 통해 프로필을 보강하세요!" : "혁신적 종합게임서버, 까리한디스코드",
+      text: userId === interaction.user.id ? "/프로필 등록 후 /프로필수정 기능을 활용해 보강하세요!" : "혁신적 종합게임서버, 까리한디스코드",
       iconURL: interaction.client.user.displayAvatarURL()
     });
 
@@ -637,7 +883,7 @@ async function buildProfileView(interaction, targetUser) {
   const rateBtnLabel = viewerEntry ? "해당 유저 평가 수정하기" : "해당 유저 평가하기";
   const memoBtnLabel = viewerMemoText ? "메모 수정" : "메모하기";
   let components;
-    if (isSelf) {
+  if (isSelf) {
     const privacyLabel = profile.isPrivate ? "프로필 공개" : "프로필 비공개";
     components = [
       new ActionRowBuilder().addComponents(
@@ -761,12 +1007,16 @@ module.exports = {
     .addUserOption(opt => opt.setName("유저").setDescription("확인할 유저 (입력 안하면 본인)").setRequired(false)),
   async execute(interaction) {
     const target = interaction.options.getUser("유저") || interaction.user;
+
+    // ⬇ 등록 여부 체크 → 미등록 & 본인 대상이면 등록 플로우로 분기
     const profiles = readJson(profilesPath);
     const isSelf = target.id === interaction.user.id;
     if (!profiles[interaction.user.id] && isSelf) {
       await startProfileRegistration(interaction);
       return;
     }
+    // ⬆ 등록 분기 끝
+
     const view = await buildProfileView(interaction, target);
     if (view.content) return await interaction.reply({ content: view.content, ephemeral: true });
     await interaction.reply({ embeds: view.embeds, files: view.files, components: view.components, ephemeral: true });
@@ -872,7 +1122,6 @@ module.exports = {
         await i.channel.send({ embeds: pub.embeds, files: pub.files });
         await i.editReply({ content: "채널에 프로필을 공유했어!" });
       }
-        
 
       else if (i.customId === `profile:share_radar|${target.id}`) {
         await i.deferReply({ ephemeral: true });
@@ -881,141 +1130,136 @@ module.exports = {
         await i.editReply({ content: "채널에 오각형 스탯을 공유했어!" });
       }
 
-        else if (i.customId === `profile:pv_toggle|${target.id}`) {
-  if (i.user.id !== target.id) return i.reply({ content: "본인만 사용할 수 있어.", ephemeral: true });
-  const profiles = readJson(profilesPath);
-  const me = profiles[target.id] || {};
-  me.isPrivate = !me.isPrivate;
-  profiles[target.id] = me;
-  writeJson(profilesPath, profiles);
-  await i.reply({ content: `설정 저장됨: 현재 상태는 **${me.isPrivate ? "비공개" : "공개"}** 입니다.`, ephemeral: true });
+      else if (i.customId === `profile:pv_toggle|${target.id}`) {
+        if (i.user.id !== target.id) return i.reply({ content: "본인만 사용할 수 있어.", ephemeral: true });
+        const profiles = readJson(profilesPath);
+        const me = profiles[target.id] || {};
+        me.isPrivate = !me.isPrivate;
+        profiles[target.id] = me;
+        writeJson(profilesPath, profiles);
+        await i.reply({ content: `설정 저장됨: 현재 상태는 **${me.isPrivate ? "비공개" : "공개"}** 입니다.`, ephemeral: true });
 
-  const refreshed = await buildProfileView(interaction, target);
-  await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
-}
-
-
-     else if (i.customId === `profile:edit|${target.id}`) {
-  if (i.user.id !== target.id) return i.reply({ content: "본인만 수정할 수 있어.", ephemeral: true });
-
-  const profiles = readJson(profilesPath);
-  const myProfile = Object.assign(
-    { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false },
-    profiles[target.id] || {}
-  );
-
-  const editEmbed = new EmbedBuilder()
-    .setTitle("프로필 수정")
-    .setDescription("수정할 정보를 버튼을 통해 변경할 수 있어. 변경할 항목만 골라서 수정하자.")
-    .setColor(0x00bb77);
-
-  const [row1, row2] = buildEditRows(myProfile);
-  const ep = await i.reply({ embeds: [editEmbed], components: [row1, row2], ephemeral: true, fetchReply: true });
-
-  const validIds = new Set([
-    'edit:statusMsg','edit:favGames','edit:owTier','edit:lolTier','edit:steamNick','edit:lolNick','edit:bnetNick',
-    'edit:togglePrivacy','edit:submit'
-  ]);
-
-  const subCollector = ep.createMessageComponentCollector({
-    filter: x => x.user.id === i.user.id && x.message.id === ep.id && validIds.has(x.customId),
-    time: 10 * 60 * 1000
-  });
-
-  subCollector.on('collect', async b => {
-    // 저장 종료
-    if (b.customId === 'edit:submit') {
-      profiles[target.id] = myProfile;
-      writeJson(profilesPath, profiles);
-      try { await b.update({ content: '✅ 프로필 수정이 완료되었어!', embeds: [], components: [] }); } catch {}
-      subCollector.stop('submitted');
-
-      const refreshed = await buildProfileView(interaction, target);
-      await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
-      return;
-    }
-
-    // 공개/비공개 토글
-    if (b.customId === 'edit:togglePrivacy') {
-      myProfile.isPrivate = !myProfile.isPrivate;
-      profiles[target.id] = myProfile;
-      writeJson(profilesPath, profiles);
-      const [nr1, nr2] = buildEditRows(myProfile);
-      await b.update({ embeds: [editEmbed], components: [nr1, nr2] });
-      await i.followUp({ content: `설정 저장됨: 현재 상태는 **${myProfile.isPrivate ? '비공개' : '공개'}** 입니다.`, ephemeral: true });
-      return;
-    }
-
-    // 모달 공통 생성 헬퍼
-    const showModal = async (customId, title, inputId, label, preset = "", long = false, max = 30) => {
-      const modal = new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId(inputId)
-            .setLabel(label)
-            .setStyle(long ? TextInputStyle.Paragraph : TextInputStyle.Short)
-            .setMaxLength(max)
-            .setValue(preset)
-            .setRequired(true)
-        )
-      );
-      await b.showModal(modal);
-      return b.awaitModalSubmit({ time: 60_000, filter: m => m.user.id === i.user.id });
-    };
-
-    try {
-      if (b.customId === 'edit:statusMsg') {
-        const s = await showModal('modalStatusMsg','상태 메시지 수정','statusMsgInput','상태 메시지', myProfile.statusMsg || '', false, 30);
-        myProfile.statusMsg = s.fields.getTextInputValue('statusMsgInput');
-        await s.reply({ content: '수정 완료!', ephemeral: true });
+        const refreshed = await buildProfileView(interaction, target);
+        await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
       }
-      else if (b.customId === 'edit:favGames') {
-        const s = await showModal('modalFavGames','선호 게임 수정 (최대 3개)','favGamesInput','게임명 (콤마로 구분)', (myProfile.favGames||[]).join(', '), false, 50);
-        myProfile.favGames = parseFavGames(s.fields.getTextInputValue('favGamesInput'));
-        await s.reply({ content: '수정 완료!', ephemeral: true });
-      }
-      else if (b.customId === 'edit:owTier') {
-        const s = await showModal('modalOwTier','오버워치 티어/포지션 수정','owTierInput','티어/포지션', myProfile.owTier || '');
-        myProfile.owTier = s.fields.getTextInputValue('owTierInput');
-        await s.reply({ content: '수정 완료!', ephemeral: true });
-      }
-      else if (b.customId === 'edit:lolTier') {
-        const s = await showModal('modalLolTier','롤 티어/포지션 수정','lolTierInput','티어/포지션', myProfile.lolTier || '');
-        myProfile.lolTier = s.fields.getTextInputValue('lolTierInput');
-        await s.reply({ content: '수정 완료!', ephemeral: true });
-      }
-      else if (b.customId === 'edit:steamNick') {
-        const s = await showModal('modalSteamNick','스팀 닉네임 수정','steamNickInput','스팀 닉네임', myProfile.steamNick || '');
-        myProfile.steamNick = s.fields.getTextInputValue('steamNickInput');
-        await s.reply({ content: '수정 완료!', ephemeral: true });
-      }
-      else if (b.customId === 'edit:lolNick') {
-        const s = await showModal('modalLolNick','롤 닉네임#태그 수정','lolNickInput','롤 닉네임#태그', myProfile.lolNick || '');
-        myProfile.lolNick = s.fields.getTextInputValue('lolNickInput');
-        await s.reply({ content: '수정 완료!', ephemeral: true });
-      }
-      else if (b.customId === 'edit:bnetNick') {
-        const s = await showModal('modalBnetNick','배틀넷 닉네임 수정','bnetNickInput','배틀넷 닉네임', myProfile.bnetNick || '');
-        myProfile.bnetNick = s.fields.getTextInputValue('bnetNickInput');
-        await s.reply({ content: '수정 완료!', ephemeral: true });
-      }
-    } catch {
-      try { await i.followUp({ content: '⏳ 입력 시간이 초과되었어. 다시 시도해줘.', ephemeral: true }); } catch {}
-    }
-  });
 
-  subCollector.on('end', async () => {
-    try {
-      const disabled = ep.components.map(row => {
-        const r = ActionRowBuilder.from(row);
-        r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
-        return r;
-      });
-      await ep.edit({ components: disabled });
-    } catch {}
-  });
-}
+      else if (i.customId === `profile:edit|${target.id}`) {
+        if (i.user.id !== target.id) return i.reply({ content: "본인만 수정할 수 있어.", ephemeral: true });
 
+        const profiles = readJson(profilesPath);
+        const myProfile = Object.assign(
+          { statusMsg: "", favGames: [], owTier: "", lolTier: "", steamNick: "", lolNick: "", bnetNick: "", isPrivate: false },
+          profiles[target.id] || {}
+        );
+
+        const editEmbed = new EmbedBuilder()
+          .setTitle("프로필 수정")
+          .setDescription("수정할 정보를 버튼을 통해 변경할 수 있어. 변경할 항목만 골라서 수정하자.")
+          .setColor(0x00bb77);
+
+        const [row1, row2] = buildEditRows(myProfile);
+        const ep = await i.reply({ embeds: [editEmbed], components: [row1, row2], ephemeral: true, fetchReply: true });
+
+        const validIds = new Set([
+          'edit:statusMsg','edit:favGames','edit:owTier','edit:lolTier','edit:steamNick','edit:lolNick','edit:bnetNick',
+          'edit:togglePrivacy','edit:submit'
+        ]);
+
+        const subCollector = ep.createMessageComponentCollector({
+          filter: x => x.user.id === i.user.id && x.message.id === ep.id && validIds.has(x.customId),
+          time: 10 * 60 * 1000
+        });
+
+        subCollector.on('collect', async b => {
+          if (b.customId === 'edit:submit') {
+            profiles[target.id] = myProfile;
+            writeJson(profilesPath, profiles);
+            try { await b.update({ content: '✅ 프로필 수정이 완료되었어!', embeds: [], components: [] }); } catch {}
+            subCollector.stop('submitted');
+
+            const refreshed = await buildProfileView(interaction, target);
+            await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
+            return;
+          }
+
+          if (b.customId === 'edit:togglePrivacy') {
+            myProfile.isPrivate = !myProfile.isPrivate;
+            profiles[target.id] = myProfile;
+            writeJson(profilesPath, profiles);
+            const [nr1, nr2] = buildEditRows(myProfile);
+            await b.update({ embeds: [editEmbed], components: [nr1, nr2] });
+            await i.followUp({ content: `설정 저장됨: 현재 상태는 **${myProfile.isPrivate ? '비공개' : '공개'}** 입니다.`, ephemeral: true });
+            return;
+          }
+
+          const showModal = async (customId, title, inputId, label, preset = "", long = false, max = 30) => {
+            const modal = new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(
+              new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                  .setCustomId(inputId)
+                  .setLabel(label)
+                  .setStyle(long ? TextInputStyle.Paragraph : TextInputStyle.Short)
+                  .setMaxLength(max)
+                  .setValue(preset)
+                  .setRequired(true)
+              )
+            );
+            await b.showModal(modal);
+            return b.awaitModalSubmit({ time: 60_000, filter: m => m.user.id === i.user.id });
+          };
+
+          try {
+            if (b.customId === 'edit:statusMsg') {
+              const s = await showModal('modalStatusMsg','상태 메시지 수정','statusMsgInput','상태 메시지', myProfile.statusMsg || '', false, 30);
+              myProfile.statusMsg = s.fields.getTextInputValue('statusMsgInput');
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+            else if (b.customId === 'edit:favGames') {
+              const s = await showModal('modalFavGames','선호 게임 수정 (최대 3개)','favGamesInput','게임명 (콤마로 구분)', (myProfile.favGames||[]).join(', '), false, 50);
+              myProfile.favGames = parseFavGames(s.fields.getTextInputValue('favGamesInput'));
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+            else if (b.customId === 'edit:owTier') {
+              const s = await showModal('modalOwTier','오버워치 티어/포지션 수정','owTierInput','티어/포지션', myProfile.owTier || '');
+              myProfile.owTier = s.fields.getTextInputValue('owTierInput');
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+            else if (b.customId === 'edit:lolTier') {
+              const s = await showModal('modalLolTier','롤 티어/포지션 수정','lolTierInput','티어/포지션', myProfile.lolTier || '');
+              myProfile.lolTier = s.fields.getTextInputValue('lolTierInput');
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+            else if (b.customId === 'edit:steamNick') {
+              const s = await showModal('modalSteamNick','스팀 닉네임 수정','steamNickInput','스팀 닉네임', myProfile.steamNick || '');
+              myProfile.steamNick = s.fields.getTextInputValue('steamNickInput');
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+            else if (b.customId === 'edit:lolNick') {
+              const s = await showModal('modalLolNick','롤 닉네임#태그 수정','lolNickInput','롤 닉네임#태그', myProfile.lolNick || '');
+              myProfile.lolNick = s.fields.getTextInputValue('lolNickInput');
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+            else if (b.customId === 'edit:bnetNick') {
+              const s = await showModal('modalBnetNick','배틀넷 닉네임 수정','bnetNickInput','배틀넷 닉네임', myProfile.bnetNick || '');
+              myProfile.bnetNick = s.fields.getTextInputValue('bnetNickInput');
+              await s.reply({ content: '수정 완료!', ephemeral: true });
+            }
+          } catch {
+            try { await i.followUp({ content: '⏳ 입력 시간이 초과되었어. 다시 시도해줘.', ephemeral: true }); } catch {}
+          }
+        });
+
+        subCollector.on('end', async () => {
+          try {
+            const disabled = ep.components.map(row => {
+              const r = ActionRowBuilder.from(row);
+              r.components = r.components.map(c => ButtonBuilder.from(c).setDisabled(true));
+              return r;
+            });
+            await ep.edit({ components: disabled });
+          } catch {}
+        });
+      }
 
       else if (i.customId === `profile:favor+|${target.id}` || i.customId === `profile:favor-|${target.id}`) {
         const isGive = i.customId.includes("favor+");
