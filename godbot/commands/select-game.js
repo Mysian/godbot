@@ -247,19 +247,20 @@ module.exports = {
             { name: "🗂️ 현재 목록에 있는 게임 (페이지 " + (page + 1) + "/" + PAGES.length + ")", value: pageList || "표시할 게임이 없습니다." }
           );
 
-        const select = new StringSelectMenuBuilder()
-          .setCustomId("select")
-          .setPlaceholder("여기를 눌러 게임 태그를 설정하세요!")
-          .setMinValues(0)
-          .setMaxValues(rolesThisPage.length)
-          .addOptions(
-            rolesThisPage.map(r=>({
-              label: r.name.length>100 ? r.name.slice(0,97)+"…" : r.name,
-              value: r.id,
-              default: member.roles.cache.has(r.id),
-              emoji: GAME_EMOJIS[r.name] || undefined
-            }))
-          );
+const select = new StringSelectMenuBuilder()
+  .setCustomId("select")
+  .setPlaceholder("여기를 눌러 게임 태그를 설정하세요!")
+  .setMinValues(0)
+  .setMaxValues(rolesThisPage.length)
+  .addOptions(
+    rolesThisPage.map(r=>({
+      label: r.name.length>100 ? r.name.slice(0,97)+"…" : r.name,
+      value: r.id,
+      default: member.roles.cache.has(r.id),
+      emoji: GAME_EMOJIS[r.name] || undefined,
+      description: `선택 ${r.members.size}명`
+    }))
+  );
 
         const nav = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("search").setEmoji("🔍").setStyle("Secondary"),
