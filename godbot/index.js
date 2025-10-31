@@ -1503,9 +1503,6 @@ const genji = require('./commands/genji.js');
 const adventure = require('./commands/adventure.js');
 const genjiRank = require('./commands/genji-rank.js');
 const adventureRank = require('./commands/adventure-rank.js');
-const botPull = require('./commands/bot-pull.js');
-const botDeployCommands = require('./commands/bot-deploy-commands.js');
-const botRestart = require('./commands/bot-restart.js');
 const setStatus = require('./commands/setstatus.js');
 const removeStatus = require('./commands/removestatus.js');
 
