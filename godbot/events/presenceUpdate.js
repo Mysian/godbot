@@ -48,14 +48,35 @@ const GAME_NAME_MAP = new Map([
   ["Enshrouded", "인슈라오디드"],
 ]);
 
-// ===== 유사도 매칭 유틸 =====
+// ‘게임 가족’(동일 계열 활동명)을 하나로 묶기
+const GAME_FAMILIES = [
+  {
+    id: "lol",
+    alias: "롤",
+    keys: [
+      "league of legends",
+      "lol",
+      "riot client",
+      "leagueclient",
+      "league client",
+      "leagueclientux",
+    ],
+  },
+];
+
+// 안정화 대기/쿨다운
+const STABLE_MS = 20_000;   // 활동이 이 시간 이상 계속될 때만 알림
+const COOLDOWN_MS = 15 * 60_000; // 같은 유저·같은 게임 재알림 제한
+
+function now() { return Date.now(); }
+
 function normalize(s) {
   return (s || "")
     .toString()
     .normalize("NFKD")
     .toLowerCase()
-    .replace(/[\u0300-\u036f]/g, "") // 발음기호 제거
-    .replace(/[^0-9a-z\u3131-\u318E\uAC00-\uD7A3\s]/gi, "") // 한글/영문/숫자/공백만
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^0-9a-z\u3131-\u318e\uac00-\ud7a3\s]/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -82,37 +103,63 @@ function diceCoefficient(a, b) {
   }
   return (2 * hits) / (a2.length + Math.max(0, B.length - 1));
 }
-function matchGame(activityName) {
+
+// 가족 우선 감지 → 없으면 기존 매칭
+function matchFamilyOrAlias(activityName) {
   const n = normalize(activityName);
   if (!n) return null;
+
+  for (const fam of GAME_FAMILIES) {
+    for (const key of fam.keys) {
+      const k = normalize(key);
+      if (n.includes(k) || k.includes(n) || diceCoefficient(n, k) >= 0.85) {
+        return { family: fam.id, alias: fam.alias };
+      }
+    }
+  }
+
+  // 가족이 없으면 기존 룰로 별칭 탐색
   let best = null;
   let bestScore = 0;
   for (const [raw, alias] of GAME_NAME_MAP) {
     const key = normalize(raw);
     if (!key) continue;
-    if (n.includes(key) || key.includes(n)) return alias; // 부분일치 우선
+    if (n.includes(key) || key.includes(n)) return { family: alias, alias };
     const score = diceCoefficient(n, key);
     if (score > bestScore) {
       bestScore = score;
       best = alias;
     }
   }
-  // 너무 느슨하지 않게 임계치 설정 (0.72)
-  return bestScore >= 0.72 ? best : null;
+  return bestScore >= 0.72 ? { family: best, alias: best } : null;
 }
-function findRecognizedAlias(presence) {
+
+function findAliasFamily(presence) {
   const acts = presence?.activities || [];
   for (const a of acts) {
     if (a?.type === ActivityType.Playing && a.name) {
-      const alias = matchGame(a.name);
-      if (alias) return alias;
+      const res = matchFamilyOrAlias(a.name);
+      if (res) return res;
     }
   }
   return null;
 }
 
-// 동일 활동 1회 알림 제어용 (봇 구동 중 메모리)
-const notified = new Set();
+// 상태 메모리
+const firstSeenStable = new Map(); // key=gid:uid:family → 첫 감지 시각
+const lastSent = new Map();        // key=gid:uid:family → 마지막 전송 시각
+
+function baseKey(gid, uid) { return `${gid}:${uid}:`; }
+function famKey(gid, uid, fam) { return `${gid}:${uid}:${fam}`; }
+
+// 동일 유저의 다른 가족 키들 정리
+function clearOtherFamilies(base, keepFam = null) {
+  for (const k of Array.from(firstSeenStable.keys())) {
+    if (k.startsWith(base) && (!keepFam || !k.endsWith(`:${keepFam}`))) {
+      firstSeenStable.delete(k);
+    }
+  }
+}
 
 module.exports = {
   name: Events.PresenceUpdate,
@@ -120,49 +167,56 @@ module.exports = {
     const member = newPresence?.member || oldPresence?.member;
     if (!member || member.user?.bot) return;
 
-    // 현재 음성채널에 있어야만 알림
     const voice = member.voice?.channel;
+    const gid = member.guild.id;
+    const bKey = baseKey(gid, member.id);
+
+    // 음성에 없으면 모든 기록 초기화
     if (!voice) {
-      // 음성에 없으면 이 유저의 기록을 지워 재시작 시 다시 알림 가능
-      const gid = member.guild.id;
-      for (const key of Array.from(notified)) {
-        if (key.startsWith(`${gid}:${member.id}:`)) notified.delete(key);
+      for (const k of Array.from(firstSeenStable.keys())) {
+        if (k.startsWith(bKey)) firstSeenStable.delete(k);
       }
       return;
     }
 
-    // 같은 ID를 가진 텍스트채널로 안내 전송
     const textChannelId = voiceChannelToTextChannel[voice.id];
     if (!textChannelId) return;
     const textChannel = member.guild.channels.cache.get(textChannelId);
     if (!textChannel) return;
 
-    const oldAlias = findRecognizedAlias(oldPresence);
-    const newAlias = findRecognizedAlias(newPresence);
+    const oldRes = findAliasFamily(oldPresence);
+    const newRes = findAliasFamily(newPresence);
 
-    const gid = member.guild.id;
-    const baseKey = `${gid}:${member.id}:`;
-
-    // 활동 전환 시 이전 기록 해제
-    if (oldAlias && oldAlias !== newAlias) notified.delete(baseKey + oldAlias);
-
-    // 활동 종료 시 기록 해제
-    if (!newAlias && oldAlias) {
-      notified.delete(baseKey + oldAlias);
-      return;
+    // 가족 전환/활동 종료 시 정리
+    if ((!newRes && oldRes) || (oldRes && newRes && oldRes.family !== newRes.family)) {
+      if (oldRes) firstSeenStable.delete(famKey(gid, member.id, oldRes.family));
     }
 
-    if (!newAlias) return;
+    if (!newRes) return;
 
-    const key = baseKey + newAlias;
-    if (notified.has(key)) return; // 같은 활동은 1회만
+    // 같은 유저의 다른 가족 대기시간 초기화
+    clearOtherFamilies(bKey, newRes.family);
 
-    notified.add(key);
+    const k = famKey(gid, member.id, newRes.family);
+    const t = now();
+
+    if (!firstSeenStable.has(k)) {
+      firstSeenStable.set(k, t);
+      return; // 첫 감지 → 안정화 대기 시작
+    }
+
+    // 안정화 대기
+    if (t - firstSeenStable.get(k) < STABLE_MS) return;
+
+    // 쿨다운
+    const last = lastSent.get(k) || 0;
+    if (t - last < COOLDOWN_MS) return;
+
+    lastSent.set(k, t);
+
     const name = member.displayName || member.user.username;
     try {
-      await textChannel.send(`-# [🎮 **${name}** 님이 '${newAlias}' 을(를) 시작했습니다.]`);
-    } catch (e) {
-      // 무시
-    }
+      await textChannel.send(`-# [🎮 **${name}** 님이 '${newRes.alias}' 을(를) 시작했습니다.]`);
+    } catch (_) {}
   },
 };
