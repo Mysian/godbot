@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const CHANNEL_ID = '1202425624061415464';
+const REQUIRED_ROLE_ID = '1295701019430227988';
 const STATE_DIR = path.join(process.cwd(), 'data');
 const STATE_FILE = path.join(STATE_DIR, 'emoji-react-state.json');
 
@@ -61,6 +62,8 @@ function registerEmojiAutoReact(client) {
       if (message.author?.bot) return;
       if (!message.guild) return;
       if (message.channelId !== CHANNEL_ID) return;
+      const member = message.member;
+      if (!member?.roles?.cache?.has(REQUIRED_ROLE_ID)) return;
 
       const guildId = message.guild.id;
       const channelId = message.channelId;
