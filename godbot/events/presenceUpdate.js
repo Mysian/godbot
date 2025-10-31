@@ -42,10 +42,10 @@ const GAME_NAME_MAP = new Map([
   ["core keeper", "코어키퍼"],
   ["서든어택", "서든어택"],
   ["sudden attack", "서든어택"],
-  ["ETERNAL RETURN", "이터널 리턴"],
+  ["eternal return", "이터널 리턴"],
   ["이터널 리턴", "이터널 리턴"],
-  ["Valheim", "발헤임"],
-  ["Enshrouded", "인슈라오디드"],
+  ["valheim", "발헤임"],
+  ["enshrouded", "인슈라우디드"],
 ]);
 
 const GAME_FAMILIES = [
@@ -64,7 +64,7 @@ const GAME_FAMILIES = [
 ];
 
 const STABLE_MS = 20_000;
-const COOLDOWN_MS = 60 * 60_000; // 60분 쿨다운
+const COOLDOWN_MS = 60 * 60_000;
 
 function now() { return Date.now(); }
 
@@ -142,12 +142,12 @@ function findAliasFamily(presence) {
   return null;
 }
 
-const firstSeenStable = new Map(); // gid:uid:family → 첫 감지 시각
-const lastSent = new Map();        // gid:uid:family → 마지막 시작 알림 시각(쿨다운 기준)
-const startedAt = new Map();       // gid:uid:family → 활동 시작 시각(로그용)
+const firstSeenStable = new Map();
+const lastSent = new Map();
+const startedAt = new Map();
 
-function baseKey(gid, uid) { return `${gid}:${uid}:`; }
 function famKey(gid, uid, fam) { return `${gid}:${uid}:${fam}`; }
+function baseKey(gid, uid) { return `${gid}:${uid}:`; }
 
 function clearOtherFamilies(base, keepFam = null) {
   for (const k of Array.from(firstSeenStable.keys())) {
@@ -170,23 +170,19 @@ function formatDuration(ms) {
 }
 
 async function logStart(member, alias, voice) {
-  const guild = member.guild;
-  const adminCh = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
-  if (!adminCh) return;
+  const ch = member.guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
+  if (!ch) return;
   const name = member.displayName || member.user.username;
   const vName = voice?.name ? ` | 음성: ${voice.name}` : "";
-  await adminCh.send(`-# [🎮 활동 시작] **${name}** — '${alias}' 시작${vName}`);
+  await ch.send(`-# [🎮 활동 시작] **${name}** — '${alias}' 시작${vName}`);
 }
 
-async function logEndByKey(guild, userDisplayName, key, aliasOverride = null) {
-  const adminCh = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
-  if (!adminCh) return;
-  const started = startedAt.get(key);
-  if (!started) return;
-  const dur = formatDuration(now() - started);
-  const alias = aliasOverride || key.split(":").pop();
-  await adminCh.send(`-# [🛑 활동 종료] **${userDisplayName}** — '${alias}' 종료 | 총 플레이: ${dur}`);
-  startedAt.delete(key);
+async function logEnd(guild, userDisplayName, alias, startedTs) {
+  const ch = guild.channels.cache.get(ADMIN_LOG_CHANNEL_ID);
+  if (!ch) return;
+  if (!startedTs) return;
+  const dur = formatDuration(now() - startedTs);
+  await ch.send(`-# [🛑 활동 종료] **${userDisplayName}** — '${alias}' 종료 | 총 플레이: ${dur}`);
 }
 
 module.exports = {
@@ -195,63 +191,56 @@ module.exports = {
     const member = newPresence?.member || oldPresence?.member;
     if (!member || member.user?.bot) return;
 
-    const voice = member.voice?.channel;
     const gid = member.guild.id;
-    const bKey = baseKey(gid, member.id);
+    const uid = member.id;
+    const bKey = baseKey(gid, uid);
+    const voice = member.voice?.channel;
 
-    // 음성 나가면: 진행 중이던 모든 가족 활동 종료 로그
-    if (!voice) {
-      const name = member.displayName || member.user.username;
-      for (const k of Array.from(startedAt.keys())) {
-        if (k.startsWith(bKey)) {
-          await logEndByKey(member.guild, name, k);
-        }
-      }
-      for (const k of Array.from(firstSeenStable.keys())) {
-        if (k.startsWith(bKey)) firstSeenStable.delete(k);
-      }
-      return;
+    let textChannel = null;
+    if (voice?.id) {
+      const textId = voiceChannelToTextChannel[voice.id];
+      if (textId) textChannel = member.guild.channels.cache.get(textId) || null;
     }
-
-    const textChannelId = voiceChannelToTextChannel[voice.id];
-    if (!textChannelId) return;
-    const textChannel = member.guild.channels.cache.get(textChannelId);
-    if (!textChannel) return;
 
     const oldRes = findAliasFamily(oldPresence);
     const newRes = findAliasFamily(newPresence);
 
-    // 가족 전환/활동 종료 시: 이전 가족 종료 로그
     if ((!newRes && oldRes) || (oldRes && newRes && oldRes.family !== newRes.family)) {
-      const kOld = famKey(gid, member.id, oldRes.family);
-      await logEndByKey(member.guild, member.displayName || member.user.username, kOld, oldRes.alias);
-      firstSeenStable.delete(kOld);
+      const key = famKey(gid, uid, oldRes.family);
+      const startedTs = startedAt.get(key);
+      await logEnd(member.guild, member.displayName || member.user.username, oldRes.alias, startedTs);
+      startedAt.delete(key);
+      firstSeenStable.delete(key);
     }
 
     if (!newRes) return;
 
     clearOtherFamilies(bKey, newRes.family);
 
-    const k = famKey(gid, member.id, newRes.family);
+    const key = famKey(gid, uid, newRes.family);
     const t = now();
 
-    if (!firstSeenStable.has(k)) {
-      firstSeenStable.set(k, t);
+    if (!firstSeenStable.has(key)) {
+      firstSeenStable.set(key, t);
       return;
     }
 
-    if (t - firstSeenStable.get(k) < STABLE_MS) return;
+    if (t - firstSeenStable.get(key) < STABLE_MS) return;
 
-    const last = lastSent.get(k) || 0;
+    const last = lastSent.get(key) || 0;
     if (t - last < COOLDOWN_MS) return;
 
-    lastSent.set(k, t);
-    startedAt.set(k, t);
+    lastSent.set(key, t);
+    startedAt.set(key, t);
 
     const name = member.displayName || member.user.username;
-    try {
-      await textChannel.send(`-# [🎮 **${name}** 님이 '${newRes.alias}' 을(를) 시작했습니다.]`);
-    } catch {}
+
+    if (textChannel) {
+      try {
+        await textChannel.send(`-# [🎮 **${name}** 님이 '${newRes.alias}' 을(를) 시작했습니다.]`);
+      } catch {}
+    }
+
     try {
       await logStart(member, newRes.alias, voice);
     } catch {}
