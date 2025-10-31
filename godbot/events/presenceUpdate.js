@@ -3,7 +3,7 @@ const { ActivityType } = require('discord.js');
 
 const ADMIN_LOG_CHANNEL_ID = '1433747936944062535';
 
-// 필요시: 음성채널→텍스트채널 매핑
+// 필요시: 음성채널→텍스트채널 매핑 (관리자 로그에는 표시하되, 음성채널 채팅 메시지에는 표시하지 않음)
 const voiceChannelToTextChannel = {
   "1222085152600096778": "1222085152600096778",
   "1222085194706587730": "1222085194706587730",
@@ -21,6 +21,7 @@ const voiceChannelToTextChannel = {
   "1209157622662561813": "1209157622662561813"
 };
 
+// 영문/기타 → 한글 별칭 매핑
 const GAME_NAME_MAP = new Map([
   ['league of legends', '롤'],
   ['overwatch 2', '오버워치'],
@@ -58,16 +59,20 @@ const GAME_NAME_MAP = new Map([
   ['던전앤파이터', '던파']
 ]);
 
+// 클라이언트 전환이 잦은 게임 군(예: 롤)
 const GAME_FAMILIES = [
   {
     id: 'lol',
     alias: '롤',
-    keys: ['league of legends','lol','riot client','leagueclient','league client','leagueclientux']
+    keys: ['league of legends','lol','riot client','leagueclient','league client','leagueclientux','league of legends (tm) client']
   }
 ];
 
-const STABLE_MS = 20_000;
+// 감지 지연 ↓ (이전 20초 → 5초)
+const STABLE_MS = 5_000;
+// 중복 알림 쿨다운(동일 활동 재시작 억제)
 const COOLDOWN_MS = 30 * 60_000;
+// 디버그
 const DEBUG = false;
 
 const firstSeenStable = new Map();
@@ -76,7 +81,10 @@ const startedAt = new Map();
 
 const now = () => Date.now();
 const n = (s) => (s || '').toString().normalize('NFKD').toLowerCase()
-  .replace(/[\u0300-\u036f]/g,'').replace(/[^0-9a-z\u3131-\u318e\uac00-\ud7a3\s]/gi,'').replace(/\s+/g,' ').trim();
+  .replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^0-9a-z\u3131-\u318e\uac00-\ud7a3\s]/gi,'')
+  .replace(/\s+/g,' ')
+  .trim();
 
 function dice(a, b) {
   const A = n(a), B = n(b);
@@ -113,7 +121,6 @@ function matchFamilyOrAlias(name) {
 }
 
 function famKey(gid, uid, fam, raw='') {
-  // 같은 패밀리라도 클라이언트 전환(예: 롤 클라↔인게임) 구분 위해 raw 포함
   return `${gid}:${uid}:${fam}:${n(raw)}`;
 }
 function baseKey(gid, uid) { return `${gid}:${uid}:`; }
@@ -124,7 +131,7 @@ function clearOtherFamilies(base, keepFam) {
   }
 }
 
-function fmt(ms) {
+function fmtDur(ms) {
   const s = Math.max(0, Math.floor(ms/1000));
   const h = Math.floor(s/3600);
   const m = Math.floor((s%3600)/60);
@@ -134,6 +141,17 @@ function fmt(ms) {
   if (m) parts.push(`${m}분`);
   if (!h && !m) parts.push(`${sec}초`);
   return parts.join(' ');
+}
+
+function fmtHM(ts = Date.now()) {
+  // 한국 시간 HH:MM (예: 23:07)
+  const d = new Date(ts);
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(d);
 }
 
 async function sendAdminLog(guild, content) {
@@ -159,7 +177,6 @@ module.exports = {
       const playing = activities.find(a => a?.type === ActivityType.Playing && a.name);
       const aliasRes = playing ? matchFamilyOrAlias(playing.name) : null;
 
-      // 매칭 실패 시에도 기본 이름으로 진행 (최소 알림 보장)
       const alias = aliasRes?.alias || (playing?.name ?? null);
       const family = aliasRes?.family || n(playing?.name || '');
 
@@ -172,8 +189,17 @@ module.exports = {
       if ((!alias && oldAlias) || (alias && oldAlias && family !== oldFamily)) {
         const endKey = famKey(gid, uid, oldFamily, oldAlias);
         const startedTs = startedAt.get(endKey);
+        const timeStr = fmtHM();
         if (startedTs) {
-          await sendAdminLog(member.guild, `-# [🛑 활동 종료] **${member.displayName || member.user.username}** — '${oldAlias}' 종료 | 총 플레이: ${fmt(now()-startedTs)}`);
+          await sendAdminLog(
+            member.guild,
+            `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 | 총 플레이: ${fmtDur(now()-startedTs)} [${timeStr}]`
+          );
+        } else {
+          await sendAdminLog(
+            member.guild,
+            `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 [${timeStr}]`
+          );
         }
         startedAt.delete(endKey);
         firstSeenStable.delete(endKey);
@@ -199,7 +225,7 @@ module.exports = {
       lastSent.set(key, t);
       startedAt.set(key, t);
 
-      // 텍스트 채널(보이스 대응)이 있으면 거기로, 없으면 관리자 로그만
+      // 음성채널 텍스트 방: "님이 '게임명' 을(를) 시작했습니다." 만 전송 (채널/시간 표시 X)
       const voice = member.voice?.channel || null;
       let textChannel = null;
       if (voice?.id) {
@@ -208,15 +234,17 @@ module.exports = {
       }
 
       const name = member.displayName || member.user.username;
-      const voiceStr = voice?.name ? ` | 음성: ${voice.name}` : '';
 
       if (textChannel) {
         try {
-          await textChannel.send(`-# [🎮 **${name}** 님이 '${alias}' 을(를) 시작했습니다.]${voiceStr}`);
+          await textChannel.send(`-# [🎮 ${name} 님이 '${alias}' 을(를) 시작했습니다.]`);
         } catch (e) { if (DEBUG) console.warn('[presenceUpdate][text]', e); }
       }
 
-      await sendAdminLog(member.guild, `-# [🎮 활동 시작] **${name}** — '${alias}' 시작${voiceStr}`);
+      // 관리자 로그: 뒤에 [HH:MM] 추가, 가능하면 음성채널명도 포함
+      const voiceStr = voice?.name ? ` | 음성: ${voice.name}` : '';
+      const timeStr = fmtHM();
+      await sendAdminLog(member.guild, `-# [🎮 활동 시작] ${name} — '${alias}' 시작${voiceStr} [${timeStr}]`);
     } catch (e) {
       if (DEBUG) console.error('[presenceUpdate][fatal]', e);
     }
