@@ -45,11 +45,12 @@ const GAME_NAME_MAP = new Map([
   ["eternal return", "이터널 리턴"],
   ["이터널 리턴", "이터널 리턴"],
   ["valheim", "발헤임"],
-  ["enshrouded", "인슈라우디드"],
+  ["enshrouded", "인슈라오디드"],
   ["ARC Raiders", "아크 레이더스"],
   ["Escape from Duckov", "이스케이프 프롬 덕코프"],
   ["DJMAX RESPECT V", "디맥"],
   ["Lethal Company", "리썰컴퍼니"],
+  ["Once Human", "원스휴먼"],
 ]);
 
 const GAME_FAMILIES = [
@@ -63,6 +64,7 @@ const GAME_FAMILIES = [
       "leagueclient",
       "league client",
       "leagueclientux",
+      "league of Legends (TM) Client",
     ],
   },
 ];
