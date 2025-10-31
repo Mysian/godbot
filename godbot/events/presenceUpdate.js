@@ -45,7 +45,16 @@ const GAME_NAME_MAP = new Map([
   ["eternal return", "이터널 리턴"],
   ["이터널 리턴", "이터널 리턴"],
   ["valheim", "발헤임"],
-  ["enshrouded", "인슈라우디드"],
+  ["enshrouded", "인슈라오디드"],
+  ["arc raiders", "아크 레이더스"],
+  ["escape from duckov", "이스케이프 프롬 덕코프"],
+  ["djmax respect v", "디맥"],
+  ["Phasmophobia", "파스모포비아"],
+  ["Lethal Company", "리썰컴퍼니"],
+  ["MIMESIS", "미메시스"],
+  ["Once Human", "원스휴먼"],
+  ["MapleStory", "메이플스토리"],
+  ["던전앤파이터", "던파"],
 ]);
 
 const GAME_FAMILIES = [
