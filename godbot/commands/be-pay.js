@@ -31,7 +31,6 @@ module.exports = {
     const reasonGiveRole = reasonInput || `역할관리자 지급 by <@${interaction.user.id}>`;
     const reasonTakeRole = reasonInput || `역할관리자 차감 by <@${interaction.user.id}>`;
 
-    // 역할 지급/차감
     if (role) {
       await interaction.deferReply({ ephemeral: false });
       await interaction.guild.members.fetch();
@@ -74,11 +73,12 @@ module.exports = {
       } else {
         let txt = msg.join('\n');
         if (txt.length > 1800) txt = txt.slice(0, 1800) + '\n(생략)';
+        const reasonLine = `\n사유: ${amount < 0 ? reasonTakeRole : reasonGiveRole}`;
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setTitle(`🔷 역할 지급/차감 결과 (${members.size}명)`)
-              .setDescription(txt)
+              .setDescription(txt + reasonLine)
               .setColor(amount < 0 ? 0xff5555 : 0x3399ff)
               .setTimestamp()
           ]
@@ -86,7 +86,6 @@ module.exports = {
       }
     }
 
-    // 유저 지급/차감
     if (amount < 0) {
       const current = getBE(target.id);
       if (current <= 0) {
@@ -106,7 +105,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setTitle('🔷 파랑 정수 차감')
-            .setDescription(`<@${target.id}>의 BE에서 🔻 **${minus.toLocaleString()} 🔷 BE** 차감됨!`)
+            .setDescription(`<@${target.id}>의 BE에서 🔻 **${minus.toLocaleString()} 🔷 BE** 차감됨!\n사유: ${reasonTake}`)
             .setColor(0xff5555)
             .setTimestamp()
         ]
@@ -117,7 +116,7 @@ module.exports = {
         embeds: [
           new EmbedBuilder()
             .setTitle('🔷 파랑 정수 지급')
-            .setDescription(`<@${target.id}>에게 🔺 **${amount.toLocaleString()} 🔷 BE** 지급 완료! \n(/정수조회 명령어로 확인 가능)`)
+            .setDescription(`<@${target.id}>에게 🔺 **${amount.toLocaleString()} 🔷 BE** 지급 완료!\n사유: ${reasonGive}\n(/정수조회 명령어로 확인 가능)`)
             .setColor(0x33cc99)
             .setTimestamp()
         ]
