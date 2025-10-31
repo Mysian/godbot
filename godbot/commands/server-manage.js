@@ -104,7 +104,7 @@ module.exports = {
     .addSubcommandGroup(g =>
       g
         .setName("역할")
-        .setDescription("역할(로ㅣ) 관리")
+        .setDescription("역할 관리")
         .addSubcommand(s =>
           s
             .setName("생성")
@@ -374,8 +374,7 @@ module.exports = {
                 .setRequired(true)
             )
         )
-    )
-    .toJSON(),
+    ),
 
   async execute(interaction) {
     if (!interaction.inGuild()) {
