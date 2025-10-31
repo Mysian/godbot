@@ -59,6 +59,7 @@ const GAME_NAME_MAP = new Map([
   ['던전앤파이터', '던파'],
   ['Delta Force Game', '델타포스'],
   ['Melvor Idle', '멜버 아이들'],
+  ['Cyphers', '사이퍼즈'],
 ]);
 
 // 클라이언트 전환이 잦은 게임 군(예: 롤)
