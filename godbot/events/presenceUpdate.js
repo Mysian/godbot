@@ -80,10 +80,10 @@ const GAME_FAMILIES = [
   },
 ];
 
-const STABLE_MS_DEFAULT = 20_000;
-const FAMILY_STABLE_MS = { lol: 30_000 };
-const END_GRACE_MS = 2 * 60_000;
-const COOLDOWN_MS = 60 * 60_000;
+const STABLE_MS_DEFAULT = 7_000;
+const FAMILY_STABLE_MS = { lol: 12_000 };
+const END_GRACE_MS = 2 * 30_000;
+const COOLDOWN_MS = 15 * 60_000;
 
 function getStableMs(fam) {
   return FAMILY_STABLE_MS[fam] || STABLE_MS_DEFAULT;
