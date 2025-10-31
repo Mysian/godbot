@@ -52,7 +52,7 @@ function makeJumpEmbed(title, description, url, color=0x7b2ff2) {
   return new EmbedBuilder()
     .setColor(color)
     .setTitle(title)
-    .setDescription(description || "")
+    .setDescription(description || "내용이 없습니다.")
     .setURL(url)
     .setFooter({ text: "까리한 디스코드 • 갓봇 알림" })
     .setTimestamp();
@@ -72,7 +72,7 @@ async function relayByRoleMention(message, roleId, titleText) {
 
   if (targets.length === 0) return;
   const text = (message.cleanContent || "").slice(0, 1900);
-  const embed = makeJumpEmbed(`🔔 ${titleText} 새 알림`, text || "(내용 없음)", message.url, 0x00b894);
+  const embed = makeJumpEmbed(`🔔 ${titleText} 새 알림`, text || "내용이 없습니다.", message.url, 0x00b894);
   for (const uid of targets) {
     const user = await message.client.users.fetch(uid).catch(()=>null);
     if (!user) continue;
@@ -90,7 +90,7 @@ async function relayByChannel(message, channelId, titleText) {
   const targets = Object.entries(store).filter(([, s]) => !!s[key]).map(([uid]) => uid);
   if (targets.length === 0) return;
   const text = (message.cleanContent || "").slice(0, 1900);
-  const embed = makeJumpEmbed(`📬 ${titleText}`, text || "(내용 없음)", message.url, 0x0984e3);
+  const embed = makeJumpEmbed(`📬 ${titleText}`, text || "내용이 없습니다.", message.url, 0x0984e3);
   for (const uid of targets) {
     const user = await message.client.users.fetch(uid).catch(()=>null);
     if (!user) continue;
@@ -125,10 +125,10 @@ registerRelaysOnce();
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("알림")
-    .setDescription("개인DM을 통해 특정 요소의 알림/알람을 받습니다. [토글 가능]")
+    .setDescription("개인 DM으로 특정 항목의 알림을 받으실 수 있습니다. (토글 가능)")
     .addStringOption(opt =>
       opt.setName("옵션")
-        .setDescription("토글할 항목을 선택")
+        .setDescription("토글할 항목을 선택해 주세요.")
         .setRequired(true)
         .addChoices(
           { name: "경매", value: "경매" },
@@ -148,10 +148,10 @@ module.exports = {
     const meta = MAP[choice];
     if (!meta) return interaction.reply({ content: "잘못된 옵션입니다.", ephemeral: true });
 
-    if (!interaction.guild) return interaction.reply({ content: "서버 안에서만 사용할 수 있어.", ephemeral: true });
+    if (!interaction.guild) return interaction.reply({ content: "서버 안에서만 사용하실 수 있습니다.", ephemeral: true });
 
     const member = await interaction.guild.members.fetch(interaction.user.id).catch(()=>null);
-    if (!member) return interaction.reply({ content: "멤버 정보를 찾지 못했어.", ephemeral: true });
+    if (!member) return interaction.reply({ content: "멤버 정보를 찾지 못했습니다.", ephemeral: true });
 
     const store = loadStore();
     const uid = interaction.user.id;
@@ -168,8 +168,8 @@ module.exports = {
 
     const status = nowOn ? "ON" : "OFF";
     const tip = nowOn
-      ? "이제부터 해당 알림이 DM으로 전송돼."
-      : "해당 알림 DM 전송이 중지됐어.";
+      ? "이제부터 해당 알림이 DM으로 전송됩니다."
+      : "해당 알림 DM 전송이 중지되었습니다.";
     const embed = new EmbedBuilder()
       .setColor(nowOn ? 0x2ecc71 : 0xe74c3c)
       .setTitle(`알림 옵션: ${choice} → ${status}`)
@@ -184,14 +184,14 @@ module.exports = {
           .setColor(0xf1c40f)
           .setTitle(`테스트 알림: ${choice}`)
           .setDescription("실제 알림은 관련 글이 올라오거나 역할 멘션 시 도착합니다.")
-          .setFooter({ text: "DM 수신 차단 시 도착하지 않습니다." })
+          .setFooter({ text: "DM 수신이 차단되어 있을 경우 도착하지 않습니다." })
           .setTimestamp()
       : null;
     if (nowOn) {
       const ok = await dmUser(interaction.user, { embeds: [testMsg] });
       if (!ok) {
         try {
-          await interaction.followUp({ content: "DM 전송에 실패했어. DM 수신 허용 상태를 확인해줘.", ephemeral: true });
+          await interaction.followUp({ content: "DM 전송에 실패했습니다. DM 수신 허용 상태를 확인해 주세요.", ephemeral: true });
         } catch {}
       }
     }
