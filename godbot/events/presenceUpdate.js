@@ -66,8 +66,14 @@ const GAME_FAMILIES = [
   },
 ];
 
-const STABLE_MS = 20_000;
+const STABLE_MS_DEFAULT = 20_000;
+const FAMILY_STABLE_MS = { lol: 30_000 };
+const END_GRACE_MS = 2 * 60_000;
 const COOLDOWN_MS = 60 * 60_000;
+
+function getStableMs(fam) {
+  return FAMILY_STABLE_MS[fam] || STABLE_MS_DEFAULT;
+}
 
 function now() { return Date.now(); }
 
@@ -148,6 +154,9 @@ function findAliasFamily(presence) {
 const firstSeenStable = new Map();
 const lastSent = new Map();
 const startedAt = new Map();
+const lastSeen = new Map();
+const currentFamily = new Map();
+const lastAlias = new Map();
 
 function famKey(gid, uid, fam) { return `${gid}:${uid}:${fam}`; }
 function baseKey(gid, uid) { return `${gid}:${uid}:`; }
@@ -156,6 +165,16 @@ function clearOtherFamilies(base, keepFam = null) {
   for (const k of Array.from(firstSeenStable.keys())) {
     if (k.startsWith(base) && (!keepFam || !k.endsWith(`:${keepFam}`))) {
       firstSeenStable.delete(k);
+    }
+  }
+  for (const k of Array.from(startedAt.keys())) {
+    if (k.startsWith(base) && (!keepFam || !k.endsWith(`:${keepFam}`))) {
+      startedAt.delete(k);
+    }
+  }
+  for (const k of Array.from(lastSeen.keys())) {
+    if (k.startsWith(base) && (!keepFam || !k.endsWith(`:${keepFam}`))) {
+      lastSeen.delete(k);
     }
   }
 }
@@ -205,47 +224,74 @@ module.exports = {
       if (textId) textChannel = member.guild.channels.cache.get(textId) || null;
     }
 
-    const oldRes = findAliasFamily(oldPresence);
-    const newRes = findAliasFamily(newPresence);
-
-    if ((!newRes && oldRes) || (oldRes && newRes && oldRes.family !== newRes.family)) {
-      const key = famKey(gid, uid, oldRes.family);
-      const startedTs = startedAt.get(key);
-      await logEnd(member.guild, member.displayName || member.user.username, oldRes.alias, startedTs);
-      startedAt.delete(key);
-      firstSeenStable.delete(key);
-    }
-
-    if (!newRes) return;
-
-    clearOtherFamilies(bKey, newRes.family);
-
-    const key = famKey(gid, uid, newRes.family);
     const t = now();
+    const seen = findAliasFamily(newPresence);
+    const currFam = currentFamily.get(bKey) || null;
 
-    if (!firstSeenStable.has(key)) {
-      firstSeenStable.set(key, t);
+    if (seen && (!currFam || currFam === seen.family)) {
+      const key = famKey(gid, uid, seen.family);
+      lastSeen.set(key, t);
+
+      if (!startedAt.has(key)) {
+        if (!firstSeenStable.has(key)) {
+          firstSeenStable.set(key, t);
+          return;
+        }
+        const stableMs = getStableMs(seen.family);
+        if (t - firstSeenStable.get(key) < stableMs) return;
+
+        const last = lastSent.get(key) || 0;
+        if (t - last < COOLDOWN_MS) return;
+
+        lastSent.set(key, t);
+        startedAt.set(key, t);
+        currentFamily.set(bKey, seen.family);
+        lastAlias.set(key, seen.alias);
+        clearOtherFamilies(bKey, seen.family);
+
+        const name = member.displayName || member.user.username;
+        if (textChannel) {
+          try {
+            await textChannel.send(`-# [🎮 **${name}** 님이 '${seen.alias}' 을(를) 시작했습니다.]`);
+          } catch {}
+        }
+        try {
+          await logStart(member, seen.alias, voice);
+        } catch {}
+      }
       return;
     }
 
-    if (t - firstSeenStable.get(key) < STABLE_MS) return;
+    if (seen && currFam && currFam !== seen.family) {
+      const oldKey = famKey(gid, uid, currFam);
+      const alias = lastAlias.get(oldKey);
+      const startedTs = startedAt.get(oldKey);
+      try { await logEnd(member.guild, member.displayName || member.user.username, alias, startedTs); } catch {}
+      startedAt.delete(oldKey);
+      firstSeenStable.delete(oldKey);
+      lastSeen.delete(oldKey);
+      currentFamily.delete(bKey);
 
-    const last = lastSent.get(key) || 0;
-    if (t - last < COOLDOWN_MS) return;
-
-    lastSent.set(key, t);
-    startedAt.set(key, t);
-
-    const name = member.displayName || member.user.username;
-
-    if (textChannel) {
-      try {
-        await textChannel.send(`-# [🎮 **${name}** 님이 '${newRes.alias}' 을(를) 시작했습니다.]`);
-      } catch {}
+      const newKey = famKey(gid, uid, seen.family);
+      firstSeenStable.set(newKey, t);
+      lastSeen.set(newKey, t);
+      return;
     }
 
-    try {
-      await logStart(member, newRes.alias, voice);
-    } catch {}
+    if (!seen && currFam) {
+      const key = famKey(gid, uid, currFam);
+      const lastT = lastSeen.get(key) || t;
+      if (t - lastT < END_GRACE_MS) return;
+
+      const alias = lastAlias.get(key);
+      const startedTs = startedAt.get(key);
+      try { await logEnd(member.guild, member.displayName || member.user.username, alias, startedTs); } catch {}
+      startedAt.delete(key);
+      firstSeenStable.delete(key);
+      lastSeen.delete(key);
+      currentFamily.delete(bKey);
+      lastAlias.delete(key);
+      return;
+    }
   },
 };
