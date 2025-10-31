@@ -78,10 +78,10 @@ const GAME_FAMILIES = [
 
 const STABLE_MS_DEFAULT = 0;
 const FAMILY_STABLE_MS = { lol: 0 };
-const END_GRACE_MS = 2 * 60_000;
-const COOLDOWN_MS = 60 * 60_000;
+const END_GRACE_MS = 1 * 60_000;
+const COOLDOWN_MS = 30 * 60_000;
 const BOOT_TS = Date.now();
-const BOOT_SUPPRESS_MS = 90_000;
+const BOOT_SUPPRESS_MS = 30_000;
 function getStableMs(fam) {
   return FAMILY_STABLE_MS[fam] ?? STABLE_MS_DEFAULT;
 }
