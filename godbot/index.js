@@ -99,6 +99,7 @@ require('./utils/donor-role-expirer')(client);
 require('./utils/category-channel-watcher').initChannelWatcher(client);
 require('./utils/godbot-core').initGodbotCore(client);
 require('./utils/bump-reward')(client);
+require('./utils/long-inactive').register(client);
 require('./commands/nickname-change').register(client);
 require('./utils/admin-digest').start(client);
 require('./utils/weekly-lottery').init(client);
