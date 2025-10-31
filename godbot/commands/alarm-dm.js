@@ -1,4 +1,4 @@
-// commands/알림옵션.js
+// commands/alarm-dm.js
 const fs = require("fs");
 const path = require("path");
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
@@ -124,8 +124,8 @@ registerRelaysOnce();
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("알림옵션")
-    .setDescription("개인 알림 옵션을 켜거나 끕니다.")
+    .setName("알림")
+    .setDescription("개인DM을 통해 특정 요소의 알림/알람을 받습니다. [토글 가능]")
     .addStringOption(opt =>
       opt.setName("옵션")
         .setDescription("토글할 항목을 선택")
