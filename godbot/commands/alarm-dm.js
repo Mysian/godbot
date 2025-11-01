@@ -9,11 +9,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-/**
- * 알림 항목 매핑
- * - roleId: 역할 멘션이 포함된 메시지를 릴레이
- * - channelId: 특정 채널에 올라온 메시지를 릴레이
- */
+/** 알림 항목 매핑 */
 const MAP = {
   "경매":        { key: "auction",  type: "role",    roleId: "1255580504745574552" },
   "내전":        { key: "scrim",    type: "role",    roleId: "1255580383559422033" },
@@ -31,32 +27,24 @@ function loadStore() {
   if (!fs.existsSync(DATA_PATH)) fs.writeFileSync(DATA_PATH, "{}");
   try { return JSON.parse(fs.readFileSync(DATA_PATH, "utf8")); } catch { return {}; }
 }
-function saveStore(obj) {
-  fs.writeFileSync(DATA_PATH, JSON.stringify(obj, null, 2));
-}
+function saveStore(obj) { fs.writeFileSync(DATA_PATH, JSON.stringify(obj, null, 2)); }
 
 async function ensureRole(member, roleId) {
   if (!roleId) return;
   const role = member.guild.roles.cache.get(roleId) || await member.guild.roles.fetch(roleId).catch(()=>null);
   if (!role) return;
-  if (!member.roles.cache.has(role.id)) {
-    await member.roles.add(role.id, "알림 옵션 ON에 따른 역할 부여").catch(()=>{});
-  }
+  if (!member.roles.cache.has(role.id)) await member.roles.add(role.id, "알림 옵션 ON에 따른 역할 부여").catch(()=>{});
 }
 async function removeRole(member, roleId) {
   if (!roleId) return;
-  if (member.roles.cache.has(roleId)) {
-    await member.roles.remove(roleId, "알림 옵션 OFF에 따른 역할 해제").catch(()=>{});
-  }
+  if (member.roles.cache.has(roleId)) await member.roles.remove(roleId, "알림 옵션 OFF에 따른 역할 해제").catch(()=>{});
 }
 
 async function dmUser(user, payload) {
   try {
-    await user.send(payload);
+    await user.send({ ...payload, allowedMentions: { parse: [] } });
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 function baseEmbed(title, description, url, color=0x7b2ff2) {
@@ -72,43 +60,86 @@ function baseEmbed(title, description, url, color=0x7b2ff2) {
 
 function buildJumpRow(url) {
   if (!url) return null;
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel("원문으로 이동")
-      .setURL(url)
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("원문으로 이동").setURL(url)
   );
-  return row;
 }
 
-/**
- * 오토임베드가 늦게 붙는 문제 대응: 잠시 대기 후 강제 refetch
- */
+/** 오토임베드 지연 대응: 잠시 대기 후 강제 refetch */
 async function refetchWithEmbeds(originalMessage, delayMs = 1500) {
   await new Promise(r => setTimeout(r, delayMs));
   try {
     const fresh = await originalMessage.channel.messages.fetch(originalMessage.id, { force: true });
     return fresh;
-  } catch {
-    return originalMessage;
-  }
+  } catch { return originalMessage; }
 }
 
-/**
- * 메시지 → DM 페이로드 구성
- * - 텍스트: cleanContent
- * - 첨부파일: 이미지/동영상/기타는 URL을 임베드 필드로 안내(원격 파일 직접 첨부는 생략)
- * - 원문 임베드: 최대 3개 요약 복제(제목/설명/URL/이미지/썸네일/작성자명)
- * - 스티커: 이름/URL 안내
- */
-async function buildDMPayloadFromMessage(message, titleText, color) {
-  const text = (message.cleanContent || "").slice(0, 1900);
-  const main = baseEmbed(`🔔 ${titleText}`, text || "내용이 없습니다.", message.url, color);
-  const components = [];
-  const jump = buildJumpRow(message.url);
-  if (jump) components.push(jump);
+/** 길이 제한 헬퍼 */
+function clip(str, max) { return (str ?? "").toString().slice(0, max); }
 
-  // 첨부 안내(직접 첨부 대신 URL로 표시)
+/** 원문 임베드 → EmbedBuilder 완전 복제 (가능한 속성 전부) */
+function cloneEmbedsPreservingRich(srcEmbeds, limit = 10) {
+  const out = [];
+  for (let i = 0; i < srcEmbeds.length && out.length < limit; i++) {
+    const e = srcEmbeds[i];
+    const b = new EmbedBuilder();
+
+    // 색상
+    if (typeof e.color === "number") b.setColor(e.color);
+    else b.setColor(0x95a5a6);
+
+    // 기본
+    if (e.title)       b.setTitle(clip(e.title, 256));
+    if (e.url)         b.setURL(e.url);
+    if (e.description) b.setDescription(clip(e.description, 4096));
+
+    // Author
+    if (e.author?.name || e.author?.icon_url || e.author?.url) {
+      b.setAuthor({
+        name:  clip(e.author?.name ?? "", 256),
+        iconURL: e.author?.icon_url || e.author?.iconURL || null,
+        url:   e.author?.url || null,
+      });
+    }
+
+    // Thumbnail/Image
+    const thumb = e.thumbnail?.url || e.thumbnail?.proxy_url;
+    if (thumb) b.setThumbnail(thumb);
+    const img = e.image?.url || e.image?.proxy_url;
+    if (img) b.setImage(img);
+
+    // Fields
+    if (Array.isArray(e.fields)) {
+      const fields = e.fields.slice(0, 25).map(f => ({
+        name:  clip(f.name ?? "\u200b", 256),
+        value: clip(f.value ?? "\u200b", 1024),
+        inline: !!f.inline
+      }));
+      if (fields.length) b.addFields(fields);
+    }
+
+    // Footer
+    if (e.footer?.text || e.footer?.icon_url) {
+      b.setFooter({
+        text: clip(e.footer?.text ?? "", 2048),
+        iconURL: e.footer?.icon_url || e.footer?.iconURL || null
+      });
+    }
+
+    // Timestamp
+    if (e.timestamp) b.setTimestamp(new Date(e.timestamp));
+
+    out.push(b);
+  }
+  return out;
+}
+
+/** 메시지 → DM 페이로드 구성 (메인 임베드 + 원문 임베드 복제) */
+async function buildDMPayloadFromMessage(message, titleText, color) {
+  const text = clip(message.cleanContent || "", 1900);
+  const main = baseEmbed(`🔔 ${titleText}`, text || "내용이 없습니다.", message.url, color);
+
+  // 첨부(링크 안내 + 첫 이미지 노출)
   const att = [...(message.attachments?.values?.() ?? [])];
   const attLines = [];
   for (const a of att) {
@@ -118,12 +149,9 @@ async function buildDMPayloadFromMessage(message, titleText, color) {
     else attLines.push(`• 파일: ${a.name || "첨부"} — ${a.url}`);
   }
   if (attLines.length > 0) {
-    main.addFields({ name: "첨부", value: attLines.slice(0, 10).join("\n").slice(0, 1024) });
-    // 이미지가 있으면 첫 번째 이미지를 임베드 썸네일/메인이미지로 노출
+    main.addFields({ name: "첨부", value: clip(attLines.join("\n"), 1024) });
     const firstImg = att.find(x => (x.contentType || "").toLowerCase().startsWith("image/"));
-    if (firstImg) {
-      main.setImage(firstImg.url);
-    }
+    if (firstImg) main.setImage(firstImg.url);
   }
 
   // 스티커
@@ -134,63 +162,36 @@ async function buildDMPayloadFromMessage(message, titleText, color) {
     stickerLines.push(url ? `• ${name}: ${url}` : `• ${name}`);
   }
   if (stickerLines.length > 0) {
-    main.addFields({ name: "스티커", value: stickerLines.join("\n").slice(0, 1024) });
+    main.addFields({ name: "스티커", value: clip(stickerLines.join("\n"), 1024) });
   }
 
-  // 원문 임베드 요약 복제(최대 3개)
-  const embedSummaries = [];
-  const srcEmbeds = message.embeds || [];
-  for (let i = 0; i < srcEmbeds.length && i < 3; i++) {
-    const e = srcEmbeds[i];
-    const sum = new EmbedBuilder().setColor(0x95a5a6);
-    if (e.title) sum.setTitle(String(e.title).slice(0, 256));
-    if (e.description) sum.setDescription(String(e.description).slice(0, 2048));
-    if (e.url) sum.setURL(e.url);
-    const imageURL = e.image?.url || e.thumbnail?.url;
-    if (imageURL) sum.setImage(imageURL);
-    if (e.author?.name) sum.setAuthor({ name: String(e.author.name).slice(0, 256) });
-    embedSummaries.push(sum);
-  }
+  // 원문 임베드 "그대로" 복제 (최대 9개, 메인 포함하면 10개 제한)
+  const clones = cloneEmbedsPreservingRich(message.embeds || [], 9);
 
-  // 메인 + 요약 임베드들 (중첩이 아니라 나란히 여러 개 전송)
-  const payload = {
-    embeds: [main, ...embedSummaries],
-  };
-  if (components.length > 0) payload.components = components;
-  return payload;
+  const components = [];
+  const jump = buildJumpRow(message.url);
+  if (jump) components.push(jump);
+
+  return { embeds: [main, ...clones], components, allowedMentions: { parse: [] } };
 }
 
-/**
- * 중복 릴레이 방지: 메시지 단위 캐시
- */
-function getRelayCache() {
-  if (!global.__notifyRelaySent) global.__notifyRelaySent = new Set();
-  return global.__notifyRelaySent;
-}
-function markRelayed(messageId) {
-  getRelayCache().add(messageId);
-}
-function wasRelayed(messageId) {
-  return getRelayCache().has(messageId);
-}
+/** 중복 릴레이 방지 */
+function getRelayCache() { if (!global.__notifyRelaySent) global.__notifyRelaySent = new Set(); return global.__notifyRelaySent; }
+function markRelayed(id) { getRelayCache().add(id); }
+function wasRelayed(id) { return getRelayCache().has(id); }
 
 async function relayByRoleMention(message, roleId, titleText) {
   if (!message.guild || message.author?.bot) return;
   if (!message.mentions?.roles?.has(roleId)) return;
-
-  // 이미 릴레이했다면 스킵(업데이트 중복 방지)
   if (wasRelayed(message.id)) return;
 
-  // 오토임베드가 붙을 시간을 고려해 refetch
   const fresh = await refetchWithEmbeds(message);
-
   const store = loadStore();
   const targets = Object.entries(store)
     .filter(([, s]) => {
       const ent = Object.entries(MAP).find(([, v]) => v.roleId === roleId);
       if (!ent) return false;
-      const key = ent[1].key;
-      return !!s[key];
+      return !!s[ent[1].key];
     })
     .map(([uid]) => uid);
 
@@ -208,12 +209,9 @@ async function relayByRoleMention(message, roleId, titleText) {
 async function relayByChannel(message, channelId, titleText) {
   if (!message.guild || message.author?.bot) return;
   if (message.channelId !== channelId) return;
-
-  // 이미 릴레이했다면 스킵
   if (wasRelayed(message.id)) return;
 
   const fresh = await refetchWithEmbeds(message);
-
   const store = loadStore();
   const ent = Object.entries(MAP).find(([, v]) => v.channelId === channelId);
   if (!ent) return;
@@ -231,11 +229,7 @@ async function relayByChannel(message, channelId, titleText) {
   markRelayed(message.id);
 }
 
-/**
- * 한 번만 리스너 등록
- * - messageCreate: 최초 수신
- * - messageUpdate: 오토임베드가 늦게 붙는 경우 보완
- */
+/** 리스너 1회 등록 */
 function registerRelaysOnce() {
   if (global.__notifyRelayRegistered) return;
   global.__notifyRelayRegistered = true;
@@ -259,7 +253,6 @@ function registerRelaysOnce() {
 
   client.on("messageUpdate", async (_old, msg) => {
     try {
-      // 업데이트 직후 짧게 재확인(일부 케이스는 여기서 임베드가 방금 붙음)
       const m = await refetchWithEmbeds(msg, 300);
 
       await relayByRoleMention(m, MAP["경매"].roleId, "경매 역할 멘션");
@@ -275,7 +268,6 @@ function registerRelaysOnce() {
     } catch {}
   });
 }
-
 registerRelaysOnce();
 
 module.exports = {
@@ -302,7 +294,6 @@ module.exports = {
     const choice = interaction.options.getString("옵션");
     const meta = MAP[choice];
     if (!meta) return interaction.reply({ content: "잘못된 옵션입니다.", ephemeral: true });
-
     if (!interaction.guild) return interaction.reply({ content: "서버 안에서만 사용하실 수 있습니다.", ephemeral: true });
 
     const member = await interaction.guild.members.fetch(interaction.user.id).catch(()=>null);
