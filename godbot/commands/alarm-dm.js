@@ -58,8 +58,38 @@ function makeJumpEmbed(title, description, url, color=0x7b2ff2) {
     .setTimestamp();
 }
 
+function buildRelayPayload(message, title, color) {
+  // 원문 텍스트
+  const text = (message.cleanContent || "").slice(0, 1900);
+
+  // 원문 임베드 복제 (가능한 한 원형 유지)
+  const embeds = (message.embeds && message.embeds.length)
+    ? message.embeds.map(e => EmbedBuilder.from(e))
+    : [ new EmbedBuilder()
+          .setColor(color ?? 0x5865F2)
+          .setTitle(title)
+          .setDescription(text || "내용이 없습니다.")
+          .setURL(message.url)
+          .setFooter({ text: "까리한 디스코드 • 갓봇 알림" })
+          .setTimestamp()
+      ];
+
+  // 첨부파일(이미지 포함) 그대로 동봉
+  const files = message.attachments?.size
+    ? [...message.attachments.values()].map(att => ({
+        attachment: att.url,
+        name: att.name || "file"
+      }))
+    : [];
+
+  // 텍스트가 있고, 임베드도 있을 때는 텍스트를 content로도 보존
+  const payload = { content: text || null, embeds, files };
+  return payload;
+}
+
+
 async function relayByRoleMention(message, roleId, titleText) {
-  if (!message.guild || message.author?.bot) return;
+  if (!message.guild) return;
   if (!message.mentions?.roles?.has(roleId)) return;
   const store = loadStore();
   const subs = Object.entries(store).filter(([, s]) => s["auction"] || s["scrim"] || s["notice"] || s["event"] || s["intQuiz"] || s["bump"]);
@@ -71,17 +101,16 @@ async function relayByRoleMention(message, roleId, titleText) {
   }).map(([uid]) => uid);
 
   if (targets.length === 0) return;
-  const text = (message.cleanContent || "").slice(0, 1900);
-  const embed = makeJumpEmbed(`🔔 ${titleText} 새 알림`, text || "내용이 없습니다.", message.url, 0x00b894);
-  for (const uid of targets) {
-    const user = await message.client.users.fetch(uid).catch(()=>null);
-    if (!user) continue;
-    await dmUser(user, { embeds: [embed] });
-  }
+const payload = buildRelayPayload(message, `🔔 ${titleText} 새 알림`, 0x00b894);
+for (const uid of targets) {
+  const user = await message.client.users.fetch(uid).catch(()=>null);
+  if (!user) continue;
+  await dmUser(user, payload);
+}
 }
 
 async function relayByChannel(message, channelId, titleText) {
-  if (!message.guild || message.author?.bot) return;
+  if (!message.guild) return;
   if (message.channelId !== channelId) return;
   const store = loadStore();
   const m = Object.entries(MAP).find(([, v]) => v.channelId === channelId);
@@ -89,13 +118,12 @@ async function relayByChannel(message, channelId, titleText) {
   const key = m[1].key;
   const targets = Object.entries(store).filter(([, s]) => !!s[key]).map(([uid]) => uid);
   if (targets.length === 0) return;
-  const text = (message.cleanContent || "").slice(0, 1900);
-  const embed = makeJumpEmbed(`📬 ${titleText}`, text || "내용이 없습니다.", message.url, 0x0984e3);
-  for (const uid of targets) {
-    const user = await message.client.users.fetch(uid).catch(()=>null);
-    if (!user) continue;
-    await dmUser(user, { embeds: [embed] });
-  }
+const payload = buildRelayPayload(message, `📬 ${titleText}`, 0x0984e3);
+for (const uid of targets) {
+  const user = await message.client.users.fetch(uid).catch(()=>null);
+  if (!user) continue;
+  await dmUser(user, payload);
+}
 }
 
 function registerRelaysOnce() {
