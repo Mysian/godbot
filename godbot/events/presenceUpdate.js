@@ -30,7 +30,7 @@ const GAME_NAME_MAP = new Map([
   ['panicore', '페니코어'],
   ['tabletop simulator', '테탑시'],
   ['minecraft', '마인크래프트'],
-  ['CurseForge', '마인크래프트'],
+  ['curseforge', '마인크래프트'],
   ['roblox', '로블록스'],
   ['valorant', '발로란트'],
   ['apex legends', '에이펙스 레전드'],
