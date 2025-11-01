@@ -87,7 +87,14 @@ const DEBUG = false;
 
 const lastSent = new Map();   // key -> ts
 const startedAt = new Map();  // key -> ts
-const pendingTimers = new Map(); // key -> timeoutId
+const pendingTimers = new Map(); // key -> timeoutId (활동 시작 안정화)
+// [ADD] 종료 지연 타이머 (롤 전용 등)
+const pendingEndTimers = new Map(); // key -> timeoutId
+
+// [ADD] 패밀리별 종료 지연(ms) — 롤 5분
+const END_GRACE_MS_BY_FAMILY = {
+  lol: 5 * 60_000
+};
 
 const now = () => Date.now();
 const n = (s) => (s || '').toString().normalize('NFKD').toLowerCase()
@@ -141,6 +148,23 @@ function cancelPendingByBaseExcept(base, keepFam) {
       clearTimeout(pendingTimers.get(k));
       pendingTimers.delete(k);
     }
+  }
+}
+
+// [ADD] 종료 지연 타이머 취소 유틸
+function cancelPendingEndByBaseExcept(base, keepFam) {
+  for (const k of Array.from(pendingEndTimers.keys())) {
+    if (k.startsWith(base) && !k.includes(`:${keepFam}:`)) {
+      clearTimeout(pendingEndTimers.get(k));
+      pendingEndTimers.delete(k);
+    }
+  }
+}
+function cancelPendingEnd(key) {
+  const t = pendingEndTimers.get(key);
+  if (t) {
+    clearTimeout(t);
+    pendingEndTimers.delete(key);
   }
 }
 
@@ -201,11 +225,11 @@ module.exports = {
       const uid = member.id;
       const base = baseKey(gid, uid);
 
-const curPlaying = getPlayingActivity(newPresence);
-const aliasRes = curPlaying ? matchFamilyOrAlias(curPlaying.name) : null;
+      const curPlaying = getPlayingActivity(newPresence);
+      const aliasRes = curPlaying ? matchFamilyOrAlias(curPlaying.name) : null;
 
-const alias = aliasRes?.alias || (curPlaying?.name ?? null);
-const family = aliasRes?.family || n(curPlaying?.name || '');
+      const alias = aliasRes?.alias || (curPlaying?.name ?? null);
+      const family = aliasRes?.family || n(curPlaying?.name || '');
 
       // 종료 감지 (활동이 사라졌거나 family가 바뀐 경우)
       const oldPlaying = getPlayingActivity(oldPresence);
@@ -213,34 +237,92 @@ const family = aliasRes?.family || n(curPlaying?.name || '');
       const oldAlias = oldAliasRes?.alias || (oldPlaying?.name ?? null);
       const oldFamily = oldAliasRes?.family || n(oldPlaying?.name || '');
 
+      // [MOD] 종료 처리 분기
       if ((!alias && oldAlias) || (alias && oldAlias && family !== oldFamily)) {
         const endKey = famKey(gid, uid, oldFamily, oldAlias);
-        cancelPending(endKey);
 
-        const startedTs = startedAt.get(endKey);
-        const timeStr = fmtHM();
-        if (startedTs) {
-          await sendAdminLog(
-            member.guild,
-            `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 | 총 플레이: ${fmtDur(now()-startedTs)} [${timeStr}]`
-          );
-        } else {
-          await sendAdminLog(
-            member.guild,
-            `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 [${timeStr}]`
-          );
+        // 패밀리 변경은 즉시 종료 (롤→다른 게임 전환 등)
+        if (alias && oldAlias && family !== oldFamily) {
+          cancelPending(endKey);
+          cancelPendingEnd(endKey); // 혹시 남아있을 수 있는 종료 지연 취소
+          const startedTs = startedAt.get(endKey);
+          const timeStr = fmtHM();
+          if (startedTs) {
+            await sendAdminLog(
+              member.guild,
+              `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 | 총 플레이: ${fmtDur(now()-startedTs)} [${timeStr}]`
+            );
+          } else {
+            await sendAdminLog(
+              member.guild,
+              `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 [${timeStr}]`
+            );
+          }
+          startedAt.delete(endKey);
+        } else if (!alias && oldAlias) {
+          // 활동이 '사라진' 케이스 — 롤은 종료 지연 적용
+          const grace = END_GRACE_MS_BY_FAMILY[oldFamily] || 0;
+          if (grace > 0) {
+            // 이미 예약된 종료가 있으면 갱신/중복 방지
+            if (!pendingEndTimers.has(endKey)) {
+              const timeoutId = setTimeout(async () => {
+                try {
+                  pendingEndTimers.delete(endKey);
+                  const startedTs = startedAt.get(endKey);
+                  const timeStr = fmtHM();
+                  if (startedTs) {
+                    await sendAdminLog(
+                      member.guild,
+                      `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 | 총 플레이: ${fmtDur(now()-startedTs)} [${timeStr}]`
+                    );
+                  } else {
+                    await sendAdminLog(
+                      member.guild,
+                      `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 [${timeStr}]`
+                    );
+                  }
+                  startedAt.delete(endKey);
+                } catch (e) {
+                  if (DEBUG) console.error('[presenceUpdate][endTimer]', e);
+                }
+              }, grace);
+              pendingEndTimers.set(endKey, timeoutId);
+            }
+          } else {
+            // 지연 없는 일반 종료
+            cancelPending(endKey);
+            cancelPendingEnd(endKey);
+            const startedTs = startedAt.get(endKey);
+            const timeStr = fmtHM();
+            if (startedTs) {
+              await sendAdminLog(
+                member.guild,
+                `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 | 총 플레이: ${fmtDur(now()-startedTs)} [${timeStr}]`
+              );
+            } else {
+              await sendAdminLog(
+                member.guild,
+                `-# [🛑 활동 종료] ${member.displayName || member.user.username} — '${oldAlias}' 종료 [${timeStr}]`
+              );
+            }
+            startedAt.delete(endKey);
+          }
         }
-        startedAt.delete(endKey);
       }
 
-      // 현재 활동 없음 → 종료 처리만 하고 종료
+      // 현재 활동 없음 → 여기서 종료
       if (!alias) return;
 
-      // 다른 패밀리의 보류 타이머는 정리
+      // 다른 패밀리의 시작 보류 타이머는 정리
       cancelPendingByBaseExcept(base, family);
+      // [ADD] 다른 패밀리의 종료 지연 타이머도 정리 (동일 패밀리만 유지)
+      cancelPendingEndByBaseExcept(base, family);
 
       const key = famKey(gid, uid, family, alias);
       const t = now();
+
+      // [ADD] 동일 패밀리 재등장 시, 종료 지연 예약되어 있으면 취소 (롤이 5분 내 다시 잡힘)
+      cancelPendingEnd(key);
 
       // 쿨다운 체크
       const last = lastSent.get(key) || 0;
@@ -249,7 +331,7 @@ const family = aliasRes?.family || n(curPlaying?.name || '');
       // 이미 시작 처리된 상태면 무시
       if (startedAt.has(key)) return;
 
-      // 이미 보류 타이머가 있으면 갱신/중복 방지
+      // 이미 보류 타이머가 있으면 중복 방지
       if (pendingTimers.has(key)) return;
 
       // 안정화 타이머: STABLE_MS 뒤에도 같은 활동이면 "활동 시작" 발사
