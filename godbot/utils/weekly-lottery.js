@@ -102,6 +102,25 @@ function salesStatusText() {
   if (isClosedForSales()) return '판매 중지';
   return '판매 중';
 }
+function kstToUtcDate(y, m, d, hh, mm) {
+  return new Date(Date.UTC(y, m - 1, d, hh - 9, mm, 0));
+}
+function getNextResumeTime() {
+  const n = nowKST();
+  const k = kstYMD(n);
+  const dow = new Date(Date.UTC(k.y, k.m - 1, k.day, 0, 0, 0)).getUTCDay(); // 0=일, 1=월, 6=토
+  const mins = k.hh * 60 + k.mm;
+
+  // 토 19:30 이후 → 월 09:00
+  if (dow === 6 && mins >= 19 * 60 + 30) return kstToUtcDate(k.y, k.m, k.day + 2, 9, 0);
+  // 일요일 → 월 09:00
+  if (dow === 0) return kstToUtcDate(k.y, k.m, k.day + 1, 9, 0);
+  // 월 08:59까지 → 오늘 09:00
+  if (dow === 1 && mins <= 8 * 60 + 59) return kstToUtcDate(k.y, k.m, k.day, 9, 0);
+
+  // 그 외엔 어차피 ‘판매 중지’가 아님
+  return getNextDrawTime();
+}
 function formatAmount(n) {
   return Number(n || 0).toLocaleString('ko-KR');
 }
@@ -221,16 +240,16 @@ async function publishOrUpdate(client) {
   const channel = await client.channels.fetch(CHANNEL_ID);
   const state = loadState();
   ensureRound(state, state.round);
-  const nextDraw = getNextDrawTime();
-  const closed = isClosedForSales();
-  const pot = await computePoolBE();
+const closed = isClosedForSales();
+const ts = closed ? getNextResumeTime() : getNextDrawTime();
+const pot = await computePoolBE();
   if (state.rounds[state.round].messageId) {
     try {
       const msg = await channel.messages.fetch(state.rounds[state.round].messageId);
-      const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+      const embed = buildControlEmbed(pot, state, ts, closed, false);
       await msg.edit({ embeds: [embed], components: controlRows(closed, false) });
     } catch {
-      const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+      const embed = buildControlEmbed(pot, state, ts, closed, false);
       const rows = controlRows(closed, false);
       const msg = await channel.send({ embeds: [embed], components: rows });
       state.rounds[state.round].messageId = msg.id;
@@ -239,7 +258,7 @@ async function publishOrUpdate(client) {
 } else {
   await disableOldMessages(client, state);
   let msg = await findExistingRoundMessage(channel, state.round);
-  const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+  const embed = buildControlEmbed(pot, state, ts, closed, false);
   const rows = controlRows(closed, false);
   if (msg) {
     await msg.edit({ embeds: [embed], components: rows });
