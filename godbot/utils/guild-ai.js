@@ -204,6 +204,14 @@ function postProcessTone(text) {
   if (exclaim >= 0.55 && !/[!！]$/.test(t)) { if (t.length < 60) t += "!"; }
   else if (exclaim < 0.25) { t = t.replace(/[!！]{2,}/g, "!"); }
   t = t.replace(/([ㅋㅎ])\1{4,}/g, "$1$1$1");
+
+  // 살짝 온기(과하지 않게)
+  if (t.length <= 28 && Math.random() < 0.25) {
+    const soft = [" ㅎㅎ", " 🙂", " 😉", ""];
+    t += soft[Math.floor(Math.random()*soft.length)];
+  }
+  // 마침표 없이 끝나면 간단히 처리
+  if (!/[.!?…!~]$/.test(t)) t += ".";
   return t;
 }
 function jaccard(aTokens, bTokens) {
@@ -234,9 +242,10 @@ function antiEchoFilter(userText, draft) {
   return (jac < 0.35 && lcr < 3);
 }
 function diversify(line) {
-  if (line.length < 8) line += " 더 얘기해봐";
-  if (!/[.?!…!]$/.test(line)) line += ".";
-  return line;
+  // 과한 레이블/꼬리표 없이 마침만 정리
+  let t = line;
+  if (!/[.?!…!]$/.test(t)) t += ".";
+  return t;
 }
 
 function isSensitiveAsk(s) {
@@ -271,30 +280,30 @@ function craftReply(authorId, prompt, channelId) {
   const historyTokens = tokenize(convo.map(x=>x.text).join(" ").toLowerCase()).filter(w=>koreanRate(w)>=0.25).slice(-60);
   const userSeed = tokenize(prompt).filter(w => koreanRate(w) >= 0.25).slice(0, 40);
   const seed = Array.from(new Set([...userSeed, ...historyTokens]));
-  const banSeed = new Set(seed.slice(0, 30));
+  const banSet = new Set(seed.slice(0, 30));
 
   let line =
-    gen(getMarkov(authorId), seed, { maxLen: 46, temperature: 1.25, banSet: banSeed }) ||
-    gen(memory.markovGlobal, seed, { maxLen: 50, temperature: 1.15, banSet: banSeed });
+    gen(getMarkov(authorId), seed, { maxLen: 46, temperature: 1.25, banSet: banSet }) ||
+    gen(memory.markovGlobal, seed, { maxLen: 50, temperature: 1.15, banSet: banSet });
 
   if (!line) {
     const others = Object.keys(memory.users).filter(id => id !== authorId);
     if (others.length) {
       const pick = others[Math.floor(Math.random()*others.length)];
-      line = gen(getMarkov(pick), seed, { maxLen: 44, temperature: 1.2, banSet: banSeed });
+      line = gen(getMarkov(pick), seed, { maxLen: 44, temperature: 1.2, banSet: banSet });
     }
   }
-  if (!line) line = "ㅇㅇ 이해함";
+  if (!line) line = "알겠어.";
 
   let tries = 0;
   while (!antiEchoFilter(prompt, line) && tries < 5) {
     const confuse = ["근데", "솔직히", "반대로", "아무튼", "결론적으로", "한편"];
     const alt =
-      gen(memory.markovGlobal, [], { maxLen: 44, temperature: 1.55, banSet: banSeed }) ||
-      gen(memory.markovGlobal, confuse, { maxLen: 42, temperature: 1.45, banSet: banSeed });
+      gen(memory.markovGlobal, [], { maxLen: 44, temperature: 1.55, banSet: banSet }) ||
+      gen(memory.markovGlobal, confuse, { maxLen: 42, temperature: 1.45, banSet: banSet });
     if (alt && antiEchoFilter(prompt, alt)) { line = alt; break; }
     tries++;
-    if (tries >= 5) { line = "오케이, 핵심만 더 말해봐"; break; }
+    if (tries >= 5) { line = "알겠어."; break; }
   }
 
   line = postProcessTone(line);
@@ -303,48 +312,57 @@ function craftReply(authorId, prompt, channelId) {
 }
 
 function maybeFollowUp(authorModel) {
+  // 자연스러운 짧은 꼬리말만 가끔
+  const base = [
+    "맞지?", "그렇게 보는 게 낫나", "요건 네 생각이 궁금함",
+    "포인트는 뭐로 잡을까", "핵심 한 줄로 뭐야", "이 정도면 얼추 정리됨"
+  ];
   const qRate = (authorModel.questions / Math.max(1, authorModel.messages));
-  if (Math.random() < Math.min(0.28, 0.05 + qRate)) {
-    const fups = [
-      "그럼 네 결론은 뭐임?",
-      "대충 감은 옴?",
-      "케이스 조금만 더 줘봐.",
-      "네 기준으로는 어떻게 봄?",
-      "반대 의견도 있나?",
-      "이게 핵심 맞음?"
-    ];
-    return fups[Math.floor(Math.random()*fups.length)];
-  }
-  return null;
+  const p = Math.min(0.22, 0.04 + qRate * 0.6);
+  return (Math.random() < p) ? base[Math.floor(Math.random()*base.length)] : null;
 }
 
 function composeFinal(authorId, prompt, channelId) {
   const u = getUserModel(authorId);
-  const { avgLen } = averageServerTone();
-  const base = craftReply(authorId, prompt, channelId);
+  const avg = averageServerTone();
 
+  // 1) 기본 문장 생성
+  const base = craftReply(authorId, prompt, channelId) || "알겠어.";
+
+  // 2) 키워드 스파이스: 괄호 없이 자연 삽입
   const kw = topKeywordsGlobal(3);
-  const spice = Math.random() < 0.55 ? (` (${kw.join(" / ")})`) : "";
+  const spiceLine = (kw.length && Math.random() < 0.35)
+    ? ` 요즘 ${kw[0]} 얘기도 종종 나오더라`
+    : "";
 
-  const patterns = [
-    (b, fu) => b + (fu ? "\n" + fu : ""),
-    (b, fu) => "한 줄 요약: " + b + spice + (fu ? "\n" + fu : ""),
-    (b, fu) => b + " 내 생각은 이렇다." + (fu ? " " + fu : ""),
-  ];
-  const lastP = memory.lastComposerPatternByChannel.get(String(channelId)) || -1;
-  let idx = Math.floor(Math.random() * patterns.length);
-  if (idx === lastP) idx = (idx + 1) % patterns.length;
-  memory.lastComposerPatternByChannel.set(String(channelId), idx);
+  // 3) 말투 템플릿 (라벨/괄호 금지)
+  const openers = ["오케이, ", "흠, ", "음… ", "좋아. ", ""];
+  const endings = ["", "", "", " 그치.", " 맞아.", " 싶네."];
 
-  let final = patterns[idx](base, maybeFollowUp(u));
+  const opener = openers[Math.floor(Math.random()*openers.length)];
+  const ending = endings[Math.floor(Math.random()*endings.length)];
 
-  const targetLen = Math.max(14, Math.min(64, Math.round((u.avgLen + avgLen) / 2)));
-  if (tokenize(final).length < targetLen && Math.random() < 0.45) {
+  // 4) follow-up은 한 문장 뒤 자연 연결
+  const fu = maybeFollowUp(u);
+  const tail = fu ? ` ${fu}` : "";
+
+  // 5) 길이 조절
+  let final = `${opener}${base}${spiceLine}${ending}${tail}`.trim();
+  const targetLen = Math.max(14, Math.min(58, Math.round((u.avgLen + avg.avgLen) / 2)));
+  if (tokenize(final).length < targetLen && Math.random() < 0.42) {
     const extra = craftReply(authorId, prompt + " (다른 각도)", channelId);
-    if (antiEchoFilter(final, extra)) final = final + "\n" + extra;
+    if (antiEchoFilter(final, extra)) {
+      final = `${final} 또, ${extra.replace(/^또[, ]?/,"")}`.trim();
+    }
   }
 
-  return final;
+  // 6) 레이블/괄호체 강제 제거
+  final = final
+    .replace(/^\s*한\s*줄\s*요약\s*:\s*/gi, "")
+    .replace(/\([\s\S]{0,24}관점도 있음\)/gi, "")
+    .replace(/\s*,\s*\(.*?\/.*?\)/g, "");
+
+  return postProcessTone(final);
 }
 
 function register(client, { chatChannelId }) {
@@ -400,27 +418,28 @@ function register(client, { chatChannelId }) {
         const alt = composeFinal(msg.author.id, content + " (다른 관점)", msg.channel.id);
         if (antiEchoFilter(lastBot, alt)) { finalText = alt; break; }
         tries++;
-        if (tries >= 3) finalText = finalText + " (이 관점도 있음)";
       }
+      // 괄호 멘트 덧붙이지 않음
 
       memory.lastBotMsgByChannel.set(msg.channel.id, finalText);
       pushConvo(msg.channel.id, "assistant", finalText);
       await msg.channel.send(finalText);
 
-      if (Math.random() < 0.10) {
-        const top = Object.entries(
-          Object.values(memory.users).reduce((acc, u) => {
-            for (const [w,c] of Object.entries(u.topWords)) acc[w]=(acc[w]||0)+c;
-            return acc;
-          }, {})
-        ).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([w])=>w);
-        if (top.length) {
-          const brief = `요즘 핫: ${top.join(" • ")}`;
-          memory.lastBotMsgByChannel.set(msg.channel.id, brief);
-          pushConvo(msg.channel.id, "assistant", brief);
-          await msg.channel.send(brief);
-        }
-      }
+      // 별도의 '요즘 핫:' 단발 메시지는 비활성화
+      // if (Math.random() < 0.10) {
+      //   const top = Object.entries(
+      //     Object.values(memory.users).reduce((acc, u) => {
+      //       for (const [w,c] of Object.entries(u.topWords)) acc[w]=(acc[w]||0)+c;
+      //       return acc;
+      //     }, {})
+      //   ).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([w])=>w);
+      //   if (top.length) {
+      //     const brief = `요즘 핫: ${top.join(" • ")}`;
+      //     memory.lastBotMsgByChannel.set(msg.channel.id, brief);
+      //     pushConvo(msg.channel.id, "assistant", brief);
+      //     await msg.channel.send(brief);
+      //   }
+      // }
     } catch {}
   });
 
