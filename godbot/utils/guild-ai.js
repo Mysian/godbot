@@ -2,9 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const { Events } = require("discord.js");
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 저장소
-// ───────────────────────────────────────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, "data", "guild-ai");
 const USERS_PATH = path.join(DATA_DIR, "users.json");
 const MARKOV_DIR = path.join(DATA_DIR, "markov");
@@ -20,9 +17,6 @@ function saveJsonSafe(file, obj) {
   try { fs.writeFileSync(file, JSON.stringify(obj, null, 2), "utf8"); } catch {}
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 메모리 상태
-// ───────────────────────────────────────────────────────────────────────────────
 const memory = {
   users: loadJsonSafe(USERS_PATH, {}),
   markovByUser: new Map(),
@@ -30,11 +24,10 @@ const memory = {
   chatChannelId: null,
   lastReplyTsByChannel: new Map(),
   lastBotMsgByChannel: new Map(),
+  convoByChannel: new Map(), // 채널별 최근 대화 스택
+  lastComposerPatternByChannel: new Map(),
 };
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 토크나이즈/유틸
-// ───────────────────────────────────────────────────────────────────────────────
 const URL_RE = /(https?:\/\/[^\s]+)/ig;
 const EMOJI_RE = /([\u{1F300}-\u{1FAD6}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])/u;
 const PUNC_RE = /([.!?…]+)|([,;:()"'`《》〈〉「」『』【】\[\]{}])/g;
@@ -58,7 +51,6 @@ function koreanRate(text) {
   return n ? k / n : 0;
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
 function getUserModel(id) {
   if (!memory.users[id]) {
     memory.users[id] = {
@@ -66,6 +58,7 @@ function getUserModel(id) {
       messages: 0, tokens: 0, emojis: 0, questions: 0,
       positives: 0, negatives: 0, lastTopics: [], topWords: {},
       slangRate: 0.5, exclaimRate: 0.3,
+      avgLen: 18,
     };
   }
   return memory.users[id];
@@ -74,25 +67,23 @@ function updateUserStats(user, text, toks) {
   user.lastSeen = Date.now();
   user.messages += 1;
   user.tokens += toks.length;
+  user.avgLen = Math.max(8, Math.min(80, Math.round(user.avgLen * 0.9 + Math.min(60, toks.length) * 0.1)));
   if (/[?？]$/.test(text.trim())) user.questions += 1;
-  if ((text.toLowerCase().match(/(ㅋㅋ+|ㅎㅎ+|ㄹㅇ|ㅇㅇ|ㄱㄱ|개쩔|ㄷㄷ)/g) || []).length) user.slangRate = user.slangRate * 0.9 + 0.1;
-  if ((text.match(/[!！]+/g) || []).length) user.exclaimRate = user.exclaimRate * 0.9 + 0.1;
+  if ((text.toLowerCase().match(/(ㅋㅋ+|ㅎㅎ+|ㄹㅇ|ㅇㅇ|ㄱㄱ|개쩔|ㄷㄷ)/g) || []).length) user.slangRate = user.slangRate * 0.85 + 0.15;
+  if ((text.match(/[!！]+/g) || []).length) user.exclaimRate = user.exclaimRate * 0.85 + 0.15;
   user.emojis += (text.match(new RegExp(EMOJI_RE, "gu")) || []).length;
 
   const topics = toks
     .filter(t => !t.startsWith("__") && /[\p{L}\p{N}]/u.test(t) && koreanRate(t) >= 0.3 && t.length >= 2)
-    .slice(0, 8);
+    .slice(0, 10);
   if (topics.length) {
-    user.lastTopics = Array.from(new Set([...topics, ...user.lastTopics])).slice(0, 10);
+    user.lastTopics = Array.from(new Set([...topics, ...user.lastTopics])).slice(0, 12);
     for (const t of topics) user.topWords[t] = (user.topWords[t] || 0) + 1;
-    const top = Object.entries(user.topWords).sort((a,b)=>b[1]-a[1]).slice(0, 800);
+    const top = Object.entries(user.topWords).sort((a,b)=>b[1]-a[1]).slice(0, 1000);
     user.topWords = Object.fromEntries(top);
   }
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Markov 모델
-// ───────────────────────────────────────────────────────────────────────────────
 function loadMarkov(uid) {
   const f = path.join(MARKOV_DIR, `${uid}.json`);
   const data = loadJsonSafe(f, null);
@@ -114,8 +105,8 @@ function feedMarkov(model, toks) {
     model.tokensSeen++;
   }
   const keys = Object.keys(model.map);
-  if (keys.length > 30000 || model.tokensSeen > 260000) {
-    const trimmed = keys.slice(0, Math.floor(keys.length * 0.6));
+  if (keys.length > 35000 || model.tokensSeen > 320000) {
+    const trimmed = keys.slice(-Math.floor(keys.length * 0.6));
     const newMap = {};
     for (const k of trimmed) newMap[k] = model.map[k];
     model.map = newMap;
@@ -125,18 +116,15 @@ function feedMarkov(model, toks) {
 function weightedPick(obj, temperature = 1.0, banSet = null) {
   const entries = Object.entries(obj);
   if (!entries.length) return null;
-
-  // banSet에 있는 후보는 가중치 낮춤(안티-에코용)
   let sum = 0;
   const adjusted = entries.map(([k, v]) => {
     let w = v;
-    if (banSet && banSet.has(k)) w *= 0.05; // 강한 패널티
+    if (banSet && banSet.has(k)) w *= 0.03;
     if (temperature !== 1.0) w = Math.pow(w, 1/Math.max(0.25, Math.min(2.0, temperature)));
     sum += w;
     return [k, w];
   });
   if (sum <= 0) return entries[0][0];
-
   let r = Math.random() * sum;
   for (const [k, w] of adjusted) {
     r -= w;
@@ -147,8 +135,6 @@ function weightedPick(obj, temperature = 1.0, banSet = null) {
 function pickSeed(model, seedTokens, banSet) {
   const keys = Object.keys(model.map);
   if (!keys.length) return null;
-
-  // 시드 후보: seedTokens에 걸리면서 ban되지 않은 것을 우선
   if (seedTokens && seedTokens.length) {
     const cand = [];
     for (const key of keys) {
@@ -160,12 +146,11 @@ function pickSeed(model, seedTokens, banSet) {
     }
     if (cand.length) {
       cand.sort((x,y)=>y.score-x.score);
-      const top = cand.slice(0, Math.min(60, cand.length));
+      const top = cand.slice(0, Math.min(80, cand.length));
       const chosen = top[Math.floor(Math.random()*top.length)].key.split("|");
       if (!banSet || (!banSet.has(chosen[0]) || !banSet.has(chosen[1]))) return chosen;
     }
   }
-  // 랜덤
   return keys[Math.floor(Math.random()*keys.length)].split("|");
 }
 function detok(tokens) {
@@ -189,7 +174,6 @@ function gen(model, seedTokens, opts = {}) {
   const seed = pickSeed(model, seedTokens, banSet) || keys[Math.floor(Math.random()*keys.length)].split("|");
   let [a,b] = seed;
   const out = [a,b];
-
   for (let i=0;i<maxLen;i++){
     const key = `${a}|${b}`;
     const nextMap = model.map[key];
@@ -198,40 +182,27 @@ function gen(model, seedTokens, opts = {}) {
     if (!n) break;
     out.push(n);
     a = b; b = n;
-
     if (/[.!?…]/.test(n) && out.length > 10) break;
   }
   return detok(out);
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 톤/안티-에코/후처리
-// ───────────────────────────────────────────────────────────────────────────────
 function averageServerTone() {
   const users = Object.values(memory.users);
-  if (!users.length) return { slang: 0.4, exclaim: 0.3 };
+  if (!users.length) return { slang: 0.4, exclaim: 0.3, avgLen: 18 };
   const n = users.length;
   const slang = users.reduce((s,u)=>s+u.slangRate,0)/n;
   const exclaim = users.reduce((s,u)=>s+u.exclaimRate,0)/n;
-  return { slang, exclaim };
+  const avgLen = Math.max(12, Math.min(52, Math.round(users.reduce((s,u)=>s+u.avgLen,0)/n)));
+  return { slang, exclaim, avgLen };
 }
 function postProcessTone(text) {
   const { slang, exclaim } = averageServerTone();
   let t = text;
-
-  if (slang >= 0.6) {
-    t = t.replace(/\b(합니다|입니다)\b/g, "임");
-  } else {
-    t = t.replace(/\b(ㅅㅂ|씨발)\b/g, "아놔");
-  }
-
-  if (exclaim >= 0.55 && !/[!！]$/.test(t)) {
-    if (t.length < 60) t += "!";
-  } else if (exclaim < 0.25) {
-    t = t.replace(/[!！]{2,}/g, "!");
-  }
-
-  // 과도한 반복 문자 줄이기
+  if (slang >= 0.6) t = t.replace(/\b(합니다|입니다)\b/g, "임");
+  else t = t.replace(/\b(ㅅㅂ|씨발)\b/g, "아놔");
+  if (exclaim >= 0.55 && !/[!！]$/.test(t)) { if (t.length < 60) t += "!"; }
+  else if (exclaim < 0.25) { t = t.replace(/[!！]{2,}/g, "!"); }
   t = t.replace(/([ㅋㅎ])\1{4,}/g, "$1$1$1");
   return t;
 }
@@ -244,7 +215,6 @@ function jaccard(aTokens, bTokens) {
   return inter / uni;
 }
 function longestCommonRunLen(a, b) {
-  // 연속 3토큰 이상 겹치면 에코로 간주
   let max = 0;
   for (let i=0;i<a.length;i++){
     for (let j=0;j<b.length;j++){
@@ -257,23 +227,18 @@ function longestCommonRunLen(a, b) {
   return max;
 }
 function antiEchoFilter(userText, draft) {
-  const ut = tokenize(userText.toLowerCase()).slice(0, 80);
-  const dt = tokenize(draft.toLowerCase()).slice(0, 80);
+  const ut = tokenize(userText.toLowerCase()).slice(0, 100);
+  const dt = tokenize(draft.toLowerCase()).slice(0, 100);
   const jac = jaccard(ut, dt);
   const lcr = longestCommonRunLen(ut, dt);
-  return (jac < 0.45 && lcr < 3);
+  return (jac < 0.35 && lcr < 3);
 }
 function diversify(line) {
-  // 문장 길이 보정(너무 짧으면 한 절 추가 느낌)
   if (line.length < 8) line += " 더 얘기해봐";
-  // 끝마침 보정
   if (!/[.?!…!]$/.test(line)) line += ".";
   return line;
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 보안/금칙(대화만 허용)
-// ───────────────────────────────────────────────────────────────────────────────
 function isSensitiveAsk(s) {
   const lower = s.toLowerCase();
   const kw = [
@@ -285,50 +250,51 @@ function isSensitiveAsk(s) {
   return kw.some(k => lower.includes(k));
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 응답 생성
-// ───────────────────────────────────────────────────────────────────────────────
-function craftReply(authorId, prompt) {
-  const seed = tokenize(prompt).filter(w => koreanRate(w) >= 0.25);
+function pushConvo(channelId, role, text) {
+  const key = String(channelId);
+  if (!memory.convoByChannel.has(key)) memory.convoByChannel.set(key, []);
+  const arr = memory.convoByChannel.get(key);
+  arr.push({ role, text: (text||"").slice(0, 800) });
+  if (arr.length > 12) arr.shift();
+}
 
-  // 금지 후보(안티-에코): 사용자 문장 토큰과 동일 토큰/마침표 직전 토큰들
-  const banSet = new Set(seed.slice(0, 10));
+function topKeywordsGlobal(k = 3) {
+  const bag = Object.values(memory.users).reduce((acc, u) => {
+    for (const [w,c] of Object.entries(u.topWords)) acc[w]=(acc[w]||0)+c;
+    return acc;
+  }, {});
+  return Object.entries(bag).sort((a,b)=>b[1]-a[1]).slice(0,k).map(([w])=>w);
+}
 
-  // ① 사용자 개인 모델 시도(temperature 높임 + banSet)
-  let line = gen(getMarkov(authorId), seed, { maxLen: 46, temperature: 1.25, banSet });
+function craftReply(authorId, prompt, channelId) {
+  const convo = memory.convoByChannel.get(String(channelId)) || [];
+  const historyTokens = tokenize(convo.map(x=>x.text).join(" ").toLowerCase()).filter(w=>koreanRate(w)>=0.25).slice(-60);
+  const userSeed = tokenize(prompt).filter(w => koreanRate(w) >= 0.25).slice(0, 40);
+  const seed = Array.from(new Set([...userSeed, ...historyTokens]));
+  const banSeed = new Set(seed.slice(0, 30));
 
-  // ② 글로벌 모델 백업(temperature 가변)
-  if (!line) line = gen(memory.markovGlobal, seed, { maxLen: 50, temperature: 1.15, banSet });
+  let line =
+    gen(getMarkov(authorId), seed, { maxLen: 46, temperature: 1.25, banSet: banSeed }) ||
+    gen(memory.markovGlobal, seed, { maxLen: 50, temperature: 1.15, banSet: banSeed });
 
-  // ③ 다른 유저 모델에서 샘플 섞기(랜덤 1명)
   if (!line) {
     const others = Object.keys(memory.users).filter(id => id !== authorId);
     if (others.length) {
       const pick = others[Math.floor(Math.random()*others.length)];
-      line = gen(getMarkov(pick), seed, { maxLen: 44, temperature: 1.2, banSet });
+      line = gen(getMarkov(pick), seed, { maxLen: 44, temperature: 1.2, banSet: banSeed });
     }
   }
-
-  // ④ 최후의 기본 라인
   if (!line) line = "ㅇㅇ 이해함";
 
-  // 안티-에코 검증 → 너무 비슷하면 재시도 전략
   let tries = 0;
-  while (!antiEchoFilter(prompt, line) && tries < 3) {
-    // 1) 시드 제거 + 온도 상승
-    let alt = gen(memory.markovGlobal, [], { maxLen: 44, temperature: 1.5, banSet });
-    // 2) 그래도 비슷하면 전혀 다른 단어로 seed 교란
-    if (!alt) {
-      const confuse = ["근데", "솔직히", "문제는", "반대로", "아무튼", "결론적으로"];
-      alt = gen(memory.markovGlobal, confuse, { maxLen: 42, temperature: 1.4, banSet });
-    }
+  while (!antiEchoFilter(prompt, line) && tries < 5) {
+    const confuse = ["근데", "솔직히", "반대로", "아무튼", "결론적으로", "한편"];
+    const alt =
+      gen(memory.markovGlobal, [], { maxLen: 44, temperature: 1.55, banSet: banSeed }) ||
+      gen(memory.markovGlobal, confuse, { maxLen: 42, temperature: 1.45, banSet: banSeed });
     if (alt && antiEchoFilter(prompt, alt)) { line = alt; break; }
     tries++;
-    if (tries >= 3) {
-      // 최후: 사용자 키워드 일부를 제거한 짧은 리마인드형
-      line = "오케이, 핵심만 더 말해봐";
-      break;
-    }
+    if (tries >= 5) { line = "오케이, 핵심만 더 말해봐"; break; }
   }
 
   line = postProcessTone(line);
@@ -338,35 +304,57 @@ function craftReply(authorId, prompt) {
 
 function maybeFollowUp(authorModel) {
   const qRate = (authorModel.questions / Math.max(1, authorModel.messages));
-  if (Math.random() < Math.min(0.25, 0.05 + qRate)) {
+  if (Math.random() < Math.min(0.28, 0.05 + qRate)) {
     const fups = [
-      "그럼 너 생각은 뭐임?",
+      "그럼 네 결론은 뭐임?",
       "대충 감은 옴?",
-      "더 자세히 풀어줘.",
-      "결론은 어떻게 봄?",
-      "케이스 좀 더 줘봐.",
-      "그 포인트는 인정함?"
+      "케이스 조금만 더 줘봐.",
+      "네 기준으로는 어떻게 봄?",
+      "반대 의견도 있나?",
+      "이게 핵심 맞음?"
     ];
     return fups[Math.floor(Math.random()*fups.length)];
   }
   return null;
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// 등록
-// ───────────────────────────────────────────────────────────────────────────────
+function composeFinal(authorId, prompt, channelId) {
+  const u = getUserModel(authorId);
+  const { avgLen } = averageServerTone();
+  const base = craftReply(authorId, prompt, channelId);
+
+  const kw = topKeywordsGlobal(3);
+  const spice = Math.random() < 0.55 ? (` (${kw.join(" / ")})`) : "";
+
+  const patterns = [
+    (b, fu) => b + (fu ? "\n" + fu : ""),
+    (b, fu) => "한 줄 요약: " + b + spice + (fu ? "\n" + fu : ""),
+    (b, fu) => b + " 내 생각은 이렇다." + (fu ? " " + fu : ""),
+  ];
+  const lastP = memory.lastComposerPatternByChannel.get(String(channelId)) || -1;
+  let idx = Math.floor(Math.random() * patterns.length);
+  if (idx === lastP) idx = (idx + 1) % patterns.length;
+  memory.lastComposerPatternByChannel.set(String(channelId), idx);
+
+  let final = patterns[idx](base, maybeFollowUp(u));
+
+  const targetLen = Math.max(14, Math.min(64, Math.round((u.avgLen + avgLen) / 2)));
+  if (tokenize(final).length < targetLen && Math.random() < 0.45) {
+    const extra = craftReply(authorId, prompt + " (다른 각도)", channelId);
+    if (antiEchoFilter(final, extra)) final = final + "\n" + extra;
+  }
+
+  return final;
+}
+
 function register(client, { chatChannelId }) {
   memory.chatChannelId = String(chatChannelId || "");
 
-  // (1) 서버 전역 학습
   client.on(Events.MessageCreate, async (msg) => {
     try {
       if (!msg.guild || msg.author.bot) return;
-
       const raw = (msg.content || "");
       if (!raw || raw.length > 4000) return;
-
-      // 코드블럭/시스템로그 과도한 학습 방지
       const codeBlockCount = (raw.match(/```/g) || []).length;
       if (codeBlockCount >= 2) return;
 
@@ -376,16 +364,18 @@ function register(client, { chatChannelId }) {
         updateUserStats(u, raw, toks);
         feedMarkov(getMarkov(msg.author.id), toks);
         feedMarkov(memory.markovGlobal, toks);
-
         if (Math.random() < 0.05) {
           saveJsonSafe(USERS_PATH, memory.users);
           saveMarkov(msg.author.id, getMarkov(msg.author.id));
         }
       }
+
+      if (memory.chatChannelId && msg.channel.id === memory.chatChannelId) {
+        pushConvo(msg.channel.id, "user", raw);
+      }
     } catch {}
   });
 
-  // (2) 지정 채널 자율 대화
   client.on(Events.MessageCreate, async (msg) => {
     try {
       if (!msg.guild || msg.author.bot) return;
@@ -393,39 +383,30 @@ function register(client, { chatChannelId }) {
 
       const content = (msg.content || "").trim();
       if (!content) return;
-
-      // 내부/기밀/조작 요청 차단 (대화만)
       if (isSensitiveAsk(content)) {
+        pushConvo(msg.channel.id, "assistant", "그건 여기서 다루기 곤란함. 대화만 하자.");
         return void msg.channel.send("그건 여기서 다루기 곤란함. 대화만 하자.");
       }
 
-      // 연속 폭주 방지: 같은 채널 1.2초 쿨
       const lastTs = memory.lastReplyTsByChannel.get(msg.channel.id) || 0;
-      if (Date.now() - lastTs < 1200) return;
+      if (Date.now() - lastTs < 1800) return;
       memory.lastReplyTsByChannel.set(msg.channel.id, Date.now());
 
-      // 이전에 봇이 막 한 말을 그대로 재현하지 않도록
       const lastBot = memory.lastBotMsgByChannel.get(msg.channel.id) || "";
-      const draft = craftReply(msg.author.id, content);
-      let reply = draft;
+      let finalText = composeFinal(msg.author.id, content, msg.channel.id);
 
-      // 마지막 봇 메시지와 유사도도 함께 체크(반복 루프 방지)
       let tries = 0;
-      while (lastBot && !antiEchoFilter(lastBot, reply) && tries < 2) {
-        const alt = craftReply(msg.author.id, content + " (다른 관점)");
-        if (antiEchoFilter(lastBot, alt)) { reply = alt; break; }
+      while (lastBot && !antiEchoFilter(lastBot, finalText) && tries < 3) {
+        const alt = composeFinal(msg.author.id, content + " (다른 관점)", msg.channel.id);
+        if (antiEchoFilter(lastBot, alt)) { finalText = alt; break; }
         tries++;
-        if (tries >= 2) reply = draft + " (이 관점도 있음)";
+        if (tries >= 3) finalText = finalText + " (이 관점도 있음)";
       }
 
-      const u = getUserModel(msg.author.id);
-      const fu = maybeFollowUp(u);
-      const finalText = reply + (fu ? "\n" + fu : "");
-
       memory.lastBotMsgByChannel.set(msg.channel.id, finalText);
+      pushConvo(msg.channel.id, "assistant", finalText);
       await msg.channel.send(finalText);
 
-      // 가끔(10%) 서버 핫토픽 브리핑(짧게)
       if (Math.random() < 0.10) {
         const top = Object.entries(
           Object.values(memory.users).reduce((acc, u) => {
@@ -436,13 +417,13 @@ function register(client, { chatChannelId }) {
         if (top.length) {
           const brief = `요즘 핫: ${top.join(" • ")}`;
           memory.lastBotMsgByChannel.set(msg.channel.id, brief);
+          pushConvo(msg.channel.id, "assistant", brief);
           await msg.channel.send(brief);
         }
       }
     } catch {}
   });
 
-  // 주기 저장
   setInterval(() => {
     try {
       saveJsonSafe(USERS_PATH, memory.users);
