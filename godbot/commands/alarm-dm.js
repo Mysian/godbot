@@ -1,18 +1,25 @@
 // commands/alarm-dm.js
 const fs = require("fs");
 const path = require("path");
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  AttachmentBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} = require("discord.js");
 
 const MAP = {
-  "경매":        { key: "auction",     type: "role",    roleId: "1255580504745574552" },
-  "내전":        { key: "scrim",       type: "role",    roleId: "1255580383559422033" },
-  "공지사항":    { key: "notice",      type: "role",    roleId: "1255583755670917221" },
-  "이벤트":      { key: "event",       type: "role",    roleId: "1255580760371626086" },
-  "정수 퀴즈":   { key: "intQuiz",     type: "role",    roleId: "1255580906199191644" },
-  "BUMP":       { key: "bump",        type: "role",    roleId: "1314483547142098984" },
-  "모집방":      { key: "recruit",     type: "channel", channelId: "1209147973255036959" },
-  "재난문자":    { key: "disaster",    type: "channel", channelId: "1419724916055347211" },
-  "게임뉴스":    { key: "gamenews",    type: "channel", channelId: "1425432550351831200" },
+  "경매":        { key: "auction",  type: "role",    roleId: "1255580504745574552" },
+  "내전":        { key: "scrim",    type: "role",    roleId: "1255580383559422033" },
+  "공지사항":    { key: "notice",   type: "role",    roleId: "1255583755670917221" },
+  "이벤트":      { key: "event",    type: "role",    roleId: "1255580760371626086" },
+  "정수 퀴즈":   { key: "intQuiz",  type: "role",    roleId: "1255580906199191644" },
+  "BUMP":       { key: "bump",     type: "role",    roleId: "1314483547142098984" },
+  "모집방":      { key: "recruit",  type: "channel", channelId: "1209147973255036959" },
+  "재난문자":    { key: "disaster", type: "channel", channelId: "1419724916055347211" },
+  "게임뉴스":    { key: "gamenews", type: "channel", channelId: "1425432550351831200" },
 };
 
 const DATA_PATH = path.join(__dirname, "../data/notify-settings.json");
@@ -48,35 +55,136 @@ async function dmUser(user, payload) {
   }
 }
 
-function makeJumpEmbed(title, description, url, color=0x7b2ff2) {
-  return new EmbedBuilder()
+function baseEmbed(title, description, url, color=0x7b2ff2) {
+  const eb = new EmbedBuilder()
     .setColor(color)
     .setTitle(title)
     .setDescription(description || "내용이 없습니다.")
-    .setURL(url)
     .setFooter({ text: "까리한 디스코드 • 갓봇 알림" })
     .setTimestamp();
+  if (url) eb.setURL(url);
+  return eb;
+}
+
+function buildJumpRow(url) {
+  if (!url) return null;
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel("원문으로 이동")
+      .setURL(url)
+  );
+  return row;
+}
+
+/**
+ * 메시지 → DM 페이로드 구성
+ * - 텍스트: cleanContent
+ * - 첨부파일: 이미지/동영상 우선 첨부, 실패 시 링크 나열
+ * - 원문 임베드: 최대 3개 요약 복원
+ * - 스티커: 이름/URL 안내
+ */
+async function buildDMPayloadFromMessage(message, titleText, color) {
+  const text = (message.cleanContent || "").slice(0, 1900);
+  const main = baseEmbed(`🔔 ${titleText}`, text || "내용이 없습니다.", message.url, color);
+  const components = [];
+  const files = [];
+
+  const jump = buildJumpRow(message.url);
+  if (jump) components.push(jump);
+
+  const att = [...(message.attachments?.values?.() ?? [])];
+
+  const imageAtts = att.filter(a => (a.contentType || "").startsWith("image/"));
+  const videoAtts = att.filter(a => (a.contentType || "").startsWith("video/"));
+  const otherAtts = att.filter(a => !imageAtts.includes(a) && !videoAtts.includes(a));
+
+  if (imageAtts.length > 0) {
+    const first = imageAtts[0];
+    try {
+      files.push(new AttachmentBuilder(first.url, { name: first.name || "image" }));
+      main.setImage(`attachment://${first.name || "image"}`);
+    } catch {}
+  }
+
+  const attLinks = [];
+  const pushFileOrLink = (a, label) => {
+    try {
+      files.push(new AttachmentBuilder(a.url, { name: a.name || label }));
+    } catch {
+      attLinks.push(`• ${label}: ${a.url}`);
+    }
+  };
+
+  for (let i = (imageAtts.length > 0 ? 1 : 0); i < imageAtts.length && i < 4; i++) {
+    const a = imageAtts[i];
+    pushFileOrLink(a, a.name || `image_${i+1}`);
+  }
+  for (let i = 0; i < videoAtts.length && i < 2; i++) {
+    const a = videoAtts[i];
+    pushFileOrLink(a, a.name || `video_${i+1}`);
+  }
+  for (let i = 0; i < otherAtts.length && i < 3; i++) {
+    const a = otherAtts[i];
+    attLinks.push(`• 파일: ${a.name || "첨부"} — ${a.url}`);
+  }
+
+  if (attLinks.length > 0) {
+    main.addFields({ name: "첨부 파일", value: attLinks.slice(0, 10).join("\n").slice(0, 1024) });
+  }
+
+  const stickerLines = [];
+  for (const st of (message.stickers?.values?.() ?? [])) {
+    const name = st?.name || "스티커";
+    const url = st?.url || null;
+    stickerLines.push(url ? `• ${name}: ${url}` : `• ${name}`);
+  }
+  if (stickerLines.length > 0) {
+    main.addFields({ name: "스티커", value: stickerLines.join("\n").slice(0, 1024) });
+  }
+
+  const embedSummaries = [];
+  const srcEmbeds = message.embeds || [];
+  for (let i = 0; i < srcEmbeds.length && i < 3; i++) {
+    const e = srcEmbeds[i];
+    const sum = new EmbedBuilder().setColor(0x95a5a6);
+    if (e.title) sum.setTitle(e.title.slice(0, 256));
+    if (e.description) sum.setDescription(e.description.slice(0, 2048));
+    if (e.url) sum.setURL(e.url);
+    const imageURL = e.image?.url || e.thumbnail?.url;
+    if (imageURL) sum.setImage(imageURL);
+    if (e.author?.name) sum.setAuthor({ name: e.author.name.slice(0, 256) });
+    embedSummaries.push(sum);
+  }
+
+  const payload = {
+    embeds: [main, ...embedSummaries],
+  };
+  if (files.length > 0) payload.files = files;
+  if (components.length > 0) payload.components = components;
+  return payload;
 }
 
 async function relayByRoleMention(message, roleId, titleText) {
   if (!message.guild || message.author?.bot) return;
   if (!message.mentions?.roles?.has(roleId)) return;
   const store = loadStore();
-  const subs = Object.entries(store).filter(([, s]) => s["auction"] || s["scrim"] || s["notice"] || s["event"] || s["intQuiz"] || s["bump"]);
-  const targets = subs.filter(([, s]) => {
-    const m = Object.entries(MAP).find(([, v]) => v.roleId === roleId);
-    if (!m) return false;
-    const key = m[1].key;
-    return !!s[key];
-  }).map(([uid]) => uid);
+  const targets = Object.entries(store)
+    .filter(([, s]) => {
+      const ent = Object.entries(MAP).find(([, v]) => v.roleId === roleId);
+      if (!ent) return false;
+      const key = ent[1].key;
+      return !!s[key];
+    })
+    .map(([uid]) => uid);
 
   if (targets.length === 0) return;
-  const text = (message.cleanContent || "").slice(0, 1900);
-  const embed = makeJumpEmbed(`🔔 ${titleText} 새 알림`, text || "내용이 없습니다.", message.url, 0x00b894);
+
+  const payload = await buildDMPayloadFromMessage(message, `${titleText} 새 알림`, 0x00b894);
   for (const uid of targets) {
     const user = await message.client.users.fetch(uid).catch(()=>null);
     if (!user) continue;
-    await dmUser(user, { embeds: [embed] });
+    await dmUser(user, payload);
   }
 }
 
@@ -84,17 +192,18 @@ async function relayByChannel(message, channelId, titleText) {
   if (!message.guild || message.author?.bot) return;
   if (message.channelId !== channelId) return;
   const store = loadStore();
-  const m = Object.entries(MAP).find(([, v]) => v.channelId === channelId);
-  if (!m) return;
-  const key = m[1].key;
+  const ent = Object.entries(MAP).find(([, v]) => v.channelId === channelId);
+  if (!ent) return;
+  const key = ent[1].key;
+
   const targets = Object.entries(store).filter(([, s]) => !!s[key]).map(([uid]) => uid);
   if (targets.length === 0) return;
-  const text = (message.cleanContent || "").slice(0, 1900);
-  const embed = makeJumpEmbed(`📬 ${titleText}`, text || "내용이 없습니다.", message.url, 0x0984e3);
+
+  const payload = await buildDMPayloadFromMessage(message, titleText, 0x0984e3);
   for (const uid of targets) {
     const user = await message.client.users.fetch(uid).catch(()=>null);
     if (!user) continue;
-    await dmUser(user, { embeds: [embed] });
+    await dmUser(user, payload);
   }
 }
 
@@ -113,9 +222,9 @@ function registerRelaysOnce() {
       await relayByRoleMention(msg, MAP["정수 퀴즈"].roleId, "정수 퀴즈 역할 멘션");
       await relayByRoleMention(msg, MAP["BUMP"].roleId, "BUMP 역할 멘션");
 
-      await relayByChannel(msg, MAP["모집방"].channelId, "모집방 새 글");
-      await relayByChannel(msg, MAP["재난문자"].channelId, "재난 문자");
-      await relayByChannel(msg, MAP["게임뉴스"].channelId, "게임뉴스 새 글");
+      await relayByChannel(msg, MAP["모집방"].channelId, "📬 모집방 새 글");
+      await relayByChannel(msg, MAP["재난문자"].channelId, "📢 재난 문자");
+      await relayByChannel(msg, MAP["게임뉴스"].channelId, "📰 게임뉴스 새 글");
     } catch {}
   });
 }
@@ -125,7 +234,7 @@ registerRelaysOnce();
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("알림")
-    .setDescription("개인 DM으로 특정 항목의 알림을 받으실 수 있습니다. (토글 가능)")
+    .setDescription("개인 DM으로 특정 항목의 알림을 받으실 수 있습니다. (토글)")
     .addStringOption(opt =>
       opt.setName("옵션")
         .setDescription("토글할 항목을 선택해 주세요.")
@@ -169,6 +278,7 @@ module.exports = {
     const tip = nowOn
       ? "이제부터 해당 알림이 DM으로 전송됩니다."
       : "해당 알림 DM 전송이 중지되었습니다.";
+
     const embed = new EmbedBuilder()
       .setColor(nowOn ? 0x2ecc71 : 0xe74c3c)
       .setTitle(`알림 옵션: ${choice} → ${status}`)
@@ -178,19 +288,17 @@ module.exports = {
 
     try { await interaction.reply({ embeds: [embed], ephemeral: true }); } catch {}
 
-    const testMsg = nowOn
-      ? new EmbedBuilder()
-          .setColor(0xf1c40f)
-          .setTitle(`테스트 알림: ${choice}`)
-          .setDescription("실제 알림은 관련 글이 올라오거나 역할 멘션 시 도착합니다.")
-          .setFooter({ text: "DM 수신이 차단되어 있을 경우 도착하지 않습니다." })
-          .setTimestamp()
-      : null;
     if (nowOn) {
-      const ok = await dmUser(interaction.user, { embeds: [testMsg] });
+      const test = new EmbedBuilder()
+        .setColor(0xf1c40f)
+        .setTitle(`테스트 알림: ${choice}`)
+        .setDescription("실제 알림은 관련 글이 올라오거나 역할 멘션 시 도착합니다.")
+        .setFooter({ text: "DM 수신이 차단되어 있을 경우 도착하지 않습니다." })
+        .setTimestamp();
+      const ok = await dmUser(interaction.user, { embeds: [test] });
       if (!ok) {
         try {
-          await interaction.followUp({ content: "DM 전송에 실패했습니다. DM 수신 허용 상태를 확인해 주세요.", ephemeral: true });
+          await interaction.followUp({ content: "DM 전송에 실패했습니다. 서버 ‘개인 메시지 허용’ 설정을 확인해 주세요.", ephemeral: true });
         } catch {}
       }
     }
