@@ -14,7 +14,7 @@ const PER_ROUND_MAX_TICKETS = 100;
 const PER_ROUND_MAX_SPEND = 1000000;
 
 async function findExistingRoundMessage(channel, round) {
-  const msgs = await channel.messages.fetch({ limit: 100 });
+  const msgs = await channel.messages.fetch({ limit: 30 });
   for (const m of msgs.values()) {
     if (m.author?.id !== channel.client.user.id) continue;
     const e = m.embeds?.[0];
@@ -24,19 +24,6 @@ async function findExistingRoundMessage(channel, round) {
     }
   }
   return null;
-}
-
-async function recoverIfCurrentMessageGone(client, deletedOrUpdatedId) {
-  const state = loadState();
-  ensureRound(state, state.round);
-  const cur = state.rounds[state.round]?.messageId;
-  if (!cur) return;
-  if (cur !== deletedOrUpdatedId) return;
-
-  // 현재 라운드 메시지ID 초기화 후 재발행
-  state.rounds[state.round].messageId = null;
-  saveState(state);
-  try { await publishOrUpdate(client); } catch {}
 }
 
 // 최초 1회만 상태를 2회차 완료로 보정하기 위한 스위치(내부 플래그로 재실행 시 중복 적용 방지)
@@ -709,10 +696,11 @@ async function tick(client) {
   const state = loadState();
   ensureRound(state, state.round);
 
-  const lastScheduled = getLastDrawTime(); 
+  const lastScheduled = getLastDrawTime();         // 지난 토 20:00
   const lastKey = drawKeyFromKSTSaturday(lastScheduled);
-  await publishOrUpdate(client);
-  if (state.lastDrawKey === lastKey) {
+
+  if(state.lastDrawKey===lastKey){
+    if(Math.floor(Date.now()/60000)%5===0){ await publishOrUpdate(client); }
     return;
   }
   await runDrawOnceForKey(state, lastKey, client);
@@ -775,20 +763,6 @@ if (interaction.isModalSubmit()) {
 }
 let _interval = null;
 async function init(client) {
-  client.on('messageDelete', async (msg) => {
-  if (!msg || msg.channelId !== CHANNEL_ID) return;
-  await recoverIfCurrentMessageGone(client, msg.id);
-});
-client.on('messageUpdate', async (_oldMsg, newMsg) => {
-  try {
-    if (!newMsg || newMsg.channelId !== CHANNEL_ID) return;
-    // 임베드가 제거(0개)되었으면 복구
-    const hasEmbeds = Array.isArray(newMsg.embeds) && newMsg.embeds.length > 0;
-    if (!hasEmbeds) {
-      await recoverIfCurrentMessageGone(client, newMsg.id);
-    }
-  } catch {}
-});
   client.on('interactionCreate', onInteractionCreate);
   client.once('ready', async () => {
     await publishOrUpdate(client);
