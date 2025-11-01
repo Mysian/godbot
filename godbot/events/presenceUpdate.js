@@ -200,11 +200,11 @@ module.exports = {
       const uid = member.id;
       const base = baseKey(gid, uid);
 
-      const playing = getPlayingActivity(newPresence) || getPlayingActivity(oldPresence);
-      const aliasRes = playing ? matchFamilyOrAlias(playing.name) : null;
+const curPlaying = getPlayingActivity(newPresence);
+const aliasRes = curPlaying ? matchFamilyOrAlias(curPlaying.name) : null;
 
-      const alias = aliasRes?.alias || (playing?.name ?? null);
-      const family = aliasRes?.family || n(playing?.name || '');
+const alias = aliasRes?.alias || (curPlaying?.name ?? null);
+const family = aliasRes?.family || n(curPlaying?.name || '');
 
       // 종료 감지 (활동이 사라졌거나 family가 바뀐 경우)
       const oldPlaying = getPlayingActivity(oldPresence);
