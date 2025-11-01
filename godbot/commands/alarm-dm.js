@@ -1,7 +1,7 @@
 // commands/alarm-dm.js
 const fs = require("fs");
 const path = require("path");
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlagsBitField } = require("discord.js");
 
 const MAP = {
   "경매":        { key: "auction",     type: "role",    roleId: "1255580504745574552" },
@@ -48,6 +48,18 @@ async function dmUser(user, payload) {
   }
 }
 
+// --- Ephemeral 차단 유틸 ---
+function isEphemeralMessage(message) {
+  try {
+    if (!message) return false;
+    if (message.flags?.has?.(MessageFlagsBitField.Flags.Ephemeral)) return true;
+    if (message.interaction?.ephemeral === true) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function makeJumpEmbed(title, description, url, color=0x7b2ff2) {
   return new EmbedBuilder()
     .setColor(color)
@@ -59,10 +71,8 @@ function makeJumpEmbed(title, description, url, color=0x7b2ff2) {
 }
 
 function buildRelayPayload(message, title, color) {
-  // 원문 텍스트
   const text = (message.cleanContent || "").slice(0, 1900);
 
-  // 원문 임베드 복제 (가능한 한 원형 유지)
   const embeds = (message.embeds && message.embeds.length)
     ? message.embeds.map(e => EmbedBuilder.from(e))
     : [ new EmbedBuilder()
@@ -74,7 +84,6 @@ function buildRelayPayload(message, title, color) {
           .setTimestamp()
       ];
 
-  // 첨부파일(이미지 포함) 그대로 동봉
   const files = message.attachments?.size
     ? [...message.attachments.values()].map(att => ({
         attachment: att.url,
@@ -82,15 +91,14 @@ function buildRelayPayload(message, title, color) {
       }))
     : [];
 
-  // 텍스트가 있고, 임베드도 있을 때는 텍스트를 content로도 보존
-  const payload = { content: text || null, embeds, files };
-  return payload;
+  return { content: text || null, embeds, files };
 }
-
 
 async function relayByRoleMention(message, roleId, titleText) {
   if (!message.guild) return;
+  if (isEphemeralMessage(message)) return; // 에페메럴 DM 릴레이 차단
   if (!message.mentions?.roles?.has(roleId)) return;
+
   const store = loadStore();
   const subs = Object.entries(store).filter(([, s]) => s["auction"] || s["scrim"] || s["notice"] || s["event"] || s["intQuiz"] || s["bump"]);
   const targets = subs.filter(([, s]) => {
@@ -101,29 +109,34 @@ async function relayByRoleMention(message, roleId, titleText) {
   }).map(([uid]) => uid);
 
   if (targets.length === 0) return;
-const payload = buildRelayPayload(message, `🔔 ${titleText} 새 알림`, 0x00b894);
-for (const uid of targets) {
-  const user = await message.client.users.fetch(uid).catch(()=>null);
-  if (!user) continue;
-  await dmUser(user, payload);
-}
+  const payload = buildRelayPayload(message, `🔔 ${titleText} 새 알림`, 0x00b894);
+
+  for (const uid of targets) {
+    const user = await message.client.users.fetch(uid).catch(()=>null);
+    if (!user) continue;
+    await dmUser(user, payload);
+  }
 }
 
 async function relayByChannel(message, channelId, titleText) {
   if (!message.guild) return;
+  if (isEphemeralMessage(message)) return; // 에페메럴 DM 릴레이 차단
   if (message.channelId !== channelId) return;
+
   const store = loadStore();
   const m = Object.entries(MAP).find(([, v]) => v.channelId === channelId);
   if (!m) return;
   const key = m[1].key;
   const targets = Object.entries(store).filter(([, s]) => !!s[key]).map(([uid]) => uid);
   if (targets.length === 0) return;
-const payload = buildRelayPayload(message, `📬 ${titleText}`, 0x0984e3);
-for (const uid of targets) {
-  const user = await message.client.users.fetch(uid).catch(()=>null);
-  if (!user) continue;
-  await dmUser(user, payload);
-}
+
+  const payload = buildRelayPayload(message, `📬 ${titleText}`, 0x0984e3);
+
+  for (const uid of targets) {
+    const user = await message.client.users.fetch(uid).catch(()=>null);
+    if (!user) continue;
+    await dmUser(user, payload);
+  }
 }
 
 function registerRelaysOnce() {
@@ -134,6 +147,7 @@ function registerRelaysOnce() {
 
   client.on("messageCreate", async (msg) => {
     try {
+      if (isEphemeralMessage(msg)) return; // 이중 보호
       await relayByRoleMention(msg, MAP["경매"].roleId, "경매 역할 멘션");
       await relayByRoleMention(msg, MAP["내전"].roleId, "내전 역할 멘션");
       await relayByRoleMention(msg, MAP["공지사항"].roleId, "공지사항 역할 멘션");
