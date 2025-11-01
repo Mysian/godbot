@@ -93,6 +93,7 @@ require("./utils/approval-blocker")(client);
 require("./utils/youtube-panel").setup(client);
 require("./utils/caution-flow.js")(client);
 require("./utils/auto-grant-game-role").register(client);
+require("./utils/guild-ai").register(client, { chatChannelId: "1434206480357130422" });
 require('./utils/voiceWatcher')(client);
 require('./utils/restricted-role-guard')(client);
 require('./utils/donor-role-expirer')(client);
