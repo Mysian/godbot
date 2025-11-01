@@ -13,6 +13,19 @@ const MAX_NUMBER = 45;
 const PER_ROUND_MAX_TICKETS = 100;
 const PER_ROUND_MAX_SPEND = 1000000;
 
+async function findExistingRoundMessage(channel, round) {
+  const msgs = await channel.messages.fetch({ limit: 30 });
+  for (const m of msgs.values()) {
+    if (m.author?.id !== channel.client.user.id) continue;
+    const e = m.embeds?.[0];
+    if (!e?.title) continue;
+    if (e.title.includes(`주간 복권 | ${round}회차`)) {
+      return m;
+    }
+  }
+  return null;
+}
+
 // 최초 1회만 상태를 2회차 완료로 보정하기 위한 스위치(내부 플래그로 재실행 시 중복 적용 방지)
 const FORCE_RESET_ONCE = true;
 
@@ -47,27 +60,29 @@ function kstYMD(d) {
 function pad(n){ return (n<10?'0':'')+n; }
 function toUnix(v) { return Math.floor((v instanceof Date ? v.getTime() : Number(v)) / 1000); }
 
-// KST 토 20:00의 UTC 시각을 구함
 function getNextDrawTime() {
-  const n = nowKST();
-  const k = kstYMD(n);
-  const base = new Date(Date.UTC(k.y, k.m - 1, k.day, 0, 0, 0));
-  let sat2000 = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), 11, 0, 0));
-  while (sat2000.getUTCDay() !== 6) sat2000 = new Date(sat2000.getTime() + 24 * 3600 * 1000);
-  const nowUtc = new Date(Date.UTC(k.y, k.m - 1, k.day, k.hh, k.mm, k.ss));
-  if (nowUtc >= sat2000) {
-    const nd = new Date(sat2000.getTime());
-    nd.setUTCDate(nd.getUTCDate() + 7);
-    return nd;
+  const now = new Date(); 
+  const kstNow = new Date(now.getTime() + 9 * 3600 * 1000);
+  const kY = kstNow.getUTCFullYear();
+  const kM = kstNow.getUTCMonth();
+  const kD = kstNow.getUTCDate();
+  const kDow = kstNow.getUTCDay();
+
+  const diffToSat = (6 - kDow + 7) % 7; 
+  const nextSat2000UTC = new Date(Date.UTC(kY, kM, kD + diffToSat, 11, 0, 0)); 
+  if (diffToSat === 0) {
+    const kstMinutes = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
+    if (kstMinutes >= 20 * 60) {
+      nextSat2000UTC.setUTCDate(nextSat2000UTC.getUTCDate() + 7);
+    }
   }
-  return sat2000;
+  return nextSat2000UTC;
 }
 function getLastDrawTime() {
   const next = getNextDrawTime();
   const last = new Date(next.getTime() - 7 * 24 * 3600 * 1000);
   return last;
 }
-// 회차키: ‘그 주 토요일 20:00(KST)’의 KST 날짜 문자열(YYYY-MM-DD)
 function drawKeyFromKSTSaturday(dUtc){
   const kst=new Date(dUtc.getTime()+9*3600*1000);
   const y=kst.getUTCFullYear(), m=kst.getUTCMonth()+1, day=kst.getUTCDate();
@@ -221,13 +236,18 @@ async function publishOrUpdate(client) {
       state.rounds[state.round].messageId = msg.id;
       saveState(state);
     }
+} else {
+  await disableOldMessages(client, state);
+  let msg = await findExistingRoundMessage(channel, state.round);
+  const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
+  const rows = controlRows(closed, false);
+  if (msg) {
+    await msg.edit({ embeds: [embed], components: rows });
   } else {
-    await disableOldMessages(client, state);
-    const embed = buildControlEmbed(pot, state, nextDraw, closed, false);
-    const rows = controlRows(closed, false);
-    const msg = await channel.send({ embeds: [embed], components: rows });
-    state.rounds[state.round].messageId = msg.id;
-    saveState(state);
+    msg = await channel.send({ embeds: [embed], components: rows });
+  }
+  state.rounds[state.round].messageId = msg.id;
+  saveState(state);
   }
 }
 function buildRecordsEmbed(state, page) {
