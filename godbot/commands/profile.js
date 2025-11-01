@@ -41,6 +41,8 @@ const PLAY_STYLE_ROLES = {
 
 const PRIVACY_BYPASS_ROLE_IDS = ["786128824365482025", "1201856430580432906"];
 const BASE_MEMBER_ROLE_ID = "816619403205804042";
+const BLOCK_SHARE_CHANNEL_ID = "1419471869953970207";
+const canShareInChannel = (channelId) => channelId !== BLOCK_SHARE_CHANNEL_ID;
 
 const readJson = p => (fs.existsSync(p) ? JSON.parse(fs.readFileSync(p)) : {});
 const writeJson = (p, obj) => {
@@ -1110,25 +1112,31 @@ module.exports = {
         await interaction.editReply({ embeds: refreshed.embeds, files: refreshed.files, components: refreshed.components });
       }
 
-      else if (i.customId === `profile:share|${target.id}`) {
-        const profileRec = readJson(profilesPath)[target.id] || {};
-        const isPrivate = !!profileRec.isPrivate;
-        const canBypass = hasAnyRole(i.member, PRIVACY_BYPASS_ROLE_IDS);
-        if (isPrivate && i.user.id !== target.id && !canBypass) {
-          return i.reply({ content: "비공개 프로필은 공유할 수 없어.", ephemeral: true });
-        }
-        await i.deferReply({ ephemeral: true });
-        const pub = await buildProfileShareEmbed(interaction, target);
-        await i.channel.send({ embeds: pub.embeds, files: pub.files });
-        await i.editReply({ content: "채널에 프로필을 공유했어!" });
-      }
+else if (i.customId === `profile:share|${target.id}`) {
+  if (i.channelId === BLOCK_SHARE_CHANNEL_ID) {
+    return i.reply({ content: "이 채널에서는 프로필 공유를 사용할 수 없습니다.", ephemeral: true });
+  }
+  const profileRec = readJson(profilesPath)[target.id] || {};
+  const isPrivate = !!profileRec.isPrivate;
+  const canBypass = hasAnyRole(i.member, PRIVACY_BYPASS_ROLE_IDS);
+  if (isPrivate && i.user.id !== target.id && !canBypass) {
+    return i.reply({ content: "비공개 프로필은 공유하실 수 없습니다.", ephemeral: true });
+  }
+  await i.deferReply({ ephemeral: true });
+  const pub = await buildProfileShareEmbed(interaction, target);
+  await i.channel.send({ embeds: pub.embeds, files: pub.files });
+  await i.editReply({ content: "채널에 프로필을 공유했습니다." });
+}
 
-      else if (i.customId === `profile:share_radar|${target.id}`) {
-        await i.deferReply({ ephemeral: true });
-        const pub = await buildRadarOnlyShareEmbed(interaction, target);
-        await i.channel.send({ embeds: pub.embeds, files: pub.files });
-        await i.editReply({ content: "채널에 오각형 스탯을 공유했어!" });
-      }
+else if (i.customId === `profile:share_radar|${target.id}`) {
+  if (i.channelId === BLOCK_SHARE_CHANNEL_ID) {
+    return i.reply({ content: "이 채널에서는 오각형 공유를 사용할 수 없습니다.", ephemeral: true });
+  }
+  await i.deferReply({ ephemeral: true });
+  const pub = await buildRadarOnlyShareEmbed(interaction, target);
+  await i.channel.send({ embeds: pub.embeds, files: pub.files });
+  await i.editReply({ content: "채널에 오각형 스탯을 공유했습니다." });
+}
 
       else if (i.customId === `profile:pv_toggle|${target.id}`) {
         if (i.user.id !== target.id) return i.reply({ content: "본인만 사용할 수 있어.", ephemeral: true });
