@@ -4,12 +4,16 @@ const path = require("path");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  AttachmentBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
 } = require("discord.js");
 
+/**
+ * 알림 항목 매핑
+ * - roleId: 역할 멘션이 포함된 메시지를 릴레이
+ * - channelId: 특정 채널에 올라온 메시지를 릴레이
+ */
 const MAP = {
   "경매":        { key: "auction",  type: "role",    roleId: "1255580504745574552" },
   "내전":        { key: "scrim",    type: "role",    roleId: "1255580383559422033" },
@@ -78,61 +82,51 @@ function buildJumpRow(url) {
 }
 
 /**
+ * 오토임베드가 늦게 붙는 문제 대응: 잠시 대기 후 강제 refetch
+ */
+async function refetchWithEmbeds(originalMessage, delayMs = 1500) {
+  await new Promise(r => setTimeout(r, delayMs));
+  try {
+    const fresh = await originalMessage.channel.messages.fetch(originalMessage.id, { force: true });
+    return fresh;
+  } catch {
+    return originalMessage;
+  }
+}
+
+/**
  * 메시지 → DM 페이로드 구성
  * - 텍스트: cleanContent
- * - 첨부파일: 이미지/동영상 우선 첨부, 실패 시 링크 나열
- * - 원문 임베드: 최대 3개 요약 복원
+ * - 첨부파일: 이미지/동영상/기타는 URL을 임베드 필드로 안내(원격 파일 직접 첨부는 생략)
+ * - 원문 임베드: 최대 3개 요약 복제(제목/설명/URL/이미지/썸네일/작성자명)
  * - 스티커: 이름/URL 안내
  */
 async function buildDMPayloadFromMessage(message, titleText, color) {
   const text = (message.cleanContent || "").slice(0, 1900);
   const main = baseEmbed(`🔔 ${titleText}`, text || "내용이 없습니다.", message.url, color);
   const components = [];
-  const files = [];
-
   const jump = buildJumpRow(message.url);
   if (jump) components.push(jump);
 
+  // 첨부 안내(직접 첨부 대신 URL로 표시)
   const att = [...(message.attachments?.values?.() ?? [])];
-
-  const imageAtts = att.filter(a => (a.contentType || "").startsWith("image/"));
-  const videoAtts = att.filter(a => (a.contentType || "").startsWith("video/"));
-  const otherAtts = att.filter(a => !imageAtts.includes(a) && !videoAtts.includes(a));
-
-  if (imageAtts.length > 0) {
-    const first = imageAtts[0];
-    try {
-      files.push(new AttachmentBuilder(first.url, { name: first.name || "image" }));
-      main.setImage(`attachment://${first.name || "image"}`);
-    } catch {}
+  const attLines = [];
+  for (const a of att) {
+    const ct = (a.contentType || "").toLowerCase();
+    if (ct.startsWith("image/")) attLines.push(`• 이미지: ${a.url}`);
+    else if (ct.startsWith("video/")) attLines.push(`• 동영상: ${a.url}`);
+    else attLines.push(`• 파일: ${a.name || "첨부"} — ${a.url}`);
   }
-
-  const attLinks = [];
-  const pushFileOrLink = (a, label) => {
-    try {
-      files.push(new AttachmentBuilder(a.url, { name: a.name || label }));
-    } catch {
-      attLinks.push(`• ${label}: ${a.url}`);
+  if (attLines.length > 0) {
+    main.addFields({ name: "첨부", value: attLines.slice(0, 10).join("\n").slice(0, 1024) });
+    // 이미지가 있으면 첫 번째 이미지를 임베드 썸네일/메인이미지로 노출
+    const firstImg = att.find(x => (x.contentType || "").toLowerCase().startsWith("image/"));
+    if (firstImg) {
+      main.setImage(firstImg.url);
     }
-  };
-
-  for (let i = (imageAtts.length > 0 ? 1 : 0); i < imageAtts.length && i < 4; i++) {
-    const a = imageAtts[i];
-    pushFileOrLink(a, a.name || `image_${i+1}`);
-  }
-  for (let i = 0; i < videoAtts.length && i < 2; i++) {
-    const a = videoAtts[i];
-    pushFileOrLink(a, a.name || `video_${i+1}`);
-  }
-  for (let i = 0; i < otherAtts.length && i < 3; i++) {
-    const a = otherAtts[i];
-    attLinks.push(`• 파일: ${a.name || "첨부"} — ${a.url}`);
   }
 
-  if (attLinks.length > 0) {
-    main.addFields({ name: "첨부 파일", value: attLinks.slice(0, 10).join("\n").slice(0, 1024) });
-  }
-
+  // 스티커
   const stickerLines = [];
   for (const st of (message.stickers?.values?.() ?? [])) {
     const name = st?.name || "스티커";
@@ -143,31 +137,53 @@ async function buildDMPayloadFromMessage(message, titleText, color) {
     main.addFields({ name: "스티커", value: stickerLines.join("\n").slice(0, 1024) });
   }
 
+  // 원문 임베드 요약 복제(최대 3개)
   const embedSummaries = [];
   const srcEmbeds = message.embeds || [];
   for (let i = 0; i < srcEmbeds.length && i < 3; i++) {
     const e = srcEmbeds[i];
     const sum = new EmbedBuilder().setColor(0x95a5a6);
-    if (e.title) sum.setTitle(e.title.slice(0, 256));
-    if (e.description) sum.setDescription(e.description.slice(0, 2048));
+    if (e.title) sum.setTitle(String(e.title).slice(0, 256));
+    if (e.description) sum.setDescription(String(e.description).slice(0, 2048));
     if (e.url) sum.setURL(e.url);
     const imageURL = e.image?.url || e.thumbnail?.url;
     if (imageURL) sum.setImage(imageURL);
-    if (e.author?.name) sum.setAuthor({ name: e.author.name.slice(0, 256) });
+    if (e.author?.name) sum.setAuthor({ name: String(e.author.name).slice(0, 256) });
     embedSummaries.push(sum);
   }
 
+  // 메인 + 요약 임베드들 (중첩이 아니라 나란히 여러 개 전송)
   const payload = {
     embeds: [main, ...embedSummaries],
   };
-  if (files.length > 0) payload.files = files;
   if (components.length > 0) payload.components = components;
   return payload;
+}
+
+/**
+ * 중복 릴레이 방지: 메시지 단위 캐시
+ */
+function getRelayCache() {
+  if (!global.__notifyRelaySent) global.__notifyRelaySent = new Set();
+  return global.__notifyRelaySent;
+}
+function markRelayed(messageId) {
+  getRelayCache().add(messageId);
+}
+function wasRelayed(messageId) {
+  return getRelayCache().has(messageId);
 }
 
 async function relayByRoleMention(message, roleId, titleText) {
   if (!message.guild || message.author?.bot) return;
   if (!message.mentions?.roles?.has(roleId)) return;
+
+  // 이미 릴레이했다면 스킵(업데이트 중복 방지)
+  if (wasRelayed(message.id)) return;
+
+  // 오토임베드가 붙을 시간을 고려해 refetch
+  const fresh = await refetchWithEmbeds(message);
+
   const store = loadStore();
   const targets = Object.entries(store)
     .filter(([, s]) => {
@@ -180,17 +196,24 @@ async function relayByRoleMention(message, roleId, titleText) {
 
   if (targets.length === 0) return;
 
-  const payload = await buildDMPayloadFromMessage(message, `${titleText} 새 알림`, 0x00b894);
+  const payload = await buildDMPayloadFromMessage(fresh, `${titleText} 새 알림`, 0x00b894);
   for (const uid of targets) {
     const user = await message.client.users.fetch(uid).catch(()=>null);
     if (!user) continue;
     await dmUser(user, payload);
   }
+  markRelayed(message.id);
 }
 
 async function relayByChannel(message, channelId, titleText) {
   if (!message.guild || message.author?.bot) return;
   if (message.channelId !== channelId) return;
+
+  // 이미 릴레이했다면 스킵
+  if (wasRelayed(message.id)) return;
+
+  const fresh = await refetchWithEmbeds(message);
+
   const store = loadStore();
   const ent = Object.entries(MAP).find(([, v]) => v.channelId === channelId);
   if (!ent) return;
@@ -199,14 +222,20 @@ async function relayByChannel(message, channelId, titleText) {
   const targets = Object.entries(store).filter(([, s]) => !!s[key]).map(([uid]) => uid);
   if (targets.length === 0) return;
 
-  const payload = await buildDMPayloadFromMessage(message, titleText, 0x0984e3);
+  const payload = await buildDMPayloadFromMessage(fresh, titleText, 0x0984e3);
   for (const uid of targets) {
     const user = await message.client.users.fetch(uid).catch(()=>null);
     if (!user) continue;
     await dmUser(user, payload);
   }
+  markRelayed(message.id);
 }
 
+/**
+ * 한 번만 리스너 등록
+ * - messageCreate: 최초 수신
+ * - messageUpdate: 오토임베드가 늦게 붙는 경우 보완
+ */
 function registerRelaysOnce() {
   if (global.__notifyRelayRegistered) return;
   global.__notifyRelayRegistered = true;
@@ -225,6 +254,24 @@ function registerRelaysOnce() {
       await relayByChannel(msg, MAP["모집방"].channelId, "📬 모집방 새 글");
       await relayByChannel(msg, MAP["재난문자"].channelId, "📢 재난 문자");
       await relayByChannel(msg, MAP["게임뉴스"].channelId, "📰 게임뉴스 새 글");
+    } catch {}
+  });
+
+  client.on("messageUpdate", async (_old, msg) => {
+    try {
+      // 업데이트 직후 짧게 재확인(일부 케이스는 여기서 임베드가 방금 붙음)
+      const m = await refetchWithEmbeds(msg, 300);
+
+      await relayByRoleMention(m, MAP["경매"].roleId, "경매 역할 멘션");
+      await relayByRoleMention(m, MAP["내전"].roleId, "내전 역할 멘션");
+      await relayByRoleMention(m, MAP["공지사항"].roleId, "공지사항 역할 멘션");
+      await relayByRoleMention(m, MAP["이벤트"].roleId, "이벤트 역할 멘션");
+      await relayByRoleMention(m, MAP["정수 퀴즈"].roleId, "정수 퀴즈 역할 멘션");
+      await relayByRoleMention(m, MAP["BUMP"].roleId, "BUMP 역할 멘션");
+
+      await relayByChannel(m, MAP["모집방"].channelId, "📬 모집방 새 글");
+      await relayByChannel(m, MAP["재난문자"].channelId, "📢 재난 문자");
+      await relayByChannel(m, MAP["게임뉴스"].channelId, "📰 게임뉴스 새 글");
     } catch {}
   });
 }
